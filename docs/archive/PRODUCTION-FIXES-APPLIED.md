@@ -34,7 +34,7 @@ secrets:
 **Impact:** API keys are now only readable by the container process owner, not by any process in the container.
 
 #### 1.2 Enhanced API Key Generation Script
-**File:** `scripts/generate-api-key.sh`
+**File:** `scripts/data/generate-api-key.sh`
 
 **Features:**
 - Per-service key support: `./generate-api-key.sh --service aidb`
@@ -45,17 +45,17 @@ secrets:
 **Usage:**
 ```bash
 # Generate master key
-./scripts/generate-api-key.sh
+./scripts/data/generate-api-key.sh
 
 # Generate service-specific keys
-./scripts/generate-api-key.sh --service aidb
-./scripts/generate-api-key.sh --service embeddings
-./scripts/generate-api-key.sh --service hybrid
-./scripts/generate-api-key.sh --service nixos-docs
+./scripts/data/generate-api-key.sh --service aidb
+./scripts/data/generate-api-key.sh --service embeddings
+./scripts/data/generate-api-key.sh --service hybrid
+./scripts/data/generate-api-key.sh --service nixos-docs
 ```
 
 #### 1.3 Created API Key Rotation Script
-**File:** `scripts/rotate-api-key.sh` (NEW)
+**File:** `scripts/security/rotate-api-key.sh` (NEW)
 
 **Features:**
 - Automated key rotation with backup
@@ -67,10 +67,10 @@ secrets:
 **Usage:**
 ```bash
 # Rotate master key
-./scripts/rotate-api-key.sh
+./scripts/security/rotate-api-key.sh
 
 # Rotate service-specific key
-./scripts/rotate-api-key.sh --service aidb
+./scripts/security/rotate-api-key.sh --service aidb
 ```
 
 ### Security Improvement
@@ -299,7 +299,7 @@ rule_files:
 
 ### Files Created
 
-1. `scripts/rotate-api-key.sh` - API key rotation with audit trail
+1. `scripts/security/rotate-api-key.sh` - API key rotation with audit trail
 2. `scripts/monitor-tls-certs.sh` - Certificate expiration monitoring
 3. `ai-stack/compose/prometheus/alerts/ai-stack-alerts.yml` - Comprehensive alert rules
 4. `ai-stack/cron/tls-cert-monitoring` - Cron job for cert monitoring
@@ -310,7 +310,7 @@ rule_files:
 1. `ai-stack/compose/docker-compose.yml` - Fixed secrets mode (0444 → 0400)
 2. `ai-stack/mcp-servers/config/config.yaml` - Increased pool size (5→20, 10→30)
 3. `ai-stack/compose/prometheus/prometheus.yml` - Added alert rule loading
-4. `scripts/generate-api-key.sh` - Enhanced with per-service keys, audit trail
+4. `scripts/data/generate-api-key.sh` - Enhanced with per-service keys, audit trail
 
 ---
 
@@ -319,8 +319,8 @@ rule_files:
 ### Manual Testing Checklist
 
 - [ ] Verify Docker secrets are mode 0400 after restart
-- [ ] Test API key generation: `./scripts/generate-api-key.sh --service aidb`
-- [ ] Test API key rotation: `./scripts/rotate-api-key.sh --service aidb --force`
+- [ ] Test API key generation: `./scripts/data/generate-api-key.sh --service aidb`
+- [ ] Test API key rotation: `./scripts/security/rotate-api-key.sh --service aidb --force`
 - [ ] Verify TLS cert monitoring: `./scripts/monitor-tls-certs.sh`
 - [ ] Check Prometheus scrapes metrics: `curl http://localhost:9090/metrics`
 - [ ] Verify alert rules loaded: `curl http://localhost:9090/api/v1/rules`

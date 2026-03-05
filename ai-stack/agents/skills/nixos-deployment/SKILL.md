@@ -163,7 +163,7 @@ cd ~/Documents/NixOS-Dev-Quick-Deploy
 
 3. Verify:
 ```bash
-./scripts/system-health-check.sh
+./scripts/health/system-health-check.sh
 ```
 
 ## AI Stack Integration
@@ -537,7 +537,7 @@ WARNING: GPU driver not loaded, continuing anyway
 - **README**: `~/Documents/NixOS-Dev-Quick-Deploy/README.md`
 - **Deployment Success Report**: `DEPLOYMENT-SUCCESS-V5.md`
 - **System Improvements**: `SYSTEM-IMPROVEMENTS-V5.md`
-- **Health Check**: `./scripts/system-health-check.sh --detailed`
+- **Health Check**: `./scripts/health/system-health-check.sh --detailed`
 
 ## Skill Metadata
 

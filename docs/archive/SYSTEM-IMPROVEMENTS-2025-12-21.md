@@ -296,13 +296,13 @@ dataset = await hybrid_coordinator.generate_training_data()
    - Add hybrid coordinator initialization to Phase 5
 
 2. **Dashboard Data Collection**
-   - `scripts/generate-dashboard-data.sh`
+   - `scripts/data/generate-dashboard-data.sh`
    - Add hybrid coordinator health check
    - Add Qdrant collection statistics
    - Add telemetry metrics
 
 3. **System Health Check**
-   - `scripts/system-health-check.sh`
+   - `scripts/health/system-health-check.sh`
    - Add hybrid coordinator verification
    - Add Qdrant collection validation
 

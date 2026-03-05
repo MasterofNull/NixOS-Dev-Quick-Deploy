@@ -168,7 +168,7 @@ Always include metadata to distinguish reports from system documentation:
 
 ```bash
 # Step 1: Migrate all report files
-./scripts/migrate-reports-to-database.sh
+./scripts/data/migrate-reports-to-database.sh
 
 # Step 2: Verify in database
 psql -h localhost -U mcp -d mcp -c "

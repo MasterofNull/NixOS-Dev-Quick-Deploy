@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
-# Unit tests for scripts/validate-config-settings.sh
+# Unit tests for scripts/testing/validate-config-settings.sh
 #
 
 load test_helper
 
-SCRIPT_UNDER_TEST="$PROJECT_ROOT/scripts/validate-config-settings.sh"
+SCRIPT_UNDER_TEST="$PROJECT_ROOT/scripts/testing/validate-config-settings.sh"
 
 @test "validate-config-settings: default settings pass" {
   run "$SCRIPT_UNDER_TEST"

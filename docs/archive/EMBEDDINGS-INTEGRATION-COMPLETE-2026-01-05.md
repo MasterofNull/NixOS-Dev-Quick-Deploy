@@ -89,7 +89,7 @@ async def generate_embedding(self, text: str) -> List[float]:
         return data["data"][0]["embedding"]
 ```
 
-**Modified:** `scripts/import-documents.py`
+**Modified:** `scripts/data/import-documents.py`
 
 **Changes (lines 72-77):**
 ```python
@@ -102,7 +102,7 @@ parser.add_argument(
 
 ### 4. Systemd Boot Integration
 
-**Modified:** `scripts/ai-stack-startup.sh`
+**Modified:** `scripts/ai/ai-stack-startup.sh`
 
 **Changes:**
 
@@ -213,7 +213,7 @@ cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/compose
 podman-compose down
 
 # Run startup script
-/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-startup.sh
 
 # Expected output:
 # ╔══════════════════════════════════════════════════════════╗

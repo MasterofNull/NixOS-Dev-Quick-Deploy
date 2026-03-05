@@ -68,7 +68,7 @@ The NixOS-Dev-Quick-Deploy system has been successfully upgraded to v5.0.0 with 
 | templates/.sops.yaml | 25 | sops configuration |
 | docs/SOPS-NIX-INTEGRATION.md | 400+ | Security guide |
 | docs/NIXOS-COMPREHENSIVE-RESEARCH-REPORT.md | 3,942 | Research findings |
-| scripts/deploy-aidb-mcp-server.sh | 500+ | MCP deployment |
+| scripts/deploy/deploy-aidb-mcp-server.sh | 500+ | MCP deployment |
 | SYSTEM-IMPROVEMENTS-V5.md | 500+ | Implementation summary |
 | DEPLOYMENT-SUCCESS-V5.md | This file | Deployment report |
 
@@ -141,7 +141,7 @@ The NixOS-Dev-Quick-Deploy system has been successfully upgraded to v5.0.0 with 
 ai-servicectl start all
 
 # Deploy MCP server
-./scripts/deploy-aidb-mcp-server.sh
+./scripts/deploy/deploy-aidb-mcp-server.sh
 
 # Start MCP server
 systemctl --user start aidb-mcp-server
@@ -171,7 +171,7 @@ To trigger this manually:
 ./nixos-quick-deploy.sh --help
 
 # Run health check
-./scripts/system-health-check.sh --detailed
+./scripts/health/system-health-check.sh --detailed
 ```
 
 ---
@@ -381,8 +381,8 @@ To trigger this manually:
 
 ### Scripts
 - `./nixos-quick-deploy.sh --help` - Main deployment script
-- `./scripts/deploy-aidb-mcp-server.sh` - MCP server deployment
-- `./scripts/system-health-check.sh` - Health verification
+- `./scripts/deploy/deploy-aidb-mcp-server.sh` - MCP server deployment
+- `./scripts/health/system-health-check.sh` - Health verification
 
 ### Logs
 - Deployment: `~/.cache/nixos-quick-deploy/logs/`

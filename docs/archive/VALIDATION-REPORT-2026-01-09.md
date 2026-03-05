@@ -34,8 +34,8 @@ mode: 0400  # nixos-docs
 
 #### Test: Rotation Script
 ```bash
-$ ./scripts/rotate-api-key.sh --help
-Usage: ./scripts/rotate-api-key.sh [--service SERVICE_NAME] [--force]
+$ ./scripts/security/rotate-api-key.sh --help
+Usage: ./scripts/security/rotate-api-key.sh [--service SERVICE_NAME] [--force]
   --service  Rotate key for specific service (aidb, embeddings, hybrid, nixos-docs)
   --force    Skip confirmation prompt
 ```
@@ -43,8 +43,8 @@ Usage: ./scripts/rotate-api-key.sh [--service SERVICE_NAME] [--force]
 
 #### Test: Generation Script with Audit
 ```bash
-$ ./scripts/generate-api-key.sh --help
-Usage: ./scripts/generate-api-key.sh [--service SERVICE_NAME]
+$ ./scripts/data/generate-api-key.sh --help
+Usage: ./scripts/data/generate-api-key.sh [--service SERVICE_NAME]
   --service  Generate key for specific service (aidb, embeddings, hybrid, nixos-docs)
 ```
 **Result:** ✅ **PASS** - Generation script enhanced with per-service support
@@ -367,8 +367,8 @@ Cost Reduction:        ~72% (input token costs)
 - [x] Progressive disclosure tested (72% savings)
 
 ### Scripts
-- [x] scripts/rotate-api-key.sh functional
-- [x] scripts/generate-api-key.sh enhanced
+- [x] scripts/security/rotate-api-key.sh functional
+- [x] scripts/data/generate-api-key.sh enhanced
 - [x] scripts/monitor-tls-certs.sh functional
 - [x] tests/progressive-disclosure-validation.py passes
 

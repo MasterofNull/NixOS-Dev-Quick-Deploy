@@ -18,7 +18,7 @@
 - Mobile-responsive design
 - WCAG accessibility compliant
 
-**Data Collection** ([scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh))
+**Data Collection** ([scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh))
 - System metrics (CPU, memory, disk, uptime, temperature)
 - LLM stack status (Qdrant, Ollama, llama.cpp, PostgreSQL, Redis, Open WebUI)
 - Container monitoring (Podman containers)
@@ -27,7 +27,7 @@
 - Database metrics (PostgreSQL)
 - Quick access links generation
 
-**HTTP Server** ([scripts/serve-dashboard.sh](/scripts/serve-dashboard.sh))
+**HTTP Server** ([scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh))
 - Python-based server with CORS support
 - Serves dashboard + JSON data files
 - Configurable port (default: 8888)
@@ -50,7 +50,7 @@
 - `install_dashboard_to_deployment()` - Phase 8 wrapper
 - Loaded automatically in bootstrap
 
-**Setup Automation** ([scripts/setup-dashboard.sh](/scripts/setup-dashboard.sh))
+**Setup Automation** ([scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh))
 - Creates systemd user services
 - Generates initial data
 - Creates desktop launcher
@@ -107,7 +107,7 @@ alias dashboard-status='systemctl --user status dashboard-collector.timer dashbo
 Step 8.5: System Monitoring Dashboard
   ├─ Loading lib/dashboard.sh
   ├─ Calling install_dashboard_to_deployment()
-  │   ├─ Running scripts/setup-dashboard.sh
+  │   ├─ Running scripts/deploy/setup-dashboard.sh
   │   │   ├─ Creating systemd services
   │   │   ├─ Generating initial data
   │   │   ├─ Creating desktop launcher
@@ -164,9 +164,9 @@ Documentation:
 
 **Created**:
 1. [lib/dashboard.sh](lib/dashboard.sh) - Dashboard library
-2. [scripts/setup-dashboard.sh](/scripts/setup-dashboard.sh) - Setup automation
-3. [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh) - Data collection
-4. [scripts/serve-dashboard.sh](/scripts/serve-dashboard.sh) - HTTP server
+2. [scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh) - Setup automation
+3. [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Data collection
+4. [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) - HTTP server
 5. [launch-dashboard.sh](launch-dashboard.sh) - Quick launcher
 6. [dashboard.html](dashboard.html) - Main dashboard UI
 7. [DASHBOARD-QUICKSTART.md](DASHBOARD-QUICKSTART.md) - User quickstart
@@ -192,16 +192,16 @@ grep -A 10 "Step 8.5" phases/phase-08-finalization-and-report.sh
 # Expected: Shows install_dashboard_to_deployment() call
 
 # 3. Verify setup script exists and is executable
-ls -la scripts/setup-dashboard.sh
+ls -la scripts/deploy/setup-dashboard.sh
 # Expected: -rwxr-xr-x (executable)
 
 # 4. Test data collection
-./scripts/generate-dashboard-data.sh
+./scripts/data/generate-dashboard-data.sh
 ls ~/.local/share/nixos-system-dashboard/
 # Expected: 6 JSON files created
 
 # 5. Test dashboard server
-./scripts/serve-dashboard.sh &
+./scripts/deploy/serve-dashboard.sh &
 curl http://localhost:8888/dashboard.html | head
 # Expected: HTML content returned
 kill %1
@@ -335,8 +335,8 @@ After deployment completes:
 
 **Customization**:
 - Edit [dashboard.html](dashboard.html) to change colors, fonts, layout
-- Modify [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh) to add metrics
-- Update [scripts/serve-dashboard.sh](/scripts/serve-dashboard.sh) to change port
+- Modify [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) to add metrics
+- Update [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) to change port
 
 **Extension**:
 - Add new monitoring sections

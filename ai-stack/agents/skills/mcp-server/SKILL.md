@@ -7,7 +7,7 @@ description: Instructions and workflow for the mcp-server skill.
 """
 # Skill: mcp-server
 
-Wrapper around `scripts/deploy-aidb-mcp-server.sh` so agents can deploy,
+Wrapper around `scripts/deploy/deploy-aidb-mcp-server.sh` so agents can deploy,
 inspect, or tail the MCP service deterministically.
 
 Examples:

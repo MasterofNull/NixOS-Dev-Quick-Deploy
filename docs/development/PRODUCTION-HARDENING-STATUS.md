@@ -19,14 +19,14 @@ The AI stack has been significantly hardened for production use with all **criti
 - **Impact**: Eliminated critical shell injection vulnerability
 - **Implementation**: Replaced subprocess with urllib HTTP client, added endpoint whitelist
 - **Tests**: 3/3 passing
-- **Files**: [scripts/serve-dashboard.sh](scripts/serve-dashboard.sh)
+- **Files**: [scripts/deploy/serve-dashboard.sh](scripts/deploy/serve-dashboard.sh)
 
 #### P1-SEC-002: Rate Limiting for All API Endpoints
 - **Status**: COMPLETED
 - **Impact**: Protected against DoS attacks
 - **Implementation**: Token bucket rate limiter (60 req/min), HTTP 429 responses
 - **Tests**: 3/3 passing
-- **Files**: [scripts/serve-dashboard.sh](scripts/serve-dashboard.sh), [config.yaml](ai-stack/mcp-servers/config/config.yaml)
+- **Files**: [scripts/deploy/serve-dashboard.sh](scripts/deploy/serve-dashboard.sh), [config.yaml](ai-stack/mcp-servers/config/config.yaml)
 
 #### P1-SEC-003: Move Secrets to Environment Variables
 - **Status**: COMPLETED

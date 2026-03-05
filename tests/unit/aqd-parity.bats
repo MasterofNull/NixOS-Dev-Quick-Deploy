@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
-# Unit tests for scripts/aqd CLI parity and wrapper behavior
+# Unit tests for scripts/ai/aqd CLI parity and wrapper behavior
 #
 
 load test_helper
 
-AQD="$PROJECT_ROOT/scripts/aqd"
+AQD="$PROJECT_ROOT/scripts/ai/aqd"
 FIXTURE_VALID_SKILL="$PROJECT_ROOT/archive/test-fixtures/skill-reference-lint/valid-skill"
 
 @test "aqd --version returns pinned wrapper version format" {
@@ -28,20 +28,20 @@ FIXTURE_VALID_SKILL="$PROJECT_ROOT/archive/test-fixtures/skill-reference-lint/va
 }
 
 @test "aqd skill validate exit code matches direct governance scripts" {
-  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/check-skill-source-of-truth.sh && ./scripts/lint-skill-external-deps.sh && ./scripts/validate-skill-references.sh && ./scripts/lint-skill-template.sh"
+  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/testing/check-skill-source-of-truth.sh && ./scripts/governance/lint-skill-external-deps.sh && ./scripts/testing/validate-skill-references.sh && ./scripts/governance/lint-skill-template.sh"
   local direct_status="$status"
 
-  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/aqd skill validate"
+  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/ai/aqd skill validate"
   local aqd_status="$status"
 
   [[ "$aqd_status" -eq "$direct_status" ]]
 }
 
 @test "aqd mcp validate exit code matches direct mcp-server test for missing server" {
-  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/mcp-server test does-not-exist"
+  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/ai/mcp-server test does-not-exist"
   local direct_status="$status"
 
-  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/aqd mcp validate does-not-exist"
+  run bash -lc "cd '$PROJECT_ROOT' && ./scripts/ai/aqd mcp validate does-not-exist"
   local aqd_status="$status"
 
   [[ "$aqd_status" -eq "$direct_status" ]]

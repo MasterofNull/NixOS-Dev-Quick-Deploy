@@ -87,13 +87,13 @@ All tests PASSED:
    - Prometheus metrics integration
 
 #### Backup Scripts
-5. **backup-postgresql.sh** ([scripts/backup-postgresql.sh](scripts/backup-postgresql.sh))
+5. **backup-postgresql.sh** ([scripts/data/backup-postgresql.sh](scripts/data/backup-postgresql.sh))
    - Fixed shebang: `#!/bin/bash` → `#!/usr/bin/env bash` (NixOS compatibility)
    - Full/incremental backup support
    - Encryption and verification
    - Retention policy management
 
-6. **backup-qdrant.sh** ([scripts/backup-qdrant.sh](scripts/backup-qdrant.sh))
+6. **backup-qdrant.sh** ([scripts/data/backup-qdrant.sh](scripts/data/backup-qdrant.sh))
    - Fixed shebang for NixOS compatibility
    - Snapshot-based backups
    - Multi-collection support
@@ -281,14 +281,14 @@ QDRANT_URL=http://local-ai-qdrant:6333
 ## 🔄 Backup System
 
 ### PostgreSQL Backup
-- **Script**: [scripts/backup-postgresql.sh](scripts/backup-postgresql.sh)
+- **Script**: [scripts/data/backup-postgresql.sh](scripts/data/backup-postgresql.sh)
 - **Status**: Ready (NixOS compatible)
 - **Features**: Full/incremental, encryption, verification
 - **Retention**: 7 daily / 4 weekly / 12 monthly
 - **Tested**: ✅ Successfully backed up mcp database (3.6 KB)
 
 ### Qdrant Backup
-- **Script**: [scripts/backup-qdrant.sh](scripts/backup-qdrant.sh)
+- **Script**: [scripts/data/backup-qdrant.sh](scripts/data/backup-qdrant.sh)
 - **Status**: Ready (NixOS compatible)
 - **Features**: Snapshot-based, multi-collection
 - **Retention**: 7 daily / 4 weekly / 12 monthly

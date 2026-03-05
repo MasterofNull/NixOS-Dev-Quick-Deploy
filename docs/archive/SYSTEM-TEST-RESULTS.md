@@ -31,7 +31,7 @@ Successfully completed comprehensive testing of the AI stack after Phase 9 deplo
 
 ### 1. Container Health Check ✅
 
-**Command**: `python3 scripts/check-ai-stack-health-v2.py -v`
+**Command**: `python3 scripts/testing/check-ai-stack-health-v2.py -v`
 
 **Results**:
 ```

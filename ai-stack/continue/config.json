@@ -53,7 +53,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "exec python3 /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/mcp-bridge-hybrid.py"
+        "exec python3 /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"
       ]
     }
   }

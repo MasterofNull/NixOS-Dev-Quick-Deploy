@@ -45,7 +45,7 @@ git log --oneline docs/mcp-servers-directory.json
 - `docs/AGENT-ONBOARDING-README.md` (30-min onboarding)
 - `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` (architecture)
 - `docs/RED-TEAM-MCP-SERVERS.md` (193 security tools)
-- `docs/QUICK-REFERENCE-CARD.md` (instant reference)
+- `docs/operations/reference/QUICK-REFERENCE-CARD.md` (instant reference)
 - `docs/IMPLEMENTATION-COMPLETE-DEC-4-2025.md` (full summary)
 - `docs/mcp-servers-directory.json` (707 servers)
 
@@ -64,7 +64,7 @@ git log --oneline docs/mcp-servers-directory.json
 - Template includes atomic-red-team configuration
 
 ### 5. Discovery Scripts
-**Location:** `scripts/comprehensive-mcp-search.py`
+**Location:** `scripts/governance/comprehensive-mcp-search.py`
 
 **Git Status:** ✅ COMMITTED
 **Capabilities:**
@@ -274,7 +274,7 @@ PYEOF
 - [x] **mcp-servers-directory.json** committed (707 servers)
 - [x] **templates/mcp-config-template.json** committed
 - [x] **deploy_mcp_configuration()** function added to lib/config.sh
-- [x] **scripts/comprehensive-mcp-search.py** committed
+- [x] **scripts/governance/comprehensive-mcp-search.py** committed
 - [x] **agent-onboarding-package-v2.0.0.tar.gz** committed
 - [x] **AGENTS.md** enhanced and committed
 - [x] **All changes pushed** to repository

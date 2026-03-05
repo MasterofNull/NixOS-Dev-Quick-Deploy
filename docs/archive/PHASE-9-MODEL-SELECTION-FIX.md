@@ -23,7 +23,7 @@ The `ai_select_model()` function in [lib/ai-optimizer.sh](lib/ai-optimizer.sh) w
 3. Not respecting previous user choices
 
 This disconnect occurred because:
-- `scripts/download-llama-cpp-models.sh` downloads 3 specific models
+- `scripts/data/download-llama-cpp-models.sh` downloads 3 specific models
 - Phase 9's menu showed 6+ options from `ai-stack/models/registry.json`
 - No detection of cached models before displaying the menu
 

@@ -211,7 +211,7 @@ $ curl -X POST http://localhost:8081/embed \
 ### Re-Import All Documents
 
 ```bash
-$ python3 scripts/import-documents.py \
+$ python3 scripts/data/import-documents.py \
   --directory . \
   --extensions .md \
   --no-recursive
@@ -364,7 +364,7 @@ templates/mcp-servers/embeddings-service/
 - Added EMBEDDING_SERVICE_URL env vars to AIDB and hybrid-coordinator
 - All changes active and tested
 
-✅ **Startup Script** - `scripts/ai-stack-startup.sh`
+✅ **Startup Script** - `scripts/ai/ai-stack-startup.sh`
 - Updated `start_core_infrastructure()` to include embeddings
 - Added "local-ai-embeddings" to expected containers list
 - Added embeddings health check (http://localhost:8081/health)
@@ -384,7 +384,7 @@ templates/mcp-servers/embeddings-service/
 
 The embeddings service will now automatically start on system boot via:
 ```bash
-/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-startup.sh
 ```
 
 **Boot sequence:**
@@ -405,13 +405,13 @@ The following collections still have zero-vector embeddings from before the fix:
 
 1. **error-solutions** (14 points)
    ```bash
-   python3 scripts/populate-qdrant-with-embeddings.py \
+   python3 scripts/data/populate-qdrant-with-embeddings.py \
      --collection error-solutions
    ```
 
 2. **best-practices** (20 points)
    ```bash
-   python3 scripts/populate-qdrant-with-embeddings.py \
+   python3 scripts/data/populate-qdrant-with-embeddings.py \
      --collection best-practices
    ```
 
@@ -424,16 +424,16 @@ Import remaining project files for complete knowledge base:
 
 ```bash
 # Python scripts
-python3 scripts/import-documents.py --directory scripts --extensions .py
+python3 scripts/data/import-documents.py --directory scripts --extensions .py
 
 # Shell scripts
-python3 scripts/import-documents.py --directory scripts --extensions .sh .bash
+python3 scripts/data/import-documents.py --directory scripts --extensions .sh .bash
 
 # Nix configurations
-python3 scripts/import-documents.py --directory templates --extensions .nix
+python3 scripts/data/import-documents.py --directory templates --extensions .nix
 
 # Docker configs
-python3 scripts/import-documents.py --directory ai-stack/compose --extensions .yml .yaml
+python3 scripts/data/import-documents.py --directory ai-stack/compose --extensions .yml .yaml
 ```
 
 **Estimated Addition:** 200+ files, 1,000+ chunks

@@ -55,7 +55,7 @@
 ### Manual Tests Performed
 ```bash
 # 1. Discovery script runs without errors ✅
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 # Output: "Wrote discovery report: .../IMPROVEMENT-DISCOVERY-REPORT-2025-12-22.md"
 
 # 2. State file persisted correctly ✅
@@ -121,7 +121,7 @@ Discord URLs cannot be crawled (authentication required). Remove these 6 entries
 
 ### Improvement 1: Add GitHub Token Check
 ```python
-# In scripts/discover-improvements.sh, at top of main():
+# In scripts/governance/discover-improvements.sh, at top of main():
 github_sources = [s for s in sources if s.get("type") == "github_release"]
 if github_sources and not (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")):
     print("⚠️  WARNING: No GitHub token found. Set GITHUB_TOKEN environment variable.")
@@ -271,7 +271,7 @@ def validate_url(url: str) -> bool:
 
 ```bash
 export GITHUB_TOKEN=ghp_your_token_here
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 cat docs/development/IMPROVEMENT-DISCOVERY-REPORT-$(date +%Y-%m-%d).md
 ```
 

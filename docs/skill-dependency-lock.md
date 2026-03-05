@@ -18,7 +18,7 @@ Purpose: keep external skill documentation references deterministic. Skills must
 - `AQD_CLI_CONVERTER_IMPL`
   `repo-native-wrapper`
 - `AQD_CLI_CONVERTER_ENTRYPOINT`
-  `scripts/aqd`
+  `scripts/ai/aqd`
 - `AQD_CLI_CONVERTER_VERSION`
   `0.2.0`
 - `AQD_CLI_CONVERTER_SCOPE`
@@ -30,7 +30,7 @@ Purpose: keep external skill documentation references deterministic. Skills must
 2. Replace `<PINNED_COMMIT_SHA>` with the exact commit SHA.
 3. If converter behavior changes, bump `AQD_CLI_CONVERTER_VERSION`.
 4. Run:
-   - `./scripts/lint-skill-external-deps.sh`
-   - `./scripts/validate-skill-references.sh`
-   - `./scripts/aqd --version`
+   - `./scripts/governance/lint-skill-external-deps.sh`
+   - `./scripts/testing/validate-skill-references.sh`
+   - `./scripts/ai/aqd --version`
 5. Commit lock updates with the skill-doc changes in the same PR.

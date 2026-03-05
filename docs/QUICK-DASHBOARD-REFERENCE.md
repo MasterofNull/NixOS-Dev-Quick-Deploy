@@ -6,13 +6,13 @@
 
 ```bash
 # View dashboard
-bash scripts/serve-dashboard.sh
+bash scripts/deploy/serve-dashboard.sh
 # Open: http://localhost:8888/dashboard.html
 
 # Manage collectors
-bash scripts/manage-dashboard-collectors.sh status   # Check if running
-bash scripts/manage-dashboard-collectors.sh restart  # Restart if needed
-bash scripts/manage-dashboard-collectors.sh logs     # View logs
+bash scripts/governance/manage-dashboard-collectors.sh status   # Check if running
+bash scripts/governance/manage-dashboard-collectors.sh restart  # Restart if needed
+bash scripts/governance/manage-dashboard-collectors.sh logs     # View logs
 ```
 
 ## What's Running
@@ -46,10 +46,10 @@ Your dashboard now shows:
 
 ```bash
 # Check collectors
-bash scripts/manage-dashboard-collectors.sh status
+bash scripts/governance/manage-dashboard-collectors.sh status
 
 # Restart if needed
-bash scripts/manage-dashboard-collectors.sh restart
+bash scripts/governance/manage-dashboard-collectors.sh restart
 ```
 
 ### Want different update rates?
@@ -64,7 +64,7 @@ nano ${TMPDIR:-/tmp}/run-dashboard-collector-full.sh
 # Change: sleep 60
 
 # Restart
-bash scripts/manage-dashboard-collectors.sh restart
+bash scripts/governance/manage-dashboard-collectors.sh restart
 ```
 
 ## Complete Documentation

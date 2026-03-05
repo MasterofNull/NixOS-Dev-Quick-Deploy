@@ -31,7 +31,7 @@
   "mcpServers": {
     "local-ai-stack": {
       "command": "python3",
-      "args": ["/path/to/NixOS-Dev-Quick-Deploy/scripts/claude-local-wrapper.py"],
+      "args": ["/path/to/NixOS-Dev-Quick-Deploy/scripts/ai/claude-local-wrapper.py"],
       "env": {
         "HYBRID_COORDINATOR_URL": "http://localhost:8092",
         "AIDB_MCP_URL": "http://localhost:8091"
@@ -183,7 +183,7 @@ python3 scripts/demo-local-ai-usage.py
 
 ### Solution B: CLI Wrapper
 
-**File**: `scripts/claude-local-wrapper.py`
+**File**: `scripts/ai/claude-local-wrapper.py`
 
 **What it does**:
 - Provides CLI interface to local AI stack
@@ -194,10 +194,10 @@ python3 scripts/demo-local-ai-usage.py
 **Usage**:
 ```bash
 # Force local LLM
-./scripts/claude-local-wrapper.py --force-local "How do I use Qdrant?"
+./scripts/ai/claude-local-wrapper.py --force-local "How do I use Qdrant?"
 
 # Auto-route (hybrid decision)
-./scripts/claude-local-wrapper.py "Complex architecture design question"
+./scripts/ai/claude-local-wrapper.py "Complex architecture design question"
 ```
 
 ---
@@ -252,7 +252,7 @@ tail -5 ~/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl
 
 ### Test 2: Check Dashboard Metrics
 ```bash
-bash scripts/generate-dashboard-data.sh
+bash scripts/data/generate-dashboard-data.sh
 cat ~/.local/share/nixos-system-dashboard/hybrid-coordinator.json | jq .
 # Should show updated query counts
 ```
@@ -269,7 +269,7 @@ cat ~/.local/share/nixos-system-dashboard/token-savings.json | jq .
 
 **Immediate (Today)**:
 1. ✅ Run `scripts/demo-local-ai-usage.py` to generate sample telemetry
-2. ✅ Use `scripts/claude-local-wrapper.py` for manual queries
+2. ✅ Use `scripts/ai/claude-local-wrapper.py` for manual queries
 3. ✅ Add git pre-commit hook to remind about local usage
 
 **Short-term (This Week)**:
@@ -316,7 +316,7 @@ python3 scripts/demo-local-ai-usage.py
 
 2. Check telemetry generated:
 ```bash
-bash scripts/generate-dashboard-data.sh
+bash scripts/data/generate-dashboard-data.sh
 xdg-open http://localhost:8888/dashboard.html
 ```
 

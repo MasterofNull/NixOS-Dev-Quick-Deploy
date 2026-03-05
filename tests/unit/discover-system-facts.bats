@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
-# Unit tests for scripts/discover-system-facts.sh
+# Unit tests for scripts/governance/discover-system-facts.sh
 #
 
 load test_helper
 
-DISCOVER_SCRIPT="$PROJECT_ROOT/scripts/discover-system-facts.sh"
+DISCOVER_SCRIPT="$PROJECT_ROOT/scripts/governance/discover-system-facts.sh"
 
 setup() {
   export SCRIPT_DIR="$PROJECT_ROOT"

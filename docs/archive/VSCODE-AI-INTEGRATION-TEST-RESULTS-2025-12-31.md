@@ -224,13 +224,13 @@ $ grep -n "vscode_telemetry" server.py
 
 ### 4. Auto-Sync Script
 
-**File**: `/scripts/sync-configs-to-templates.sh`
+**File**: `/scripts/data/sync-configs-to-templates.sh`
 
 **Tests Performed:**
 
 #### Test 4.1: Script Executable
 ```bash
-$ test -x scripts/sync-configs-to-templates.sh && echo "✓ Auto-sync script is executable"
+$ test -x scripts/data/sync-configs-to-templates.sh && echo "✓ Auto-sync script is executable"
 ```
 **Result**: ✅ PASS
 ```
@@ -324,7 +324,7 @@ $ grep -n "deploy_vscode_configs$" phases/phase-09-ai-stack-deployment.sh
 | templates/vscode/continue/config.json | 7.8 KB | 230 | Continue config | ✅ Valid JSON |
 | templates/vscode/claude-code/mcp_servers.json | 5.1 KB | 160 | MCP servers | ✅ Valid JSON |
 | ai-stack/mcp-servers/aidb/vscode_telemetry.py | 12.4 KB | 350 | Telemetry endpoint | ✅ Imports OK |
-| scripts/sync-configs-to-templates.sh | 4.2 KB | 150 | Auto-sync | ✅ Executable |
+| scripts/data/sync-configs-to-templates.sh | 4.2 KB | 150 | Auto-sync | ✅ Executable |
 | VSCODE-AI-INTEGRATION-PROGRESS-2025-12-31.md | 18.5 KB | 430 | Progress report | ✅ Complete |
 | VSCODE-AI-INTEGRATION-TEST-RESULTS-2025-12-31.md | (this file) | - | Test results | ✅ Complete |
 

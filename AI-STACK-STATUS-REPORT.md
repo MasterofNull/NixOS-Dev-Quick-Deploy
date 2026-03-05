@@ -132,15 +132,15 @@ sudo systemctl restart llama-cpp.service llama-cpp-embed.service ai-aidb.service
 ### Check Health
 ```bash
 # Quick health check
-./scripts/check-mcp-health.sh
+./scripts/testing/check-mcp-health.sh
 
 # Detailed with optional services
-./scripts/check-mcp-health.sh --optional
+./scripts/testing/check-mcp-health.sh --optional
 ```
 
 ### Rebuild Qdrant Index
 ```bash
-bash scripts/rebuild-qdrant-collections.sh
+bash scripts/data/rebuild-qdrant-collections.sh
 ```
 
 ---

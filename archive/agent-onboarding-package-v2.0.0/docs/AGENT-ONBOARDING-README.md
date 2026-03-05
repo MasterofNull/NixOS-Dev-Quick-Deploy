@@ -50,7 +50,7 @@ cat ~/.mcp/config.json  # Current: mcp-nixos
 - [ ] Read AGENTS.md quick start (first 200 lines)  
 - [ ] Verify skills directory: `ls .agent/skills/`  
 - [ ] Test AIDB: `curl http://localhost:8091/documents?search=test`  
-- [ ] Run health check: `./scripts/system-health-check.sh`  
+- [ ] Run health check: `./scripts/health/system-health-check.sh`  
 - [ ] Ready to contribute!
 
 **Time to First Productive Work: ~30 minutes**

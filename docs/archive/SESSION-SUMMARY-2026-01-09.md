@@ -17,13 +17,13 @@ This session completed critical P0 production hardening fixes and explored moder
 
 #### API Key Security (CRITICAL)
 - **Fixed:** Docker secrets from mode `0444` (world-readable) → `0400` (owner-only)
-- **Created:** [scripts/rotate-api-key.sh](scripts/rotate-api-key.sh) - Automated key rotation
-- **Enhanced:** [scripts/generate-api-key.sh](scripts/generate-api-key.sh) - Per-service keys + audit trail
+- **Created:** [scripts/security/rotate-api-key.sh](scripts/security/rotate-api-key.sh) - Automated key rotation
+- **Enhanced:** [scripts/data/generate-api-key.sh](scripts/data/generate-api-key.sh) - Per-service keys + audit trail
 - **Impact:** Prevents unauthorized access from any process in containers
 
 **Files Modified:**
 - `ai-stack/compose/docker-compose.yml` - Fixed all secrets mode
-- `scripts/generate-api-key.sh` - Enhanced with audit logging
+- `scripts/data/generate-api-key.sh` - Enhanced with audit logging
 
 #### Connection Pool Capacity (HIGH)
 - **Increased:** Pool size `5→20`, max overflow `10→30`
@@ -192,7 +192,7 @@ Savings:
 3. [P1-HARDENING-ROADMAP.md](docs/P1-HARDENING-ROADMAP.md) - Implementation plan
 
 ### Scripts
-1. [scripts/rotate-api-key.sh](scripts/rotate-api-key.sh) - API key rotation
+1. [scripts/security/rotate-api-key.sh](scripts/security/rotate-api-key.sh) - API key rotation
 2. [scripts/monitor-tls-certs.sh](scripts/monitor-tls-certs.sh) - Certificate monitoring
 
 ### Tests
@@ -283,7 +283,7 @@ Savings:
 - docs/CONTEXT-OPTIMIZATION-STRATEGIES-2026.md
 - docs/P1-HARDENING-ROADMAP.md
 - docs/PRODUCTION-FIXES-APPLIED.md (previous session)
-- scripts/rotate-api-key.sh
+- scripts/security/rotate-api-key.sh
 - scripts/monitor-tls-certs.sh
 - tests/progressive-disclosure-validation.py
 - ai-stack/compose/prometheus/alerts/ai-stack-alerts.yml
@@ -294,7 +294,7 @@ Savings:
 - ai-stack/compose/docker-compose.yml (secrets mode)
 - ai-stack/mcp-servers/config/config.yaml (pool size)
 - ai-stack/compose/prometheus/prometheus.yml (alert rules)
-- scripts/generate-api-key.sh (enhanced features)
+- scripts/data/generate-api-key.sh (enhanced features)
 
 ---
 

@@ -36,7 +36,7 @@ Action:
 
 2. Show rescue flow with host-specific UUID:
 ```bash
-./scripts/recovery-offline-fsck-guide.sh
+./scripts/deploy/recovery-offline-fsck-guide.sh
 ```
 
 3. Declarative deploy path:

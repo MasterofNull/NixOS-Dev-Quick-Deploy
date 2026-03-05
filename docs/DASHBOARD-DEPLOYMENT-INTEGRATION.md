@@ -46,9 +46,9 @@ install_dashboard_to_deployment
 ### 3. Scripts
 
 **Core Scripts**:
-- [scripts/setup-dashboard.sh](/scripts/setup-dashboard.sh) - Installation automation
-- [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh) - Data collection
-- [scripts/serve-dashboard.sh](/scripts/serve-dashboard.sh) - HTTP server
+- [scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh) - Installation automation
+- [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Data collection
+- [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) - HTTP server
 - [launch-dashboard.sh](launch-dashboard.sh) - Quick launcher
 
 **Dashboard UI**:
@@ -159,7 +159,7 @@ To test dashboard installation separately:
 
 ```bash
 # Run setup script directly
-./scripts/setup-dashboard.sh
+./scripts/deploy/setup-dashboard.sh
 
 # Verify systemd services created
 systemctl --user list-unit-files | grep dashboard
@@ -190,7 +190,7 @@ Comment out Step 8.5 in [phases/phase-08-finalization-and-report.sh](phases/phas
 Default port is 8888. To change:
 
 **Before Deployment**:
-Edit [scripts/serve-dashboard.sh](/scripts/serve-dashboard.sh) and change `PORT` variable
+Edit [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) and change `PORT` variable
 
 **After Deployment**:
 ```bash
@@ -216,7 +216,7 @@ systemctl --user disable dashboard-collector.timer
 systemctl --user stop dashboard-collector.timer
 
 # Manual collection when needed
-./scripts/generate-dashboard-data.sh
+./scripts/data/generate-dashboard-data.sh
 ```
 
 ---
@@ -233,7 +233,7 @@ tail -100 ~/.cache/nixos-quick-deploy/logs/deploy-*.log | grep -A 20 "Dashboard"
 
 **Common Issues**:
 1. **Library not loaded**: Check `load_libraries()` includes "dashboard.sh"
-2. **Setup script not found**: Verify [scripts/setup-dashboard.sh](/scripts/setup-dashboard.sh) exists and is executable
+2. **Setup script not found**: Verify [scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh) exists and is executable
 3. **Permission errors**: Ensure `~/.local/share` and `~/.config/systemd/user` are writable
 
 ### Dashboard Installed but Not Working
@@ -253,10 +253,10 @@ grep "dashboard" ~/.zshrc
 **Test Manually**:
 ```bash
 # Generate data
-./scripts/generate-dashboard-data.sh
+./scripts/data/generate-dashboard-data.sh
 
 # Start server
-./scripts/serve-dashboard.sh &
+./scripts/deploy/serve-dashboard.sh &
 
 # Open dashboard
 xdg-open http://localhost:8888/dashboard.html
@@ -327,7 +327,7 @@ systemctl --user daemon-reload
 ### For Developers
 
 - **Library Code**: [lib/dashboard.sh](lib/dashboard.sh)
-- **Setup Script**: [scripts/setup-dashboard.sh](/scripts/setup-dashboard.sh)
+- **Setup Script**: [scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh)
 - **Phase Integration**: [phases/phase-08-finalization-and-report.sh](phases/phase-08-finalization-and-report.sh#L173-L183)
 
 ---

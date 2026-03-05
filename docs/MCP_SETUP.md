@@ -53,23 +53,23 @@ sudo systemctl start qdrant
 
 ### Health checks
 
-Use the `scripts/mcp-db-validate` helper to verify connectivity, credentials, and
+Use the `scripts/ai/mcp-db-validate` helper to verify connectivity, credentials, and
 configuration:
 
 ```
-./scripts/mcp-db-validate
+./scripts/ai/mcp-db-validate
 ```
 
 For CI/headless runs (no password prompts, no sudo dependency):
 
 ```
-./scripts/mcp-db-validate --non-interactive
+./scripts/ai/mcp-db-validate --non-interactive
 ```
 
 To enforce PostgreSQL credential checks in non-interactive runs:
 
 ```
-./scripts/mcp-db-validate --non-interactive --require-db-auth
+./scripts/ai/mcp-db-validate --non-interactive --require-db-auth
 ```
 
 The script reports service status and validates each PostgreSQL database,
@@ -122,17 +122,17 @@ Two ready-to-customise templates live in `templates/`:
 Use the lifecycle helper to scaffold a project:
 
 ```
-./scripts/mcp-server init my-tools           # default python template
-./scripts/mcp-server init -t deno rag-stack  # deno template
+./scripts/ai/mcp-server init my-tools           # default python template
+./scripts/ai/mcp-server init -t deno rag-stack  # deno template
 ```
 
 Start, stop, inspect logs, and run self-tests:
 
 ```
-./scripts/mcp-server start my-tools
-./scripts/mcp-server logs -f my-tools
-./scripts/mcp-server test my-tools
-./scripts/mcp-server stop my-tools
+./scripts/ai/mcp-server start my-tools
+./scripts/ai/mcp-server logs -f my-tools
+./scripts/ai/mcp-server test my-tools
+./scripts/ai/mcp-server stop my-tools
 ```
 
 All generated servers live under `mcp-servers/` by default. Override with the
@@ -148,7 +148,7 @@ All generated servers live under `mcp-servers/` by default. Override with the
    deployment, and provide custom profiles when additional mounts are needed.
 4. **State management** – store long-lived state in PostgreSQL, ephemeral data
    in Redis, and semantic artifacts in Qdrant collections (e.g. `semantic-search`).
-5. **Observability** – pipe server logs through `scripts/mcp-server logs` and
+5. **Observability** – pipe server logs through `scripts/ai/mcp-server logs` and
    aggregate database metrics via `pg_stat_statements`, Redis INFO, and Qdrant
    telemetry endpoints.
 
@@ -165,7 +165,7 @@ All generated servers live under `mcp-servers/` by default. Override with the
 ## Next Steps
 
 - Extend the templates with organisation-specific tools and authentication.
-- Configure CI pipelines to run `scripts/mcp-db-validate` and `scripts/mcp-server test`.
+- Configure CI pipelines to run `scripts/ai/mcp-db-validate` and `scripts/ai/mcp-server test`.
 - Integrate telemetry (OpenTelemetry, Prometheus) for production monitoring.
 - Harden sandbox profiles by whitelisting required binaries and paths only.
 

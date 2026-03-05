@@ -22,6 +22,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional, Tuple
 
+import httpx
 import structlog
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Depends
@@ -325,6 +326,44 @@ async def health_check():
         active_tasks=loop_engine.active_task_count if loop_engine else 0,
         backends=CONFIG["agent_backends"]
     )
+
+
+@app.get("/health/detailed")
+async def health_check_detailed():
+    """Detailed health endpoint with dependency and performance indicators."""
+    deps: Dict[str, Dict[str, Any]] = {}
+    hybrid_url = os.getenv("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003").strip()
+    aidb_url = os.getenv("AIDB_URL", "http://127.0.0.1:8002").strip()
+    aider_url = os.getenv("AIDER_WRAPPER_URL", "http://127.0.0.1:8090").strip()
+
+    async with httpx.AsyncClient(timeout=2.5) as hc:
+        for name, url in (("hybrid", hybrid_url), ("aidb", aidb_url), ("aider_wrapper", aider_url)):
+            try:
+                r = await hc.get(f"{url.rstrip('/')}/health")
+                body = r.json() if "application/json" in r.headers.get("content-type", "") else {}
+                deps[name] = {
+                    "status": "ok" if r.status_code < 500 else "error",
+                    "http_status": r.status_code,
+                    "reported_status": body.get("status"),
+                }
+            except Exception as exc:  # noqa: BLE001
+                deps[name] = {"status": "unavailable", "error": str(exc)[:180]}
+
+    performance = {
+        "active_tasks": int(loop_engine.active_task_count) if loop_engine else 0,
+        "loop_running": bool(loop_engine and loop_engine.is_running),
+        "loop_enabled": bool(CONFIG.get("loop_enabled", True)),
+        "max_iterations_default": int(CONFIG.get("max_iterations", 0)),
+        "task_timeout_seconds": int(CONFIG.get("task_timeout_seconds", 0)),
+    }
+    degraded = any(v.get("status") != "ok" for v in deps.values()) or not performance["loop_running"]
+    return {
+        "status": "degraded" if degraded else "healthy",
+        "service": "ralph-wiggum",
+        "dependencies": deps,
+        "performance": performance,
+        "backends": CONFIG["agent_backends"],
+    }
 
 
 @app.post("/tasks", response_model=TaskResponse)

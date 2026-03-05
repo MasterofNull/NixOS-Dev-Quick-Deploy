@@ -1294,7 +1294,7 @@ MCP_REGISTRY_EOF
     };
     Service = {
       Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash -lc '${repoPath}/scripts/run-eval.sh --threshold 60 --output ${repoPath}/ai-stack/eval/results || true'";
+      ExecStart = "${pkgs.bash}/bin/bash -lc '${repoPath}/scripts/automation/run-eval.sh --threshold 60 --output ${repoPath}/ai-stack/eval/results || true'";
     };
     Install = {
       WantedBy = [ "default.target" ];

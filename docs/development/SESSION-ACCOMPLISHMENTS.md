@@ -45,7 +45,7 @@ User's Request: "I want to enter the planning phase and fully use the ralph wigg
 ### Phase 2: Created Ralph Orchestrator (Completed)
 
 4. **Built ralph-orchestrator.sh** ✅
-   - **File**: [scripts/ralph-orchestrator.sh](scripts/ralph-orchestrator.sh)
+   - **File**: [scripts/ai/ralph-orchestrator.sh](scripts/ai/ralph-orchestrator.sh)
    - **Commands**:
      - `submit <task.json>` - Submit task to Ralph
      - `run <task.json>` - Submit and monitor task

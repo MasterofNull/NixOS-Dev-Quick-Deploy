@@ -104,7 +104,7 @@ $ curl http://localhost:8098/stats
 - Configuration persists across page reloads
 
 **Files Modified**:
-- [scripts/serve-dashboard.sh:137-434](scripts/serve-dashboard.sh#L137-L434) - Added 4 API endpoints
+- [scripts/deploy/serve-dashboard.sh:137-434](scripts/deploy/serve-dashboard.sh#L137-L434) - Added 4 API endpoints
 - [dashboard.html:3720-3770](dashboard.html#L3720-L3770) - Updated JavaScript to use API
 
 ---
@@ -174,7 +174,7 @@ function startAutoRefresh() {
 **Explanation**:
 All changes were made directly to source files that ARE the NixOS deployment templates:
 - `ai-stack/mcp-servers/ralph-wiggum/*.py` - Copied into container via Dockerfile
-- `scripts/serve-dashboard.sh` - Deployed as-is
+- `scripts/deploy/serve-dashboard.sh` - Deployed as-is
 - `dashboard.html` - Served directly from repo
 - `ai-stack/compose/docker-compose.yml` - Template for container orchestration
 
@@ -258,7 +258,7 @@ Total:                            32/32 ✅
    - Impact: Fixes 1 use of `timezone.utc` in this file
 
 ### Dashboard Backend (1 file)
-4. **scripts/serve-dashboard.sh**
+4. **scripts/deploy/serve-dashboard.sh**
    - Lines 137-229: Added 3 GET API endpoints (93 lines)
    - Lines 352-434: Added POST config endpoint (83 lines)
    - Total: 176 lines added
@@ -323,7 +323,7 @@ Total:                            32/32 ✅
 ### Accessing the Dashboard
 ```bash
 # Start dashboard server (if not already running)
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 
 # Open in browser
 http://localhost:8888/dashboard.html
@@ -399,7 +399,7 @@ sudo ss -ltnp | grep 8888
 
 # Restart dashboard
 pkill -f serve-dashboard.sh
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 
 # Check API
 curl http://localhost:8888/api/config

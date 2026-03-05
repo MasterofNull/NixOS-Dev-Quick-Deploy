@@ -11,7 +11,7 @@ Dashboard v2 is a **complete rewrite** with a modern React frontend and FastAPI 
 - **v2**: React 19 + Vite + FastAPI + WebSocket
 
 ### Data Collection
-- **v1**: `scripts/generate-dashboard-data.sh` → JSON files
+- **v1**: `scripts/data/generate-dashboard-data.sh` → JSON files
 - **v2**: FastAPI backend with psutil → WebSocket stream
 
 ### Deployment
@@ -58,7 +58,7 @@ cd NixOS-Dev-Quick-Deploy/dashboard
 The old dashboard files are preserved in the repo root:
 - `dashboard.html` (old)
 - `launch-dashboard.sh` (old)
-- `scripts/generate-dashboard-data.sh` (still used by old version)
+- `scripts/data/generate-dashboard-data.sh` (still used by old version)
 
 You can run both side-by-side on different ports.
 

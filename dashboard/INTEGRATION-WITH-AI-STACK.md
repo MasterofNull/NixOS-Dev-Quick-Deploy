@@ -7,7 +7,7 @@
 
 ## Overview
 
-This document describes the integration between the **NixOS System Dashboard v2.0** (web-based, port 8890) and the **AI Stack Monitor** (CLI-based, [scripts/ai-stack-monitor.sh](../scripts/ai-stack-monitor.sh)).
+This document describes the integration between the **NixOS System Dashboard v2.0** (web-based, port 8890) and the **AI Stack Monitor** (CLI-based, [scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)).
 
 ---
 
@@ -38,8 +38,8 @@ This document describes the integration between the **NixOS System Dashboard v2.
 ---
 
 ### 2. **AI Stack Monitor** (CLI Dashboard)
-**Location:** [scripts/ai-stack-monitor.sh](../scripts/ai-stack-monitor.sh)
-**Start:** `./scripts/ai-stack-monitor.sh`
+**Location:** [scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)
+**Start:** `./scripts/ai/ai-stack-monitor.sh`
 
 **Features:**
 - ✅ Terminal-based real-time display
@@ -162,7 +162,7 @@ MONITORED_SERVICES = [
 
 #### CLI Monitor Updates
 
-**File:** [scripts/ai-stack-monitor.sh](../scripts/ai-stack-monitor.sh:39-40)
+**File:** [scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh:39-40)
 
 **Changes:**
 - Added `local-ai-nixos-docs` to MCP Servers section
@@ -180,7 +180,7 @@ Both tools are now integrated into the deployment completion:
 
 **What happens:**
 1. Deployment completes successfully
-2. User sees: "AI Stack Monitor Dashboard available at: ./scripts/ai-stack-monitor.sh"
+2. User sees: "AI Stack Monitor Dashboard available at: ./scripts/ai/ai-stack-monitor.sh"
 3. User can immediately run CLI monitor OR web dashboard
 
 **To start web dashboard after deployment:**
@@ -191,7 +191,7 @@ cd dashboard
 
 **To start CLI monitor after deployment:**
 ```bash
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 ```
 
 ---
@@ -258,7 +258,7 @@ Add to `~/.bashrc`:
 if command -v tmux &>/dev/null && [[ -z "$TMUX" ]]; then
   if ! tmux has-session -t ai-monitor 2>/dev/null; then
     tmux new-session -d -s ai-monitor \
-      '~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-monitor.sh'
+      '~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-monitor.sh'
   fi
 fi
 ```
@@ -319,7 +319,7 @@ http://localhost:8890
 **Step 3:** Start CLI monitor in tmux (quick reference)
 ```bash
 tmux new-session -s monitor
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 # Detach: Ctrl+B, D
 ```
 
@@ -407,7 +407,7 @@ ws.onmessage = (event) => {
 ### CLI Monitor Architecture
 ```
 ┌──────────────────────────────────────────┐
-│  Terminal (scripts/ai-stack-monitor.sh)  │
+│  Terminal (scripts/ai/ai-stack-monitor.sh)  │
 │  Bash + podman ps + podman stats         │
 └────────────────┬─────────────────────────┘
                  │
@@ -455,7 +455,7 @@ podman start local-ai-nixos-docs
 **Solution:**
 ```bash
 # Verify script was updated
-grep -c "nixos-docs" scripts/ai-stack-monitor.sh  # Should be > 0
+grep -c "nixos-docs" scripts/ai/ai-stack-monitor.sh  # Should be > 0
 
 # Check container is actually running
 podman ps --filter name=local-ai-nixos-docs
@@ -510,5 +510,5 @@ podman ps --filter name=local-ai-nixos-docs
 **Quick Links:**
 - [Main Dashboard README](README.md)
 - [AI Stack Auto-Start Guide](../ai-stack/AUTO-START-GUIDE.md)
-- [CLI Monitor Script](../scripts/ai-stack-monitor.sh)
+- [CLI Monitor Script](../scripts/ai/ai-stack-monitor.sh)
 - [Auto-Start NixOS Module](../templates/nixos-improvements/ai-stack-autostart.nix)

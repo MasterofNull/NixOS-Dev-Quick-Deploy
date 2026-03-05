@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - "ai-stack/mcp-servers/hybrid-coordinator/**"
-      - "scripts/smoke-harness-sdk-packaging.sh"
-      - "scripts/generate-harness-sdk-api-docs.sh"
-      - "scripts/check-harness-sdk-version-parity.sh"
+      - "scripts/testing/smoke-harness-sdk-packaging.sh"
+      - "scripts/data/generate-harness-sdk-api-docs.sh"
+      - "scripts/testing/check-harness-sdk-version-parity.sh"
       - "docs/generated/HARNESS-SDK-API.md"
       - ".github/workflows/harness-sdk-release.yml"
   workflow_dispatch:
@@ -51,19 +51,19 @@ jobs:
 
       - name: Validate version parity
         run: |
-          chmod +x scripts/check-harness-sdk-version-parity.sh
+          chmod +x scripts/testing/check-harness-sdk-version-parity.sh
           if [[ "${GITHUB_REF:-}" == refs/tags/harness-sdk-v* ]]; then
             tag="${GITHUB_REF#refs/tags/}"
-            ./scripts/check-harness-sdk-version-parity.sh "${tag}"
+            ./scripts/testing/check-harness-sdk-version-parity.sh "${tag}"
           else
-            ./scripts/check-harness-sdk-version-parity.sh
+            ./scripts/testing/check-harness-sdk-version-parity.sh
           fi
 
       - name: Run SDK parity smoke checks
         run: |
-          chmod +x scripts/generate-harness-sdk-api-docs.sh
-          chmod +x scripts/smoke-harness-sdk-packaging.sh
-          ./scripts/smoke-harness-sdk-packaging.sh
+          chmod +x scripts/data/generate-harness-sdk-api-docs.sh
+          chmod +x scripts/testing/smoke-harness-sdk-packaging.sh
+          ./scripts/testing/smoke-harness-sdk-packaging.sh
 
       - name: Build Python distributions
         run: |
@@ -78,8 +78,8 @@ jobs:
 
       - name: Generate provenance and minimal SBOM
         run: |
-          chmod +x scripts/generate-harness-sdk-provenance.sh
-          ./scripts/generate-harness-sdk-provenance.sh
+          chmod +x scripts/data/generate-harness-sdk-provenance.sh
+          ./scripts/data/generate-harness-sdk-provenance.sh
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4

@@ -37,6 +37,6 @@ Rationale: reduce brittle link graphs and file-not-found errors.
 ## Enforcement
 
 CI/governance lint scripts:
-- `scripts/lint-skill-template.sh`
-- `scripts/validate-skill-references.sh`
-- `scripts/check-skill-source-of-truth.sh`
+- `scripts/governance/lint-skill-template.sh`
+- `scripts/testing/validate-skill-references.sh`
+- `scripts/testing/check-skill-source-of-truth.sh`

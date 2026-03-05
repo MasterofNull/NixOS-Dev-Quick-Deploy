@@ -7307,10 +7307,10 @@ print_post_install() {
     echo -e "${BLUE}Next Steps:${NC}"
     echo -e "  ${GREEN}1. Verify Installation (RECOMMENDED):${NC}"
     echo "     cd ~/NixOS-Dev-Quick-Deploy"
-    echo "     ./scripts/system-health-check.sh"
+    echo "     ./scripts/health/system-health-check.sh"
     echo ""
     echo -e "     ${YELLOW}If health check fails:${NC}"
-    echo "     ./scripts/system-health-check.sh --fix  # Auto-repair common issues"
+    echo "     ./scripts/health/system-health-check.sh --fix  # Auto-repair common issues"
     echo ""
     echo -e "  ${GREEN}2. Enable AI Services (optional):${NC}"
     echo "     systemctl --user enable --now qdrant"
@@ -7351,7 +7351,7 @@ print_post_install() {
     echo "  • Setup guide: ~/NixOS-Dev-Quick-Deploy/README.md"
     echo "  • AIDB guide: ~/NixOS-Dev-Quick-Deploy/docs/AIDB_SETUP.md"
     echo "  • Home manager: https://nix-community.github.io/home-manager/"
-    echo "  • Health check: ~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh"
+    echo "  • Health check: ~/NixOS-Dev-Quick-Deploy/scripts/health/system-health-check.sh"
     echo ""
     echo -e "${GREEN}System is ready! All packages and services are configured.${NC}"
     echo ""
@@ -7425,7 +7425,7 @@ run_system_health_check_stage() {
     print_section "Running System Health Check"
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local health_check="$script_dir/scripts/system-health-check.sh"
+    local health_check="$script_dir/scripts/health/system-health-check.sh"
 
     if [[ ! -x "$health_check" ]]; then
         print_warning "System health check script not found or not executable: $health_check"
@@ -7642,7 +7642,7 @@ main() {
     fi
 
     echo -e "${BLUE}Next steps:${NC}"
-    echo -e "  ${GREEN}1.${NC} Re-run health check as needed: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/system-health-check.sh${NC}"
+    echo -e "  ${GREEN}1.${NC} Re-run health check as needed: ${YELLOW}~/NixOS-Dev-Quick-Deploy/scripts/health/system-health-check.sh${NC}"
     echo -e "  ${GREEN}2.${NC} Verify services: ${YELLOW}systemctl status ollama qdrant gitea huggingface-tgi${NC}"
     echo -e "  ${GREEN}3.${NC} Check Jupyter Lab: ${YELLOW}systemctl --user status jupyter-lab${NC}"
     echo -e "  ${GREEN}4.${NC} Test Claude Code: ${YELLOW}which claude-wrapper${NC}"

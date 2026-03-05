@@ -90,11 +90,11 @@ The new `llama-model` CLI complements the existing `ai-model-manager.sh`:
 
 ```bash
 # Download models (use existing tool)
-./scripts/ai-model-manager.sh download qwen2.5-coder-7b
+./scripts/ai/ai-model-manager.sh download qwen2.5-coder-7b
 
 # Quick operations (new tool)
-./scripts/llama-model-cli.sh list
-./scripts/llama-model-cli.sh logs
+./scripts/ai/llama-model-cli.sh list
+./scripts/ai/llama-model-cli.sh logs
 ```
 
 ---
@@ -108,7 +108,7 @@ The new `llama-model` CLI complements the existing `ai-model-manager.sh`:
 
 ```bash
 # Real-time AI stack monitoring
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 ```
 
 **Features:**
@@ -213,7 +213,7 @@ podman pull docker.io/ggml-org/model:tag
 
 4. **Verify GPU usage:**
    ```bash
-   ./scripts/llama-model-cli.sh logs | grep -i vulkan
+   ./scripts/ai/llama-model-cli.sh logs | grep -i vulkan
    # Should see: "using Vulkan" or "ggml_vulkan"
    ```
 
@@ -221,14 +221,14 @@ podman pull docker.io/ggml-org/model:tag
 
 ```bash
 # Monitor AI stack
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 
 # Manage models
-./scripts/llama-model-cli.sh list
-./scripts/llama-model-cli.sh logs 50
+./scripts/ai/llama-model-cli.sh list
+./scripts/ai/llama-model-cli.sh logs 50
 
 # Download new models
-./scripts/ai-model-manager.sh download llama-3.2-3b-instruct
+./scripts/ai/ai-model-manager.sh download llama-3.2-3b-instruct
 ```
 
 ---
@@ -266,7 +266,7 @@ vulkaninfo | grep -i driver
 podman exec local-ai-llama-cpp env | grep VULKAN
 
 # Check logs
-./scripts/llama-model-cli.sh logs | grep -i vulkan
+./scripts/ai/llama-model-cli.sh logs | grep -i vulkan
 ```
 
 **Solutions:**
@@ -309,14 +309,14 @@ podman-compose -f ai-stack/compose/docker-compose.yml down
 **Step 3:** Test with small model first
 ```bash
 # Download 1B model for testing
-./scripts/ai-model-manager.sh download llama-3.2-1b-instruct
+./scripts/ai/ai-model-manager.sh download llama-3.2-1b-instruct
 
 # Set as active
 export LLAMA_CPP_MODEL_FILE=llama-3.2-1b-instruct-q4_0.gguf
 
 # Start and test
 podman-compose -f ai-stack/compose/docker-compose.yml up -d llama-cpp
-./scripts/llama-model-cli.sh logs
+./scripts/ai/llama-model-cli.sh logs
 ```
 
 **Step 4:** Verify GPU usage

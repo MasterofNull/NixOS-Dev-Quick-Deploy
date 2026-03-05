@@ -80,7 +80,7 @@ Monitoring Layer (depends on application):
 
 ### ✅ Task 1.3: Health Check Polling
 **Commit:** `38e26a5`
-**Files:** `scripts/ai-stack-startup.sh` (+50 lines)
+**Files:** `scripts/ai/ai-stack-startup.sh` (+50 lines)
 
 **Replaced Arbitrary Sleep Delays:**
 - ❌ Old: `sleep 30` after core infrastructure (fixed 30s wait)
@@ -228,7 +228,7 @@ ff76715 fix(embeddings): add resilient startup with retry logic and validation
 1. `PRODUCTION-HARDENING-ROADMAP.md` - Created comprehensive roadmap, marked Phase 1 complete
 2. `ai-stack/mcp-servers/embeddings-service/server.py` - Complete rewrite (441 lines)
 3. `ai-stack/compose/docker-compose.yml` - Added depends_on, improved health checks
-4. `scripts/ai-stack-startup.sh` - Replaced sleep with polling (+50 lines)
+4. `scripts/ai/ai-stack-startup.sh` - Replaced sleep with polling (+50 lines)
 5. `ai-stack/mcp-servers/aidb/server.py` - Added retry utility and circuit breakers (+241 lines)
 6. `PRODUCTION-HARDENING-SESSION-2026-01-06.md` - This document
 

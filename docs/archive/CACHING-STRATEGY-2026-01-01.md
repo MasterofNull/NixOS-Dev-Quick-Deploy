@@ -258,7 +258,7 @@ COPY aidb/ /app/
 
 2. **Apply to all Dockerfiles** (hybrid-coordinator, nixos-docs, health-monitor, ralph-wiggum)
 
-3. **Update build script** (scripts/fast-rebuild.sh):
+3. **Update build script** (scripts/deploy/fast-rebuild.sh):
 ```bash
 #!/usr/bin/env bash
 
@@ -279,7 +279,7 @@ podman-compose build --parallel
 
 **Create**: `scripts/lib/download-cache.sh` (see implementation above)
 
-**Modify**: `scripts/download-llama-cpp-models.sh`
+**Modify**: `scripts/data/download-llama-cpp-models.sh`
 ```bash
 source "${SCRIPT_DIR}/lib/download-cache.sh"
 
@@ -303,7 +303,7 @@ download_model() {
 
 ### Phase 3: Podman Layer Cache (Medium Priority)
 
-**Create**: `scripts/setup-build-cache.sh`
+**Create**: `scripts/deploy/setup-build-cache.sh`
 ```bash
 #!/usr/bin/env bash
 
@@ -317,7 +317,7 @@ echo "✓ Build cache configured at: $CACHE_DIR"
 echo "  Current size: $(du -sh "$CACHE_DIR" | awk '{print $1}')"
 ```
 
-**Modify**: `scripts/fast-rebuild.sh`
+**Modify**: `scripts/deploy/fast-rebuild.sh`
 ```bash
 source "${SCRIPT_DIR}/setup-build-cache.sh"
 
@@ -329,7 +329,7 @@ podman-compose build \
 
 ### Phase 4: Cache Management (Low Priority)
 
-**Create**: `scripts/manage-cache.sh`
+**Create**: `scripts/governance/manage-cache.sh`
 ```bash
 #!/usr/bin/env bash
 
@@ -413,13 +413,13 @@ podman-compose build aidb
 # Should complete in ~1-2 min (was 5-10 min)
 
 # Phase 2: Test download cache
-./scripts/download-llama-cpp-models.sh --model qwen3-4b
+./scripts/data/download-llama-cpp-models.sh --model qwen3-4b
 # First run: downloads
-./scripts/download-llama-cpp-models.sh --model qwen3-4b
+./scripts/data/download-llama-cpp-models.sh --model qwen3-4b
 # Second run: "Using cached file"
 
 # Phase 4: Check cache stats
-./scripts/manage-cache.sh stats
+./scripts/governance/manage-cache.sh stats
 ```
 
 ## Research Sources
@@ -442,13 +442,13 @@ This implementation is based on verified solutions from:
 ## Maintenance
 
 **Weekly**:
-- Check cache sizes: `./scripts/manage-cache.sh stats`
+- Check cache sizes: `./scripts/governance/manage-cache.sh stats`
 
 **Monthly**:
 - Clean old downloads: `find ~/.cache/nixos-quick-deploy/downloads -mtime +30 -delete`
 
 **On disk space issues**:
-- Clear all caches: `./scripts/manage-cache.sh clear`
+- Clear all caches: `./scripts/governance/manage-cache.sh clear`
 
 ## Next Steps
 

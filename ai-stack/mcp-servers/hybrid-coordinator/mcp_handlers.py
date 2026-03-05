@@ -500,7 +500,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 result = {
                     "hints": [],
                     "query": arguments.get("query", ""),
-                    "error": "hints_engine not available — run `scripts/aq-hints` from CLI instead",
+                    "error": "hints_engine not available — run `scripts/ai/aq-hints` from CLI instead",
                 }
             _write_audit(name, 'success', None, (_time.time() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]

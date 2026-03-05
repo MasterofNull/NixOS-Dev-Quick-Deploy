@@ -4,7 +4,7 @@
 #
 # Usage:
 #   npx promptfoo@latest eval --config ai-stack/eval/promptfoo-config.yaml
-#   scripts/run-eval.sh
+#   scripts/automation/run-eval.sh
 #
 # Providers target the llama.cpp OpenAI-compatible API on :8080.
 # Pass threshold: 70% (adjust via acceptanceThreshold below).

@@ -112,6 +112,6 @@ For hosts that also run local AI stacks to assist with PCB/IC/CAD workflows, use
 - `AI_PROFILE` controls how heavy local LLM usage should be (for example `cpu_slim` on smaller laptops, `cpu_full` on workstations).
 - `AI_STACK_PROFILE` switches between personal, guest, or no local stack.
 - `config/edge-model-registry.json` describes which externally hosted models are available for each profile.
-You can always inspect the current settings with `./scripts/ai-env-summary.sh` from the repo root.
+You can always inspect the current settings with `./scripts/ai/ai-env-summary.sh` from the repo root.
 
 This keeps the repo organized while expanding the engineering capabilities of the NixOS-Dev-Quick-Deploy system.

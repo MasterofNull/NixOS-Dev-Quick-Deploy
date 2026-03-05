@@ -489,7 +489,7 @@ Created sample data file demonstrating full integration when services are online
 The `ai-metrics-auto-updater.sh` script already runs `collect-ai-metrics.sh` every 5 seconds:
 
 ```bash
-# scripts/ai-metrics-auto-updater.sh
+# scripts/ai/ai-metrics-auto-updater.sh
 while true; do
     bash "$SCRIPT_DIR/collect-ai-metrics.sh" 2>/dev/null
     sleep "$UPDATE_INTERVAL"  # 5 seconds
@@ -648,7 +648,7 @@ The new cards are positioned in the dashboard grid:
 
 4. **Start Dashboard:**
    ```bash
-   bash scripts/start-unified-dashboard.sh
+   bash scripts/deploy/start-unified-dashboard.sh
    ```
 
 5. **Open Browser:**

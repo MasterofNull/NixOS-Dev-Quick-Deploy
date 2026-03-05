@@ -74,7 +74,7 @@
 - Added request timeouts and error handling
 
 **Files Modified:**
-- `scripts/serve-dashboard.sh` - Complete rewrite
+- `scripts/deploy/serve-dashboard.sh` - Complete rewrite
 
 **Security Validation:** ✅ Injection payloads rejected
 
@@ -224,7 +224,7 @@
 **Files to Modify:**
 - `ai-stack/compose/.env` - Remove plaintext passwords
 - `ai-stack/compose/docker-compose.yml` - Add secrets configuration
-- `scripts/generate-secrets.sh` - NEW script
+- `scripts/data/generate-secrets.sh` - NEW script
 - Grafana configuration for forced password change
 
 ---

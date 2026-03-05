@@ -338,9 +338,9 @@ PODMAN_API_URL=http://192.168.86.145:2375
 5. `ai-stack/mcp-servers/container-engine/Dockerfile` - Added shared library copy
 
 ### Scripts
-1. `scripts/setup-podman-api.sh` - Setup automation (created in previous session)
+1. `scripts/deploy/setup-podman-api.sh` - Setup automation (created in previous session)
 2. `scripts/enable-podman-tcp.sh` - TCP service enablement (created in previous session)
-3. `scripts/test-podman-api.sh` - Validation tests (created in previous session)
+3. `scripts/testing/test-podman-api.sh` - Validation tests (created in previous session)
 
 ---
 

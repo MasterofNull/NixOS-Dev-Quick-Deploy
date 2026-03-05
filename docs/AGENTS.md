@@ -29,11 +29,23 @@
 4. Reject slices that lack evidence or introduce regressions.
 5. Prefer declarative implementation through Nix options/modules before script/runtime fallback.
 6. Complete verification before handoff:
-   - `scripts/check-mcp-health.sh`
+   - `scripts/testing/check-mcp-health.sh`
    - `scripts/quick-deploy-lint.sh --mode fast`
-   - `scripts/validate-runtime-declarative.sh`
-   - `scripts/check-prsi-phase7-program.sh`
-   - `scripts/aq-report --since=7d --format=text`
+   - `scripts/testing/validate-runtime-declarative.sh`
+   - `scripts/testing/check-prsi-phase7-program.sh`
+   - `scripts/ai/aq-report --since=7d --format=text`
+
+## Repository Structure Enforcement
+
+- New files must follow repository structure policy:
+  - no new root-level markdown/code/script files
+  - no new `docs/*` root files (use subject subfolders)
+  - no new `scripts/*` root files (use subject subfolders)
+- Enforcement command:
+  - `scripts/governance/repo-structure-lint.sh --staged` (local)
+  - `scripts/governance/repo-structure-lint.sh --all` (CI/verification)
+- Legacy exceptions are tracked in:
+  - `config/repo-structure-allowlist.txt`
 
 ## Subagent Role Notes and Limitations
 

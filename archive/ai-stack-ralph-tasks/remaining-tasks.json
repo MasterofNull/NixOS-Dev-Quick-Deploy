@@ -192,7 +192,7 @@
       "backend": "aider",
       "priority": "medium",
       "files": [
-        "ai-stack/scripts/rotate-telemetry.sh",
+        "ai-stack/scripts/data/rotate-telemetry.sh",
         "ai-stack/systemd/telemetry-rotation.timer"
       ],
       "description": "Rotate and compress old telemetry files automatically",
@@ -210,7 +210,7 @@
         "No disk space issues",
         "Dashboard shows rotation status"
       ],
-      "test_command": "./ai-stack/scripts/rotate-telemetry.sh --dry-run"
+      "test_command": "./ai-stack/scripts/data/rotate-telemetry.sh --dry-run"
     },
     {
       "task_id": "P6-OPS-002",

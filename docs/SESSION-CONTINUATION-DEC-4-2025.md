@@ -224,7 +224,7 @@ The NixOS 25.11 improvements (virtualization, testing, optimizations) are ready 
 - `docs/IMPLEMENTATION-PROGRESS.md`
 - `docs/IMPLEMENTATION-SUMMARY-DEC-2025.md`
 - `docs/DEPLOYMENT-GUIDE-IMPROVEMENTS.md`
-- `scripts/system-health-check.sh` (executed)
+- `scripts/health/system-health-check.sh` (executed)
 
 ---
 

@@ -9,4 +9,4 @@ export PROJECT_ROOT="@PROJECT_ROOT@"
 export AI_STACK_USER="@AI_STACK_USER@"
 export AI_STACK_UID="@AI_STACK_UID@"
 
-exec "${PROJECT_ROOT}/scripts/ai-stack-resume-recovery.sh" "$@"
+exec "${PROJECT_ROOT}/scripts/ai/ai-stack-resume-recovery.sh" "$@"

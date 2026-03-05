@@ -182,7 +182,7 @@
                 [
                   {
                     assertion = hasHostFacts;
-                    message = "Host '${hostName}' is missing '${toString (factsPath hostName)}'. Run scripts/discover-system-facts.sh before flake evaluation/deploy so hardware/kernel settings are generated from the local machine.";
+                    message = "Host '${hostName}' is missing '${toString (factsPath hostName)}'. Run scripts/governance/discover-system-facts.sh before flake evaluation/deploy so hardware/kernel settings are generated from the local machine.";
                   }
                 ]
                 ++ lib.optional (!hasHostHardwareConfig && (hostFacts.disk.layout or "none") == "none") {

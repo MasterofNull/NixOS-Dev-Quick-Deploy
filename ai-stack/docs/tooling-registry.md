@@ -48,21 +48,21 @@ discover what tools are available for a given task.
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `scripts/aq-report` | 9-section AI stack performance digest | `--since=7d`, `--format=text\|json`, `--aidb-import` |
-| `scripts/aq-hints` | Query workflow hints from hybrid-coordinator | `--format=json\|text\|shell-complete`, `--agent=TYPE`, `-q QUERY` |
-| `scripts/aq-qa` | Phase-based QA runner for entire AI stack | `aq-qa 0` (all checks), `aq-qa 1` (infra), `aq-qa 2` (inference) |
-| `scripts/aq-prompt-eval` | Evaluate prompt registry against canonical tests | `--strategy LABEL`, `--aidb-import` |
-| `scripts/aq-gap-import` | Auto-import knowledge for top recurring query gaps | `MIN_OCCURRENCES=N`, `MAX_GAPS=N`, `SKIP_QDRANT_REBUILD=1` |
-| `scripts/aq-optimizer` | Agentic self-optimization: reads aq-report JSON, applies safe routing/knowledge actions autonomously | `--dry-run`, `--since=Nd` |
-| `scripts/run-eval.sh` | Full eval harness run | `--strategy LABEL` |
-| `scripts/rebuild-qdrant-collections.sh` | Re-embed all AIDB documents into Qdrant | — |
-| `scripts/check-mcp-health.sh` | Health check all 12 MCP services | `--optional` |
-| `scripts/seed-routing-traffic.sh` | Send test queries to bootstrap metrics | `--count N` |
-| `scripts/import-agent-instructions.sh` | Push CLAUDE.md/AGENTS.md/registry into AIDB | — |
-| `scripts/sync-agent-instructions` | Regenerate AGENTS.md/.aider.md/.gemini/context.md from CLAUDE.md | — |
-| `scripts/export-ai-behavior-snapshot.sh` | Export eval/hint/gap snapshots to ai-stack/snapshots/ | — |
-| `scripts/seed-fresh-deploy.sh` | Full post-deploy knowledge seeding | — |
-| `scripts/update-mcp-integrity-baseline.sh` | Refresh MCP source file hash baseline | — |
+| `scripts/ai/aq-report` | 9-section AI stack performance digest | `--since=7d`, `--format=text\|json`, `--aidb-import` |
+| `scripts/ai/aq-hints` | Query workflow hints from hybrid-coordinator | `--format=json\|text\|shell-complete`, `--agent=TYPE`, `-q QUERY` |
+| `scripts/ai/aq-qa` | Phase-based QA runner for entire AI stack | `aq-qa 0` (all checks), `aq-qa 1` (infra), `aq-qa 2` (inference) |
+| `scripts/ai/aq-prompt-eval` | Evaluate prompt registry against canonical tests | `--strategy LABEL`, `--aidb-import` |
+| `scripts/ai/aq-gap-import` | Auto-import knowledge for top recurring query gaps | `MIN_OCCURRENCES=N`, `MAX_GAPS=N`, `SKIP_QDRANT_REBUILD=1` |
+| `scripts/ai/aq-optimizer` | Agentic self-optimization: reads aq-report JSON, applies safe routing/knowledge actions autonomously | `--dry-run`, `--since=Nd` |
+| `scripts/automation/run-eval.sh` | Full eval harness run | `--strategy LABEL` |
+| `scripts/data/rebuild-qdrant-collections.sh` | Re-embed all AIDB documents into Qdrant | — |
+| `scripts/testing/check-mcp-health.sh` | Health check all 12 MCP services | `--optional` |
+| `scripts/data/seed-routing-traffic.sh` | Send test queries to bootstrap metrics | `--count N` |
+| `scripts/data/import-agent-instructions.sh` | Push CLAUDE.md/AGENTS.md/registry into AIDB | — |
+| `scripts/data/sync-agent-instructions` | Regenerate AGENTS.md/.aider.md/.gemini/context.md from CLAUDE.md | — |
+| `scripts/data/export-ai-behavior-snapshot.sh` | Export eval/hint/gap snapshots to ai-stack/snapshots/ | — |
+| `scripts/data/seed-fresh-deploy.sh` | Full post-deploy knowledge seeding | — |
+| `scripts/security/update-mcp-integrity-baseline.sh` | Refresh MCP source file hash baseline | — |
 
 ---
 
@@ -146,8 +146,8 @@ Pre-vetted prompt templates for common tasks. Use via aq-hints or direct AIDB qu
 | `.gemini/context.md` | Gemini CLI (auto-loaded) | Project context for web-search tasks |
 | `CLAUDE.md` | Claude Code (auto-loaded) | Full project intelligence, agent coordination model |
 
-Always run `scripts/sync-agent-instructions` after updating CLAUDE.md, then
-`scripts/import-agent-instructions.sh` to push changes to AIDB.
+Always run `scripts/data/sync-agent-instructions` after updating CLAUDE.md, then
+`scripts/data/import-agent-instructions.sh` to push changes to AIDB.
 
 ---
 

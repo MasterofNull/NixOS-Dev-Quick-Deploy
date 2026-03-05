@@ -179,9 +179,9 @@ $ curl http://localhost:8092/health
 4. Let interaction-history build naturally from usage
 
 **Scripts Needed:**
-- `scripts/populate-qdrant-collections.sh`
+- `scripts/data/populate-qdrant-collections.sh`
 - `scripts/index-codebase.sh`
-- `scripts/import-skills-to-qdrant.sh`
+- `scripts/data/import-skills-to-qdrant.sh`
 
 ---
 
@@ -341,8 +341,8 @@ async def _execute_task(self, task):
 
 **Scripts to Create:**
 1. `scripts/index-codebase.sh` - Index all source files
-2. `scripts/import-skills-to-qdrant.sh` - Import `.agent/skills/`
-3. `scripts/seed-best-practices.sh` - Add known patterns
+2. `scripts/data/import-skills-to-qdrant.sh` - Import `.agent/skills/`
+3. `scripts/data/seed-best-practices.sh` - Add known patterns
 
 **Estimated Effort:** 3-4 hours
 

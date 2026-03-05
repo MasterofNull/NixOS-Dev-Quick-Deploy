@@ -130,7 +130,7 @@ WHERE search_vector @@ plainto_tsquery('english', 'pytorch deployment error');
 - `recent_errors`: Last 100 errors with solutions
 - `service_health`: Current health status of all services
 
-### 2. Population Script (`scripts/populate-knowledge-base.py`)
+### 2. Population Script (`scripts/data/populate-knowledge-base.py`)
 
 Automatically scans and indexes:
 
@@ -202,7 +202,7 @@ The population script will be integrated into the deployment workflow:
 
 ```bash
 # After AI stack starts successfully
-./scripts/populate-knowledge-base.py
+./scripts/data/populate-knowledge-base.py
 ```
 
 ### Manual Population
@@ -216,7 +216,7 @@ export POSTGRES_USER=mcp
 export POSTGRES_PASSWORD=change_me_in_production
 
 # Run population script
-./scripts/populate-knowledge-base.py
+./scripts/data/populate-knowledge-base.py
 ```
 
 ### Query Examples
@@ -336,7 +336,7 @@ Stores deployment events and metrics.
 
 Re-run population script to update all data:
 ```bash
-./scripts/populate-knowledge-base.py
+./scripts/data/populate-knowledge-base.py
 ```
 
 The script uses checksums to avoid duplicate work - only changed files are re-indexed.

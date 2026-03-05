@@ -19,7 +19,7 @@ The dashboard data collector has been fully integrated into the AI stack startup
 [Service]
 Type=oneshot
 Environment="PATH=/run/current-system/sw/bin:/run/wrappers/bin:/home/hyperd/.nix-profile/bin:/etc/profiles/per-user/hyperd/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin"
-ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh
+ExecStart=/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/generate-dashboard-data.sh
 ```
 
 **Result:** Service now runs successfully and completes data collection.
@@ -64,16 +64,16 @@ if command -v systemctl >/dev/null 2>&1; then
     fi
 
     # Trigger initial data collection
-    if [[ -x "${PROJECT_ROOT}/scripts/generate-dashboard-data.sh" ]]; then
+    if [[ -x "${PROJECT_ROOT}/scripts/data/generate-dashboard-data.sh" ]]; then
         info "Collecting initial dashboard metrics..."
-        "${PROJECT_ROOT}/scripts/generate-dashboard-data.sh" >/dev/null 2>&1 || warning "Initial metrics collection had issues"
+        "${PROJECT_ROOT}/scripts/data/generate-dashboard-data.sh" >/dev/null 2>&1 || warning "Initial metrics collection had issues"
     fi
 fi
 ```
 
 **Result:** When users run `./scripts/hybrid-ai-stack.sh up`, the dashboard collector is automatically started and initial metrics are collected.
 
-### 5. AI Stack Startup Script (`scripts/ai-stack-startup.sh`)
+### 5. AI Stack Startup Script (`scripts/ai/ai-stack-startup.sh`)
 
 **Status:** Already includes dashboard collector startup at lines 194-204:
 
@@ -88,7 +88,7 @@ fi
 # Force initial metrics collection
 info "Collecting initial dashboard metrics..."
 bash "$PROJECT_ROOT/scripts/collect-ai-metrics.sh" 2>&1 | tee -a "$LOG_FILE" || warn "Initial metrics collection failed"
-bash "$PROJECT_ROOT/scripts/generate-dashboard-data-lite.sh" 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard data generation failed"
+bash "$PROJECT_ROOT/scripts/data/generate-dashboard-data-lite.sh" 2>&1 | tee -a "$LOG_FILE" || warn "Dashboard data generation failed"
 ```
 
 **Result:** No changes needed; already properly integrated.
@@ -107,7 +107,7 @@ bash "$PROJECT_ROOT/scripts/generate-dashboard-data-lite.sh" 2>&1 | tee -a "$LOG
 
 2. **Execution Flow:**
    - `ai-stack-startup.service` triggers at boot
-   - Calls `scripts/ai-stack-startup.sh`
+   - Calls `scripts/ai/ai-stack-startup.sh`
    - Script starts containers via `podman-compose`
    - Script explicitly starts `dashboard-collector.timer`
    - Script runs initial data collection

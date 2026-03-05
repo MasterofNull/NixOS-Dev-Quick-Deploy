@@ -315,7 +315,7 @@ Generate monthly SLO compliance reports:
 
 ```bash
 #!/bin/bash
-# scripts/generate-slo-report.sh
+# scripts/data/generate-slo-report.sh
 
 # Calculate availability for the month
 AVAILABILITY=$(curl -s "http://prometheus:9090/api/v1/query?query=100%20*%20(sum(rate(health_check_total{status=%22healthy%22}[5m]))%20/%20sum(rate(health_check_total[5m])))&time=$(date%20-d%20'last%20month'%20+%s)")

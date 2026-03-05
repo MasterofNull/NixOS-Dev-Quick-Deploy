@@ -65,9 +65,9 @@ Successfully completed critical production hardening tasks. System is production
 - Applied to both GET and POST handlers
 
 **Files Modified**:
-- [scripts/serve-dashboard.sh:107-109](scripts/serve-dashboard.sh#L107-L109)
-- [scripts/serve-dashboard.sh:123-125](scripts/serve-dashboard.sh#L123-L125)
-- [scripts/serve-dashboard.sh:343-345](scripts/serve-dashboard.sh#L343-L345)
+- [scripts/deploy/serve-dashboard.sh:107-109](scripts/deploy/serve-dashboard.sh#L107-L109)
+- [scripts/deploy/serve-dashboard.sh:123-125](scripts/deploy/serve-dashboard.sh#L123-L125)
+- [scripts/deploy/serve-dashboard.sh:343-345](scripts/deploy/serve-dashboard.sh#L343-L345)
 
 ### 2. Hybrid Coordinator Endpoints Added ✅
 **New Endpoints**:
@@ -302,7 +302,7 @@ $ curl http://localhost:8092/learning/stats
 ### All Changes in Templates ✅
 Every modification made to source files that ARE the NixOS deployment templates:
 - `ai-stack/mcp-servers/*/` - Copied into containers via Dockerfiles
-- `scripts/serve-dashboard.sh` - Deployed directly
+- `scripts/deploy/serve-dashboard.sh` - Deployed directly
 - `dashboard.html` - Served directly from repo
 - `ai-stack/compose/docker-compose.yml` - Container orchestration template
 

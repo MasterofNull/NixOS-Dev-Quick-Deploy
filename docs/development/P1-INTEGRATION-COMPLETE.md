@@ -79,7 +79,7 @@ deduplicate_similarity: 0.95
 **Status**: Fully Integrated
 
 **Changes Made:**
-- Created [renew-tls-certificate.sh](scripts/renew-tls-certificate.sh) renewal script
+- Created [renew-tls-certificate.sh](scripts/security/renew-tls-certificate.sh) renewal script
 - Added systemd timer and service files
 - Implemented Prometheus metrics export
 
@@ -190,7 +190,7 @@ pytest ai-stack/tests/test_p1_integration.py -v
 
 1. `ai-stack/mcp-servers/aidb/query_validator.py` (320 lines)
 2. `ai-stack/mcp-servers/hybrid-coordinator/garbage_collector.py` (480 lines)
-3. `scripts/renew-tls-certificate.sh` (260 lines)
+3. `scripts/security/renew-tls-certificate.sh` (260 lines)
 4. `ai-stack/systemd/letsencrypt-renewal.service` (23 lines)
 5. `ai-stack/systemd/letsencrypt-renewal.timer` (18 lines)
 6. `ai-stack/tests/test_p1_integration.py` (426 lines)
@@ -358,7 +358,7 @@ From [P1-HARDENING-ROADMAP.md](P1-HARDENING-ROADMAP.md#p2-medium-priority):
 **Source Code:**
 - Query Validator: [ai-stack/mcp-servers/aidb/query_validator.py](ai-stack/mcp-servers/aidb/query_validator.py)
 - Garbage Collector: [ai-stack/mcp-servers/hybrid-coordinator/garbage_collector.py](ai-stack/mcp-servers/hybrid-coordinator/garbage_collector.py)
-- TLS Renewal Script: [scripts/renew-tls-certificate.sh](scripts/renew-tls-certificate.sh)
+- TLS Renewal Script: [scripts/security/renew-tls-certificate.sh](scripts/security/renew-tls-certificate.sh)
 
 **Testing:**
 - Integration Tests: [ai-stack/tests/test_p1_integration.py](ai-stack/tests/test_p1_integration.py)

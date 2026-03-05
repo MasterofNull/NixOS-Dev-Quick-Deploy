@@ -41,7 +41,7 @@ As you correctly identified, it's critical to validate each step before moving f
 cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Run the setup script
-./scripts/setup-podman-api.sh
+./scripts/deploy/setup-podman-api.sh
 ```
 
 **What it does:**
@@ -70,7 +70,7 @@ cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Run the test suite
-./scripts/test-podman-api.sh
+./scripts/testing/test-podman-api.sh
 ```
 
 **What it tests:**
@@ -130,7 +130,7 @@ Infrastructure is ready for service updates!
 
 **If tests fail:**
 - Review the specific test that failed
-- Most common fix: Run `./scripts/setup-podman-api.sh`
+- Most common fix: Run `./scripts/deploy/setup-podman-api.sh`
 - Check logs: `journalctl --user -u podman.socket` (user mode)
 - Check logs: `journalctl -u podman-api.service` (system mode)
 
@@ -216,7 +216,7 @@ Before proceeding to service updates, verify:
 ### Issue 1: Podman API socket not enabled
 ```bash
 # Fix: Run setup script
-./scripts/setup-podman-api.sh
+./scripts/deploy/setup-podman-api.sh
 ```
 
 ### Issue 2: Cannot reach API on port 2375
@@ -280,10 +280,10 @@ Once validation passes, I will:
 ```bash
 # 1. Run setup script
 cd ~/Documents/try/NixOS-Dev-Quick-Deploy
-./scripts/setup-podman-api.sh
+./scripts/deploy/setup-podman-api.sh
 
 # 2. Run validation tests
-./scripts/test-podman-api.sh
+./scripts/testing/test-podman-api.sh
 
 # 3. If all pass, report back to continue
 ```

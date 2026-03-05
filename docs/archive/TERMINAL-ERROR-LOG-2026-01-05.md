@@ -178,7 +178,7 @@ podman-compose up -d hybrid-coordinator
 **Time:** 14:47 PST
 **Command:**
 ```bash
-python3 scripts/import-documents.py --directory . --extensions .md
+python3 scripts/data/import-documents.py --directory . --extensions .md
 ```
 
 **Error (repeated in logs):**

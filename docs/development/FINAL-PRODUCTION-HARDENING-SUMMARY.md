@@ -82,7 +82,7 @@ Your AI stack is now **fully production-hardened** with enterprise-grade reliabi
    - Automated rotation script
    - Compress after 7 days, delete after 30 days
    - Systemd timer for daily execution
-   - File: [rotate-telemetry.sh](scripts/rotate-telemetry.sh)
+   - File: [rotate-telemetry.sh](scripts/data/rotate-telemetry.sh)
 
 10. **P6-OPS-002**: Dataset Deduplication
     - SHA256 pattern hashing
@@ -149,7 +149,7 @@ Concurrent Load: 500 writes tested
    - Async/await support, context managers
    - 367 lines, clean API
 
-3. **Rotation Script** - [rotate-telemetry.sh](scripts/rotate-telemetry.sh)
+3. **Rotation Script** - [rotate-telemetry.sh](scripts/data/rotate-telemetry.sh)
    - Automated cleanup
    - Compression & archiving
    - Systemd timer integration
@@ -171,7 +171,7 @@ Concurrent Load: 500 writes tested
    - [vscode_telemetry.py](ai-stack/mcp-servers/aidb/vscode_telemetry.py) - File locking
    - [server.py](ai-stack/mcp-servers/hybrid-coordinator/server.py) - File locking
 
-7. **Dashboard Server** - [serve-dashboard.sh](scripts/serve-dashboard.sh)
+7. **Dashboard Server** - [serve-dashboard.sh](scripts/deploy/serve-dashboard.sh)
    - Security fixes (no subprocess)
    - Rate limiting (60 req/min)
 
@@ -289,7 +289,7 @@ Redis      ←─ Circuit Breaker ─→ Caching
 
 1. **Rotate Telemetry Now**
    ```bash
-   ./scripts/rotate-telemetry.sh
+   ./scripts/data/rotate-telemetry.sh
    ```
 
 2. **Check Learning Stats**

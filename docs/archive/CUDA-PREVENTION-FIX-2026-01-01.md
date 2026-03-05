@@ -139,7 +139,7 @@ To apply this fix:
 
 2. **Or rebuild entire stack**:
    ```bash
-   ./scripts/stop-ai-stack.sh
+   ./scripts/deploy/stop-ai-stack.sh
    ./scripts/reset-ai-volumes.sh
    ./nixos-quick-deploy.sh
    ```

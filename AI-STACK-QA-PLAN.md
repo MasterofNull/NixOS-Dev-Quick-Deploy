@@ -23,7 +23,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ### 21.1 — `aq-qa` Phase Runner CLI
 
-- [x] **21.1.1** `scripts/aq-qa` exists, is executable, and `aq-qa 0` runs Phase 0 checks.
+- [x] **21.1.1** `scripts/ai/aq-qa` exists, is executable, and `aq-qa 0` runs Phase 0 checks.
   ```bash
   aq-qa 0 --json
   ```
@@ -243,9 +243,9 @@ aq-qa 1
 
 ### 1.5 — Official Health Script Regression
 
-- [x] **1.5.1** `scripts/check-mcp-health.sh` passes with 0 failures.
+- [x] **1.5.1** `scripts/testing/check-mcp-health.sh` passes with 0 failures.
   ```bash
-  bash scripts/check-mcp-health.sh 2>&1 | tail -5
+  bash scripts/testing/check-mcp-health.sh 2>&1 | tail -5
   ```
   **Pass:** Last line contains `0 failed`.
 
@@ -253,7 +253,7 @@ aq-qa 1
 
 ## Phase 2 — Core Feature Tests
 **Goal:** Each MCP server's primary function is verified end-to-end with real data.
-**Primary tool:** `bash scripts/check-mcp-health.sh` + `curl` one-liners below. `aq-qa 2` stub available (see Phase 21.1.3).
+**Primary tool:** `bash scripts/testing/check-mcp-health.sh` + `curl` one-liners below. `aq-qa 2` stub available (see Phase 21.1.3).
 
 ### 2.1 — Inference (llama.cpp)
 
@@ -392,7 +392,7 @@ aq-qa 1
 
 ## Phase 3 — Inference Quality & Reasoning Strategies
 **Goal:** Validate that the local LLM produces quality output and that advanced reasoning strategies improve it.
-**Primary tool:** `scripts/aq-prompt-eval` + `scripts/run-eval.sh` + `scripts/aq-report`
+**Primary tool:** `scripts/ai/aq-prompt-eval` + `scripts/automation/run-eval.sh` + `scripts/ai/aq-report`
 
 ### 3.1 — Baseline Output Quality
 
@@ -484,7 +484,7 @@ aq-qa 1
 
 - [x] **3.4.2** `run-eval.sh` with a strategy label runs without error. <!-- exit 0; 8/12 passed (66%); below 70% threshold but script exits 0 -->
   ```bash
-  bash scripts/run-eval.sh --strategy cot_qa_test 2>&1 | tail -5
+  bash scripts/automation/run-eval.sh --strategy cot_qa_test 2>&1 | tail -5
   ```
   **Pass:** Exit 0, no `ERROR` in output.
 
@@ -512,31 +512,31 @@ aq-qa 1
 
 ## Phase 4 — Context Engineering
 **Goal:** Verify the hint system, context injection, and prompt engineering machinery work correctly.
-**Primary tool:** `scripts/aq-hints` + `scripts/aq-report §9` (hint adoption)
+**Primary tool:** `scripts/ai/aq-hints` + `scripts/ai/aq-report §9` (hint adoption)
 
 ### 4.1 — `aq-hints` CLI
 
-- [x] **4.1.1** `aq-hints` returns hints in text format. <!-- python3 scripts/aq-hints --format=text (script is Python, not shell) -->
+- [x] **4.1.1** `aq-hints` returns hints in text format. <!-- python3 scripts/ai/aq-hints --format=text (script is Python, not shell) -->
   ```bash
-  bash scripts/aq-hints --format=text | head -10
+  bash scripts/ai/aq-hints --format=text | head -10
   ```
   **Pass:** Non-empty output with at least one line containing a hint.
 
 - [x] **4.1.2** `aq-hints --format=json` returns valid JSON array. <!-- count=3 -->
   ```bash
-  bash scripts/aq-hints --format=json | jq 'length'
+  bash scripts/ai/aq-hints --format=json | jq 'length'
   ```
   **Pass:** Integer ≥ 1.
 
 - [!] **4.1.3** `aq-hints --agent=aider` returns agent-filtered hints. <!-- FAIL: returns 0 hints for agent=aider; hint engine has no aider-specific hints in registry -->
   ```bash
-  bash scripts/aq-hints --agent=aider --format=json | jq '.[0].hint' | head -c 80
+  bash scripts/ai/aq-hints --agent=aider --format=json | jq '.[0].hint' | head -c 80
   ```
   **Pass:** Non-null string.
 
 - [x] **4.1.4** `aq-hints --format=shell-complete` outputs completion-compatible lines.
   ```bash
-  bash scripts/aq-hints --format=shell-complete 2>&1 | head -5
+  bash scripts/ai/aq-hints --format=shell-complete 2>&1 | head -5
   ```
   **Pass:** Lines suitable for shell completion (no JSON, no error).
 
@@ -602,7 +602,7 @@ aq-qa 1
 
 - [x] **4.4.4** `sync-agent-instructions` regenerates files without error.
   ```bash
-  bash scripts/sync-agent-instructions 2>&1 | tail -3
+  bash scripts/data/sync-agent-instructions 2>&1 | tail -3
   ```
   **Pass:** Exit 0.
 
@@ -610,7 +610,7 @@ aq-qa 1
 
 ## Phase 5 — Security Hardening Tests
 **Goal:** Validate all security controls are active and functional.
-**Primary tool:** `sudo aa-status`, `scripts/check-mcp-integrity.sh`, `bash scripts/aq-qa 0 --sudo` (AppArmor checks)
+**Primary tool:** `sudo aa-status`, `scripts/testing/check-mcp-integrity.sh`, `bash scripts/ai/aq-qa 0 --sudo` (AppArmor checks)
 
 ### 5.1 — AppArmor Enforcement
 
@@ -663,9 +663,9 @@ aq-qa 1
   ```
   **Pass:** Response shows the query was sanitised, flagged, or the word `ignore` was removed/escaped.
 
-- [x] **5.3.2** `scripts/test-prompt-injection-resilience.sh` passes. <!-- exit 0; 401 on unauth + high-risk tools blocked -->
+- [x] **5.3.2** `scripts/testing/test-prompt-injection-resilience.sh` passes. <!-- exit 0; 401 on unauth + high-risk tools blocked -->
   ```bash
-  bash scripts/test-prompt-injection-resilience.sh 2>&1 | tail -5
+  bash scripts/testing/test-prompt-injection-resilience.sh 2>&1 | tail -5
   ```
   **Pass:** Exit 0, no `FAIL` lines in tail output.
 
@@ -690,7 +690,7 @@ aq-qa 1
   ```
   **Pass:** Any network error — service cannot reach external IPs.
 
-- [s] **5.5.2** MCP integrity check baseline file is world-readable (required for DynamicUser fallback). <!-- NOT SEEDED: run scripts/update-mcp-integrity-baseline.sh after first clean deploy -->
+- [s] **5.5.2** MCP integrity check baseline file is world-readable (required for DynamicUser fallback). <!-- NOT SEEDED: run scripts/security/update-mcp-integrity-baseline.sh after first clean deploy -->
   ```bash
   stat -c "%a" /var/lib/nixos-ai-stack/mcp-source-baseline.sha256 2>/dev/null || echo "NOT SEEDED"
   ```
@@ -714,7 +714,7 @@ aq-qa 1
 
 ## Phase 6 — Monitoring & Observability
 **Goal:** Verify that every observability layer produces real data and alerts route correctly.
-**Primary tool:** `scripts/aq-report` (§1-§8 digest) + Prometheus/Grafana endpoints
+**Primary tool:** `scripts/ai/aq-report` (§1-§8 digest) + Prometheus/Grafana endpoints
 
 ### 6.1 — Prometheus Metrics
 
@@ -769,7 +769,7 @@ aq-qa 1
 
 - [x] **6.4.1** `aq-report` runs without error. <!-- 9 sections; fixed PermissionError on AUDIT_FALLBACK_PATH.exists() -->
   ```bash
-  bash scripts/aq-report --since=7d --format=text 2>&1 | grep -c "\["
+  bash scripts/ai/aq-report --since=7d --format=text 2>&1 | grep -c "\["
   ```
   **Pass:** ≥ 1 section header found (even if data sections are empty).
 
@@ -781,18 +781,18 @@ aq-qa 1
       -H 'Content-Type: application/json' \
       -d '{"query":"test tool audit generation","mode":"local"}' > /dev/null
   done
-  bash scripts/aq-report --since=1d --format=text | grep -A5 "Tool Call Performance"
+  bash scripts/ai/aq-report --since=1d --format=text | grep -A5 "Tool Call Performance"
   ```
   **Pass:** Tool performance section shows ≥ 1 call count (not `No tool audit data`).
 
 ### 6.5 — MCP Integrity Check
 
-- [s] **6.5.1** Baseline file exists (seeded after deploy). <!-- NOT SEEDED: run scripts/update-mcp-integrity-baseline.sh -->
+- [s] **6.5.1** Baseline file exists (seeded after deploy). <!-- NOT SEEDED: run scripts/security/update-mcp-integrity-baseline.sh -->
   ```bash
   test -f /var/lib/nixos-ai-stack/mcp-source-baseline.sha256 && \
     wc -l /var/lib/nixos-ai-stack/mcp-source-baseline.sha256 || echo "NOT SEEDED"
   ```
-  **Pass:** Line count > 0. If `NOT SEEDED`, run `bash scripts/update-mcp-integrity-baseline.sh` first.
+  **Pass:** Line count > 0. If `NOT SEEDED`, run `bash scripts/security/update-mcp-integrity-baseline.sh` first.
 
 - [x] **6.5.2** Integrity check passes on clean codebase. <!-- oneshot exits inactive/success (baseline not seeded → check passes vacuously) -->
   ```bash
@@ -819,19 +819,19 @@ aq-qa 1
 
 ## Phase 7 — Recursive Self-Improvement Loop
 **Goal:** Validate the eval harness, prompt scoring, and leaderboard machinery that enables the system to improve over time.
-**Primary tool:** `scripts/aq-prompt-eval`, `scripts/run-eval.sh --strategy LABEL`, `scripts/aq-report §5` (leaderboard)
+**Primary tool:** `scripts/ai/aq-prompt-eval`, `scripts/automation/run-eval.sh --strategy LABEL`, `scripts/ai/aq-report §5` (leaderboard)
 
 ### 7.1 — Eval Harness (`aq-prompt-eval`)
 
 - [x] **7.1.1** `aq-prompt-eval` runs against registry without error. <!-- overall 27.8% across 6 prompts -->
   ```bash
-  bash scripts/aq-prompt-eval 2>&1 | tail -10
+  bash scripts/ai/aq-prompt-eval 2>&1 | tail -10
   ```
   **Pass:** Exit 0, output includes `mean_score` for at least one prompt.
 
 - [x] **7.1.2** Registry `mean_score` fields are updated after eval. <!-- scored=4 prompts -->
   ```bash
-  bash scripts/aq-prompt-eval 2>&1 > /dev/null
+  bash scripts/ai/aq-prompt-eval 2>&1 > /dev/null
   python3 -c "
   import yaml
   r = yaml.safe_load(open('ai-stack/prompts/registry.yaml'))
@@ -843,8 +843,8 @@ aq-qa 1
 
 - [x] **7.1.3** `run-eval.sh --strategy baseline` produces a leaderboard entry. <!-- baseline=66% in leaderboard -->
   ```bash
-  bash scripts/run-eval.sh --strategy baseline 2>&1 | tail -5
-  bash scripts/aq-report --since=1d --format=text | grep -A5 "Strategy Leaderboard"
+  bash scripts/automation/run-eval.sh --strategy baseline 2>&1 | tail -5
+  bash scripts/ai/aq-report --since=1d --format=text | grep -A5 "Strategy Leaderboard"
   ```
   **Pass:** `baseline` strategy appears in leaderboard section.
 
@@ -862,7 +862,7 @@ aq-qa 1
 
 - [x] **7.2.2** `aq-gaps` script runs without error. <!-- shows top-10 gap queries from Postgres; run as bash not python3 -->
   ```bash
-  bash scripts/aq-gaps 2>&1 | head -10
+  bash scripts/ai/aq-gaps 2>&1 | head -10
   ```
   **Pass:** Exit 0.
 
@@ -882,7 +882,7 @@ aq-qa 1
 
 - [!] **7.3.2** `route_search_synthesis` prompt scores ≥ 0.6 after eval. <!-- FAIL: score=0.333 (33%) — template needs tuning; RAG collections empty reduces quality -->
   ```bash
-  bash scripts/aq-prompt-eval 2>&1 > /dev/null
+  bash scripts/ai/aq-prompt-eval 2>&1 > /dev/null
   python3 -c "
   import yaml
   r = yaml.safe_load(open('ai-stack/prompts/registry.yaml'))
@@ -896,7 +896,7 @@ aq-qa 1
 
 ## Phase 8 — End-to-End Workflow Tests
 **Goal:** Real developer workflows pass from input to useful output using only the local stack.
-**Primary tool:** `scripts/aq-hints` (context injection) + `curl` to hybrid-coordinator `/query` + `aq-report §8` (E2E gaps)
+**Primary tool:** `scripts/ai/aq-hints` (context injection) + `curl` to hybrid-coordinator `/query` + `aq-report §8` (E2E gaps)
 
 ### 8.1 — NixOS Help Workflow
 
@@ -932,7 +932,7 @@ aq-qa 1
 
 - [x] **8.3.1** Hints are returned for a coding query and are contextually relevant. <!-- nix_relevant=2/5 (nixos domain query expansion + route-search); JSON is dict wrapper, not bare list -->
   ```bash
-  bash scripts/aq-hints --format=json | \
+  bash scripts/ai/aq-hints --format=json | \
     python3 -c "
   import json,sys
   hints = json.load(sys.stdin)
@@ -953,7 +953,7 @@ aq-qa 1
 
 - [x] **8.4.2** `aq-report --aidb-import` imports to AIDB without error. <!-- PASS: exit 0, no ERROR in output -->
   ```bash
-  bash scripts/aq-report --since=7d --format=md --aidb-import 2>&1 | tail -3
+  bash scripts/ai/aq-report --since=7d --format=md --aidb-import 2>&1 | tail -3
   ```
   **Pass:** Exit 0, no `ERROR` in output.
 
@@ -1048,14 +1048,14 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 10.1 — Test Suite Automation
 
-- [x] **10.1.1** Create `scripts/run-qa-suite.sh` that runs all Phase 0–6 smoke/feature tests. <!-- PASS: script created, executable, wraps aq-qa phases 0-6 -->
+- [x] **10.1.1** Create `scripts/automation/run-qa-suite.sh` that runs all Phase 0–6 smoke/feature tests. <!-- PASS: script created, executable, wraps aq-qa phases 0-6 -->
   **Success metric:** Script exists, is executable, and prints `PASS/FAIL` per test with a final summary.
 
 - [s] **10.1.2** Add `qa-suite` step to `nixos-quick-deploy.sh` post-deploy checks. <!-- SKIP: out of scope for this QA run; tracked as Phase 21.5 -->
   **Success metric:** Deploy output includes `QA Suite: N passed, 0 failed` after switch.
 
 - [s] **10.1.3** All Phase 0–6 tests pass on a clean rebuild with current `main` branch. <!-- SKIP: requires clean rebuild; aq-qa 0 + 1 pass on current system -->
-  **Success metric:** `bash scripts/run-qa-suite.sh` exits 0.
+  **Success metric:** `bash scripts/automation/run-qa-suite.sh` exits 0.
 
 ### 10.2 — Monitoring Continuity
 
@@ -1130,18 +1130,18 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 - [x] **11.1.4** `ai-stack/agent-memory/MEMORY.md` exists and is git-tracked.
   `git ls-files ai-stack/agent-memory/MEMORY.md` → listed.
 
-- [x] **11.1.5** `scripts/sync-agent-instructions` syncs live MEMORY.md → repo copy on every run.
-  `python3 scripts/sync-agent-instructions --verbose` → shows `[unchanged] ai-stack/agent-memory/MEMORY.md` or `[updated]`.
+- [x] **11.1.5** `scripts/data/sync-agent-instructions` syncs live MEMORY.md → repo copy on every run.
+  `python3 scripts/data/sync-agent-instructions --verbose` → shows `[unchanged] ai-stack/agent-memory/MEMORY.md` or `[updated]`.
 
-- [x] **11.1.6** `scripts/import-agent-instructions.sh` exists and is executable.
-  `test -x scripts/import-agent-instructions.sh && echo OK`
+- [x] **11.1.6** `scripts/data/import-agent-instructions.sh` exists and is executable.
+  `test -x scripts/data/import-agent-instructions.sh && echo OK`
 
 ### 11.2 — AIDB Import of Agent Instructions (blocked on 11.0)
 
 - [x] **11.2.1** Import all agent instruction files into AIDB after 11.0 fixes. <!-- PARTIAL PASS: 14/17 imported OK; 3 blocked by secrets scanner (scripts with /run/secrets refs) or 50KB limit — expected behavior -->
   ```bash
   AIDB_API_KEY=$(cat /run/secrets/aidb_api_key) \
-    bash scripts/import-agent-instructions.sh
+    bash scripts/data/import-agent-instructions.sh
   ```
   **Pass:** Output shows `OK` for all 6 files, exit 0.
 
@@ -1169,7 +1169,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 - [s] **11.2.4** `sync-agent-instructions` calls `import-agent-instructions.sh` automatically. <!-- SKIP: wiring not yet added to sync-agent-instructions main() -->
   **Action:** Wire the AIDB import call into `sync-agent-instructions` `main()` after 11.0 is fixed (currently shows a hint only).
-  **Pass:** `python3 scripts/sync-agent-instructions` outputs `import-agent-instructions: 6 imported, 0 failed`.
+  **Pass:** `python3 scripts/data/sync-agent-instructions` outputs `import-agent-instructions: 6 imported, 0 failed`.
 
 ### 11.3 — Behavior Data Export to Git (Postgres snapshots)
 
@@ -1199,7 +1199,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   ```
   **Pass:** Table list with classification documented in a comment at top of this task.
 
-- [x] **11.3.2** Create `scripts/export-ai-behavior-snapshot.sh` that exports behavior tables to `ai-stack/snapshots/`. <!-- PASS: exit 0; 127 query_gaps + 175 imported_documents-meta exported; hint-adoption=no_data -->
+- [x] **11.3.2** Create `scripts/data/export-ai-behavior-snapshot.sh` that exports behavior tables to `ai-stack/snapshots/`. <!-- PASS: exit 0; 127 query_gaps + 175 imported_documents-meta exported; hint-adoption=no_data -->
   **Schema:**
   ```
   ai-stack/snapshots/
@@ -1209,9 +1209,9 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
   ```
   **Pass:** Script exits 0, files are created with valid JSON/JSONL.
 
-- [x] **11.3.3** Create `scripts/import-ai-behavior-snapshot.sh` for fresh-deploy seeding. <!-- PASS: idempotent — "already has 127 rows — skipping" on live system; ON CONFLICT replaced with row-count guard (query_gaps has SERIAL id, not unique query_hash) -->
+- [x] **11.3.3** Create `scripts/data/import-ai-behavior-snapshot.sh` for fresh-deploy seeding. <!-- PASS: idempotent — "already has 127 rows — skipping" on live system; ON CONFLICT replaced with row-count guard (query_gaps has SERIAL id, not unique query_hash) -->
   **Behavior:** Idempotent — use `ON CONFLICT DO NOTHING` so re-running on a live system doesn't overwrite current data.
-  **Pass:** After `scripts/export-ai-behavior-snapshot.sh && scripts/import-ai-behavior-snapshot.sh`, row counts in tables are unchanged on live system.
+  **Pass:** After `scripts/data/export-ai-behavior-snapshot.sh && scripts/data/import-ai-behavior-snapshot.sh`, row counts in tables are unchanged on live system.
 
 - [s] **11.3.4** Add snapshot export to the weekly report timer. <!-- SKIP: out of scope for QA run -->
   **Action:** Append to `ai-weekly-report.service` ExecStart or add a post-export hook.
@@ -1223,7 +1223,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 ### 11.4 — Fresh Deploy Seeding
 
-- [x] **11.4.1** Create `scripts/seed-fresh-deploy.sh` — one command that bootstraps a new machine. <!-- PASS: created, bash -n OK, all 5 steps implemented with health-poll gate -->
+- [x] **11.4.1** Create `scripts/data/seed-fresh-deploy.sh` — one command that bootstraps a new machine. <!-- PASS: created, bash -n OK, all 5 steps implemented with health-poll gate -->
   **Steps it must perform in order:**
   1. Wait for AIDB health (`/health` returns `ok`)
   2. Copy `ai-stack/agent-memory/MEMORY.md` → `~/.claude/projects/<id>/memory/MEMORY.md`
@@ -1243,7 +1243,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 
 **Context:** Qdrant vectors are derived from documents — they can be rebuilt by re-embedding. No need to git-track binary vector data.
 
-- [x] **11.5.1** Create `scripts/rebuild-qdrant-collections.sh` — re-embeds all AIDB documents into Qdrant. <!-- PASS: created, bash -n OK; 500s on docs >context limit (embed model max ~2K tokens); small docs index OK -->
+- [x] **11.5.1** Create `scripts/data/rebuild-qdrant-collections.sh` — re-embeds all AIDB documents into Qdrant. <!-- PASS: created, bash -n OK; 500s on docs >context limit (embed model max ~2K tokens); small docs index OK -->
   ```bash
   # For each document in AIDB project != "agent-instructions":
   #   POST /vector/embed → Qdrant upsert
@@ -1279,4 +1279,4 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 2. **Strategy tags in tool_audit.jsonl** — Phase 18.2.3 open; leaderboard section will be empty until fixed.
 3. **AIDB import of CLAUDE.md/MEMORY.md** — Phase 19.4.5; RAG over project rules not yet active.
 4. **Aider lock file** — Phase 11.1.1; `aider-chat` version invalid, may fail Phase 8.2.
-5. **Integrity baseline** — must run `bash scripts/update-mcp-integrity-baseline.sh` before Phase 6.5 tests.
+5. **Integrity baseline** — must run `bash scripts/security/update-mcp-integrity-baseline.sh` before Phase 6.5 tests.

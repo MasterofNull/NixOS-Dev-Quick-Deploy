@@ -29,7 +29,7 @@ Before deploying P1 features, ensure:
 **Check Prerequisites:**
 ```bash
 # Verify P0 components
-./scripts/verify-production-readiness.sh
+./scripts/testing/verify-production-readiness.sh
 
 # Check available resources
 free -h
@@ -97,7 +97,7 @@ podman stop aidb || true
 podman rm aidb || true
 
 # Restart via dashboard script
-./scripts/setup-dashboard.sh
+./scripts/deploy/setup-dashboard.sh
 
 # Verify service is running
 podman logs aidb --tail 50
@@ -290,7 +290,7 @@ podman-compose -f ai-stack/compose/docker-compose.yml up -d nginx
 **4.5. Test Renewal Script (Dry Run)**
 
 ```bash
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain localhost \
   --email admin@localhost \
   --staging \
@@ -510,7 +510,7 @@ echo "test" > /var/www/letsencrypt/test.txt
 curl http://localhost/.well-known/acme-challenge/test.txt
 
 # Run renewal with verbose output
-./scripts/renew-tls-certificate.sh \
+./scripts/security/renew-tls-certificate.sh \
   --domain localhost \
   --email admin@localhost \
   --staging \
@@ -553,7 +553,7 @@ Before going to production, verify:
 **Final Verification:**
 ```bash
 # Run production readiness check
-./scripts/verify-production-readiness.sh
+./scripts/testing/verify-production-readiness.sh
 
 # Check all P1 metrics
 curl http://localhost:9090/api/v1/label/__name__/values | grep -E 'gc|validation|tls'
@@ -624,7 +624,7 @@ curl -X POST http://localhost:8091/vector/search \
 - **P1 Roadmap**: `P1-HARDENING-ROADMAP.md`
 - **Query Validator Source**: `ai-stack/mcp-servers/aidb/query_validator.py`
 - **Garbage Collector Source**: `ai-stack/mcp-servers/hybrid-coordinator/garbage_collector.py`
-- **Renewal Script**: `scripts/renew-tls-certificate.sh`
+- **Renewal Script**: `scripts/security/renew-tls-certificate.sh`
 - **Integration Tests**: `ai-stack/tests/test_p1_integration.py`
 
 ---

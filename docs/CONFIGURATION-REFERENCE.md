@@ -7,7 +7,7 @@ This document is the source of truth for deployment configuration in the clean f
 - `config/settings.sh`: centralized runtime settings (timeouts, retries, ports, namespaces, paths).
 - `config/defaults.sh`: deploy defaults and baseline behavior flags.
 - `config/variables.sh`: additional script-scoped variables used by phased deploy flow.
-- `nix/hosts/<host>/facts.nix`: declarative host facts discovered by `scripts/discover-system-facts.sh`.
+- `nix/hosts/<host>/facts.nix`: declarative host facts discovered by `scripts/governance/discover-system-facts.sh`.
 - `nix/modules/core/options.nix`: typed schema for `mySystem.*` options consumed by NixOS modules.
 
 ## Common Parameters
@@ -48,7 +48,7 @@ AI_STACK_NAMESPACE=ai-stack-dev KUBECTL_TIMEOUT=90 ./nixos-quick-deploy.sh
 Or validate a custom env file before deploy:
 
 ```bash
-./scripts/validate-config-settings.sh --env-file ./my-overrides.env
+./scripts/testing/validate-config-settings.sh --env-file ./my-overrides.env
 ```
 
 ## Best Practices
@@ -81,5 +81,5 @@ Or validate a custom env file before deploy:
 - Fix:
   1. Review flake/module changes.
   2. Regenerate baseline:
-     `./scripts/check-package-count-drift.sh --write-baseline`
+     `./scripts/testing/check-package-count-drift.sh --write-baseline`
   3. Commit updated `config/package-count-baseline.json` with rationale.

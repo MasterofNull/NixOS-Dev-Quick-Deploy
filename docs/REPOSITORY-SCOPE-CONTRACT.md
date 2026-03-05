@@ -30,7 +30,7 @@ Out of scope:
 
 - Deploy layer: `scripts/deploy-clean.sh` + `flake.nix` + `nix/`
 - Runtime layer: `ai-stack/`
-- Agent tooling layer: `.agent/skills/` + `scripts/aqd`
+- Agent tooling layer: `.agent/skills/` + `scripts/ai/aqd`
 - Governance layer: lint/test scripts in `scripts/`, CI in `.github/workflows/test.yml`
 
 ## Governance Rules
@@ -39,4 +39,4 @@ Out of scope:
 2. `.agent/skills/` is canonical; mirrored trees are optional and explicit.
 3. Skill docs must avoid floating external refs (no `main`/`master` links).
 4. Filesystem backup trees do not belong in active root paths.
-5. CLI wrappers in `scripts/aqd` are the preferred user/agent interface for skill/MCP workflows.
+5. CLI wrappers in `scripts/ai/aqd` are the preferred user/agent interface for skill/MCP workflows.

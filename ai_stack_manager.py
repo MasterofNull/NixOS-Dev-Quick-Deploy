@@ -14,7 +14,7 @@ def main() -> int:
         "status": "deprecated",
         "message": (
             "ai_stack_manager.py has been retired. "
-            "Use declarative systemd services and scripts/ai-stack-manage.sh."
+            "Use declarative systemd services and scripts/ai/ai-stack-manage.sh."
         ),
     }
     print(json.dumps(payload))

@@ -369,12 +369,12 @@ Day 5: Customer reports it (you find out last)
    # Fix file permissions
 
    # Create per-service keys
-   ./scripts/generate-api-key.sh --service aidb
-   ./scripts/generate-api-key.sh --service embeddings
-   ./scripts/generate-api-key.sh --service hybrid
+   ./scripts/data/generate-api-key.sh --service aidb
+   ./scripts/data/generate-api-key.sh --service embeddings
+   ./scripts/data/generate-api-key.sh --service hybrid
 
    # Create rotation script
-   ./scripts/rotate-api-key.sh --service aidb
+   ./scripts/security/rotate-api-key.sh --service aidb
    ```
 
 2. **Add Certificate Monitoring**
