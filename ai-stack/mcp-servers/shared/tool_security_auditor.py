@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -218,11 +219,23 @@ class ToolSecurityAuditor:
                 keyword = str(kw).strip().lower()
                 if not keyword:
                     continue
-                if keyword in reason_text or keyword in blob:
+                # Use token/phrase-aware matching to avoid false positives from
+                # incidental substrings in benign metadata (e.g. "execution").
+                if self._keyword_match(keyword, reason_text) or self._keyword_match(keyword, blob):
                     reasons.append(f"blocked_keyword:{keyword}")
                     break
 
         return (len(reasons) == 0), reasons
+
+    @staticmethod
+    def _keyword_match(keyword: str, text: str) -> bool:
+        k = str(keyword or "").strip().lower()
+        t = str(text or "").strip().lower()
+        if not k or not t:
+            return False
+        if " " in k:
+            return k in t
+        return bool(re.search(rf"\b{re.escape(k)}\b", t))
 
     def audit_tool(self, tool_name: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         start = time.time()
