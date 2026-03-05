@@ -1105,7 +1105,9 @@ def build_recommendations(
                     f"Semantic tooling autorun is inconsistently active ({enabled_pct}% across {route_calls} route calls). "
                     "Verify `AI_SEMANTIC_TOOLING_AUTORUN=true` in hybrid-coordinator runtime env."
                 )
-            if int(semantic_autorun.get("tool_security_blocked_total", 0) or 0) > 0:
+            blocked_total = int(semantic_autorun.get("tool_security_blocked_total", 0) or 0)
+            blocked_pct = (100.0 * blocked_total / route_calls) if route_calls > 0 else 0.0
+            if blocked_total >= 10 or blocked_pct >= 5.0:
                 blocked_tools = []
                 blocked_reasons = []
                 if security_auditor and security_auditor.get("available"):
