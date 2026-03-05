@@ -14,7 +14,7 @@ Protocol engineering blog post and demonstrates how to:
 The server exposes a WebSocket interface compatible with MCP clients.  Use the
 ``mcp-server`` helper script to scaffold new projects, manage lifecycle events,
 and run the built-in self-test. The template is copied verbatim by
-`scripts/mcp-server` (see cmd_init) so avoid repository-specific imports or
+`scripts/ai/mcp-server` (see cmd_init) so avoid repository-specific imports or
 relative paths that might not exist yet.
 """
 

@@ -132,7 +132,7 @@ BACKEND_URLS = {
 
 ```bash
 #!/bin/bash
-# scripts/populate-qdrant.sh
+# scripts/data/populate-qdrant.sh
 
 echo "Populating Qdrant collections..."
 
@@ -166,7 +166,7 @@ echo "✅ Qdrant populated"
 
 ```bash
 #!/bin/bash
-# scripts/test-agent-workflow.sh
+# scripts/testing/test-agent-workflow.sh
 
 echo "Testing Ralph Wiggum workflow..."
 
@@ -206,7 +206,7 @@ curl http://localhost:8092/health
 
 ### 1. Verify All Services Healthy
 ```bash
-~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-health.sh
+~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-health.sh
 ```
 
 Expected: 10/10 services passing (may be 9/10 if Ralph not fixed yet)

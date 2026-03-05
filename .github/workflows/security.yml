@@ -37,7 +37,7 @@ jobs:
       - name: Run security audit script
         id: audit
         run: |
-          bash scripts/security-audit.sh > security-audit-results.txt 2>&1
+          bash scripts/security/security-audit.sh > security-audit-results.txt 2>&1
           echo "exit_code=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
 

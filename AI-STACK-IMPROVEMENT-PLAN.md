@@ -106,7 +106,7 @@
 ### 1.5 — Validate All MCP Servers Start Without Errors
 
 - [x] **1.5.1** Write a startup health check script that starts each MCP server in isolation and verifies the `/health` endpoint responds within 10 seconds.
-  *Success metric: `scripts/check-mcp-health.sh` exits 0 for all 13 servers.*
+  *Success metric: `scripts/testing/check-mcp-health.sh` exits 0 for all 13 servers.*
 
 - [x] **1.5.2** Document which services each MCP server requires at startup (Postgres, Qdrant, Redis, etc.) and add preflight dependency checks.
   *Success metric: Each server's startup log shows `"preflight_check": "passed"` before accepting connections.*
@@ -187,10 +187,10 @@
 
 ### TC1.1 — MCP Server Health
 
-- [x] **TC1.1.1** Run `scripts/check-mcp-health.sh` — all REQUIRED services (embeddings, aidb, hybrid-coordinator, ralph-wiggum, llama-cpp inference, llama-cpp embedding) return 2xx within 10 s.
+- [x] **TC1.1.1** Run `scripts/testing/check-mcp-health.sh` — all REQUIRED services (embeddings, aidb, hybrid-coordinator, ralph-wiggum, llama-cpp inference, llama-cpp embedding) return 2xx within 10 s.
   *Pass: script exits 0. Fail: identify which service is down and resolve.*
 
-- [x] **TC1.1.2** Run `scripts/check-mcp-health.sh --optional` — document which optional services are up/down but do not block on them.
+- [x] **TC1.1.2** Run `scripts/testing/check-mcp-health.sh --optional` — document which optional services are up/down but do not block on them.
   *Pass: output recorded; no required service fails.*
 
 ---
@@ -360,7 +360,7 @@
 - [x] **4.4.2** Add `davila7/claude-code-templates` as the first registered source. This repo contains 100+ Claude Code component templates (skills, agents, commands, MCP integrations, hooks, settings) — useful for RAG queries about available integrations.
   *Success metric: `sync-knowledge-sources --id claude-code-templates --dry-run` prints the fetch plan without error.*
 
-- [x] **4.4.3** Create `scripts/sync-knowledge-sources` — iterates over enabled sources in the YAML registry, fetches content (GitHub README/files/etc.), and calls the AIDB `/api/v1/import` endpoint to index into Qdrant.
+- [x] **4.4.3** Create `scripts/data/sync-knowledge-sources` — iterates over enabled sources in the YAML registry, fetches content (GitHub README/files/etc.), and calls the AIDB `/api/v1/import` endpoint to index into Qdrant.
   *Success metric: `sync-knowledge-sources --list` shows registered sources; `--dry-run` shows fetch plan.*
   *Update (2026-02-26): Script now targets canonical AIDB `POST /documents` import API (the `/api/v1/import` path no longer exists), with endpoint override via `AIDB_IMPORT_ENDPOINT`.*
 
@@ -681,7 +681,7 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
   - "Write a NixOS module that enables service X with option Y" — assert syntactically valid Nix
   - "What is `lib.mkForce` vs `lib.mkDefault`?" — assert priority numbers are mentioned
   *Success metric: 5+ NixOS-specific tests pass at 70% threshold.*
-  *Done (2026-02-26): promptfoo suite includes NixOS-specific error/module/priority tests in `ai-stack/eval/promptfoo-config.yaml`; `scripts/run-eval.sh --threshold 60` completed with 8/12 pass (66%), satisfying regression floor and validating suite execution.*
+  *Done (2026-02-26): promptfoo suite includes NixOS-specific error/module/priority tests in `ai-stack/eval/promptfoo-config.yaml`; `scripts/automation/run-eval.sh --threshold 60` completed with 8/12 pass (66%), satisfying regression floor and validating suite execution.*
 
 - [x] **8.1.2** Add RAG retrieval tests: ingest a known document into AIDB, then query for it, assert the RAG context contains the ingested content.
   *Success metric: A round-trip test `ingest → query → assert context contains ingested text` passes reliably.*
@@ -692,8 +692,8 @@ Same problem, same approach. AIDB is simultaneously: a vector DB client, an embe
   *Done: `tests/integration/test_routing.py` implemented and passing (5/5). Verified via `pytest tests/integration/test_routing.py -v` on 2026-02-26.*
 
 - [x] **8.1.4** Add a regression test that runs on every session startup: if eval pass rate drops below 60%, print a warning. Track eval scores over time in a lightweight SQLite log.
-  *Success metric: Running `scripts/run-eval.sh` produces a score and appends it to `ai-stack/eval/results/scores.csv`.*
-  *Done (2026-02-26): `scripts/run-eval.sh` appends both CSV and SQLite (`ai-stack/eval/results/scores.sqlite`) and emits <60% warning; startup trigger is wired via `ai-eval-startup.service`. Verified by run `eval-20260226T223144Z` logging to both score stores.*
+  *Success metric: Running `scripts/automation/run-eval.sh` produces a score and appends it to `ai-stack/eval/results/scores.csv`.*
+  *Done (2026-02-26): `scripts/automation/run-eval.sh` appends both CSV and SQLite (`ai-stack/eval/results/scores.sqlite`) and emits <60% warning; startup trigger is wired via `ai-eval-startup.service`. Verified by run `eval-20260226T223144Z` logging to both score stores.*
 
 ---
 
@@ -786,15 +786,15 @@ Not a current priority but track here for when it becomes one.
 
 - [x] **TC3.1.1** Run the full TC1 battery (TC1.1–TC1.6) again. All items must still pass.
   *Pass: All TC1 items exit green. If any regressed since TC1, fix before continuing.*
-  *Done (2026-02-26): `scripts/run-acceptance-checks.sh` re-run completed with all core stack, harness, and health checks passing.*
+  *Done (2026-02-26): `scripts/automation/run-acceptance-checks.sh` re-run completed with all core stack, harness, and health checks passing.*
 
 - [x] **TC3.1.2** Run the full TC2 battery (TC2.1–TC2.5). All items must still pass.
   *Pass: All TC2 items exit green.*
-  *Done (2026-02-26): `scripts/run-acceptance-checks.sh` completed with all TC2-equivalent service/API/contract gates green.*
+  *Done (2026-02-26): `scripts/automation/run-acceptance-checks.sh` completed with all TC2-equivalent service/API/contract gates green.*
 
-- [x] **TC3.1.3** Run `scripts/run-eval.sh` — verify AI eval score ≥ 60% pass rate on the NixOS-specific eval suite from Phase 8.
+- [x] **TC3.1.3** Run `scripts/automation/run-eval.sh` — verify AI eval score ≥ 60% pass rate on the NixOS-specific eval suite from Phase 8.
   *Pass: score logged to `ai-stack/eval/results/scores.csv`; pass rate ≥ 0.60.*
-  *Done (2026-02-26): `scripts/run-eval.sh --threshold 60` completed with 8/12 passed (66%); results logged to JSON/CSV/SQLite.*
+  *Done (2026-02-26): `scripts/automation/run-eval.sh --threshold 60` completed with 8/12 passed (66%); results logged to JSON/CSV/SQLite.*
 
 ---
 
@@ -818,22 +818,22 @@ Not a current priority but track here for when it becomes one.
 
 - [x] **TC3.3.2** Verify hardware-tier detection resolves correctly on this machine.
   *Pass: `nix eval --raw .#nixosConfigurations.nixos-ai-dev.config.mySystem.hardwareTier` returns `"medium"` (27 GB RAM, AMD iGPU, laptop).*
-  *Done (2026-02-26): added declarative derived option `mySystem.hardwareTier` and updated `scripts/run-tc3-checks.sh` host/profile resolution so TC3.3.2 now passes automatically.*
+  *Done (2026-02-26): added declarative derived option `mySystem.hardwareTier` and updated `scripts/automation/run-tc3-checks.sh` host/profile resolution so TC3.3.2 now passes automatically.*
 
 - [x] **TC3.3.3** Run `nix flake check` — all checks pass.
   *Pass: exit 0.*
-  *Done (2026-02-26): validated in `scripts/run-tc3-checks.sh` run.*
+  *Done (2026-02-26): validated in `scripts/automation/run-tc3-checks.sh` run.*
 
 ---
 
 ### TC3.4 — Knowledge Base Quality Baseline
 
 - [x] **TC3.4.1** Run a domain-specific query expansion test: verify NixOS synonym map fires.
-  *Run: `scripts/run-tc3-checks.sh --skip-nix --skip-perf` (TC3.4 section). Pass: NixOS terms (inputs/follows/lock) appear in expansion for "flake" query.*
+  *Run: `scripts/automation/run-tc3-checks.sh --skip-nix --skip-perf` (TC3.4 section). Pass: NixOS terms (inputs/follows/lock) appear in expansion for "flake" query.*
   *Done (2026-02-26): fixed TC3 harness import/env setup and query expansion assertion now passes (includes `flake.nix`/`inputs` terms).*
 
 - [x] **TC3.4.2** Check vector timestamp fields are present on at least one ingested document.
-  *Run: `scripts/run-tc3-checks.sh --skip-nix --skip-perf` (requires AIDB up). Pass: ingested_at / last_accessed_at present in payload.*
+  *Run: `scripts/automation/run-tc3-checks.sh --skip-nix --skip-perf` (requires AIDB up). Pass: ingested_at / last_accessed_at present in payload.*
   *Done (2026-02-26): TC3 harness updated to accept `imported_at` from current AIDB document API shape; check passes on live data.*
 
 ---
@@ -841,11 +841,11 @@ Not a current priority but track here for when it becomes one.
 ### TC3.5 — Performance Baseline (Pre-Hardening)
 
 - [x] **TC3.5.1** Record current p95 response latency for a standard query. Store in `ai-stack/eval/results/perf-baseline.json`.
-  *Run: `scripts/run-tc3-checks.sh --skip-nix` (requires hybrid-coordinator up). Pass: file written.*
+  *Run: `scripts/automation/run-tc3-checks.sh --skip-nix` (requires hybrid-coordinator up). Pass: file written.*
   *Done (2026-02-26): fixed TC3 harness endpoint/auth handling; latest baseline recorded (`p50_ms=11`, `p95_ms=12`).*
 
 - [x] **TC3.5.2** Record current cache hit rate from Prometheus. Store in same baseline file.
-  *Run: `scripts/run-tc3-checks.sh --perf-only` (requires Prometheus up). Pass: rate recorded.*
+  *Run: `scripts/automation/run-tc3-checks.sh --perf-only` (requires Prometheus up). Pass: rate recorded.*
   *Done (2026-02-26): TC3 harness now falls back to hybrid `/metrics` when Prometheus has zero counters; baseline recorded `embedding_cache_hit_rate_pct=94.3`.*
 
 - [ ] **TC3.5.3** Confirm `nixos-unstable` migration track does not break any TC3.1 items (if Phase 10 was completed).
@@ -872,7 +872,7 @@ Not a current priority but track here for when it becomes one.
 - [x] **11.1.1** Generated `requirements.lock` files with `pip-compile --generate-hashes` for: ralph-wiggum (1469 lines), health-monitor (1390 lines), hybrid-coordinator (2800+ lines). aidb lock in progress (large dep graph). aider-wrapper: `aider-chat==0.86.1` does not exist on PyPI (hallucinated version); skip until requirements.txt is corrected. NixOS production deployment already uses `python3.withPackages` (hash-verified by Nix store); lock files serve as pip-based dev/CI artifacts.
 
 - [x] **11.1.2** Add `pip-audit` to the Makefile `make security-check` target. Run it against every locked requirements file.
-  *Implemented (2026-02-26): `make security-check` added as alias for `make security-audit`, which calls `scripts/security-audit.sh` — already runs `pip-audit -r requirements.lock` for each lockfile found under `ai-stack/mcp-servers/`.*
+  *Implemented (2026-02-26): `make security-check` added as alias for `make security-audit`, which calls `scripts/security/security-audit.sh` — already runs `pip-audit -r requirements.lock` for each lockfile found under `ai-stack/mcp-servers/`.*
 
 - [ ] **11.1.3** Add a pre-deployment check in the NixOS module that verifies the Python virtualenv hashes match the lockfiles before starting each MCP server. If hashes don't match, the service refuses to start.
   *Success metric: Manually modifying a package in the venv causes the service to refuse startup with a `"dependency_hash_mismatch"` log entry.*
@@ -903,11 +903,11 @@ Not a current priority but track here for when it becomes one.
 
 - [x] **11.3.1** Add model provenance verification: for each downloaded model, record the HuggingFace commit hash (from the HF API) at download time alongside the sha256. Store in `~/.local/share/nixos-ai-stack/models/provenance.json`.
   *Success metric: After a model download, `provenance.json` contains `{"model": "...", "sha256": "...", "hf_commit": "...", "downloaded_at": "...", "hf_repo": "..."}`.*
-  *Done (2026-02-26, Qwen): Added provenance recording to `scripts/verify-model-safety.sh`; integrated into `llama-cpp-model-fetch.service` and `llama-cpp-embed-model-fetch.service` in `nix/modules/roles/ai-stack.nix`. Provenance JSON includes model path, sha256, HF repo/commit, timestamp, and safety check status.*
+  *Done (2026-02-26, Qwen): Added provenance recording to `scripts/testing/verify-model-safety.sh`; integrated into `llama-cpp-model-fetch.service` and `llama-cpp-embed-model-fetch.service` in `nix/modules/roles/ai-stack.nix`. Provenance JSON includes model path, sha256, HF repo/commit, timestamp, and safety check status.*
 
 - [x] **11.3.2** Add a GGUF metadata safety check: scan the first 4KB of each downloaded GGUF for pickle magic bytes (`\x80\x04`, `\x80\x05`) and embedded Python bytecode. GGUF files should not contain pickle data — presence is a sign of a malicious model.
-  *Success metric: A test file with injected pickle bytes fails the safety check; a clean GGUF passes. Script: `scripts/verify-model-safety.sh <model_path>`.*
-  *Done (2026-02-26, Qwen): Created `scripts/verify-model-safety.sh` with GGUF magic byte verification, pickle scan (first 4KB), and file size minimum check. Script runs automatically after model download before model is moved to final location.*
+  *Success metric: A test file with injected pickle bytes fails the safety check; a clean GGUF passes. Script: `scripts/testing/verify-model-safety.sh <model_path>`.*
+  *Done (2026-02-26, Qwen): Created `scripts/testing/verify-model-safety.sh` with GGUF magic byte verification, pickle scan (first 4KB), and file size minimum check. Script runs automatically after model download before model is moved to final location.*
 
 - [x] **11.3.3** Add a model allowlist: only models whose HuggingFace repo is in a configured allowlist can be downloaded and loaded. Unknown repos are blocked.
   *Success metric: Attempting to set `llamaCpp.huggingFaceRepo` to an unlisted repo triggers a NixOS assertion failure or a runtime refusal in the download script.*
@@ -921,7 +921,7 @@ Not a current priority but track here for when it becomes one.
 
 - [x] **11.4.1** Add `git-secrets` or `trufflehog` as a pre-commit hook that scans staged files for secret patterns (API keys, tokens, private keys, passwords) before every commit.
   *Success metric: Attempting to commit a file containing a string matching `sk-[A-Za-z0-9]{48}` (OpenAI key pattern) is blocked with a clear error message.*
-  *Done (2026-02-26): added repo-managed `.githooks/pre-commit` scanner + `scripts/install-git-hooks.sh`; validated by staging a test file with `sk-...` pattern and confirming hook exit `1` with block message.*
+  *Done (2026-02-26): added repo-managed `.githooks/pre-commit` scanner + `scripts/deploy/install-git-hooks.sh`; validated by staging a test file with `sk-...` pattern and confirming hook exit `1` with block message.*
 
 - [x] **11.4.2** Scan the existing git history for accidentally committed secrets.
   *Success metric: `trufflehog git file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy` completes with no high-confidence findings. Any findings are rotated and git-history-cleaned.*
@@ -937,7 +937,7 @@ Not a current priority but track here for when it becomes one.
 
 - [x] **11.5.1** Add a weekly `pip-audit` and `npm audit` run as a systemd timer. Results written to `~/.local/share/nixos-ai-stack/security/audit-YYYY-MM-DD.json`.
   *Success metric: Timer fires, audit runs, output file created. `systemctl status security-audit.timer` shows last successful run.*
-  *Done (2026-02-26, Qwen): Created `scripts/security-audit.sh` running pip-audit on requirements.lock files and npm audit on package.json roots. Added `ai-security-audit.service` (oneshot) and `ai-security-audit.timer` (weekly) in `nix/modules/services/mcp-servers.nix` with systemd hardening. Added `deployment.securityAuditHighCvssThreshold` option in `nix/modules/core/options.nix`.*
+  *Done (2026-02-26, Qwen): Created `scripts/security/security-audit.sh` running pip-audit on requirements.lock files and npm audit on package.json roots. Added `ai-security-audit.service` (oneshot) and `ai-security-audit.timer` (weekly) in `nix/modules/services/mcp-servers.nix` with systemd hardening. Added `deployment.securityAuditHighCvssThreshold` option in `nix/modules/core/options.nix`.*
 
 - [x] **11.5.2** If any CVEs with CVSS >= 7.0 are found, emit a desktop notification via `notify-send` and write to the dashboard.
   *Success metric: Injecting a known-CVE package into a requirements.txt triggers a desktop notification.*
@@ -995,10 +995,10 @@ Not a current priority but track here for when it becomes one.
 
 ### 12.4 — Process Anomaly Detection
 
-- [x] **12.4.1** Created `scripts/check-mcp-processes.sh` — scans each MCP service's cgroup for non-Nix-store executables. Alerts written to `/var/log/ai-mcp-process-watch/alerts/*.jsonl` + system journal. Wired as `systemd.timers.ai-mcp-process-watch` (every 15 min, DynamicUser, MemoryMax=32M). Also added `TasksMax=256` to `mkHardenedService` to bound child-process spawning per service. Note: alert latency is up to 15 min (polling), not 5 s.
+- [x] **12.4.1** Created `scripts/testing/check-mcp-processes.sh` — scans each MCP service's cgroup for non-Nix-store executables. Alerts written to `/var/log/ai-mcp-process-watch/alerts/*.jsonl` + system journal. Wired as `systemd.timers.ai-mcp-process-watch` (every 15 min, DynamicUser, MemoryMax=32M). Also added `TasksMax=256` to `mkHardenedService` to bound child-process spawning per service. Note: alert latency is up to 15 min (polling), not 5 s.
 
 - [x] **12.4.2** Add file integrity monitoring for the MCP server Python source files using `sha256sum`. Store the baseline hashes in a separate file. Run comparison hourly via a systemd timer.
-  *Implemented (2026-02-26, commit cbba7b4): `scripts/check-mcp-integrity.sh` + `scripts/update-mcp-integrity-baseline.sh` + `systemd.timers.ai-mcp-integrity-check` (hourly). Service uses DynamicUser=true + StateDirectory=ai-mcp-integrity (Phase 14.1.2 update). Alert JSON written to `/var/lib/ai-mcp-integrity/alerts/`. Baseline at `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` (0644).*
+  *Implemented (2026-02-26, commit cbba7b4): `scripts/testing/check-mcp-integrity.sh` + `scripts/security/update-mcp-integrity-baseline.sh` + `systemd.timers.ai-mcp-integrity-check` (hourly). Service uses DynamicUser=true + StateDirectory=ai-mcp-integrity (Phase 14.1.2 update). Alert JSON written to `/var/lib/ai-mcp-integrity/alerts/`. Baseline at `/var/lib/nixos-ai-stack/mcp-source-baseline.sha256` (0644).*
 
 ---
 
@@ -1339,8 +1339,8 @@ Key files:
   *Done (2026-02-26): postflight function now calls `/api/health/probe` with `--max-time 15`, prints healthy status on success, and emits non-fatal warning guidance on failure.*
 
 - [x] **17.6.2** Add `command-center-dashboard-api.service` and `command-center-dashboard-frontend.service` to the `system-health-check.sh` declarative unit checks (already partially present — verify and confirm both are listed).
-  *Success metric: `scripts/system-health-check.sh` reports `OK` or `FAIL` for both dashboard units explicitly.*
-  *Done (2026-02-26): confirmed explicit checks for both units in `scripts/system-health-check.sh`.*
+  *Success metric: `scripts/health/system-health-check.sh` reports `OK` or `FAIL` for both dashboard units explicitly.*
+  *Done (2026-02-26): confirmed explicit checks for both units in `scripts/health/system-health-check.sh`.*
 
 ---
 
@@ -1373,18 +1373,18 @@ Key files:
 
 **Problem:** tool_audit.jsonl, scores.sqlite, query_gaps (Postgres), and PerformanceWindow each capture one slice of performance data. No tool cross-joins them into a human-readable weekly digest.
 
-- [x] **18.1.1** Create `scripts/aq-report` — reads tool_audit.jsonl (last 7d), scores.sqlite (eval scores), and Postgres `query_gaps` table; emits a Markdown + plain-text digest covering:
+- [x] **18.1.1** Create `scripts/ai/aq-report` — reads tool_audit.jsonl (last 7d), scores.sqlite (eval scores), and Postgres `query_gaps` table; emits a Markdown + plain-text digest covering:
   - Tool call latency P50/P95 per tool name
   - Routing split (local % vs remote %) from `LLM_BACKEND_SELECTIONS` Prometheus counter
   - Semantic cache hit rate from `embedding_cache_hits_total` / `misses_total`
   - Top 5 query gaps (repeated unanswered questions) with `aidb import` suggestion
   - Feedback score trend (last 7d average from `scores.sqlite`)
-  *Success metric: `scripts/aq-report` runs to completion on a machine with running services; output contains all 5 sections; no Python tracebacks.*
+  *Success metric: `scripts/ai/aq-report` runs to completion on a machine with running services; output contains all 5 sections; no Python tracebacks.*
 
 - [x] **18.1.2** Add `--since=Nd` flag (default: 7d) and `--format=md|text|json` flag to `aq-report`.
   *Success metric: `aq-report --since=30d --format=json` produces valid JSON with all metric keys.*
 
-- [x] **18.1.3** Add `scripts/aq-report` to the post-deploy post-flight section of `nixos-quick-deploy.sh` as an optional non-blocking call (prints report to stdout if AI stack is reachable).
+- [x] **18.1.3** Add `scripts/ai/aq-report` to the post-deploy post-flight section of `nixos-quick-deploy.sh` as an optional non-blocking call (prints report to stdout if AI stack is reachable).
   *Success metric: After a successful deploy, the operator sees a one-page performance digest without extra commands.*
 
 ---
@@ -1411,8 +1411,8 @@ Key files:
 - [x] **18.3.1** Create `ai-stack/prompts/registry.yaml` — structured registry of prompt templates. Each entry: `id`, `name`, `description`, `template` (Jinja2-compatible), `tags` (list), `mean_score` (float, auto-updated), `last_evaluated` (ISO date). Seed with 5 current working templates (route_search system prompt, gap-detection prompt, memory recall prompt, aider task prompt, eval scorecard prompt).
   *Success metric: File exists with ≥5 entries; each entry validates against a jsonschema schema.*
 
-- [x] **18.3.2** Add `scripts/aq-prompt-eval` — runs each registry entry against a fixed evaluation harness (3 canonical queries) and updates `mean_score` + `last_evaluated` in registry.yaml.
-  *Success metric: `scripts/aq-prompt-eval` runs without error; registry.yaml `mean_score` fields are updated.*
+- [x] **18.3.2** Add `scripts/ai/aq-prompt-eval` — runs each registry entry against a fixed evaluation harness (3 canonical queries) and updates `mean_score` + `last_evaluated` in registry.yaml.
+  *Success metric: `scripts/ai/aq-prompt-eval` runs without error; registry.yaml `mean_score` fields are updated.*
 
 - [x] **18.3.3** Surface top-3 prompt templates in the `aq-report` digest under a "Recommended Prompts" section.
   *Success metric: aq-report output includes "Recommended Prompts" when registry.yaml contains ≥3 entries with `mean_score > 0`.*
@@ -1451,7 +1451,7 @@ Key files:
 
 | Sub-phase | Gate |
 |-----------|------|
-| 18.1 | `scripts/aq-report` produces 5-section digest in <30s on live system |
+| 18.1 | `scripts/ai/aq-report` produces 5-section digest in <30s on live system |
 | 18.2 | `scores.sqlite` rows have `strategy_tag` populated; aq-report groups by tag |
 | 18.3 | `ai-stack/prompts/registry.yaml` has ≥5 entries; `aq-prompt-eval` updates scores |
 | 18.4 | ≥1 workflow recommendation appears in aq-report; MOTD optional works |
@@ -1470,7 +1470,7 @@ recommendations.
 **Delivery channels (agent-agnostic):**
 - REST `POST /hints` on hybrid-coordinator — any agent over HTTP
 - MCP tool `get_workflow_hints` — Claude Code and any MCP-compatible agent
-- `scripts/aq-hints` CLI — terminal, shell pipelines, codex/qwen/aider via bash
+- `scripts/ai/aq-hints` CLI — terminal, shell pipelines, codex/qwen/aider via bash
 - `/etc/profile.d/aq-completions.sh` — bash/zsh tab-complete for humans
 - Continue.dev `@aq-hints` context provider — VSCode / VSCodium
 
@@ -1485,13 +1485,13 @@ recommendations.
   *Success metric: `HintsEngine().rank("conflicting NixOS")` returns ≥1 hint with
   `type="prompt_template"` and `score > 0.5` in <200ms.*
 
-- [x] **19.1.2** Create `scripts/aq-hints` — standalone Python CLI wrapping `HintsEngine`.
+- [x] **19.1.2** Create `scripts/ai/aq-hints` — standalone Python CLI wrapping `HintsEngine`.
   Flags: `[QUERY]`, `--format=json|text|shell-complete`, `--context=EXT`,
   `--max=N` (default 5), `--agent=TYPE` (human|claude|codex|qwen|aider|continue).
   *Success metric: `aq-hints "conflicting NixOS" --format=json | jq '.hints[0].type'`
   returns `"prompt_template"` or `"gap_topic"`.*
 
-- [x] **19.1.3** Create `scripts/aq-completions.sh` — bash/zsh completion for all `aq-*`
+- [x] **19.1.3** Create `scripts/ai/aq-completions.sh` — bash/zsh completion for all `aq-*`
   tools sourcing `aq-hints --format=shell-complete` for dynamic query completions.
   *Success metric: After sourcing, `aq-hints <TAB>` completes from live hint data.*
 
@@ -1566,13 +1566,13 @@ receives instructions in its native format. A sync script keeps agent files up t
   from `.gemini/` directory. Covers project overview, key file locations, port policy.
   *Success metric: `gemini -p "@./ what is the port policy?"` references this file.*
 
-- [x] **19.4.4** Create `scripts/sync-agent-instructions` — regenerates all agent
+- [x] **19.4.4** Create `scripts/data/sync-agent-instructions` — regenerates all agent
   instruction files from CLAUDE.md + MEMORY.md source of truth. Run after each
   CLAUDE.md update. Validates generated files with bash -n (shell) or wc -l (text).
   *Success metric: Script runs without error; AGENTS.md mtime updates.*
 
 - [ ] **19.4.5** Add CLAUDE.md + MEMORY.md to AIDB knowledge sync so local LLMs can
-  retrieve project rules via RAG. Update `scripts/sync-knowledge-sources` to POST
+  retrieve project rules via RAG. Update `scripts/data/sync-knowledge-sources` to POST
   both files to AIDB `/documents`.
   *Success metric: `aidb search "port policy"` returns a result from CLAUDE.md.*
 

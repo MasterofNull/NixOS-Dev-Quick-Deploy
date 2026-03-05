@@ -48,7 +48,7 @@ Successfully eliminated all default and weak passwords from the system by implem
 
 ### 1. Password Generation ✅
 
-**Script Created:** `scripts/generate-passwords.sh` (137 lines)
+**Script Created:** `scripts/data/generate-passwords.sh` (137 lines)
 
 **Password Specifications:**
 - **Length:** 32 characters
@@ -214,7 +214,7 @@ db_url = build_postgres_url(host="postgres", database="aidb")
 
 ### New Files Created:
 
-1. **`scripts/generate-passwords.sh`** (137 lines)
+1. **`scripts/data/generate-passwords.sh`** (137 lines)
    - Password generation script
    - Safety warnings for regeneration
    - Comprehensive output and instructions

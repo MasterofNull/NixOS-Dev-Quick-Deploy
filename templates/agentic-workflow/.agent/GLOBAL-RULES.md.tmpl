@@ -1,0 +1,25 @@
+# Global Rules
+
+## Mission
+Ship incremental, validated slices with explicit evidence and rollback notes.
+
+## Core Workflow
+1. Scope lock before editing.
+2. Security gate before implementation.
+3. Discovery first, then phased plan.
+4. Execute one logical slice at a time.
+5. Validate with syntax/build/tests/smoke.
+6. Capture evidence and rollback command in handoff.
+
+## Golden Rules
+- Context is precious: reset between plan and execute phases.
+- Commandify repetitive workflows.
+- Prefer declarative config over runtime scripting when feasible.
+- Do not finalize work without validation evidence.
+
+## Tooling Contract
+- Start non-trivial tasks with:
+  - POST /workflow/plan
+  - POST /workflow/run/start (with intent_contract)
+  - GET /hints
+- Keep tool/discovery outputs in project docs under .agent/workflows.

@@ -11,7 +11,7 @@ RemainAfterExit=yes
 # Include /run/wrappers/bin for setuid helpers (newuidmap/newgidmap)
 Environment="PATH=/run/wrappers/bin:/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
 Environment="HOME=%h"
-ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-startup.sh
 TimeoutStartSec=300
 Restart=no
 

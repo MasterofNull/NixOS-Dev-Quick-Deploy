@@ -63,15 +63,15 @@ The system dashboard uses **two separate collectors** to optimize performance:
 
 ```bash
 # Manage collectors
-bash scripts/manage-dashboard-collectors.sh start    # Start both
-bash scripts/manage-dashboard-collectors.sh stop     # Stop both
-bash scripts/manage-dashboard-collectors.sh restart  # Restart both
-bash scripts/manage-dashboard-collectors.sh status   # Check status
-bash scripts/manage-dashboard-collectors.sh logs     # View logs
+bash scripts/governance/manage-dashboard-collectors.sh start    # Start both
+bash scripts/governance/manage-dashboard-collectors.sh stop     # Stop both
+bash scripts/governance/manage-dashboard-collectors.sh restart  # Restart both
+bash scripts/governance/manage-dashboard-collectors.sh status   # Check status
+bash scripts/governance/manage-dashboard-collectors.sh logs     # View logs
 
 # Manual collection (for testing)
-bash scripts/generate-dashboard-data-lite.sh   # Only system + network
-bash scripts/generate-dashboard-data.sh        # Full collection
+bash scripts/data/generate-dashboard-data-lite.sh   # Only system + network
+bash scripts/data/generate-dashboard-data.sh        # Full collection
 ```
 
 ## Performance Metrics
@@ -105,12 +105,12 @@ This matches the GNOME Resources monitor's 1-second update rate while being effi
 
 ### Collection Scripts
 
-- [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh)
+- [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh)
   - Main data collection script
   - Supports `--lite-mode` flag for fast collection
   - Default: Collects all metrics
 
-- [scripts/generate-dashboard-data-lite.sh](/scripts/generate-dashboard-data-lite.sh)
+- [scripts/data/generate-dashboard-data-lite.sh](/scripts/data/generate-dashboard-data-lite.sh)
   - Wrapper that calls main script with `--lite-mode`
   - Only collects system and network metrics
 
@@ -126,7 +126,7 @@ This matches the GNOME Resources monitor's 1-second update rate while being effi
 
 ### Management Script
 
-- [scripts/manage-dashboard-collectors.sh](/scripts/manage-dashboard-collectors.sh)
+- [scripts/governance/manage-dashboard-collectors.sh](/scripts/governance/manage-dashboard-collectors.sh)
   - Unified manager for both collectors
   - Commands: start, stop, restart, status, logs
 
@@ -147,10 +147,10 @@ This prevents the lite and full collectors from running simultaneously and corru
 
 ```bash
 # Check process status
-bash scripts/manage-dashboard-collectors.sh status
+bash scripts/governance/manage-dashboard-collectors.sh status
 
 # Start if stopped
-bash scripts/manage-dashboard-collectors.sh start
+bash scripts/governance/manage-dashboard-collectors.sh start
 ```
 
 ### Dashboard graphs not updating
@@ -160,7 +160,7 @@ bash scripts/manage-dashboard-collectors.sh start
 ls -lh ~/.local/share/nixos-system-dashboard/*.json
 
 # Restart collectors
-bash scripts/manage-dashboard-collectors.sh restart
+bash scripts/governance/manage-dashboard-collectors.sh restart
 ```
 
 ### Lock file conflicts
@@ -170,14 +170,14 @@ bash scripts/manage-dashboard-collectors.sh restart
 rm -f ~/.local/share/nixos-system-dashboard/.lock
 
 # Restart collectors
-bash scripts/manage-dashboard-collectors.sh restart
+bash scripts/governance/manage-dashboard-collectors.sh restart
 ```
 
 ### High CPU usage
 
 ```bash
 # Check collector logs
-bash scripts/manage-dashboard-collectors.sh logs
+bash scripts/governance/manage-dashboard-collectors.sh logs
 
 # If needed, increase sleep intervals:
 # Edit ${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh - change 'sleep 2' to 'sleep 5'
@@ -213,8 +213,8 @@ systemd.user.services.dashboard-collectors = {
 
   serviceConfig = {
     Type = "forking";
-    ExecStart = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/manage-dashboard-collectors.sh start";
-    ExecStop = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/manage-dashboard-collectors.sh stop";
+    ExecStart = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/governance/manage-dashboard-collectors.sh start";
+    ExecStop = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/governance/manage-dashboard-collectors.sh stop";
     Restart = "on-failure";
     RestartSec = 10;
   };
@@ -223,10 +223,10 @@ systemd.user.services.dashboard-collectors = {
 
 ### Dashboard Server
 
-The dashboard is served by [scripts/serve-dashboard.sh](/scripts/serve-dashboard.sh):
+The dashboard is served by [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh):
 
 ```bash
-bash scripts/serve-dashboard.sh
+bash scripts/deploy/serve-dashboard.sh
 # Open http://localhost:8888/dashboard.html
 ```
 
@@ -234,7 +234,7 @@ bash scripts/serve-dashboard.sh
 
 - [SYSTEM-DASHBOARD-GUIDE.md](SYSTEM-DASHBOARD-GUIDE.md) - Complete dashboard guide
 - [SYSTEM-DASHBOARD-README.md](SYSTEM-DASHBOARD-README.md) - Dashboard overview
-- [scripts/generate-dashboard-data.sh](/scripts/generate-dashboard-data.sh) - Main collection script
+- [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Main collection script
 
 ## Change Log
 

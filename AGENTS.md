@@ -82,7 +82,18 @@ New service pattern:
 - `nix/modules/roles/ai-stack.nix` — AI stack wiring/env injection
 - `nix/modules/services/switchboard.nix` — profile router/policies
 - `config/service-endpoints.sh` — canonical endpoint definitions
-- `scripts/aq-hints` — workflow hints CLI
+- `scripts/ai/aq-hints` — workflow hints CLI
+- `scripts/governance/repo-structure-lint.sh` — enforced repository structure policy
+- `config/repo-structure-allowlist.txt` — grandfathered legacy path exceptions
+
+## Repository Structure Rules (Always Applied)
+- Do not create new files in repo root unless explicitly required and approved.
+- Do not create new files directly in `docs/` root; use subject folders (for example `docs/operations`, `docs/security`, `docs/architecture`, `docs/testing`, `docs/roadmap`).
+- Do not create new files directly in `scripts/` root; use subject folders (for example `scripts/deploy`, `scripts/health`, `scripts/security`, `scripts/testing`, `scripts/data`, `scripts/ai`, `scripts/utils`, `scripts/governance`).
+- Validate structure before commit:
+```bash
+scripts/governance/repo-structure-lint.sh --staged
+```
 
 ## Hints First for Complex Tasks
 ```bash

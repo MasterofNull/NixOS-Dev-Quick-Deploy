@@ -158,8 +158,8 @@ These files have been updated and will be deployed:
 |------|---------|
 | `nix/hosts/nixos/facts.nix` | Added `rocmGfxOverride`, `llamaCpp.extraArgs`, `embeddingServer.extraArgs` |
 | `ai-stack/mcp-servers/aidb/server.py` | Fixed embedding fallback to use correct URL |
-| `scripts/check-mcp-health.sh` | Added `--optional` flag support |
-| `scripts/rebuild-qdrant-collections.sh` | Fixed uninitialized variables |
+| `scripts/testing/check-mcp-health.sh` | Added `--optional` flag support |
+| `scripts/data/rebuild-qdrant-collections.sh` | Fixed uninitialized variables |
 
 **All changes are declarative** - they survive rebuilds and reboots.
 

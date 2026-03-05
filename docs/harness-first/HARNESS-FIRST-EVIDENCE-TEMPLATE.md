@@ -16,10 +16,10 @@ Task ID: HF-YYYYMMDD-001
 
 ## Commands Executed
 ```bash
-scripts/aq-hints "<task summary>" --format=json --agent=codex
-node scripts/harness-rpc.js run-start --workflow-id "<workflow_id>" --query "<task summary>"
-scripts/aq-qa 0 --json
-scripts/aq-qa 1 --json
+scripts/ai/aq-hints "<task summary>" --format=json --agent=codex
+node scripts/ai/harness-rpc.js run-start --workflow-id "<workflow_id>" --query "<task summary>"
+scripts/ai/aq-qa 0 --json
+scripts/ai/aq-qa 1 --json
 ```
 
 ## Validation Evidence

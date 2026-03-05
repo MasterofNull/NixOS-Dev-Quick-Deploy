@@ -11,7 +11,7 @@ Group=%u
 WorkingDirectory=__PROJECT_ROOT__
 
 # Run the backup script
-ExecStart=__PROJECT_ROOT__/scripts/backup-postgresql.sh
+ExecStart=__PROJECT_ROOT__/scripts/data/backup-postgresql.sh
 
 # Logging
 StandardOutput=journal

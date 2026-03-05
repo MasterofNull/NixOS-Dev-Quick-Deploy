@@ -360,7 +360,7 @@ in {
                 # Phase 11.3 — Model Weight Integrity: Run safety verification
                 # This checks for pickle magic bytes and records provenance metadata.
                 echo "llama-cpp: running Phase 11.3 model safety verification..."
-                ${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/verify-model-safety.sh \
+                ${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/testing/verify-model-safety.sh \
                   --hf-repo "${hfRepo}" \
                   --provenance-dir "${dataDir}/models" \
                   "$tmp"
@@ -544,7 +544,7 @@ in {
                 # Phase 11.3 — Model Weight Integrity: Run safety verification
                 # This checks for pickle magic bytes and records provenance metadata.
                 echo "llama-cpp-embed: running Phase 11.3 model safety verification..."
-                ${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/verify-model-safety.sh \
+                ${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/testing/verify-model-safety.sh \
                   --hf-repo "${embedHfRepo}" \
                   --provenance-dir "${dataDir}/models" \
                   "$tmp"
@@ -740,7 +740,7 @@ in {
     # This must not depend on shell-completions, otherwise aq-hints can be missing
     # from PATH when completions are disabled.
     (lib.mkIf roleEnabled {
-      environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/aq-hints";
+      environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
       environment.etc."profile.d/aq-path.sh" = {
         mode = "0644";
         text = ''
@@ -757,7 +757,7 @@ in {
     (lib.mkIf (roleEnabled && cfg.aiStack.shellCompletions) {
       environment.etc."profile.d/aq-completions.sh" = {
         mode = "0644";
-        source = "${cfg.mcpServers.repoPath}/scripts/aq-completions.sh";
+        source = "${cfg.mcpServers.repoPath}/scripts/ai/aq-completions.sh";
       };
     })
 
@@ -773,7 +773,7 @@ in {
           # Prints a condensed digest if the last aq-report is >24h old.
           _aq_motd() {
             local stamp_file="/tmp/aq-report-motd-stamp"
-            local report_script="${repoPath}/scripts/aq-report"
+            local report_script="${repoPath}/scripts/ai/aq-report"
             [[ -x "$report_script" ]] || return 0
             if [[ -f "$stamp_file" ]]; then
               local age=$(( $(date +%s) - $(stat -c %Y "$stamp_file") ))
@@ -785,7 +785,7 @@ in {
             # Print only the 5 most informative lines: routing, cache, trend, top gap, first rec
             printf '\n── AI Stack Digest ──\n'
             printf '%s\n' "$out" | grep -E '^\s+(Local:|Hits:|Runs:|  1\.|  1\. )' | head -5
-            printf '  Full report: %s --since=7d\n' "${repoPath}/scripts/aq-report"
+            printf '  Full report: %s --since=7d\n' "${repoPath}/scripts/ai/aq-report"
             printf '────────────────────\n\n'
           }
           _aq_motd
@@ -803,7 +803,7 @@ in {
           Type = "oneshot";
           User = "root";
           ExecStart = let
-            script = "${cfg.mcpServers.repoPath}/scripts/aq-report";
+            script = "${cfg.mcpServers.repoPath}/scripts/ai/aq-report";
           in "${script} --since=7d --format=md --aidb-import";
           StandardOutput = "journal";
           StandardError = "journal";
@@ -835,7 +835,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${cfg.mcpServers.repoPath}/scripts/aq-prompt-eval";
+          ExecStart = "${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -867,7 +867,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/import-agent-instructions.sh";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/data/import-agent-instructions.sh";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -901,7 +901,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${cfg.mcpServers.repoPath}/scripts/aq-gap-import";
+          ExecStart = "${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-import";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -937,7 +937,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/aq-optimizer --since=1d";
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-optimizer --since=1d";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -976,7 +976,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/prsi-orchestrator.py cycle --since=1d --execute-limit=5";
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py cycle --since=1d --execute-limit=5";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -1016,7 +1016,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/seed-routing-traffic.sh --count ${toString ai.aiHarness.runtime.cachePrewarm.queryCount}";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/data/seed-routing-traffic.sh --count ${toString ai.aiHarness.runtime.cachePrewarm.queryCount}";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;

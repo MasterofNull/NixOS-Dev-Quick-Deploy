@@ -209,7 +209,7 @@ podman logs local-ai-llama-cpp 2>&1 | head -20
 
 # Update docker-compose.yml or restart command to include --embeddings flag
 # Then regenerate embeddings:
-python3 scripts/populate-knowledge-from-web.py
+python3 scripts/data/populate-knowledge-from-web.py
 ```
 
 **Expected Result:** Embeddings generated, semantic search functional
@@ -333,7 +333,7 @@ The knowledge base now contains widely-applicable, authoritative information tha
 **Status:** ✅ Data populated, awaiting embeddings for semantic search
 
 **Files:**
-- Script: [scripts/populate-knowledge-from-web.py](/scripts/populate-knowledge-from-web.py)
+- Script: [scripts/data/populate-knowledge-from-web.py](/scripts/data/populate-knowledge-from-web.py)
 - Log: `/tmp/knowledge-population.log`
 
 **Qdrant Collections:**

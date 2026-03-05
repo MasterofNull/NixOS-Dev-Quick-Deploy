@@ -1006,7 +1006,7 @@ print_post_install() {
     print_info "AI Stack Cohesion Checks:"
     echo ""
 
-    local drift_script="${SCRIPT_DIR}/scripts/validate-ai-stack-env-drift.sh"
+    local drift_script="${SCRIPT_DIR}/scripts/testing/validate-ai-stack-env-drift.sh"
     if [[ -x "$drift_script" ]]; then
         if "$drift_script"; then
             echo "  Env drift check: OK"

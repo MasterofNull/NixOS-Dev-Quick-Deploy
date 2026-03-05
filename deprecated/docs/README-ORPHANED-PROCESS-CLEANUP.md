@@ -26,7 +26,7 @@ We've implemented **three layers of protection** against orphaned processes:
 
 ### Layer 1: Enhanced Stop Script
 
-**File:** [`scripts/stop-ai-stack.sh`](./stop-ai-stack.sh)
+**File:** [`scripts/deploy/stop-ai-stack.sh`](./stop-ai-stack.sh)
 
 Enhanced to kill orphaned processes by:
 - **Port-based cleanup**: Checks all AI stack ports (8091, 8791, 8092, 8094, 3001, 8098) and kills processes
@@ -35,12 +35,12 @@ Enhanced to kill orphaned processes by:
 
 **Usage:**
 ```bash
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 ```
 
 ### Layer 2: Smart Start Script
 
-**File:** [`scripts/start-ai-stack-and-dashboard.sh`](./start-ai-stack-and-dashboard.sh)
+**File:** [`scripts/deploy/start-ai-stack-and-dashboard.sh`](./start-ai-stack-and-dashboard.sh)
 
 Enhanced pre-flight checks that:
 - **Detect orphaned processes**: Scans AI stack ports for suspicious processes
@@ -231,15 +231,15 @@ Add cleanup as a pre-deployment step:
 
 - name: Deploy AI stack
   run: |
-    ./scripts/start-ai-stack-and-dashboard.sh
+    ./scripts/deploy/start-ai-stack-and-dashboard.sh
 ```
 
 ## Prevention Best Practices
 
 1. **Use stop script before deploys:**
    ```bash
-   ./scripts/stop-ai-stack.sh
-   ./scripts/start-ai-stack-and-dashboard.sh
+   ./scripts/deploy/stop-ai-stack.sh
+   ./scripts/deploy/start-ai-stack-and-dashboard.sh
    ```
 
 2. **Enable systemd service for boot cleanup:**

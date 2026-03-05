@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 #
-# Unit tests for scripts/validate-skill-references.sh
+# Unit tests for scripts/testing/validate-skill-references.sh
 #
 
 load test_helper
 
-VALIDATE_SCRIPT="$PROJECT_ROOT/scripts/validate-skill-references.sh"
+VALIDATE_SCRIPT="$PROJECT_ROOT/scripts/testing/validate-skill-references.sh"
 FIXTURE_ROOT="$PROJECT_ROOT/archive/test-fixtures/skill-reference-lint"
 
 @test "validate-skill-references passes for valid fixture roots" {

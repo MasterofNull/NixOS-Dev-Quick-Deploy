@@ -224,7 +224,7 @@ License: MIT
 
 ```bash
 # Use the secrets management tool
-./scripts/manage-secrets.sh backup
+./scripts/governance/manage-secrets.sh backup
 ```
 
 ### Automated Backups (K3s)

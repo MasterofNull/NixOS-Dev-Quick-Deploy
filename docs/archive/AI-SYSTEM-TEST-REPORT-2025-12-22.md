@@ -303,8 +303,8 @@ def get_embedding(text):
 ```
 
 **Files Modified**:
-- `scripts/test-rag-workflow.py` ✅
-- `scripts/test-continuous-learning.py` ✅
+- `scripts/testing/test-rag-workflow.py` ✅
+- `scripts/testing/test-continuous-learning.py` ✅
 
 ---
 

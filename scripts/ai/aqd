@@ -1,0 +1,1524 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+AQD_VERSION="0.3.0"
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+AQD CLI - Agent/Skill/MCP command wrapper
+
+Usage:
+  aqd --version
+
+  aqd skill validate
+  aqd skill quick-validate <skill-path>
+  aqd skill init <name> [--path <dir>]
+  aqd skill package <skill-path> [output-dir]
+  aqd skill bundle-index [skills-dir] [bundles-dir] [index-json]
+  aqd skill bundle-install <index-json> <skill-name> [target-dir] [--force]
+  aqd skill sign-index [index-json] [private-key] [sig-path]
+  aqd skill verify-index [index-json] [public-key] [sig-path]
+
+  aqd mcp scaffold <name> [--type python|deno]
+  aqd mcp validate <name>
+  aqd mcp test <name>
+  aqd mcp evaluate <evaluation-xml> [evaluation-args...]
+  aqd mcp logs <name> [-f]
+  aqd mcp deploy-aidb
+
+  aqd workflows list
+  aqd workflows project-init [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
+  aqd workflows primer [--target <dir>] [--objective <text>] [--output <file>]
+  aqd workflows brownfield [--target <dir>] [--objective <text>] [--constraints <text>] [--out-of-scope <text>] [--acceptance <text>] [--force]
+  aqd workflows retrofit [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
+  aqd workflows bootstrap --name <project-name> --goal <goal> [--target <dir>] [--stack <stack>] [--owner <owner>] [--force]
+  aqd policy evaluate --profile <name> --task <text> [--tool <name>]
+  aqd reasoning route --query <text>
+  aqd parity advanced-suite
+  aqd parity regression-gate [--offline|--online]
+  aqd parity generate-provenance [output-dir]
+  aqd parity check-auth
+  aqd parity check-slo
+  aqd parity check-boot-shutdown
+  aqd parity chaos-smoke
+  aqd parity cross-client-smoke
+
+Notes:
+  - Run from repository root or ensure this script can resolve repo paths.
+  - This wrapper is the pinned MCP/skill-to-CLI converter implementation.
+EOF
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+run_python() {
+  local -a args=("$@")
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 "${args[@]}"
+    return
+  fi
+
+  if command -v nix-shell >/dev/null 2>&1; then
+    local cmd="python3"
+    local arg
+    for arg in "${args[@]}"; do
+      cmd+=" $(printf '%q' "$arg")"
+    done
+    nix-shell -p python3 --run "$cmd"
+    return
+  fi
+
+  if command -v nix >/dev/null 2>&1; then
+    nix --extra-experimental-features "nix-command flakes" shell nixpkgs#python3 --command python3 "${args[@]}"
+    return
+  fi
+
+  die "required command not found: python3 (and nix fallback unavailable)"
+}
+
+run_python_with_yaml() {
+  local -a args=("$@")
+
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 - <<'PY' >/dev/null 2>&1
+import yaml  # noqa: F401
+PY
+    then
+      python3 "${args[@]}"
+      return
+    fi
+  fi
+
+  if command -v nix-shell >/dev/null 2>&1; then
+    local cmd="python3"
+    local arg
+    for arg in "${args[@]}"; do
+      cmd+=" $(printf '%q' "$arg")"
+    done
+    nix-shell -p python3 python3Packages.pyyaml --run "$cmd"
+    return
+  fi
+
+  if command -v nix >/dev/null 2>&1; then
+    nix --extra-experimental-features "nix-command flakes" shell \
+      nixpkgs#python3 nixpkgs#python3Packages.pyyaml \
+      --command python3 "${args[@]}"
+    return
+  fi
+
+  die "required dependency missing: python3 + PyYAML (and nix fallback unavailable)"
+}
+
+ai_layer_error() {
+  local code="$1"
+  local phase="$2"
+  local detail="$3"
+  local next_step="${4:-Review command usage and provide missing inputs.}"
+  cat >&2 <<EOF
+AI_LAYER_ERROR
+- code: ${code}
+- phase: ${phase}
+- detail: ${detail}
+- next_step: ${next_step}
+EOF
+}
+
+prompt_if_empty() {
+  local current="${1:-}"
+  local prompt="${2:-Enter value}"
+  if [[ -n "$current" ]]; then
+    printf '%s' "$current"
+    return 0
+  fi
+  local value=""
+  read -r -p "${prompt}: " value
+  printf '%s' "$value"
+}
+
+iso_utc_now() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+render_template_file() {
+  local src="$1"
+  local dest="$2"
+  local project_name="${3:-TBD}"
+  local goal="${4:-TBD}"
+  local stack="${5:-TBD}"
+  local owner="${6:-TBD}"
+
+  [[ -f "$src" ]] || die "template file not found: $src"
+  mkdir -p "$(dirname "$dest")"
+  sed \
+    -e "s|@PROJECT_NAME@|${project_name}|g" \
+    -e "s|@GOAL@|${goal}|g" \
+    -e "s|@STACK@|${stack}|g" \
+    -e "s|@OWNER@|${owner}|g" \
+    "$src" > "$dest"
+}
+
+ensure_agent_dir() {
+  local target_dir="$1"
+  mkdir -p "$target_dir/.agent/commands" "$target_dir/.agent/workflows"
+}
+
+write_agent_command_specs() {
+  local target_dir="$1"
+  local project_name="${2:-TBD}"
+  local goal="${3:-TBD}"
+  local stack="${4:-TBD}"
+  local owner="${5:-TBD}"
+
+  ensure_agent_dir "$target_dir"
+  mkdir -p "$target_dir/.claude/commands" "$target_dir/.agents/plans"
+
+  local template_root="${PROJECT_ROOT}/templates/agentic-workflow"
+  if [[ -d "$template_root" ]]; then
+    render_template_file "$template_root/.claude/CLAUDE.md.tmpl" "$target_dir/.claude/CLAUDE.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/prime.md.tmpl" "$target_dir/.claude/commands/prime.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/create-prd.md.tmpl" "$target_dir/.claude/commands/create-prd.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/plan-feature.md.tmpl" "$target_dir/.claude/commands/plan-feature.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/execute.md.tmpl" "$target_dir/.claude/commands/execute.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/commit.md.tmpl" "$target_dir/.claude/commands/commit.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/explore-harness.md.tmpl" "$target_dir/.claude/commands/explore-harness.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/project-init.md.tmpl" "$target_dir/.claude/commands/project-init.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/primer.md.tmpl" "$target_dir/.claude/commands/primer.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.claude/commands/brownfield.md.tmpl" "$target_dir/.claude/commands/brownfield.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agents/README.md.tmpl" "$target_dir/.agents/README.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agents/plans/README.md.tmpl" "$target_dir/.agents/plans/README.md" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agents/plans/phase-template.md.tmpl" "$target_dir/.agents/plans/phase-template.md" "$project_name" "$goal" "$stack" "$owner"
+    return 0
+  fi
+
+  cat > "$target_dir/.agent/commands/project-init.md" <<'EOF'
+# /project-init
+
+Guided new-project bootstrap workflow.
+
+## Behavior
+1. Collect objective, constraints, scope boundaries, acceptance checks.
+2. Create AI layer scaffold and workflow starter files.
+3. Install git secret guards (commit/push).
+4. Pause for user confirmation before implementation.
+EOF
+
+  cat > "$target_dir/.agent/commands/primer.md" <<'EOF'
+# /primer
+
+Read-only session priming workflow.
+
+## Behavior
+1. Load minimal context in tiers (AI-layer metadata -> latest evidence -> git status).
+2. Expand only on-demand.
+3. Emit compact session summary artifact for continuity.
+4. Do not mutate project source files.
+EOF
+
+  cat > "$target_dir/.agent/commands/brownfield.md" <<'EOF'
+# /brownfield
+
+Guided existing-system improvement workflow.
+
+## Behavior
+1. Discover architecture, active changes, and health/test signals first.
+2. Create brownfield PRD/PDR from current system state.
+3. Execute in slices; each slice should be commit/push/comment isolated.
+4. Keep existing AI layer and update only what is needed.
+EOF
+
+  cat > "$target_dir/.claude/CLAUDE.md" <<'EOF'
+# CLAUDE.md
+
+This file provides guidance to Claude Code when working in this generated repository.
+
+## Project Overview
+
+This project is initialized with an agentic AI layer that supports:
+- greenfield bootstrap (`/project-init`),
+- read-only session priming (`/primer`),
+- brownfield planning/improvement (`/brownfield`).
+
+## Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| `.agent/*` artifacts | PRD/rules/workflow evidence |
+| `.claude/commands/*` | repeatable command workflows |
+| `.agents/plans/*` | progressive disclosure planning |
+| `aqd` workflow CLI | local command entrypoint |
+
+## Commands
+
+```bash
+# Prime context
+/prime
+
+# Build or update PRD
+/create-prd .agent/PROJECT-PRD.md
+
+# Plan a feature/slice
+/plan-feature "describe objective"
+
+# Execute a plan
+/execute .agents/plans/phase-template.md
+
+# Brownfield planning
+/brownfield
+```
+
+## Project Structure
+
+```text
+.agent/
+  PROJECT-PRD.md
+  GLOBAL-RULES.md
+  workflows/
+.claude/
+  CLAUDE.md
+  commands/
+.agents/
+  plans/
+```
+
+## Code Patterns
+- Keep context minimal; load deep references only when needed.
+- One logical slice per implementation step when practical.
+- Validate before commit/push.
+- Never hardcode secrets, ports, or service URLs.
+
+## Validation
+
+Run project-specific checks before commit. At minimum:
+```bash
+git status --short
+```
+
+## On-Demand Context
+
+| Topic | File |
+|-------|------|
+| PRD | `.agent/PROJECT-PRD.md` |
+| Rules | `.agent/GLOBAL-RULES.md` |
+| Plans | `.agents/plans/` |
+| Workflow evidence | `.agent/workflows/` |
+EOF
+
+  cat > "$target_dir/.claude/commands/prime.md" <<'EOF'
+---
+description: Prime agent with project context using progressive disclosure
+---
+
+# Prime: Load Project Context
+
+## Objective
+Build quick understanding without loading unnecessary files.
+
+## Steps
+1. Inspect structure (`git ls-files`, top-level directories).
+2. Read only:
+   - `.agent/PROJECT-PRD.md`
+   - `.agent/GLOBAL-RULES.md`
+   - latest files in `.agent/workflows/`
+   - latest plan file in `.agents/plans/`
+3. Check git status and recent commits.
+4. Summarize current state and next suggested slice.
+EOF
+
+  cat > "$target_dir/.claude/commands/create-prd.md" <<'EOF'
+---
+description: Create or refresh PRD for this project
+argument-hint: [output-path]
+---
+
+# Create PRD
+
+Write PRD to `$ARGUMENTS` (default `.agent/PROJECT-PRD.md`) using this structure:
+1. Executive Summary
+2. Mission
+3. Scope (in/out)
+4. Constraints
+5. Architecture
+6. Security and configuration
+7. Implementation phases
+8. Validation and success criteria
+9. Risks and mitigations
+
+If key inputs are missing, ask clarifying questions instead of guessing.
+EOF
+
+  cat > "$target_dir/.claude/commands/plan-feature.md" <<'EOF'
+---
+description: Build a comprehensive implementation plan for a feature/slice
+argument-hint: [feature-or-slice]
+---
+
+# Plan Feature
+
+Create a plan file in `.agents/plans/` with:
+1. Objective
+2. Problem statement
+3. Solution statement
+4. Context references (files/docs to read first)
+5. Step-by-step tasks
+6. Validation commands
+7. Evidence requirements
+8. Rollback notes
+
+Use progressive disclosure and include only relevant references.
+EOF
+
+  cat > "$target_dir/.claude/commands/execute.md" <<'EOF'
+---
+description: Execute implementation from a plan file
+argument-hint: [plan-file]
+---
+
+# Execute Plan
+
+1. Read the plan file from `$ARGUMENTS`.
+2. Implement tasks in order.
+3. Run validation commands from the plan.
+4. Produce summary:
+   - files changed
+   - commands run
+   - validation results
+   - rollback note
+
+If validation fails, fix and re-run before completion.
+EOF
+
+  cat > "$target_dir/.claude/commands/commit.md" <<'EOF'
+---
+description: Commit current slice with clear scope
+---
+
+# Commit Slice
+
+1. Inspect staged/unstaged changes.
+2. Ensure only one logical slice is included.
+3. Write an atomic commit message (`feat|fix|docs|refactor: ...`).
+4. Confirm this slice has validation evidence.
+5. Commit and push.
+EOF
+
+  cat > "$target_dir/.claude/commands/explore-harness.md" <<'EOF'
+---
+description: Explore available AI stack harness capabilities quickly
+---
+
+# Explore Harness
+
+Run and summarize:
+1. `scripts/ai/aqd workflows list`
+2. `scripts/ai/aqd workflows primer --target . --objective "explore harness"`
+3. `scripts/ai/aqd workflows brownfield --target . --objective "map harness capabilities"`
+
+Output:
+- available workflows
+- generated artifacts
+- recommended next command for the current objective
+EOF
+
+  cat > "$target_dir/.claude/commands/project-init.md" <<'EOF'
+---
+description: Guided greenfield initialization workflow
+---
+
+# Project Init
+
+1. Collect objective, constraints, out-of-scope, acceptance checks.
+2. Create/update `.agent/PROJECT-PRD.md`.
+3. Ensure `.agent/GLOBAL-RULES.md` and phase plan exist.
+4. Confirm validation commands and rollback notes are defined.
+5. Do not start implementation until user confirms scope.
+EOF
+
+  cat > "$target_dir/.claude/commands/primer.md" <<'EOF'
+---
+description: Read-only session primer with progressive disclosure
+---
+
+# Primer
+
+1. Load minimal context only:
+   - `.agent` metadata
+   - latest workflow evidence
+   - git status
+2. Produce session summary.
+3. Ask user what to focus on next.
+4. Do not mutate repository files in this mode.
+EOF
+
+  cat > "$target_dir/.claude/commands/brownfield.md" <<'EOF'
+---
+description: Guided existing-system (brownfield) planning workflow
+---
+
+# Brownfield
+
+1. Discover current codebase state and active changes.
+2. Create/update brownfield PDR in `.agent/workflows/`.
+3. Define slice plans in `.agents/plans/`.
+4. Execute slices with commit/push/comment isolation.
+EOF
+
+  cat > "$target_dir/.agents/README.md" <<'EOF'
+# .agents
+
+Progressive-disclosure planning artifacts for this project.
+
+- Keep plans in `.agents/plans/`
+- Keep always-read files small; link to details
+- One slice per plan file when practical
+EOF
+
+  cat > "$target_dir/.agents/plans/README.md" <<'EOF'
+# Plans Index
+
+Create focused plan files here, for example:
+- `phase-01-foundation.md`
+- `phase-02-core-feature.md`
+- `brownfield-slice-001.md`
+
+Each plan should include:
+1. Objective
+2. Scope lock
+3. Steps
+4. Validation commands
+5. Rollback notes
+EOF
+
+  cat > "$target_dir/.agents/plans/phase-template.md" <<'EOF'
+# Phase / Slice Template
+
+## Objective
+- TODO
+
+## Scope Lock
+- In scope:
+- Out of scope:
+- Constraints:
+
+## Steps
+1. TODO
+
+## Validation
+- Syntax:
+- Tests:
+- Smoke:
+
+## Evidence
+- Files changed:
+- Commands run:
+- Outputs:
+
+## Rollback
+- TODO
+EOF
+}
+
+scan_text_for_secrets() {
+  local data="$1"
+  # Lightweight denylist-based detector to keep token/runtime overhead low.
+  local patterns=(
+    'AKIA[0-9A-Z]{16}'
+    'ghp_[A-Za-z0-9]{36}'
+    'github_pat_[A-Za-z0-9_]{20,}'
+    'sk-[A-Za-z0-9]{20,}'
+    'xox[baprs]-[A-Za-z0-9-]{10,}'
+    '-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----'
+    '(?i)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["'"'"']?[A-Za-z0-9_./+=-]{8,}'
+  )
+
+  local re
+  for re in "${patterns[@]}"; do
+    if printf '%s\n' "$data" | rg -n -I -e "$re" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+install_git_secret_hooks() {
+  local target_dir="$1"
+  [[ -d "$target_dir/.git" ]] || {
+    ai_layer_error "git_not_initialized" "git-guard" "Target is not a git repository: $target_dir" "Run: git -C '$target_dir' init"
+    return 1
+  }
+
+  local hooks_dir="$target_dir/.git/hooks"
+  mkdir -p "$hooks_dir"
+
+  cat > "$hooks_dir/pre-commit" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+files="$(git diff --cached --name-only --diff-filter=ACM)"
+[[ -n "${files}" ]] || exit 0
+
+patterns=(
+  'AKIA[0-9A-Z]{16}'
+  'ghp_[A-Za-z0-9]{36}'
+  'github_pat_[A-Za-z0-9_]{20,}'
+  'sk-[A-Za-z0-9]{20,}'
+  'xox[baprs]-[A-Za-z0-9-]{10,}'
+  '-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----'
+  '(?i)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["'"'"']?[A-Za-z0-9_./+=-]{8,}'
+)
+
+blocked=0
+while IFS= read -r file; do
+  [[ -f "$file" ]] || continue
+  staged="$(git show ":$file" 2>/dev/null || true)"
+  [[ -n "$staged" ]] || continue
+  for re in "${patterns[@]}"; do
+    if printf '%s\n' "$staged" | rg -n -I -e "$re" >/tmp/aqd-secret-hit.txt 2>/dev/null; then
+      echo "secret guard: potential secret detected in staged file '$file' (pattern: $re)" >&2
+      sed -n '1,3p' /tmp/aqd-secret-hit.txt >&2 || true
+      blocked=1
+    fi
+  done
+done <<<"$files"
+
+if [[ "$blocked" -eq 1 ]]; then
+  echo "Commit blocked. Remove/redact secrets and try again." >&2
+  exit 1
+fi
+exit 0
+EOF
+
+  cat > "$hooks_dir/pre-push" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+patterns=(
+  'AKIA[0-9A-Z]{16}'
+  'ghp_[A-Za-z0-9]{36}'
+  'github_pat_[A-Za-z0-9_]{20,}'
+  'sk-[A-Za-z0-9]{20,}'
+  'xox[baprs]-[A-Za-z0-9-]{10,}'
+  '-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----'
+  '(?i)(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["'"'"']?[A-Za-z0-9_./+=-]{8,}'
+)
+
+blocked=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ -z "${local_sha:-}" ]]; then
+    continue
+  fi
+
+  range="$local_sha"
+  if [[ "${remote_sha:-}" != "0000000000000000000000000000000000000000" ]]; then
+    range="${remote_sha}..${local_sha}"
+  fi
+
+  while IFS= read -r commit; do
+    patch="$(git show --format= --no-color "$commit" 2>/dev/null || true)"
+    [[ -n "$patch" ]] || continue
+    for re in "${patterns[@]}"; do
+      if printf '%s\n' "$patch" | rg -n -I -e "$re" >/tmp/aqd-secret-hit.txt 2>/dev/null; then
+        echo "secret guard: potential secret detected in to-push commit '$commit' (pattern: $re)" >&2
+        sed -n '1,3p' /tmp/aqd-secret-hit.txt >&2 || true
+        blocked=1
+      fi
+    done
+  done < <(git rev-list "$range" 2>/dev/null || true)
+done
+
+if [[ "$blocked" -eq 1 ]]; then
+  echo "Push blocked. Remove/redact secrets and amend commits before push." >&2
+  exit 1
+fi
+exit 0
+EOF
+
+  chmod +x "$hooks_dir/pre-commit" "$hooks_dir/pre-push"
+}
+
+cmd_workflows_project_init() {
+  local target_dir="."
+  local project_name=""
+  local goal=""
+  local stack=""
+  local owner=""
+  local force="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target_dir="${2:-}"; shift 2 ;;
+      --name) project_name="${2:-}"; shift 2 ;;
+      --goal) goal="${2:-}"; shift 2 ;;
+      --stack) stack="${2:-}"; shift 2 ;;
+      --owner) owner="${2:-}"; shift 2 ;;
+      --force) force="true"; shift ;;
+      *) ai_layer_error "unknown_option" "project-init" "Unknown option: $1" "Use: aqd workflows project-init --target <dir> --name <project> --goal <goal>"; return 1 ;;
+    esac
+  done
+
+  mkdir -p "$target_dir"
+  if [[ -n "$(find "$target_dir" -mindepth 1 -maxdepth 1 -not -name '.git' -print -quit 2>/dev/null)" ]]; then
+    ai_layer_error "target_not_empty" "project-init" "Target directory is not empty: $target_dir" "Use an empty directory for /project-init."
+    return 1
+  fi
+
+  project_name="$(prompt_if_empty "$project_name" "Project name")"
+  goal="$(prompt_if_empty "$goal" "Primary goal")"
+  stack="$(prompt_if_empty "$stack" "Preferred stack (or TBD)")"
+  owner="$(prompt_if_empty "$owner" "Owner/team (or TBD)")"
+
+  echo
+  echo "[project-init] guided summary"
+  echo "- target: $target_dir"
+  echo "- name: $project_name"
+  echo "- goal: $goal"
+  echo "- stack: $stack"
+  echo "- owner: $owner"
+  echo
+
+  local -a bootstrap_args=(
+    --target "$target_dir"
+    --name "$project_name"
+    --goal "$goal"
+    --stack "$stack"
+    --owner "$owner"
+  )
+  if [[ "$force" == "true" ]]; then
+    bootstrap_args+=(--force)
+  fi
+  cmd_workflows_bootstrap "${bootstrap_args[@]}"
+  write_agent_command_specs "$target_dir" "$project_name" "$goal" "$stack" "$owner"
+
+  if [[ ! -d "$target_dir/.git" ]]; then
+    git -C "$target_dir" init >/dev/null 2>&1
+  fi
+  install_git_secret_hooks "$target_dir"
+
+  cat <<EOF
+/project-init complete.
+- AI layer scaffold created
+- slash command specs created in .agent/commands
+- .claude and .agents/plans progressive-disclosure scaffolding created
+- git secret guards installed (.git/hooks/pre-commit, .git/hooks/pre-push)
+- next: run .agent/commands/start-workflow.sh with HYBRID_URL set
+EOF
+}
+
+cmd_workflows_retrofit() {
+  local target_dir="."
+  local project_name=""
+  local goal="retrofit existing project AI layer for guided workflow"
+  local stack="TBD"
+  local owner="TBD"
+  local force="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target_dir="${2:-}"; shift 2 ;;
+      --name) project_name="${2:-}"; shift 2 ;;
+      --goal) goal="${2:-}"; shift 2 ;;
+      --stack) stack="${2:-}"; shift 2 ;;
+      --owner) owner="${2:-}"; shift 2 ;;
+      --force) force="true"; shift ;;
+      *) ai_layer_error "unknown_option" "retrofit" "Unknown option: $1" "Use: aqd workflows retrofit --target <dir> --name <project> [--force]"; return 1 ;;
+    esac
+  done
+
+  [[ -d "$target_dir" ]] || {
+    ai_layer_error "missing_target" "retrofit" "Target directory does not exist: $target_dir"
+    return 1
+  }
+
+  if [[ -z "$project_name" ]]; then
+    project_name="$(basename "$(realpath "$target_dir")")"
+  fi
+
+  local -a bootstrap_args=(
+    --target "$target_dir"
+    --name "$project_name"
+    --goal "$goal"
+    --stack "$stack"
+    --owner "$owner"
+  )
+  if [[ "$force" == "true" ]]; then
+    bootstrap_args+=(--force)
+  fi
+
+  cmd_workflows_bootstrap "${bootstrap_args[@]}"
+  write_agent_command_specs "$target_dir" "$project_name" "$goal" "$stack" "$owner"
+  if [[ -d "$target_dir/.git" ]]; then
+    install_git_secret_hooks "$target_dir"
+  fi
+
+  cat <<EOF
+/retrofit complete.
+- target: $target_dir
+- regenerated/seeded AI layer artifacts for existing project
+- next: run /brownfield workflow for first improvement slice
+EOF
+}
+
+cmd_workflows_primer() {
+  local target_dir="."
+  local objective=""
+  local output_file=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target_dir="${2:-}"; shift 2 ;;
+      --objective) objective="${2:-}"; shift 2 ;;
+      --output) output_file="${2:-}"; shift 2 ;;
+      *) ai_layer_error "unknown_option" "primer" "Unknown option: $1" "Use: aqd workflows primer --target <dir> --objective <text>"; return 1 ;;
+    esac
+  done
+
+  [[ -d "$target_dir" ]] || {
+    ai_layer_error "missing_target" "primer" "Target directory does not exist: $target_dir"
+    return 1
+  }
+  ensure_agent_dir "$target_dir"
+
+  if [[ -z "$output_file" ]]; then
+    output_file="$target_dir/.agent/workflows/session-primer-summary.json"
+  fi
+
+  local ts
+  ts="$(iso_utc_now)"
+
+  local agent_meta=""
+  if [[ -d "$target_dir/.agent" ]]; then
+    agent_meta="$(find "$target_dir/.agent" -type f -printf '%P\t%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | head -n 200)"
+  fi
+  local git_status=""
+  if [[ -d "$target_dir/.git" ]]; then
+    git_status="$(git -C "$target_dir" status --short 2>/dev/null || true)"
+  fi
+  local latest_evidence=""
+  latest_evidence="$(find "$target_dir/.agent/workflows" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) -printf '%f\n' 2>/dev/null | sort | tail -n 3)"
+
+  local agent_file_count changed_files_count
+  agent_file_count="$(find "$target_dir/.agent" -type f 2>/dev/null | wc -l | tr -d ' ')"
+  changed_files_count="$(printf '%s\n' "$git_status" | sed '/^\s*$/d' | wc -l | tr -d ' ')"
+
+  run_python - "$output_file" "${objective:-session continuation}" "$agent_file_count" "$changed_files_count" "$latest_evidence" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+out = sys.argv[1]
+objective = sys.argv[2]
+agent_file_count = int(sys.argv[3] or "0")
+changed_files_count = int(sys.argv[4] or "0")
+evidence_raw = sys.argv[5]
+
+doc = {
+    "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "mode": "primer",
+    "read_only": True,
+    "objective": objective,
+    "tiers_loaded": [
+        "tier0_agent_metadata",
+        "tier1_latest_evidence",
+        "tier2_git_status",
+    ],
+    "agent_file_count": agent_file_count,
+    "latest_evidence_files": [line for line in evidence_raw.splitlines() if line.strip()],
+    "changed_files_count": changed_files_count,
+    "next": [
+        "request on-demand docs/telemetry only if needed",
+        "run /brownfield or task-specific workflow after objective confirmation",
+    ],
+}
+
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(doc, fh, indent=2)
+    fh.write("\n")
+PY
+
+  cat <<EOF
+/primer complete (read-only).
+- generated: ${output_file}
+- objective: ${objective:-session continuation}
+- summary_time: ${ts}
+EOF
+}
+
+cmd_workflows_brownfield() {
+  local target_dir="."
+  local objective=""
+  local constraints=""
+  local out_of_scope=""
+  local acceptance=""
+  local force="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target_dir="${2:-}"; shift 2 ;;
+      --objective) objective="${2:-}"; shift 2 ;;
+      --constraints) constraints="${2:-}"; shift 2 ;;
+      --out-of-scope) out_of_scope="${2:-}"; shift 2 ;;
+      --acceptance) acceptance="${2:-}"; shift 2 ;;
+      --force) force="true"; shift ;;
+      *) ai_layer_error "unknown_option" "brownfield" "Unknown option: $1" "Use: aqd workflows brownfield --target <dir> --objective <text>"; return 1 ;;
+    esac
+  done
+
+  [[ -d "$target_dir" ]] || {
+    ai_layer_error "missing_target" "brownfield" "Target directory does not exist: $target_dir"
+    return 1
+  }
+  ensure_agent_dir "$target_dir"
+  write_agent_command_specs "$target_dir"
+
+  objective="$(prompt_if_empty "$objective" "Brownfield objective")"
+  constraints="$(prompt_if_empty "$constraints" "Constraints (comma-separated)")"
+  out_of_scope="$(prompt_if_empty "$out_of_scope" "Out of scope items")"
+  acceptance="$(prompt_if_empty "$acceptance" "Acceptance checks")"
+
+  local timestamp
+  timestamp="$(date -u +%Y%m%d-%H%M%S)"
+  local pdr_file="$target_dir/.agent/workflows/brownfield-PDR-${timestamp}.md"
+  if [[ -e "$pdr_file" && "$force" != "true" ]]; then
+    ai_layer_error "pdr_exists" "brownfield" "PDR file already exists: $pdr_file" "Use --force or rerun."
+    return 1
+  fi
+
+  local tracked_count="0"
+  local changed_count="0"
+  if [[ -d "$target_dir/.git" ]]; then
+    tracked_count="$(git -C "$target_dir" ls-files 2>/dev/null | wc -l | tr -d ' ')"
+    changed_count="$(git -C "$target_dir" status --short 2>/dev/null | sed '/^\s*$/d' | wc -l | tr -d ' ')"
+  fi
+
+  cat > "$pdr_file" <<EOF
+# Brownfield Product Development Record (PDR)
+
+Generated: $(iso_utc_now)
+Mode: /brownfield
+
+## Objective
+- ${objective}
+
+## Discovery Snapshot
+- tracked_files: ${tracked_count}
+- changed_files: ${changed_count}
+- key_directories:
+$(find "$target_dir" -maxdepth 2 -type d 2>/dev/null | sed "s#^$target_dir#.#" | head -n 20 | sed 's/^/- /')
+
+## Constraints
+- ${constraints}
+
+## Out Of Scope
+- ${out_of_scope}
+
+## Acceptance Checks
+- ${acceptance}
+
+## Execution Slices
+1. Slice 1: TODO
+2. Slice 2: TODO
+3. Slice 3: TODO
+
+## Slice Discipline
+- After each slice: commit + push + review comment.
+- Keep each slice small to isolate mistakes and improve rollback speed.
+- If inputs become ambiguous, pause and ask clarifying questions before proceeding.
+EOF
+
+  cat <<EOF
+/brownfield complete.
+- reused existing AI layer (no full scaffold regeneration)
+- generated: ${pdr_file}
+- next: implement slices with commit/push/comment isolation
+EOF
+}
+
+cmd_workflows_list() {
+  cat <<'EOF'
+Priority workflow set (Phase 27.6):
+0. workflows project-init
+1. workflows primer
+2. workflows brownfield
+3. workflows retrofit
+4. workflows bootstrap
+5. skill validate
+6. skill quick-validate
+7. skill init
+8. skill package
+9. skill bundle-index
+10. skill bundle-install
+11. skill sign-index
+12. skill verify-index
+13. policy evaluate
+14. reasoning route
+15. parity advanced-suite
+16. parity regression-gate
+17. parity generate-provenance
+18. parity check-auth
+19. parity check-slo
+20. parity check-boot-shutdown
+21. parity chaos-smoke
+22. parity cross-client-smoke
+23. mcp scaffold
+24. mcp validate
+25. mcp evaluate
+26. mcp logs
+27. mcp deploy-aidb
+EOF
+}
+
+cmd_workflows_bootstrap() {
+  local target_dir="."
+  local project_name=""
+  local goal=""
+  local stack="TBD"
+  local owner="TBD"
+  local force="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target)
+        target_dir="${2:-}"
+        shift 2
+        ;;
+      --name)
+        project_name="${2:-}"
+        shift 2
+        ;;
+      --goal)
+        goal="${2:-}"
+        shift 2
+        ;;
+      --stack)
+        stack="${2:-}"
+        shift 2
+        ;;
+      --owner)
+        owner="${2:-}"
+        shift 2
+        ;;
+      --force)
+        force="true"
+        shift
+        ;;
+      *)
+        die "Unknown option for workflows bootstrap: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$project_name" ]] || die "Usage: aqd workflows bootstrap --name <project-name> --goal <goal> [--target <dir>] [--stack <stack>] [--owner <owner>] [--force]"
+  [[ -n "$goal" ]] || die "Usage: aqd workflows bootstrap --name <project-name> --goal <goal> [--target <dir>] [--stack <stack>] [--owner <owner>] [--force]"
+
+  mkdir -p "$target_dir/.agent/workflows" "$target_dir/.agent/context" "$target_dir/.agent/commands"
+
+  local prd_file="$target_dir/.agent/PROJECT-PRD.md"
+  local rules_file="$target_dir/.agent/GLOBAL-RULES.md"
+  local phase_file="$target_dir/.agent/workflows/phase-01-foundation.md"
+  local contract_file="$target_dir/.agent/workflows/intent-contract.json"
+  local start_file="$target_dir/.agent/commands/start-workflow.sh"
+
+  if [[ "$force" != "true" ]]; then
+    [[ ! -e "$prd_file" ]] || die "Refusing to overwrite existing file (use --force): $prd_file"
+    [[ ! -e "$rules_file" ]] || die "Refusing to overwrite existing file (use --force): $rules_file"
+    [[ ! -e "$phase_file" ]] || die "Refusing to overwrite existing file (use --force): $phase_file"
+    [[ ! -e "$contract_file" ]] || die "Refusing to overwrite existing file (use --force): $contract_file"
+    [[ ! -e "$start_file" ]] || die "Refusing to overwrite existing file (use --force): $start_file"
+  fi
+
+  local template_root="${PROJECT_ROOT}/templates/agentic-workflow"
+  if [[ -d "$template_root" ]]; then
+    render_template_file "$template_root/.agent/PROJECT-PRD.md.tmpl" "$prd_file" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agent/GLOBAL-RULES.md.tmpl" "$rules_file" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agent/workflows/phase-01-foundation.md.tmpl" "$phase_file" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agent/workflows/intent-contract.json.tmpl" "$contract_file" "$project_name" "$goal" "$stack" "$owner"
+    render_template_file "$template_root/.agent/commands/start-workflow.sh.tmpl" "$start_file" "$project_name" "$goal" "$stack" "$owner"
+    chmod +x "$start_file"
+    cat <<EOF
+Bootstrap complete.
+- Target: $target_dir
+- Files:
+  - .agent/PROJECT-PRD.md
+  - .agent/GLOBAL-RULES.md
+  - .agent/workflows/phase-01-foundation.md
+  - .agent/workflows/intent-contract.json
+  - .agent/commands/start-workflow.sh
+EOF
+    return 0
+  fi
+
+  cat > "$prd_file" <<EOF
+# Product Requirements Document: ${project_name}
+
+## 1. Executive Summary
+- Goal: ${goal}
+- Owner: ${owner}
+- MVP completion target: TODO
+
+## 2. Scope
+- In scope:
+  - [ ] Define core user journeys and acceptance checks
+  - [ ] Deliver first end-to-end thin slice
+  - [ ] Add validation + smoke checks
+- Out of scope:
+  - [ ] Nice-to-have UX polish before core reliability is done
+  - [ ] Optional integrations not required for MVP
+
+## 3. Tech Stack
+- Preferred stack: ${stack}
+- Runtime constraints: TODO
+- Deployment target: TODO
+
+## 4. Architecture
+- System boundaries:
+  - [ ] App/API layer
+  - [ ] Data/storage layer
+  - [ ] Tooling/discovery layer
+- Integration notes: TODO
+
+## 5. Security + Config
+- Secret handling:
+  - [ ] No hardcoded secrets
+  - [ ] Env/file providers only (e.g. /run/secrets/*)
+- Safety:
+  - [ ] Rollback command documented for each change slice
+  - [ ] Validation evidence captured per slice
+
+## 6. Implementation Phases
+1. Phase 01 Foundation
+2. Phase 02 Core Feature Loop
+3. Phase 03 Validation + Hardening
+4. Phase 04 Handoff + Ops Runbook
+
+## 7. Success Criteria
+- [ ] MVP scenarios pass end-to-end
+- [ ] Syntax/build/tests/smoke pass
+- [ ] Rollback path tested
+- [ ] No security policy regressions
+EOF
+
+  cat > "$rules_file" <<EOF
+# Global Rules
+
+## Mission
+Ship incremental, validated slices with explicit evidence and rollback notes.
+
+## Core Workflow
+1. Scope lock before editing.
+2. Security gate before implementation.
+3. Discovery first, then phased plan.
+4. Execute one logical slice at a time.
+5. Validate with syntax/build/tests/smoke.
+6. Capture evidence and rollback command in handoff.
+
+## Golden Rules
+- Context is precious: reset between plan and execute phases.
+- Commandify repetitive workflows.
+- Prefer declarative config over runtime scripting when feasible.
+- Do not finalize work without validation evidence.
+
+## Tooling Contract
+- Start non-trivial tasks with:
+  - POST /workflow/plan
+  - POST /workflow/run/start (with intent_contract)
+  - GET /hints
+- Keep tool/discovery outputs in project docs under .agent/workflows.
+EOF
+
+  cat > "$phase_file" <<EOF
+# Phase 01 Foundation
+
+## Objective
+Create the minimum project skeleton and first validated workflow loop.
+
+## Scope Lock
+- Problem statement:
+  - ${goal}
+- Constraints:
+  - ${stack}
+- Out of scope:
+  - Non-essential integrations
+
+## Task Slices
+1. Scaffold core directories and baseline config.
+2. Add first executable thin slice.
+3. Add validation script(s) and smoke check.
+4. Document deploy/verify/rollback commands.
+
+## Validation
+- Syntax/lint command: TODO
+- Build/test command: TODO
+- Smoke command: TODO
+
+## Evidence
+- Files changed: TODO
+- Commands run: TODO
+- Test output: TODO
+- Rollback command: TODO
+EOF
+
+  cat > "$contract_file" <<EOF
+{
+  "user_intent": "Initialize ${project_name} and deliver phase-based implementation workflow",
+  "definition_of_done": "Phase plan exists, first slice implemented, validations and rollback documented",
+  "depth_expectation": "standard",
+  "spirit_constraints": [
+    "declarative-first",
+    "capture validation evidence",
+    "avoid hardcoded secrets and service literals"
+  ],
+  "no_early_exit_without": [
+    "syntax_build_test_smoke_pass",
+    "evidence_recorded",
+    "rollback_documented"
+  ]
+}
+EOF
+
+  cat > "$start_file" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+HYBRID_URL="${HYBRID_URL:-}"
+API_KEY="${HYBRID_API_KEY:-}"
+QUERY="${1:-initialize project workflow and begin phase 01}"
+CONTRACT_PATH="${2:-.agent/workflows/intent-contract.json}"
+
+[[ -f "$CONTRACT_PATH" ]] || {
+  echo "missing intent contract: $CONTRACT_PATH" >&2
+  exit 1
+}
+[[ -n "${HYBRID_URL:-}" ]] || {
+  echo "set HYBRID_URL before running (for example from your harness env injection)" >&2
+  exit 1
+}
+
+auth_header=()
+if [[ -n "$API_KEY" ]]; then
+  auth_header=(-H "X-API-Key: ${API_KEY}")
+fi
+
+echo "== workflow plan =="
+curl -sS "${auth_header[@]}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/workflow/plan" \
+  --data "{\"query\":\"${QUERY}\"}"
+echo
+
+if command -v jq >/dev/null 2>&1; then
+  payload="$(jq -c --arg query "$QUERY" '{query:$query,safety_mode:"plan-readonly",token_limit:8000,tool_call_limit:40,intent_contract:.}' "$CONTRACT_PATH")"
+elif command -v python3 >/dev/null 2>&1; then
+  payload="$(python3 - "$QUERY" "$CONTRACT_PATH" <<'PY'
+import json
+import sys
+query = sys.argv[1]
+contract_path = sys.argv[2]
+with open(contract_path, "r", encoding="utf-8") as fh:
+    contract = json.load(fh)
+doc = {
+    "query": query,
+    "safety_mode": "plan-readonly",
+    "token_limit": 8000,
+    "tool_call_limit": 40,
+    "intent_contract": contract,
+}
+print(json.dumps(doc, separators=(",", ":")))
+PY
+)"
+else
+  echo "need jq or python3 to render workflow payload json" >&2
+  exit 1
+fi
+
+echo "== workflow run start =="
+curl -sS "${auth_header[@]}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data "$payload"
+echo
+
+echo "== hints =="
+encoded_query=""
+if command -v jq >/dev/null 2>&1; then
+  encoded_query="$(printf '%s' "$QUERY" | jq -sRr @uri)"
+elif command -v python3 >/dev/null 2>&1; then
+  encoded_query="$(python3 - "$QUERY" <<'PY'
+import sys
+import urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+)"
+else
+  echo "need jq or python3 to URL-encode query parameter" >&2
+  exit 1
+fi
+
+curl -sS "${auth_header[@]}" \
+  "${HYBRID_URL}/hints?q=${encoded_query}"
+echo
+EOF
+  chmod +x "$start_file"
+
+  cat <<EOF
+Bootstrap complete.
+- Target: $target_dir
+- Files:
+  - .agent/PROJECT-PRD.md
+  - .agent/GLOBAL-RULES.md
+  - .agent/workflows/phase-01-foundation.md
+  - .agent/workflows/intent-contract.json
+  - .agent/commands/start-workflow.sh
+EOF
+}
+
+cmd_skill_validate() {
+  "${REPO_ROOT}/scripts/testing/check-skill-source-of-truth.sh"
+  "${REPO_ROOT}/scripts/governance/lint-skill-external-deps.sh"
+  "${REPO_ROOT}/scripts/testing/validate-skill-references.sh"
+  "${REPO_ROOT}/scripts/governance/lint-skill-template.sh"
+}
+
+cmd_skill_quick_validate() {
+  local skill_path="${1:-}"
+  [[ -n "$skill_path" ]] || die "Usage: aqd skill quick-validate <skill-path>"
+  run_python_with_yaml "${REPO_ROOT}/.agent/skills/skill-creator/scripts/quick_validate.py" "$skill_path"
+}
+
+cmd_skill_init() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "Usage: aqd skill init <name> [--path <dir>]"
+  run_python "${REPO_ROOT}/.agent/skills/skill-creator/scripts/init_skill.py" "$name" "$@"
+}
+
+cmd_skill_package() {
+  local skill_path="${1:-}"
+  local output_dir="${2:-}"
+  [[ -n "$skill_path" ]] || die "Usage: aqd skill package <skill-path> [output-dir]"
+  if [[ -n "$output_dir" ]]; then
+    run_python_with_yaml "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path" "$output_dir"
+  else
+    run_python_with_yaml "${REPO_ROOT}/.agent/skills/skill-creator/scripts/package_skill.py" "$skill_path"
+  fi
+}
+
+cmd_skill_bundle_index() {
+  local skills_dir="${1:-${REPO_ROOT}/.agent/skills}"
+  local bundles_dir="${2:-${REPO_ROOT}/dist/skills/bundles}"
+  local index_json="${3:-${REPO_ROOT}/dist/skills/index.json}"
+  run_python "${REPO_ROOT}/scripts/skill-bundle-registry.py" \
+    build-index \
+    --skills-dir "$skills_dir" \
+    --bundles-dir "$bundles_dir" \
+    --index "$index_json"
+}
+
+cmd_skill_bundle_install() {
+  local index_json="${1:-}"
+  local skill_name="${2:-}"
+  local target_dir="${3:-${REPO_ROOT}/.agent/skills}"
+  shift 3 || true
+  [[ -n "$index_json" ]] || die "Usage: aqd skill bundle-install <index-json> <skill-name> [target-dir] [--force]"
+  [[ -n "$skill_name" ]] || die "Usage: aqd skill bundle-install <index-json> <skill-name> [target-dir] [--force]"
+  run_python "${REPO_ROOT}/scripts/skill-bundle-registry.py" \
+    install \
+    --index "$index_json" \
+    --skill-name "$skill_name" \
+    --target-dir "$target_dir" \
+    "$@"
+}
+
+cmd_skill_sign_index() {
+  local index_json="${1:-${REPO_ROOT}/dist/skills/index.json}"
+  local private_key="${2:-${REPO_ROOT}/config/keys/skill-registry-private.pem}"
+  local sig_path="${3:-${index_json}.sig}"
+  "${REPO_ROOT}/scripts/sign-skill-registry.sh" "$index_json" "$private_key" "$sig_path"
+}
+
+cmd_skill_verify_index() {
+  local index_json="${1:-${REPO_ROOT}/dist/skills/index.json}"
+  local public_key="${2:-${REPO_ROOT}/config/keys/skill-registry-public.pem}"
+  local sig_path="${3:-${index_json}.sig}"
+  "${REPO_ROOT}/scripts/testing/verify-skill-registry.sh" "$index_json" "$public_key" "$sig_path"
+}
+
+cmd_policy_evaluate() {
+  run_python "${REPO_ROOT}/scripts/evaluate-agent-policy.py" "$@"
+}
+
+cmd_reasoning_route() {
+  run_python "${REPO_ROOT}/scripts/ai/route-reasoning-mode.py" "$@"
+}
+
+cmd_parity_advanced_suite() {
+  "${REPO_ROOT}/scripts/automation/run-advanced-parity-suite.sh"
+}
+
+cmd_parity_regression_gate() {
+  local mode="${1:---offline}"
+  "${REPO_ROOT}/scripts/automation/run-harness-regression-gate.sh" "$mode"
+}
+
+cmd_parity_generate_provenance() {
+  local out_dir="${1:-}"
+  if [[ -n "$out_dir" ]]; then
+    "${REPO_ROOT}/scripts/data/generate-harness-sdk-provenance.sh" "$out_dir"
+  else
+    "${REPO_ROOT}/scripts/data/generate-harness-sdk-provenance.sh"
+  fi
+}
+
+cmd_parity_check_auth() {
+  "${REPO_ROOT}/scripts/testing/check-api-auth-hardening.sh"
+}
+
+cmd_parity_check_slo() {
+  "${REPO_ROOT}/scripts/testing/validate-ai-slo-runtime.sh"
+}
+
+cmd_parity_check_boot_shutdown() {
+  "${REPO_ROOT}/scripts/testing/check-boot-shutdown-integration.sh"
+}
+
+cmd_parity_chaos_smoke() {
+  "${REPO_ROOT}/scripts/testing/chaos-harness-smoke.sh"
+}
+
+cmd_parity_cross_client_smoke() {
+  "${REPO_ROOT}/scripts/testing/smoke-cross-client-compat.sh"
+}
+
+cmd_mcp_scaffold() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "Usage: aqd mcp scaffold <name> [--type python|deno]"
+
+  local template="python"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --type)
+        template="${2:-}"
+        shift 2
+        ;;
+      *)
+        die "Unknown option for mcp scaffold: $1"
+        ;;
+    esac
+  done
+
+  case "$template" in
+    python|deno)
+      ;;
+    *)
+      die "Invalid scaffold type: $template (expected python|deno)"
+      ;;
+  esac
+
+  "${REPO_ROOT}/scripts/ai/mcp-server" init -t "$template" "$name"
+}
+
+cmd_mcp_test() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "Usage: aqd mcp test <name>"
+  "${REPO_ROOT}/scripts/ai/mcp-server" test "$name"
+}
+
+cmd_mcp_validate() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "Usage: aqd mcp validate <name>"
+  "${REPO_ROOT}/scripts/ai/mcp-server" test "$name"
+}
+
+cmd_mcp_evaluate() {
+  local eval_file="${1:-}"
+  shift || true
+  [[ -n "$eval_file" ]] || die "Usage: aqd mcp evaluate <evaluation-xml> [evaluation-args...]"
+
+  # Ensure optional mcp-builder evaluation deps are present before execution.
+  if ! run_python - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+missing = [mod for mod in ("anthropic", "mcp") if importlib.util.find_spec(mod) is None]
+sys.exit(0 if not missing else 1)
+PY
+  then
+    die "Missing Python deps for MCP evaluation. Install: pip install -r ${REPO_ROOT}/.agent/skills/mcp-builder/scripts/requirements.txt"
+  fi
+
+  run_python "${REPO_ROOT}/.agent/skills/mcp-builder/scripts/evaluation.py" "$eval_file" "$@"
+}
+
+cmd_mcp_logs() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "Usage: aqd mcp logs <name> [-f]"
+  "${REPO_ROOT}/scripts/ai/mcp-server" logs "$@" "$name"
+}
+
+cmd_mcp_deploy_aidb() {
+  "${REPO_ROOT}/scripts/deploy/deploy-aidb-mcp-server.sh"
+}
+
+main() {
+  local topic="${1:-}"
+  local action="${2:-}"
+  shift 2 || true
+
+  case "$topic" in
+    --version|-V|version)
+      echo "aqd ${AQD_VERSION}"
+      return 0
+      ;;
+  esac
+
+  case "${topic}:${action}" in
+    skill:validate) cmd_skill_validate "$@" ;;
+    skill:quick-validate) cmd_skill_quick_validate "$@" ;;
+    skill:init) cmd_skill_init "$@" ;;
+    skill:package) cmd_skill_package "$@" ;;
+    skill:bundle-index) cmd_skill_bundle_index "$@" ;;
+    skill:bundle-install) cmd_skill_bundle_install "$@" ;;
+    skill:sign-index) cmd_skill_sign_index "$@" ;;
+    skill:verify-index) cmd_skill_verify_index "$@" ;;
+    policy:evaluate) cmd_policy_evaluate "$@" ;;
+    reasoning:route) cmd_reasoning_route "$@" ;;
+    parity:advanced-suite) cmd_parity_advanced_suite "$@" ;;
+    parity:regression-gate) cmd_parity_regression_gate "$@" ;;
+    parity:generate-provenance) cmd_parity_generate_provenance "$@" ;;
+    parity:check-auth) cmd_parity_check_auth "$@" ;;
+    parity:check-slo) cmd_parity_check_slo "$@" ;;
+    parity:check-boot-shutdown) cmd_parity_check_boot_shutdown "$@" ;;
+    parity:chaos-smoke) cmd_parity_chaos_smoke "$@" ;;
+    parity:cross-client-smoke) cmd_parity_cross_client_smoke "$@" ;;
+    mcp:scaffold) cmd_mcp_scaffold "$@" ;;
+    mcp:validate) cmd_mcp_validate "$@" ;;
+    mcp:test) cmd_mcp_test "$@" ;;
+    mcp:evaluate) cmd_mcp_evaluate "$@" ;;
+    mcp:logs) cmd_mcp_logs "$@" ;;
+    mcp:deploy-aidb) cmd_mcp_deploy_aidb "$@" ;;
+    workflows:list) cmd_workflows_list ;;
+    workflows:project-init) cmd_workflows_project_init "$@" ;;
+    workflows:primer) cmd_workflows_primer "$@" ;;
+    workflows:brownfield) cmd_workflows_brownfield "$@" ;;
+    workflows:retrofit) cmd_workflows_retrofit "$@" ;;
+    workflows:bootstrap) cmd_workflows_bootstrap "$@" ;;
+    :|help:|--help:|-h:)
+      usage
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

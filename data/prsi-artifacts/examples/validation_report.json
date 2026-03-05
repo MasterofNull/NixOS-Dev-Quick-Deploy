@@ -42,7 +42,7 @@
   },
   "auto_revert_triggered": false,
   "commands_run": [
-    "bash scripts/check-aq-report-contract.sh",
-    "bash scripts/validate-runtime-declarative.sh"
+    "bash scripts/testing/check-aq-report-contract.sh",
+    "bash scripts/testing/validate-runtime-declarative.sh"
   ]
 }

@@ -250,7 +250,7 @@ Tracks cost reduction from RAG-based context augmentation vs. full document load
 
 **Usage**:
 ```bash
-bash scripts/initialize-qdrant-collections.sh
+bash scripts/data/initialize-qdrant-collections.sh
 ```
 
 **Output**: Colored status messages showing collection creation and index configuration.
@@ -318,13 +318,13 @@ Update Fine-tuning Dataset
 
 1. **Dashboard Data Generation**:
    ```bash
-   bash scripts/generate-dashboard-data.sh
+   bash scripts/data/generate-dashboard-data.sh
    ```
    **Result**: 15 JSON files created successfully
 
 2. **Qdrant Collections Initialization**:
    ```bash
-   bash scripts/initialize-qdrant-collections.sh
+   bash scripts/data/initialize-qdrant-collections.sh
    ```
    **Result**: 5 collections created with payload indexes
 
@@ -347,8 +347,8 @@ Update Fine-tuning Dataset
 ## File Locations
 
 ### Scripts
-- `scripts/generate-dashboard-data.sh` - Enhanced with 4 new metrics functions
-- `scripts/initialize-qdrant-collections.sh` - New collection initialization script
+- `scripts/data/generate-dashboard-data.sh` - Enhanced with 4 new metrics functions
+- `scripts/data/initialize-qdrant-collections.sh` - New collection initialization script
 - `scripts/initialize-ai-stack.sh` - Updated initialization flow
 
 ### Dashboard Data
@@ -382,7 +382,7 @@ Update Fine-tuning Dataset
 
 2. **Verify Metrics Collection**:
    ```bash
-   bash scripts/generate-dashboard-data.sh
+   bash scripts/data/generate-dashboard-data.sh
    cat ~/.local/share/nixos-system-dashboard/hybrid-coordinator.json | jq .
    ```
 

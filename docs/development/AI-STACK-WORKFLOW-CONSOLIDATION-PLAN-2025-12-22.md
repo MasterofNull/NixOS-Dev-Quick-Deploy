@@ -29,7 +29,7 @@ Create one canonical workflow for AI stack activation and health checks, and rou
 ## Plan (Step-by-Step)
 1. **Define canonical entry points**
    - Designate `scripts/hybrid-ai-stack.sh` as the only stack start/stop CLI.
-   - Make `scripts/podman-ai-stack.sh` and `scripts/ai-stack-manage.sh` thin wrappers or document-only helpers.
+   - Make `scripts/podman-ai-stack.sh` and `scripts/ai/ai-stack-manage.sh` thin wrappers or document-only helpers.
 
 2. **Model selection single source**
    - Keep model selection in `lib/user.sh` only.
@@ -38,7 +38,7 @@ Create one canonical workflow for AI stack activation and health checks, and rou
 
 3. **Startup flow simplification**
    - Phase 8 becomes report-only; stack startup happens post-deploy.
-   - `scripts/start-ai-stack-and-dashboard.sh` becomes the only place that starts the stack.
+   - `scripts/deploy/start-ai-stack-and-dashboard.sh` becomes the only place that starts the stack.
 
 4. **Health checks consolidation**
    - Create a single health check entry point that calls subchecks.
@@ -77,7 +77,7 @@ Create one canonical workflow for AI stack activation and health checks, and rou
 - `phases/phase-08-finalization-and-report.sh`
 - `scripts/hybrid-ai-stack.sh`
 - `scripts/podman-ai-stack.sh`
-- `scripts/start-ai-stack-and-dashboard.sh`
+- `scripts/deploy/start-ai-stack-and-dashboard.sh`
 
 ---
 

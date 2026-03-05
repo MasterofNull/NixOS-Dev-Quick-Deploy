@@ -2,7 +2,7 @@
 
 **Test Run ID**: 20260102_201728
 **Status**: ✅ **100% SUCCESS** (13/13 checks passed)
-**Test Script**: [scripts/ai-stack-feature-scenario.sh](/scripts/ai-stack-feature-scenario.sh)
+**Test Script**: [scripts/ai/ai-stack-feature-scenario.sh](/scripts/ai/ai-stack-feature-scenario.sh)
 
 ## Executive Summary
 
@@ -313,10 +313,10 @@ The test demonstrates that:
 3. **Regular Testing**
    ```bash
    # Run this test daily
-   ./scripts/ai-stack-feature-scenario.sh
+   ./scripts/ai/ai-stack-feature-scenario.sh
 
    # Run comprehensive E2E test weekly
-   ./scripts/ai-stack-e2e-test.sh
+   ./scripts/ai/ai-stack-e2e-test.sh
    ```
 
 ---

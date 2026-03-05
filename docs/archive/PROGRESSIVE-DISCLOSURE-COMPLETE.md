@@ -32,13 +32,13 @@ This is the **ONLY** file you need to read first. Everything else is linked in p
    - Quick start commands
    - Learning path overview
 
-2. **[docs/00-QUICK-START.md](http://localhost:8000/docs/00-QUICK-START.md)** (5 min)
+2. **[docs/archive/legacy-sequence/00-QUICK-START.md](http://localhost:8000/docs/archive/legacy-sequence/00-QUICK-START.md)** (5 min)
    → Symlinked to: AI-SYSTEM-USAGE-GUIDE.md
    - Service management
    - Health checks
    - Essential commands
 
-3. **[docs/01-SYSTEM-OVERVIEW.md](http://localhost:8000/docs/01-SYSTEM-OVERVIEW.md)** (10 min)
+3. **[docs/archive/legacy-sequence/01-SYSTEM-OVERVIEW.md](http://localhost:8000/docs/archive/legacy-sequence/01-SYSTEM-OVERVIEW.md)** (10 min)
    → Symlinked to: docs/agent-guides/00-SYSTEM-OVERVIEW.md
    - Architecture
    - Core concepts
@@ -46,7 +46,7 @@ This is the **ONLY** file you need to read first. Everything else is linked in p
 
 ### Priority 2: Integration (20 min) - NEXT
 
-4. **[docs/02-AGENT-INTEGRATION.md](http://localhost:8000/docs/02-AGENT-INTEGRATION.md)** (20 min)
+4. **[docs/archive/legacy-sequence/02-AGENT-INTEGRATION.md](http://localhost:8000/docs/archive/legacy-sequence/02-AGENT-INTEGRATION.md)** (20 min)
    → Symlinked to: docs/AGENT-INTEGRATION-WORKFLOW.md
    - 4 integration patterns (Claude Code, Python, Ollama, LangChain)
    - Complete code examples
@@ -54,13 +54,13 @@ This is the **ONLY** file you need to read first. Everything else is linked in p
 
 ### Priority 3: Advanced Usage (30 min) - WHEN READY
 
-5. **[docs/03-PROGRESSIVE-DISCLOSURE.md](http://localhost:8000/docs/03-PROGRESSIVE-DISCLOSURE.md)** (15 min)
+5. **[docs/archive/legacy-sequence/03-PROGRESSIVE-DISCLOSURE.md](http://localhost:8000/docs/archive/legacy-sequence/03-PROGRESSIVE-DISCLOSURE.md)** (15 min)
    → Symlinked to: docs/PROGRESSIVE-DISCLOSURE-GUIDE.md
    - 4 disclosure levels
    - 87% token reduction strategy
    - Best practices
 
-6. **[docs/04-CONTINUOUS-LEARNING.md](http://localhost:8000/docs/04-CONTINUOUS-LEARNING.md)** (15 min)
+6. **[docs/archive/legacy-sequence/04-CONTINUOUS-LEARNING.md](http://localhost:8000/docs/archive/legacy-sequence/04-CONTINUOUS-LEARNING.md)** (15 min)
    → Symlinked to: docs/agent-guides/22-CONTINUOUS-LEARNING.md
    - Value scoring algorithm
    - Pattern extraction
@@ -68,19 +68,19 @@ This is the **ONLY** file you need to read first. Everything else is linked in p
 
 ### Priority 4: Reference (As Needed)
 
-7. **[docs/05-API-REFERENCE.md](http://localhost:8000/docs/05-API-REFERENCE.md)**
+7. **[docs/archive/legacy-sequence/05-API-REFERENCE.md](http://localhost:8000/docs/archive/legacy-sequence/05-API-REFERENCE.md)**
    → Symlinked to: AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md
    - All API endpoints
    - Request/response examples
    - Integration patterns
 
-8. **[docs/06-TROUBLESHOOTING.md](http://localhost:8000/docs/06-TROUBLESHOOTING.md)**
+8. **[docs/archive/legacy-sequence/06-TROUBLESHOOTING.md](http://localhost:8000/docs/archive/legacy-sequence/06-TROUBLESHOOTING.md)**
    → Symlinked to: AI-SYSTEM-TEST-REPORT-2025-12-22.md
    - Common issues
    - Test results
    - Known problems and fixes
 
-9. **[docs/07-DOCUMENTATION-INDEX.md](http://localhost:8000/docs/07-DOCUMENTATION-INDEX.md)**
+9. **[docs/archive/legacy-sequence/07-DOCUMENTATION-INDEX.md](http://localhost:8000/docs/archive/legacy-sequence/07-DOCUMENTATION-INDEX.md)**
    → Symlinked to: DOCUMENTATION-INDEX.md
    - Navigate all 36+ files
    - Documentation by use case

@@ -33,7 +33,7 @@ Operate the AI stack in a **K3s-first** way using Kubernetes resources in the `a
 
 ### 3) Observe Health
 ```bash
-./scripts/ai-stack-health.sh
+./scripts/ai/ai-stack-health.sh
 ```
 
 ### 4) Troubleshoot

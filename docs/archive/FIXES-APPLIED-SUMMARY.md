@@ -67,7 +67,7 @@ if "candidate" in line_lower and "summary" in line_lower:  # Flexible
 - Partial match (works with "High-Value Candidates", "Candidate List", etc.)
 - More robust against format changes
 
-**Location**: `scripts/generate-dashboard-data.sh` lines 1309-1316
+**Location**: `scripts/data/generate-dashboard-data.sh` lines 1309-1316
 
 ---
 
@@ -104,7 +104,7 @@ if (candidateCount > 0) {
 
 ### ✅ Comprehensive Test Suite Created
 
-**File**: `scripts/test-discovery-system.py` (300 lines)
+**File**: `scripts/testing/test-discovery-system.py` (300 lines)
 
 **Tests Implemented**:
 
@@ -131,7 +131,7 @@ if (candidateCount > 0) {
 
 **Run tests**:
 ```bash
-python3 scripts/test-discovery-system.py
+python3 scripts/testing/test-discovery-system.py
 ```
 
 **Current Result**: ✅ 4/4 tests passed (18 subtests)
@@ -144,13 +144,13 @@ python3 scripts/test-discovery-system.py
    - Removed 1 duplicate + 6 Discord sources
    - 30 sources → 23 sources
 
-2. `scripts/generate-dashboard-data.sh`
+2. `scripts/data/generate-dashboard-data.sh`
    - Line 1309-1316: Flexible section matching
 
 3. `dashboard.html`
    - Line 2329-2336: Smart badge logic
 
-4. `scripts/test-discovery-system.py` (new)
+4. `scripts/testing/test-discovery-system.py` (new)
    - 300+ lines of test coverage
 
 ---
@@ -176,7 +176,7 @@ python3 scripts/test-discovery-system.py
    - Shell configuration
    - Troubleshooting guide
 
-5. **scripts/test-discovery-system.py** (300 lines)
+5. **scripts/testing/test-discovery-system.py** (300 lines)
    - Automated test suite
    - Validates all fixes
 
@@ -191,7 +191,7 @@ python3 scripts/test-discovery-system.py
 ### Run All Tests
 ```bash
 # Automated test suite
-python3 scripts/test-discovery-system.py
+python3 scripts/testing/test-discovery-system.py
 
 # Expected: ✅ 4/4 tests passed
 ```
@@ -213,7 +213,7 @@ cat config/improvement-sources.json | jq '[.[] | select(.type == "forum")] | len
 export GITHUB_TOKEN=ghp_your_token_here
 
 # Run discovery
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 
 # Check for candidates (not just errors)
 cat docs/development/IMPROVEMENT-DISCOVERY-REPORT-$(date +%Y-%m-%d).md | grep -A 5 "Candidate Summary"
@@ -223,7 +223,7 @@ cat docs/development/IMPROVEMENT-DISCOVERY-REPORT-$(date +%Y-%m-%d).md | grep -A
 ### Test Dashboard
 ```bash
 # Generate data
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 
 # Check keyword signals
 cat ~/.local/share/nixos-system-dashboard/keyword-signals.json | jq '.summary'
@@ -241,7 +241,7 @@ xdg-open http://localhost:8888/dashboard.html
 ### Immediate (< 5 minutes)
 1. Follow [GITHUB-TOKEN-SETUP.md](GITHUB-TOKEN-SETUP.md)
 2. Set `export GITHUB_TOKEN=ghp_...`
-3. Run `python3 scripts/discover-improvements.sh`
+3. Run `python3 scripts/governance/discover-improvements.sh`
 4. Verify 3-5 candidates appear (not errors)
 
 ### This Week

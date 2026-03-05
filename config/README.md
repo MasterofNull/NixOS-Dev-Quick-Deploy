@@ -23,5 +23,5 @@ This directory contains runtime and deployment configuration inputs.
 ## How to Validate
 
 ```bash
-./scripts/validate-config-settings.sh
+./scripts/testing/validate-config-settings.sh
 ```

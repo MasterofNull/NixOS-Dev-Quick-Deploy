@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "scripts/data/generate-dashboard-data.sh is deprecated." >&2
+echo "Monitoring data is now provided by declarative services (Prometheus/Node Exporter/dashboard backend)." >&2
+echo "Use: systemctl status command-center-dashboard-api.service command-center-dashboard-frontend.service" >&2
+exit 2

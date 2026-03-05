@@ -56,7 +56,7 @@ $ ls -la /run/wrappers/bin/newuidmap
 
 ### 2. Fixed Startup Script PATH
 
-**File:** [scripts/ai-stack-startup.sh](/scripts/ai-stack-startup.sh:10)
+**File:** [scripts/ai/ai-stack-startup.sh](/scripts/ai/ai-stack-startup.sh:10)
 
 **Change:**
 ```diff
@@ -90,7 +90,7 @@ RemainAfterExit=yes
 # Include /run/wrappers/bin for setuid helpers (newuidmap/newgidmap)
 Environment="PATH=/run/wrappers/bin:/run/current-system/sw/bin:/usr/bin:/bin:%h/.nix-profile/bin"
 Environment="HOME=%h"
-ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-startup.sh
 TimeoutStartSec=300
 Restart=no
 
@@ -253,7 +253,7 @@ This allows the `hyperd` user to map 65,536 subordinate UIDs/GIDs starting at 10
 | File | Purpose | Changes |
 |------|---------|---------|
 | `~/.config/systemd/user/ai-stack-startup.service` | Systemd service | Added `/run/wrappers/bin` to PATH |
-| [scripts/ai-stack-startup.sh](/scripts/ai-stack-startup.sh) | Startup script | Exported PATH with `/run/wrappers/bin` first |
+| [scripts/ai/ai-stack-startup.sh](/scripts/ai/ai-stack-startup.sh) | Startup script | Exported PATH with `/run/wrappers/bin` first |
 | [templates/systemd/ai-stack-startup.service](templates/systemd/ai-stack-startup.service) | Template | Created with correct PATH for future deployments |
 
 ## Success Criteria

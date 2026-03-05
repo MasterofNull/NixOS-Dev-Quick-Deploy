@@ -75,7 +75,7 @@ local-ai-qdrant   Exited (101) 3 hours ago (healthy)
 
 Create a script to stop existing services before deployment:
 
-**File:** `scripts/stop-ai-stack.sh`
+**File:** `scripts/deploy/stop-ai-stack.sh`
 ```bash
 #!/usr/bin/env bash
 # Stop all AI stack services (both host and containers)
@@ -121,7 +121,7 @@ AI_STACK_DATA="${HOME}/.local/share/nixos-ai-stack"
 echo "🔧 Resetting AI stack volume permissions..."
 
 # Stop containers first
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 
 # Reset Qdrant volume (most common issue)
 if [ -d "$AI_STACK_DATA/qdrant" ]; then
@@ -176,7 +176,7 @@ All containers already have this except those in profiles (aider, autogpt, ralph
 
 ### Fix 5: Improve Startup Script
 
-**File:** `scripts/start-ai-stack-and-dashboard.sh`
+**File:** `scripts/deploy/start-ai-stack-and-dashboard.sh`
 
 Add pre-flight checks:
 
@@ -218,8 +218,8 @@ Add cleanup before deployment:
 ```bash
 # Around line 100, before starting AI stack
 log_info "Cleaning up previous AI stack deployment..."
-if [ -f "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" ]; then
-    bash "${SCRIPT_DIR}/scripts/stop-ai-stack.sh" || true
+if [ -f "${SCRIPT_DIR}/scripts/deploy/stop-ai-stack.sh" ]; then
+    bash "${SCRIPT_DIR}/scripts/deploy/stop-ai-stack.sh" || true
 fi
 ```
 
@@ -231,10 +231,10 @@ fi
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
 
 # Create stop script
-cat > scripts/stop-ai-stack.sh << 'EOF'
+cat > scripts/deploy/stop-ai-stack.sh << 'EOF'
 [Script content from Fix 1]
 EOF
-chmod +x scripts/stop-ai-stack.sh
+chmod +x scripts/deploy/stop-ai-stack.sh
 
 # Create volume reset script
 cat > scripts/reset-ai-volumes.sh << 'EOF'
@@ -249,14 +249,14 @@ Edit `ai-stack/compose/docker-compose.yml` and update the Qdrant healthcheck.
 
 ### 3. Update Deployment Scripts
 
-- Modify `scripts/start-ai-stack-and-dashboard.sh` to call cleanup first
+- Modify `scripts/deploy/start-ai-stack-and-dashboard.sh` to call cleanup first
 - Modify `phases/phase-09-ai-model-deployment.sh` to call cleanup
 
 ### 4. Test Deployment
 
 ```bash
 # Full cleanup
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 ./scripts/reset-ai-volumes.sh
 
 # Fresh deployment
@@ -265,7 +265,7 @@ Edit `ai-stack/compose/docker-compose.yml` and update the Qdrant healthcheck.
 
 ## Testing Checklist
 
-- [ ] Run `scripts/stop-ai-stack.sh` - should kill all processes
+- [ ] Run `scripts/deploy/stop-ai-stack.sh` - should kill all processes
 - [ ] Check `lsof -i:8091` - should return nothing
 - [ ] Run `scripts/reset-ai-volumes.sh` - should reset permissions
 - [ ] Check `ls -la ~/.local/share/nixos-ai-stack/qdrant` - should be writable
@@ -308,7 +308,7 @@ The deployment appears to hang because:
 1. **Always run cleanup script** before deployment
 2. **Add timeout to compose up**: `timeout 300 podman-compose up -d`
 3. **Monitor logs during deployment**: `podman-compose logs -f` in separate terminal
-4. **Use health check dashboard**: scripts/ai-stack-monitor.sh
+4. **Use health check dashboard**: scripts/ai/ai-stack-monitor.sh
 5. **Validate ports before start**: Check for conflicts automatically
 
 ---

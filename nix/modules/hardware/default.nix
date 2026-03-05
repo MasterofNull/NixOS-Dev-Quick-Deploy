@@ -35,7 +35,7 @@
 #   - gpu/intel.nix  activates ALSO when igpuVendor == "intel"  (Optimus iGPU)
 #   - gpu/amd.nix    activates ALSO when igpuVendor == "amd"    (dual-AMD APU)
 #
-# To add a new host: run scripts/discover-system-facts.sh which auto-detects
+# To add a new host: run scripts/governance/discover-system-facts.sh which auto-detects
 # CPU/GPU vendor and writes the correct values to nix/hosts/<host>/facts.nix.
 { ... }:
 {

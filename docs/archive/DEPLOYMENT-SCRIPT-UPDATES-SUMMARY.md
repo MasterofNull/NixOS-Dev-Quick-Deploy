@@ -425,7 +425,7 @@ After deployment completes:
 
 1. **Test the stack**:
    ```bash
-   bash scripts/test-ai-stack-health.sh
+   bash scripts/testing/test-ai-stack-health.sh
    ```
 
 2. **Open Web UI**:
@@ -435,7 +435,7 @@ After deployment completes:
 
 3. **Install Claude proxy** (optional but recommended):
    ```bash
-   bash scripts/setup-claude-proxy.sh
+   bash scripts/deploy/setup-claude-proxy.sh
    ```
 
 4. **View dashboard**:

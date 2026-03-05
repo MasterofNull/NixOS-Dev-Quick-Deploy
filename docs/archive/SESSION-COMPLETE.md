@@ -94,7 +94,7 @@
 ### Core Implementation (3 files)
 1. `ai-stack/mcp-servers/aidb/discovery_api.py` (500 lines)
 2. `ai-stack/mcp-servers/aidb/discovery_endpoints.py` (400 lines)
-3. `scripts/ai-metrics-auto-updater.sh` (65 lines)
+3. `scripts/ai/ai-metrics-auto-updater.sh` (65 lines)
 
 ### Documentation (8 files)
 4. `AI-AGENT-START-HERE.md` - Single entry point
@@ -161,14 +161,14 @@
 **Dashboard**: http://localhost:8000/dashboard.html
 
 **Progressive Documentation**:
-1. http://localhost:8000/docs/00-QUICK-START.md (5 min)
-2. http://localhost:8000/docs/01-SYSTEM-OVERVIEW.md (10 min)
-3. http://localhost:8000/docs/02-AGENT-INTEGRATION.md (20 min)
-4. http://localhost:8000/docs/03-PROGRESSIVE-DISCLOSURE.md (15 min)
-5. http://localhost:8000/docs/04-CONTINUOUS-LEARNING.md (15 min)
-6. http://localhost:8000/docs/05-API-REFERENCE.md (as needed)
-7. http://localhost:8000/docs/06-TROUBLESHOOTING.md (as needed)
-8. http://localhost:8000/docs/07-DOCUMENTATION-INDEX.md (as needed)
+1. http://localhost:8000/docs/archive/legacy-sequence/00-QUICK-START.md (5 min)
+2. http://localhost:8000/docs/archive/legacy-sequence/01-SYSTEM-OVERVIEW.md (10 min)
+3. http://localhost:8000/docs/archive/legacy-sequence/02-AGENT-INTEGRATION.md (20 min)
+4. http://localhost:8000/docs/archive/legacy-sequence/03-PROGRESSIVE-DISCLOSURE.md (15 min)
+5. http://localhost:8000/docs/archive/legacy-sequence/04-CONTINUOUS-LEARNING.md (15 min)
+6. http://localhost:8000/docs/archive/legacy-sequence/05-API-REFERENCE.md (as needed)
+7. http://localhost:8000/docs/archive/legacy-sequence/06-TROUBLESHOOTING.md (as needed)
+8. http://localhost:8000/docs/archive/legacy-sequence/07-DOCUMENTATION-INDEX.md (as needed)
 
 **Test Reports**:
 - http://localhost:8000/FUNCTIONAL-TEST-REPORT.md (detailed)

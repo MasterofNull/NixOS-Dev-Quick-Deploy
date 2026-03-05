@@ -54,9 +54,9 @@ Completed Phase 5 performance work: connection pooling added for Postgres/Redis 
 
 ### ✅ Phase 7.1 Comprehensive API Documentation
 - Added OpenAPI specs for embeddings, hybrid coordinator, and nixos-docs.
-- Linked API specs in `docs/05-API-REFERENCE.md` and `docs/07-DOCUMENTATION-INDEX.md`.
+- Linked API specs in `docs/archive/legacy-sequence/05-API-REFERENCE.md` and `docs/archive/legacy-sequence/07-DOCUMENTATION-INDEX.md`.
 - Added API spec index in `docs/api/README.md`.
-- Added common error codes and example requests in `docs/05-API-REFERENCE.md`.
+- Added common error codes and example requests in `docs/archive/legacy-sequence/05-API-REFERENCE.md`.
 
 ### ✅ Phase 7.2 Development Environment Setup
 - Added root `Makefile` with common stack tasks.
@@ -65,12 +65,12 @@ Completed Phase 5 performance work: connection pooling added for Postgres/Redis 
 - Added `.pre-commit-config.yaml` with base hygiene hooks.
 
 ### ✅ Phase 7.3 Troubleshooting Guide
-- Added current troubleshooting guidance to `docs/06-TROUBLESHOOTING.md`.
+- Added current troubleshooting guidance to `docs/archive/legacy-sequence/06-TROUBLESHOOTING.md`.
 - Included health checks, common errors, and log analysis examples.
 - Preserved legacy test report content under a historical section.
 
 ### ✅ Security Audit Baseline (Initial)
-- Added `scripts/security-audit.sh` to flag default creds, rolling tags, privileged containers, unsafe port binds, and secret permissions.
+- Added `scripts/security/security-audit.sh` to flag default creds, rolling tags, privileged containers, unsafe port binds, and secret permissions.
 - Current nonconformance findings: default passwords in compose, rolling image tags, privileged health-monitor, nginx ports bound to all interfaces, API key file permissions (`644`).
 
 ### ✅ Security Scan (Trivy - HIGH/CRITICAL)
@@ -92,7 +92,7 @@ Completed Phase 5 performance work: connection pooling added for Postgres/Redis 
 - Updated `templates/local-ai-stack/.env.example` to require the same credentials as the main stack.
 - Expanded `scripts/local-ai-starter.sh` to copy full stack assets (mcp-servers, nginx, grafana, prometheus, secrets, postgres schema).
 - Updated `scripts/hybrid-ai-stack.sh` to load the AI stack env file and align host checks with non-exposed ports.
-- Fixed `scripts/start-ai-stack-and-dashboard.sh` cleanup path.
+- Fixed `scripts/deploy/start-ai-stack-and-dashboard.sh` cleanup path.
 - Updated `docs/LOCAL-AI-STARTER.md` to reflect the full stack + profiles workflow.
 
 ### ✅ Quick Deploy Credentials + Swap Limits
@@ -123,21 +123,21 @@ Completed Phase 5 performance work: connection pooling added for Postgres/Redis 
 - `docs/api/embeddings-openapi.yaml`
 - `docs/api/hybrid-openapi.yaml`
 - `docs/api/nixos-docs-openapi.yaml`
-- `docs/05-API-REFERENCE.md`
-- `docs/07-DOCUMENTATION-INDEX.md`
+- `docs/archive/legacy-sequence/05-API-REFERENCE.md`
+- `docs/archive/legacy-sequence/07-DOCUMENTATION-INDEX.md`
 - `Makefile`
 - `docs/development.md`
 - `ai-stack/compose/docker-compose.dev.yml`
 - `.pre-commit-config.yaml`
-- `docs/06-TROUBLESHOOTING.md`
+- `docs/archive/legacy-sequence/06-TROUBLESHOOTING.md`
 - `.env.example`
-- `scripts/security-scan.sh`
+- `scripts/security/security-scan.sh`
 - `docs/SECURITY-EXCEPTIONS.md`
 - `docs/LOCAL-AI-STARTER.md`
 - `scripts/hybrid-ai-stack.sh`
 - `scripts/local-ai-starter.sh`
-- `scripts/setup-ai-stack-secrets.sh`
-- `scripts/start-ai-stack-and-dashboard.sh`
+- `scripts/deploy/setup-ai-stack-secrets.sh`
+- `scripts/deploy/start-ai-stack-and-dashboard.sh`
 - `templates/local-ai-stack/docker-compose.yml`
 - `templates/local-ai-stack/.env.example`
 - `phases/phase-09-ai-stack-deployment.sh`

@@ -184,7 +184,7 @@ nginx:
 ```
 
 **Completed Tasks:**
-- [x] Certificate generation script (`scripts/generate-nginx-certs.sh`)
+- [x] Certificate generation script (`scripts/data/generate-nginx-certs.sh`)
   - RSA 4096-bit self-signed certificates
   - Subject Alternative Names (SAN) for modern browsers
   - Proper file permissions (600 for key, 644 for cert)
@@ -243,7 +243,7 @@ Completed: 2026-01-09
 **Status:** ✅ Completed 2026-01-09
 
 **Completed Tasks:**
-- [x] Created security scan script (`scripts/security-scan.sh`)
+- [x] Created security scan script (`scripts/security/security-scan.sh`)
 - [x] Ran HIGH/CRITICAL vulnerability scan on all images
 - [x] Triaged findings and documented exceptions
 - [x] Saved baseline scan results (`data/security-scan-2026-01-07.txt`)
@@ -269,7 +269,7 @@ Completed: 2026-01-09
 - [x] Added weekly scheduled scans
 
 **Workflow Jobs:**
-1. **Security Audit** - Runs `scripts/security-audit.sh` to check:
+1. **Security Audit** - Runs `scripts/security/security-audit.sh` to check:
    - No default credentials
    - No rolling image tags
    - No unnecessary privileged containers
@@ -462,7 +462,7 @@ environment:
 **Estimated Time:** 2 hours
 
 **Tasks:**
-- [ ] Create certificate generation script (`scripts/generate-nginx-certs.sh`)
+- [ ] Create certificate generation script (`scripts/data/generate-nginx-certs.sh`)
 - [ ] Configure nginx.conf for TLS termination
 - [ ] Add HTTPS redirect from HTTP
 - [ ] Document certificate renewal process
@@ -470,7 +470,7 @@ environment:
 
 **Files:**
 - `ai-stack/compose/nginx/nginx.conf`
-- `scripts/generate-nginx-certs.sh`
+- `scripts/data/generate-nginx-certs.sh`
 - `docs/TLS-SETUP.md`
 
 ---

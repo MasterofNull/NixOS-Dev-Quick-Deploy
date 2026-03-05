@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-echo "scripts/mcp-db-setup has been renamed to scripts/mcp-db-validate." >&2
-exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mcp-db-validate" "$@"

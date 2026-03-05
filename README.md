@@ -33,6 +33,42 @@ See:
 
 ---
 
+## Agentic AI Layer Bootstrap (Empty Dir -> Ready)
+
+Use the guided workflow to scaffold a low-token, progressive-disclosure AI layer:
+
+```bash
+scripts/ai/aqd workflows project-init \
+  --target /path/to/empty-dir \
+  --name "my-project" \
+  --goal "ship MVP safely" \
+  --stack "nix+python" \
+  --owner "team"
+```
+
+Generated structure includes:
+- `.agent/` (PRD, rules, workflow artifacts)
+- `.claude/` (small always-read core + command specs)
+- `.agents/plans/` (slice/phase planning templates)
+- git secret guards (`.git/hooks/pre-commit`, `.git/hooks/pre-push`)
+
+Session continuation:
+
+```bash
+scripts/ai/aqd workflows primer --target /path/to/repo --objective "resume work"
+```
+
+Brownfield improvement flow:
+
+```bash
+scripts/ai/aqd workflows brownfield --target /path/to/repo
+```
+
+Reference runbook:
+- `docs/development/AGENTIC-WORKFLOW-BOOTSTRAP-2026-03-05.md`
+
+---
+
 ## 🚀 Quick Deploy (One Command)
 
 ```bash
@@ -560,7 +596,7 @@ These locations must be writable for a successful deploy. The script validates t
 Overrides:
 - Set `TMPDIR`, `XDG_CACHE_HOME`, `XDG_STATE_HOME`, or `XDG_DATA_HOME` before running the deploy script.
 - Use `./nixos-quick-deploy.sh --prefix /path/to/dotfiles` to relocate the generated Home Manager/NixOS config workspace.
-- For systemd templates that use `@PROJECT_ROOT@`/`@AI_STACK_DATA@`, run `scripts/apply-project-root.sh` before installing.
+- For systemd templates that use `@PROJECT_ROOT@`/`@AI_STACK_DATA@`, run `scripts/governance/apply-project-root.sh` before installing.
 
 ---
 
@@ -792,7 +828,7 @@ Then persist via NixOS rebuild (see `templates/configuration.nix` firewall allow
 
 **Fix:**
 ```bash
-./scripts/setup-dashboard.sh
+./scripts/deploy/setup-dashboard.sh
 systemctl --user daemon-reload
 systemctl --user restart dashboard-server.service
 ```
@@ -1532,7 +1568,7 @@ Already installed but worth highlighting:
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Code Review Guide](docs/CODE_REVIEW.md) - Code quality and review process
 - [Safe Improvements](docs/SAFE_IMPROVEMENTS.md) - Guidelines for safe changes
-- [System Health Check](scripts/system-health-check.sh) - Verify and fix installation
+- [System Health Check](scripts/health/system-health-check.sh) - Verify and fix installation
 
 ### Official Docs
 
@@ -1581,7 +1617,7 @@ When reporting problems, please include:
 - **Build times**: First deployment with source builds (no binary cache) can take 60-120 minutes depending on hardware.
 - **Python package overrides**: Some Python packages require Nix build overrides to compile. Updating nixpkgs may break overrides until they are re-adjusted.
 - **Single-node K3s**: The AI stack runs on a single-node K3s cluster. Multi-node distributed deployment is not supported.
-- **No automatic TLS renewal in dev mode**: Self-signed certificates are generated for local HTTPS but are not automatically renewed. See `scripts/renew-tls-certificate.sh` for manual renewal.
+- **No automatic TLS renewal in dev mode**: Self-signed certificates are generated for local HTTPS but are not automatically renewed. See `scripts/security/renew-tls-certificate.sh` for manual renewal.
 
 ---
 

@@ -42,7 +42,7 @@ Conducted comprehensive functional test of:
 
 **Improvement Implemented**: Real-time AI Metrics Auto-Updater
 
-**File Created**: `scripts/ai-metrics-auto-updater.sh`
+**File Created**: `scripts/ai/ai-metrics-auto-updater.sh`
 
 **Features**:
 - Updates AI effectiveness metrics every 5 seconds

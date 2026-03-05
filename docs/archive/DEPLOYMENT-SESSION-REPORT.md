@@ -74,8 +74,8 @@
 ### Script Fixes Applied
 
 1. **Shebang Fix**: Changed `#!/bin/bash` → `#!/usr/bin/env bash` in:
-   - `scripts/backup-postgresql.sh`
-   - `scripts/backup-qdrant.sh`
+   - `scripts/data/backup-postgresql.sh`
+   - `scripts/data/backup-qdrant.sh`
 
 2. **Path Adjustments**: Used home directory for backups:
    - PostgreSQL: `~/backups/postgresql/`
@@ -216,8 +216,8 @@ podman logs local-ai-aidb --tail 100
 ### Files Modified
 
 ```
-scripts/backup-postgresql.sh  (shebang fixed)
-scripts/backup-qdrant.sh      (shebang fixed)
+scripts/data/backup-postgresql.sh  (shebang fixed)
+scripts/data/backup-qdrant.sh      (shebang fixed)
 Container /app/health_check.py (deployed)
 Container /app/server.py       (deployed - caused crash)
 ```

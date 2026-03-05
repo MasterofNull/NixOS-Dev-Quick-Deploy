@@ -100,7 +100,7 @@ async def generate_embedding(self, text: str) -> List[float]:
 
 #### D. Boot Integration
 
-**Updated:** `scripts/ai-stack-startup.sh`
+**Updated:** `scripts/ai/ai-stack-startup.sh`
 
 **Changes:**
 - Line 96: Added "embeddings" to core infrastructure message
@@ -281,8 +281,8 @@ ai-stack/mcp-servers/embeddings-service/Dockerfile
 ai-stack/compose/docker-compose.yml                    (embeddings service + env vars)
 ai-stack/mcp-servers/aidb/document_importer.py         (dual API support)
 ai-stack/mcp-servers/hybrid-coordinator/Dockerfile     (new module copies)
-scripts/import-documents.py                             (new default URL)
-scripts/ai-stack-startup.sh                            (boot integration)
+scripts/data/import-documents.py                             (new default URL)
+scripts/ai/ai-stack-startup.sh                            (boot integration)
 
 # datetime.utcnow() fixes:
 ai-stack/mcp-servers/ralph-wiggum/state_manager.py
@@ -338,7 +338,7 @@ From SYSTEM-ANALYSIS-2026-01-05.md Phase 1:
 # Full system restart test
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/ai-stack/compose
 podman-compose down
-/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+/home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-startup.sh
 
 # Expected result:
 ✓ 9 containers started (including embeddings)
@@ -429,13 +429,13 @@ From SYSTEM-ANALYSIS-2026-01-05.md:
 **Import Remaining Files:**
 ```bash
 # Python scripts (~50 files)
-python3 scripts/import-documents.py --directory scripts --extensions .py
+python3 scripts/data/import-documents.py --directory scripts --extensions .py
 
 # Shell scripts (~30 files)
-python3 scripts/import-documents.py --directory scripts --extensions .sh
+python3 scripts/data/import-documents.py --directory scripts --extensions .sh
 
 # Nix configs (~10 files)
-python3 scripts/import-documents.py --directory templates --extensions .nix
+python3 scripts/data/import-documents.py --directory templates --extensions .nix
 
 # Expected: 2,500+ total documents
 ```

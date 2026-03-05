@@ -20,7 +20,7 @@ echo 'export GITHUB_TOKEN=ghp_your_token_here' >> ~/.bashrc
 source ~/.bashrc
 
 # 4. Re-run discovery
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 ```
 
 **Verification**:
@@ -91,13 +91,13 @@ cat config/improvement-sources.json | jq '[.[] | select(.type == "forum")] | len
 rm data/improvement-crawler-state.json
 
 # 2. Run discovery
-python3 scripts/discover-improvements.sh
+python3 scripts/governance/discover-improvements.sh
 
 # 3. Check report
 cat docs/development/IMPROVEMENT-DISCOVERY-REPORT-$(date +%Y-%m-%d).md | grep -A 5 "Candidate Summary"
 
 # 4. Verify dashboard sees it
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 cat ~/.local/share/nixos-system-dashboard/keyword-signals.json | jq .candidates
 
 # 5. Check dashboard
@@ -162,8 +162,8 @@ xdg-open http://localhost:8888/dashboard.html
 - Check rate limit: `curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/rate_limit`
 
 ### Dashboard shows empty lists
-- Run discovery: `python3 scripts/discover-improvements.sh`
-- Regenerate dashboard data: `bash scripts/generate-dashboard-data.sh`
+- Run discovery: `python3 scripts/governance/discover-improvements.sh`
+- Regenerate dashboard data: `bash scripts/data/generate-dashboard-data.sh`
 - Check JSON exists: `ls -la ~/.local/share/nixos-system-dashboard/keyword-signals.json`
 
 ### State file prevents updates

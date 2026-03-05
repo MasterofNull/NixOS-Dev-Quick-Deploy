@@ -3,7 +3,7 @@
 ### 37.H1 Add strict verifier guardrails for centralized ports and OTEL noise regressions
 
 **Changes Applied:**
-- [x] Extended `scripts/verify-flake-first-roadmap-completion.sh` with explicit checks for centralized AI/OTEL port registry coverage in `nix/modules/core/options.nix`:
+- [x] Extended `scripts/testing/verify-flake-first-roadmap-completion.sh` with explicit checks for centralized AI/OTEL port registry coverage in `nix/modules/core/options.nix`:
   - `qdrantHttp`, `qdrantGrpc`, `otlpGrpc`, `otlpHttp`, `otelCollectorMetrics`.
 - [x] Added checks that declarative MCP runtime wiring derives endpoints from `mySystem.ports` in `nix/modules/services/mcp-servers.nix`:
   - `QDRANT_URL` from `ports.qdrantHttp`
@@ -16,8 +16,8 @@
   - phased tasks, hold-points, and success criteria
 
 **Validation:**
-- `bash -n scripts/verify-flake-first-roadmap-completion.sh docs/development/SYSTEM-UPGRADE-ROADMAP.md docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (`28 pass, 0 fail`)
+- `bash -n scripts/testing/verify-flake-first-roadmap-completion.sh docs/development/SYSTEM-UPGRADE-ROADMAP.md docs/development/SYSTEM-UPGRADE-ROADMAP-UPDATES.md` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS (`28 pass, 0 fail`)
 - `rg -n "jaeger:4317|debug:\\s*\\{\\}|exporters:\\s*\\[debug\\]" nix/modules/services/mcp-servers.nix` → PASS (no matches)
 
 ### 37.H2 Execute fallback inventory + regulated gate baseline
@@ -45,8 +45,8 @@
 
 **Validation:**
 - `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/server.py ai-stack/mcp-servers/ralph-wiggum/server.py ai-stack/mcp-servers/aidb/settings_loader.py` → PASS
-- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (`31 pass, 0 fail`)
+- `bash -n scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS (`31 pass, 0 fail`)
 
 
 **Changes Applied:**
@@ -57,14 +57,14 @@
   - `nix/hosts/hyperd/facts.nix` host-network allowlist reset to `[]`,
   - `nix/modules/core/hospital-classified.nix` example updated away from legacy kompose path.
 - [x] Updated audit/gate scanners to treat deprecated manifests as non-active:
-  - `scripts/security-audit.sh` now excludes deprecated path globs,
+  - `scripts/security/security-audit.sh` now excludes deprecated path globs,
   - `scripts/hospital-classified-gate.sh` excludes deprecated path globs for host-network and rolling-tag checks.
   - `ai-stack/systemd/letsencrypt-renewal.service` now uses `network-online.target`.
 
 **Validation:**
-- `bash scripts/security-audit.sh` → PASS
+- `bash scripts/security/security-audit.sh` → PASS
 - `./scripts/hospital-classified-gate.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (`31 pass, 0 fail`)
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS (`31 pass, 0 fail`)
 
 ### 37.H5 Added angry-team release blockers to roadmap
 
@@ -88,7 +88,7 @@
 
 **Validation:**
 - `bash -n lib/config.sh nixos-quick-deploy.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
 
 ## Phase 28 Update (2026-02-18): AI Stack Env Writer Robustness
 
@@ -108,14 +108,14 @@
 ### 28.H10 Make flake-first roadmap verification independent of ripgrep availability
 
 **Changes Applied:**
-- [x] Updated `scripts/verify-flake-first-roadmap-completion.sh` to detect `rg` availability and use `grep -E` fallback when `rg` is not installed.
+- [x] Updated `scripts/testing/verify-flake-first-roadmap-completion.sh` to detect `rg` availability and use `grep -E` fallback when `rg` is not installed.
 - [x] Added verifier preflight logging so fallback mode is explicit in execution output.
 - [x] Preserved all existing roadmap marker checks while removing false-negative failure mode on hosts missing ripgrep.
 
 **Validation:**
-- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
-- `PATH="/usr/bin:/bin" ./scripts/verify-flake-first-roadmap-completion.sh` → PASS (grep fallback)
+- `bash -n scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
+- `PATH="/usr/bin:/bin" ./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS (grep fallback)
 
 ## Phase 28 Update (2026-02-18): CI Enforcement for Flake-First Roadmap Completion
 
@@ -126,13 +126,13 @@
 - [x] Added CI syntax checks for flake-first entrypoints and verifier script:
   - `nixos-quick-deploy.sh`
   - `scripts/deploy-clean.sh`
-  - `scripts/analyze-clean-deploy-readiness.sh`
-  - `scripts/verify-flake-first-roadmap-completion.sh`
-- [x] Added CI execution of `./scripts/verify-flake-first-roadmap-completion.sh` so roadmap-complete flake-first markers are enforced in PR/push checks.
+  - `scripts/governance/analyze-clean-deploy-readiness.sh`
+  - `scripts/testing/verify-flake-first-roadmap-completion.sh`
+- [x] Added CI execution of `./scripts/testing/verify-flake-first-roadmap-completion.sh` so roadmap-complete flake-first markers are enforced in PR/push checks.
 
 **Validation:**
-- `bash -n .github/workflows/tests.yml scripts/verify-flake-first-roadmap-completion.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
+- `bash -n .github/workflows/tests.yml scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
 
 ## Phase 28 Update (2026-02-18): Enforced Roadmap-Completion Preflight in Deploy Paths
 
@@ -146,15 +146,15 @@
   - `scripts/deploy-clean.sh --skip-roadmap-verification`
 
 **Validation:**
-- `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/verify-flake-first-roadmap-completion.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS
+- `bash -n nixos-quick-deploy.sh scripts/deploy-clean.sh scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
 
 ## Phase 28 Update (2026-02-18): Flake-First Completion Verification Gate
 
 ### 28.H7 Add deterministic verifier for roadmap-complete flake-first items
 
 **Changes Applied:**
-- [x] Added `scripts/verify-flake-first-roadmap-completion.sh` to assert presence of key roadmap-complete flake-first implementations:
+- [x] Added `scripts/testing/verify-flake-first-roadmap-completion.sh` to assert presence of key roadmap-complete flake-first implementations:
   - flake-first default + deploy-clean orchestration path,
   - host auto-resolution in deploy-clean and readiness analyzer,
   - account-lock safety behavior,
@@ -164,8 +164,8 @@
 - [x] Script exits non-zero when any expected implementation marker is missing, so it can be reused as a CI/readiness guard.
 
 **Validation:**
-- `bash -n scripts/verify-flake-first-roadmap-completion.sh` → PASS
-- `./scripts/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
+- `bash -n scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS
+- `./scripts/testing/verify-flake-first-roadmap-completion.sh` → PASS (15 checks)
 
 ## Phase 28 Update (2026-02-18): Declarative Git Credential Helper Parity + Safer Primary User Resolution
 
@@ -179,7 +179,7 @@
 - [x] Reworked git option escaping to reuse `nix_escape_string()` for safe Nix string rendering.
 
 **Validation:**
-- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
+- `bash -n scripts/deploy-clean.sh scripts/governance/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
 - `rg -n "GIT_CREDENTIAL_HELPER|credential.helper|PRIMARY_USER_OVERRIDE:-\$\{SUDO_USER" scripts/deploy-clean.sh` → PASS
 
 ## Phase 28 Update (2026-02-18): Account Lock Safety + Declarative Git Identity Parity
@@ -191,14 +191,14 @@
   - unreadable `/etc/shadow` states no longer get interpreted as locked passwords,
   - lock checks now fail only on explicit lock markers (`!`, `*`, `!!`, prefixed lock markers).
 - [x] Relaxed readiness account check behavior for locked root account in analyzer:
-  - `scripts/analyze-clean-deploy-readiness.sh` now treats locked root as warning (common policy) instead of hard failure.
+  - `scripts/governance/analyze-clean-deploy-readiness.sh` now treats locked root as warning (common policy) instead of hard failure.
 - [x] Added declarative git identity persistence to flake-first deploy path:
   - `scripts/deploy-clean.sh` now writes `nix/hosts/<host>/home-deploy-options.nix` with `programs.git.userName/userEmail` from env or existing global git config.
 - [x] Wired root flake home config loading for host-scoped home deploy options:
   - `flake.nix` now imports optional `nix/hosts/<host>/home-deploy-options.nix` into `homeConfigurations`.
 
 **Validation:**
-- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh` → PASS (shell syntax + parse targets where applicable)
+- `bash -n scripts/deploy-clean.sh scripts/governance/analyze-clean-deploy-readiness.sh` → PASS (shell syntax + parse targets where applicable)
 - `rg -n "persist_home_git_credentials_declarative|home-deploy-options.nix|is_locked_password_field|Could not read password hash state" scripts/deploy-clean.sh flake.nix` → PASS
 
 ## Phase 28 Update (2026-02-18): Flake Host Resolution Guardrail for Fresh Installs
@@ -208,14 +208,14 @@
 **Changes Applied:**
 - [x] Added host auto-resolution guardrail in `scripts/deploy-clean.sh`:
   - when runtime hostname has no matching `nix/hosts/<hostname>/default.nix`, deploy-clean now auto-selects the only discovered host directory in the flake.
-- [x] Added identical host auto-resolution logic in `scripts/analyze-clean-deploy-readiness.sh`:
+- [x] Added identical host auto-resolution logic in `scripts/governance/analyze-clean-deploy-readiness.sh`:
   - readiness checks now evaluate the discovered host target instead of warning/failing on a hostname-only mismatch.
 - [x] Added flake-first host fallback in `nixos-quick-deploy.sh` before calling deploy-clean:
   - if detected hostname has no host dir and exactly one host exists, it uses that host for `--host`/target construction.
 
 **Validation:**
-- `bash -n scripts/deploy-clean.sh scripts/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
-- `./scripts/analyze-clean-deploy-readiness.sh --flake-ref path:. --profile ai-dev` → PASS/WARN (no false hostname mismatch warning when a single host is present)
+- `bash -n scripts/deploy-clean.sh scripts/governance/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` → PASS
+- `./scripts/governance/analyze-clean-deploy-readiness.sh --flake-ref path:. --profile ai-dev` → PASS/WARN (no false hostname mismatch warning when a single host is present)
 
 ## Phase 26 Update (2026-02-18): Flake-First Declarative AI Stack Parity Audit + Option Wiring
 
@@ -257,7 +257,7 @@
 - [x] Root flake now imports hardware aggregator module:
   - `flake.nix` switched from legacy flat imports to `nix/modules/hardware/default.nix`.
 - [x] Root flake now generates host-scoped Home Manager outputs with user alias compatibility.
-- [x] `scripts/discover-system-facts.sh` upgraded to emit full hardware/deployment facts schema:
+- [x] `scripts/governance/discover-system-facts.sh` upgraded to emit full hardware/deployment facts schema:
   - `hardware.igpuVendor`
   - `hardware.storageType`
   - `hardware.systemRamGb`
@@ -272,7 +272,7 @@
   - `tests/unit/discover-system-facts.bats` now validates expanded hardware facts fields.
 
 **Validation:**
-- `bash -n scripts/discover-system-facts.sh` → PASS
+- `bash -n scripts/governance/discover-system-facts.sh` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
 - deterministic run check for discovery script (`Updated` then `No changes`) → PASS
 
@@ -300,16 +300,16 @@
 - [x] Hardened GPU validation against false warnings on built-in kernels:
   - `lib/validation.sh` now checks `/sys/module/*` in addition to `lsmod`
 - [x] Added ARM/SBC hardware-module detection fallback:
-  - `lib/hardware-detect.sh` and `scripts/discover-system-facts.sh` read `/proc/device-tree/model` for Raspberry Pi mappings.
+  - `lib/hardware-detect.sh` and `scripts/governance/discover-system-facts.sh` read `/proc/device-tree/model` for Raspberry Pi mappings.
 - [x] Removed hard dependency on `rg` in discovery script path:
-  - `scripts/discover-system-facts.sh` now falls back to `grep` for GPU line filtering on minimal hosts.
+  - `scripts/governance/discover-system-facts.sh` now falls back to `grep` for GPU line filtering on minimal hosts.
 - [x] Completed root-flake `nixos-hardware` wiring:
   - `flake.nix` now declares `nixos-hardware` input (no invalid follows override)
   - template flake import now guards missing module attrs gracefully
 
 **Validation:**
 - `bash -n scripts/deploy-clean.sh` → PASS
-- `bash -n lib/config.sh lib/hardware-detect.sh scripts/discover-system-facts.sh lib/validation.sh config/defaults.sh config/variables.sh` → PASS
+- `bash -n lib/config.sh lib/hardware-detect.sh scripts/governance/discover-system-facts.sh lib/validation.sh config/defaults.sh config/variables.sh` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
 - `nix-instantiate --parse templates/flake.nix` → PASS
 
@@ -334,13 +334,13 @@
   - added `nix/data/profile-system-packages.nix`
   - `nix/modules/profiles/ai-dev.nix` and `nix/modules/profiles/gaming.nix` now consume declarative package lists.
 - [x] Fixed early-KMS override propagation in flake-first mode:
-  - `--disable-early-kms` / `--early-kms-auto` / `--force-early-kms` now feed `EARLY_KMS_POLICY_OVERRIDE` into `scripts/discover-system-facts.sh`.
+  - `--disable-early-kms` / `--early-kms-auto` / `--force-early-kms` now feed `EARLY_KMS_POLICY_OVERRIDE` into `scripts/governance/discover-system-facts.sh`.
 
 **Validation:**
 - `bash -n nixos-quick-deploy.sh` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
 - `nix-instantiate --parse nix/modules/hardware/storage.nix` → PASS
-- `./scripts/lint-template-placeholders.sh` → PASS (no placeholder proliferation)
+- `./scripts/governance/lint-template-placeholders.sh` → PASS (no placeholder proliferation)
 
 **Notes:**
 - Full `nix eval`/`nix build` validation remains environment-dependent when Nix daemon/network/cache access is restricted; syntax/evaluation blockers from the reported errors are removed in source.
@@ -401,13 +401,13 @@
 - [x] Added optional secure-boot key enrollment step:
   - `scripts/deploy-clean.sh --enroll-secureboot-keys` (requires `SECUREBOOT_ENROLL_CONFIRM=YES` safeguard).
 - [x] Expanded facts schema for disk + secure-boot toggles:
-  - `scripts/discover-system-facts.sh`
+  - `scripts/governance/discover-system-facts.sh`
   - `lib/hardware-detect.sh`
 - [x] Updated discovery unit coverage:
   - `tests/unit/discover-system-facts.bats` now validates disk/secureboot fields and invalid layout rejection.
 
 **Validation:**
-- `bash -n scripts/discover-system-facts.sh` → PASS
+- `bash -n scripts/governance/discover-system-facts.sh` → PASS
 - `bash -n lib/hardware-detect.sh` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
 - `nix-instantiate --parse templates/flake.nix` → PASS
@@ -429,13 +429,13 @@
 
 **Changes Applied:**
 - [x] Removed legacy `.claude/skills.backup-20251204-075457` tree from active workspace paths.
-- [x] Added canonical path guard: `scripts/check-skill-source-of-truth.sh`.
-- [x] Added external dependency floating-link guard: `scripts/lint-skill-external-deps.sh`.
-- [x] Added relative reference integrity validator: `scripts/validate-skill-references.sh`.
+- [x] Added canonical path guard: `scripts/testing/check-skill-source-of-truth.sh`.
+- [x] Added external dependency floating-link guard: `scripts/governance/lint-skill-external-deps.sh`.
+- [x] Added relative reference integrity validator: `scripts/testing/validate-skill-references.sh`.
 - [x] Added pinned dependency lock manifest: `docs/skill-dependency-lock.md`.
 - [x] Updated `mcp-builder` skill docs (canonical + mirror) to reference pinned-lock workflow instead of `.../main/README.md`.
 - [x] Wired new checks into CI workflow (`skill-governance-lint` job).
-- [x] Added initial CLI namespace wrapper: `scripts/aqd`
+- [x] Added initial CLI namespace wrapper: `scripts/ai/aqd`
   - `aqd skill validate`
   - `aqd skill quick-validate`
   - `aqd skill init`
@@ -461,20 +461,20 @@
   - `tests/unit/validate-skill-references.bats`
   - `tests/unit/aqd-parity.bats`
   - fixtures under `archive/test-fixtures/skill-reference-lint/`
-  - `scripts/lint-skill-template.sh` (+ CI step in `skill-governance-lint`)
+  - `scripts/governance/lint-skill-template.sh` (+ CI step in `skill-governance-lint`)
   - template lint currently emits non-blocking warnings while legacy skills are normalized
 
 **Validation:**
-- `./scripts/check-skill-source-of-truth.sh` → PASS
-- `./scripts/lint-skill-external-deps.sh` → PASS
-- `./scripts/validate-skill-references.sh` → PASS
-- `./scripts/aqd --version` → PASS
-- `./scripts/aqd workflows list` → PASS
-- `./scripts/aqd skill validate` → PASS (with template-lint warnings)
-- `./scripts/aqd skill quick-validate archive/test-fixtures/skill-reference-lint/valid-skill` → PASS
-- `env SKILL_REFERENCE_ROOTS='archive/test-fixtures/skill-reference-lint/valid-skill' ./scripts/validate-skill-references.sh` → PASS
-- `env SKILL_REFERENCE_ROOTS='archive/test-fixtures/skill-reference-lint/broken-skill' ./scripts/validate-skill-references.sh` → expected FAIL with remediation guidance
-- `./scripts/lint-skill-template.sh` → PASS (warning-only baseline)
+- `./scripts/testing/check-skill-source-of-truth.sh` → PASS
+- `./scripts/governance/lint-skill-external-deps.sh` → PASS
+- `./scripts/testing/validate-skill-references.sh` → PASS
+- `./scripts/ai/aqd --version` → PASS
+- `./scripts/ai/aqd workflows list` → PASS
+- `./scripts/ai/aqd skill validate` → PASS (with template-lint warnings)
+- `./scripts/ai/aqd skill quick-validate archive/test-fixtures/skill-reference-lint/valid-skill` → PASS
+- `env SKILL_REFERENCE_ROOTS='archive/test-fixtures/skill-reference-lint/valid-skill' ./scripts/testing/validate-skill-references.sh` → PASS
+- `env SKILL_REFERENCE_ROOTS='archive/test-fixtures/skill-reference-lint/broken-skill' ./scripts/testing/validate-skill-references.sh` → expected FAIL with remediation guidance
+- `./scripts/governance/lint-skill-template.sh` → PASS (warning-only baseline)
 
 **Remaining Work (Phase 27):**
 - [ ] Phase 27 exit criteria verification (two consecutive CI runs + full docs convergence).
@@ -534,14 +534,14 @@
   - `--recovery-mode` (forces recovery-safe facts; default mode remains `switch`)
   - `--allow-prev-fsck-fail` override for guarded bypass
 - [x] Improved GPU detection fallback (when `lspci` is unavailable):
-  - `scripts/discover-system-facts.sh`
+  - `scripts/governance/discover-system-facts.sh`
   - `lib/hardware-detect.sh`
   - now reads DRM vendor IDs from `/sys/class/drm/card*/device/vendor`
 - [x] Re-generated host facts with new schema and corrected GPU detection:
   - `nix/hosts/nixos/facts.nix` now reports `gpuVendor = "amd"` and includes recovery fields.
 
 **Validation:**
-- `bash -n scripts/deploy-clean.sh scripts/discover-system-facts.sh lib/hardware-detect.sh` → PASS
+- `bash -n scripts/deploy-clean.sh scripts/governance/discover-system-facts.sh lib/hardware-detect.sh` → PASS
 - `nix-instantiate --parse nix/modules/core/options.nix` → PASS
 - `nix-instantiate --parse nix/modules/hardware/recovery.nix` → PASS
 - `nix-instantiate --parse nix/modules/hardware/default.nix` → PASS
@@ -641,8 +641,8 @@
 - [ ] **10.37.1** Add circuit breaker pattern to AIDB → Hybrid Coordinator calls
 - [ ] **10.37.2** Add circuit breaker pattern to Ralph → Aider-wrapper calls
 - [ ] **10.37.3** Add circuit breaker pattern to Embeddings service calls
-- [ ] **10.37.4** Implement circuit breaker monitoring and alerting
-- [ ] **10.37.5** Document circuit breaker configuration and behavior
+- [x] **10.37.4** Implement circuit breaker monitoring and alerting
+- [x] **10.37.5** Document circuit breaker configuration and behavior
 
 ### 10.38 Graceful Degradation Strategies
 
@@ -654,8 +654,8 @@
 - [ ] **10.38.1** Implement fallback strategies for non-critical services
 - [ ] **10.38.2** Add graceful degradation for AIDB when Hybrid Coordinator is down
 - [ ] **10.38.3** Add graceful degradation for Ralph when Aider is unavailable
-- [ ] **10.38.4** Document degradation modes and expected behavior
-- [ ] **10.38.5** Add degradation testing procedures
+- [x] **10.38.4** Document degradation modes and expected behavior
+- [x] **10.38.5** Add degradation testing procedures
 
 ### 10.39 Enhanced Health Check Endpoints
 
@@ -664,11 +664,11 @@
 **Goal:** Implement comprehensive health check endpoints with dependency status.
 
 **Tasks:**
-- [ ] **10.39.1** Add detailed health check endpoints to AIDB
-- [ ] **10.39.2** Add detailed health check endpoints to Hybrid Coordinator
-- [ ] **10.39.3** Add detailed health check endpoints to Ralph Wiggum
-- [ ] **10.39.4** Add dependency health checks (PostgreSQL, Redis, Qdrant)
-- [ ] **10.39.5** Add performance-based health indicators
+- [x] **10.39.1** Add detailed health check endpoints to AIDB
+- [x] **10.39.2** Add detailed health check endpoints to Hybrid Coordinator
+- [x] **10.39.3** Add detailed health check endpoints to Ralph Wiggum
+- [x] **10.39.4** Add dependency health checks (PostgreSQL, Redis, Qdrant)
+- [x] **10.39.5** Add performance-based health indicators
 
 ### 10.40 Retry and Backoff Implementation
 
@@ -774,7 +774,7 @@
 
 **Progress Note (2026-02-16):**
 - Added `docs/AI-STACK-TROUBLESHOOTING-GUIDE.md`.
-- Added automation collector `scripts/ai-stack-troubleshoot.sh` producing report bundles in `artifacts/troubleshooting/`.
+- Added automation collector `scripts/ai/ai-stack-troubleshoot.sh` producing report bundles in `artifacts/troubleshooting/`.
 
 ### 15.6 Create Developer Onboarding Documentation
 
@@ -819,11 +819,11 @@
 **Goal:** Implement performance regression testing to catch performance issues.
 
 **Tasks:**
-- [ ] **16.5.1** Create performance benchmark suite
+- [x] **16.5.1** Create performance benchmark suite
 - [ ] **16.5.2** Add performance regression tests to CI/CD
 - [ ] **16.5.3** Implement performance monitoring dashboards
 - [ ] **16.5.4** Add performance alerting thresholds
-- [ ] **16.5.5** Document performance testing procedures
+- [x] **16.5.5** Document performance testing procedures
 
 ### 16.6 Add Security Penetration Tests
 
@@ -832,11 +832,11 @@
 **Goal:** Implement security penetration testing to identify vulnerabilities.
 
 **Tasks:**
-- [ ] **16.6.1** Set up automated security scanning
+- [x] **16.6.1** Set up automated security scanning
 - [ ] **16.6.2** Implement vulnerability assessment procedures
 - [ ] **16.6.3** Add security compliance checking
-- [ ] **16.6.4** Create security test reporting
-- [ ] **16.6.5** Document security testing procedures
+- [x] **16.6.4** Create security test reporting
+- [x] **16.6.5** Document security testing procedures
 
 ---
 
@@ -852,7 +852,7 @@
 - [ ] **17.6.1** Create standardized error handling functions
 - [ ] **17.6.2** Implement consistent error logging
 - [ ] **17.6.3** Add error recovery procedures
-- [ ] **17.6.4** Create error handling documentation
+- [x] **17.6.4** Create error handling documentation
 - [ ] **17.6.5** Add error handling tests
 
 ### 17.7 Implement Structured Logging
@@ -864,9 +864,9 @@
 **Tasks:**
 - [ ] **17.7.1** Add JSON logging format support
 - [ ] **17.7.2** Implement consistent log levels
-- [ ] **17.7.3** Add structured log parsing utilities
+- [x] **17.7.3** Add structured log parsing utilities
 - [ ] **17.7.4** Create log aggregation procedures
-- [ ] **17.7.5** Document logging standards
+- [x] **17.7.5** Document logging standards
 
 ### 17.8 Add Configuration Validation Functions
 
@@ -878,8 +878,8 @@
 - [ ] **17.8.1** Create configuration validation library
 - [ ] **17.8.2** Add validation for all configuration files
 - [ ] **17.8.3** Implement validation during deployment
-- [ ] **17.8.4** Add validation error reporting
-- [ ] **17.8.5** Document configuration validation procedures
+- [x] **17.8.4** Add validation error reporting
+- [x] **17.8.5** Document configuration validation procedures
 
 ### 17.9 Add Automated Testing for Refactored Components
 
@@ -909,7 +909,7 @@
 - [ ] **18.1.2** Update all services to use centralized ports
 - [ ] **18.1.3** Add port conflict detection
 - [ ] **18.1.4** Implement port validation procedures
-- [ ] **18.1.5** Document port management procedures
+- [x] **18.1.5** Document port management procedures
 
 ### 18.2 Complete Credential Management System
 
@@ -922,7 +922,7 @@
 - [ ] **18.2.2** Implement credential rotation procedures
 - [ ] **18.2.3** Add credential validation
 - [ ] **18.2.4** Create credential security procedures
-- [ ] **18.2.5** Document credential management
+- [x] **18.2.5** Document credential management
 
 ### 18.3 Complete Configuration Validation Framework
 
@@ -935,7 +935,7 @@
 - [ ] **18.3.2** Implement schema validation
 - [ ] **18.3.3** Add configuration dependency validation
 - [ ] **18.3.4** Create validation error reporting
-- [ ] **18.3.5** Document validation procedures
+- [x] **18.3.5** Document validation procedures
 
 ### 18.4 Complete Configuration Documentation
 
@@ -952,7 +952,7 @@
 
 **Progress Note (2026-02-16):**
 - Added `docs/CONFIGURATION-REFERENCE.md` (parameters, examples, best practices, troubleshooting).
-- Added `scripts/validate-config-settings.sh` and unit tests in `tests/unit/validate-config-settings.bats`.
+- Added `scripts/testing/validate-config-settings.sh` and unit tests in `tests/unit/validate-config-settings.bats`.
 - Wired config validation into CI smoke tests (`.github/workflows/test.yml`).
 
 ---
@@ -963,7 +963,7 @@
 
 **Changes Applied:**
 - [x] Added flake compatibility/security/dependency validator:
-  - `scripts/validate-flake-inputs.sh`
+  - `scripts/testing/validate-flake-inputs.sh`
   - checks declared-vs-locked ref compatibility (`nixpkgs`, `home-manager`)
   - verifies lock integrity (`narHash`) and immutable git revisions (`rev`)
   - validates lock dependency graph references
@@ -978,8 +978,8 @@
   - `docs/CLEAN-SETUP.md`
 
 **Validation:**
-- `bash -n scripts/validate-flake-inputs.sh` → PASS
-- `./scripts/validate-flake-inputs.sh --flake-ref path:. --skip-nix-metadata` → PASS
+- `bash -n scripts/testing/validate-flake-inputs.sh` → PASS
+- `./scripts/testing/validate-flake-inputs.sh --flake-ref path:. --skip-nix-metadata` → PASS
 - `bash -n .github/workflows/test.yml` is not applicable (YAML), structural edits verified by file diff review.
 
 ---
@@ -1040,15 +1040,15 @@
   - prefer declarative nixpkgs package (`goose-cli`) via profile package data.
   - keep fallback release installer in `lib/tools.sh` for compatibility.
 - [x] Added policy guardrail script:
-  - `scripts/validate-tool-management-policy.sh`
+  - `scripts/testing/validate-tool-management-policy.sh`
 - [x] Wired policy validation into CI flake-validation job:
   - `.github/workflows/test.yml`
 - [x] Documented recommendation and trade-offs:
   - `docs/FLAKE-MANAGEMENT.md`
 
 **Validation:**
-- `bash -n scripts/validate-tool-management-policy.sh` → PASS
-- `./scripts/validate-tool-management-policy.sh` → PASS
+- `bash -n scripts/testing/validate-tool-management-policy.sh` → PASS
+- `./scripts/testing/validate-tool-management-policy.sh` → PASS
 - `bash -n scripts/deploy-clean.sh` → PASS
 
 ### 19.6 Task Status
@@ -1096,7 +1096,7 @@
   - `scripts/README-ORPHANED-PROCESS-CLEANUP.md`
 
 **Validation:**
-- `./scripts/lint-template-placeholders.sh` → PASS
+- `./scripts/governance/lint-template-placeholders.sh` → PASS
 - Placeholder-bearing files under active `templates/` tree reduced accordingly.
 
 ## Phase 28 Update (2026-02-16): K3s-First Ops + Flake Deploy-Mode Convergence
@@ -1155,6 +1155,46 @@
 **Implementation Status:**
 - [ ] Not implemented yet (planning + decomposition complete).
 
+## Phase 10/16/17 Update (2026-03-04): Reliability + Testing + Logging/Validation Procedures
+
+### Runtime reliability implementation slice completed
+
+**Changes Applied:**
+- [x] Added Hybrid detailed health endpoint with dependency and performance payload:
+  - `ai-stack/mcp-servers/hybrid-coordinator/http_server.py` (`GET /health/detailed`)
+- [x] Added Ralph detailed health endpoint with dependency and performance payload:
+  - `ai-stack/mcp-servers/ralph-wiggum/server.py` (`GET /health/detailed`)
+- [x] Added runtime reliability verification script:
+  - `scripts/reliability/check-runtime-reliability.sh`
+- [x] Added runtime reliability operations documentation:
+  - `docs/operations/reliability/AI-STACK-RUNTIME-RELIABILITY.md`
+
+### Performance/security/testing/logging/config-validation procedures completed
+
+**Changes Applied:**
+- [x] Added benchmark suite:
+  - `scripts/performance/run-performance-benchmark-suite.sh`
+- [x] Added security penetration suite with report artifacts:
+  - `scripts/security/run-security-penetration-suite.sh`
+- [x] Added structured log parsing utility:
+  - `scripts/observability/parse-structured-logs.py`
+- [x] Added procedure docs:
+  - `docs/operations/procedures/PERFORMANCE-TESTING-PROCEDURES.md`
+  - `docs/operations/procedures/SECURITY-TESTING-PROCEDURES.md`
+  - `docs/operations/standards/LOGGING-STANDARDS.md`
+  - `docs/operations/procedures/CONFIG-VALIDATION-PROCEDURES.md`
+  - `docs/operations/procedures/PORT-MANAGEMENT-PROCEDURES.md`
+  - `docs/operations/procedures/CREDENTIAL-MANAGEMENT-PROCEDURES.md`
+  - existing error-handling guide validated for roadmap task closure: `docs/ERROR_HANDLING_PATTERNS.md`
+
+**Validation (local static):**
+- `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/http_server.py ai-stack/mcp-servers/ralph-wiggum/server.py` → PASS
+- `bash -n scripts/reliability/check-runtime-reliability.sh scripts/performance/run-performance-benchmark-suite.sh scripts/security/run-security-penetration-suite.sh` → PASS
+- `python3 scripts/observability/parse-structured-logs.py --help` → PASS
+
+**Gated runtime validation (requires next rebuild/deploy):**
+- Run `scripts/reliability/check-runtime-reliability.sh` against deployed services and confirm `GET /health/detailed` endpoint responses for Hybrid and Ralph.
+
 ## Phase 25 Update (2026-02-16): Post-Boot Filesystem Integrity Monitor
 
 ### 25.H5 Add automated integrity detection guardrails
@@ -1203,7 +1243,7 @@
   - added explicit flags: `--allow-gui-switch`, `--no-gui-fallback`
   - added env docs in `--help`
 - [x] Added offline repair helper:
-  - `scripts/recovery-offline-fsck-guide.sh`
+  - `scripts/deploy/recovery-offline-fsck-guide.sh`
 - [x] Added bootloader resilience defaults in `nix/modules/core/base.nix`:
   - `boot.loader.systemd-boot.configurationLimit = 20` (mkDefault)
   - `boot.loader.systemd-boot.graceful = true` (mkDefault)
@@ -1219,7 +1259,7 @@
 - `nix-instantiate --parse nix/modules/core/options.nix` → PASS
 - `nix-instantiate --parse flake.nix` → PASS
 - `bash -n scripts/deploy-clean.sh` → PASS
-- `bash -n scripts/recovery-offline-fsck-guide.sh` → PASS
+- `bash -n scripts/deploy/recovery-offline-fsck-guide.sh` → PASS
 
 ## Phase 30 Update (2026-02-17): Guardrail Completion Pass
 
@@ -1234,7 +1274,7 @@
   - `nix/modules/core/fs-integrity-monitor.nix` now uses `onFailure = [ "deploy-guardrail-alert@%n.service" ]`
   - `nix/modules/core/disk-health-monitor.nix` now uses `onFailure = [ "deploy-guardrail-alert@%n.service" ]`
 - [x] Added monitor visibility in health reporting:
-  - `scripts/system-health-check.sh` now includes a `Boot + Filesystem Guardrails` section
+  - `scripts/health/system-health-check.sh` now includes a `Boot + Filesystem Guardrails` section
   - reports monitor/timer health and guardrail alert backlog
 - [x] Added deploy preflight bootloader guard:
   - `scripts/deploy-clean.sh` now verifies bootloader enablement, `bootctl status`, mounted ESP, and minimum free ESP space before deploy
@@ -1244,13 +1284,13 @@
   - `tests/unit/fs-integrity-helpers.bats`
   - added test overrides in:
     - `scripts/fs-integrity-check.sh`
-    - `scripts/recovery-offline-fsck-guide.sh`
+    - `scripts/deploy/recovery-offline-fsck-guide.sh`
 - [x] Added immediate git operability fallback for unstable hosts:
-  - `scripts/git-safe.sh` (uses system `git` when present, otherwise ephemeral `nixpkgs#git`)
-  - `scripts/system-health-check.sh` remediation output now references the fallback when `git` is missing.
+  - `scripts/governance/git-safe.sh` (uses system `git` when present, otherwise ephemeral `nixpkgs#git`)
+  - `scripts/health/system-health-check.sh` remediation output now references the fallback when `git` is missing.
 
 **Validation:**
-- `bash -n scripts/deploy-clean.sh scripts/system-health-check.sh scripts/fs-integrity-check.sh scripts/recovery-offline-fsck-guide.sh` → PASS
+- `bash -n scripts/deploy-clean.sh scripts/health/system-health-check.sh scripts/fs-integrity-check.sh scripts/deploy/recovery-offline-fsck-guide.sh` → PASS
 - `nix-instantiate --parse nix/modules/core/guardrail-alerts.nix` → PASS
 - `nix-instantiate --parse nix/modules/core/fs-integrity-monitor.nix` → PASS
 - `nix-instantiate --parse nix/modules/core/disk-health-monitor.nix` → PASS
@@ -1273,7 +1313,7 @@
 - [x] Added host facts ownership/permission repair in `scripts/deploy-clean.sh`:
   - Auto-repairs unreadable `nix/hosts/<host>/facts.nix` before flake eval.
   - Fails fast with explicit remediation when privilege escalation is unavailable.
-- [x] Hardened facts generation permissions in `scripts/discover-system-facts.sh`:
+- [x] Hardened facts generation permissions in `scripts/governance/discover-system-facts.sh`:
   - Enforces `0644` on generated `facts.nix`.
   - When invoked as root via sudo, re-owns facts file back to invoking non-root user.
 - [x] Added declarative eval-time assertions in `nix/modules/core/base.nix`:
@@ -1282,7 +1322,7 @@
 
 **Validation:**
 - `bash -n scripts/deploy-clean.sh` → PASS
-- `bash -n scripts/discover-system-facts.sh` → PASS
+- `bash -n scripts/governance/discover-system-facts.sh` → PASS
 - `nix-instantiate --parse nix/modules/core/base.nix` → PASS
 - Guardrail behavior verified:
   - `./scripts/deploy-clean.sh --host hyperd --profile ai-dev --build-only --skip-system-switch --skip-home-switch --skip-health-check --skip-flatpak-sync`
@@ -1316,7 +1356,7 @@
 - [x] Keep optional tooling non-fatal with explicit warnings/remediation.
 
 **Implementation Applied:**
-- [x] Added new script: `scripts/analyze-clean-deploy-readiness.sh`
+- [x] Added new script: `scripts/governance/analyze-clean-deploy-readiness.sh`
   - checks core commands, optional commands, host/flake structure, account lock state, eval capability
   - prints pass/warn/fail summary and remediation guidance
   - supports `--host`, `--profile`, `--flake-ref`, `--update-lock`
@@ -1330,8 +1370,8 @@
   - timeout-protected `nix eval` probe to avoid preflight hangs
 
 **Validation:**
-- `bash -n scripts/analyze-clean-deploy-readiness.sh scripts/deploy-clean.sh` → PASS
-- `./scripts/analyze-clean-deploy-readiness.sh --host nixos --profile ai-dev --flake-ref path:$(pwd)` → FAIL (expected, account locked)
+- `bash -n scripts/governance/analyze-clean-deploy-readiness.sh scripts/deploy-clean.sh` → PASS
+- `./scripts/governance/analyze-clean-deploy-readiness.sh --host nixos --profile ai-dev --flake-ref path:$(pwd)` → FAIL (expected, account locked)
   - Summary: `8 pass, 5 warn, 1 fail`
 - `./scripts/deploy-clean.sh --host nixos --profile ai-dev --analyze-only --skip-discovery --skip-health-check --skip-flatpak-sync` → FAIL (expected, same locked-account gate)
 ## Program Closure Update (2026-03-04)
@@ -1341,12 +1381,12 @@
   - `docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md`
   - `docs/AGENT-PARITY-MATRIX.md`
 - Closure verification evidence (latest pass):
-  - `scripts/check-mcp-health.sh` (13/13 required services passing)
+  - `scripts/testing/check-mcp-health.sh` (13/13 required services passing)
   - `scripts/quick-deploy-lint.sh --mode fast` (all checks passing)
-  - `scripts/validate-runtime-declarative.sh` (pass)
-  - `scripts/check-prsi-phase7-program.sh` (pass)
-  - `scripts/verify-flake-first-roadmap-completion.sh` (31 pass / 0 fail)
-- `scripts/run-harness-improvement-pass.sh` (success=true)
+  - `scripts/testing/validate-runtime-declarative.sh` (pass)
+  - `scripts/testing/check-prsi-phase7-program.sh` (pass)
+  - `scripts/testing/verify-flake-first-roadmap-completion.sh` (31 pass / 0 fail)
+- `scripts/automation/run-harness-improvement-pass.sh` (success=true)
 
 ## Post-Activation Validation Report (2026-03-04 13:12 UTC)
 
@@ -1370,3 +1410,91 @@
 ### Outcome
 - PASS: post-activation npm monitor execution is healthy on current generation.
 - Historical failures shown by `systemctl status` are prior invocations and do not represent the latest run state.
+
+## Repo Cleanup Update (2026-03-04)
+
+### Pass 2 execution (continuous loop batch)
+
+**Changes Applied:**
+- [x] Enforced structure policy as a persistent gate in hooks/CI/quick-deploy lint.
+- [x] Migrated reliability/procedure docs from docs root into subject folders:
+  - `docs/operations/reliability/`
+  - `docs/operations/procedures/`
+  - `docs/operations/standards/`
+- [x] Migrated reliability/performance/security/observability scripts from scripts root into subject folders:
+  - `scripts/reliability/`
+  - `scripts/performance/`
+  - `scripts/security/`
+  - `scripts/observability/`
+- [x] Archived all numbered legacy docs into:
+  - `docs/archive/legacy-sequence/`
+- [x] Rewrote callsites and doc links for moved files.
+- [x] Fixed repo-structure lint `--all` mode to evaluate current working-tree files and avoid deleted-index false failures.
+- [x] Regenerated cleanup inventory baseline:
+  - `docs/operations/REPO-CLEANUP-INVENTORY-PASS2.csv`
+
+**Validation:**
+- `scripts/governance/repo-structure-lint.sh --all` → PASS
+- `scripts/quick-deploy-lint.sh --mode fast` → PASS
+- `bash -n scripts/governance/repo-structure-lint.sh scripts/reliability/check-runtime-reliability.sh scripts/performance/run-performance-benchmark-suite.sh scripts/security/run-security-penetration-suite.sh` → PASS
+- `python3 -m py_compile scripts/observability/parse-structured-logs.py` → PASS
+
+### Pass 3 incremental script-root reduction (continuous loop)
+
+**Changes Applied:**
+- [x] Migrated all `aq*` root scripts into `scripts/ai/` and rewired callsites across Nix modules, tests, docs, and runtime scripts.
+- [x] Migrated all root `check-*` scripts into `scripts/testing/`.
+- [x] Migrated all root `run-*` scripts into `scripts/automation/`.
+- [x] Migrated all root `analyze-*`, `audit-*`, and `lint-*` scripts into `scripts/governance/`.
+- [x] Migrated all root `validate-*` and `verify-*` scripts into `scripts/testing/`.
+- [x] Migrated all root `seed-*` and `sync-*` scripts into `scripts/data/`.
+- [x] Migrated all root `start-*`, `stop-*`, and `serve-*` scripts into `scripts/deploy/`.
+- [x] Migrated all root `install-*` and `setup-*` scripts into `scripts/deploy/`.
+- [x] Migrated all root `test-*` scripts into `scripts/testing/`.
+- [x] Migrated all root `import-*`, `export-*`, `populate-*`, `download-*`, and `backup-*` scripts into `scripts/data/`.
+- [x] Migrated all root `discover-*` and `manage-*` scripts into `scripts/governance/`.
+- [x] Migrated all root `generate-*` scripts into `scripts/data/`.
+- [x] Migrated remaining root `ai-*`, `security-*`, `mcp-*`, and `update-*` scripts:
+  - `scripts/ai/`: `ai-*`, `mcp-*`, `harness-rpc.js`, `llama-model-cli.sh`, `ralph-orchestrator.sh`, `route-reasoning-mode.py`
+  - `scripts/security/`: `security-audit.sh`, `security-manager.sh`, `security-scan.sh`, `update-mcp-integrity-baseline.sh`
+  - `scripts/data/`: `update-ai-research-now.sh`, `update-aidb-library-catalog-now.sh`
+  - `scripts/governance/`: `update-readme-ai-stack.py`, `apply-project-root.sh`, `apply-readme-ai-stack-updates.py`, `git-safe.sh`, `new-improvement-proposal.sh`, `smart_config_gen.sh`, `list-issues.py`, `comprehensive-mcp-search.py`
+  - `scripts/deploy/`: `local-registry.sh`
+  - `scripts/automation/`: `prsi-orchestrator.py`
+- [x] Migrated bootstrap/init/migrate/proxy wrappers:
+  - `scripts/ai/`: `claude-api-proxy.py`, `claude-local-wrapper.py`, `complete-via-ralph.sh`
+  - `scripts/deploy/`: `deploy-aidb-mcp-server.sh`, `quick-deploy-fast-verify.sh`
+  - `scripts/data/`: `bootstrap-prsi-confidence-samples.sh`, `bootstrap_aidb_data.sh`, `init-package-database.sh`, `initialize-qdrant-collections.sh`, `migrate-reports-to-database.sh`
+  - `scripts/governance/`: `preflight-auto-remediate.sh`
+- [x] Migrated smoke/test utility scripts out of root:
+  - `scripts/testing/`: `smoke-*`, `chaos-harness-smoke.sh`, `rag-smoke-test.sh`, `telemetry-smoke-test.sh`, `test_real_world_workflows.sh`, `test_services.sh`
+  - `scripts/health/`: `system-health-check.sh`
+- [x] Migrated root recovery/rotation scripts into target domains:
+  - `scripts/deploy/`: `fast-rebuild.sh`, `recovery-*`, `restore-drill.sh`
+  - `scripts/security/`: `renew-tls-certificate.sh`, `rotate-api-key.sh`
+  - `scripts/data/`: `rebuild-qdrant-collections.sh`, `rotate-telemetry.sh`
+  - `scripts/governance/`: `record-claude-code-errors.sh`, `record-issue.py`
+- [x] Normalized moved script repo-root resolution from one-level-up (`/..`) to two-level-up (`/../..`) where required.
+
+**Validation:**
+- `bash -n scripts/ai/aq-completions.sh scripts/ai/aq-gap-import scripts/ai/aq-gaps scripts/ai/aq-knowledge-import.sh scripts/ai/aq-qa scripts/ai/aq-rate scripts/ai/aqd` → PASS
+- `python3 -m py_compile scripts/ai/aq-auto-remediate.py scripts/ai/aq-hints scripts/ai/aq-optimizer scripts/ai/aq-prompt-eval scripts/ai/aq-report` → PASS
+- `bash -n scripts/testing/check-*.sh` → PASS
+- `bash -n scripts/automation/run-*.sh` → PASS
+- `bash -n scripts/governance/analyze-clean-deploy-readiness.sh scripts/governance/audit-deploy-feature-toggles.sh scripts/governance/audit-hardcoded-paths.sh scripts/governance/audit-service-endpoints.sh scripts/governance/lint-color-echo-usage.sh` → PASS
+- `bash -n scripts/testing/validate-*.sh scripts/testing/verify-*.sh` → PASS
+- `bash -n scripts/data/seed-*.sh scripts/data/sync-*.sh scripts/data/sync-knowledge-sources` → PASS
+- `bash -n scripts/deploy/start-*.sh scripts/deploy/stop-*.sh scripts/deploy/serve-*.sh scripts/deploy/install-*.sh scripts/deploy/setup-*.sh` → PASS
+- `bash -n scripts/testing/test-*.sh` → PASS
+- `bash -n scripts/data/backup-*.sh scripts/data/download-*.sh scripts/data/export-*.sh scripts/data/import-*.sh scripts/data/populate-*.sh scripts/data/sync-knowledge-sources` → PASS
+- `bash -n scripts/data/generate-*.sh scripts/governance/discover-improvements.sh scripts/governance/discover-system-facts.sh scripts/governance/manage-secrets.sh` → PASS
+- `bash -n scripts/deploy/recovery-*.sh scripts/deploy/restore-drill.sh scripts/security/renew-tls-certificate.sh scripts/security/rotate-api-key.sh scripts/data/rebuild-qdrant-collections.sh scripts/data/rotate-telemetry.sh scripts/governance/record-claude-code-errors.sh` → PASS
+- `bash -n scripts/testing/smoke-*.sh scripts/testing/chaos-harness-smoke.sh scripts/testing/rag-smoke-test.sh scripts/testing/telemetry-smoke-test.sh scripts/testing/test_real_world_workflows.sh scripts/testing/test_services.sh scripts/health/system-health-check.sh` → PASS
+- `bash -n scripts/ai/ai-*.sh scripts/security/security-*.sh scripts/ai/mcp-* scripts/data/update-*.sh scripts/governance/{apply-project-root.sh,new-improvement-proposal.sh,smart_config_gen.sh,git-safe.sh} scripts/deploy/local-registry.sh` → PASS
+- `bash -n scripts/ai/complete-via-ralph.sh scripts/deploy/{deploy-aidb-mcp-server.sh,quick-deploy-fast-verify.sh} scripts/data/{bootstrap-prsi-confidence-samples.sh,bootstrap_aidb_data.sh,init-package-database.sh,initialize-qdrant-collections.sh,migrate-reports-to-database.sh} scripts/governance/preflight-auto-remediate.sh` → PASS
+- `python3 -m py_compile scripts/data/sync-hint-feedback-db.py scripts/testing/test-continuous-learning.py scripts/testing/test-discovery-system.py scripts/testing/test-rag-workflow.py scripts/testing/test-tool-security-auditor.py` → PASS
+- `python3 -m py_compile scripts/data/import-documents.py scripts/data/populate-knowledge-base.py scripts/data/populate-knowledge-from-web.py scripts/data/populate-qdrant-directly.py scripts/data/populate-qdrant-with-embeddings.py` → PASS
+- `python3 -m py_compile scripts/governance/discover-focused-agent-repos.py scripts/governance/discover-improvements.py scripts/governance/discover-semantic-github-repos.py scripts/governance/manage-secrets.py scripts/governance/record-issue.py` → PASS
+- `python3 -m py_compile scripts/governance/{apply-readme-ai-stack-updates.py,update-readme-ai-stack.py,list-issues.py,comprehensive-mcp-search.py} scripts/ai/{mcp-bridge-hybrid.py,route-reasoning-mode.py} scripts/automation/prsi-orchestrator.py` → PASS
+- `python3 -m py_compile scripts/ai/claude-api-proxy.py scripts/ai/claude-local-wrapper.py` → PASS
+- `scripts/quick-deploy-lint.sh --mode fast` → PASS

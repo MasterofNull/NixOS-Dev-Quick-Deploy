@@ -141,7 +141,7 @@ phase_06_additional_tooling() {
         print_section "Validating declarative toolchain prerequisites"
         print_warning "jq not detected on PATH. Phase 6 relies on declarative jq availability."
 
-        local health_script="$SCRIPT_DIR/scripts/system-health-check.sh"
+        local health_script="$SCRIPT_DIR/scripts/health/system-health-check.sh"
 
         if [ -x "$health_script" ]; then
             print_info "Running system health check before continuing Phase 6..."

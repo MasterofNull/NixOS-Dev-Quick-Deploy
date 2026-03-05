@@ -14,12 +14,12 @@
     "## Local Release Gate"
   ],
   "required_commands": [
-    "scripts/aq-hints",
-    "scripts/harness-rpc.js run-start",
-    "scripts/aq-qa 0 --json",
-    "scripts/aq-qa 1 --json",
-    "scripts/system-health-check.sh --detailed",
-    "scripts/run-advanced-parity-suite.sh"
+    "scripts/ai/aq-hints",
+    "scripts/ai/harness-rpc.js run-start",
+    "scripts/ai/aq-qa 0 --json",
+    "scripts/ai/aq-qa 1 --json",
+    "scripts/health/system-health-check.sh --detailed",
+    "scripts/automation/run-advanced-parity-suite.sh"
   ],
   "required_evidence_sections": [
     "## Objective",

@@ -52,7 +52,7 @@ cd ai-stack/compose && podman-compose up -d qdrant
 
 **Collections Initialized:**
 ```bash
-bash scripts/initialize-qdrant-collections.sh
+bash scripts/data/initialize-qdrant-collections.sh
 ```
 
 **Created 5 Collections:**
@@ -77,8 +77,8 @@ bash scripts/initialize-qdrant-collections.sh
 bash scripts/collect-ai-metrics.sh
 
 # Full dashboard data generation
-bash scripts/generate-dashboard-data-lite.sh
-bash scripts/run-dashboard-collector-full.sh
+bash scripts/data/generate-dashboard-data-lite.sh
+bash scripts/automation/run-dashboard-collector-full.sh
 ```
 
 **Metrics Updated:**
@@ -331,7 +331,7 @@ podman ps --format "{{.Names}} {{.Status}}"
 # Force metrics refresh
 cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 bash scripts/collect-ai-metrics.sh
-bash scripts/generate-dashboard-data-lite.sh
+bash scripts/data/generate-dashboard-data-lite.sh
 
 # Restart dashboard server if needed
 systemctl --user restart dashboard-server.service

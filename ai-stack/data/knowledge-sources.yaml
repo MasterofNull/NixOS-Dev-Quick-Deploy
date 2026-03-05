@@ -1,7 +1,7 @@
 # AI Stack Knowledge Sources Registry
 #
 # Single source of truth for all external content indexed into the AIDB knowledge base.
-# Sync with: scripts/sync-knowledge-sources
+# Sync with: scripts/data/sync-knowledge-sources
 #
 # Fields:
 #   id          — unique slug, used as AIDB collection name

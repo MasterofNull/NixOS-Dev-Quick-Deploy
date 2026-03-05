@@ -59,7 +59,7 @@ data/
 
 **Created 3 executable bash scripts**:
 
-#### `scripts/sync-learning-data.sh` (150+ lines)
+#### `scripts/data/sync-learning-data.sh` (150+ lines)
 - Extracts high-value patterns (value_score >= 0.7) from runtime telemetry
 - Categorizes patterns: skills, errors, best practices
 - Deduplicates and sorts
@@ -67,9 +67,9 @@ data/
 - Snapshots last 1000 high-value telemetry events
 - Updates federation metrics
 
-**Usage**: `bash scripts/sync-learning-data.sh`
+**Usage**: `bash scripts/data/sync-learning-data.sh`
 
-#### `scripts/export-collections.sh` (120+ lines)
+#### `scripts/data/export-collections.sh` (120+ lines)
 - Exports 3 Qdrant collections to JSON:
   - skills-patterns
   - error-solutions
@@ -78,16 +78,16 @@ data/
 - Creates timestamped snapshots
 - Limits to 10,000 points per collection
 
-**Usage**: `bash scripts/export-collections.sh`
+**Usage**: `bash scripts/data/export-collections.sh`
 
-#### `scripts/import-collections.sh` (130+ lines)
+#### `scripts/data/import-collections.sh` (130+ lines)
 - Finds latest snapshot for each collection
 - Ensures collection exists (creates if needed)
 - Imports points in batches of 100
 - Skips duplicates based on point ID
 - Handles errors gracefully
 
-**Usage**: `bash scripts/import-collections.sh`
+**Usage**: `bash scripts/data/import-collections.sh`
 
 ### 3. Deployment Integration (Commit: ff6368d)
 
@@ -255,8 +255,8 @@ bash scripts/initialize-ai-stack.sh
 # ... interact with Open WebUI, AIDB, etc ...
 
 # 3. Sync patterns to repo
-bash scripts/sync-learning-data.sh
-bash scripts/export-collections.sh
+bash scripts/data/sync-learning-data.sh
+bash scripts/data/export-collections.sh
 
 # 4. Review and commit
 git diff data/
@@ -280,7 +280,7 @@ curl http://localhost:6333/collections/skills-patterns | jq '.result.points_coun
 
 # 3. Contribute back
 # ... use system ...
-bash scripts/sync-learning-data.sh
+bash scripts/data/sync-learning-data.sh
 git add data/
 git commit -m "Add patterns from System B"
 git push origin main
@@ -293,8 +293,8 @@ git push origin main
 crontab -e
 
 # Add these lines (update paths):
-0 * * * * bash /path/to/scripts/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
-0 2 * * 0 bash /path/to/scripts/export-collections.sh >> /var/log/federated-export.log 2>&1
+0 * * * * bash /path/to/scripts/data/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
+0 2 * * 0 bash /path/to/scripts/data/export-collections.sh >> /var/log/federated-export.log 2>&1
 ```
 
 ---
@@ -418,9 +418,9 @@ System-specific data removed before federation.
 |------|-------|---------|
 | `FEDERATED-DATA-STRATEGY.md` | 400+ | Architecture and strategy |
 | `data/README.md` | 50+ | Directory structure docs |
-| `scripts/sync-learning-data.sh` | 150+ | Pattern extraction |
-| `scripts/export-collections.sh` | 120+ | Collection export |
-| `scripts/import-collections.sh` | 130+ | Collection import |
+| `scripts/data/sync-learning-data.sh` | 150+ | Pattern extraction |
+| `scripts/data/export-collections.sh` | 120+ | Collection export |
+| `scripts/data/import-collections.sh` | 130+ | Collection import |
 | `.gitignore` | +25 | Federation policy |
 
 ### Deployment
@@ -496,8 +496,8 @@ Integrate federated learning into deployment workflow and documentation
 
 3. **Run first sync**:
    ```bash
-   bash scripts/sync-learning-data.sh
-   bash scripts/export-collections.sh
+   bash scripts/data/sync-learning-data.sh
+   bash scripts/data/export-collections.sh
    ls -lh data/patterns/
    ls -lh data/collections/snapshots/
    ```

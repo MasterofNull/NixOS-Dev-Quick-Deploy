@@ -7,7 +7,7 @@ Reason:
 - They are no longer part of active deploy/render paths.
 - Keeping them under `templates/` inflated placeholder-lint surface area.
 - Active workflows use direct scripts/modules instead (for example,
-  `scripts/setup-claude-proxy.sh` writes the service file directly).
+  `scripts/deploy/setup-claude-proxy.sh` writes the service file directly).
 
 Files retained for reference:
 - `ai-stack-cleanup.service`

@@ -52,7 +52,7 @@ aidb:
 
 #### Option 2: HTTP Client Proxy (If port exposure not allowed)
 ```python
-# scripts/serve-dashboard.sh
+# scripts/deploy/serve-dashboard.sh
 import httpx
 from urllib.parse import quote
 
@@ -113,7 +113,7 @@ task_id: P1-SEC-001
 name: "Fix dashboard proxy subprocess vulnerability"
 backend: aider
 files:
-  - scripts/serve-dashboard.sh
+  - scripts/deploy/serve-dashboard.sh
   - ai-stack/compose/docker-compose.yml
 steps:
   1. Choose solution (Option 1 or 2)
@@ -155,7 +155,7 @@ ps aux | grep -c "podman exec"
 
 **Solution:**
 ```python
-# scripts/serve-dashboard.sh
+# scripts/deploy/serve-dashboard.sh
 from collections import defaultdict
 from datetime import datetime, timedelta
 import threading
@@ -205,7 +205,7 @@ task_id: P1-SEC-002
 name: "Add rate limiting to dashboard proxy"
 backend: aider
 files:
-  - scripts/serve-dashboard.sh
+  - scripts/deploy/serve-dashboard.sh
 steps:
   1. Implement RateLimiter class
   2. Add to DashboardHandler
@@ -855,7 +855,7 @@ backend: aider
 files:
   - scripts/detect-resources.sh
   - ai-stack/compose/docker-compose.yml
-  - scripts/start-ai-stack.sh
+  - scripts/deploy/start-ai-stack.sh
 steps:
   1. Create detect-resources.sh
   2. Restore intelligent profiles

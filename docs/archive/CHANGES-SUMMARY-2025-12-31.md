@@ -134,7 +134,7 @@ python3 -u /app/continuous_learning_daemon.py 2>&1 &
 ---
 
 ### **7. Auto-Start Script (NEW)**
-**File**: `scripts/ai-stack-startup.sh`
+**File**: `scripts/ai/ai-stack-startup.sh`
 
 **What It Does:**
 - Automatically starts all AI stack components on boot
@@ -167,7 +167,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-startup.sh
+ExecStart=%h/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-startup.sh
 TimeoutStartSec=300
 
 [Install]
@@ -231,7 +231,7 @@ podman-compose up -d aidb hybrid-coordinator health-monitor
 - `hybrid-coordinator/start_with_learning.sh` - Unbuffered Python
 
 **Files Created (New):**
-- `scripts/ai-stack-startup.sh` - Auto-start orchestrator
+- `scripts/ai/ai-stack-startup.sh` - Auto-start orchestrator
 - `~/.config/systemd/user/ai-stack-startup.service` - Systemd service
 
 **Not Temporary:**
@@ -265,7 +265,7 @@ grep "python3 -u" ai-stack/mcp-servers/*/start_with_*.sh
 # Should show 4 instances
 
 # Check auto-start script
-ls -lh scripts/ai-stack-startup.sh
+ls -lh scripts/ai/ai-stack-startup.sh
 # Should show executable file
 
 # Check systemd service
@@ -373,7 +373,7 @@ M ai-stack/mcp-servers/aidb/requirements.txt
 M ai-stack/mcp-servers/aidb/start_with_discovery.sh
 M ai-stack/mcp-servers/hybrid-coordinator/requirements.txt
 M ai-stack/mcp-servers/hybrid-coordinator/start_with_learning.sh
-A scripts/ai-stack-startup.sh
+A scripts/ai/ai-stack-startup.sh
 A AUTO-START-SETUP-GUIDE.md
 A DASHBOARD-FIX-REPORT-2025-12-31.md
 A SYSTEM-RECOVERY-REPORT-2025-12-31.md

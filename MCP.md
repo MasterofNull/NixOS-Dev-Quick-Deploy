@@ -3,14 +3,14 @@
 This repository documents MCP usage, setup, and inventory in:
 - `docs/MCP_SERVERS.md`
 - `docs/MCP_SETUP.md`
-- `docs/12-SKILLS-MCP.md`
-- `docs/13-MCP-SERVERS.md`
+- `docs/archive/legacy-sequence/12-SKILLS-MCP.md`
+- `docs/archive/legacy-sequence/13-MCP-SERVERS.md`
 - `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md`
 
 Operational entrypoints:
-- `scripts/aqd mcp ...`
-- `scripts/mcp-server`
-- `scripts/mcp-db-validate`
+- `scripts/ai/aqd mcp ...`
+- `scripts/ai/mcp-server`
+- `scripts/ai/mcp-db-validate`
 
 Related references:
 - `docs/AVAILABLE_TOOLS.md`

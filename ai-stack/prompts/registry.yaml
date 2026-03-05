@@ -6,7 +6,7 @@
 #   description  — what this prompt is for
 #   template     — Jinja2-compatible template string ({{ var }} for substitutions)
 #   tags         — list of category labels
-#   mean_score   — float 0-1, auto-updated by scripts/aq-prompt-eval
+#   mean_score   — float 0-1, auto-updated by scripts/ai/aq-prompt-eval
 #   last_evaluated — ISO date of last evaluation run
 #
 # IMPORTANT: Never hardcode model names, URLs, or port numbers here.

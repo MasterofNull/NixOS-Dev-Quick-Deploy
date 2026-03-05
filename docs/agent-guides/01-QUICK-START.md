@@ -25,11 +25,11 @@ curl -sS -H "X-API-Key: $(tr -d '[:space:]' </run/secrets/hybrid_coordinator_api
 ## Required Verification
 
 ```bash
-scripts/check-mcp-health.sh
+scripts/testing/check-mcp-health.sh
 scripts/quick-deploy-lint.sh --mode fast
-scripts/validate-runtime-declarative.sh
-scripts/check-prsi-phase7-program.sh
-scripts/aq-report --since=7d --format=text
+scripts/testing/validate-runtime-declarative.sh
+scripts/testing/check-prsi-phase7-program.sh
+scripts/ai/aq-report --since=7d --format=text
 ```
 
 ## Delegation Roles

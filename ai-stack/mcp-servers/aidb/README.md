@@ -403,7 +403,7 @@ sudo systemctl restart ai-aidb.service
 
 ```bash
 # Check service health
-./scripts/ai-stack-manage.sh health
+./scripts/ai/ai-stack-manage.sh health
 
 # View metrics
 curl http://localhost:8091/metrics

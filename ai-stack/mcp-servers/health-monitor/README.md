@@ -305,14 +305,14 @@ curl http://localhost:6333/healthz
 
 Manually regenerate:
 ```bash
-bash scripts/generate-dashboard-data.sh
+bash scripts/data/generate-dashboard-data.sh
 ```
 
 ### Permission Denied
 
 Ensure script is executable:
 ```bash
-chmod +x scripts/generate-dashboard-data.sh
+chmod +x scripts/data/generate-dashboard-data.sh
 ```
 
 ## Future Enhancements

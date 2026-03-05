@@ -20,20 +20,20 @@ logs:
 	journalctl -u $(SERVICE) -f
 
 health:
-	./scripts/ai-stack-health.sh
+	./scripts/ai/ai-stack-health.sh
 
 metrics:
 	systemctl status --no-pager prometheus.service prometheus-node-exporter.service
 	bash -lc '. ./config/service-endpoints.sh; curl -fsS "${PROMETHEUS_URL%/}/-/healthy"'
 
 security-audit:
-	./scripts/security-audit.sh
+	./scripts/security/security-audit.sh
 
 # Phase 11.1.2 — canonical target name; runs pip-audit on all requirements.lock files
 security-check: security-audit
 
 security-scan:
-	./scripts/security-scan.sh
+	./scripts/security/security-scan.sh
 
 test:
 	python3 -m pytest tests/integration/test_mcp_contracts.py -v

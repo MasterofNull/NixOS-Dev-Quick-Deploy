@@ -1,0 +1,44 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code when working in this generated repository.
+
+## Project Overview
+
+Project: @PROJECT_NAME@
+Goal: @GOAL@
+Owner: @OWNER@
+Stack: @STACK@
+
+## Commands
+
+```bash
+/prime
+/create-prd .agent/PROJECT-PRD.md
+/plan-feature "objective"
+/execute .agents/plans/phase-template.md
+/commit
+/explore-harness
+```
+
+## Project Structure
+
+```text
+.agent/
+.claude/
+.agents/plans/
+```
+
+## Validation
+
+```bash
+git status --short
+```
+
+## On-Demand Context
+
+| Topic | File |
+|-------|------|
+| PRD | `.agent/PROJECT-PRD.md` |
+| Rules | `.agent/GLOBAL-RULES.md` |
+| Plans | `.agents/plans/` |
+| Workflow evidence | `.agent/workflows/` |

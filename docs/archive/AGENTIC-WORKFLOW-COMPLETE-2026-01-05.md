@@ -335,7 +335,7 @@ curl -X POST http://localhost:8092/augment_query \
 
 ```bash
 # Overall health
-~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai-stack-health.sh
+~/Documents/try/NixOS-Dev-Quick-Deploy/scripts/ai/ai-stack-health.sh
 
 # Ralph with loop enabled
 curl http://localhost:8098/health | jq .loop_enabled

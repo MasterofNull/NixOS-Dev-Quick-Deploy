@@ -200,7 +200,7 @@
   - Supports `up`, `down`, `restart`, `status`, `logs`, and `sync` subcommands.
   - Delegates doc syncing to existing `scripts/sync_docs_to_ai.sh`.
 - Updated `docs/DEVELOPMENT-ROADMAP.md` to reference `scripts/hybrid-ai-stack.sh` as the canonical AI stack CLI wrapper.
- - Added `scripts/run-all-checks.sh` as an aggregate runner for `system-health-check.sh`, `test_services.sh`, and `test_real_world_workflows.sh`, and documented it in `README.md`.
+ - Added `scripts/automation/run-all-checks.sh` as an aggregate runner for `system-health-check.sh`, `test_services.sh`, and `test_real_world_workflows.sh`, and documented it in `README.md`.
 - Introduced `lib/flatpak.sh` and moved Flatpak architecture/profile pruning logic out of `config/variables.sh` into this dedicated library, wiring it into `lib/tools.sh` (`select_flatpak_profile` and `flatpak_query_application_support`).
 - Updated AI integration libraries (`lib/ai-optimizer.sh`, `lib/ai-optimizer-hooks.sh`) to avoid modifying global shell options so they behave as pure libraries when sourced.
 
@@ -223,11 +223,11 @@
   - Updated `README.md` to cross-link `SYSTEM_PROJECT_DESIGN.md`, `docs/ARCHITECTURE.md`, and `docs/DEVELOPMENT-ROADMAP.md` as core design docs.
   - Introduced `lib/flatpak.sh` and removed Flatpak-specific procedural logic from `config/variables.sh`, further enforcing the “data-only config” convention.
 - **Quality & Testing**
-  - Added `scripts/run-all-checks.sh` as a one-shot runner for:
-    - `scripts/system-health-check.sh`
-    - `scripts/test_services.sh`
-    - `scripts/test_real_world_workflows.sh`
-  - Documented this command in `README.md` and `docs/QUICK-REFERENCE-CARD.md` as the preferred way to run all core checks.
+  - Added `scripts/automation/run-all-checks.sh` as a one-shot runner for:
+    - `scripts/health/system-health-check.sh`
+    - `scripts/testing/test_services.sh`
+    - `scripts/testing/test_real_world_workflows.sh`
+  - Documented this command in `README.md` and `docs/operations/reference/QUICK-REFERENCE-CARD.md` as the preferred way to run all core checks.
  - **Logging & UX polish**
   - Updated `nixos-quick-deploy.sh --help` and `docs/QUICK_START.md` so all references to deploy logs use the actual log directory (`~/.cache/nixos-quick-deploy/logs`), keeping CLI documentation aligned with the `LOG_DIR` setting.
  - **Engineering & Design Toolchain**
@@ -246,7 +246,7 @@
   - Fixed a minor ShellCheck issue in Phase 1 by correctly quoting the `PYTHON_BIN` array when printing the detected Python runtime/version.
   - Addressed ShellCheck SC2155 warnings in `lib/validation.sh` by separating variable declaration from command substitution for disk-space and resource checks, keeping the validation library clean and easy to maintain.
   - Clarified build-strategy reporting in `lib/config.sh` (`describe_remote_build_context`), so logs now explicitly state whether the deployment uses binary caches only, local source builds, or binary caches plus remote builders.
-  - Tightened Phase 8 health-check behavior by preserving the previous `set -e`/errexit state when calling `scripts/system-health-check.sh` or `run_system_health_check_stage`, so the final phase no longer forces `set -e` on for the rest of the bootstrap shell.
+  - Tightened Phase 8 health-check behavior by preserving the previous `set -e`/errexit state when calling `scripts/health/system-health-check.sh` or `run_system_health_check_stage`, so the final phase no longer forces `set -e` on for the rest of the bootstrap shell.
 
 ### [local-ai-stack] Local AI Starter & Trimmed Stack
 

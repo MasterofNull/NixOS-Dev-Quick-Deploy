@@ -27,8 +27,8 @@ Successfully integrated Docker Model Runner innovations into our rootless Podman
 ### 2. **Model Management CLI Tools**
 
 **New Files Created:**
-- `scripts/llama-model-cli.sh` - Docker-style model commands
-- `scripts/ai-stack-monitor.sh` - Live monitoring dashboard
+- `scripts/ai/llama-model-cli.sh` - Docker-style model commands
+- `scripts/ai/ai-stack-monitor.sh` - Live monitoring dashboard
 
 **Features:**
 - `llama-model list` - List cached models
@@ -124,7 +124,7 @@ cp ai-stack/compose/.env.example ai-stack/compose/.env
 podman-compose -f ai-stack/compose/docker-compose.yml restart llama-cpp
 
 # 3. Monitor performance
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 
 # 4. Verify GPU usage
 podman logs local-ai-llama-cpp | grep -i vulkan
@@ -151,8 +151,8 @@ podman logs local-ai-llama-cpp | grep -i vulkan
 
 ### Created:
 1. **Scripts:**
-   - `scripts/llama-model-cli.sh` (Docker-style CLI)
-   - `scripts/ai-stack-monitor.sh` (Live dashboard)
+   - `scripts/ai/llama-model-cli.sh` (Docker-style CLI)
+   - `scripts/ai/ai-stack-monitor.sh` (Live dashboard)
 
 2. **Configuration:**
    - `ai-stack/compose/.env.example` (Vulkan settings)
@@ -263,10 +263,10 @@ These were fixed earlier in the session:
 **Troubleshooting:**
 ```bash
 # Check logs
-./scripts/llama-model-cli.sh logs
+./scripts/ai/llama-model-cli.sh logs
 
 # Monitor stack
-./scripts/ai-stack-monitor.sh
+./scripts/ai/ai-stack-monitor.sh
 
 # Verify GPU
 vulkaninfo | grep driver

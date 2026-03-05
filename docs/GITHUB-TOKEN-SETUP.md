@@ -120,7 +120,7 @@ cd ~/Documents/try/NixOS-Dev-Quick-Deploy
 rm data/improvement-crawler-state.json
 
 # Run discovery
-scripts/discover-improvements.sh
+scripts/governance/discover-improvements.sh
 ```
 
 **Expected output**:
@@ -166,7 +166,7 @@ cat docs/development/IMPROVEMENT-DISCOVERY-REPORT-$(date +%Y-%m-%d).md | grep -A
 Generate dashboard data with new discoveries:
 
 ```bash
-bash scripts/generate-dashboard-data.sh --lite-mode
+bash scripts/data/generate-dashboard-data.sh --lite-mode
 ```
 
 Open dashboard:
@@ -280,7 +280,7 @@ Once the token is working:
 3. ✅ No more rate limit errors in reports
 
 You can now:
-- Run discovery manually: `scripts/discover-improvements.sh`
+- Run discovery manually: `scripts/governance/discover-improvements.sh`
 - Set up automated runs (see `DISCOVERY-PIPELINE-REVIEW.md` for cron/systemd timers)
 - Adjust source weights in `config/improvement-sources.json`
 

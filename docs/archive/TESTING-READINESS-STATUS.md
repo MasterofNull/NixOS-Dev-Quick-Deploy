@@ -46,7 +46,7 @@ All Day 5 password migration work is **COMPLETE** and **READY FOR TESTING**. Pas
 - ✅ Verified no default passwords remain in configuration
 
 ### 5. Testing Infrastructure
-- ✅ Created comprehensive test script: [test-password-migration.sh](scripts/test-password-migration.sh)
+- ✅ Created comprehensive test script: [test-password-migration.sh](scripts/testing/test-password-migration.sh)
 - ✅ Tests PostgreSQL connections with new password
 - ✅ Tests Redis connections with new password
 - ✅ Tests Grafana admin login with new password
@@ -79,7 +79,7 @@ ls -la ai-stack/compose/secrets/ | grep password
 
 ## 🧪 Integration Test Script
 
-**Location:** [scripts/test-password-migration.sh](scripts/test-password-migration.sh)
+**Location:** [scripts/testing/test-password-migration.sh](scripts/testing/test-password-migration.sh)
 
 **Test Coverage:**
 1. ✅ **Secret File Validation**
@@ -114,7 +114,7 @@ ls -la ai-stack/compose/secrets/ | grep password
 **Usage:**
 ```bash
 # From project root
-./scripts/test-password-migration.sh
+./scripts/testing/test-password-migration.sh
 
 # Expected output when stack is running:
 # ==========================================
@@ -178,7 +178,7 @@ docker compose logs grafana | grep "HTTP Server Listen"
 **Option 1: Automated Test Suite (Recommended)**
 
 ```bash
-./scripts/test-password-migration.sh
+./scripts/testing/test-password-migration.sh
 ```
 
 This will:
@@ -401,7 +401,7 @@ curl -u "admin:$GRAFANA_PASS" http://localhost:3000/api/health
 - [DAY4-INTER-SERVICE-AUTH-PROGRESS.md](DAY4-INTER-SERVICE-AUTH-PROGRESS.md) - API authentication progress
 - [90-DAY-REMEDIATION-PLAN.md](90-DAY-REMEDIATION-PLAN.md) - Overall security roadmap
 - [PRODUCTION-HARDENING-STATUS.md](PRODUCTION-HARDENING-STATUS.md) - Hardening status
-- [scripts/generate-passwords.sh](scripts/generate-passwords.sh) - Password generation script
+- [scripts/data/generate-passwords.sh](scripts/data/generate-passwords.sh) - Password generation script
 - [ai-stack/mcp-servers/shared/secrets_loader.py](ai-stack/mcp-servers/shared/secrets_loader.py) - Helper library
 
 ---
@@ -447,7 +447,7 @@ docker compose ps
 
 # 6. Run integration tests
 cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-./scripts/test-password-migration.sh
+./scripts/testing/test-password-migration.sh
 
 # 7. If tests pass, start remaining services
 cd ai-stack/compose

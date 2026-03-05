@@ -55,7 +55,7 @@ All original port 8888 features remain intact:
 |------|---------|
 | `dashboard/backend/api/routes/actions.py` | Action execution API endpoint |
 | `scripts/enhance-dashboard-with-controls.sh` | Dashboard enhancement automation |
-| `scripts/start-unified-dashboard.sh` | All-in-one startup script |
+| `scripts/deploy/start-unified-dashboard.sh` | All-in-one startup script |
 | `DASHBOARD-CONSOLIDATION-2026-01-02.md` | Complete documentation |
 | `DASHBOARD-CONSOLIDATION-SUMMARY-2026-01-02.md` | This summary |
 
@@ -78,7 +78,7 @@ All original port 8888 features remain intact:
 
 **Option 1: All-in-One Script** (Recommended)
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 **Option 2: Manual Start**
@@ -92,7 +92,7 @@ uvicorn api.main:app --host 0.0.0.0 --port 8889
 
 Terminal 2 - Frontend:
 ```bash
-./scripts/serve-dashboard.sh
+./scripts/deploy/serve-dashboard.sh
 ```
 
 ### Access the Dashboard
@@ -321,7 +321,7 @@ allow_origins=[
 
 **Start Dashboard**:
 ```bash
-./scripts/start-unified-dashboard.sh
+./scripts/deploy/start-unified-dashboard.sh
 ```
 
 **Stop Dashboard**:

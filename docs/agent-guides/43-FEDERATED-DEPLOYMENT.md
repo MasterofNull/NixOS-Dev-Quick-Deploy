@@ -76,7 +76,7 @@ data/ directory  ----→  git push  ----→  git pull  ----→ data/ directory
 **Purpose**: Extract high-value patterns from runtime to git repo
 
 ```bash
-bash scripts/sync-learning-data.sh
+bash scripts/data/sync-learning-data.sh
 ```
 
 **What it does**:
@@ -106,7 +106,7 @@ bash scripts/sync-learning-data.sh
 **Purpose**: Export Qdrant collection contents to JSON
 
 ```bash
-bash scripts/export-collections.sh
+bash scripts/data/export-collections.sh
 ```
 
 **What it does**:
@@ -134,7 +134,7 @@ bash scripts/export-collections.sh
 **Purpose**: Import collection snapshots into Qdrant on new system
 
 ```bash
-bash scripts/import-collections.sh
+bash scripts/data/import-collections.sh
 ```
 
 **What it does**:
@@ -198,10 +198,10 @@ Step 10: Importing federated learning data
 5. **After accumulating patterns** (hours to days of usage)
 ```bash
 # Sync patterns to repo
-bash scripts/sync-learning-data.sh
+bash scripts/data/sync-learning-data.sh
 
 # Export collections
-bash scripts/export-collections.sh
+bash scripts/data/export-collections.sh
 
 # Review what was federated
 ls -lh data/patterns/
@@ -282,8 +282,8 @@ curl -X POST http://localhost:6333/collections/skills-patterns/points/scroll \
 As System B accumulates its own patterns:
 ```bash
 # Sync System B's new patterns
-bash scripts/sync-learning-data.sh
-bash scripts/export-collections.sh
+bash scripts/data/sync-learning-data.sh
+bash scripts/data/export-collections.sh
 
 # Commit
 git add data/
@@ -296,7 +296,7 @@ git push origin main
 On System A:
 ```bash
 git pull origin main
-bash scripts/import-collections.sh
+bash scripts/data/import-collections.sh
 ```
 
 **Result**: Bidirectional federation! 🔄 Both systems now share each other's learned patterns.
@@ -351,28 +351,28 @@ crontab -e
 **Conservative schedule** (recommended for most users):
 ```cron
 # Hourly: Sync patterns
-0 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
+0 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/sync-learning-data.sh >> /var/log/federated-sync.log 2>&1
 
 # Weekly (Sunday 2 AM): Export collections
-0 2 * * 0 bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/export-collections.sh >> /var/log/federated-export.log 2>&1
+0 2 * * 0 bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/export-collections.sh >> /var/log/federated-export.log 2>&1
 
 # Every 5 minutes: Dashboard metrics
-*/5 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/generate-dashboard-data.sh >> /var/log/dashboard-metrics.log 2>&1
+*/5 * * * * bash /home/$USER/Documents/try/NixOS-Dev-Quick-Deploy/scripts/data/generate-dashboard-data.sh >> /var/log/dashboard-metrics.log 2>&1
 ```
 
 **Aggressive schedule** (active development):
 ```cron
 # Every 15 minutes: Sync patterns
-*/15 * * * * bash /path/to/scripts/sync-learning-data.sh
+*/15 * * * * bash /path/to/scripts/data/sync-learning-data.sh
 
 # Daily (3 AM): Export collections
-0 3 * * * bash /path/to/scripts/export-collections.sh
+0 3 * * * bash /path/to/scripts/data/export-collections.sh
 ```
 
 **Automated git commits** (optional, use with caution):
 ```cron
 # Every 6 hours: Auto-commit and push
-0 */6 * * * cd /path/to/repo && bash scripts/sync-learning-data.sh && git add data/ && git commit -m "Auto-sync $(date +\%Y-\%m-\%d\ \%H:\%M)" && git push origin main
+0 */6 * * * cd /path/to/repo && bash scripts/data/sync-learning-data.sh && git add data/ && git commit -m "Auto-sync $(date +\%Y-\%m-\%d\ \%H:\%M)" && git push origin main
 ```
 
 ### Systemd Timers (Advanced)
@@ -497,7 +497,7 @@ jq . data/collections/snapshots/skills-patterns-*.json | head -20
 
 2. **Collections don't exist**
    ```bash
-   bash scripts/initialize-qdrant-collections.sh
+   bash scripts/data/initialize-qdrant-collections.sh
    ```
 
 3. **Corrupt snapshots**
@@ -631,7 +631,7 @@ cp -r data/ ~/backup-federated-$(date +%Y%m%d)/
 Dashboard metrics include federation stats:
 
 ```bash
-bash scripts/generate-dashboard-data.sh
+bash scripts/data/generate-dashboard-data.sh
 
 # View federation metrics
 cat ~/.local/share/nixos-system-dashboard/config.json | jq '.federation'
@@ -678,15 +678,15 @@ git submodule add https://github.com/team-a/federated-data data/team-a
 git submodule add https://github.com/team-b/federated-data data/team-b
 
 # Import from both
-bash scripts/import-collections.sh data/team-a/collections/snapshots/
-bash scripts/import-collections.sh data/team-b/collections/snapshots/
+bash scripts/data/import-collections.sh data/team-a/collections/snapshots/
+bash scripts/data/import-collections.sh data/team-b/collections/snapshots/
 ```
 
 ### Selective Federation
 
 Filter what gets federated:
 
-Edit `scripts/sync-learning-data.sh`:
+Edit `scripts/data/sync-learning-data.sh`:
 ```bash
 # Only federate specific categories
 jq -c 'select(.value_score >= 0.7 and .category == "error-solutions")' \
@@ -708,7 +708,7 @@ For public pattern sharing:
 
 ```bash
 git submodule add https://github.com/public/nixos-patterns data/public
-bash scripts/import-collections.sh data/public/collections/snapshots/
+bash scripts/data/import-collections.sh data/public/collections/snapshots/
 ```
 
 ---
@@ -769,7 +769,7 @@ git remote -v
 - [x] Deploy AI stack with `initialize-ai-stack.sh`
 - [x] Verify `data/` directory exists
 - [x] Set up cron jobs for automation
-- [x] Test manual sync: `bash scripts/sync-learning-data.sh`
+- [x] Test manual sync: `bash scripts/data/sync-learning-data.sh`
 
 **Daily Operations**:
 - [x] System accumulates telemetry

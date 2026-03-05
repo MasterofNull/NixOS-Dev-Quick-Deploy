@@ -20,8 +20,8 @@ Successfully implemented core RLM (Recursive Language Model) and RAG (Retrieval 
 
 **Files Created:**
 - `ai-stack/mcp-servers/aidb/document_importer.py` (400+ lines)
-- `scripts/import-documents.py` (CLI tool, 350+ lines)
-- `scripts/import-project-knowledge.sh` (Bash wrapper)
+- `scripts/data/import-documents.py` (CLI tool, 350+ lines)
+- `scripts/data/import-project-knowledge.sh` (Bash wrapper)
 
 **Features:**
 - Automatic file discovery with recursive scanning
@@ -47,13 +47,13 @@ Status:             ✅ Complete
 **Usage:**
 ```bash
 # Import all markdown files
-python3 scripts/import-documents.py --directory . --extensions .md
+python3 scripts/data/import-documents.py --directory . --extensions .md
 
 # Import specific directory
-python3 scripts/import-documents.py --directory ai-stack --recursive
+python3 scripts/data/import-documents.py --directory ai-stack --recursive
 
 # Dry run to preview
-python3 scripts/import-documents.py --directory . --dry-run
+python3 scripts/data/import-documents.py --directory . --dry-run
 ```
 
 ### 2. Multi-Turn Context Management ✅
@@ -266,7 +266,7 @@ curl -X POST http://localhost:8092/discovery/capabilities \
 **Knowledge Import:**
 ```bash
 # Tested with 132 markdown files
-python3 scripts/import-documents.py --directory . --extensions .md --no-recursive
+python3 scripts/data/import-documents.py --directory . --extensions .md --no-recursive
 # Result: ✅ 739 chunks created, 0 errors
 ```
 
@@ -446,7 +446,7 @@ response = requests.post("http://localhost:8092/context/multi_turn", json={
 
 4. **Import Remaining Files:**
    ```bash
-   ./scripts/import-project-knowledge.sh
+   ./scripts/data/import-project-knowledge.sh
    ```
 
 ### This Week

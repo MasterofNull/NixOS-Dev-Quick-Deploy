@@ -71,19 +71,19 @@ Located in `scripts/`:
 git clone <repo-url>
 
 # Import learned patterns
-bash scripts/import-collections.sh
+bash scripts/data/import-collections.sh
 ```
 
 ### Daily Operations
 ```bash
 # Periodic sync (automated via cron)
-bash scripts/sync-learning-data.sh
+bash scripts/data/sync-learning-data.sh
 ```
 
 ### Before Reinstall
 ```bash
 # Backup all learning
-bash scripts/export-collections.sh
+bash scripts/data/export-collections.sh
 git add data/
 git commit -m "Backup learned data"
 git push

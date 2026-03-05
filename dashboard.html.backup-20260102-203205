@@ -1842,7 +1842,7 @@
                         { label: 'llama.cpp Port', value: '8080', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls llama.cpp inference port.' },
                         { label: 'Qdrant Port', value: '6333', path: '$HOME/.config/nixos-ai-stack/.env', hint: 'Controls Qdrant HTTP port.' },
                         { label: 'Dashboard Refresh (seconds)', value: '15', path: 'launch-dashboard.sh', hint: 'Set DASHBOARD_COLLECT_INTERVAL to adjust refresh cadence.' },
-                        { label: 'Telemetry Stale Threshold (minutes)', value: '30', path: 'scripts/verify-local-llm-feedback.sh', hint: 'Set TELEMETRY_STALE_MINUTES to change stale warnings.' }
+                        { label: 'Telemetry Stale Threshold (minutes)', value: '30', path: 'scripts/testing/verify-local-llm-feedback.sh', hint: 'Set TELEMETRY_STALE_MINUTES to change stale warnings.' }
                     ],
                     actions: [
                         { label: 'Grant Podman Desktop Socket', command: 'flatpak override --user --filesystem=xdg-run/podman io.podman_desktop.PodmanDesktop', mode: 'run', category: 'Desktop' },

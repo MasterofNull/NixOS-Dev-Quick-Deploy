@@ -16,7 +16,7 @@
 
 ## 1. Bugs and Logical Issues
 
-### 🔴 CRITICAL: GitHub Rate Limiting (scripts/discover-improvements.sh:62-67)
+### 🔴 CRITICAL: GitHub Rate Limiting (scripts/governance/discover-improvements.sh:62-67)
 
 **Issue**: GitHub API calls fail with 403 rate limit errors when no auth token is provided.
 
@@ -96,7 +96,7 @@ if github_sources and not (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_
 
 ---
 
-### ⚠️ MEDIUM: Missing Timezone Awareness (scripts/discover-improvements.sh:173-189)
+### ⚠️ MEDIUM: Missing Timezone Awareness (scripts/governance/discover-improvements.sh:173-189)
 
 **Issue**: `is_due()` compares naive datetime with timezone-aware datetime.
 
@@ -180,8 +180,8 @@ if line.startswith("## "):
 Or extract parser to shared module:
 ```bash
 # discovery_parser.py (new file)
-# scripts/discover-improvements.sh imports it
-# scripts/generate-dashboard-data.sh calls it
+# scripts/governance/discover-improvements.sh imports it
+# scripts/data/generate-dashboard-data.sh calls it
 ```
 
 ---
@@ -256,7 +256,7 @@ def test_cadence_enforcement():
 
 **Recommendation**: Add validation script
 ```bash
-# scripts/validate-discovery-config.sh
+# scripts/testing/validate-discovery-config.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -423,7 +423,7 @@ function updateDiscoverySignals(data) {
         const hint = document.createElement('div');
         hint.className = 'data-item';
         hint.style.color = 'var(--text-muted)';
-        hint.innerHTML = 'No discovery report found. Run:<br><code>scripts/discover-improvements.sh</code>';
+        hint.innerHTML = 'No discovery report found. Run:<br><code>scripts/governance/discover-improvements.sh</code>';
         candidatesEl.appendChild(hint);
         return;
     }
@@ -706,7 +706,7 @@ elif SOURCES_JSON.exists():
 ## 6. Summary Checklist
 
 ### Critical (Must Fix)
-- [ ] Add GitHub token check and warning (scripts/discover-improvements.sh)
+- [ ] Add GitHub token check and warning (scripts/governance/discover-improvements.sh)
 - [ ] Document `GITHUB_TOKEN` requirement in README
 - [ ] Remove duplicate Reddit r/LocalLLaMA entry
 

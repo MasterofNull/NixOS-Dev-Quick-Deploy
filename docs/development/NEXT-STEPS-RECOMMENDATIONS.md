@@ -30,8 +30,8 @@ We've completed comprehensive research on container orchestration for 2026 and c
 ### 2. Secrets Management Tool (Production-Ready!)
 
 **Created Files:**
-- `scripts/manage-secrets.py` - Full-featured Python TUI (400+ lines)
-- `scripts/manage-secrets.sh` - Bash wrapper
+- `scripts/governance/manage-secrets.py` - Full-featured Python TUI (400+ lines)
+- `scripts/governance/manage-secrets.sh` - Bash wrapper
 - [SECRETS-MANAGEMENT-GUIDE.md](SECRETS-MANAGEMENT-GUIDE.md) - Complete documentation
 
 **Features:**
@@ -45,10 +45,10 @@ We've completed comprehensive research on container orchestration for 2026 and c
 **Try It Now:**
 ```bash
 # Interactive mode
-./scripts/manage-secrets.sh
+./scripts/governance/manage-secrets.sh
 
 # Command line
-./scripts/manage-secrets.sh status
+./scripts/governance/manage-secrets.sh status
 ```
 
 ### 3. Integration Testing Complete
@@ -224,13 +224,13 @@ See **[docs/archive/K3S-PORTAINER-MIGRATION-PLAN.md](docs/archive/K3S-PORTAINER-
 
 ```bash
 # See current status
-./scripts/manage-secrets.sh status
+./scripts/governance/manage-secrets.sh status
 
 # Create a backup
-./scripts/manage-secrets.sh backup
+./scripts/governance/manage-secrets.sh backup
 
 # Validate all secrets
-./scripts/manage-secrets.sh validate
+./scripts/governance/manage-secrets.sh validate
 ```
 
 ---
@@ -271,9 +271,9 @@ This stack now uses **one** path: **K3s + Portainer + K8s manifests**.
 5. [docs/archive/SESSION-CONTINUATION-JAN24.md](docs/archive/SESSION-CONTINUATION-JAN24.md) - Session summary
 
 ### Tools
-1. `scripts/manage-secrets.py` - Full-featured secrets manager (400+ lines)
-2. `scripts/manage-secrets.sh` - Bash wrapper
-3. `archive/scripts/test-password-migration.sh` - Integration test suite (archived)
+1. `scripts/governance/manage-secrets.py` - Full-featured secrets manager (400+ lines)
+2. `scripts/governance/manage-secrets.sh` - Bash wrapper
+3. `archive/scripts/testing/test-password-migration.sh` - Integration test suite (archived)
 
 ### Configuration
 

@@ -113,10 +113,10 @@
 
 ### 6.2 Update deployment scripts
 - [x] Deprecate legacy/podman entrypoints in scripts (K3s-only)
-- [x] scripts/setup-config.sh
+- [x] scripts/deploy/setup-config.sh
   - Initialize .env from template
   - Set default values
-- [x] scripts/local-registry.sh
+- [x] scripts/deploy/local-registry.sh
   - Local registry start/stop/status
 - [x] scripts/publish-local-registry.sh
   - Tag + push immutable images to localhost:5000
@@ -144,7 +144,7 @@
 - [x] Ralph task execution test
 - [x] Learning pipeline processing test
 - [x] Dashboard functionality test
-- [x] Container recovery test script added (`scripts/test-container-recovery.sh`)
+- [x] Container recovery test script added (`scripts/testing/test-container-recovery.sh`)
 - [x] Container recovery test executed (hybrid-coordinator pod recycle)
 
 **Latest test (2026-01-26) - K3s Kubernetes:**

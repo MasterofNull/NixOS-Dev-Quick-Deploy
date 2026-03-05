@@ -195,7 +195,7 @@ To test this fix:
 Ctrl+C
 
 # Clean up
-./scripts/stop-ai-stack.sh
+./scripts/deploy/stop-ai-stack.sh
 
 # Rebuild AIDB container
 cd ai-stack/compose

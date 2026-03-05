@@ -101,7 +101,7 @@ P1 Issues (Non-Blocking):
    - Production readiness checklist
 
 ### Scripts (3 files)
-1. **scripts/rotate-api-key.sh**
+1. **scripts/security/rotate-api-key.sh**
    - Automated key rotation with backup
    - Per-service support
    - Audit trail logging
@@ -327,7 +327,7 @@ Status: PASS (claim of 220 was optimistic, but 72% excellent)
 - TLS checks: Every 6 hours via cron
 
 **Maintenance:**
-- API key rotation: `./scripts/rotate-api-key.sh`
+- API key rotation: `./scripts/security/rotate-api-key.sh`
 - TLS monitoring: `./scripts/monitor-tls-certs.sh`
 - Certificate renewal: Manual (Let's Encrypt in P1)
 
