@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../../../../config/service-endpoints.sh"
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
 COUNT="${1:-}"
 QUERY_COUNT=6
