@@ -296,6 +296,18 @@ This project is initialized with an agentic AI layer that supports:
 - Validate before commit/push.
 - Never hardcode secrets, ports, or service URLs.
 
+## Delegation + Role Defaults
+- Default mode: orchestrator/reviewer first, direct implementation second.
+- Routing:
+  - codex: orchestrator + reviewer gate.
+  - claude: architecture/risk/policy synthesis slices.
+  - qwen: implementation/test slices.
+- Sub-agent non-orchestrator rule:
+  - execute assigned slice only,
+  - do not re-scope goals,
+  - do not route other agents,
+  - do not finalize acceptance.
+
 ## Validation
 
 Run project-specific checks before commit. At minimum:
@@ -524,6 +536,48 @@ EOF
 
 ## Rollback
 - TODO
+EOF
+}
+
+write_vscode_bootstrap_tasks() {
+  local target_dir="$1"
+  mkdir -p "$target_dir/.vscode"
+  cat > "$target_dir/.vscode/tasks.json" <<'EOF'
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI: workflows list",
+      "type": "shell",
+      "command": "scripts/ai/aqd workflows list",
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: primer",
+      "type": "shell",
+      "command": "scripts/ai/aqd workflows primer --target . --objective \"resume task\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: brownfield plan",
+      "type": "shell",
+      "command": "scripts/ai/aqd workflows brownfield --target . --objective \"plan next validated slice\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: start harness workflow",
+      "type": "shell",
+      "command": ".agent/commands/start-workflow.sh \"initialize workflow and phase 01\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: hints (codex)",
+      "type": "shell",
+      "command": "scripts/ai/aq-hints \"current objective\" --format=json --agent=codex",
+      "problemMatcher": []
+    }
+  ]
+}
 EOF
 }
 
@@ -1043,6 +1097,7 @@ cmd_workflows_bootstrap() {
     render_template_file "$template_root/.agent/workflows/intent-contract.json.tmpl" "$contract_file" "$project_name" "$goal" "$stack" "$owner"
     render_template_file "$template_root/.agent/commands/start-workflow.sh.tmpl" "$start_file" "$project_name" "$goal" "$stack" "$owner"
     chmod +x "$start_file"
+    write_vscode_bootstrap_tasks "$target_dir"
     cat <<EOF
 Bootstrap complete.
 - Target: $target_dir
@@ -1052,6 +1107,7 @@ Bootstrap complete.
   - .agent/workflows/phase-01-foundation.md
   - .agent/workflows/intent-contract.json
   - .agent/commands/start-workflow.sh
+  - .vscode/tasks.json
 EOF
     return 0
   fi
@@ -1120,6 +1176,16 @@ Ship incremental, validated slices with explicit evidence and rollback notes.
 5. Validate with syntax/build/tests/smoke.
 6. Capture evidence and rollback command in handoff.
 
+## Role Contract (Mandatory)
+- Orchestrator (codex or active controller): planning, delegation, reviewer gate, final acceptance.
+- claude: architecture/risk/policy synthesis slices.
+- qwen: concrete implementation/test slices.
+- Sub-agent non-orchestrator rule:
+  - execute assigned slice only,
+  - do not re-scope objectives,
+  - do not delegate other agents,
+  - do not finalize acceptance.
+
 ## Golden Rules
 - Context is precious: reset between plan and execute phases.
 - Commandify repetitive workflows.
@@ -1132,6 +1198,7 @@ Ship incremental, validated slices with explicit evidence and rollback notes.
   - POST /workflow/run/start (with intent_contract)
   - GET /hints
 - Keep tool/discovery outputs in project docs under .agent/workflows.
+- For parallelizable tasks, delegate first and keep orchestrator direct coding minimal.
 EOF
 
   cat > "$phase_file" <<EOF
@@ -1267,6 +1334,7 @@ curl -sS "${auth_header[@]}" \
 echo
 EOF
   chmod +x "$start_file"
+  write_vscode_bootstrap_tasks "$target_dir"
 
   cat <<EOF
 Bootstrap complete.
@@ -1277,6 +1345,7 @@ Bootstrap complete.
   - .agent/workflows/phase-01-foundation.md
   - .agent/workflows/intent-contract.json
   - .agent/commands/start-workflow.sh
+  - .vscode/tasks.json
 EOF
 }
 

@@ -42,6 +42,19 @@ repo/
 4. Do not create workflow artifacts in repo root.
 5. Validate with `repo-structure-lint` before commit.
 
+## Delegation + Role Defaults
+
+- Default mode: orchestrator/reviewer first, direct implementation second.
+- Routing:
+  - `codex`: orchestrator + reviewer gate.
+  - `claude`: architecture/risk/policy synthesis slices.
+  - `qwen`: implementation/test slices.
+- Sub-agent non-orchestrator rule:
+  - sub-agents execute only assigned slices,
+  - do not re-scope goals,
+  - do not route other agents,
+  - do not finalize acceptance.
+
 ## Validation
 
 ```bash

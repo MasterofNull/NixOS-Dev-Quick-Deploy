@@ -9,6 +9,7 @@ Design goals:
 - progressive disclosure for deep context
 - command-oriented workflow structure
 - strict file placement contract for agent artifacts
+- delegation-first orchestration with explicit non-orchestrator sub-agent rules
 
 Template tokens:
 - `@PROJECT_NAME@`
@@ -20,3 +21,4 @@ Generated layout contract:
 - `.agent/` for PRD, rules, workflow evidence
 - `.claude/commands/` for slash-command specs
 - `.agents/plans/` for phased plans
+- `.vscode/tasks.json` for ready-to-run harness/hints workflow tasks
