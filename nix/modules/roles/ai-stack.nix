@@ -393,6 +393,19 @@ in {
         ++ lib.optional (ai.vectorDb.enable && hasQdrant) ports.qdrantGrpc
       );
 
+      # Phase 3.5 — Suspend/resume recovery for llama-cpp inference server.
+      # ROCm GPU state can become invalid after suspend; restart llama-cpp to
+      # reinitialize the GPU context cleanly. Uses systemd sleep hooks.
+      systemd.services.llama-cpp-resume = {
+        description = "Restart llama.cpp after system resume";
+        wantedBy = ["sleep.target"];
+        after = ["sleep.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${pkgs.systemd}/bin/systemctl restart llama-cpp.service";
+        };
+      };
+
       # Keep model files private, but grant explicit read access to the
       # primary desktop user for local desktop clients (e.g. GPT4All).
       systemd.services.ai-local-model-access = {
