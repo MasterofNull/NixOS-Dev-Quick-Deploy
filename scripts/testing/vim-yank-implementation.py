@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# Reference implementation for Vim-like yank/visual mode behavior in tests.
+
 """
 Vim Editor Agent Yank Functionality Implementation
 

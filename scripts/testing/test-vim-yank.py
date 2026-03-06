@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# Pytest coverage for the Vim yank implementation state-machine behavior.
+
 """
 Test suite for Vim Editor Agent Yank Functionality
 """

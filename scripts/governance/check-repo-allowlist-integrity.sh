@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Validate repo-structure allowlist uniqueness and missing-path integrity.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ALLOWLIST_FILE="${1:-${ROOT_DIR}/config/repo-structure-allowlist.txt}"
