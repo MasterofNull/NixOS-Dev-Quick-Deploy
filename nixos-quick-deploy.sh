@@ -332,16 +332,20 @@ print_deploy_completion_summary() {
   elapsed=$(( end_epoch - DEPLOY_START_EPOCH ))
   log "Execution time: ${elapsed}s"
 
-  local telemetry_dir latest_report latest_converge
+  local telemetry_dir latest_report latest_converge latest_tooling
   telemetry_dir="${AI_STACK_DATA_DIR}/hybrid/telemetry"
   latest_report="${telemetry_dir}/latest-aq-report.json"
   latest_converge="${telemetry_dir}/post-deploy-converge-latest.json"
+  latest_tooling="${telemetry_dir}/ai-tooling-prime-latest.json"
 
   if [[ -f "${latest_report}" ]]; then
     log "Latest report snapshot: ${latest_report}"
   fi
   if [[ -f "${latest_converge}" ]]; then
     log "Latest convergence summary: ${latest_converge}"
+  fi
+  if [[ -f "${latest_tooling}" ]]; then
+    log "Latest tooling snapshot: ${latest_tooling}"
   fi
 
   if (( ${#PHASE_TIMINGS[@]} > 0 )); then
@@ -2842,6 +2846,12 @@ if [[ "${POST_FLIGHT_MODE}" == "declarative" || "${POST_FLIGHT_MODE}" == "both" 
 fi
 
 if [[ "${run_inline_postflight}" == true ]]; then
+  if [[ -x "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" ]]; then
+    log "Priming AI harness tooling defaults..."
+    run_with_timeout_if_available "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
+      "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" 2>/dev/null || true
+  fi
+
   # ---- Routing traffic seed (non-blocking) ----------------------------------
   # Sends a small batch of queries through hybrid-coordinator so that §2 routing
   # split and §3 semantic cache metrics are populated after every deploy.
