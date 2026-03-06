@@ -67,15 +67,37 @@ repo/
 3. Prefer declarative Nix/module changes over runtime script fallbacks.
 4. For complex tasks use: `plan -> run/start -> hints -> execute -> validate`.
 5. Do not finalize without validation evidence.
-6. If running as a nested/sub-agent: do not act as orchestrator.
-7. Delegation-first: route eligible slices to `qwen` (patches) and `claude` (architecture/risk) while orchestrator performs reviewer gate.
 
-## Delegation Defaults
+## Orchestrator Protocol (CRITICAL)
 
-- `codex` (or active controller): planner + orchestrator + reviewer only by default.
-- `claude`: architecture/risk synthesis and policy reasoning slices.
-- `qwen`: concrete implementation slices and test scaffolding.
-- Sub-agent guardrail: no re-scoping, no cross-agent routing, no final acceptance decisions.
+**Default behavior for Claude Opus in this repo:**
+
+1. **Research** - Gather context via progressive disclosure, hints, and memory recall
+2. **Plan** - Decompose into discrete delegatable slices
+3. **Delegate** - Route implementation to sub-agents (qwen/codex)
+4. **Audit** - Review outputs, validate, approve or request revision
+5. **Minimize token usage** - Only execute directly when delegation overhead exceeds task
+
+**Delegation routing:**
+| Task Type | Route To | Orchestrator Role |
+|-----------|----------|-------------------|
+| Code implementation | qwen | Review + merge |
+| Test scaffolding | qwen | Review + validate |
+| Architecture decisions | claude (sub) | Synthesize + decide |
+| Config/Nix changes | qwen | Review + validate |
+| Documentation | qwen | Review + edit |
+| Security audit | claude (sub) | Analyze + approve |
+
+**Sub-agent guardrails:**
+- No re-scoping beyond assigned slice
+- No cross-agent routing
+- No final acceptance decisions
+- Return to orchestrator on ambiguity
+
+**Always use tools first:**
+- `aq-hints --query "<task>"` before planning
+- `/workflow/plan` for structured execution
+- Check memory recall for prior solutions
 
 ## Validation
 

@@ -185,6 +185,10 @@ write_agent_command_specs() {
   local template_root="${PROJECT_ROOT}/templates/agentic-workflow"
   if [[ -d "$template_root" ]]; then
     render_template_file "$template_root/.claude/CLAUDE.md.tmpl" "$target_dir/.claude/CLAUDE.md" "$project_name" "$goal" "$stack" "$owner"
+    # Copy MCP settings for AI stack harness integration
+    if [[ -f "$template_root/.claude/settings.json.tmpl" ]]; then
+      cp "$template_root/.claude/settings.json.tmpl" "$target_dir/.claude/settings.json"
+    fi
     render_template_file "$template_root/.claude/commands/prime.md.tmpl" "$target_dir/.claude/commands/prime.md" "$project_name" "$goal" "$stack" "$owner"
     render_template_file "$template_root/.claude/commands/create-prd.md.tmpl" "$target_dir/.claude/commands/create-prd.md" "$project_name" "$goal" "$stack" "$owner"
     render_template_file "$template_root/.claude/commands/plan-feature.md.tmpl" "$target_dir/.claude/commands/plan-feature.md" "$project_name" "$goal" "$stack" "$owner"
