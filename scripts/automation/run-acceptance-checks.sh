@@ -2,20 +2,46 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-# shellcheck source=../config/service-endpoints.sh
-source "${SCRIPT_DIR}/../config/service-endpoints.sh"
-MCP_DB_VALIDATE_SCRIPT="${SCRIPT_DIR}/mcp-db-validate"
-RAG_SMOKE_TEST_SCRIPT="${SCRIPT_DIR}/rag-smoke-test.sh"
-LIBRARY_CATALOG_VALIDATE_SCRIPT="${SCRIPT_DIR}/sync-aidb-library-catalog.sh"
-TOOL_POLICY_VALIDATE_SCRIPT="${SCRIPT_DIR}/validate-tool-execution-policy.sh"
-AUTONOMOUS_DISCOVERY_TEST_SCRIPT="${SCRIPT_DIR}/test-autonomous-capability-discovery.sh"
-INJECTION_TEST_SCRIPT="${SCRIPT_DIR}/test-prompt-injection-resilience.sh"
-AGENT_CONTRACT_VALIDATE_SCRIPT="${SCRIPT_DIR}/validate-agent-capability-contract.sh"
-OBSERVABILITY_VALIDATE_SCRIPT="${SCRIPT_DIR}/validate-genai-observability.sh"
-RESEARCH_SYNC_SCRIPT="${SCRIPT_DIR}/sync-ai-research-knowledge.sh"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=../../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
+MCP_DB_VALIDATE_SCRIPT="${REPO_ROOT}/scripts/ai/mcp-db-validate"
+RAG_SMOKE_TEST_SCRIPT="${REPO_ROOT}/scripts/testing/rag-smoke-test.sh"
+LIBRARY_CATALOG_VALIDATE_SCRIPT="${REPO_ROOT}/scripts/data/sync-aidb-library-catalog.sh"
+TOOL_POLICY_VALIDATE_SCRIPT="${REPO_ROOT}/scripts/testing/validate-tool-execution-policy.sh"
+AUTONOMOUS_DISCOVERY_TEST_SCRIPT="${REPO_ROOT}/scripts/testing/test-autonomous-capability-discovery.sh"
+INJECTION_TEST_SCRIPT="${REPO_ROOT}/scripts/testing/test-prompt-injection-resilience.sh"
+AGENT_CONTRACT_VALIDATE_SCRIPT="${REPO_ROOT}/scripts/testing/validate-agent-capability-contract.sh"
+OBSERVABILITY_VALIDATE_SCRIPT="${REPO_ROOT}/scripts/testing/validate-genai-observability.sh"
+RESEARCH_SYNC_SCRIPT="${REPO_ROOT}/scripts/data/sync-ai-research-knowledge.sh"
+SYSTEM_HEALTH_CHECK_SCRIPT="${REPO_ROOT}/scripts/health/system-health-check.sh"
 
-"${SCRIPT_DIR}/system-health-check.sh" --detailed
+HYBRID_API_KEY="${HYBRID_API_KEY:-}"
+HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+if [[ -z "${HYBRID_API_KEY}" && -r "${HYBRID_API_KEY_FILE}" ]]; then
+  HYBRID_API_KEY="$(tr -d '[:space:]' < "${HYBRID_API_KEY_FILE}")"
+fi
+if [[ -z "${HYBRID_API_KEY}" && -r "/run/secrets/hybrid_api_key" ]]; then
+  HYBRID_API_KEY="$(tr -d '[:space:]' < /run/secrets/hybrid_api_key)"
+fi
+
+AIDB_API_KEY="${AIDB_API_KEY:-}"
+AIDB_API_KEY_FILE="${AIDB_API_KEY_FILE:-/run/secrets/aidb_api_key}"
+if [[ -z "${AIDB_API_KEY}" && -r "${AIDB_API_KEY_FILE}" ]]; then
+  AIDB_API_KEY="$(tr -d '[:space:]' < "${AIDB_API_KEY_FILE}")"
+fi
+
+hybrid_auth_args=()
+if [[ -n "${HYBRID_API_KEY}" ]]; then
+  hybrid_auth_args=(-H "X-API-Key: ${HYBRID_API_KEY}")
+fi
+
+aidb_auth_args=()
+if [[ -n "${AIDB_API_KEY}" ]]; then
+  aidb_auth_args=(-H "X-API-Key: ${AIDB_API_KEY}")
+fi
+
+"${SYSTEM_HEALTH_CHECK_SCRIPT}" --detailed
 
 unit_declared() {
   local unit="$1"
@@ -39,8 +65,10 @@ assert_jq_expr() {
   local label="$1"
   local url="$2"
   local expr="$3"
+  shift 3
+  local -a extra_args=("$@")
   local payload=""
-  payload="$(curl -fsS --max-time 5 --connect-timeout 3 "$url")"
+  payload="$(curl -fsS --max-time 5 --connect-timeout 3 "${extra_args[@]}" "$url")"
   if echo "$payload" | jq -e "$expr" >/dev/null 2>&1; then
     printf 'PASS: %s\n' "$label"
   else
@@ -62,7 +90,7 @@ assert_file_has_literal \
 
 if command -v curl >/dev/null 2>&1; then
   if unit_declared "ai-aidb.service"; then
-    curl -fsS --max-time 5 "${AIDB_URL%/}/health" >/dev/null || {
+    curl -fsS --max-time 5 "${aidb_auth_args[@]}" "${AIDB_URL%/}/health" >/dev/null || {
       echo "AIDB health endpoint failed (${AIDB_URL%/}/health)" >&2
       exit 1
     }
@@ -71,14 +99,15 @@ if command -v curl >/dev/null 2>&1; then
   fi
 
   if unit_declared "ai-hybrid-coordinator.service"; then
-    curl -fsS --max-time 5 "${HYBRID_URL%/}/health" >/dev/null || {
+    curl -fsS --max-time 5 "${hybrid_auth_args[@]}" "${HYBRID_URL%/}/health" >/dev/null || {
       echo "Hybrid coordinator health endpoint failed (${HYBRID_URL%/}/health)" >&2
       exit 1
     }
     if command -v jq >/dev/null 2>&1; then
       assert_jq_expr "Hybrid AI harness health contract available" \
         "${HYBRID_URL%/}/health" \
-        '.status == "healthy" and .ai_harness.enabled == true and .ai_harness.memory_enabled == true and .ai_harness.tree_search_enabled == true and .ai_harness.eval_enabled == true'
+        '.status == "healthy" and .ai_harness.enabled == true and .ai_harness.memory_enabled == true and .ai_harness.tree_search_enabled == true and .ai_harness.eval_enabled == true' \
+        "${hybrid_auth_args[@]}"
     fi
   else
     echo "Skipping hybrid endpoint probe (ai-hybrid-coordinator.service not declared)."

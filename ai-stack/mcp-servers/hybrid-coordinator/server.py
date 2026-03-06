@@ -697,6 +697,28 @@ async def initialize_server():
         collections=COLLECTIONS,
     )
 
+    # Phase 2.3 — optional semantic cache warm-up on startup.
+    # Run in the background to avoid delaying service readiness/systemd startup.
+    if os.getenv("AI_SEMANTIC_CACHE_WARM_ON_START", "true").strip().lower() == "true":
+        warm_queries = None
+        warm_queries_env = os.getenv("AI_SEMANTIC_CACHE_WARM_QUERIES", "").strip()
+        if warm_queries_env:
+            warm_queries = [q.strip() for q in warm_queries_env.split("|") if q.strip()]
+
+        async def _run_semantic_warmup() -> None:
+            try:
+                warm_stats = await _semantic_cache.warm_cache(warm_queries)
+                logger.info(
+                    "semantic_cache_warmup_complete warmed=%s attempted=%s success_rate=%.2f",
+                    warm_stats.get("queries_warmed"),
+                    warm_stats.get("queries_attempted"),
+                    float(warm_stats.get("success_rate", 0.0)),
+                )
+            except Exception as exc:
+                logger.warning("semantic_cache_warmup_failed error=%s", exc)
+
+        asyncio.create_task(_run_semantic_warmup())
+
     # Phase 6.1 — instantiate SearchRouter (backs hybrid_search, tree_search, select_llm_backend)
     global _search_router
     _search_router = SearchRouter(
