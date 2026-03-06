@@ -26,6 +26,10 @@ from typing import Any, Dict, List, Optional, Set
 
 import httpx
 from qdrant_client import QdrantClient
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.ssrf_protection import assert_safe_outbound_url
 from qdrant_client.models import Filter, FieldCondition, MatchValue, PointStruct, Range
 
 # Configure logging
@@ -125,9 +129,18 @@ class FederationSyncManager:
 
     def __init__(self, config: FederationConfig, nodes: List[str]):
         self.config = config
-        self.nodes = nodes
         self.qdrant = QdrantClient(url=config.qdrant_url, timeout=30.0)
         self.http_client = httpx.AsyncClient(timeout=60.0)
+
+        # Validate federation node URLs for SSRF protection
+        self.nodes: List[str] = []
+        for node_url in nodes:
+            try:
+                assert_safe_outbound_url(node_url, purpose="federation_node_registration")
+                self.nodes.append(node_url)
+                logger.info("federation_node_validated", url=node_url)
+            except PermissionError as e:
+                logger.warning("federation_node_blocked_ssrf", url=node_url, error=str(e))
 
         # Collections to sync (only high-value data)
         self.sync_collections = [
@@ -137,6 +150,28 @@ class FederationSyncManager:
             # interaction-history is node-specific, not synced
             # codebase-context is project-specific, optionally synced
         ]
+
+    async def _safe_node_request(
+        self,
+        method: str,
+        node_url: str,
+        path: str,
+        **kwargs
+    ) -> Optional[httpx.Response]:
+        """Make a SSRF-safe request to a federation node."""
+        full_url = f"{node_url.rstrip('/')}/{path.lstrip('/')}"
+        try:
+            assert_safe_outbound_url(full_url, purpose="federation_sync_request")
+        except PermissionError as e:
+            logger.warning("federation_request_blocked_ssrf", url=full_url, error=str(e))
+            return None
+
+        try:
+            response = await self.http_client.request(method, full_url, **kwargs)
+            return response
+        except Exception as e:
+            logger.error("federation_request_failed", url=full_url, error=str(e))
+            return None
 
     async def generate_manifest(self) -> SyncManifest:
         """Generate manifest of local data for synchronization"""
@@ -311,12 +346,14 @@ class FederationSyncManager:
             return False
 
     async def sync_with_node(self, node_url: str) -> Dict[str, Any]:
-        """Synchronize with a single node"""
+        """Synchronize with a single node (SSRF-protected)"""
         logger.info(f"Syncing with node: {node_url}")
 
         try:
-            # 1. Get remote manifest
-            response = await self.http_client.get(f"{node_url}/manifest")
+            # 1. Get remote manifest (SSRF-protected)
+            response = await self._safe_node_request("GET", node_url, "/manifest")
+            if response is None:
+                return {"node": node_url, "status": "error", "error": "SSRF protection blocked request"}
             response.raise_for_status()
             remote_manifest = SyncManifest.from_dict(response.json())
 
@@ -386,10 +423,13 @@ class FederationSyncManager:
 
             try:
                 if action == "pull":
-                    # Pull data from remote node
-                    response = await self.http_client.get(
-                        f"{node_url}/export/{collection_name}"
+                    # Pull data from remote node (SSRF-protected)
+                    response = await self._safe_node_request(
+                        "GET", node_url, f"/export/{collection_name}"
                     )
+                    if response is None:
+                        results[collection_name] = {"action": "pull", "error": "SSRF protection blocked"}
+                        continue
                     response.raise_for_status()
                     remote_data = response.json()
 
@@ -399,14 +439,17 @@ class FederationSyncManager:
                     results[collection_name] = {"action": "pull", "count": count}
 
                 elif action == "push":
-                    # Push data to remote node
+                    # Push data to remote node (SSRF-protected)
                     local_data = await self.export_collection_data(collection_name)
 
-                    response = await self.http_client.post(
-                        f"{node_url}/import/{collection_name}",
+                    response = await self._safe_node_request(
+                        "POST", node_url, f"/import/{collection_name}",
                         json=local_data,
                         timeout=120.0,
                     )
+                    if response is None:
+                        results[collection_name] = {"action": "push", "error": "SSRF protection blocked"}
+                        continue
                     response.raise_for_status()
                     result = response.json()
 
