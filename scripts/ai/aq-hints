@@ -59,6 +59,17 @@ HYBRID_URL = os.getenv(
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('HYBRID_COORDINATOR_PORT', '8003')}",
 ).rstrip("/")
 
+
+def _load_hybrid_api_key() -> str:
+    key = os.getenv("HYBRID_API_KEY", "").strip()
+    if key:
+        return key
+    key_file = os.getenv("HYBRID_API_KEY_FILE", "/run/secrets/hybrid_coordinator_api_key")
+    try:
+        return Path(key_file).read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
 # ---------------------------------------------------------------------------
 # Arg parsing
 # ---------------------------------------------------------------------------
@@ -107,7 +118,11 @@ def _fetch_rest(query: str, context: str, max_hints: int, agent: str) -> Optiona
     params = urllib.parse.urlencode({"q": query, "context": context, "max": max_hints, "agent": agent})
     url = f"{HYBRID_URL}/hints?{params}"
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        headers = {"Accept": "application/json"}
+        api_key = _load_hybrid_api_key()
+        if api_key:
+            headers["X-API-Key"] = api_key
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read())
     except Exception:

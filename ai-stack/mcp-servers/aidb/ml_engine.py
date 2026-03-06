@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import pickle
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -44,6 +45,15 @@ class MLEngine:
         if not ML_AVAILABLE:
             raise RuntimeError("scikit-learn not available - install with: pip install scikit-learn")
 
+    @staticmethod
+    def _safe_identifier(value: str) -> str:
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+            raise ValueError(f"Unsafe SQL identifier: {value!r}")
+        return value
+
+    def _safe_identifier_list(self, values: List[str]) -> List[str]:
+        return [self._safe_identifier(v) for v in values]
+
     async def train_forecast_model(
         self,
         model_name: str,
@@ -70,11 +80,17 @@ class MLEngine:
         def _train():
             session = self._session_factory()
             try:
+                safe_table = self._safe_identifier(table_name)
+                safe_target = self._safe_identifier(target_column)
+                safe_features = self._safe_identifier_list(feature_columns)
+                safe_lookback_hours = int(lookback_hours)
+                if safe_lookback_hours <= 0:
+                    raise ValueError("lookback_hours must be > 0")
                 # Fetch training data
                 query = f"""
-                    SELECT time, {target_column}, {', '.join(feature_columns)}
-                    FROM {table_name}
-                    WHERE time >= NOW() - INTERVAL '{lookback_hours} hours'
+                    SELECT time, {safe_target}, {', '.join(safe_features)}
+                    FROM {safe_table}
+                    WHERE time >= NOW() - INTERVAL '{safe_lookback_hours} hours'
                     ORDER BY time ASC
                 """
                 result = session.execute(sa.text(query))
@@ -172,7 +188,9 @@ class MLEngine:
         def _train():
             session = self._session_factory()
             try:
-                query = f"SELECT {', '.join(feature_columns)} FROM {table_name} ORDER BY time DESC LIMIT 10000"
+                safe_table = self._safe_identifier(table_name)
+                safe_features = self._safe_identifier_list(feature_columns)
+                query = f"SELECT {', '.join(safe_features)} FROM {safe_table} ORDER BY time DESC LIMIT 10000"
                 result = session.execute(sa.text(query))
                 data = np.array(result.fetchall())
 

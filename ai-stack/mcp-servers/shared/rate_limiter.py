@@ -106,11 +106,11 @@ class SlidingWindowRateLimiter:
         if len(minute_window) >= burst_limit:
             retry_after = int(60 - (now - minute_window[0])) + 1
             logger.warning(
-                "rate_limit_exceeded",
-                client_id=client_id,
-                path=path,
-                current=len(minute_window),
-                limit=burst_limit,
+                "rate_limit_exceeded client_id=%s path=%s current=%s limit=%s",
+                client_id,
+                path,
+                len(minute_window),
+                burst_limit,
             )
             return False, f"Rate limit exceeded: {burst_limit}/min", retry_after
 
@@ -122,11 +122,11 @@ class SlidingWindowRateLimiter:
         if len(hour_window) >= self.config.default_rph:
             retry_after = int(3600 - (now - hour_window[0])) + 1
             logger.warning(
-                "hourly_rate_limit_exceeded",
-                client_id=client_id,
-                path=path,
-                current=len(hour_window),
-                limit=self.config.default_rph,
+                "hourly_rate_limit_exceeded client_id=%s path=%s current=%s limit=%s",
+                client_id,
+                path,
+                len(hour_window),
+                self.config.default_rph,
             )
             return False, f"Hourly rate limit exceeded: {self.config.default_rph}/hour", retry_after
 

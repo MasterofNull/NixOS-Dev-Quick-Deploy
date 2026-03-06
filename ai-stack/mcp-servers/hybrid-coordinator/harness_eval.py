@@ -63,6 +63,32 @@ def _keyword_relevance(text: str, expected_keywords: List[str]) -> float:
     return hits / max(len(expected_keywords), 1)
 
 
+def _collect_route_evidence_text(result: Dict[str, Any]) -> str:
+    """Build a searchable text blob from route_search output for eval scoring."""
+    parts: List[str] = []
+    response = result.get("response")
+    if isinstance(response, str) and response.strip():
+        parts.append(response)
+
+    results = result.get("results")
+    if isinstance(results, dict):
+        for bucket in ("combined_results", "semantic_results", "keyword_results"):
+            rows = results.get(bucket)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                payload = row.get("payload")
+                if isinstance(payload, dict):
+                    parts.extend(str(v) for v in payload.values() if v is not None)
+                content = row.get("content")
+                if isinstance(content, str) and content.strip():
+                    parts.append(content)
+
+    return "\n".join(parts)
+
+
 def _classify_eval_failure(metrics: Dict[str, Any]) -> str:
     if not metrics.get("response_non_empty", False):
         return "empty_response"
@@ -189,8 +215,9 @@ async def run_harness_evaluation(
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     response_text = (result.get("response") or "").strip()
+    evidence_text = _collect_route_evidence_text(result)
     keywords = [kw for kw in (expected_keywords or []) if isinstance(kw, str)]
-    relevance_score = _keyword_relevance(response_text, keywords)
+    relevance_score = _keyword_relevance(evidence_text, keywords)
 
     latency_target = int(max_latency_ms or Config.AI_HARNESS_MAX_LATENCY_MS)
     latency_ok = latency_ms <= latency_target

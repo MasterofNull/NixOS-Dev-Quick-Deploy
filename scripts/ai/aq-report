@@ -209,6 +209,28 @@ def _entry_ts_utc(entry: Dict[str, Any]) -> Optional[datetime]:
         return None
 
 
+def _score_ts_utc(raw: Any) -> Optional[datetime]:
+    """Parse eval score timestamps across legacy and ISO8601 formats."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    parse_attempts = (
+        lambda v: datetime.fromisoformat(v.rstrip("Z")),
+        lambda v: datetime.strptime(v, "%Y%m%dT%H%M%SZ"),
+    )
+    for parser in parse_attempts:
+        try:
+            parsed = parser(text)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            else:
+                parsed = parsed.astimezone(timezone.utc)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
 def read_eval_scores(since: datetime) -> List[dict]:
     """Read eval_scores rows from scores.sqlite."""
     if not EVAL_SCORES_DB.exists():
@@ -220,12 +242,21 @@ def read_eval_scores(since: datetime) -> List[dict]:
         cur = conn.execute(
             "SELECT timestamp, config, passed, total, pct_passed, threshold, "
             "IFNULL(strategy_tag, '') AS strategy_tag "
-            "FROM eval_scores WHERE timestamp >= ? ORDER BY timestamp",
-            (since.isoformat(),),
+            "FROM eval_scores",
         )
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
-        return rows
+        filtered_rows = []
+        for row in rows:
+            parsed = _score_ts_utc(row.get("timestamp"))
+            if parsed is None or parsed < since:
+                continue
+            row["_parsed_ts"] = parsed
+            filtered_rows.append(row)
+        filtered_rows.sort(key=lambda r: r["_parsed_ts"])
+        for row in filtered_rows:
+            row.pop("_parsed_ts", None)
+        return filtered_rows
     except (sqlite3.Error, OSError):
         return []
 

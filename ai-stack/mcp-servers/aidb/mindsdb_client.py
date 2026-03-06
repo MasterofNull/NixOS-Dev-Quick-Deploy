@@ -7,12 +7,27 @@ import logging
 import httpx
 import asyncio
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_DOTTED_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
+
+def _require_identifier(value: str, *, allow_dotted: bool = False) -> str:
+    pattern = _DOTTED_IDENTIFIER_RE if allow_dotted else _IDENTIFIER_RE
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        raise ValueError(f"unsafe identifier: {value!r}")
+    return value
+
+
+def _sql_quote_literal(value: Any) -> str:
+    text = str(value).replace("'", "''")
+    return f"'{text}'"
 
 
 def _read_secret(path: str) -> str:
@@ -140,12 +155,17 @@ class MindsDBClient:
         Returns:
             True if successful
         """
-        params_str = ", ".join([f'"{k}": "{v}"' for k, v in parameters.items()])
+        safe_name = _require_identifier(name)
+        safe_engine = _require_identifier(engine)
+        # Encode params as JSON text and quote as SQL literal.
+        params_json = _sql_quote_literal(
+            "{ " + ", ".join([f'"{k}": "{v}"' for k, v in parameters.items()]) + " }"
+        )
 
         query = f"""
-        CREATE DATABASE {name}
-        WITH ENGINE = '{engine}',
-        PARAMETERS = {{ {params_str} }};
+        CREATE DATABASE {safe_name}
+        WITH ENGINE = {_sql_quote_literal(safe_engine)},
+        PARAMETERS = {params_json};
         """
 
         try:
@@ -198,14 +218,21 @@ class MindsDBClient:
             MindsDBModel object
         """
         using_clause = ""
+        safe_name = _require_identifier(name)
+        safe_from_data = _require_identifier(from_data, allow_dotted=True)
+        safe_predict_column = _require_identifier(predict_column)
         if using_params:
-            params_str = ", ".join([f"{k}='{v}'" for k, v in using_params.items()])
+            safe_items = []
+            for key, value in using_params.items():
+                safe_key = _require_identifier(str(key))
+                safe_items.append(f"{safe_key}={_sql_quote_literal(value)}")
+            params_str = ", ".join(safe_items)
             using_clause = f"USING {params_str}"
 
         query = f"""
-        CREATE MODEL {name}
-        FROM {from_data}
-        PREDICT {predict_column}
+        CREATE MODEL {safe_name}
+        FROM {safe_from_data}
+        PREDICT {safe_predict_column}
         {using_clause};
         """
 
@@ -222,7 +249,7 @@ class MindsDBClient:
 
     async def get_model_status(self, name: str) -> MindsDBModel:
         """Get status of a MindsDB model"""
-        query = f"SELECT * FROM models WHERE name = '{name}';"
+        query = f"SELECT * FROM models WHERE name = {_sql_quote_literal(name)};"
 
         try:
             result = await self.execute_sql(query)
@@ -278,11 +305,16 @@ class MindsDBClient:
         Returns:
             MindsDBPrediction with result and confidence
         """
-        where_clause = " AND ".join([f"{k} = '{v}'" for k, v in input_data.items()])
+        safe_model_name = _require_identifier(model_name)
+        where_terms = []
+        for key, value in input_data.items():
+            safe_key = _require_identifier(str(key))
+            where_terms.append(f"{safe_key} = {_sql_quote_literal(value)}")
+        where_clause = " AND ".join(where_terms) if where_terms else "1=1"
 
         query = f"""
         SELECT *
-        FROM {model_name}
+        FROM {safe_model_name}
         WHERE {where_clause};
         """
 
@@ -328,10 +360,11 @@ class MindsDBClient:
             Query results
         """
         # MindsDB supports natural language queries via AI
+        source = _require_identifier(context_data, allow_dotted=True) if context_data else "aidb_postgres"
         query = f"""
         SELECT *
-        FROM {context_data or 'aidb_postgres'}
-        WHERE '{natural_language_query}';
+        FROM {source}
+        WHERE {_sql_quote_literal(natural_language_query)};
         """
 
         return await self.execute_sql(query)
@@ -401,7 +434,7 @@ class MindsDBClient:
 
     async def drop_model(self, name: str) -> bool:
         """Delete a MindsDB model"""
-        query = f"DROP MODEL {name};"
+        query = f"DROP MODEL {_require_identifier(name)};"
 
         try:
             await self.execute_sql(query)

@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 export PATH="$HOME/.npm-global/bin:$PATH"
 
 TOPIC="${1:?Usage: $0 '<topic>' [--project <project>] [--clear-gaps]}"
