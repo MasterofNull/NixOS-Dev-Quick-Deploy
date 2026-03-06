@@ -99,6 +99,12 @@ repo/
 - `/workflow/plan` for structured execution
 - Check memory recall for prior solutions
 
+**Task completion defaults:**
+- Commit all changes with descriptive comments
+- Include Co-Authored-By trailer
+- Run validation before commit
+- Update todo list to reflect completion
+
 ## Validation
 
 ```bash
