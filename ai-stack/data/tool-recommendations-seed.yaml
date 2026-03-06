@@ -1,0 +1,1214 @@
+# AI Stack Tool Recommendations Seed Data
+#
+# Comprehensive dataset of 130+ tools for PRSI hints and agentic tool discovery.
+# Categories: MCP servers, CLI tools, skills, linters, data tools, testing,
+# security, database, AI/agentic, NixOS, shell utilities, RAG frameworks.
+#
+# Ingested into Qdrant `skills-patterns` collection via import script.
+# Query via /hints or hybrid_search for context-aware tool recommendations.
+#
+# Status: Active
+# Owner: AI Stack Maintainers
+# Last Updated: 2026-03-06
+
+version: "1.0"
+generated_at: "2026-03-06"
+total_tools: 132
+
+# =============================================================================
+# CATEGORY: MCP Servers (Model Context Protocol)
+# =============================================================================
+mcp_servers:
+  - id: mcp_filesystem
+    name: filesystem
+    type: mcp_server
+    transport: stdio
+    description: "Secure file operations with configurable access controls"
+    when_to_use: "Read/write files in project directory with sandboxing"
+    tags: [mcp, files, filesystem, read, write]
+    install: "npx -y @modelcontextprotocol/server-filesystem"
+    priority: high
+
+  - id: mcp_git
+    name: git
+    type: mcp_server
+    transport: stdio
+    description: "Git operations - log, diff, status, branch management"
+    when_to_use: "Version control operations, commit history, diff viewing"
+    tags: [mcp, git, vcs, diff, log]
+    install: "npx -y @modelcontextprotocol/server-git"
+    priority: high
+
+  - id: mcp_github
+    name: github
+    type: mcp_server
+    transport: stdio
+    description: "GitHub API - PRs, issues, repos, code search"
+    when_to_use: "Create PRs, manage issues, search code across repos"
+    tags: [mcp, github, pr, issues, api]
+    install: "npx -y @modelcontextprotocol/server-github"
+    priority: high
+
+  - id: mcp_memory
+    name: memory
+    type: mcp_server
+    transport: stdio
+    description: "Knowledge graph-based persistent memory across sessions"
+    when_to_use: "Store facts, recall context, maintain state across sessions"
+    tags: [mcp, memory, persistence, knowledge, recall]
+    install: "npx -y @modelcontextprotocol/server-memory"
+    priority: high
+
+  - id: mcp_postgres
+    name: postgres
+    type: mcp_server
+    transport: stdio
+    description: "Direct SQL queries to PostgreSQL databases"
+    when_to_use: "Query database, inspect schema, analyze data"
+    tags: [mcp, postgres, sql, database, query]
+    install: "npx -y @modelcontextprotocol/server-postgres"
+    priority: medium
+
+  - id: mcp_fetch
+    name: fetch
+    type: mcp_server
+    transport: stdio
+    description: "HTTP fetch for web content and APIs"
+    when_to_use: "Fetch web pages, API responses, documentation"
+    tags: [mcp, http, fetch, web, api]
+    install: "npx -y @modelcontextprotocol/server-fetch"
+    priority: medium
+
+  - id: mcp_nixos
+    name: mcp-nixos
+    type: mcp_server
+    transport: stdio
+    description: "NixOS options search, package lookup, home-manager options"
+    when_to_use: "Search NixOS options, find packages, home-manager config"
+    tags: [mcp, nixos, nix, packages, options]
+    install: "nix run github:utensils/mcp-nixos"
+    priority: high
+
+  - id: mcp_sequential_thinking
+    name: sequential-thinking
+    type: mcp_server
+    transport: stdio
+    description: "Dynamic and reflective problem-solving through reasoning chains"
+    when_to_use: "Complex reasoning tasks requiring step-by-step analysis"
+    tags: [mcp, reasoning, thinking, problem-solving]
+    install: "npx -y @modelcontextprotocol/server-sequential-thinking"
+    priority: medium
+
+  - id: mcp_sqlite
+    name: sqlite
+    type: mcp_server
+    transport: stdio
+    description: "SQLite database operations and queries"
+    when_to_use: "Query SQLite databases, local data storage"
+    tags: [mcp, sqlite, sql, database, local]
+    install: "npx -y @modelcontextprotocol/server-sqlite"
+    priority: medium
+
+  - id: mcp_brave_search
+    name: brave-search
+    type: mcp_server
+    transport: stdio
+    description: "Web search via Brave Search API"
+    when_to_use: "Search the web for documentation, solutions, latest info"
+    tags: [mcp, search, web, brave]
+    install: "npx -y @modelcontextprotocol/server-brave-search"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: AI Stack Harness Tools (Local)
+# =============================================================================
+ai_stack_tools:
+  - id: hybrid_coordinator
+    name: hybrid-coordinator
+    type: http_service
+    port: 8003
+    description: "Route queries between local/remote LLM; semantic search; agent memory; workflow hints"
+    when_to_use: "Semantic search, workflow hints, agent memory, routing decisions"
+    tags: [ai-stack, llm, search, hints, memory, routing]
+    endpoints: ["/query", "/hints", "/memory/store", "/memory/recall", "/workflow/plan"]
+    priority: high
+
+  - id: aidb
+    name: aidb
+    type: http_service
+    port: 8002
+    description: "Document import/search, vector similarity, knowledge base"
+    when_to_use: "Import documents, search knowledge base, vector queries"
+    tags: [ai-stack, documents, vector, knowledge, rag]
+    endpoints: ["/documents", "/query", "/vector/search"]
+    priority: high
+
+  - id: aqd
+    name: aqd
+    type: cli
+    description: "Guided workflow CLI - project-init, primer, brownfield, retrofit"
+    when_to_use: "Initialize new projects, prime sessions, guided workflows"
+    tags: [cli, workflow, project-init, primer]
+    commands: ["workflows project-init", "workflows primer", "workflows brownfield"]
+    priority: high
+
+  - id: aq_hints
+    name: aq-hints
+    type: cli
+    description: "Query workflow hints from hybrid-coordinator"
+    when_to_use: "Get contextual hints for current task, workflow suggestions"
+    tags: [cli, hints, workflow, context]
+    flags: ["--format=json|text", "--agent=TYPE", "-q QUERY"]
+    priority: high
+
+  - id: aq_report
+    name: aq-report
+    type: cli
+    description: "9-section AI stack performance digest"
+    when_to_use: "Review stack performance, get recommendations, track metrics"
+    tags: [cli, report, metrics, performance]
+    flags: ["--since=7d", "--format=text|json", "--aidb-import"]
+    priority: medium
+
+  - id: aq_qa
+    name: aq-qa
+    type: cli
+    description: "Phase-based QA runner for AI stack health checks"
+    when_to_use: "Run health checks, validate services, test integrations"
+    tags: [cli, qa, health, testing]
+    commands: ["aq-qa 0", "aq-qa 1", "aq-qa 2"]
+    priority: medium
+
+  - id: aq_prompt_eval
+    name: aq-prompt-eval
+    type: cli
+    description: "Evaluate prompt registry against canonical tests"
+    when_to_use: "Score prompts, compare strategies, optimize templates"
+    tags: [cli, eval, prompts, testing]
+    flags: ["--strategy LABEL", "--aidb-import"]
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Claude Code Skills
+# =============================================================================
+skills:
+  - id: skill_commit
+    name: /commit
+    type: skill
+    description: "Structured git commit with Co-Authored-By trailer"
+    when_to_use: "Commit changes with proper formatting and attribution"
+    tags: [skill, git, commit, workflow]
+    priority: high
+
+  - id: skill_prime
+    name: /prime
+    type: skill
+    description: "Prime agent with minimal project context"
+    when_to_use: "Start of session, load project context, get hints"
+    tags: [skill, context, primer, session]
+    priority: high
+
+  - id: skill_plan_feature
+    name: /plan-feature
+    type: skill
+    description: "Build a feature/slice plan with context references"
+    when_to_use: "Planning new features, breaking down tasks"
+    tags: [skill, planning, feature, slice]
+    priority: high
+
+  - id: skill_execute
+    name: /execute
+    type: skill
+    description: "Execute implementation from a plan file"
+    when_to_use: "Implement planned slices, execute workflows"
+    tags: [skill, execute, implementation, workflow]
+    priority: high
+
+  - id: skill_ai_stack_qa
+    name: /ai-stack-qa
+    type: skill
+    description: "Run full AI stack health check suite"
+    when_to_use: "Validate stack health, run QA phases"
+    tags: [skill, qa, health, validation]
+    priority: medium
+
+  - id: skill_review_pr
+    name: /review-pr
+    type: skill
+    description: "PR review workflow"
+    when_to_use: "Review pull requests, analyze changes"
+    tags: [skill, pr, review, git]
+    priority: medium
+
+  - id: skill_mcp_builder
+    name: /mcp-builder
+    type: skill
+    description: "Build new MCP servers"
+    when_to_use: "Create custom MCP servers, extend tooling"
+    tags: [skill, mcp, build, tooling]
+    priority: medium
+
+  - id: skill_webapp_testing
+    name: /webapp-testing
+    type: skill
+    description: "Playwright browser testing"
+    when_to_use: "Test web applications, browser automation"
+    tags: [skill, testing, playwright, browser]
+    priority: medium
+
+  - id: skill_pdf
+    name: /pdf
+    type: skill
+    description: "PDF manipulation toolkit"
+    when_to_use: "Extract text from PDFs, manipulate PDF files"
+    tags: [skill, pdf, documents]
+    priority: low
+
+  - id: skill_nixos_deployment
+    name: /nixos-deployment
+    type: skill
+    description: "NixOS deployment workflow"
+    when_to_use: "Deploy NixOS configurations, system updates"
+    tags: [skill, nixos, deployment, system]
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Data Manipulation Tools
+# =============================================================================
+data_tools:
+  - id: jq
+    name: jq
+    type: cli
+    description: "Lightweight JSON processor for query, filter, transform"
+    when_to_use: "Parse JSON, extract fields, transform API responses"
+    tags: [json, data, transform, query, cli]
+    install: "nix-shell -p jq"
+    examples: ["jq '.data[]'", "jq -r '.name'", "jq 'select(.status == \"active\")'"]
+    priority: high
+
+  - id: yq
+    name: yq
+    type: cli
+    description: "YAML/JSON/XML/CSV processor (like jq for YAML)"
+    when_to_use: "Parse YAML configs, transform between formats"
+    tags: [yaml, json, data, transform, cli]
+    install: "nix-shell -p yq-go"
+    priority: high
+
+  - id: miller
+    name: miller
+    type: cli
+    description: "Like awk, sed, cut, join, sort for CSV/TSV/JSON"
+    when_to_use: "Transform CSV data, aggregate, filter tabular data"
+    tags: [csv, tsv, data, transform, cli]
+    install: "nix-shell -p miller"
+    examples: ["mlr --csv filter '$age > 30'", "mlr --csv sort -f name"]
+    priority: high
+
+  - id: csvkit
+    name: csvkit
+    type: cli
+    description: "Suite of CSV utilities - convert, select, join, query"
+    when_to_use: "CSV manipulation, SQL queries on CSV, format conversion"
+    tags: [csv, data, sql, convert, cli]
+    install: "pip install csvkit"
+    commands: ["csvcut", "csvgrep", "csvsql", "csvjoin", "in2csv"]
+    priority: high
+
+  - id: qsv
+    name: qsv
+    type: cli
+    description: "Fast CSV toolkit - index, slice, analyze, join"
+    when_to_use: "High-performance CSV processing, large files"
+    tags: [csv, data, fast, cli]
+    install: "cargo install qsv"
+    priority: medium
+
+  - id: xsv
+    name: xsv
+    type: cli
+    description: "Fast CSV command line toolkit written in Rust"
+    when_to_use: "CSV slicing, searching, joining at speed"
+    tags: [csv, data, fast, rust, cli]
+    install: "nix-shell -p xsv"
+    priority: medium
+
+  - id: pandas
+    name: pandas
+    type: library
+    language: python
+    description: "Data analysis and manipulation library"
+    when_to_use: "Complex data analysis, dataframes, time series"
+    tags: [python, data, dataframe, analysis]
+    install: "pip install pandas"
+    priority: high
+
+  - id: polars
+    name: polars
+    type: library
+    language: python
+    description: "Fast DataFrame library written in Rust"
+    when_to_use: "High-performance data processing, large datasets"
+    tags: [python, data, dataframe, fast, rust]
+    install: "pip install polars"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Linters and Formatters
+# =============================================================================
+linters:
+  - id: ruff
+    name: ruff
+    type: cli
+    language: python
+    description: "Extremely fast Python linter and formatter (replaces flake8, black, isort)"
+    when_to_use: "Python linting and formatting, 30x faster than black"
+    tags: [python, linter, formatter, fast]
+    install: "pip install ruff"
+    commands: ["ruff check .", "ruff format ."]
+    priority: high
+
+  - id: black
+    name: black
+    type: cli
+    language: python
+    description: "Opinionated Python code formatter"
+    when_to_use: "Python formatting (legacy projects, prefer ruff)"
+    tags: [python, formatter]
+    install: "pip install black"
+    priority: medium
+
+  - id: eslint
+    name: eslint
+    type: cli
+    language: javascript
+    description: "JavaScript/TypeScript linter"
+    when_to_use: "JS/TS linting, code quality, style enforcement"
+    tags: [javascript, typescript, linter]
+    install: "npm install eslint"
+    priority: high
+
+  - id: prettier
+    name: prettier
+    type: cli
+    language: javascript
+    description: "Opinionated code formatter for JS/TS/CSS/HTML/JSON/etc"
+    when_to_use: "Format JavaScript, TypeScript, CSS, HTML, JSON"
+    tags: [javascript, typescript, formatter, css, html]
+    install: "npm install prettier"
+    priority: high
+
+  - id: biome
+    name: biome
+    type: cli
+    language: javascript
+    description: "Fast linter and formatter replacing ESLint + Prettier"
+    when_to_use: "Modern JS/TS projects, unified linting and formatting"
+    tags: [javascript, typescript, linter, formatter, fast]
+    install: "npm install @biomejs/biome"
+    priority: high
+
+  - id: rustfmt
+    name: rustfmt
+    type: cli
+    language: rust
+    description: "Rust code formatter"
+    when_to_use: "Format Rust code"
+    tags: [rust, formatter]
+    install: "rustup component add rustfmt"
+    priority: medium
+
+  - id: clippy
+    name: clippy
+    type: cli
+    language: rust
+    description: "Rust linter with helpful suggestions"
+    when_to_use: "Rust code linting, idiomatic patterns"
+    tags: [rust, linter]
+    install: "rustup component add clippy"
+    priority: medium
+
+  - id: shellcheck
+    name: shellcheck
+    type: cli
+    language: shell
+    description: "Shell script static analysis tool"
+    when_to_use: "Lint bash/sh scripts, find bugs and issues"
+    tags: [shell, bash, linter]
+    install: "nix-shell -p shellcheck"
+    priority: high
+
+  - id: shfmt
+    name: shfmt
+    type: cli
+    language: shell
+    description: "Shell script formatter"
+    when_to_use: "Format shell scripts consistently"
+    tags: [shell, bash, formatter]
+    install: "nix-shell -p shfmt"
+    priority: medium
+
+  - id: alejandra
+    name: alejandra
+    type: cli
+    language: nix
+    description: "Opinionated Nix code formatter"
+    when_to_use: "Format Nix files"
+    tags: [nix, formatter]
+    install: "nix-shell -p alejandra"
+    priority: high
+
+  - id: nixfmt
+    name: nixfmt
+    type: cli
+    language: nix
+    description: "Nix code formatter (official)"
+    when_to_use: "Format Nix files (alternative to alejandra)"
+    tags: [nix, formatter]
+    install: "nix-shell -p nixfmt"
+    priority: medium
+
+  - id: statix
+    name: statix
+    type: cli
+    language: nix
+    description: "Nix linter for antipatterns and best practices"
+    when_to_use: "Lint Nix files, find antipatterns"
+    tags: [nix, linter]
+    install: "nix-shell -p statix"
+    priority: high
+
+  - id: deadnix
+    name: deadnix
+    type: cli
+    language: nix
+    description: "Find dead code in Nix files"
+    when_to_use: "Remove unused bindings in Nix"
+    tags: [nix, linter, dead-code]
+    install: "nix-shell -p deadnix"
+    priority: medium
+
+  - id: mypy
+    name: mypy
+    type: cli
+    language: python
+    description: "Static type checker for Python"
+    when_to_use: "Type checking Python code"
+    tags: [python, types, linter]
+    install: "pip install mypy"
+    priority: high
+
+  - id: pyright
+    name: pyright
+    type: cli
+    language: python
+    description: "Fast static type checker for Python"
+    when_to_use: "Type checking Python (faster than mypy)"
+    tags: [python, types, linter, fast]
+    install: "pip install pyright"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Testing Frameworks
+# =============================================================================
+testing:
+  - id: pytest
+    name: pytest
+    type: cli
+    language: python
+    description: "Python testing framework with fixtures, plugins"
+    when_to_use: "Python unit/integration tests"
+    tags: [python, testing, unit, integration]
+    install: "pip install pytest"
+    priority: high
+
+  - id: vitest
+    name: vitest
+    type: cli
+    language: javascript
+    description: "Fast Vite-native test framework"
+    when_to_use: "JavaScript/TypeScript unit tests (modern projects)"
+    tags: [javascript, typescript, testing, unit, fast]
+    install: "npm install vitest"
+    priority: high
+
+  - id: jest
+    name: jest
+    type: cli
+    language: javascript
+    description: "JavaScript testing framework by Meta"
+    when_to_use: "JavaScript unit tests (React ecosystem)"
+    tags: [javascript, testing, unit, react]
+    install: "npm install jest"
+    priority: medium
+
+  - id: playwright
+    name: playwright
+    type: cli
+    language: javascript
+    description: "Cross-browser end-to-end testing"
+    when_to_use: "E2E tests, browser automation, multi-browser testing"
+    tags: [testing, e2e, browser, automation]
+    install: "npm install playwright"
+    priority: high
+
+  - id: cypress
+    name: cypress
+    type: cli
+    language: javascript
+    description: "E2E testing with time-travel debugging"
+    when_to_use: "E2E tests with visual debugging"
+    tags: [testing, e2e, browser]
+    install: "npm install cypress"
+    priority: medium
+
+  - id: cargo_test
+    name: cargo test
+    type: cli
+    language: rust
+    description: "Built-in Rust testing"
+    when_to_use: "Rust unit and integration tests"
+    tags: [rust, testing, unit]
+    install: "built-in"
+    priority: medium
+
+  - id: nix_check
+    name: nix flake check
+    type: cli
+    language: nix
+    description: "Run Nix flake checks"
+    when_to_use: "Validate Nix flakes, run flake tests"
+    tags: [nix, testing, flake]
+    priority: high
+
+# =============================================================================
+# CATEGORY: Security Tools
+# =============================================================================
+security:
+  - id: trivy
+    name: trivy
+    type: cli
+    description: "Vulnerability scanner for containers, fs, git repos"
+    when_to_use: "Scan for vulnerabilities in dependencies, containers, code"
+    tags: [security, vulnerability, scanner, containers]
+    install: "nix-shell -p trivy"
+    priority: high
+
+  - id: pip_audit
+    name: pip-audit
+    type: cli
+    language: python
+    description: "Python dependency vulnerability scanner"
+    when_to_use: "Audit Python dependencies for known vulnerabilities"
+    tags: [security, python, vulnerability, audit]
+    install: "pip install pip-audit"
+    priority: high
+
+  - id: npm_audit
+    name: npm audit
+    type: cli
+    language: javascript
+    description: "Node.js dependency vulnerability scanner"
+    when_to_use: "Audit npm dependencies for vulnerabilities"
+    tags: [security, javascript, vulnerability, audit]
+    install: "built-in"
+    priority: high
+
+  - id: semgrep
+    name: semgrep
+    type: cli
+    description: "Lightweight static analysis for many languages"
+    when_to_use: "Find bugs, security issues with custom rules"
+    tags: [security, sast, static-analysis]
+    install: "pip install semgrep"
+    priority: medium
+
+  - id: bandit
+    name: bandit
+    type: cli
+    language: python
+    description: "Python security linter"
+    when_to_use: "Find security issues in Python code"
+    tags: [security, python, sast]
+    install: "pip install bandit"
+    priority: medium
+
+  - id: gitleaks
+    name: gitleaks
+    type: cli
+    description: "Detect secrets in git repos"
+    when_to_use: "Find leaked secrets, API keys in code"
+    tags: [security, secrets, git]
+    install: "nix-shell -p gitleaks"
+    priority: high
+
+  - id: trufflehog
+    name: trufflehog
+    type: cli
+    description: "Find leaked credentials in git history"
+    when_to_use: "Deep scan git history for secrets"
+    tags: [security, secrets, git]
+    install: "pip install trufflehog"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Database Tools
+# =============================================================================
+database:
+  - id: pgcli
+    name: pgcli
+    type: cli
+    description: "PostgreSQL CLI with autocompletion and syntax highlighting"
+    when_to_use: "Interactive PostgreSQL queries"
+    tags: [database, postgres, cli]
+    install: "pip install pgcli"
+    priority: high
+
+  - id: litecli
+    name: litecli
+    type: cli
+    description: "SQLite CLI with autocompletion"
+    when_to_use: "Interactive SQLite queries"
+    tags: [database, sqlite, cli]
+    install: "pip install litecli"
+    priority: medium
+
+  - id: redis_cli
+    name: redis-cli
+    type: cli
+    description: "Redis command line interface"
+    when_to_use: "Redis operations, cache inspection"
+    tags: [database, redis, cache, cli]
+    install: "nix-shell -p redis"
+    priority: medium
+
+  - id: dbeaver
+    name: DBeaver
+    type: gui
+    description: "Universal database tool (80+ databases)"
+    when_to_use: "Visual database management, schema browsing"
+    tags: [database, gui, universal]
+    install: "nix-shell -p dbeaver"
+    priority: medium
+
+  - id: usql
+    name: usql
+    type: cli
+    description: "Universal CLI for SQL databases"
+    when_to_use: "Connect to any SQL database with single tool"
+    tags: [database, sql, universal, cli]
+    install: "nix-shell -p usql"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: NixOS Tools
+# =============================================================================
+nixos:
+  - id: nix_tree
+    name: nix-tree
+    type: cli
+    description: "Interactively browse Nix store dependency tree"
+    when_to_use: "Explore store paths, find dependencies"
+    tags: [nix, dependencies, debug]
+    install: "nix-shell -p nix-tree"
+    priority: medium
+
+  - id: nix_du
+    name: nix-du
+    type: cli
+    description: "Visualize which gc-roots to delete to free space"
+    when_to_use: "Analyze Nix store disk usage"
+    tags: [nix, storage, cleanup]
+    install: "nix-shell -p nix-du"
+    priority: medium
+
+  - id: nix_index
+    name: nix-index
+    type: cli
+    description: "Index Nix packages for file lookup"
+    when_to_use: "Find which package provides a binary"
+    tags: [nix, packages, search]
+    install: "nix-shell -p nix-index"
+    priority: medium
+
+  - id: comma
+    name: comma
+    type: cli
+    description: "Run any binary via nix run + nix-index"
+    when_to_use: "Quickly run binaries without installing"
+    tags: [nix, run, packages]
+    install: "nix-shell -p comma"
+    examples: [", cowsay hello"]
+    priority: high
+
+  - id: devenv
+    name: devenv
+    type: cli
+    description: "Fast declarative development environments"
+    when_to_use: "Project-specific dev environments"
+    tags: [nix, devenv, development]
+    install: "nix-shell -p devenv"
+    priority: high
+
+  - id: direnv
+    name: direnv
+    type: cli
+    description: "Automatic environment loading per directory"
+    when_to_use: "Auto-activate project environments"
+    tags: [nix, direnv, environment]
+    install: "nix-shell -p direnv"
+    priority: high
+
+  - id: nix_direnv
+    name: nix-direnv
+    type: cli
+    description: "Fast direnv for Nix with caching"
+    when_to_use: "Faster Nix shell activation"
+    tags: [nix, direnv, fast]
+    install: "nix-shell -p nix-direnv"
+    priority: high
+
+  - id: home_manager
+    name: home-manager
+    type: cli
+    description: "Manage user environment with Nix"
+    when_to_use: "Declarative user config, dotfiles"
+    tags: [nix, home-manager, config]
+    install: "nix-shell -p home-manager"
+    priority: high
+
+  - id: nixos_rebuild
+    name: nixos-rebuild
+    type: cli
+    description: "Build and activate NixOS configurations"
+    when_to_use: "Deploy system changes"
+    tags: [nixos, deploy, system]
+    commands: ["nixos-rebuild switch", "nixos-rebuild test", "nixos-rebuild build"]
+    priority: high
+
+  - id: nix_diff
+    name: nix-diff
+    type: cli
+    description: "Diff Nix derivations"
+    when_to_use: "Compare configurations, debug changes"
+    tags: [nix, diff, debug]
+    install: "nix-shell -p nix-diff"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Shell Utilities
+# =============================================================================
+shell_utils:
+  - id: ripgrep
+    name: ripgrep
+    type: cli
+    description: "Fast recursive grep written in Rust"
+    when_to_use: "Search file contents, respect .gitignore"
+    tags: [search, grep, fast, cli]
+    install: "nix-shell -p ripgrep"
+    alias: "rg"
+    priority: high
+
+  - id: fd
+    name: fd
+    type: cli
+    description: "Fast find alternative written in Rust"
+    when_to_use: "Find files by name, respects .gitignore"
+    tags: [find, files, fast, cli]
+    install: "nix-shell -p fd"
+    priority: high
+
+  - id: fzf
+    name: fzf
+    type: cli
+    description: "General-purpose fuzzy finder"
+    when_to_use: "Interactive selection, history search, file picking"
+    tags: [fuzzy, search, interactive, cli]
+    install: "nix-shell -p fzf"
+    priority: high
+
+  - id: bat
+    name: bat
+    type: cli
+    description: "Cat clone with syntax highlighting"
+    when_to_use: "View files with syntax highlighting and git diff"
+    tags: [cat, view, syntax, cli]
+    install: "nix-shell -p bat"
+    priority: high
+
+  - id: eza
+    name: eza
+    type: cli
+    description: "Modern ls replacement (successor to exa)"
+    when_to_use: "List files with colors, icons, git status"
+    tags: [ls, files, cli]
+    install: "nix-shell -p eza"
+    priority: medium
+
+  - id: zoxide
+    name: zoxide
+    type: cli
+    description: "Smarter cd that learns your habits"
+    when_to_use: "Fast directory navigation"
+    tags: [cd, navigation, cli]
+    install: "nix-shell -p zoxide"
+    alias: "z"
+    priority: medium
+
+  - id: starship
+    name: starship
+    type: cli
+    description: "Cross-shell customizable prompt"
+    when_to_use: "Beautiful informative shell prompt"
+    tags: [shell, prompt, customization]
+    install: "nix-shell -p starship"
+    priority: medium
+
+  - id: tmux
+    name: tmux
+    type: cli
+    description: "Terminal multiplexer"
+    when_to_use: "Multiple terminal sessions, persistent sessions"
+    tags: [terminal, multiplexer, session]
+    install: "nix-shell -p tmux"
+    priority: high
+
+  - id: htop
+    name: htop
+    type: cli
+    description: "Interactive process viewer"
+    when_to_use: "Monitor system processes and resources"
+    tags: [system, monitor, processes]
+    install: "nix-shell -p htop"
+    priority: high
+
+  - id: tldr
+    name: tldr
+    type: cli
+    description: "Simplified man pages with examples"
+    when_to_use: "Quick command examples"
+    tags: [help, man, examples]
+    install: "nix-shell -p tldr"
+    priority: medium
+
+  - id: httpie
+    name: httpie
+    type: cli
+    description: "Human-friendly HTTP client"
+    when_to_use: "Test APIs, HTTP requests"
+    tags: [http, api, cli]
+    install: "nix-shell -p httpie"
+    priority: medium
+
+  - id: curlie
+    name: curlie
+    type: cli
+    description: "Curl with httpie-like syntax"
+    when_to_use: "HTTP requests with nice output"
+    tags: [http, curl, api, cli]
+    install: "nix-shell -p curlie"
+    priority: low
+
+# =============================================================================
+# CATEGORY: AI/Agentic Tools
+# =============================================================================
+ai_tools:
+  - id: claude_code
+    name: claude
+    type: cli
+    description: "Claude Code CLI - terminal-first AI coding assistant"
+    when_to_use: "AI-assisted coding, multi-file refactoring, reasoning"
+    tags: [ai, coding, assistant, cli]
+    install: "npm install -g @anthropic-ai/claude-code"
+    priority: high
+
+  - id: aider
+    name: aider
+    type: cli
+    description: "AI pair programming in terminal"
+    when_to_use: "Code editing tasks, AI-assisted changes"
+    tags: [ai, coding, pair-programming]
+    install: "pip install aider-chat"
+    priority: high
+
+  - id: qwen_cli
+    name: qwen
+    type: cli
+    description: "Multi-file refactor and deep code analysis"
+    when_to_use: "Large refactoring (>30 lines), architecture analysis"
+    tags: [ai, coding, refactor, analysis]
+    priority: high
+
+  - id: pi_agent
+    name: pi
+    type: cli
+    description: "Minimal terminal coding agent (read/write/edit/bash)"
+    when_to_use: "Bounded code editing, file transforms, targeted fixes"
+    tags: [ai, coding, minimal, fast]
+    priority: medium
+
+  - id: continue_dev
+    name: continue
+    type: extension
+    description: "IDE extension for AI assistance"
+    when_to_use: "In-editor AI assistance, autocomplete"
+    tags: [ai, ide, extension, autocomplete]
+    priority: medium
+
+  - id: ollama
+    name: ollama
+    type: cli
+    description: "Run LLMs locally"
+    when_to_use: "Local LLM inference, model management"
+    tags: [ai, llm, local, inference]
+    install: "curl -fsSL https://ollama.ai/install.sh | sh"
+    priority: medium
+
+  - id: llama_cpp
+    name: llama.cpp
+    type: service
+    description: "Efficient LLM inference in C++"
+    when_to_use: "Local LLM serving, OpenAI-compatible API"
+    tags: [ai, llm, local, inference, server]
+    priority: high
+
+# =============================================================================
+# CATEGORY: RAG and Knowledge Tools
+# =============================================================================
+rag_tools:
+  - id: langchain
+    name: langchain
+    type: library
+    language: python
+    description: "Framework for LLM applications and RAG"
+    when_to_use: "Build RAG pipelines, chain LLM calls"
+    tags: [rag, llm, framework, python]
+    install: "pip install langchain"
+    priority: high
+
+  - id: llamaindex
+    name: llamaindex
+    type: library
+    language: python
+    description: "Data framework for LLM applications"
+    when_to_use: "Index documents, efficient retrieval"
+    tags: [rag, llm, indexing, python]
+    install: "pip install llama-index"
+    priority: high
+
+  - id: chromadb
+    name: chromadb
+    type: library
+    language: python
+    description: "Open-source embedding database"
+    when_to_use: "Store and query embeddings locally"
+    tags: [rag, vector, database, embeddings]
+    install: "pip install chromadb"
+    priority: medium
+
+  - id: qdrant
+    name: qdrant
+    type: service
+    description: "Vector similarity search engine"
+    when_to_use: "Production vector search, similarity queries"
+    tags: [rag, vector, database, search]
+    port: 6333
+    priority: high
+
+  - id: haystack
+    name: haystack
+    type: library
+    language: python
+    description: "Production-grade RAG framework by deepset"
+    when_to_use: "Build production RAG systems, semantic search"
+    tags: [rag, framework, production, python]
+    install: "pip install farm-haystack"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Build and Package Tools
+# =============================================================================
+build_tools:
+  - id: cargo
+    name: cargo
+    type: cli
+    language: rust
+    description: "Rust package manager and build tool"
+    when_to_use: "Build Rust projects, manage dependencies"
+    tags: [rust, build, package]
+    priority: medium
+
+  - id: npm
+    name: npm
+    type: cli
+    language: javascript
+    description: "Node.js package manager"
+    when_to_use: "Install JS packages, run scripts"
+    tags: [javascript, package, npm]
+    priority: high
+
+  - id: pnpm
+    name: pnpm
+    type: cli
+    language: javascript
+    description: "Fast, disk-efficient npm alternative"
+    when_to_use: "JS package management (faster than npm)"
+    tags: [javascript, package, fast]
+    install: "npm install -g pnpm"
+    priority: medium
+
+  - id: poetry
+    name: poetry
+    type: cli
+    language: python
+    description: "Python dependency management and packaging"
+    when_to_use: "Python projects with pyproject.toml"
+    tags: [python, package, dependencies]
+    install: "pip install poetry"
+    priority: medium
+
+  - id: uv
+    name: uv
+    type: cli
+    language: python
+    description: "Fast Python package installer (10-100x faster than pip)"
+    when_to_use: "Install Python packages fast"
+    tags: [python, package, fast]
+    install: "pip install uv"
+    priority: high
+
+  - id: make
+    name: make
+    type: cli
+    description: "Build automation tool"
+    when_to_use: "Run build tasks via Makefile"
+    tags: [build, automation]
+    priority: medium
+
+  - id: just
+    name: just
+    type: cli
+    description: "Modern command runner (Makefile alternative)"
+    when_to_use: "Project task runner"
+    tags: [build, automation, tasks]
+    install: "nix-shell -p just"
+    priority: medium
+
+# =============================================================================
+# CATEGORY: Documentation Tools
+# =============================================================================
+docs_tools:
+  - id: mdbook
+    name: mdbook
+    type: cli
+    description: "Create books from Markdown"
+    when_to_use: "Build documentation sites from markdown"
+    tags: [docs, markdown, book]
+    install: "nix-shell -p mdbook"
+    priority: low
+
+  - id: mkdocs
+    name: mkdocs
+    type: cli
+    description: "Project documentation with Markdown"
+    when_to_use: "Build documentation sites"
+    tags: [docs, markdown, static-site]
+    install: "pip install mkdocs"
+    priority: low
+
+  - id: sphinx
+    name: sphinx
+    type: cli
+    language: python
+    description: "Python documentation generator"
+    when_to_use: "Python project documentation"
+    tags: [docs, python, api]
+    install: "pip install sphinx"
+    priority: low
+
+# =============================================================================
+# CATEGORY: Git and Version Control
+# =============================================================================
+git_tools:
+  - id: git
+    name: git
+    type: cli
+    description: "Distributed version control"
+    when_to_use: "All version control operations"
+    tags: [git, vcs]
+    priority: high
+
+  - id: gh
+    name: gh
+    type: cli
+    description: "GitHub CLI"
+    when_to_use: "GitHub operations - PRs, issues, releases"
+    tags: [git, github, cli]
+    install: "nix-shell -p gh"
+    priority: high
+
+  - id: lazygit
+    name: lazygit
+    type: cli
+    description: "Terminal UI for git"
+    when_to_use: "Visual git operations in terminal"
+    tags: [git, tui]
+    install: "nix-shell -p lazygit"
+    priority: medium
+
+  - id: delta
+    name: delta
+    type: cli
+    description: "Syntax-highlighting pager for git"
+    when_to_use: "Better git diff output"
+    tags: [git, diff, syntax]
+    install: "nix-shell -p delta"
+    priority: medium
+
+  - id: git_absorb
+    name: git-absorb
+    type: cli
+    description: "Automatic fixup commits"
+    when_to_use: "Clean up commit history"
+    tags: [git, fixup, history]
+    install: "nix-shell -p git-absorb"
+    priority: low
+
+# =============================================================================
+# CATEGORY: Container and Orchestration
+# =============================================================================
+container_tools:
+  - id: docker
+    name: docker
+    type: cli
+    description: "Container runtime"
+    when_to_use: "Build and run containers"
+    tags: [container, docker]
+    priority: medium
+
+  - id: podman
+    name: podman
+    type: cli
+    description: "Rootless container runtime"
+    when_to_use: "Containers without daemon (Docker alternative)"
+    tags: [container, podman, rootless]
+    install: "nix-shell -p podman"
+    priority: medium
+
+  - id: kubectl
+    name: kubectl
+    type: cli
+    description: "Kubernetes CLI"
+    when_to_use: "Kubernetes cluster management"
+    tags: [kubernetes, k8s, cli]
+    install: "nix-shell -p kubectl"
+    priority: low
+
+  - id: k9s
+    name: k9s
+    type: cli
+    description: "Terminal UI for Kubernetes"
+    when_to_use: "Visual Kubernetes management"
+    tags: [kubernetes, k8s, tui]
+    install: "nix-shell -p k9s"
+    priority: low
