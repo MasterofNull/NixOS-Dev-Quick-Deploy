@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Enforce required metadata blocks on active docs categories.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

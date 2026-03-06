@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Verify underscore shim scripts forward to kebab-case canonical scripts.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Evaluate effective agent policy by profile, task, and tool selection.
 from __future__ import annotations
 
 import argparse

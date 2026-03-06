@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Prevent live files from remaining in legacy deprecated/ root path.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
