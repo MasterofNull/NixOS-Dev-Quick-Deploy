@@ -226,3 +226,59 @@ class SemanticCache:
                 ],
             },
         }
+
+    async def warm_cache(self, warmup_queries: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Pre-populate semantic cache with common queries on startup.
+
+        Args:
+            warmup_queries: Optional list of queries to warm cache with.
+                           Uses default queries if not provided.
+
+        Returns:
+            Dict with warmup statistics
+        """
+        default_queries = [
+            "NixOS systemd service configuration",
+            "NixOS module options",
+            "flake.nix structure",
+            "home-manager configuration",
+            "COSMIC desktop setup",
+            "llama.cpp inference optimization",
+            "Qdrant vector search",
+            "MCP server integration",
+            "error handling best practices",
+            "Python async patterns",
+        ]
+
+        queries = warmup_queries or default_queries
+        warmed_count = 0
+        cache_hits = 0
+        errors = []
+
+        logger.info(f"Starting semantic cache warm-up with {len(queries)} queries")
+
+        for query in queries:
+            try:
+                result = await self.augment(query, agent_type="warmup")
+                warmed_count += 1
+                if result.get("capability_discovery", {}).get("cache_hit"):
+                    cache_hits += 1
+            except Exception as e:
+                errors.append({"query": query[:50], "error": str(e)})
+                logger.warning(f"Cache warm-up failed for query '{query[:50]}...': {e}")
+
+        warmup_stats = {
+            "queries_attempted": len(queries),
+            "queries_warmed": warmed_count,
+            "cache_hits_during_warmup": cache_hits,
+            "errors": errors,
+            "success_rate": warmed_count / len(queries) if queries else 0,
+        }
+
+        logger.info(
+            f"Semantic cache warm-up complete: {warmed_count}/{len(queries)} queries, "
+            f"{cache_hits} cache hits"
+        )
+
+        return warmup_stats

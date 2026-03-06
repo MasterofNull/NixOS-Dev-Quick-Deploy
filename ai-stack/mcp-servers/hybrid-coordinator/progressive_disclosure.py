@@ -255,7 +255,13 @@ class ProgressiveDisclosure:
         )
 
     async def get_collection_info(self) -> List[Dict[str, Any]]:
-        """Get information about available Qdrant collections"""
+        """Get information about available Qdrant collections.
+
+        Optimized to fetch collection info in parallel for faster response.
+        """
+        import asyncio
+        import concurrent.futures
+
         collection_names = [
             "error-solutions",
             "best-practices",
@@ -264,26 +270,35 @@ class ProgressiveDisclosure:
             "interaction-history"
         ]
 
-        collections = []
-        for name in collection_names:
+        def _fetch_single_collection(name: str) -> Dict[str, Any]:
+            """Sync wrapper for fetching single collection info."""
             try:
                 info = self.qdrant.get_collection(name)
-                collections.append({
+                return {
                     "name": name,
                     "points_count": info.points_count,
                     "vector_size": info.config.params.vectors.size,
                     "status": "active"
-                })
+                }
             except Exception as e:
                 logger.debug(f"Collection {name} not accessible: {e}")
-                collections.append({
+                return {
                     "name": name,
                     "points_count": 0,
                     "vector_size": 384,
                     "status": "unavailable"
-                })
+                }
 
-        return collections
+        # Run collection fetches in parallel using thread pool
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [
+                loop.run_in_executor(executor, _fetch_single_collection, name)
+                for name in collection_names
+            ]
+            collections = await asyncio.gather(*futures)
+
+        return list(collections)
 
     def format_overview(
         self,
