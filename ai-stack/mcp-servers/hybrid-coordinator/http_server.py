@@ -36,6 +36,7 @@ from config import Config, OptimizationProposal, apply_proposal, routing_config
 from metrics import PROCESS_MEMORY_BYTES, REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
 from shared.tool_security_auditor import ToolSecurityAuditor
 from shared.tool_audit import write_audit_entry as _write_audit_entry
+from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -2762,8 +2763,30 @@ async def run_http_mode(port: int) -> None:
     # App assembly and startup
     # ------------------------------------------------------------------
 
+    # Initialize rate limiter with endpoint-specific limits
+    rate_limiter_config = RateLimiterConfig(
+        enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
+        default_rpm=int(os.getenv("RATE_LIMIT_DEFAULT_RPM", "100")),
+        default_rph=int(os.getenv("RATE_LIMIT_DEFAULT_RPH", "3000")),
+        burst_multiplier=float(os.getenv("RATE_LIMIT_BURST_MULTIPLIER", "1.5")),
+        endpoint_limits={
+            "/query": int(os.getenv("RATE_LIMIT_QUERY_RPM", "30")),
+            "/search/tree": int(os.getenv("RATE_LIMIT_TREE_RPM", "20")),
+            "/hints": int(os.getenv("RATE_LIMIT_HINTS_RPM", "60")),
+            "/harness/eval": int(os.getenv("RATE_LIMIT_EVAL_RPM", "20")),
+            "/workflow": int(os.getenv("RATE_LIMIT_WORKFLOW_RPM", "30")),
+        },
+        exempt_paths={"/health", "/metrics", "/health/detailed"},
+    )
+    _rate_limiter, rate_limit_middleware = create_rate_limiter_middleware(rate_limiter_config)
+    logger.info(
+        "rate_limiter_initialized",
+        enabled=rate_limiter_config.enabled,
+        default_rpm=rate_limiter_config.default_rpm,
+    )
+
     http_app = web.Application(
-        middlewares=[tracing_middleware, request_id_middleware, api_key_middleware]
+        middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
     )
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)

@@ -2,8 +2,10 @@
 """
 Shared Circuit Breaker Implementation for AI Stack Services
 
-This module implements a comprehensive circuit breaker pattern for service-to-service 
+This module implements a comprehensive circuit breaker pattern for service-to-service
 communication within the AI stack to prevent cascading failures.
+
+Includes Prometheus metrics for observability.
 """
 
 import asyncio
@@ -16,7 +18,54 @@ import logging
 from dataclasses import dataclass
 from collections import defaultdict
 
+try:
+    from prometheus_client import Counter, Gauge, Histogram
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Prometheus Metrics for Circuit Breaker Observability
+# ---------------------------------------------------------------------------
+if PROMETHEUS_AVAILABLE:
+    CIRCUIT_STATE_GAUGE = Gauge(
+        "circuit_breaker_state",
+        "Current state of circuit breaker (0=closed, 1=half_open, 2=open)",
+        ["service_name"],
+    )
+    CIRCUIT_STATE_TRANSITIONS = Counter(
+        "circuit_breaker_state_transitions_total",
+        "Total circuit breaker state transitions",
+        ["service_name", "from_state", "to_state"],
+    )
+    CIRCUIT_FAILURES = Counter(
+        "circuit_breaker_failures_total",
+        "Total failures recorded by circuit breaker",
+        ["service_name"],
+    )
+    CIRCUIT_SUCCESSES = Counter(
+        "circuit_breaker_successes_total",
+        "Total successes recorded by circuit breaker",
+        ["service_name"],
+    )
+    CIRCUIT_REJECTIONS = Counter(
+        "circuit_breaker_rejections_total",
+        "Total requests rejected due to open circuit",
+        ["service_name"],
+    )
+    CIRCUIT_RECOVERY_LATENCY = Histogram(
+        "circuit_breaker_recovery_latency_seconds",
+        "Time from circuit opening to successful recovery",
+        ["service_name"],
+        buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0],
+    )
+
+
+def _state_to_metric_value(state: "CircuitState") -> int:
+    """Convert circuit state to numeric value for Prometheus gauge."""
+    return {"closed": 0, "half_open": 1, "open": 2}.get(state.value, -1)
 
 
 class CircuitState(Enum):
@@ -39,24 +88,49 @@ class CircuitBreaker:
     Circuit Breaker Pattern Implementation
 
     Prevents cascading failures by temporarily blocking requests to failing services.
+    Includes Prometheus metrics for observability.
     """
 
-    def __init__(self, config: CircuitBreakerConfig):
+    def __init__(self, config: CircuitBreakerConfig, service_name: str = "unknown"):
         self.config = config
+        self.service_name = service_name
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.success_count = 0
         self.last_failure_time = None
+        self._circuit_opened_time: Optional[float] = None
         self._lock = asyncio.Lock()
+        self._update_state_metric()
+
+    def _update_state_metric(self) -> None:
+        """Update Prometheus gauge with current state."""
+        if PROMETHEUS_AVAILABLE:
+            CIRCUIT_STATE_GAUGE.labels(service_name=self.service_name).set(
+                _state_to_metric_value(self.state)
+            )
+
+    def _record_state_transition(self, from_state: CircuitState, to_state: CircuitState) -> None:
+        """Record state transition in Prometheus."""
+        if PROMETHEUS_AVAILABLE:
+            CIRCUIT_STATE_TRANSITIONS.labels(
+                service_name=self.service_name,
+                from_state=from_state.value,
+                to_state=to_state.value,
+            ).inc()
 
     async def call(self, func: Callable, *args, **kwargs) -> Any:
         """Execute a function with circuit breaker protection."""
         async with self._lock:
             if self.state == CircuitState.OPEN:
                 if self._should_attempt_reset():
+                    old_state = self.state
                     self.state = CircuitState.HALF_OPEN
+                    self._record_state_transition(old_state, self.state)
+                    self._update_state_metric()
                     logger.info("Circuit breaker transitioning to HALF_OPEN for reset attempt")
                 else:
+                    if PROMETHEUS_AVAILABLE:
+                        CIRCUIT_REJECTIONS.labels(service_name=self.service_name).inc()
                     raise CircuitBreakerOpenError("Circuit breaker is OPEN")
 
             try:
@@ -96,6 +170,8 @@ class CircuitBreaker:
         """Handle a failure in the protected service."""
         self.failure_count += 1
         self.last_failure_time = time.time()
+        if PROMETHEUS_AVAILABLE:
+            CIRCUIT_FAILURES.labels(service_name=self.service_name).inc()
 
         if self.state == CircuitState.HALF_OPEN:
             # Failure in half-open state means service is still down
@@ -107,6 +183,9 @@ class CircuitBreaker:
     async def _on_success(self):
         """Handle a success in the protected service."""
         self.success_count += 1
+        if PROMETHEUS_AVAILABLE:
+            CIRCUIT_SUCCESSES.labels(service_name=self.service_name).inc()
+
         if self.state == CircuitState.HALF_OPEN:
             # If we have enough successes in HALF_OPEN, close the circuit
             if self.success_count >= self.config.success_threshold:
@@ -123,17 +202,32 @@ class CircuitBreaker:
 
     async def _trip(self):
         """Trip the circuit breaker to OPEN state."""
+        old_state = self.state
         self.state = CircuitState.OPEN
         self.failure_count = 0
         self.success_count = 0
+        self._circuit_opened_time = time.time()
+        self._record_state_transition(old_state, self.state)
+        self._update_state_metric()
         logger.warning(f"Circuit breaker TRIPPED after {self.config.failure_threshold} failures")
 
     async def _close(self):
         """Close the circuit breaker from HALF_OPEN state."""
+        old_state = self.state
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.success_count = 0
         self.last_failure_time = None
+
+        # Record recovery metrics
+        if PROMETHEUS_AVAILABLE:
+            self._record_state_transition(old_state, self.state)
+            self._update_state_metric()
+            if self._circuit_opened_time is not None:
+                recovery_latency = time.time() - self._circuit_opened_time
+                CIRCUIT_RECOVERY_LATENCY.labels(service_name=self.service_name).observe(recovery_latency)
+                logger.info(f"Circuit breaker recovered in {recovery_latency:.2f}s")
+        self._circuit_opened_time = None
 
     def get_state_info(self) -> Dict[str, Any]:
         """Get current state information for monitoring."""

@@ -20,6 +20,7 @@ import structlog
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.podman_api_client import PodmanAPIClient, ContainerNotFoundError
 from shared.auth_middleware import get_api_key_dependency
+from shared.path_validation import validate_path_within_base, SafePathError
 
 logger = structlog.get_logger()
 
@@ -87,6 +88,34 @@ class BestPracticeRequest(BaseModel):
 
 class ContainerActionRequest(BaseModel):
     container_id: str
+
+
+class ToolCallRequest(BaseModel):
+    """Request model for /tools/call endpoint with input validation."""
+    tool_name: str
+    arguments: Dict[str, Any] = {}
+
+    class Config:
+        extra = "forbid"  # Reject unknown fields
+
+    @property
+    def validated_tool_name(self) -> str:
+        """Return validated tool name from allowed list."""
+        allowed_tools = {
+            "inspect_container",
+            "inspect_network",
+            "list_containers",
+            "check_connectivity",
+            "get_best_practices",
+            "validate_dockerfile",
+            "get_container_logs",
+            "start_container",
+            "stop_container",
+            "restart_container",
+        }
+        if self.tool_name not in allowed_tools:
+            raise ValueError(f"Unknown tool: {self.tool_name}. Allowed: {allowed_tools}")
+        return self.tool_name
 
 
 # Container engine detection
@@ -237,8 +266,17 @@ async def list_tools(auth: str = Depends(require_auth)):
 
 
 @app.post("/tools/call")
-async def call_tool(tool_name: str, arguments: Dict[str, Any], auth: str = Depends(require_auth)):
-    """Execute an MCP tool"""
+async def call_tool(request: ToolCallRequest, auth: str = Depends(require_auth)):
+    """Execute an MCP tool with validated input.
+
+    Security: Tool name must be in the allowed list; arguments are validated.
+    """
+    try:
+        tool_name = request.validated_tool_name
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    arguments = request.arguments
     logger.info("tool_called", tool=tool_name, arguments=arguments)
 
     if tool_name == "inspect_container":
@@ -503,9 +541,32 @@ async def restart_container(container_id: str) -> Dict[str, Any]:
 
 
 async def validate_dockerfile(dockerfile_path: str) -> Dict[str, Any]:
-    """Validate Dockerfile against best practices"""
+    """Validate Dockerfile against best practices.
+
+    Security: Path is validated to prevent path traversal attacks.
+    Only files within DOCKERFILE_VALIDATION_BASE_DIR can be accessed.
+    """
+    # Security: Validate path is within allowed directory to prevent path traversal
+    base_dir = os.environ.get("DOCKERFILE_VALIDATION_BASE_DIR", "/home")
     try:
-        with open(dockerfile_path, "r") as f:
+        safe_path = validate_path_within_base(
+            dockerfile_path,
+            base_dir,
+            must_exist=True,
+            allow_symlinks=False,
+        )
+    except SafePathError as e:
+        logger.warning("dockerfile_path_traversal_blocked", path=dockerfile_path, error=str(e))
+        return {
+            "error": f"Path validation failed: {e}",
+            "dockerfile": dockerfile_path,
+            "security": "Path must be within allowed base directory"
+        }
+    except FileNotFoundError:
+        return {"error": "Dockerfile not found", "dockerfile": dockerfile_path}
+
+    try:
+        with open(safe_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         issues = []
@@ -537,7 +598,7 @@ async def validate_dockerfile(dockerfile_path: str) -> Dict[str, Any]:
         layer_count = sum(1 for line in lines if line.strip().startswith(("RUN", "COPY", "ADD")))
 
         return {
-            "dockerfile": dockerfile_path,
+            "dockerfile": str(safe_path),
             "valid": len(issues) == 0,
             "issues": issues,
             "warnings": warnings,

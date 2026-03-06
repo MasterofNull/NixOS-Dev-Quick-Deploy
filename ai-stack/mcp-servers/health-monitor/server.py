@@ -24,6 +24,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.path_validation import validate_filename, SafePathError
+
 import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -100,18 +104,32 @@ class HealthMonitor:
         return list(results)
 
     def read_dashboard_file(self, filename: str) -> Dict[str, Any]:
-        """Read a dashboard JSON file"""
-        file_path = DASHBOARD_DATA_DIR / filename
+        """Read a dashboard JSON file.
+
+        Security: Filename is validated to prevent path traversal attacks.
+        """
+        # Security: Validate filename to prevent path traversal
+        try:
+            safe_filename = validate_filename(
+                filename,
+                allowed_extensions=[".json"],
+                max_length=100,
+            )
+        except SafePathError as e:
+            logger.warning("dashboard_file_path_traversal_blocked", filename=filename, error=str(e))
+            return {"error": f"Invalid filename: {e}"}
+
+        file_path = DASHBOARD_DATA_DIR / safe_filename
 
         if not file_path.exists():
-            return {"error": f"File not found: {filename}"}
+            return {"error": f"File not found: {safe_filename}"}
 
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return data
         except Exception as e:
-            return {"error": f"Failed to read {filename}: {str(e)}"}
+            return {"error": f"Failed to read {safe_filename}: {str(e)}"}
 
     def regenerate_dashboard_data(self) -> Dict[str, Any]:
         """Legacy dashboard collector is deprecated in declarative mode."""
