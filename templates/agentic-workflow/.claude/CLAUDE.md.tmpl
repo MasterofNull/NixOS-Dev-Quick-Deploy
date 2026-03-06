@@ -55,6 +55,18 @@ repo/
   - do not route other agents,
   - do not finalize acceptance.
 
+## Tool-First Approach
+
+**Always use tools first** for:
+- discovery and codebase analysis (grep, glob patterns, file reads)
+- executing workflows (aqd commands, shell scripts)
+- validation and testing (test runners, linters, build commands)
+
+Use direct implementation only after:
+- problem scope is clear from tool output
+- validation plan is documented
+- AI-layer guidance is understood
+
 ## Validation
 
 ```bash

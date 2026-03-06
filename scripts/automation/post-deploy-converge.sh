@@ -8,6 +8,7 @@ HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
 NPM_OUT_DIR="${POST_DEPLOY_NPM_OUT_DIR:-${DATA_DIR}/security/npm}"
 AQ_REPORT_OUT="${POST_DEPLOY_AQ_REPORT_OUT:-${DATA_DIR}/hybrid/telemetry/latest-aq-report.json}"
 CONVERGE_SUMMARY_OUT="${POST_DEPLOY_SUMMARY_OUT:-${DATA_DIR}/hybrid/telemetry/post-deploy-converge-latest.json}"
+AI_TOOLING_SNAPSHOT_OUT="${POST_DEPLOY_AI_TOOLING_SNAPSHOT_OUT:-${DATA_DIR}/hybrid/telemetry/ai-tooling-prime-latest.json}"
 HINT_FEEDBACK_SYNC_OUT="${POST_DEPLOY_HINT_FEEDBACK_SYNC_OUT:-${DATA_DIR}/hybrid/telemetry/hint-feedback-sync-latest.json}"
 AUTO_REMEDIATE_SUMMARY_OUT="${POST_DEPLOY_AUTO_REMEDIATE_OUT:-${DATA_DIR}/hybrid/telemetry/aq-auto-remediation-latest.json}"
 HINT_FEEDBACK_LOG_PATH="${HINT_FEEDBACK_LOG_PATH:-/var/log/nixos-ai-stack/hint-feedback.jsonl}"
@@ -93,6 +94,7 @@ START_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 mkdir -p "${NPM_OUT_DIR}" "$(dirname "${AQ_REPORT_OUT}")"
 mkdir -p "$(dirname "${CONVERGE_SUMMARY_OUT}")"
+mkdir -p "$(dirname "${AI_TOOLING_SNAPSHOT_OUT}")"
 mkdir -p "$(dirname "${HINT_FEEDBACK_SYNC_OUT}")"
 mkdir -p "$(dirname "${AUTO_REMEDIATE_SUMMARY_OUT}")"
 
@@ -154,6 +156,12 @@ fi
 
 if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
   run_step "aq_report_refresh" refresh_aq_report_snapshot || true
+fi
+
+if [[ -x "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" ]]; then
+  run_step "ai_tooling_prime" \
+    env POST_DEPLOY_AI_TOOLING_SNAPSHOT_OUT="${AI_TOOLING_SNAPSHOT_OUT}" \
+      "${BASH_BIN}" "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" || true
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/ai/aq-auto-remediate.py" ]]; then

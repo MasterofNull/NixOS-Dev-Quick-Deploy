@@ -112,6 +112,39 @@ let
   embedHfSha256 = embed.sha256;
   embedHfSha256Valid = embedHfSha256 != null && builtins.match "^[a-fA-F0-9]{64}$" embedHfSha256 != null;
 
+  aiHarnessCliWrappers = pkgs.symlinkJoin {
+    name = "ai-harness-cli-wrappers";
+    paths = [
+      (pkgs.writeShellScriptBin "aqd" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-hints" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-report" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-report" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-qa" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-qa" "$@"
+      '')
+      (pkgs.writeShellScriptBin "harness-rpc" ''
+        exec "${pkgs.nodejs}/bin/node" "${cfg.mcpServers.repoPath}/scripts/ai/harness-rpc.js" "$@"
+      '')
+      (pkgs.writeShellScriptBin "project-init" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" workflows project-init "$@"
+      '')
+      (pkgs.writeShellScriptBin "workflow-primer" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" workflows primer "$@"
+      '')
+      (pkgs.writeShellScriptBin "workflow-brownfield" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" workflows brownfield "$@"
+      '')
+      (pkgs.writeShellScriptBin "workflow-retrofit" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" workflows retrofit "$@"
+      '')
+    ];
+  };
+
   # Open WebUI environment — wired to llama-server (OpenAI-compatible API).
   openWebuiEnv =
     {
@@ -753,6 +786,7 @@ in {
     # This must not depend on shell-completions, otherwise aq-hints can be missing
     # from PATH when completions are disabled.
     (lib.mkIf roleEnabled {
+      environment.systemPackages = [ aiHarnessCliWrappers ];
       environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
       environment.etc."profile.d/aq-path.sh" = {
         mode = "0644";
