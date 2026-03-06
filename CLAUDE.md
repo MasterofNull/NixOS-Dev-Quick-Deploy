@@ -67,6 +67,15 @@ repo/
 3. Prefer declarative Nix/module changes over runtime script fallbacks.
 4. For complex tasks use: `plan -> run/start -> hints -> execute -> validate`.
 5. Do not finalize without validation evidence.
+6. If running as a nested/sub-agent: do not act as orchestrator.
+7. Delegation-first: route eligible slices to `qwen` (patches) and `claude` (architecture/risk) while orchestrator performs reviewer gate.
+
+## Delegation Defaults
+
+- `codex` (or active controller): planner + orchestrator + reviewer only by default.
+- `claude`: architecture/risk synthesis and policy reasoning slices.
+- `qwen`: concrete implementation slices and test scaffolding.
+- Sub-agent guardrail: no re-scoping, no cross-agent routing, no final acceptance decisions.
 
 ## Validation
 

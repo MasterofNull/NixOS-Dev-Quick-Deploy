@@ -21,6 +21,7 @@ Canonical full policy: `docs/AGENTS.md`
 
 ## Default Execution Behavior (All Prompts)
 - Always run as `delegator + reviewer`: split work into small tasks, assign owner, and review with evidence gate.
+- Token-efficiency default: orchestrator should keep direct execution minimal and delegate eligible slices to sub-agents.
 - Use harness-first path for complex work:
   1. `POST /workflow/plan`
   2. `POST /workflow/run/start` with `intent_contract`
@@ -36,6 +37,20 @@ Canonical full policy: `docs/AGENTS.md`
 - Reject any task without validation evidence, or that regresses routing/cache/security health.
 - Declarative-first rule: implement via Nix options/modules first; use scripts/runtime fallback only when declarative is not viable.
 - Never exit on planning alone when execution is feasible in the current session.
+
+## Delegation-First Policy (System Priority)
+- Mandatory routing model:
+  - `codex`: orchestration, planning, reviewer gate, integration quality, final acceptance.
+  - `claude`: architecture reasoning, risk/policy analysis, long-form synthesis.
+  - `qwen`: concrete patch proposals, implementation slices, test scaffolding.
+- Sub-agent self-awareness (non-negotiable):
+  - Nested/sub-agents must never behave as orchestrators.
+  - If running as a sub-agent, execute only assigned slice and return evidence + rollback notes.
+  - Sub-agents must not re-scope project goals, re-route other agents, or finalize acceptance.
+- Delegate when any of these are true:
+  - parallel independent slices exist,
+  - research and implementation can run concurrently,
+  - work can be split into architecture + patch + review tracks.
 
 ## Subagent Roles and Limits
 - Role boundary (non-negotiable):

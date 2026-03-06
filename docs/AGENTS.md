@@ -35,6 +35,18 @@
    - `scripts/testing/check-prsi-phase7-program.sh`
    - `scripts/ai/aq-report --since=7d --format=text`
 
+## Orchestrator vs Sub-Agent Enforcement (Mandatory)
+
+- Orchestrator (`codex` or active controller):
+  - owns plan, delegation, reviewer gates, integration, and final acceptance.
+- Sub-agents (`claude`, `qwen`, others):
+  - execute assigned slices only and return evidence + rollback notes.
+  - must not re-scope objectives, delegate other agents, or finalize acceptance.
+- Delegation-first rule:
+  - for parallelizable work, split into architecture/risk + implementation slices.
+  - route architecture/policy slices to `claude`, implementation slices to `qwen`.
+  - keep orchestrator direct coding limited to integration fixes and reviewer corrections.
+
 ## Repository Structure Enforcement
 
 - New files must follow repository structure policy:

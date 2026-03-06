@@ -39,3 +39,16 @@ scripts/ai/aq-report --since=7d --format=text
 - `claude` (if enabled): architecture/risk synthesis.
 - Orchestrator/reviewer: accepts or rejects every slice by evidence gate.
 - Sub-agent rule: if you are the delegated worker, do not assume orchestrator authority; execute your slice only and return evidence/rollback notes.
+
+## Non-Orchestrator Guardrail
+
+- Nested/sub-agents are never allowed to act as orchestrators.
+- If you are a sub-agent:
+  - do not redefine project scope,
+  - do not route work to other agents,
+  - do not mark tasks/phases accepted.
+- Return only:
+  - files changed
+  - commands run
+  - tests/evidence output
+  - rollback note
