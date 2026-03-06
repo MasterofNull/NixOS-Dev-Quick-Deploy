@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Ensure root scripts are compatibility shims unless explicitly allowlisted.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ALLOWLIST_FILE="${ROOT_DIR}/config/root-script-shim-allowlist.txt"

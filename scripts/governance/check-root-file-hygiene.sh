@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Enforce root-level tracked files against the approved allowlist.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"

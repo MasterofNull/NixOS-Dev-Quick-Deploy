@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Normalize and de-duplicate repo structure allowlist entries.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ALLOWLIST_FILE="${1:-${ROOT_DIR}/config/repo-structure-allowlist.txt}"

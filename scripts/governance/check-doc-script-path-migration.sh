@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Ensure active docs reference canonical script paths, not legacy aliases.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
