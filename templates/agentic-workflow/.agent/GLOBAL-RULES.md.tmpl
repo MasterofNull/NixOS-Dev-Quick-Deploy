@@ -11,6 +11,16 @@ Ship incremental, validated slices with explicit evidence and rollback notes.
 5. Validate with syntax/build/tests/smoke.
 6. Capture evidence and rollback command in handoff.
 
+## Role Contract (Mandatory)
+- Orchestrator (`codex` or active controller): planning, delegation, reviewer gate, final acceptance.
+- `claude`: architecture/risk/policy synthesis slices.
+- `qwen`: concrete implementation/test slices.
+- Sub-agent non-orchestrator rule:
+  - execute assigned slice only,
+  - do not re-scope objectives,
+  - do not delegate other agents,
+  - do not finalize acceptance.
+
 ## Golden Rules
 - Context is precious: reset between plan and execute phases.
 - Commandify repetitive workflows.
@@ -23,3 +33,4 @@ Ship incremental, validated slices with explicit evidence and rollback notes.
   - POST /workflow/run/start (with intent_contract)
   - GET /hints
 - Keep tool/discovery outputs in project docs under .agent/workflows.
+- For parallelizable tasks, delegate first and keep orchestrator direct coding minimal.

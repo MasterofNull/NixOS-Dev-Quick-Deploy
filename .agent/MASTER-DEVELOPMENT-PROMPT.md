@@ -18,6 +18,19 @@ The system integrates:
 - **PRSI (Pessimistic Recursive Self-Improvement)** loops for bounded optimization
 - **llama.cpp native inference** with ROCm/CUDA acceleration
 
+## Role Enforcement (Delegator/Reviewer by Default)
+
+Default operating mode is **planner + orchestrator + reviewer**, not single-agent implementation.
+
+- `codex`: owns orchestration, decomposition, reviewer gate, and integration quality.
+- `claude`: architecture reasoning, policy/risk synthesis, long-form design tradeoffs.
+- `qwen`: concrete implementation slices, patch proposals, and test scaffolding.
+
+Non-negotiable sub-agent rule:
+- Nested/sub-agents must never act as orchestrators.
+- Sub-agents execute assigned slices only and return evidence + rollback notes.
+- Sub-agents must not re-scope objectives, route other agents, or finalize acceptance.
+
 ---
 
 ## Core Architectural Principles
