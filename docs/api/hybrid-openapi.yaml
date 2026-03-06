@@ -1,42 +1,136 @@
 openapi: "3.0.3"
 info:
   title: Hybrid Coordinator API
-  version: "1.0.0"
+  description: |
+    The Hybrid Coordinator orchestrates AI workflow operations including:
+    - RAG-based context retrieval
+    - Multi-turn session management
+    - Harness evaluation and scoring
+    - Workflow planning and execution
+    - Learning feedback loops
+    - Progressive capability discovery
+  version: "2.0.0"
+  contact:
+    name: AI Stack Maintainers
 servers:
+  - url: http://localhost:8003
+    description: Default local development
   - url: http://localhost:8092
+    description: Legacy port (deprecated)
+
+tags:
+  - name: Health
+    description: Service health and status endpoints
+  - name: Query
+    description: RAG-based query augmentation and search
+  - name: Memory
+    description: Agent memory storage and recall
+  - name: Harness
+    description: Evaluation harness and scoring
+  - name: Feedback
+    description: Learning feedback and outcome tracking
+  - name: Discovery
+    description: Progressive capability disclosure
+  - name: Session
+    description: Multi-turn session management
+  - name: Workflow
+    description: Workflow planning and execution
+  - name: Hints
+    description: Contextual hint engine
+  - name: Learning
+    description: Continuous learning pipeline
+  - name: Control
+    description: Runtime control and scheduling
+
 paths:
   /health:
     get:
-      summary: Health check
+      tags: [Health]
+      summary: Basic health check
+      description: Returns service status and basic capability flags
       responses:
         "200":
-          description: Service health
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health/detailed:
+    get:
+      tags: [Health]
+      summary: Detailed health check
+      description: Returns comprehensive health including dependency status
+      responses:
+        "200":
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+
+  /status:
+    get:
+      tags: [Health]
+      summary: Service status
+      responses:
+        "200":
+          description: Status payload
+
   /stats:
     get:
-      summary: Coordinator stats
+      tags: [Health]
+      summary: Coordinator statistics
       responses:
         "200":
           description: Stats payload
-  /augment_query:
+
+  /metrics:
+    get:
+      tags: [Health]
+      summary: Prometheus metrics
+      description: Returns Prometheus-formatted metrics
+      responses:
+        "200":
+          description: Metrics in text/plain format
+
+  /query:
     post:
-      summary: Augment query with context
+      tags: [Query]
+      summary: Execute hybrid search query
+      description: Routes query through semantic + lexical search with context augmentation
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                query:
-                  type: string
-                agent_type:
-                  type: string
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        "200":
+          description: Query results with context
+        "429":
+          description: Rate limit exceeded
+
+  /augment_query:
+    post:
+      tags: [Query]
+      summary: Augment query with RAG context
+      description: Retrieves relevant context for a query without routing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AugmentQueryRequest'
       responses:
         "200":
           description: Augmented context response
-  /context/multi_turn:
+
+  /search/tree:
     post:
-      summary: Multi-turn context retrieval
+      tags: [Query]
+      summary: Tree search with branch aggregation
+      description: Broader retrieval with multiple search branches
       requestBody:
         required: true
         content:
@@ -44,26 +138,125 @@ paths:
             schema:
               type: object
               properties:
-                session_id:
-                  type: string
                 query:
                   type: string
-                context_level:
-                  type: string
-                previous_context_ids:
-                  type: array
-                  items:
-                    type: string
-                max_tokens:
+                depth:
                   type: integer
-                metadata:
-                  type: object
+                  default: 2
       responses:
         "200":
-          description: Context response
+          description: Tree search results
+
+  /memory/store:
+    post:
+      tags: [Memory]
+      summary: Store agent memory
+      description: Persist procedural or semantic memory for later recall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryStoreRequest'
+      responses:
+        "200":
+          description: Memory stored
+
+  /memory/recall:
+    post:
+      tags: [Memory]
+      summary: Recall agent memory
+      description: Retrieve relevant prior memories for a query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+                  default: 5
+      responses:
+        "200":
+          description: Recalled memories
+
+  /harness/eval:
+    post:
+      tags: [Harness]
+      summary: Run harness evaluation
+      description: Execute deterministic evaluation against prompt registry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HarnessEvalRequest'
+      responses:
+        "200":
+          description: Evaluation scorecard
+
+  /harness/stats:
+    get:
+      tags: [Harness]
+      summary: Get harness statistics
+      responses:
+        "200":
+          description: Harness stats
+
+  /harness/scorecard:
+    get:
+      tags: [Harness]
+      summary: Get current scorecard
+      responses:
+        "200":
+          description: Latest scorecard
+
+  /feedback:
+    post:
+      tags: [Feedback]
+      summary: Submit detailed feedback
+      description: Record interaction outcome with learning metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        "200":
+          description: Feedback recorded
+
+  /feedback/{interaction_id}:
+    post:
+      tags: [Feedback]
+      summary: Submit simple feedback
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                outcome:
+                  type: string
+                  enum: [success, partial, failure]
+      responses:
+        "200":
+          description: Feedback recorded
+
   /feedback/evaluate:
     post:
-      summary: Evaluate feedback for a response
+      tags: [Feedback]
+      summary: Evaluate response quality
       requestBody:
         required: true
         content:
@@ -81,15 +274,29 @@ paths:
                   type: array
                   items:
                     type: string
-                metadata:
-                  type: object
-              required:
-                - session_id
+              required: [session_id]
       responses:
         "200":
-          description: Feedback evaluation response
+          description: Evaluation response
+
+  /context/multi_turn:
+    post:
+      tags: [Session]
+      summary: Multi-turn context retrieval
+      description: Get deduplicated context for ongoing session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MultiTurnRequest'
+      responses:
+        "200":
+          description: Context response
+
   /session/{session_id}:
     get:
+      tags: [Session]
       summary: Get session info
       parameters:
         - name: session_id
@@ -103,6 +310,7 @@ paths:
         "404":
           description: Session not found
     delete:
+      tags: [Session]
       summary: Clear session
       parameters:
         - name: session_id
@@ -113,37 +321,38 @@ paths:
       responses:
         "200":
           description: Session cleared
+
   /discovery/capabilities:
     get:
-      summary: Capability discovery (GET)
+      tags: [Discovery]
+      summary: Discover capabilities (GET)
+      parameters:
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [overview, detailed, comprehensive]
+            default: overview
       responses:
         "200":
-          description: Discovery response
+          description: Capability discovery response
     post:
-      summary: Capability discovery (POST)
+      tags: [Discovery]
+      summary: Discover capabilities (POST)
       requestBody:
-        required: false
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                level:
-                  type: string
-                categories:
-                  type: array
-                  items:
-                    type: string
-                token_budget:
-                  type: integer
+              $ref: '#/components/schemas/DiscoveryRequest'
       responses:
         "200":
-          description: Discovery response
+          description: Capability discovery response
+
   /discovery/token_budget:
     post:
-      summary: Token budget recommendations
+      tags: [Discovery]
+      summary: Get token budget recommendations
       requestBody:
-        required: false
         content:
           application/json:
             schema:
@@ -155,10 +364,417 @@ paths:
                   type: string
       responses:
         "200":
-          description: Recommendations response
-  /metrics:
+          description: Budget recommendations
+
+  /hints:
     get:
-      summary: Prometheus metrics
+      tags: [Hints]
+      summary: Get contextual hints (GET)
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5
       responses:
         "200":
-          description: Metrics payload
+          description: Ranked hints
+    post:
+      tags: [Hints]
+      summary: Get contextual hints (POST)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+                  default: 5
+                min_score:
+                  type: number
+                  default: 0.55
+      responses:
+        "200":
+          description: Ranked hints
+
+  /hints/feedback:
+    post:
+      tags: [Hints]
+      summary: Submit hint feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hint_id:
+                  type: string
+                adopted:
+                  type: boolean
+                helpful:
+                  type: boolean
+      responses:
+        "200":
+          description: Feedback recorded
+
+  /workflow/plan:
+    get:
+      tags: [Workflow]
+      summary: Get workflow plan (GET)
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workflow plan
+    post:
+      tags: [Workflow]
+      summary: Generate workflow plan (POST)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                objective:
+                  type: string
+                constraints:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Workflow plan
+
+  /workflow/run/start:
+    post:
+      tags: [Workflow]
+      summary: Start workflow execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan_id:
+                  type: string
+                mode:
+                  type: string
+                  enum: [interactive, autonomous, supervised]
+      responses:
+        "200":
+          description: Execution session started
+
+  /workflow/run/{session_id}:
+    get:
+      tags: [Workflow]
+      summary: Get workflow run status
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run status
+
+  /workflow/blueprints:
+    get:
+      tags: [Workflow]
+      summary: List workflow blueprints
+      responses:
+        "200":
+          description: Available blueprints
+
+  /workflow/tree:
+    get:
+      tags: [Workflow]
+      summary: Get workflow tree structure
+      responses:
+        "200":
+          description: Workflow tree
+
+  /workflow/sessions:
+    get:
+      tags: [Workflow]
+      summary: List active workflow sessions
+      responses:
+        "200":
+          description: Session list
+
+  /learning/stats:
+    get:
+      tags: [Learning]
+      summary: Get learning pipeline statistics
+      responses:
+        "200":
+          description: Learning stats
+
+  /learning/process:
+    post:
+      tags: [Learning]
+      summary: Trigger learning processing
+      responses:
+        "200":
+          description: Processing started
+
+  /learning/export:
+    post:
+      tags: [Learning]
+      summary: Export training data
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [jsonl, csv]
+                limit:
+                  type: integer
+      responses:
+        "200":
+          description: Export data
+
+  /learning/ab_compare:
+    post:
+      tags: [Learning]
+      summary: A/B variant comparison
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variant_a:
+                  type: string
+                variant_b:
+                  type: string
+      responses:
+        "200":
+          description: Comparison results
+
+  /control/runtimes:
+    get:
+      tags: [Control]
+      summary: List registered runtimes
+      responses:
+        "200":
+          description: Runtime list
+
+  /control/runtimes/register:
+    post:
+      tags: [Control]
+      summary: Register a new runtime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                runtime_id:
+                  type: string
+                capabilities:
+                  type: array
+                  items:
+                    type: string
+                endpoint:
+                  type: string
+      responses:
+        "200":
+          description: Runtime registered
+
+  /parity/scorecard:
+    get:
+      tags: [Health]
+      summary: Get agent parity scorecard
+      responses:
+        "200":
+          description: Parity scorecard
+
+  /reload-model:
+    post:
+      tags: [Control]
+      summary: Trigger model reload
+      responses:
+        "200":
+          description: Reload initiated
+
+  /proposals/apply:
+    post:
+      tags: [Control]
+      summary: Apply optimization proposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Proposal applied
+
+  /review/acceptance:
+    post:
+      tags: [Workflow]
+      summary: Submit acceptance review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                accepted:
+                  type: boolean
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Review recorded
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        model_ready:
+          type: boolean
+        qdrant_ready:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    DetailedHealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          properties:
+            services:
+              type: object
+            circuit_breakers:
+              type: object
+            uptime_seconds:
+              type: number
+
+    QueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        agent_type:
+          type: string
+          default: generic
+        max_tokens:
+          type: integer
+          default: 2000
+        session_id:
+          type: string
+
+    AugmentQueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        agent_type:
+          type: string
+        context_level:
+          type: string
+          enum: [standard, detailed, comprehensive]
+
+    MemoryStoreRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        memory_type:
+          type: string
+          enum: [procedural, semantic, episodic]
+        metadata:
+          type: object
+
+    HarnessEvalRequest:
+      type: object
+      properties:
+        prompt_id:
+          type: string
+        max_runs:
+          type: integer
+          default: 24
+        timeout_seconds:
+          type: integer
+          default: 180
+
+    FeedbackRequest:
+      type: object
+      required: [interaction_id, outcome]
+      properties:
+        interaction_id:
+          type: string
+        outcome:
+          type: string
+          enum: [success, partial, failure]
+        corrections:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+
+    MultiTurnRequest:
+      type: object
+      required: [session_id, query]
+      properties:
+        session_id:
+          type: string
+        query:
+          type: string
+        context_level:
+          type: string
+          enum: [standard, detailed, comprehensive]
+        previous_context_ids:
+          type: array
+          items:
+            type: string
+        max_tokens:
+          type: integer
+
+    DiscoveryRequest:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [overview, detailed, comprehensive]
+          default: overview
+        categories:
+          type: array
+          items:
+            type: string
+        token_budget:
+          type: integer
+          default: 500
