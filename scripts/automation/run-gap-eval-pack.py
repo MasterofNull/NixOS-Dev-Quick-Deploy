@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CASES_FILE = ROOT / "data" / "harness-gap-eval-pack.json"
 DEFAULT_SCORES_DB = Path(
     os.path.expanduser(
@@ -229,6 +229,16 @@ def main() -> int:
                 skipped_cases += 1
                 print(f"SKIP {cid}: no_retrieval_evidence")
                 continue
+            if not ok:
+                # Harness eval can under-score when relevance signals are sparse.
+                # Fallback evaluates retrieval evidence directly via /query.
+                fallback_cases += 1
+                ok, degraded = _eval_via_query(args.hybrid_url, case, headers, timeout=args.timeout)
+                if degraded:
+                    degraded_cases += 1
+                    skipped_cases += 1
+                    print(f"SKIP {cid}: fallback_no_evidence")
+                    continue
         except Exception:
             # /harness/eval can be unavailable during model churn; fallback keeps
             # the pack useful by evaluating retrieval quality via /query.

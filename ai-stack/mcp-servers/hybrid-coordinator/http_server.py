@@ -2780,9 +2780,9 @@ async def run_http_mode(port: int) -> None:
     )
     _rate_limiter, rate_limit_middleware = create_rate_limiter_middleware(rate_limiter_config)
     logger.info(
-        "rate_limiter_initialized",
-        enabled=rate_limiter_config.enabled,
-        default_rpm=rate_limiter_config.default_rpm,
+        "rate_limiter_initialized enabled=%s default_rpm=%s",
+        rate_limiter_config.enabled,
+        rate_limiter_config.default_rpm,
     )
 
     http_app = web.Application(
