@@ -87,6 +87,8 @@ let
       GPU_MAX_ALLOC_PERCENT = "100";
       GPU_SINGLE_ALLOC_PERCENT = "100";
       GPU_MAX_HEAP_SIZE = "100";
+      # Enable Unified Memory Architecture mode for APU shared memory.
+      GGML_HIP_UMA = "1";
       # Use the system ROCm OpenCL ICD.
       OPENCL_VENDOR_PATH = "/run/opengl-driver/etc/OpenCL/vendors";
     }
