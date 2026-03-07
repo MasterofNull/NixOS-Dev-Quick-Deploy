@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""
+aq-context-card — progressive-disclosure context cards for low-token onboarding.
+
+Loads compact task cards from config/agent-context-cards.json and renders them at
+brief, standard, or deep disclosure levels. Cards can be requested directly or
+recommended from a free-form task query.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any, Dict, List
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_CATALOG = REPO_ROOT / "config/agent-context-cards.json"
+STACK_HINTS = REPO_ROOT / "config" / "capability-stack-hints.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Progressive-disclosure context cards for repo onboarding and task work.")
+    parser.add_argument("--card", help="Explicit card id to render.")
+    parser.add_argument("--recommend", help="Free-form task query used to rank cards.")
+    parser.add_argument("--level", default="brief", choices=["brief", "standard", "deep"], help="Disclosure level.")
+    parser.add_argument("--format", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    parser.add_argument("--catalog", default=str(DEFAULT_CATALOG), help="Override catalog path.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--list", action="store_true", help="List available cards and exit.")
+    parser.add_argument("--max", type=int, default=3, help="Max recommended cards to return.")
+    return parser.parse_args()
+
+
+def load_catalog(path: str) -> Dict[str, Any]:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def build_context(args: argparse.Namespace) -> Dict[str, str]:
+    return {
+        "language": args.context_language or "",
+        "application": args.context_application or "",
+        "file": args.context_file or "",
+    }
+
+
+def matcher_matches(matcher: Dict[str, Any], context: Dict[str, str]) -> bool:
+    match_mode = matcher.get("match_mode", "all")
+    checks = [
+        ("context_languages", context.get("language", "")),
+        ("context_applications", context.get("application", "")),
+    ]
+    matched_any = False
+    has_selector = False
+    for key, value in checks:
+        options = matcher.get(key, [])
+        if options:
+            has_selector = True
+            if value not in options:
+                if match_mode == "all":
+                    return False
+            else:
+                matched_any = True
+    return matched_any if has_selector and match_mode == "any" else has_selector
+
+
+def stack_hint_bundle(context: Dict[str, str]) -> Dict[str, Any]:
+    stack_hints = load_catalog(str(STACK_HINTS))
+    defaults = stack_hints.get("defaults", {})
+    result = {
+        "ecosystem_hints": [],
+        "package_hints": [],
+        "source_hints": [],
+        "stack_matchers_applied": [],
+        "card_overlays": {},
+    }
+    for matcher in stack_hints.get("matchers", []):
+        if not matcher_matches(matcher, context):
+            continue
+        matcher_id = matcher.get("id", "")
+        if matcher_id and matcher_id not in result["stack_matchers_applied"]:
+            result["stack_matchers_applied"].append(matcher_id)
+        for field in ("ecosystem_hints", "package_hints", "source_hints"):
+            for item in matcher.get(field, []):
+                if item and item not in result[field]:
+                    result[field].append(item)
+        for card_id, overlay in matcher.get("card_overlays", {}).items():
+            merged = result["card_overlays"].setdefault(card_id, {"rules": [], "commands": [], "paths": [], "boost": 0, "matchers": []})
+            for field in ("rules", "commands", "paths"):
+                for item in overlay.get(field, []):
+                    if item and item not in merged[field]:
+                        merged[field].append(item)
+            merged["boost"] += int(overlay.get("boost", 0))
+            if matcher_id and matcher_id not in merged["matchers"]:
+                merged["matchers"].append(matcher_id)
+    for field in ("ecosystem_hints", "package_hints", "source_hints"):
+        if not result[field]:
+            result[field] = list(defaults.get(field, []))
+    if context.get("file") and context["file"] not in result["source_hints"]:
+        result["source_hints"].insert(0, context["file"])
+    return result
+
+
+def normalize_tokens(text: str) -> List[str]:
+    return re.findall(r"[a-z0-9][a-z0-9_-]*", text.lower())
+
+
+def estimate_tokens(payload: Dict[str, Any]) -> int:
+    raw = json.dumps(payload, sort_keys=True)
+    return max(1, (len(raw) + 3) // 4)
+
+
+def trim_list(values: List[str], limit: int) -> List[str]:
+    return values[:limit]
+
+
+def render_card(card: Dict[str, Any], level_name: str, level_cfg: Dict[str, Any], overlay: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    overlay = overlay or {}
+    rules = list(card.get("rules", []))
+    commands = list(card.get("commands", []))
+    paths = list(card.get("paths", []))
+    for field_name, values in (("rules", rules), ("commands", commands), ("paths", paths)):
+        for item in overlay.get(field_name, []):
+            if item and item not in values:
+                values.insert(0, item)
+    rendered = {
+        "id": card["id"],
+        "title": card["title"],
+        "summary": card["summary"],
+        "use_when": card.get("use_when", []),
+        "rules": trim_list(rules, int(level_cfg.get("rule_limit", 99))),
+        "commands": trim_list(commands, int(level_cfg.get("command_limit", 99))),
+        "paths": trim_list(paths, int(level_cfg.get("path_limit", 99))),
+        "expands_to": card.get("expands_to", []),
+        "level": level_name,
+    }
+    if level_cfg.get("include_anti_patterns", False):
+        rendered["anti_patterns"] = card.get("anti_patterns", [])
+    rendered["overlay_matchers_applied"] = overlay.get("matchers", [])
+    rendered["estimated_tokens"] = estimate_tokens(rendered)
+    return rendered
+
+
+def context_card_boost(card_id: str, query: str, context: Dict[str, str], hint_bundle: Dict[str, Any]) -> tuple[int, List[str]]:
+    ecosystem = set(hint_bundle.get("ecosystem_hints", []))
+    boosts: List[str] = []
+    score = 0
+    overlay = hint_bundle.get("card_overlays", {}).get(card_id, {})
+    overlay_boost = int(overlay.get("boost", 0))
+    if overlay_boost:
+        score += overlay_boost
+        boosts.extend(f"overlay:{matcher}" for matcher in overlay.get("matchers", []))
+    if {"nix", "nixos"} & ecosystem and card_id in {"nix-module-change", "system-fix"}:
+        score += 6
+        boosts.append("context:nix")
+    if {"rust", "cpp", "python", "javascript", "typescript", "go", "java", "swift", "php", "dart", "elixir"} & ecosystem and card_id in {"feature-development", "task-execution"}:
+        score += 5
+        boosts.append("context:implementation_stack")
+    if card_id == "feature-development" and any(token in query.lower() for token in ("resume", "implement", "build", "develop", "integration")) and {"rust", "cpp", "python", "javascript", "typescript", "go", "java", "swift", "php", "dart", "elixir"} & ecosystem:
+        score += 3
+        boosts.append("query:implementation_signal")
+    if {"shell", "cli"} & ecosystem and card_id == "task-execution":
+        score += 2
+        boosts.append("context:cli")
+    if {"mcp", "ai-stack-harness"} & ecosystem and card_id in {"runtime-incident", "harness-first"}:
+        score += 4
+        boosts.append("context:ai_stack")
+    if {"workflow", "skill", "repo-script", "harness"} & ecosystem and card_id in {"capability-gap", "harness-first", "repo-baseline"}:
+        score += 4
+        boosts.append("context:harness")
+    if context.get("application") == "prsi" and card_id == "prsi-operations":
+        score += 7
+        boosts.append("context:prsi")
+    return score, boosts
+
+
+def score_card(card: Dict[str, Any], query: str, context: Dict[str, str], hint_bundle: Dict[str, Any]) -> Dict[str, Any]:
+    tokens = set(normalize_tokens(query))
+    haystacks = {
+        "id": set(normalize_tokens(card.get("id", ""))),
+        "title": set(normalize_tokens(card.get("title", ""))),
+        "tags": set(normalize_tokens(" ".join(card.get("tags", [])))),
+        "patterns": set(normalize_tokens(" ".join(card.get("objective_patterns", [])))),
+        "use_when": set(normalize_tokens(" ".join(card.get("use_when", [])))),
+    }
+    weights = {
+        "id": 5,
+        "title": 4,
+        "tags": 4,
+        "patterns": 3,
+        "use_when": 2,
+    }
+    score = 0
+    matched_terms: List[str] = []
+    for key, bag in haystacks.items():
+        overlap = sorted(tokens & bag)
+        if overlap:
+            score += len(overlap) * weights[key]
+            matched_terms.extend(overlap)
+    boost_score, boost_terms = context_card_boost(card["id"], query, context, hint_bundle)
+    score += boost_score
+    matched_terms.extend(boost_terms)
+    score += 1 if card["id"] == "repo-baseline" else 0
+    return {
+        "score": score,
+        "matched_terms": sorted(dict.fromkeys(matched_terms)),
+    }
+
+
+def recommend_cards(catalog: Dict[str, Any], query: str, level: str, max_cards: int, context: Dict[str, str]) -> List[Dict[str, Any]]:
+    level_cfg = catalog["levels"][level]
+    hint_bundle = stack_hint_bundle(context)
+    ranked = []
+    for card in catalog["cards"]:
+        result = score_card(card, query, context, hint_bundle)
+        ranked.append((result["score"], result["matched_terms"], card))
+    ranked.sort(key=lambda item: (-item[0], item[2]["id"]))
+    selected: List[Dict[str, Any]] = []
+    for score, matched_terms, card in ranked[:max_cards]:
+        rendered = render_card(card, level, level_cfg, hint_bundle.get("card_overlays", {}).get(card["id"]))
+        rendered["recommendation"] = {
+            "score": score,
+            "matched_terms": matched_terms,
+        }
+        selected.append(rendered)
+    return selected
+
+
+def list_cards(catalog: Dict[str, Any]) -> Dict[str, Any]:
+    cards = []
+    for card in catalog["cards"]:
+        cards.append({
+            "id": card["id"],
+            "title": card["title"],
+            "summary": card["summary"],
+            "expands_to": card.get("expands_to", []),
+        })
+    return {
+        "mode": "list",
+        "cards": cards,
+    }
+
+
+def format_text(payload: Dict[str, Any]) -> str:
+    if payload["mode"] == "list":
+        lines = ["Context cards:"]
+        for card in payload["cards"]:
+            lines.append(f"- {card['id']}: {card['summary']}")
+        return "\n".join(lines)
+
+    lines = [
+        f"mode: {payload['mode']}",
+        f"level: {payload['level']}",
+        f"estimated_tokens: {payload['estimated_tokens']}",
+    ]
+    if payload.get("query"):
+        lines.append(f"query: {payload['query']}")
+    for card in payload["cards"]:
+        lines.append("")
+        lines.append(f"[{card['id']}] {card['title']}")
+        lines.append(f"summary: {card['summary']}")
+        if card.get("recommendation"):
+            lines.append(
+                "recommendation: "
+                f"score={card['recommendation']['score']} "
+                f"matched={','.join(card['recommendation']['matched_terms']) or 'none'}"
+            )
+        lines.append("use_when:")
+        for item in card.get("use_when", []):
+            lines.append(f"- {item}")
+        lines.append("rules:")
+        for item in card.get("rules", []):
+            lines.append(f"- {item}")
+        lines.append("commands:")
+        for item in card.get("commands", []):
+            lines.append(f"- {item}")
+        lines.append("paths:")
+        for item in card.get("paths", []):
+            lines.append(f"- {item}")
+        if card.get("anti_patterns"):
+            lines.append("anti_patterns:")
+            for item in card["anti_patterns"]:
+                lines.append(f"- {item}")
+        lines.append("expands_to:")
+        for item in card.get("expands_to", []):
+            lines.append(f"- {item}")
+        lines.append(f"card_estimated_tokens: {card['estimated_tokens']}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    catalog = load_catalog(args.catalog)
+    context = build_context(args)
+    hint_bundle = stack_hint_bundle(context)
+    if args.list:
+        payload = list_cards(catalog)
+    elif args.card:
+        card = next((entry for entry in catalog["cards"] if entry["id"] == args.card), None)
+        if card is None:
+            print(json.dumps({"error": f"unknown card: {args.card}"}), file=sys.stderr)
+            return 1
+        rendered = render_card(card, args.level, catalog["levels"][args.level], hint_bundle.get("card_overlays", {}).get(card["id"]))
+        payload = {
+            "mode": "card",
+            "level": args.level,
+            "context": context,
+            "stack_matchers_applied": hint_bundle["stack_matchers_applied"],
+            "card_overlay_matchers_applied": rendered.get("overlay_matchers_applied", []),
+            "ecosystem_hints": hint_bundle["ecosystem_hints"],
+            "source_hints": hint_bundle["source_hints"],
+            "cards": [rendered],
+            "estimated_tokens": rendered["estimated_tokens"],
+        }
+    else:
+        query = args.recommend or ""
+        cards = recommend_cards(catalog, query, args.level, args.max, context)
+        payload = {
+          "mode": "recommend",
+          "query": query,
+          "level": args.level,
+          "context": context,
+          "stack_matchers_applied": hint_bundle["stack_matchers_applied"],
+          "card_overlay_matchers_applied": sorted({matcher for card in cards for matcher in card.get("overlay_matchers_applied", [])}),
+          "ecosystem_hints": hint_bundle["ecosystem_hints"],
+          "source_hints": hint_bundle["source_hints"],
+          "cards": cards,
+          "estimated_tokens": estimate_tokens({"cards": cards, "query": query, "level": args.level}),
+        }
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(format_text(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

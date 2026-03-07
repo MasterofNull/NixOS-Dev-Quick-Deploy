@@ -1,0 +1,16 @@
+{
+  "allowed_prefixes": [
+    "test ",
+    "true",
+    "echo ",
+    "printf ",
+    "command -v ",
+    "rg --version",
+    "jq --version",
+    "scripts/ai/aqd workflows list",
+    "python3 scripts/ai/aq-context-bootstrap ",
+    "python3 scripts/ai/aq-runtime-act ",
+    "python3 scripts/ai/aq-capability-gap ",
+    "sed -n "
+  ]
+}

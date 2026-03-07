@@ -1,0 +1,438 @@
+{
+  "version": "1.0.0",
+  "levels": {
+    "brief": {
+      "rule_limit": 4,
+      "command_limit": 3,
+      "path_limit": 4,
+      "include_anti_patterns": false
+    },
+    "standard": {
+      "rule_limit": 7,
+      "command_limit": 5,
+      "path_limit": 6,
+      "include_anti_patterns": true
+    },
+    "deep": {
+      "rule_limit": 99,
+      "command_limit": 99,
+      "path_limit": 99,
+      "include_anti_patterns": true
+    }
+  },
+  "cards": [
+    {
+      "id": "repo-baseline",
+      "title": "Repo Baseline",
+      "summary": "Minimum operating contract for any non-trivial task in this repo.",
+      "tags": ["baseline", "onboarding", "repo", "workflow"],
+      "objective_patterns": ["resume", "onboard", "start", "context", "repo", "baseline"],
+      "use_when": [
+        "starting or resuming a task",
+        "you need the repo contract before implementation",
+        "you want the minimum safe rules without full docs"
+      ],
+      "rules": [
+        "Prefer declarative Nix/module changes before runtime or script fallbacks.",
+        "Collect small, high-signal evidence before editing or rebuilding.",
+        "Every change needs validation evidence and a rollback note.",
+        "Use repo structure lint before accepting file layout changes.",
+        "Do not hardcode secrets, ports, or service URLs.",
+        "Avoid repeated rebuilds until the failing layer is classified.",
+        "Keep onboarding shallow first; expand only if the task proves it necessary."
+      ],
+      "commands": [
+        "aq-context-card --card repo-baseline --level brief",
+        "aq-hints \"<task>\" --format=json --agent=codex",
+        "scripts/governance/repo-structure-lint.sh --all"
+      ],
+      "paths": [
+        "AGENTS.md",
+        "docs/AGENTS.md",
+        "config/service-endpoints.sh",
+        "nix/modules/core/options.nix"
+      ],
+      "anti_patterns": [
+        "loading large policy docs before the first concrete task signal",
+        "editing code before classifying the failure layer",
+        "hardcoding ports or URLs into modules or scripts"
+      ],
+      "expands_to": [
+        "task-execution",
+        "runtime-incident",
+        "nix-module-change",
+        "token-discipline"
+      ]
+    },
+    {
+      "id": "task-execution",
+      "title": "Task Execution",
+      "summary": "Compact execution loop for making changes without losing evidence or wasting context.",
+      "tags": ["execution", "validation", "workflow", "planning"],
+      "objective_patterns": ["implement", "fix", "change", "patch", "plan", "execute"],
+      "use_when": [
+        "moving from discovery into edits",
+        "splitting a task into verifiable slices",
+        "you need a fast evidence contract"
+      ],
+      "rules": [
+        "Define objective, constraints, out-of-scope, and acceptance checks first.",
+        "Group work into one logical change per validation cycle.",
+        "Before edits, identify the smallest command that can falsify the current assumption.",
+        "Record files changed, commands run, tests run, evidence, and rollback for each slice.",
+        "Reject slices that have no validation evidence.",
+        "Prefer small local verification before heavier integration checks."
+      ],
+      "commands": [
+        "aq-hints \"<task>\" --format=json --agent=codex",
+        "python3 scripts/ai/aq-runtime-plan",
+        "scripts/governance/repo-structure-lint.sh --all"
+      ],
+      "paths": [
+        "docs/AGENTS.md",
+        "scripts/ai/aq-runtime-plan",
+        "scripts/ai/aq-runtime-remediate",
+        "scripts/testing/check-runtime-incident-tooling.sh"
+      ],
+      "anti_patterns": [
+        "big-bang patches without intermediate evidence",
+        "running full rebuilds before cheaper package-level checks",
+        "accepting planner or runner changes without fixture coverage"
+      ],
+      "expands_to": [
+        "runtime-incident",
+        "nix-module-change",
+        "token-discipline"
+      ]
+    },
+    {
+      "id": "runtime-incident",
+      "title": "Runtime Incident",
+      "summary": "Low-token diagnosis loop for service, linkage, confinement, and runtime-probe failures.",
+      "tags": ["runtime", "incident", "service", "diagnosis", "apparmor"],
+      "objective_patterns": ["service", "runtime", "apparmor", "probe", "driver", "vulkan", "gpu", "health", "systemd"],
+      "use_when": [
+        "a systemd service is unhealthy or slow",
+        "package linkage and runtime behavior disagree",
+        "confinement or AppArmor may be involved"
+      ],
+      "rules": [
+        "Run the phase runner before opening full logs.",
+        "Classify the failure layer before patching or rebuilding.",
+        "Compare original binary path vs copied alias path early when confinement is plausible.",
+        "Separate package linkage failures from runtime-probe failures.",
+        "Open deeper logs only for the failing layer.",
+        "Prefer planner and runner outputs over ad hoc command churn.",
+        "Stop once runtime acceleration or expected probe success is confirmed."
+      ],
+      "commands": [
+        "aq-qa 0",
+        "aq-qa 2",
+        "aq-qa 3",
+        "aq-runtime-diagnose --preset llama-cpp --json",
+        "python3 scripts/ai/aq-runtime-act"
+      ],
+      "paths": [
+        "scripts/ai/aq-qa",
+        "scripts/ai/aq-runtime-diagnose",
+        "scripts/ai/aq-runtime-plan",
+        "scripts/ai/aq-runtime-remediate",
+        "scripts/ai/aq-runtime-act",
+        "docs/operations/ai-stack-runtime-diagnosis-loop.md"
+      ],
+      "anti_patterns": [
+        "blind rebuild loops",
+        "assuming a driver problem before checking confinement and linkage",
+        "patching upstream code before proving the failing layer"
+      ],
+      "expands_to": [
+        "task-execution",
+        "token-discipline"
+      ]
+    },
+    {
+      "id": "nix-module-change",
+      "title": "Nix Module Change",
+      "summary": "Compact guidance for changes that should land declaratively and survive rebuilds safely.",
+      "tags": ["nix", "nixos", "module", "declarative", "rebuild"],
+      "objective_patterns": ["nix", "module", "option", "rebuild", "switch", "flake", "nixos"],
+      "use_when": [
+        "changing service wiring, options, ports, or packages declaratively",
+        "touching Nix modules or flake outputs",
+        "you need rollback-safe deployment behavior"
+      ],
+      "rules": [
+        "Prefer typed options and env injection over hardcoded literals.",
+        "Use one owner per option; avoid conflicting defaults.",
+        "Make hardware-aware or role-aware choices explicit in module logic.",
+        "Validate evaluation or build paths before switching live systems.",
+        "Keep rollback commands ready before activation."
+      ],
+      "commands": [
+        "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link",
+        "sudo nixos-rebuild switch --flake .#nixos-ai-dev",
+        "sudo nixos-rebuild switch --rollback"
+      ],
+      "paths": [
+        "nix/modules/core/options.nix",
+        "nix/modules/roles/ai-stack.nix",
+        "nix/hosts/nixos/facts.nix",
+        "templates/configuration.nix"
+      ],
+      "anti_patterns": [
+        "hardcoded ports or service URLs in scripts or modules",
+        "runtime-only fixes when a declarative module change is viable",
+        "switching live systems before package-level or toplevel build passes"
+      ],
+      "expands_to": [
+        "runtime-incident",
+        "token-discipline"
+      ]
+    },
+    {
+      "id": "system-fix",
+      "title": "System-Level Fix",
+      "summary": "Guidance for NixOS/system-level debugging, evaluation, and rollback-safe fixes.",
+      "tags": ["system", "nixos", "deployment", "service", "rollback", "evaluation"],
+      "objective_patterns": ["system", "nixos", "deployment", "switch", "evaluation", "boot", "rollback", "host", "service conflict"],
+      "use_when": [
+        "fixing host-level NixOS or service wiring issues",
+        "working on rebuild, switch, boot, or rollback safety",
+        "changing system-level behavior rather than app-only behavior"
+      ],
+      "rules": [
+        "Classify whether the failure is evaluation, build, activation, or runtime before editing broadly.",
+        "Prefer package-level or toplevel build validation before live switching.",
+        "Keep rollback commands ready before any activation step.",
+        "Distinguish host-specific facts from reusable module logic.",
+        "Use declarative Nix fixes before imperative service mutations."
+      ],
+      "commands": [
+        "aq-context-bootstrap --task \"<task>\" --scope system-fix --format json",
+        "scripts/ai/aqd workflows primer --target . --objective \"classify system issue\"",
+        "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link",
+        "sudo nixos-rebuild switch --flake .#nixos-ai-dev",
+        "sudo nixos-rebuild switch --rollback"
+      ],
+      "paths": [
+        "nix/modules/core/options.nix",
+        "nix/modules/roles/ai-stack.nix",
+        "nix/hosts/nixos/facts.nix",
+        "docs/AGENTS.md",
+        ".agent/skills/nixos-deployment/SKILL.md"
+      ],
+      "anti_patterns": [
+        "switching live systems before cheaper validation steps pass",
+        "mixing host facts and reusable module logic in one patch without clear boundaries",
+        "using imperative hotfixes where a declarative module change is viable"
+      ],
+      "expands_to": [
+        "nix-module-change",
+        "task-execution",
+        "token-discipline"
+      ]
+    },
+    {
+      "id": "feature-development",
+      "title": "Feature Development",
+      "summary": "Progressive-disclosure guidance for new feature implementation on a mature codebase.",
+      "tags": ["feature", "development", "brownfield", "implementation", "planning"],
+      "objective_patterns": ["feature", "implement", "develop", "build", "add support", "new capability", "brownfield"],
+      "use_when": [
+        "building a new capability instead of only fixing a regression",
+        "working in existing code that needs scoped planning",
+        "you need a minimal planning surface before implementation"
+      ],
+      "rules": [
+        "Start with a primer or brownfield plan before loading broad architecture docs.",
+        "Slice implementation into one logical change per validation cycle.",
+        "Prefer the smallest repo-grounded context that explains current behavior.",
+        "Promote repeated ad hoc steps into tested tooling only after the workflow proves stable.",
+        "Keep acceptance checks concrete and measurable."
+      ],
+      "commands": [
+        "aq-context-bootstrap --task \"<task>\" --scope feature-development --format json",
+        "scripts/ai/aqd workflows primer --target . --objective \"resume implementation\"",
+        "scripts/ai/aqd workflows brownfield --target . --objective \"plan next validated slice\""
+      ],
+      "paths": [
+        "scripts/ai/aqd",
+        "docs/AGENTS.md",
+        ".agent/MASTER-DEVELOPMENT-PROMPT.md",
+        "docs/development/AGENTIC-WORKFLOW-BOOTSTRAP-2026-03-05.md"
+      ],
+      "anti_patterns": [
+        "loading full policy and architecture docs before the first repo-grounded plan",
+        "combining discovery, implementation, and acceptance into one large unverified patch",
+        "inventing new workflows when aqd primer or brownfield already covers the need"
+      ],
+      "expands_to": [
+        "task-execution",
+        "token-discipline",
+        "repo-baseline"
+      ]
+    },
+    {
+      "id": "prsi-operations",
+      "title": "PRSI Operations",
+      "summary": "Bounded context for pessimistic recursive self-improvement loops, gates, and artifacts.",
+      "tags": ["prsi", "recursive", "optimizer", "policy", "artifacts", "budget"],
+      "objective_patterns": ["prsi", "recursive self improvement", "optimizer", "improvement loop", "budget-aware", "quarantine", "approval rubric"],
+      "use_when": [
+        "working on PRSI orchestration, gates, or artifacts",
+        "changing the self-improvement control plane",
+        "validating PRSI policy, budget, or quarantine logic"
+      ],
+      "rules": [
+        "Keep PRSI changes pessimistic: gated, bounded, and artifact-backed.",
+        "Prefer policy/config/schema changes over hidden behavior in code.",
+        "Validate budget, approval, and quarantine behavior before widening automation.",
+        "Treat PRSI runbooks and schemas as part of the contract, not optional docs.",
+        "Use dry-run evidence and static gates before live execution."
+      ],
+      "commands": [
+        "aq-context-bootstrap --task \"<task>\" --scope prsi-operations --format json",
+        "python3 scripts/automation/prsi-orchestrator.py list --json",
+        "scripts/testing/check-prsi-phase7-static-gates.sh",
+        "scripts/testing/check-prsi-bootstrap-integrity.sh",
+        "scripts/testing/check-prsi-budget-discipline.sh"
+      ],
+      "paths": [
+        "scripts/automation/prsi-orchestrator.py",
+        "config/runtime-prsi-policy.json",
+        "config/prsi/high-risk-approval-rubric.json",
+        "config/prsi/quarantine-workflow.json",
+        "docs/prsi/PRSI-OPERATIONS-RUNBOOK.md",
+        "docs/SYSTEM-IMPROVEMENT-PLAN-2026-03.md"
+      ],
+      "anti_patterns": [
+        "treating PRSI as a normal feature without gate or artifact validation",
+        "expanding automation before budget and approval rules are validated",
+        "changing orchestrator behavior without corresponding runbook/schema/test updates"
+      ],
+      "expands_to": [
+        "token-discipline",
+        "task-execution",
+        "repo-baseline"
+      ]
+    },
+    {
+      "id": "harness-first",
+      "title": "Harness-First Workflow",
+      "summary": "Compact context for tasks that should start with planner/hints/workflow surfaces instead of direct ad hoc execution.",
+      "tags": ["harness", "workflow", "hints", "planner", "delegation"],
+      "objective_patterns": ["harness", "workflow", "planner", "hints", "delegate", "orchestrate", "capability discovery"],
+      "use_when": [
+        "the task is complex enough to benefit from hints and workflow selection",
+        "you want the minimal harness-first contract",
+        "you need a low-token way to decide the next tool path"
+      ],
+      "rules": [
+        "Use hints and workflow primers before broad manual exploration on non-trivial tasks.",
+        "Prefer one small workflow output over many exploratory shell calls.",
+        "Defer loading deeper docs until the workflow output leaves a specific gap.",
+        "Keep evidence and rollback attached to each execution slice."
+      ],
+      "commands": [
+        "aq-context-bootstrap --task \"<task>\" --scope harness-first --format json",
+        "aq-hints \"<task>\" --format=json --agent=codex",
+        "scripts/ai/aqd workflows primer --target . --objective \"resume task\"",
+        "scripts/ai/aqd workflows brownfield --target . --objective \"plan next validated slice\""
+      ],
+      "paths": [
+        "scripts/ai/aq-hints",
+        "scripts/ai/aqd",
+        "docs/harness-first/HARNESS-FIRST-RUNBOOK.md",
+        ".agent/MASTER-DEVELOPMENT-PROMPT.md"
+      ],
+      "anti_patterns": [
+        "starting complex work with broad manual exploration and no workflow output",
+        "loading full runbooks before asking hints or primer tools for the next step",
+        "treating harness-first as optional for multi-layer tasks"
+      ],
+      "expands_to": [
+        "feature-development",
+        "prsi-operations",
+        "task-execution"
+      ]
+    },
+    {
+      "id": "capability-gap",
+      "title": "Capability Gap",
+      "summary": "Guidance for missing tools, workflows, skills, and command-not-found failures.",
+      "tags": ["capability", "tooling", "missing-tool", "workflow", "skill", "bootstrap"],
+      "objective_patterns": ["missing tool", "command not found", "not available", "missing workflow", "missing skill", "tool gap"],
+      "use_when": [
+        "a requested tool is not installed or not on PATH",
+        "a workflow or skill reference is missing",
+        "you need a declarative remediation path for missing capabilities"
+      ],
+      "rules": [
+        "Classify the capability gap before installing or patching anything.",
+        "Prefer declarative Nix or repo-local fixes over imperative one-off installs.",
+        "Treat workflow blueprints and skill bodies as first-class capabilities.",
+        "Catalog repeated missing-capability fixes so future agents do not rediscover them."
+      ],
+      "commands": [
+        "aq-capability-gap --tool <name> --format json",
+        "aq-capability-gap --workflow <id> --format json",
+        "aq-capability-gap --skill <name> --format json",
+        "aq-context-bootstrap --task \"restore missing capability\" --scope harness-first --format json"
+      ],
+      "paths": [
+        "scripts/ai/aq-capability-gap",
+        "config/capability-gap-catalog.json",
+        "docs/operations/agent-capability-gap-loop.md",
+        "config/workflow-blueprints.json"
+      ],
+      "expands_to": [
+        "system-fix",
+        "feature-development",
+        "prsi-operations",
+        "token-discipline"
+      ]
+    },
+    {
+      "id": "token-discipline",
+      "title": "Token Discipline",
+      "summary": "Rules for keeping context cost low without starving the task of needed signal.",
+      "tags": ["token", "context", "efficiency", "progressive-disclosure"],
+      "objective_patterns": ["token", "context", "onboarding", "brief", "primer", "progressive", "efficiency"],
+      "use_when": [
+        "you are tuning onboarding or agent behavior",
+        "the task risks context bloat",
+        "you want a shallow-to-deep disclosure path"
+      ],
+      "rules": [
+        "Start with one brief context card plus one task-specific hint query.",
+        "Escalate from brief to standard only when the first pass leaves a concrete gap.",
+        "Escalate to deep only for the failing layer, not the whole system.",
+        "Prefer structured outputs and classifications over long prose logs.",
+        "Do not load full docs when a small command or card can answer the next question.",
+        "Add tests around new automation so future agents need less explanatory context."
+      ],
+      "commands": [
+        "aq-context-card --recommend \"<task>\" --level brief --format=json",
+        "aq-hints \"<task>\" --format=json --agent=codex",
+        "scripts/testing/check-runtime-incident-tooling.sh"
+      ],
+      "paths": [
+        "config/agent-context-cards.json",
+        "scripts/ai/aq-context-card",
+        "scripts/ai/aq-hints",
+        "docs/operations/agent-context-progressive-disclosure.md"
+      ],
+      "anti_patterns": [
+        "front-loading whole runbooks into context before task classification",
+        "using deep disclosure as the default",
+        "adding tooling without regression coverage or a short operator contract"
+      ],
+      "expands_to": [
+        "repo-baseline",
+        "task-execution",
+        "runtime-incident",
+        "nix-module-change"
+      ]
+    }
+  ]
+}

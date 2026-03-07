@@ -1,11 +1,104 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 5063481..26753d5 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -8,6 +8,9 @@
+ #include "sampling.h"
+ #include "speculative.h"
+ #include "preset.h"
++#if defined(GGML_USE_VULKAN)
++#include "ggml-vulkan.h"
++#endif
+ 
+ // fix problem with std::min and std::max
+ #if defined(_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+@@ -793,6 +796,46 @@
+     return devices;
+ }
+ 
++static const char * debug_backend_dev_type_name(enum ggml_backend_dev_type type) {
++    switch (type) {
++        case GGML_BACKEND_DEVICE_TYPE_CPU:  return "CPU";
++        case GGML_BACKEND_DEVICE_TYPE_GPU:  return "GPU";
++        case GGML_BACKEND_DEVICE_TYPE_ACCEL:return "ACCEL";
++        case GGML_BACKEND_DEVICE_TYPE_IGPU: return "IGPU";
++        default:                            return "UNKNOWN";
++    }
++}
++
++static llama_example debug_backend_registry_example = LLAMA_EXAMPLE_COMMON;
++
++static void debug_backend_registry_dump(const char * stage) {
++    if (debug_backend_registry_example != LLAMA_EXAMPLE_SERVER) {
++        return;
++    }
++
++#if defined(GGML_USE_VULKAN)
++    auto * vk_reg = ggml_backend_vk_reg();
++    fprintf(stderr, "diagnostic[%s]: vk_reg=%p vk_reg_device_count=%zu\n",
++        stage, (void *) vk_reg, vk_reg ? ggml_backend_reg_dev_count(vk_reg) : 0);
++#endif
++
++    fprintf(stderr, "diagnostic[%s]: backend_count=%zu device_count=%zu gpu_offload=%d\n",
++        stage, ggml_backend_reg_count(), ggml_backend_dev_count(), llama_supports_gpu_offload() ? 1 : 0);
++
++    for (size_t i = 0; i < ggml_backend_reg_count(); ++i) {
++        auto * reg = ggml_backend_reg_get(i);
++        fprintf(stderr, "diagnostic[%s]: backend[%zu]=%s reg_device_count=%zu\n",
++            stage, i, ggml_backend_reg_name(reg), ggml_backend_reg_dev_count(reg));
++    }
++
++    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
++        auto * dev = ggml_backend_dev_get(i);
++        fprintf(stderr, "diagnostic[%s]: device[%zu]=%s type=%s desc=%s\n",
++            stage, i, ggml_backend_dev_name(dev), debug_backend_dev_type_name(ggml_backend_dev_type(dev)),
++            ggml_backend_dev_description(dev));
++    }
++}
++
+ static void add_rpc_devices(const std::string & servers) {
+     auto rpc_servers = string_split<std::string>(servers, ',');
+     if (rpc_servers.empty()) {
+@@ -996,6 +1039,8 @@
+ 
+     // load dynamic backends
+     ggml_backend_load_all();
++    debug_backend_registry_example = ex;
++    debug_backend_registry_dump("parser-init");
+ 
+     common_params_context ctx_arg(params);
+     ctx_arg.print_usage = print_usage;
+@@ -2247,14 +2292,21 @@
+         {"--list-devices"},
+         "print list of available devices and exit",
+         [](common_params &) {
++            debug_backend_registry_dump("list-devices");
+             std::vector<ggml_backend_dev_t> devices;
+             for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+                 auto * dev = ggml_backend_dev_get(i);
+                 if (ggml_backend_dev_type(dev) != GGML_BACKEND_DEVICE_TYPE_CPU) {
+                     devices.push_back(dev);
++                } else if (debug_backend_registry_example == LLAMA_EXAMPLE_SERVER) {
++                    fprintf(stderr, "diagnostic[list-devices]: filtered CPU device %s (%s)\n",
++                        ggml_backend_dev_name(dev), ggml_backend_dev_description(dev));
+                 }
+             }
+             printf("Available devices:\n");
++            if (devices.empty() && debug_backend_registry_example == LLAMA_EXAMPLE_SERVER) {
++                fprintf(stderr, "diagnostic[list-devices]: no non-CPU devices after filtering\n");
++            }
+             for (auto * dev : devices) {
+                 size_t free, total;
+                 ggml_backend_dev_memory(dev, &free, &total);
 diff --git a/src/llama.cpp b/src/llama.cpp
 index 987fe38..0e05a56 100644
 --- a/src/llama.cpp
 +++ b/src/llama.cpp
-@@ -972,10 +972,10 @@ struct llama_model * llama_model_load_from_file_impl(
+@@ -973,10 +973,10 @@ struct llama_model * llama_model_load_from_file_impl(
          // add GPUs
          model->devices.insert(model->devices.end(), gpus.begin(), gpus.end());
- 
+
 -        // add integrated GPUs only if no other devices were found
 -        if (model->devices.empty()) {
 -            model->devices.insert(model->devices.end(), igpus.begin(), igpus.end());
@@ -15,25 +108,151 @@ index 987fe38..0e05a56 100644
 +        // prevents later server/runtime paths from attempting GPU offload at all.
 +        model->devices.insert(model->devices.end(), igpus.begin(), igpus.end());
      }
- 
+
      // if using single GPU mode, remove all except the main GPU
+diff --git a/ggml/src/ggml-backend-reg.cpp b/ggml/src/ggml-backend-reg.cpp
+index 5cbd0fd..2d42b27 100644
+--- a/ggml/src/ggml-backend-reg.cpp
++++ b/ggml/src/ggml-backend-reg.cpp
+@@ -121,8 +121,12 @@
+ #ifdef GGML_USE_VULKAN
+     // Add runtime disable check
+     if (getenv("GGML_DISABLE_VULKAN") == nullptr) {
+-        register_backend(ggml_backend_vk_reg());
++        auto * vk_reg = ggml_backend_vk_reg();
++        fprintf(stderr, "registry-diagnostic: GGML_DISABLE_VULKAN unset, vk_reg=%p vk_reg_device_count=%zu\n",
++            (void *) vk_reg, vk_reg ? ggml_backend_reg_dev_count(vk_reg) : 0);
++        register_backend(vk_reg);
+     } else {
++        fprintf(stderr, "registry-diagnostic: GGML_DISABLE_VULKAN=%s\n", getenv("GGML_DISABLE_VULKAN"));
+         GGML_LOG_DEBUG("Vulkan backend disabled by GGML_DISABLE_VULKAN environment variable\n");
+     }
+ #endif
+@@ -171,9 +175,12 @@
+ 
+     void register_backend(ggml_backend_reg_t reg, dl_handle_ptr handle = nullptr) {
+         if (!reg) {
++            fprintf(stderr, "registry-diagnostic: skipped null backend registration\n");
+             return;
+         }
+ 
++        fprintf(stderr, "registry-diagnostic: register_backend name=%s reg_device_count=%zu\n", ggml_backend_reg_name(reg), ggml_backend_reg_dev_count(reg));
++
+ #ifndef NDEBUG
+         GGML_LOG_DEBUG("%s: registered backend %s (%zu devices)\n",
+             __func__, ggml_backend_reg_name(reg), ggml_backend_reg_dev_count(reg));
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index 06f6c6e..deadbee 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -5450,6 +5450,7 @@
+     GGML_ASSERT(vk_instance_initialized);
+ 
+     std::vector<vk::PhysicalDevice> devices = vk_instance.instance.enumeratePhysicalDevices();
++    fprintf(stderr, "vkdiag: enumeratePhysicalDevices count=%zu\n", devices.size());
+ 
+     if (dev_num >= devices.size()) {
+         std::cerr << "ggml_vulkan: Device with index " << dev_num << " does not exist." << std::endl;
+@@ -5612,7 +5613,13 @@
+ }
+ 
+ static void ggml_vk_instance_init() {
++    fprintf(stderr, "vkdiag: instance_init enter initialized=%d GGML_VK_VISIBLE_DEVICES=%s VK_ICD_FILENAMES=%s VK_DRIVER_FILES=%s\n",
++        vk_instance_initialized ? 1 : 0,
++        getenv("GGML_VK_VISIBLE_DEVICES") ? getenv("GGML_VK_VISIBLE_DEVICES") : "<unset>",
++        getenv("VK_ICD_FILENAMES") ? getenv("VK_ICD_FILENAMES") : "<unset>",
++        getenv("VK_DRIVER_FILES") ? getenv("VK_DRIVER_FILES") : "<unset>");
+     if (vk_instance_initialized) {
++        fprintf(stderr, "vkdiag: instance_init early-return already initialized\n");
+         return;
+     }
+     VK_LOG_DEBUG("ggml_vk_instance_init()");
+@@ -5621,6 +5628,7 @@
+     ggml_vk_default_dispatcher_instance.init(vkGetInstanceProcAddr);
+ 
+     uint32_t api_version = vk::enumerateInstanceVersion();
++    fprintf(stderr, "vkdiag: enumerateInstanceVersion api_version=%u\n", api_version);
+ 
+     if (api_version < VK_API_VERSION_1_2) {
+         std::cerr << "ggml_vulkan: Error: Vulkan 1.2 required." << std::endl;
+@@ -5630,6 +5638,7 @@
+     vk::ApplicationInfo app_info{ "ggml-vulkan", 1, nullptr, 0, api_version };
+ 
+     const std::vector<vk::ExtensionProperties> instance_extensions = vk::enumerateInstanceExtensionProperties();
++    fprintf(stderr, "vkdiag: instance_extensions count=%zu\n", instance_extensions.size());
+     const bool layer_settings = ggml_vk_instance_layer_settings_available();
+ #ifdef __APPLE__
+     const bool portability_enumeration_ext = ggml_vk_instance_portability_enumeration_ext_available(instance_extensions);
+@@ -5670,7 +5679,9 @@
+     }
+ #endif
+ 
++    fprintf(stderr, "vkdiag: createInstance layers=%zu extensions=%zu\n", layers.size(), extensions.size());
+     vk_instance.instance = vk::createInstance(instance_create_info);
++    fprintf(stderr, "vkdiag: createInstance success\n");
+     vk_instance_initialized = true;
+ 
+     if (debug_utils_ext) {
+@@ -5722,6 +5733,7 @@
+     } else {
+         // If no vulkan devices are found, return early
+         if (devices.empty()) {
++            fprintf(stderr, "vkdiag: no physical devices found before filtering\n");
+             GGML_LOG_INFO("ggml_vulkan: No devices found.\n");
+             return;
+         }
+@@ -5837,10 +5849,12 @@
+         }
+ 
+         if (vk_instance.device_indices.empty()) {
++            fprintf(stderr, "vkdiag: no usable device indices after filtering\n");
+             GGML_LOG_INFO("ggml_vulkan: No devices found.\n");
+             return;
+         }
+     }
++    fprintf(stderr, "vkdiag: selected device_indices count=%zu\n", vk_instance.device_indices.size());
+     GGML_LOG_DEBUG("ggml_vulkan: Found %zu Vulkan devices:\n", vk_instance.device_indices.size());
+ 
+     for (size_t i = 0; i < vk_instance.device_indices.size(); i++) {
+@@ -15642,12 +15656,15 @@
+         ggml_vk_instance_init();
+         return &reg;
+     } catch (const vk::SystemError& e) {
++        fprintf(stderr, "vkdiag: ggml_backend_vk_reg SystemError: %s\n", e.what());
+         VK_LOG_DEBUG("ggml_backend_vk_reg() -> Error: System error: " << e.what());
+         return nullptr;
+     } catch (const std::exception &e) {
++        fprintf(stderr, "vkdiag: ggml_backend_vk_reg exception: %s\n", e.what());
+         VK_LOG_DEBUG("ggml_backend_vk_reg() -> Error: " << e.what());
+         return nullptr;
+     } catch (...) {
++        fprintf(stderr, "vkdiag: ggml_backend_vk_reg unknown exception\n");
+         VK_LOG_DEBUG("ggml_backend_vk_reg() -> Error: unknown exception during Vulkan init");
+         return nullptr;
+     }
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 250af91..0df24e5 100644
+index 250af91..33082dc 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -72,6 +72,9 @@ int main(int argc, char ** argv) {
+@@ -73,6 +73,13 @@ int main(int argc, char ** argv) {
      // own arguments required by this example
      common_params params;
- 
-+    // Initialize backend discovery before argument parsing so --list-devices,
-+    // --device, and GPU offload validation can see Vulkan devices.
+
++    // Initialize llama backend early. This triggers ggml backend registry
++    // initialization which auto-registers the Vulkan backend (if compiled in).
++    // Without this, the GPU support check in common_params_parse may run
++    // before backends are registered.
 +    llama_backend_init();
++    (void)llama_supports_gpu_offload(); // Force backend enumeration
++
      if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_SERVER)) {
          return 1;
      }
-@@ -104,7 +107,6 @@ int main(int argc, char ** argv) {
+@@ -105,7 +112,6 @@ int main(int argc, char ** argv) {
      // struct that contains llama context and inference
      server_context ctx_server;
- 
+
 -    llama_backend_init();
      llama_numa_init(params.numa);
+
+     LOG_INF("system info: n_threads = %d, n_threads_batch = %d, total_threads = %d\n", params.cpuparams.n_threads, params.cpuparams_batch.n_threads, std::thread::hardware_concurrency());

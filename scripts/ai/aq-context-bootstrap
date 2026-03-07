@@ -1,0 +1,386 @@
+#!/usr/bin/env python3
+"""
+aq-context-bootstrap — recommend minimal context and workflow entrypoints for a task.
+
+This bridges broad task types (system fixes, feature work, PRSI, runtime incidents)
+to the smallest useful context cards plus the next workflow/tool commands.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CARD_TOOL = REPO_ROOT / "scripts" / "ai" / "aq-context-card"
+STACK_HINTS_PATH = REPO_ROOT / "config" / "capability-stack-hints.json"
+
+SCOPES = {
+    "auto": {
+        "summary": "Infer the initial workflow from the task query.",
+        "starter_commands": [],
+    },
+    "system-fix": {
+        "summary": "System-level debugging and rollback-safe NixOS changes.",
+        "starter_commands": [
+            "scripts/ai/aqd workflows primer --target . --objective \"classify system issue\"",
+            "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link",
+        ],
+        "preferred_cards": ["system-fix", "repo-baseline", "token-discipline"],
+    },
+    "feature-development": {
+        "summary": "Brownfield feature implementation with minimal planning overhead.",
+        "starter_commands": [
+            "scripts/ai/aqd workflows primer --target . --objective \"resume implementation\"",
+            "scripts/ai/aqd workflows brownfield --target . --objective \"plan next validated slice\"",
+        ],
+        "preferred_cards": ["feature-development", "task-execution", "repo-baseline"],
+    },
+    "prsi-operations": {
+        "summary": "PRSI policy, orchestration, and validation changes.",
+        "starter_commands": [
+            "scripts/testing/check-prsi-phase7-static-gates.sh",
+            "scripts/testing/check-prsi-bootstrap-integrity.sh",
+            "scripts/testing/check-prsi-budget-discipline.sh",
+        ],
+        "preferred_cards": ["prsi-operations", "token-discipline", "repo-baseline"],
+    },
+    "runtime-incident": {
+        "summary": "Runtime/package/confinement diagnosis with low-token gating.",
+        "starter_commands": [
+            "aq-qa 0",
+            "aq-qa 2",
+            "aq-qa 3",
+            "python3 scripts/ai/aq-runtime-plan",
+        ],
+        "preferred_cards": ["runtime-incident", "task-execution", "repo-baseline"],
+    },
+    "capability-gap": {
+        "summary": "Classify and fix missing tools, workflows, and skills with declarative preference.",
+        "starter_commands": [
+            "aq-capability-gap --tool <name> --format json",
+            "aq-capability-gap --workflow <id> --format json",
+            "aq-capability-gap --skill <name> --format json"
+        ],
+        "preferred_cards": ["capability-gap", "repo-baseline", "token-discipline"],
+    },
+    "harness-first": {
+        "summary": "Use hints/primer/brownfield entrypoints before broad manual exploration.",
+        "starter_commands": [
+            "aq-hints \"<task>\" --format=json --agent=codex",
+            "scripts/ai/aqd workflows primer --target . --objective \"resume task\"",
+        ],
+        "preferred_cards": ["harness-first", "repo-baseline", "token-discipline"],
+    },
+}
+
+SCOPE_KEYWORDS = {
+    "prsi-operations": ["prsi", "recursive self improvement", "optimizer", "quarantine", "approval rubric"],
+    "capability-gap": ["missing tool", "command not found", "not available", "missing workflow", "missing skill", "tool gap"],
+    "system-fix": ["nixos", "rebuild", "switch", "rollback", "system", "boot", "activation", "flake"],
+    "runtime-incident": ["runtime", "apparmor", "service", "health", "driver", "probe", "gpu", "vulkan"],
+    "feature-development": ["feature", "implement", "build", "develop", "capability", "brownfield"],
+}
+
+SCOPE_PRIORITY = [
+    "capability-gap",
+    "runtime-incident",
+    "prsi-operations",
+    "feature-development",
+    "system-fix",
+    "harness-first",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Recommend minimal context cards and workflow entrypoints for a task.")
+    parser.add_argument("--task", required=True, help="Task or objective to bootstrap.")
+    parser.add_argument("--scope", default="auto", choices=sorted(SCOPES.keys()), help="Force a bootstrap scope instead of auto inference.")
+    parser.add_argument("--level", default="brief", choices=["brief", "standard", "deep"], help="Disclosure level for context cards.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--format", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    return parser.parse_args()
+
+
+def build_context(args: argparse.Namespace) -> dict:
+    return {
+        "language": args.context_language or "",
+        "application": args.context_application or "",
+        "file": args.context_file or "",
+    }
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def matcher_matches(matcher: dict, context: dict) -> bool:
+    match_mode = matcher.get("match_mode", "all")
+    checks = [
+        ("context_languages", context.get("language", "")),
+        ("context_applications", context.get("application", "")),
+    ]
+    matched_any = False
+    has_selector = False
+    for key, value in checks:
+        options = matcher.get(key, [])
+        if options:
+            has_selector = True
+            if value not in options:
+                if match_mode == "all":
+                    return False
+            else:
+                matched_any = True
+    return matched_any if has_selector and match_mode == "any" else has_selector
+
+
+def stack_hint_bundle(context: dict) -> dict:
+    stack_hints = load_json(STACK_HINTS_PATH)
+    defaults = stack_hints.get("defaults", {})
+    result = {
+        "ecosystem_hints": [],
+        "package_hints": [],
+        "source_hints": [],
+        "missing_origin": defaults.get("missing_origin", "unclassified_missing_capability"),
+        "stack_matchers_applied": [],
+    }
+    for matcher in stack_hints.get("matchers", []):
+        if not matcher_matches(matcher, context):
+            continue
+        matcher_id = matcher.get("id", "")
+        if matcher_id and matcher_id not in result["stack_matchers_applied"]:
+            result["stack_matchers_applied"].append(matcher_id)
+        for field in ("ecosystem_hints", "package_hints", "source_hints"):
+            for item in matcher.get(field, []):
+                if item and item not in result[field]:
+                    result[field].append(item)
+        if matcher.get("missing_origin") and result["missing_origin"] == defaults.get("missing_origin", "unclassified_missing_capability"):
+            result["missing_origin"] = matcher["missing_origin"]
+    for field in ("ecosystem_hints", "package_hints", "source_hints"):
+        if not result[field]:
+            result[field] = list(defaults.get(field, []))
+    return result
+
+
+def context_source_hints(scope: str, context: dict) -> list[str]:
+    hints: list[str] = []
+    if context.get("file"):
+        hints.append(context["file"])
+    hints.extend(stack_hint_bundle(context).get("source_hints", []))
+    application = context.get("application", "")
+
+    if scope == "runtime-incident" or application == "ai-stack":
+        hints.extend(["scripts/ai/aq-runtime-plan", "docs/operations/ai-stack-runtime-diagnosis-loop.md"])
+    if scope == "prsi-operations" or application == "prsi":
+        hints.extend(["scripts/testing/check-prsi-phase7-static-gates.sh", "docs/AGENTS.md"])
+    if scope == "feature-development":
+        hints.extend(["scripts/ai/aqd", "docs/AGENTS.md"])
+
+    hints.append("AGENTS.md")
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for hint in hints:
+        if hint and hint not in seen:
+            ordered.append(hint)
+            seen.add(hint)
+    return ordered
+
+
+def context_preferred_cards(scope_cfg: dict, context: dict) -> list[str]:
+    cards = list(scope_cfg.get("preferred_cards", []))
+    ecosystem = set(stack_hint_bundle(context).get("ecosystem_hints", []))
+    application = context.get("application", "")
+    if "nix" in ecosystem or "nixos" in ecosystem:
+        cards = ["nix-module-change"] + cards
+    if (application == "ai-stack" or "mcp" in ecosystem) and "runtime-incident" not in cards:
+        cards = ["runtime-incident"] + cards
+    if application == "prsi" and "prsi-operations" not in cards:
+        cards = ["prsi-operations"] + cards
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for card in cards:
+        if card not in seen:
+            ordered.append(card)
+            seen.add(card)
+    return ordered
+
+
+def detect_scope(task: str, context: dict) -> tuple[str, dict]:
+    lowered = task.lower()
+    hint_bundle = stack_hint_bundle(context)
+    ecosystem = set(hint_bundle.get("ecosystem_hints", []))
+    application = context.get("application", "")
+    scores = {scope: 0 for scope in SCOPES if scope != "auto"}
+    reasons: dict[str, list[str]] = {scope: [] for scope in scores}
+
+    for scope, keywords in SCOPE_KEYWORDS.items():
+        for token in keywords:
+            if token in lowered:
+                weight = 6 if " " in token else 3
+                scores[scope] += weight
+                reasons[scope].append(f"task:{token}")
+
+    if application == "prsi":
+        scores["prsi-operations"] += 8
+        reasons["prsi-operations"].append("context_application:prsi")
+    if application in {"mcp", "ai-stack"}:
+        scores["runtime-incident"] += 4
+        reasons["runtime-incident"].append(f"context_application:{application}")
+    if "nix" in ecosystem or "nixos" in ecosystem:
+        scores["system-fix"] += 5
+        reasons["system-fix"].append("ecosystem:nix")
+    if {"rust", "cpp", "python"} & ecosystem:
+        scores["feature-development"] += 5
+        reasons["feature-development"].append("ecosystem:language_impl")
+    if "cli" in ecosystem and "system" in lowered and "nix" not in ecosystem and "nixos" not in ecosystem:
+        scores["feature-development"] += 2
+        reasons["feature-development"].append("ecosystem:cli_bias")
+    if any(token in lowered for token in ["missing", "not available", "not found"]):
+        scores["capability-gap"] += 4
+        reasons["capability-gap"].append("task:missing")
+    if any(token in lowered for token in ["driver", "probe", "apparmor", "service"]):
+        scores["runtime-incident"] += 2
+        reasons["runtime-incident"].append("task:runtime_signal")
+    if any(token in lowered for token in ["implement", "build", "develop", "integration", "resume"]):
+        scores["feature-development"] += 2
+        reasons["feature-development"].append("task:development_signal")
+
+    best_scope = "harness-first"
+    best_score = 0
+    for scope in SCOPE_PRIORITY:
+        score = scores.get(scope, 0)
+        if score > best_score:
+            best_scope = scope
+            best_score = score
+    sorted_scopes = sorted(
+        ((scope, score) for scope, score in scores.items()),
+        key=lambda item: (-item[1], SCOPE_PRIORITY.index(item[0]) if item[0] in SCOPE_PRIORITY else 999),
+    )
+    top_alternatives = [
+        {
+            "scope": scope,
+            "score": score,
+            "reasons": reasons.get(scope, []),
+        }
+        for scope, score in sorted_scopes[:3]
+    ]
+    runner_up_score = sorted_scopes[1][1] if len(sorted_scopes) > 1 else 0
+    margin = best_score - runner_up_score
+    if best_score == 0:
+        best_scope = "harness-first"
+        confidence = "low"
+    elif margin >= 4:
+        confidence = "high"
+    elif margin >= 2:
+        confidence = "medium"
+    else:
+        confidence = "low"
+    return best_scope, {
+        "scores": scores,
+        "reasons": {scope: values for scope, values in reasons.items() if values},
+        "confidence": confidence,
+        "alternatives": top_alternatives,
+    }
+
+
+def load_cards(task: str, level: str, preferred_cards: list[str], context: dict) -> dict:
+    cmd = ["python3", str(CARD_TOOL), "--recommend", task, "--level", level, "--format", "json", "--max", "5"]
+    if context.get("language"):
+        cmd.extend(["--context-language", context["language"]])
+    if context.get("application"):
+        cmd.extend(["--context-application", context["application"]])
+    if context.get("file"):
+        cmd.extend(["--context-file", context["file"]])
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    payload = json.loads(proc.stdout)
+    cards = payload.get("cards", [])
+    preferred = []
+    seen = set()
+    by_id = {card["id"]: card for card in cards}
+    for card_id in preferred_cards:
+        if card_id in by_id and card_id not in seen:
+            preferred.append(by_id[card_id])
+            seen.add(card_id)
+    for card in cards:
+        if card["id"] not in seen:
+            preferred.append(card)
+            seen.add(card["id"])
+    payload["cards"] = preferred
+    payload["recommended_card_order"] = [card["id"] for card in preferred]
+    return payload
+
+
+def format_text(payload: dict) -> str:
+    lines = [
+        f"scope: {payload['scope']}",
+        f"summary: {payload['scope_summary']}",
+        f"task: {payload['task']}",
+        f"recommended_next_mode: {payload.get('recommended_next_mode', '')}",
+        f"recommended_scope: {payload.get('recommended_scope', '')}",
+        "recommended_card_order:",
+    ]
+    for card_id in payload.get("recommended_card_order", []):
+        lines.append(f"- {card_id}")
+    lines.append("starter_commands:")
+    for cmd in payload.get("starter_commands", []):
+        lines.append(f"- {cmd}")
+    lines.append("cards:")
+    for card in payload.get("cards", []):
+        lines.append(f"- [{card['id']}] {card['summary']}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    context = build_context(args)
+    if args.scope != "auto":
+        scope = args.scope
+        scope_diagnostics = {"scores": {scope: 1}, "reasons": {scope: ["explicit_scope"]}}
+    else:
+        scope, scope_diagnostics = detect_scope(args.task, context)
+    scope_cfg = SCOPES[scope]
+    hint_bundle = stack_hint_bundle(context)
+    cards_payload = load_cards(args.task, args.level, context_preferred_cards(scope_cfg, context), context)
+    fallback_scope = "harness-first" if scope_diagnostics.get("confidence", "low") == "low" and scope != "harness-first" else ""
+    fallback_reason = "low_scope_confidence" if fallback_scope else ""
+    recommended_next_mode = "use_fallback_scope" if fallback_scope else "proceed_primary"
+    recommended_scope = fallback_scope or scope
+    output = {
+        "task": args.task,
+        "scope": scope,
+        "scope_confidence": scope_diagnostics.get("confidence", "low"),
+        "scope_alternatives": scope_diagnostics.get("alternatives", []),
+        "fallback_scope": fallback_scope,
+        "fallback_reason": fallback_reason,
+        "recommended_next_mode": recommended_next_mode,
+        "recommended_scope": recommended_scope,
+        "context": context,
+        "scope_summary": scope_cfg["summary"],
+        "level": args.level,
+        "starter_commands": scope_cfg.get("starter_commands", []),
+        "ecosystem_hints": hint_bundle.get("ecosystem_hints", []),
+        "package_hints": hint_bundle.get("package_hints", []),
+        "stack_matchers_applied": hint_bundle.get("stack_matchers_applied", []),
+        "scope_diagnostics": scope_diagnostics,
+        "source_hints": context_source_hints(scope, context),
+        "recommended_card_order": cards_payload.get("recommended_card_order", []),
+        "card_stack_matchers_applied": cards_payload.get("stack_matchers_applied", []),
+        "card_overlay_matchers_applied": cards_payload.get("card_overlay_matchers_applied", []),
+        "cards": cards_payload.get("cards", []),
+        "estimated_tokens": cards_payload.get("estimated_tokens", 0),
+    }
+    if args.fmt == "json":
+        print(json.dumps(output, indent=2))
+    else:
+        print(format_text(output))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

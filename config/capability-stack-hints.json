@@ -1,0 +1,195 @@
+{
+  "version": "1.0.0",
+  "defaults": {
+    "ecosystem_hints": [
+      "unclassified-capability"
+    ],
+    "package_hints": [
+      "inspect current repo/system integration surface before installing"
+    ],
+    "source_hints": [
+      "config/capability-gap-catalog.json"
+    ],
+    "missing_origin": "unclassified_missing_capability"
+  },
+  "matchers": [
+    {
+      "id": "workflow-registry",
+      "capability_types": ["workflow"],
+      "ecosystem_hints": ["workflow", "harness"],
+      "source_hints": ["config/workflow-blueprints.json", "scripts/ai/aqd"],
+      "missing_origin": "workflow_registry"
+    },
+    {
+      "id": "skill-registry",
+      "capability_types": ["skill"],
+      "ecosystem_hints": ["skill", "agent-skill"],
+      "source_hints": ["docs/AGENTS.md"],
+      "missing_origin": "skill_registry"
+    },
+    {
+      "id": "repo-harness",
+      "capability_prefixes": ["aq-"],
+      "ecosystem_hints": ["repo-script", "harness"],
+      "package_hints": ["scripts/ai", "repo-local wrapper, not OS package"],
+      "source_hints": ["scripts/ai", "config/service-endpoints.sh"],
+      "missing_origin": "repo_harness"
+    },
+    {
+      "id": "mcp-harness",
+      "match_mode": "any",
+      "capability_prefixes": ["mcp"],
+      "context_applications": ["mcp"],
+      "ecosystem_hints": ["mcp", "ai-stack-harness"],
+      "package_hints": ["scripts/ai/mcp-server", ".agent/skills/mcp-builder/SKILL.md"],
+      "source_hints": ["scripts/ai", "docs/operations"],
+      "missing_origin": "mcp_harness"
+    },
+    {
+      "id": "nix-stack",
+      "match_mode": "any",
+      "context_languages": ["nix"],
+      "context_applications": ["nixos"],
+      "preferred_fix_layers": ["declarative_nix"],
+      "capability_ids": ["nix", "nixos-rebuild"],
+      "ecosystem_hints": ["nix", "nixos", "os"],
+      "package_hints": ["nixpkgs", "environment.systemPackages"],
+      "source_hints": ["nix/modules/core/options.nix", "nix/modules/roles/ai-stack.nix", "templates/configuration.nix"],
+      "missing_origin": "nixos_or_os_packages",
+      "card_overlays": {
+        "nix-module-change": {
+          "rules": [
+            "Prefer `nix build` or eval checks before any live switch when the task is system-scoped."
+          ],
+          "commands": [
+            "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link"
+          ],
+          "paths": [
+            "nix/modules/core/options.nix",
+            "nix/modules/roles/ai-stack.nix"
+          ],
+          "boost": 4
+        },
+        "system-fix": {
+          "rules": [
+            "Keep declarative rollback paths ready before editing activation-sensitive modules."
+          ],
+          "commands": [
+            "sudo nixos-rebuild switch --rollback"
+          ],
+          "paths": [
+            "templates/configuration.nix"
+          ],
+          "boost": 3
+        }
+      }
+    },
+    {
+      "id": "python-stack",
+      "match_mode": "any",
+      "context_languages": ["python"],
+      "capability_ids": ["python3", "pip", "uv"],
+      "ecosystem_hints": ["python"],
+      "package_hints": ["python3", "uv", "pip"],
+      "source_hints": ["scripts/ai", "docs/operations"],
+      "card_overlays": {
+        "feature-development": {
+          "rules": [
+            "Prefer the project toolchain (`uv`/project metadata) before ad hoc Python installs."
+          ],
+          "commands": [
+            "python3 -m py_compile <touched_python_files>"
+          ],
+          "paths": [
+            "pyproject.toml"
+          ],
+          "boost": 2
+        }
+      }
+    },
+    {
+      "id": "shell-stack",
+      "match_mode": "any",
+      "context_languages": ["bash", "shell", "zsh"],
+      "capability_ids": ["bash", "zsh", "sh"],
+      "ecosystem_hints": ["shell", "cli"],
+      "package_hints": ["bash", "coreutils"],
+      "source_hints": ["scripts/ai", "config/service-endpoints.sh"],
+      "card_overlays": {
+        "task-execution": {
+          "rules": [
+            "Validate shell slices with `bash -n` before broader integration checks."
+          ],
+          "commands": [
+            "bash -n <touched_shell_scripts>"
+          ],
+          "paths": [
+            "config/service-endpoints.sh"
+          ],
+          "boost": 2
+        }
+      }
+    },
+    {
+      "id": "rust-stack",
+      "match_mode": "any",
+      "context_languages": ["rust"],
+      "capability_ids": ["rustc", "cargo"],
+      "ecosystem_hints": ["rust", "cli"],
+      "package_hints": ["rustc", "cargo"],
+      "source_hints": ["Cargo.toml", "flake.nix"],
+      "card_overlays": {
+        "feature-development": {
+          "rules": [
+            "Treat `Cargo.toml` and workspace metadata as the first source of truth for Rust toolchain decisions."
+          ],
+          "commands": [
+            "cargo test --quiet"
+          ],
+          "paths": [
+            "Cargo.toml",
+            "flake.nix"
+          ],
+          "boost": 4
+        },
+        "task-execution": {
+          "commands": [
+            "cargo fmt --check"
+          ],
+          "boost": 1
+        }
+      }
+    },
+    {
+      "id": "cpp-stack",
+      "match_mode": "any",
+      "context_languages": ["cpp", "c++"],
+      "capability_ids": ["clang", "clang++", "g++", "cmake", "ninja"],
+      "ecosystem_hints": ["cpp", "native-build"],
+      "package_hints": ["clang", "cmake", "ninja"],
+      "source_hints": ["CMakeLists.txt", "flake.nix"],
+      "card_overlays": {
+        "feature-development": {
+          "rules": [
+            "Prefer build-system-native checks before broad system rebuilds for native code changes."
+          ],
+          "commands": [
+            "cmake --build <build-dir>"
+          ],
+          "paths": [
+            "CMakeLists.txt"
+          ],
+          "boost": 3
+        }
+      }
+    },
+    {
+      "id": "external-cli",
+      "preferred_fix_layers": ["native_or_fallback_installer"],
+      "ecosystem_hints": ["os", "external-cli"],
+      "package_hints": ["nixpkgs if available", "installer fallback only if declarative path is unavailable"],
+      "source_hints": ["config/npm-packages.sh", "docs/development/SYSTEM-UPGRADE-ROADMAP.md"],
+      "missing_origin": "os_or_user_environment"
+    }
+  ]
+}

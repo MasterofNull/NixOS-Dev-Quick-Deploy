@@ -1,0 +1,660 @@
+#!/usr/bin/env python3
+"""
+aq-runtime-plan — multi-preset runtime incident planner
+
+Runs the baseline QA gates plus one or more aq-runtime-diagnose presets and
+returns the highest-signal next action with service/layer context.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CATALOG_PATH = REPO_ROOT / "config" / "runtime-remediation-catalog.json"
+DEFAULT_PRESETS = [
+    "llama-cpp",
+    "apparmor",
+    "ai-aidb",
+    "hybrid-coordinator",
+    "ai-switchboard",
+    "qdrant",
+    "open-webui",
+]
+
+RISK_ORDER = {
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+    "unknown": 0,
+}
+
+CONFIDENCE_ORDER = {
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+}
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Plan next actions from runtime diagnosis presets.")
+    parser.add_argument(
+        "--preset",
+        action="append",
+        dest="presets",
+        help="Preset to include. Repeat to include multiple. Defaults to the core AI stack set.",
+    )
+    parser.add_argument(
+        "--catalog",
+        default=str(CATALOG_PATH),
+        help="Path to the remediation catalog JSON file.",
+    )
+    parser.add_argument(
+        "--qa-fixture",
+        help="Path to a JSON fixture containing phase0/phase2/phase3 results.",
+    )
+    parser.add_argument(
+        "--diagnosis-fixture",
+        action="append",
+        dest="diagnosis_fixtures",
+        help="Path to a JSON fixture containing one diagnosis object or a list of diagnosis objects.",
+    )
+    return parser.parse_args()
+
+
+def load_json(path: Path) -> dict | list:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_catalog(path: Path) -> dict:
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Catalog must be a JSON object: {path}")
+    return payload
+
+
+def run_json(cmd: list[str]) -> dict:
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    if not proc.stdout.strip():
+        return {
+            "ok": False,
+            "command": cmd,
+            "stdout": "",
+            "stderr": proc.stderr,
+            "returncode": proc.returncode,
+            "classification": "unknown",
+        }
+    try:
+        data = json.loads(proc.stdout)
+    except Exception:
+        return {
+            "ok": False,
+            "command": cmd,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "returncode": proc.returncode,
+            "classification": "unknown",
+        }
+    data["_returncode"] = proc.returncode
+    data["ok"] = proc.returncode == 0
+    return data
+
+
+def summarize_qas(fixture_path: str | None = None) -> dict:
+    if fixture_path:
+        payload = load_json(Path(fixture_path))
+        if not isinstance(payload, dict):
+            raise ValueError(f"QA fixture must be a JSON object: {fixture_path}")
+        return payload
+    phase0 = run_json(["scripts/ai/aq-qa", "0", "--json"])
+    phase2 = run_json(["scripts/ai/aq-qa", "2", "--json"])
+    phase3 = run_json(["scripts/ai/aq-qa", "3", "--json"])
+    return {"phase0": phase0, "phase2": phase2, "phase3": phase3}
+
+
+def format_template(value: str, result: dict) -> str:
+    replacements = {
+        "{preset}": result.get("preset", ""),
+        "{service}": result.get("service", ""),
+        "{binary_path}": result.get("binary_path", ""),
+    }
+    rendered = value
+    for token, replacement in replacements.items():
+        rendered = rendered.replace(token, replacement)
+    return rendered
+
+
+def normalize_command_entries(commands: list, result: dict, defaults: dict) -> list[dict]:
+    entries: list[dict] = []
+    for item in commands:
+        if isinstance(item, str):
+            entries.append(
+                {
+                    "cmd": format_template(item, result),
+                    "risk": defaults.get("risk", "unknown"),
+                    "requires_sudo": bool(defaults.get("requires_sudo", False)),
+                    "safe_in_live_session": bool(defaults.get("safe_in_live_session", True)),
+                }
+            )
+            continue
+        if isinstance(item, dict):
+            entries.append(
+                {
+                    "cmd": format_template(item.get("cmd", ""), result),
+                    "risk": item.get("risk", defaults.get("risk", "unknown")),
+                    "requires_sudo": bool(item.get("requires_sudo", defaults.get("requires_sudo", False))),
+                    "safe_in_live_session": bool(item.get("safe_in_live_session", defaults.get("safe_in_live_session", True))),
+                }
+            )
+    return entries
+
+
+def remediation_for(catalog: dict, preset: str, classification: str, result: dict) -> dict:
+    defaults = catalog["defaults"].get(classification, catalog["defaults"]["unknown"]).copy()
+    preset_overrides = catalog.get("presets", {}).get(preset, {}).get(classification, {})
+    merged = {**defaults, **preset_overrides}
+    merged["command_entries"] = normalize_command_entries(merged.get("commands", []), result, merged)
+    merged["commands"] = [entry["cmd"] for entry in merged.get("command_entries", [])]
+    merged["files"] = merged.get("files", [])
+    merged["rollback"] = merged.get("rollback", "")
+    merged["risk"] = merged.get("risk", "unknown")
+    merged["requires_sudo"] = bool(merged.get("requires_sudo", False))
+    merged["safe_in_live_session"] = bool(merged.get("safe_in_live_session", True))
+    return merged
+
+
+def summarize_action_approval(action: dict) -> dict:
+    command_entries = action.get("command_entries", [])
+    highest_risk = action.get("risk", "unknown")
+    required_overrides: list[str] = []
+    contains_unsafe_live_steps = False
+    contains_sudo_steps = False
+
+    for entry in command_entries:
+        risk = entry.get("risk", "unknown")
+        if RISK_ORDER.get(risk, 0) > RISK_ORDER.get(highest_risk, 0):
+            highest_risk = risk
+        if entry.get("requires_sudo", False):
+            contains_sudo_steps = True
+            if "--allow-sudo" not in required_overrides:
+                required_overrides.append("--allow-sudo")
+        if not entry.get("safe_in_live_session", True):
+            contains_unsafe_live_steps = True
+            if "--allow-unsafe-live" not in required_overrides:
+                required_overrides.append("--allow-unsafe-live")
+
+    return {
+        "highest_command_risk": highest_risk,
+        "required_overrides": required_overrides,
+        "contains_sudo_steps": contains_sudo_steps,
+        "contains_unsafe_live_steps": contains_unsafe_live_steps,
+    }
+
+
+def classify_action_bucket(action: dict, approval: dict) -> str:
+    summary = action.get("summary", "").lower()
+    if approval.get("required_overrides"):
+        return "requires_override"
+    if "look healthy" in summary or "cleanup" in summary or "benchmarking" in summary:
+        return "safe_to_run_now"
+    if "inspect" in summary or "diagnose" in summary or "stabilize" in summary or "focus on preset" in summary:
+        return "observe_first"
+    return "safe_to_run_now"
+
+
+def classify_action_confidence(action: dict) -> str:
+    if action.get("target_service") and action.get("target_layer"):
+        return "high"
+    if action.get("summary", "").startswith("All inspected presets look healthy"):
+        return "high"
+    if action.get("summary", "").startswith("Stabilize base service health first"):
+        return "medium"
+    return "medium"
+
+
+def lower_confidence(value: str) -> str:
+    if value == "high":
+        return "medium"
+    if value == "medium":
+        return "low"
+    return "low"
+
+
+def action_provenance(action: dict) -> str:
+    if action.get("target_service") and action.get("target_layer"):
+        return "catalog_diagnosis"
+    action_kind = action.get("action_kind", "")
+    if action_kind == "phase0_stabilization":
+        return "planner_builtin_phase0"
+    if action_kind == "healthy_cleanup":
+        return "planner_builtin_healthy"
+    if action_kind == "confinement_followup":
+        return "planner_builtin_confinement"
+    return "planner_builtin"
+
+
+def build_action_origin(action: dict) -> dict:
+    action_kind = action.get("action_kind", "")
+    if action.get("target_service") and action.get("target_layer"):
+        return {
+            "source": "catalog",
+            "trigger": action_kind or "diagnosis",
+            "preset": action.get("target_preset", ""),
+            "classification": action.get("target_classification", ""),
+            "service": action.get("target_service", ""),
+            "layer": action.get("target_layer", ""),
+        }
+    return {
+        "source": "planner",
+        "trigger": action_kind,
+        "preset": "",
+        "classification": "",
+        "service": action.get("target_service", ""),
+        "layer": action.get("target_layer", ""),
+    }
+
+
+def build_action_id(action: dict) -> str:
+    action_kind = action.get("action_kind", "unknown")
+    if action.get("target_service") and action.get("target_layer"):
+        return f"{action_kind}:{action.get('target_service', '')}:{action.get('target_layer', '')}"
+    return action_kind
+
+
+def load_diagnosis_fixtures(paths: list[str] | None) -> list[dict]:
+    results: list[dict] = []
+    for raw_path in paths or []:
+        payload = load_json(Path(raw_path))
+        items = payload if isinstance(payload, list) else [payload]
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError(f"Diagnosis fixture must contain objects: {raw_path}")
+            results.append(item)
+    return results
+
+
+def enrich_diagnoses(results: list[dict], catalog: dict) -> list[dict]:
+    enriched = []
+    for result in results:
+        preset = result.get("preset", "unknown")
+        meta = remediation_for(catalog, preset, result.get("classification", "unknown"), result)
+        result = result.copy()
+        result["priority"] = meta["priority"]
+        result["layer"] = meta["layer"]
+        result["suggested_action"] = meta["summary"]
+        result["recommended_commands"] = meta.get("commands", [])
+        result["recommended_command_entries"] = meta.get("command_entries", [])
+        result["recommended_files"] = meta.get("files", [])
+        result["rollback_note"] = meta.get("rollback", "")
+        result["risk"] = meta.get("risk", "unknown")
+        result["requires_sudo"] = meta.get("requires_sudo", False)
+        result["safe_in_live_session"] = meta.get("safe_in_live_session", True)
+        enriched.append(result)
+    return enriched
+
+
+def diagnose_presets(presets: list[str], catalog: dict) -> list[dict]:
+    results = []
+    for preset in presets:
+        result = run_json(["scripts/ai/aq-runtime-diagnose", "--preset", preset, "--json"])
+        result["preset"] = preset
+        results.append(result)
+    return enrich_diagnoses(results, catalog)
+
+
+def build_actions(qa: dict, diagnoses: list[dict]) -> list[dict]:
+    actions: list[dict] = []
+
+    if qa["phase0"].get("failed", 0) > 0:
+        actions.append({
+            "summary": "Stabilize base service health first from `aq-qa 0` before runtime debugging.",
+            "commands": ["aq-qa 0", "journalctl --no-pager -u 'ai-*' -u 'llama-*' -n 80"],
+            "command_entries": [
+                {"cmd": "aq-qa 0", "risk": "low", "requires_sudo": False, "safe_in_live_session": True},
+                {"cmd": "journalctl --no-pager -u 'ai-*' -u 'llama-*' -n 80", "risk": "low", "requires_sudo": False, "safe_in_live_session": True},
+            ],
+            "files": [],
+            "rollback": "Do not rebuild until phase 0 failures are understood.",
+            "risk": "low",
+            "requires_sudo": False,
+            "safe_in_live_session": True,
+            "action_kind": "phase0_stabilization",
+            "provenance": "planner_builtin_phase0",
+        })
+
+    failing = [d for d in diagnoses if not d.get("healthy", False)]
+    failing.sort(key=lambda item: item["priority"], reverse=True)
+
+    if failing:
+        top = failing[0]
+        actions.append({
+            "summary": f"Focus on preset `{top['preset']}` at the `{top['layer']}` layer. {top['suggested_action']}",
+            "commands": top.get("recommended_commands", []),
+            "command_entries": top.get("recommended_command_entries", []),
+            "files": top.get("recommended_files", []),
+            "rollback": top.get("rollback_note", ""),
+            "risk": top.get("risk", "unknown"),
+            "requires_sudo": top.get("requires_sudo", False),
+            "safe_in_live_session": top.get("safe_in_live_session", True),
+            "target_service": top.get("service", ""),
+            "target_preset": top.get("preset", ""),
+            "target_classification": top.get("classification", ""),
+            "target_layer": top.get("layer", ""),
+            "priority": top.get("priority", 0),
+            "suppression_key": f"{top.get('service', top.get('preset', ''))}:{top.get('layer', '')}",
+            "confidence": "high",
+            "action_kind": "diagnosis_primary",
+            "provenance": "catalog_diagnosis",
+        })
+        for extra in failing[1:3]:
+            actions.append({
+                "summary": f"Secondary issue: `{extra['preset']}` classified as `{extra.get('classification', 'unknown')}`. {extra['suggested_action']}",
+                "commands": extra.get("recommended_commands", []),
+                "command_entries": extra.get("recommended_command_entries", []),
+                "files": extra.get("recommended_files", []),
+                "rollback": extra.get("rollback_note", ""),
+                "risk": extra.get("risk", "unknown"),
+                "requires_sudo": extra.get("requires_sudo", False),
+                "safe_in_live_session": extra.get("safe_in_live_session", True),
+                "target_service": extra.get("service", ""),
+                "target_preset": extra.get("preset", ""),
+                "target_classification": extra.get("classification", ""),
+                "target_layer": extra.get("layer", ""),
+                "priority": extra.get("priority", 0),
+                "suppression_key": f"{extra.get('service', extra.get('preset', ''))}:{extra.get('layer', '')}",
+                "confidence": "medium",
+                "action_kind": "diagnosis_secondary",
+                "provenance": "catalog_diagnosis",
+            })
+    else:
+        actions.append({
+            "summary": "All inspected presets look healthy. Move to cleanup, regression guards, or benchmarking.",
+            "commands": ["aq-qa 0", "python3 scripts/ai/aq-runtime-plan"],
+            "command_entries": [
+                {"cmd": "aq-qa 0", "risk": "low", "requires_sudo": False, "safe_in_live_session": True},
+                {"cmd": "python3 scripts/ai/aq-runtime-plan", "risk": "low", "requires_sudo": False, "safe_in_live_session": True},
+            ],
+            "files": [],
+            "rollback": "No rollback needed.",
+            "risk": "low",
+            "requires_sudo": False,
+            "safe_in_live_session": True,
+            "confidence": "high",
+            "action_kind": "healthy_cleanup",
+            "provenance": "planner_builtin_healthy",
+        })
+
+    if qa["phase3"].get("failed", 0) > 0 and not any("confinement" in action["summary"].lower() or "AppArmor" in action["summary"] for action in actions):
+        actions.append({
+            "summary": "Confinement gate failed. Inspect AppArmor state and profile scope next.",
+            "commands": ["aq-qa 3", "aq-runtime-diagnose --preset apparmor --json"],
+            "command_entries": [
+                {"cmd": "aq-qa 3", "risk": "low", "requires_sudo": False, "safe_in_live_session": True},
+                {"cmd": "aq-runtime-diagnose --preset apparmor --json", "risk": "low", "requires_sudo": False, "safe_in_live_session": True},
+            ],
+            "files": ["/etc/apparmor.d"],
+            "rollback": "Do not widen confinement blindly without a focused denial signal.",
+            "risk": "low",
+            "requires_sudo": False,
+            "safe_in_live_session": True,
+            "confidence": "medium",
+            "action_kind": "confinement_followup",
+            "provenance": "planner_builtin_confinement",
+        })
+
+    return actions
+
+
+def suppress_redundant_actions(actions: list[dict]) -> tuple[list[dict], list[dict]]:
+    kept: list[dict] = []
+    suppressed: list[dict] = []
+    seen_keys: dict[str, tuple[int, dict]] = {}
+
+    for index, action in enumerate(actions):
+        suppression_key = action.get("suppression_key", "")
+        if suppression_key and suppression_key in seen_keys:
+            winner_index, winner_action = seen_keys[suppression_key]
+            suppressed.append(
+                {
+                    "action_index": index,
+                    "action_id": action.get("action_id", build_action_id(action)),
+                    "summary": action.get("summary", ""),
+                    "action_kind": action.get("action_kind", ""),
+                    "suppression_key": suppression_key,
+                    "suppressed_by_index": winner_index,
+                    "suppressed_by_action_id": winner_action.get("action_id", build_action_id(winner_action)),
+                    "suppression_reason": "duplicate_service_layer_lower_signal",
+                    "winner_summary": winner_action.get("summary", ""),
+                    "winner_action_id": winner_action.get("action_id", build_action_id(winner_action)),
+                    "winner_action_kind": winner_action.get("action_kind", ""),
+                    "action_origin": build_action_origin(action),
+                    "winner_action_origin": build_action_origin(winner_action),
+                    "confidence": lower_confidence(winner_action.get("confidence", "medium")),
+                    "evidence_kind": winner_action.get("evidence_kind", "unknown"),
+                    "evidence_id": winner_action.get("evidence_id", ""),
+                    "provenance": action.get("provenance", action_provenance(action)),
+                }
+            )
+            continue
+        if "confidence" not in action:
+            action["confidence"] = classify_action_confidence(action)
+        if "provenance" not in action:
+            action["provenance"] = action_provenance(action)
+        action["action_id"] = build_action_id(action)
+        action["action_origin"] = build_action_origin(action)
+        kept.append(action)
+        if suppression_key:
+            seen_keys[suppression_key] = (len(kept) - 1, action)
+
+    return kept, suppressed
+
+
+def add_evidence_refs(actions: list[dict], qa: dict) -> list[dict]:
+    for action in actions:
+        refs: list[str] = []
+        evidence_kind = "unknown"
+        evidence_id = ""
+        summary = action.get("summary", "").lower()
+        if "phase 0" in summary or "base service health" in summary:
+            refs.append("qa:phase0")
+            evidence_kind = "qa_phase"
+            evidence_id = "qa:phase0"
+        if action.get("target_service") or action.get("target_layer"):
+            action_ref = f"action:{action.get('target_service', '')}:{action.get('target_layer', '')}"
+            refs.append(action_ref)
+            evidence_kind = "diagnosis"
+            evidence_id = action_ref
+        action["evidence_refs"] = refs
+        action["evidence_kind"] = evidence_kind
+        action["evidence_id"] = evidence_id
+    return actions
+
+
+def build_evidence_index(qa: dict, diagnoses: list[dict]) -> dict:
+    index: dict[str, dict] = {}
+    phase0_failed = qa.get("phase0", {}).get("failed")
+    if phase0_failed is not None:
+        index["qa:phase0"] = {
+            "kind": "qa_phase",
+            "phase": 0,
+            "failed": phase0_failed,
+        }
+    for item in diagnoses:
+        service = item.get("service", "")
+        layer = item.get("layer", "")
+        if service and layer:
+            ref = f"action:{service}:{layer}"
+            index[ref] = {
+                "kind": "diagnosis",
+                "preset": item.get("preset", ""),
+                "service": service,
+                "classification": item.get("classification", ""),
+                "layer": layer,
+                "healthy": item.get("healthy", False),
+            }
+    return index
+
+
+def build_execution_order(action_groups: dict) -> dict:
+    default_order = ["observe_first", "safe_to_run_now", "requires_override"]
+    non_empty = [name for name in default_order if action_groups.get(name)]
+    return {
+        "default_group_order": default_order,
+        "non_empty_group_order": non_empty,
+        "recommended_group_order": non_empty or default_order,
+    }
+
+
+def build_context_cards(qa: dict, diagnoses: list[dict]) -> dict:
+    recommendations: list[dict] = [
+        {
+            "card_id": "repo-baseline",
+            "level": "brief",
+            "reason": "minimum repo contract before deeper task-specific guidance",
+            "priority": 100,
+        }
+    ]
+
+    failing = [item for item in diagnoses if not item.get("healthy", False)]
+    if qa.get("phase2", {}).get("failed", 0) > 0 or qa.get("phase3", {}).get("failed", 0) > 0 or failing:
+        recommendations.append(
+            {
+                "card_id": "runtime-incident",
+                "level": "brief",
+                "reason": "runtime or confinement failure detected; start with the low-token incident loop",
+                "priority": 90,
+            }
+        )
+    if qa.get("phase0", {}).get("failed", 0) > 0:
+        recommendations.append(
+            {
+                "card_id": "task-execution",
+                "level": "brief",
+                "reason": "phase 0 is failing; stabilize base service health before deeper changes",
+                "priority": 80,
+            }
+        )
+    if any(item.get("layer") in {"package", "service_wiring"} for item in failing):
+        recommendations.append(
+            {
+                "card_id": "nix-module-change",
+                "level": "standard",
+                "reason": "package or service wiring failures often need declarative Nix/module changes",
+                "priority": 70,
+            }
+        )
+    if len(failing) > 1 or qa.get("phase0", {}).get("failed", 0) > 0:
+        recommendations.append(
+            {
+                "card_id": "token-discipline",
+                "level": "brief",
+                "reason": "multiple failing layers increase context pressure; keep disclosure narrow",
+                "priority": 60,
+            }
+        )
+
+    deduped: list[dict] = []
+    seen: set[str] = set()
+    for item in sorted(recommendations, key=lambda row: (-row["priority"], row["card_id"])):
+        if item["card_id"] in seen:
+            continue
+        seen.add(item["card_id"])
+        deduped.append(item)
+    return {
+        "recommended_cards": deduped,
+        "recommended_card_order": [item["card_id"] for item in deduped],
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    presets = args.presets or DEFAULT_PRESETS
+    catalog = load_catalog(Path(args.catalog))
+    qa = summarize_qas(args.qa_fixture)
+    if args.diagnosis_fixtures:
+        diagnoses = enrich_diagnoses(load_diagnosis_fixtures(args.diagnosis_fixtures), catalog)
+    else:
+        diagnoses = diagnose_presets(presets, catalog)
+    evidence_index = build_evidence_index(qa, diagnoses)
+    actions = build_actions(qa, diagnoses)
+    actions = add_evidence_refs(actions, qa)
+    actions, suppressed_actions = suppress_redundant_actions(actions)
+    approval_summary = []
+    action_groups = {
+        "observe_first": [],
+        "safe_to_run_now": [],
+        "requires_override": [],
+    }
+    for index, action in enumerate(actions):
+        approval = {
+            "action_index": index,
+            "action_id": action.get("action_id", build_action_id(action)),
+            "summary": action.get("summary", ""),
+            "action_kind": action.get("action_kind", ""),
+            "action_origin": action.get("action_origin", build_action_origin(action)),
+            "confidence": action.get("confidence", "medium"),
+            "evidence_refs": action.get("evidence_refs", []),
+            "evidence_kind": action.get("evidence_kind", "unknown"),
+            "evidence_id": action.get("evidence_id", ""),
+            "provenance": action.get("provenance", action_provenance(action)),
+            **summarize_action_approval(action),
+        }
+        approval["bucket"] = classify_action_bucket(action, approval)
+        approval_summary.append(approval)
+        action_groups[approval["bucket"]].append(
+            {
+                "action_index": index,
+                "action_id": action.get("action_id", build_action_id(action)),
+                "summary": action.get("summary", ""),
+                "action_kind": action.get("action_kind", ""),
+                "action_origin": action.get("action_origin", build_action_origin(action)),
+                "highest_command_risk": approval["highest_command_risk"],
+                "required_overrides": approval["required_overrides"],
+                "confidence": approval["confidence"],
+                "evidence_refs": approval["evidence_refs"],
+                "evidence_kind": approval["evidence_kind"],
+                "evidence_id": approval["evidence_id"],
+                "provenance": approval["provenance"],
+            }
+        )
+
+    output = {
+        "summary": {
+            "phase0_failed": qa["phase0"].get("failed"),
+            "phase2_failed": qa["phase2"].get("failed"),
+            "phase3_failed": qa["phase3"].get("failed"),
+            "inspected_presets": presets,
+        },
+        "context_cards": build_context_cards(qa, diagnoses),
+        "evidence_index": evidence_index,
+        "approval_summary": approval_summary,
+        "action_groups": action_groups,
+        "execution_order": build_execution_order(action_groups),
+        "suppressed_actions": suppressed_actions,
+        "diagnoses": [
+            {
+                "preset": item["preset"],
+                "classification": item.get("classification"),
+                "healthy": item.get("healthy"),
+                "layer": item.get("layer"),
+                "priority": item.get("priority"),
+                "recommended_commands": item.get("recommended_commands"),
+                "recommended_command_entries": item.get("recommended_command_entries"),
+                "recommended_files": item.get("recommended_files"),
+                "rollback_note": item.get("rollback_note"),
+                "risk": item.get("risk"),
+                "requires_sudo": item.get("requires_sudo"),
+                "safe_in_live_session": item.get("safe_in_live_session"),
+            }
+            for item in diagnoses
+        ],
+        "next_actions": actions,
+    }
+    print(json.dumps(output, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

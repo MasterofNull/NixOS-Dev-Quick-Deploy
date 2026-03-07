@@ -1,0 +1,698 @@
+#!/usr/bin/env python3
+"""
+aq-capability-gap — classify missing tools, workflows, and skills.
+
+This is the control-plane entrypoint for capability gaps: command not found,
+missing workflow blueprints, absent repo scripts, or broken skill bodies.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import shutil
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CATALOG_PATH = REPO_ROOT / "config" / "capability-gap-catalog.json"
+STACK_HINTS_PATH = REPO_ROOT / "config" / "capability-stack-hints.json"
+PACKAGE_RESOLVERS_PATH = REPO_ROOT / "config" / "capability-package-resolvers.json"
+WORKFLOW_BLUEPRINTS = REPO_ROOT / "config" / "workflow-blueprints.json"
+DEFAULT_OBSERVATIONS_PATH = REPO_ROOT / ".cache" / "capability-gap-observations.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Classify and plan remediation for missing tools, workflows, or skills.")
+    parser.add_argument("--tool", help="Binary or repo command to inspect.")
+    parser.add_argument("--workflow", help="Workflow blueprint id to inspect.")
+    parser.add_argument("--skill", help="Skill name to inspect.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint, for example nix, python, shell.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint, for example nixos, ai-stack, prsi.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--format", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    parser.add_argument("--catalog", default=str(CATALOG_PATH), help="Capability gap catalog path.")
+    return parser.parse_args()
+
+
+def forced_missing_set() -> set[str]:
+    raw = os.getenv("AQ_CAPABILITY_GAP_FORCE_MISSING", "")
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def observations_path() -> Path:
+    override = os.getenv("AQ_CAPABILITY_GAP_OBSERVATIONS_FILE", "").strip()
+    return Path(override) if override else DEFAULT_OBSERVATIONS_PATH
+
+
+def promotion_threshold() -> int:
+    raw = os.getenv("AQ_CAPABILITY_GAP_PROMOTION_THRESHOLD", "2").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return 2
+    return max(1, value)
+
+
+def load_observations(path: Path) -> dict:
+    if not path.exists():
+        return {"observations": {}}
+    try:
+        return load_json(path)
+    except Exception:
+        return {"observations": {}}
+
+
+def save_observations(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def observe_unknown_capability(capability_id: str, capability_type: str) -> dict:
+    path = observations_path()
+    payload = load_observations(path)
+    observations = payload.setdefault("observations", {})
+    key = f"{capability_type}:{capability_id}"
+    entry = observations.get(
+        key,
+        {
+            "capability_id": capability_id,
+            "capability_type": capability_type,
+            "count": 0,
+            "first_seen_utc": "",
+            "last_seen_utc": "",
+        },
+    )
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    if not entry.get("first_seen_utc"):
+        entry["first_seen_utc"] = now
+    entry["last_seen_utc"] = now
+    entry["count"] = int(entry.get("count", 0)) + 1
+    observations[key] = entry
+    save_observations(path, payload)
+    threshold = promotion_threshold()
+    return {
+        "state_file": str(path),
+        "count": entry["count"],
+        "promotion_threshold": threshold,
+        "promotion_candidate": entry["count"] >= threshold,
+        "first_seen_utc": entry.get("first_seen_utc", ""),
+        "last_seen_utc": entry.get("last_seen_utc", ""),
+    }
+
+
+def load_catalog(path: Path) -> dict:
+    return load_json(path)
+
+
+def load_stack_hints(path: Path) -> dict:
+    return load_json(path)
+
+
+def load_package_resolvers(path: Path) -> dict:
+    return load_json(path)
+
+
+def repo_manifest_candidates() -> set[str]:
+    raw = os.getenv("AQ_CAPABILITY_GAP_REPO_FILES", "").strip()
+    if raw:
+        return {item.strip() for item in raw.split(",") if item.strip()}
+    patterns = [
+        "Cargo.toml",
+        "pyproject.toml",
+        "requirements.txt",
+        "package.json",
+        "tsconfig.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "bun.lockb",
+        "go.mod",
+        "go.sum",
+        "composer.json",
+        "composer.lock",
+        "pubspec.yaml",
+        "mix.exs",
+        "mix.lock",
+        "Gemfile",
+        "Gemfile.lock",
+        "Package.swift",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        ".csproj",
+        ".sln",
+        "flake.nix",
+    ]
+    found: set[str] = set()
+    skip_dirs = {
+        ".git",
+        ".cache",
+        ".pytest_cache",
+        "__pycache__",
+        "node_modules",
+        "dist",
+        "result",
+        ".direnv",
+    }
+    pattern_set = set(patterns)
+    for root, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [item for item in dirs if item not in skip_dirs]
+        for name in files:
+            if name not in pattern_set:
+                continue
+            path = Path(root) / name
+            try:
+                rel = path.relative_to(REPO_ROOT)
+            except ValueError:
+                continue
+            found.add(str(rel))
+    return found
+
+
+def effective_repo_files(repo_files: set[str], context: dict) -> set[str]:
+    combined = set(repo_files)
+    context_file = context.get("file", "")
+    if context_file:
+        combined.add(context_file)
+        combined.add(Path(context_file).name)
+    return combined
+
+
+def matched_repo_paths(required_names: list[str], repo_files: set[str]) -> list[str]:
+    matched: list[str] = []
+    for repo_file in sorted(repo_files):
+        for required in required_names:
+            basename = repo_file.rsplit("/", 1)[-1]
+            if repo_file == required or repo_file.endswith(f"/{required}") or (required.startswith(".") and basename.endswith(required)):
+                matched.append(repo_file)
+                break
+    return matched
+
+
+def load_workflow_ids() -> set[str]:
+    payload = load_json(WORKFLOW_BLUEPRINTS)
+    return {item.get("id", "") for item in payload.get("blueprints", []) if isinstance(item, dict)}
+
+
+def normalize_request(args: argparse.Namespace) -> tuple[str, str]:
+    if args.workflow:
+        return f"workflow:{args.workflow}", "workflow"
+    if args.skill:
+        return f"skill:{args.skill}", "skill"
+    if args.tool:
+        return args.tool, "tool"
+    raise SystemExit("one of --tool, --workflow, or --skill is required")
+
+
+def match_catalog_entry(catalog: dict, capability_id: str) -> dict | None:
+    for entry in catalog.get("capabilities", []):
+        if entry.get("id") == capability_id:
+            return entry
+        aliases = entry.get("aliases", [])
+        if capability_id in aliases:
+            return entry
+    return None
+
+
+def repo_script_path(name: str) -> Path:
+    return REPO_ROOT / "scripts" / "ai" / name
+
+
+def detect_binary(name: str, force_missing: set[str]) -> dict:
+    if name in force_missing:
+        return {"available": False, "location": "", "root_cause": "forced_missing_for_test"}
+    repo_path = repo_script_path(name)
+    if repo_path.exists():
+        return {"available": True, "location": str(repo_path), "root_cause": "repo_script_present"}
+    location = shutil.which(name)
+    return {
+        "available": bool(location),
+        "location": location or "",
+        "root_cause": "binary_on_path" if location else "binary_not_on_path",
+    }
+
+
+def detect_workflow(workflow_id: str, force_missing: set[str]) -> dict:
+    capability_id = f"workflow:{workflow_id}"
+    if capability_id in force_missing:
+        return {"available": False, "location": "", "root_cause": "forced_missing_for_test"}
+    workflow_ids = load_workflow_ids()
+    return {
+        "available": workflow_id in workflow_ids,
+        "location": str(WORKFLOW_BLUEPRINTS),
+        "root_cause": "workflow_blueprint_present" if workflow_id in workflow_ids else "workflow_blueprint_missing",
+    }
+
+
+def detect_skill(skill_name: str, force_missing: set[str]) -> dict:
+    capability_id = f"skill:{skill_name}"
+    if capability_id in force_missing:
+        return {"available": False, "location": "", "root_cause": "forced_missing_for_test"}
+    skill_path = REPO_ROOT / ".agent" / "skills" / skill_name / "SKILL.md"
+    return {
+        "available": skill_path.exists(),
+        "location": str(skill_path),
+        "root_cause": "skill_present" if skill_path.exists() else "skill_missing",
+    }
+
+
+def classify(capability_id: str, capability_type: str, detection: dict, catalog_entry: dict | None) -> str:
+    if detection.get("available"):
+        return "available"
+    if catalog_entry is None:
+        return "unknown_capability"
+    layer = catalog_entry.get("preferred_fix_layer", "unknown")
+    mapping = {
+        "declarative_nix": "missing_declarative_tool",
+        "repo_script": "missing_repo_tooling",
+        "workflow_blueprint": "missing_workflow_blueprint",
+        "skill_registry": "missing_skill",
+        "native_or_fallback_installer": "missing_external_cli",
+    }
+    return mapping.get(layer, f"missing_{capability_type}")
+
+
+def build_context(args: argparse.Namespace) -> dict:
+    return {
+        "language": args.context_language or "",
+        "application": args.context_application or "",
+        "file": args.context_file or "",
+    }
+
+
+def matcher_matches(matcher: dict, capability_id: str, capability_type: str, entry: dict | None, context: dict) -> bool:
+    preferred_fix_layer = (entry or {}).get("preferred_fix_layer", "")
+    match_mode = matcher.get("match_mode", "all")
+    checks = [
+        ("capability_ids", capability_id),
+        ("capability_types", capability_type),
+        ("context_languages", context.get("language", "")),
+        ("context_applications", context.get("application", "")),
+        ("preferred_fix_layers", preferred_fix_layer),
+    ]
+    matched_any = False
+    has_selector = False
+    for key, value in checks:
+        options = matcher.get(key, [])
+        if options:
+            has_selector = True
+            if value not in options:
+                if match_mode == "all":
+                    return False
+            else:
+                matched_any = True
+    prefixes = matcher.get("capability_prefixes", [])
+    if prefixes:
+        has_selector = True
+        prefix_match = any(capability_id.startswith(prefix) for prefix in prefixes)
+        if not prefix_match and match_mode == "all":
+            return False
+        if prefix_match:
+            matched_any = True
+    if not has_selector:
+        return False
+    return matched_any if match_mode == "any" else True
+
+
+def resolver_matches(matcher: dict, capability_id: str, capability_type: str, entry: dict | None, classification: str, context: dict, ecosystem: list[str], repo_files: set[str]) -> tuple[bool, list[str]]:
+    preferred_fix_layer = (entry or {}).get("preferred_fix_layer", "")
+    match_mode = matcher.get("match_mode", "all")
+    context_language = context.get("language", "")
+    context_application = context.get("application", "")
+    if context_language and matcher.get("context_languages") and context_language not in matcher.get("context_languages", []):
+        return False, []
+    if context_application and matcher.get("context_applications") and context_application not in matcher.get("context_applications", []):
+        return False, []
+    if matcher.get("classifications") and classification not in matcher.get("classifications", []):
+        return False, []
+    checks = [
+        ("capability_ids", capability_id),
+        ("capability_types", capability_type),
+        ("context_languages", context_language),
+        ("context_applications", context_application),
+        ("preferred_fix_layers", preferred_fix_layer),
+        ("classifications", classification),
+    ]
+    matched_any = False
+    has_selector = False
+    matched_repo_files: list[str] = []
+    for key, value in checks:
+        options = matcher.get(key, [])
+        if options:
+            has_selector = True
+            if value not in options:
+                if match_mode == "all":
+                    return False, []
+            else:
+                matched_any = True
+    prefixes = matcher.get("capability_prefixes", [])
+    if prefixes:
+        has_selector = True
+        prefix_match = any(capability_id.startswith(prefix) for prefix in prefixes)
+        if not prefix_match and match_mode == "all":
+            return False, []
+        if prefix_match:
+            matched_any = True
+    ecosystem_options = matcher.get("ecosystem_hints", [])
+    if ecosystem_options:
+        has_selector = True
+        ecosystem_match = any(item in ecosystem for item in ecosystem_options)
+        if not ecosystem_match and match_mode == "all":
+            return False, []
+        if ecosystem_match:
+            matched_any = True
+    repo_any = matcher.get("repo_files_any", [])
+    if repo_any:
+        has_selector = True
+        repo_matches = matched_repo_paths(repo_any, repo_files)
+        if not repo_matches:
+            return False, []
+        if repo_matches:
+            matched_any = True
+            matched_repo_files.extend(repo_matches)
+    repo_all = matcher.get("repo_files_all", [])
+    if repo_all:
+        has_selector = True
+        repo_matches = matched_repo_paths(repo_all, repo_files)
+        matched_required = {path.rsplit("/", 1)[-1] for path in repo_matches}
+        if len(matched_required) != len(repo_all):
+            return False, []
+        else:
+            matched_any = True
+            matched_repo_files.extend(repo_matches)
+    if not has_selector:
+        return False, []
+    return (matched_any if match_mode == "any" else True), sorted(set(matched_repo_files))
+
+
+def resolver_hints(capability_id: str, capability_type: str, entry: dict | None, classification: str, context: dict, ecosystem: list[str], resolver_registry: dict, repo_files: set[str]) -> tuple[list[dict], list[str]]:
+    catalog_hints = (entry or {}).get("resolver_hints", [])
+    if catalog_hints:
+        return list(catalog_hints), []
+    matches: list[dict] = []
+    matched_repo_files: list[str] = []
+    for matcher in resolver_registry.get("matchers", []):
+        matched, repo_matches = resolver_matches(matcher, capability_id, capability_type, entry, classification, context, ecosystem, repo_files)
+        if not matched:
+            continue
+        matched_repo_files.extend(repo_matches)
+        for item in matcher.get("resolver_hints", []):
+            candidate = dict(item)
+            candidate["matcher_id"] = matcher.get("id", "")
+            if repo_matches:
+                candidate["matched_repo_files"] = repo_matches
+            matches.append(candidate)
+    if not matches:
+        return list(resolver_registry.get("defaults", {}).get("resolver_hints", [])), []
+    matches.sort(key=lambda item: (item.get("priority", 999), item.get("resolver", "")))
+    return matches, sorted(set(matched_repo_files))
+
+
+def stack_hint_bundle(capability_id: str, capability_type: str, entry: dict | None, context: dict, stack_hints: dict) -> dict:
+    defaults = stack_hints.get("defaults", {})
+    result = {
+        "ecosystem_hints": [],
+        "package_hints": [],
+        "source_hints": [],
+        "missing_origin": "",
+        "stack_matchers_applied": [],
+    }
+    for matcher in stack_hints.get("matchers", []):
+        if not matcher_matches(matcher, capability_id, capability_type, entry, context):
+            continue
+        matcher_id = matcher.get("id", "")
+        if matcher_id and matcher_id not in result["stack_matchers_applied"]:
+            result["stack_matchers_applied"].append(matcher_id)
+        for field in ("ecosystem_hints", "package_hints", "source_hints"):
+            for item in matcher.get(field, []):
+                if item and item not in result[field]:
+                    result[field].append(item)
+        if matcher.get("missing_origin") and not result["missing_origin"]:
+            result["missing_origin"] = matcher["missing_origin"]
+    if not result["missing_origin"]:
+        result["missing_origin"] = defaults.get("missing_origin", "unclassified_missing_capability")
+    for field in ("ecosystem_hints", "package_hints", "source_hints"):
+        if not result[field]:
+            result[field] = list(defaults.get(field, []))
+    return result
+
+
+def source_hints(capability_id: str, capability_type: str, entry: dict | None, context: dict, stack_hints: dict) -> list[str]:
+    catalog_hints = (entry or {}).get("source_hints", [])
+    if catalog_hints:
+        hints = list(catalog_hints)
+        if context.get("file"):
+            hints = [context["file"]] + hints
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for hint in hints:
+            if hint and hint not in seen:
+                ordered.append(hint)
+                seen.add(hint)
+        return ordered
+    hints: list[str] = []
+    if context.get("file"):
+        hints.append(context["file"])
+    hints.extend(stack_hint_bundle(capability_id, capability_type, entry, context, stack_hints).get("source_hints", []))
+    if capability_type == "skill":
+        skill_name = capability_id.split("skill:", 1)[1] if capability_id.startswith("skill:") else capability_id
+        hints.insert(0, f".agent/skills/{skill_name}/SKILL.md")
+    hints.append("config/capability-gap-catalog.json")
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for hint in hints:
+        if hint and hint not in seen:
+            ordered.append(hint)
+            seen.add(hint)
+    return ordered
+
+
+def merge_source_hints(base_hints: list[str], repo_manifest_matches: list[str]) -> list[str]:
+    hints = list(repo_manifest_matches) + list(base_hints)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for hint in hints:
+        if hint and hint not in seen:
+            ordered.append(hint)
+            seen.add(hint)
+    return ordered
+
+
+def ordered_repo_manifest_matches(resolver_hint_entries: list[dict], fallback_matches: list[str]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for entry in resolver_hint_entries:
+        for match in entry.get("matched_repo_files", []):
+            if match and match not in seen:
+                ordered.append(match)
+                seen.add(match)
+    for match in fallback_matches:
+        if match and match not in seen:
+            ordered.append(match)
+            seen.add(match)
+    return ordered
+
+
+def ecosystem_hints(capability_id: str, capability_type: str, entry: dict | None, context: dict, stack_hints: dict) -> list[str]:
+    catalog_hints = (entry or {}).get("ecosystem_hints", [])
+    if catalog_hints:
+        hints = list(catalog_hints)
+        language = context.get("language", "")
+        application = context.get("application", "")
+        if language and language not in hints:
+            hints.insert(0, language)
+        if application and application not in hints:
+            insert_at = 1 if language and language in hints else 0
+            hints.insert(insert_at, application)
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for hint in hints:
+            if hint and hint not in seen:
+                ordered.append(hint)
+                seen.add(hint)
+        return ordered
+    hints: list[str] = []
+    language = context.get("language", "")
+    application = context.get("application", "")
+
+    if language:
+        hints.append(language)
+    if application:
+        hints.append(application)
+    hints.extend(stack_hint_bundle(capability_id, capability_type, entry, context, stack_hints).get("ecosystem_hints", []))
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for hint in hints:
+        if hint and hint not in seen:
+            ordered.append(hint)
+            seen.add(hint)
+    return ordered
+
+
+def missing_origin(capability_id: str, capability_type: str, entry: dict | None, detection: dict, context: dict, stack_hints: dict) -> str:
+    if (entry or {}).get("missing_origin"):
+        return str(entry["missing_origin"])
+    if detection.get("available"):
+        return "available"
+    inferred = stack_hint_bundle(capability_id, capability_type, entry, context, stack_hints).get("missing_origin", "")
+    if inferred:
+        return inferred
+    if entry is None:
+        return "unclassified_missing_capability"
+    return "repo_or_system_integration"
+
+
+def package_hints(capability_id: str, capability_type: str, entry: dict | None, context: dict, stack_hints: dict) -> list[str]:
+    catalog_hints = (entry or {}).get("package_hints", [])
+    if catalog_hints:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for hint in catalog_hints:
+            if hint and hint not in seen:
+                ordered.append(hint)
+                seen.add(hint)
+        return ordered
+    if capability_type in {"workflow", "skill"}:
+        return []
+    hints = stack_hint_bundle(capability_id, capability_type, entry, context, stack_hints).get("package_hints", [])
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for hint in hints:
+        if hint and hint not in seen:
+            ordered.append(hint)
+            seen.add(hint)
+    return ordered
+
+
+def remediation(entry: dict | None, capability_id: str, capability_type: str, classification: str, context: dict, observation: dict) -> dict:
+    context_flags = []
+    if context.get("language"):
+        context_flags.extend(["--context-language", context["language"]])
+    if context.get("application"):
+        context_flags.extend(["--context-application", context["application"]])
+    if context.get("file"):
+        context_flags.extend(["--context-file", context["file"]])
+    context_suffix = (" " + " ".join(context_flags)) if context_flags else ""
+    if entry is None:
+        stub_cmd = (
+            f"python3 scripts/ai/aq-capability-stub --tool {capability_id}{context_suffix}" if not capability_id.startswith(("workflow:", "skill:")) else (
+                f"python3 scripts/ai/aq-capability-stub --workflow {capability_id.split('workflow:',1)[1]}{context_suffix}"
+                if capability_id.startswith("workflow:") else
+                f"python3 scripts/ai/aq-capability-stub --skill {capability_id.split('skill:',1)[1]}{context_suffix}"
+            )
+        )
+        promote_cmd = (
+            f"python3 scripts/ai/aq-capability-promote --tool {capability_id}{context_suffix}" if capability_type == "tool" else (
+                f"python3 scripts/ai/aq-capability-promote --workflow {capability_id.split('workflow:',1)[1]}{context_suffix}"
+                if capability_type == "workflow" else
+                f"python3 scripts/ai/aq-capability-promote --skill {capability_id.split('skill:',1)[1]}{context_suffix}"
+            )
+        )
+        recommended_actions = [
+            stub_cmd,
+            f"aq-context-bootstrap --task \"add remediation path for missing capability {capability_id}\" --scope harness-first --format json"
+        ]
+        if observation.get("promotion_candidate"):
+            recommended_actions.insert(1, promote_cmd)
+        return {
+            "summary": "Capability is not cataloged yet. Add it to the capability-gap catalog before automating remediation.",
+            "preferred_fix_layer": "catalog_extension",
+            "recommended_actions": recommended_actions,
+            "files": [
+                "config/capability-gap-catalog.json"
+            ],
+            "rollback": "No automated remediation path exists yet.",
+        }
+    return {
+        "summary": entry.get("summary", ""),
+        "preferred_fix_layer": entry.get("preferred_fix_layer", "unknown"),
+        "recommended_actions": entry.get("recommended_actions", []),
+        "files": entry.get("files", []),
+        "rollback": entry.get("rollback", ""),
+    }
+
+
+def format_text(payload: dict) -> str:
+    lines = [
+        f"capability: {payload['capability_id']}",
+        f"type: {payload['capability_type']}",
+        f"classification: {payload['classification']}",
+        f"available: {payload['available']}",
+    ]
+    if payload.get("location"):
+        lines.append(f"location: {payload['location']}")
+    lines.append(f"root_cause: {payload['root_cause']}")
+    lines.append(f"preferred_fix_layer: {payload['preferred_fix_layer']}")
+    lines.append(f"summary: {payload['summary']}")
+    lines.append("recommended_actions:")
+    for item in payload.get("recommended_actions", []):
+        lines.append(f"- {item}")
+    lines.append("files:")
+    for item in payload.get("files", []):
+        lines.append(f"- {item}")
+    lines.append(f"rollback: {payload['rollback']}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    capability_id, capability_type = normalize_request(args)
+    catalog = load_catalog(Path(args.catalog))
+    stack_hints = load_stack_hints(STACK_HINTS_PATH)
+    package_resolvers = load_package_resolvers(PACKAGE_RESOLVERS_PATH)
+    context = build_context(args)
+    repo_files = effective_repo_files(repo_manifest_candidates(), context)
+    force_missing = forced_missing_set()
+
+    if capability_type == "workflow":
+        detection = detect_workflow(args.workflow, force_missing)
+    elif capability_type == "skill":
+        detection = detect_skill(args.skill, force_missing)
+    else:
+        detection = detect_binary(args.tool, force_missing)
+
+    entry = match_catalog_entry(catalog, capability_id)
+    classification = classify(capability_id, capability_type, detection, entry)
+    observation = observe_unknown_capability(capability_id, capability_type) if classification == "unknown_capability" else {}
+    fix = remediation(entry, capability_id, capability_type, classification, context, observation)
+    ecosystem = ecosystem_hints(capability_id, capability_type, entry, context, stack_hints)
+    resolved_hints, matched_repo_files = resolver_hints(capability_id, capability_type, entry, classification, context, ecosystem, package_resolvers, repo_files)
+    base_source_hints = source_hints(capability_id, capability_type, entry, context, stack_hints)
+    prioritized_repo_matches = ordered_repo_manifest_matches(resolved_hints, matched_repo_files)
+    payload = {
+        "capability_id": capability_id,
+        "capability_type": capability_type,
+        "context": context,
+        "classification": classification,
+        "available": detection.get("available", False),
+        "location": detection.get("location", ""),
+        "root_cause": detection.get("root_cause", ""),
+        "missing_origin": missing_origin(capability_id, capability_type, entry, detection, context, stack_hints),
+        "ecosystem_hints": ecosystem,
+        "package_hints": package_hints(capability_id, capability_type, entry, context, stack_hints),
+        "resolver_hints": resolved_hints,
+        "repo_manifest_matches": prioritized_repo_matches,
+        "stack_matchers_applied": stack_hint_bundle(capability_id, capability_type, entry, context, stack_hints).get("stack_matchers_applied", []),
+        "summary": fix["summary"],
+        "preferred_fix_layer": fix["preferred_fix_layer"],
+        "source_hints": merge_source_hints(base_source_hints, prioritized_repo_matches),
+        "recommended_actions": fix["recommended_actions"],
+        "files": fix["files"],
+        "rollback": fix["rollback"],
+        "observation": observation,
+    }
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(format_text(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

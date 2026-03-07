@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+aq-capability-remediate — preview or execute next actions from aq-capability-plan.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+POLICY_PATH = REPO_ROOT / "config" / "capability-remediation-policy.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Preview or execute aq-capability-plan next actions.")
+    parser.add_argument("--plan-file", help="Use an existing aq-capability-plan JSON file.")
+    parser.add_argument("--gap-file", help="Forward an existing aq-capability-gap JSON file into aq-capability-plan.")
+    parser.add_argument("--tool", help="Binary or repo command to inspect.")
+    parser.add_argument("--workflow", help="Workflow blueprint id to inspect.")
+    parser.add_argument("--skill", help="Skill name to inspect.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--action-index", type=int, default=0)
+    parser.add_argument("--list-actions", action="store_true")
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--policy-file", default=str(POLICY_PATH))
+    parser.add_argument("--allow-unsafe-live", action="store_true")
+    return parser.parse_args()
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_plan(args: argparse.Namespace) -> dict:
+    if args.plan_file:
+        return load_json(Path(args.plan_file))
+    cmd = ["python3", "scripts/ai/aq-capability-plan"]
+    if args.gap_file:
+        cmd.extend(["--gap-file", args.gap_file])
+    if args.context_language:
+        cmd.extend(["--context-language", args.context_language])
+    if args.context_application:
+        cmd.extend(["--context-application", args.context_application])
+    if args.context_file:
+        cmd.extend(["--context-file", args.context_file])
+    if args.workflow:
+        cmd.extend(["--workflow", args.workflow])
+    elif args.skill:
+        cmd.extend(["--skill", args.skill])
+    elif args.tool:
+        cmd.extend(["--tool", args.tool])
+    elif not args.gap_file:
+        raise SystemExit("one of --tool, --workflow, --skill, --gap-file, or --plan-file is required")
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    return json.loads(proc.stdout)
+
+
+def load_policy(path: Path) -> dict:
+    return load_json(path)
+
+
+def allowed(command: str, policy: dict) -> bool:
+    return any(command == prefix or command.startswith(prefix) for prefix in policy.get("allowed_prefixes", []))
+
+
+def execute_commands(action: dict, policy: dict, allow_unsafe_live: bool) -> list[dict]:
+    results = []
+    for entry in action.get("command_entries", []):
+        cmd = entry.get("cmd", "")
+        if not entry.get("safe_in_live_session", True) and not allow_unsafe_live:
+            results.append(
+                {
+                    "command": cmd,
+                    "returncode": 126,
+                    "stdout": "",
+                    "stderr": "blocked: command metadata is not safe in live session; pass --allow-unsafe-live to override",
+                    "blocked": True,
+                    "block_reason": "unsafe_live_session",
+                    "required_overrides": ["--allow-unsafe-live"],
+                    "rollback": action.get("rollback", ""),
+                }
+            )
+            break
+        if not allowed(cmd, policy):
+            results.append(
+                {
+                    "command": cmd,
+                    "returncode": 126,
+                    "stdout": "",
+                    "stderr": "blocked by capability remediation policy",
+                    "blocked": True,
+                    "block_reason": "policy_prefix_not_allowed",
+                    "required_overrides": [],
+                    "rollback": action.get("rollback", ""),
+                }
+            )
+            break
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, shell=True, text=True, capture_output=True)
+        results.append(
+            {
+                "command": cmd,
+                "returncode": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+                "blocked": False,
+                "block_reason": None,
+                "required_overrides": [],
+                "rollback": action.get("rollback", ""),
+            }
+        )
+        if proc.returncode != 0:
+            break
+    return results
+
+
+def main() -> int:
+    args = parse_args()
+    plan = build_plan(args)
+    actions = plan.get("next_actions", [])
+    if not actions:
+        print(json.dumps({"error": "no next_actions in plan"}, indent=2), file=sys.stderr)
+        return 1
+    if args.list_actions:
+        print(json.dumps({"mode": "list", "actions": actions}, indent=2))
+        return 0
+    if args.action_index < 0 or args.action_index >= len(actions):
+        print(json.dumps({"error": "action-index out of range", "count": len(actions)}, indent=2), file=sys.stderr)
+        return 2
+    action = actions[args.action_index]
+    output = {
+        "mode": "execute" if args.execute else "dry-run",
+        "action": action,
+        "selection": {
+            "selected_action_index": args.action_index,
+            "selected_action_id": action.get("action_id", ""),
+            "summary": action.get("summary", ""),
+        },
+        "source_hints": plan.get("gap", {}).get("source_hints", action.get("source_hints", [])),
+        "missing_origin": plan.get("gap", {}).get("missing_origin", ""),
+        "ecosystem_hints": plan.get("gap", {}).get("ecosystem_hints", []),
+        "package_hints": plan.get("gap", {}).get("package_hints", []),
+        "resolver_hints": plan.get("gap", {}).get("resolver_hints", []),
+        "repo_manifest_matches": plan.get("gap", {}).get("repo_manifest_matches", []),
+        "stack_matchers_applied": plan.get("gap", {}).get("stack_matchers_applied", action.get("stack_matchers_applied", [])),
+        "policy_file": args.policy_file,
+    }
+    if args.execute:
+        output["results"] = execute_commands(action, load_policy(Path(args.policy_file)), args.allow_unsafe_live)
+    print(json.dumps(output, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

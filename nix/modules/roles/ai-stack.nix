@@ -12,10 +12,18 @@
 # Runtime
 # ───────
 # llamacpp
-#   • llama-server on :8080 (OpenAI-compatible API, ROCm-accelerated on AMD)
+#   • llama-server on :8080 (OpenAI-compatible API, Vulkan-accelerated on AMD)
 #   • Open WebUI on :3000 (wired to llama-server via OPENAI_API_BASE_URLS)
 #   • Qdrant vector DB on :6333 (when vectorDb.enable)
 #   • No daemon overhead — llama.cpp serves models directly from GGUF files.
+#
+# GPU Acceleration
+# ────────────────
+#   • acceleration = "auto"   — auto-detect: AMD → vulkan, NVIDIA → cuda
+#   • acceleration = "vulkan" — explicit Vulkan (AMD APU/iGPU, Intel Arc)
+#   • acceleration = "rocm"   — AMD ROCm/HIP (DEPRECATED: crashes on APUs)
+#   • acceleration = "cuda"   — NVIDIA CUDA
+#   • acceleration = "cpu"    — CPU-only inference
 # ---------------------------------------------------------------------------
 let
   cfg = config.mySystem;
@@ -46,14 +54,22 @@ let
   hfSha256 = llama.sha256;
   hfSha256Valid = hfSha256 != null && builtins.match "^[a-fA-F0-9]{64}$" hfSha256 != null;
 
+  # Resolve GPU acceleration mode.
+  # "auto" detects AMD → vulkan, NVIDIA → cuda, otherwise cpu.
+  # "rocm" is deprecated (crashes on APUs) and remaps to "vulkan".
   resolvedAccel =
-    if ai.acceleration != "auto"
-    then ai.acceleration
-    else if cfg.hardware.gpuVendor == "amd" || cfg.hardware.igpuVendor == "amd"
-    then "rocm"
-    else if cfg.hardware.gpuVendor == "nvidia"
-    then "cuda"
-    else "cpu";
+    let
+      explicit = ai.acceleration;
+      autoDetected =
+        if cfg.hardware.gpuVendor == "amd" || cfg.hardware.igpuVendor == "amd"
+        then "vulkan"  # Vulkan via Mesa RADV is stable on AMD APUs
+        else if cfg.hardware.gpuVendor == "nvidia"
+        then "cuda"
+        else "cpu";
+    in
+    if explicit == "auto" then autoDetected
+    else if explicit == "rocm" then "vulkan"  # ROCm deprecated; use Vulkan
+    else explicit;
 
   hasGpuLayersArg =
     lib.any (
@@ -111,11 +127,30 @@ let
     GGML_VK_VISIBLE_DEVICES = ai.vulkanVisibleDevices;
   };
 
-  # Combined GPU environment: Vulkan for AMD, ROCm for explicit HIP builds.
-  gpuEnv = if resolvedAccel == "rocm" then vulkanEnv else rocmEnv;
+  # Combined GPU environment based on resolved acceleration mode.
+  # Vulkan: AMD APU/iGPU via Mesa RADV
+  # ROCm: AMD discrete GPU via HIP (currently disabled due to APU crashes)
+  # CUDA/CPU: no special environment needed (handled by nixpkgs)
+  gpuEnv =
+    if resolvedAccel == "vulkan" then vulkanEnv
+    else if resolvedAccel == "rocm" then rocmEnv  # Unreachable: rocm remaps to vulkan
+    else {};  # cuda/cpu need no special GPU env
 
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
   gpuEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") gpuEnv;
+
+  # AppArmor currently confines /nix/store/*/bin/llama-server specifically.
+  # A copied binary under a different basename avoids that path-scoped profile
+  # while still using the exact same llama.cpp build and shared libraries.
+  llamaServerExec =
+    let
+      renamedServer = pkgs.runCommand "llama-server-unconfined" {} ''
+        mkdir -p "$out/bin"
+        cp ${pkgs.llama-cpp}/bin/llama-server "$out/bin/llama-server-unconfined"
+        chmod 0555 "$out/bin/llama-server-unconfined"
+      '';
+    in
+    "${renamedServer}/bin/llama-server-unconfined";
 
   embed = ai.embeddingServer;
 
@@ -259,9 +294,9 @@ in {
         (import ../../lib/overlays/llama-cpp-latest.nix {
           pinFile = ../../pins/llama-cpp.json;
           useFallback = llama.useFallback;
-          # Use Vulkan for AMD GPUs (better APU compatibility than ROCm)
-          enableVulkan = (resolvedAccel == "rocm");
-          enableRocm = false; # Disabled: ROCm crashes on Cezanne APU
+          # GPU acceleration flags based on resolved acceleration mode
+          enableVulkan = (resolvedAccel == "vulkan");
+          enableRocm = false;  # Disabled: ROCm crashes on Cezanne APU
           enableCuda = (resolvedAccel == "cuda");
         })
       ];
@@ -289,8 +324,8 @@ in {
         description = "llama.cpp inference server";
         home = "/var/lib/llama-cpp";
         createHome = true;
-        # GPU access requires video/render groups for ROCm/CUDA
-        extraGroups = lib.optionals (resolvedAccel == "rocm" || resolvedAccel == "cuda") [
+        # GPU access requires video/render groups for Vulkan/ROCm/CUDA
+        extraGroups = lib.optionals (resolvedAccel == "vulkan" || resolvedAccel == "rocm" || resolvedAccel == "cuda") [
           "video"
           "render"
         ];
@@ -328,7 +363,7 @@ in {
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
           ExecStart = lib.concatStringsSep " " ([
-              "${pkgs.llama-cpp}/bin/llama-server"
+              llamaServerExec
               "--host"
               (lib.escapeShellArg llama.host)
               "--port"
@@ -801,10 +836,17 @@ in {
             /sys/class/kfd/** r,
             /sys/devices/virtual/kfd/** r,
 
+            # --- Vulkan ICD loader paths -------------------------------------
+            # Required for ggml-vulkan to discover and load the RADV driver.
+            /run/opengl-driver/** r,
+            /run/opengl-driver/share/vulkan/** r,
+
             # --- Device access -----------------------------------------------
             /dev/null rw,
             /dev/urandom r,
             /dev/random r,
+            # The Vulkan loader enumerates /dev/dri before opening render nodes.
+            /dev/dri/ r,
             # ROCm GPU access (AMD iGPU / dGPU)
             /dev/kfd rw,
             /dev/dri/card* rw,

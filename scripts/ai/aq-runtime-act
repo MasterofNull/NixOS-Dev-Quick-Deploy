@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""
+aq-runtime-act — plan and select the recommended runtime action in one step.
+
+Builds or loads an aq-runtime-plan payload, then invokes aq-runtime-remediate
+using the plan's recommended execution order unless an explicit selector is
+provided.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Plan and select the recommended runtime action in one step.")
+    parser.add_argument("--plan-file", help="Use an existing aq-runtime-plan JSON file.")
+    parser.add_argument("--save-artifact", help="Write the wrapper output JSON to this path after generation.")
+    parser.add_argument("--execute", action="store_true", help="Execute the selected action commands.")
+    parser.add_argument("--policy-file", help="Forwarded to aq-runtime-remediate.")
+    parser.add_argument("--allow-sudo", action="store_true", help="Forwarded to aq-runtime-remediate.")
+    parser.add_argument("--allow-unsafe-live", action="store_true", help="Forwarded to aq-runtime-remediate.")
+    parser.add_argument("--preset", action="append", dest="presets", help="Forwarded to aq-runtime-plan.")
+    parser.add_argument("--qa-fixture", help="Forwarded to aq-runtime-plan.")
+    parser.add_argument("--diagnosis-fixture", action="append", dest="diagnosis_fixtures", help="Forwarded to aq-runtime-plan.")
+    parser.add_argument("--action-id", help="Override recommended selection with an explicit action_id.")
+    parser.add_argument("--action-group", help="Override recommended selection with an explicit action group.")
+    parser.add_argument("--group-action-index", type=int, default=0, help="Index within the selected action group.")
+    parser.add_argument("--list-actions", action="store_true", help="List actions/groups from the underlying plan and exit.")
+    parser.add_argument("--brief", action="store_true", help="Emit a compact summary payload instead of the full wrapper output.")
+    return parser.parse_args()
+
+
+def selection_strategy(args: argparse.Namespace) -> dict:
+    if args.list_actions:
+        return {"source": "wrapper", "mode": "list_actions"}
+    if args.action_id:
+        return {"source": "wrapper", "mode": "explicit_action_id", "action_id": args.action_id}
+    if args.action_group:
+        return {
+            "source": "wrapper",
+            "mode": "explicit_action_group",
+            "action_group": args.action_group,
+            "group_action_index": args.group_action_index,
+        }
+    return {"source": "planner", "mode": "prefer_plan_order"}
+
+
+def selection_reason(strategy: dict, plan: dict, remediate: dict) -> dict:
+    mode = strategy.get("mode", "unknown")
+    if mode == "list_actions":
+        return {"summary": "caller requested action listing only", "category": "wrapper_list"}
+    if mode == "explicit_action_id":
+        return {
+            "summary": f"caller forced action_id={strategy.get('action_id', '')}",
+            "category": "wrapper_override",
+            "action_id": strategy.get("action_id", ""),
+        }
+    if mode == "explicit_action_group":
+        return {
+            "summary": f"caller forced action_group={strategy.get('action_group', '')}",
+            "category": "wrapper_override",
+            "action_group": strategy.get("action_group", ""),
+            "group_action_index": strategy.get("group_action_index", 0),
+        }
+    execution_order = plan.get("execution_order", {})
+    plan_summary = plan.get("summary", {})
+    selected_group = remediate.get("selected_action_group", "")
+    selected_id = remediate.get("selected_action_id", "")
+    return {
+        "summary": f"planner recommended {selected_group or 'direct'} selection for action {selected_id}",
+        "category": "planner_recommended",
+        "selected_action_group": selected_group,
+        "selected_action_id": selected_id,
+        "phase0_failed": plan_summary.get("phase0_failed"),
+        "recommended_group_order": execution_order.get("recommended_group_order", []),
+    }
+
+
+def incident_summary(plan: dict, remediate: dict, strategy: dict, reason: dict) -> dict:
+    result_mode = remediate.get("mode", "unknown")
+    selected_id = remediate.get("selected_action_id", "")
+    selected_group = remediate.get("selected_action_group", "")
+    phase0_failed = plan.get("summary", {}).get("phase0_failed")
+    return {
+        "headline": f"{result_mode}: {selected_id or 'no_action'}",
+        "status": "attention_needed" if phase0_failed else "healthy_or_followup",
+        "selected_action_id": selected_id,
+        "selected_action_group": selected_group,
+        "selection_mode": strategy.get("mode", "unknown"),
+        "reason_summary": reason.get("summary", ""),
+    }
+
+
+def artifact_meta() -> dict:
+    return {
+        "tool": "aq-runtime-act",
+        "cwd": str(REPO_ROOT),
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+
+
+def brief_output(full_output: dict) -> dict:
+    result = full_output.get("result", {})
+    return {
+        "mode": full_output.get("mode", "dry-run"),
+        "artifact_meta": full_output.get("artifact_meta", {}),
+        "plan_summary": full_output.get("plan_summary", {}),
+        "context_cards": full_output.get("context_cards", {}),
+        "execution_order": full_output.get("execution_order", {}),
+        "selection_strategy": full_output.get("selection_strategy", {}),
+        "selection_reason": full_output.get("selection_reason", {}),
+        "incident_summary": full_output.get("incident_summary", {}),
+        "selection": result.get("selection", {}),
+        "selected_action_id": result.get("selected_action_id", ""),
+        "selected_action_group": result.get("selected_action_group", ""),
+        "result_mode": result.get("mode", ""),
+        "required_overrides": result.get("required_overrides", []),
+    }
+
+
+def build_plan(args: argparse.Namespace) -> dict:
+    if args.plan_file:
+        return json.loads(Path(args.plan_file).read_text(encoding="utf-8"))
+    cmd = ["python3", "scripts/ai/aq-runtime-plan"]
+    for preset in args.presets or []:
+        cmd.extend(["--preset", preset])
+    if args.qa_fixture:
+        cmd.extend(["--qa-fixture", args.qa_fixture])
+    for fixture in args.diagnosis_fixtures or []:
+        cmd.extend(["--diagnosis-fixture", fixture])
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stderr or proc.stdout)
+        raise SystemExit(proc.returncode)
+    return json.loads(proc.stdout)
+
+
+def run_remediate(plan_path: Path, args: argparse.Namespace) -> tuple[int, dict]:
+    cmd = ["python3", "scripts/ai/aq-runtime-remediate", "--plan-file", str(plan_path)]
+    if args.list_actions:
+        cmd.append("--list-actions")
+    elif args.action_id:
+        cmd.extend(["--action-id", args.action_id])
+    elif args.action_group:
+        cmd.extend(["--action-group", args.action_group, "--group-action-index", str(args.group_action_index)])
+    else:
+        cmd.append("--prefer-plan-order")
+    if args.execute:
+        cmd.append("--execute")
+    if args.policy_file:
+        cmd.extend(["--policy-file", args.policy_file])
+    if args.allow_sudo:
+        cmd.append("--allow-sudo")
+    if args.allow_unsafe_live:
+        cmd.append("--allow-unsafe-live")
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    payload = json.loads(proc.stdout) if proc.stdout.strip() else {}
+    if proc.returncode != 0 and proc.stderr.strip():
+        try:
+            payload = json.loads(proc.stderr)
+        except Exception:
+            payload = {"error": proc.stderr.strip()}
+    return proc.returncode, payload
+
+
+def main() -> int:
+    args = parse_args()
+    plan = build_plan(args)
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tmp:
+        json.dump(plan, tmp)
+        tmp_path = Path(tmp.name)
+    try:
+        returncode, remediate = run_remediate(tmp_path, args)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    strategy = selection_strategy(args)
+
+    reason = selection_reason(strategy, plan, remediate)
+    output = {
+        "mode": "execute" if args.execute else "dry-run",
+        "artifact_meta": artifact_meta(),
+        "plan_summary": plan.get("summary", {}),
+        "context_cards": plan.get("context_cards", {}),
+        "execution_order": plan.get("execution_order", {}),
+        "selection_strategy": strategy,
+        "selection_reason": reason,
+        "incident_summary": incident_summary(plan, remediate, strategy, reason),
+        "result": remediate,
+    }
+    if args.save_artifact:
+        artifact_path = Path(args.save_artifact)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
+        output["artifact_path"] = str(artifact_path)
+    print(json.dumps(brief_output(output) if args.brief else output, indent=2))
+    return returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

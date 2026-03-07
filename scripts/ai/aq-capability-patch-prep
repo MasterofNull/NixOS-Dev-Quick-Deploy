@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+aq-capability-patch-prep — prepare a bounded patch artifact for capability catalog changes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CATALOG_PATH = REPO_ROOT / "config" / "capability-gap-catalog.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Prepare a unified diff artifact for a capability catalog update.")
+    parser.add_argument("--updated-catalog-file", required=True, help="Updated catalog artifact from aq-capability-catalog-append.")
+    parser.add_argument("--catalog", default=str(CATALOG_PATH), help="Base capability catalog path.")
+    parser.add_argument("--output", required=True, help="Write the unified diff artifact to this path.")
+    parser.add_argument("--format", dest="fmt", default="json", choices=["json", "text"], help="Output format.")
+    return parser.parse_args()
+
+
+def load_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(load_text(path))
+
+
+def main() -> int:
+    args = parse_args()
+    catalog_path = Path(args.catalog)
+    updated_path = Path(args.updated_catalog_file)
+    output_path = Path(args.output)
+
+    base_text = load_text(catalog_path)
+    updated_text = load_text(updated_path)
+    if base_text == updated_text:
+        payload = {
+            "ok": False,
+            "error": "no diff between base catalog and updated artifact",
+            "catalog": str(catalog_path),
+            "updated_catalog_file": str(updated_path),
+        }
+        if args.fmt == "json":
+            print(json.dumps(payload, indent=2))
+        else:
+            print("ERROR: no diff between base catalog and updated artifact")
+        return 2
+
+    updated_json = load_json(updated_path)
+    base_json = load_json(catalog_path)
+    base_ids = {item.get("id", "") for item in base_json.get("capabilities", []) if isinstance(item, dict)}
+    updated_ids = [item.get("id", "") for item in updated_json.get("capabilities", []) if isinstance(item, dict)]
+    added_ids = [cap_id for cap_id in updated_ids if cap_id and cap_id not in base_ids]
+
+    diff_lines = list(
+        difflib.unified_diff(
+            base_text.splitlines(keepends=True),
+            updated_text.splitlines(keepends=True),
+            fromfile=str(catalog_path),
+            tofile=str(catalog_path),
+        )
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("".join(diff_lines), encoding="utf-8")
+
+    payload = {
+        "ok": True,
+        "catalog": str(catalog_path),
+        "updated_catalog_file": str(updated_path),
+        "output": str(output_path),
+        "added_capability_ids": added_ids,
+        "next_step": "review diff artifact and convert to a bounded repo patch if accepted",
+    }
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"prepared capability patch artifact: {output_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,50 @@
+{
+  "capability_id": "openskills",
+  "capability_type": "tool",
+  "classification": "missing_external_cli",
+  "available": false,
+  "location": "",
+  "root_cause": "forced_missing_for_test",
+  "missing_origin": "os_or_user_environment",
+  "ecosystem_hints": [
+    "cli",
+    "skill",
+    "external-cli",
+    "os"
+  ],
+  "package_hints": [
+    "nixpkgs if available",
+    "installer fallback only if declarative path is unavailable"
+  ],
+  "resolver_hints": [
+    {
+      "resolver": "npm",
+      "priority": 30,
+      "summary": "Use npm-based installer fallback only when nixpkgs or repo-local packaging is unavailable.",
+      "targets": [
+        "config/npm-packages.sh",
+        "npm",
+        "user environment"
+      ],
+      "matcher_id": "npm-resolver"
+    }
+  ],
+  "stack_matchers_applied": [
+    "external-cli"
+  ],
+  "summary": "OpenSkills is an auxiliary skill CLI and may require installer or package fallback handling.",
+  "preferred_fix_layer": "native_or_fallback_installer",
+  "source_hints": [
+    "config/npm-packages.sh",
+    "docs/development/SYSTEM-UPGRADE-ROADMAP.md"
+  ],
+  "recommended_actions": [
+    "command -v openskills || true",
+    "aq-context-bootstrap --task \"restore missing openskills tooling\" --scope system-fix --format json"
+  ],
+  "files": [
+    "config/npm-packages.sh",
+    "docs/development/SYSTEM-UPGRADE-ROADMAP.md"
+  ],
+  "rollback": "Prefer reverting installer path changes before broadening fallback behavior."
+}

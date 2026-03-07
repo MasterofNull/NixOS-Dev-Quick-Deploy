@@ -1,0 +1,204 @@
+{
+  "defaults": {
+    "service_inactive": {
+      "priority": 100,
+      "layer": "systemd",
+      "risk": "low",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "Stabilize the unit before runtime or package changes.",
+      "commands": [
+        "systemctl status {service} --no-pager",
+        "journalctl -u {service} -n 80 --no-pager"
+      ],
+      "files": [],
+      "rollback": "Do not rebuild yet. Restore unit health first."
+    },
+    "package_linkage_mismatch": {
+      "priority": 90,
+      "layer": "package",
+      "risk": "medium",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "Fix package or overlay linkage before runtime debugging.",
+      "commands": [
+        "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link",
+        "ldd {binary_path}"
+      ],
+      "files": [],
+      "rollback": "Keep runtime changes minimal until package linkage is correct."
+    },
+    "path_scoped_confinement_likely": {
+      "priority": 85,
+      "layer": "confinement",
+      "risk": "medium",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "Investigate AppArmor or other path-scoped confinement before rebuilding or patching source.",
+      "commands": [
+        {
+          "cmd": "aq-qa 3",
+          "risk": "low",
+          "requires_sudo": false,
+          "safe_in_live_session": true
+        },
+        {
+          "cmd": "journalctl -k --no-pager | rg -i 'apparmor|DENIED|audit'",
+          "risk": "low",
+          "requires_sudo": false,
+          "safe_in_live_session": true
+        }
+      ],
+      "files": [
+        "nix/modules/roles/ai-stack.nix",
+        "/etc/apparmor.d/ai-llama-cpp"
+      ],
+      "rollback": "Prefer narrowing or bypassing path-scoped confinement before touching package code."
+    },
+    "health_probe_failed": {
+      "priority": 75,
+      "layer": "service_wiring",
+      "risk": "low",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "Inspect ports, environment, secrets, and health wiring before source changes.",
+      "commands": [
+        "systemctl show -p Environment {service}",
+        "journalctl -u {service} -n 80 --no-pager"
+      ],
+      "files": [
+        "config/service-endpoints.sh"
+      ],
+      "rollback": "Keep service config declarative and revert only the last wiring change if needed."
+    },
+    "runtime_probe_mismatch": {
+      "priority": 65,
+      "layer": "runtime",
+      "risk": "low",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "Inspect focused probe output and logs, then choose between env/runtime fixes and package fixes.",
+      "commands": [
+        "aq-runtime-diagnose --preset {preset} --json",
+        "journalctl -u {service} -n 120 --no-pager"
+      ],
+      "files": [],
+      "rollback": "Do not start source patch loops until the runtime mismatch is narrowed to one layer."
+    },
+    "runtime_probe_active": {
+      "priority": 10,
+      "layer": "healthy",
+      "risk": "low",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "Runtime path is healthy. Move to cleanup, regression guards, or benchmarking.",
+      "commands": [
+        "aq-qa 0",
+        "python3 scripts/ai/aq-runtime-plan"
+      ],
+      "files": [],
+      "rollback": "No rollback needed."
+    },
+    "unknown": {
+      "priority": 50,
+      "layer": "unknown",
+      "risk": "medium",
+      "requires_sudo": false,
+      "safe_in_live_session": true,
+      "summary": "No strong classification. Inspect focused probe output and recent logs for the target preset.",
+      "commands": [
+        "aq-runtime-diagnose --preset {preset} --json",
+        "journalctl -u {service} -n 120 --no-pager"
+      ],
+      "files": [],
+      "rollback": "Pause rebuilds until the failing layer is clearer."
+    }
+  },
+  "presets": {
+    "llama-cpp": {
+      "path_scoped_confinement_likely": {
+        "commands": [
+          "aq-runtime-diagnose --preset llama-cpp --json",
+          "systemctl cat llama-cpp.service",
+          "journalctl -u llama-cpp.service -n 120 --no-pager"
+        ],
+        "files": [
+          "nix/modules/roles/ai-stack.nix",
+          "nix/patches/llama-cpp/allow-vulkan-igpu-offload.patch",
+          "/etc/apparmor.d/ai-llama-cpp"
+        ]
+      },
+      "package_linkage_mismatch": {
+        "files": [
+          "nix/lib/overlays/llama-cpp-latest.nix",
+          "nix/pins/llama-cpp.json"
+        ]
+      }
+    },
+    "hybrid-coordinator": {
+      "health_probe_failed": {
+        "commands": [
+          {
+            "cmd": "aq-runtime-diagnose --preset hybrid-coordinator --json",
+            "risk": "low",
+            "requires_sudo": false,
+            "safe_in_live_session": true
+          },
+          {
+            "cmd": "curl -sf http://127.0.0.1:8003/health",
+            "risk": "low",
+            "requires_sudo": false,
+            "safe_in_live_session": true
+          },
+          {
+            "cmd": "HYBRID_API_KEY=$(tr -d '\\n' < /run/secrets/hybrid_coordinator_api_key); curl -sf -H \"X-API-Key: ${HYBRID_API_KEY}\" 'http://127.0.0.1:8003/hints?q=test' | head -c 800",
+            "risk": "medium",
+            "requires_sudo": false,
+            "safe_in_live_session": true
+          }
+        ],
+        "files": [
+          "config/service-endpoints.sh"
+        ]
+      }
+    },
+    "ai-aidb": {
+      "health_probe_failed": {
+        "commands": [
+          "aq-runtime-diagnose --preset ai-aidb --json",
+          "curl -sf http://127.0.0.1:8002/health",
+          "curl -sf 'http://127.0.0.1:8002/documents?limit=1' | head -c 800"
+        ]
+      }
+    },
+    "ai-switchboard": {
+      "health_probe_failed": {
+        "commands": [
+          "aq-runtime-diagnose --preset ai-switchboard --json",
+          "curl -sf http://127.0.0.1:8085/health"
+        ]
+      }
+    },
+    "qdrant": {
+      "health_probe_failed": {
+        "commands": [
+          "aq-runtime-diagnose --preset qdrant --json",
+          "curl -sf http://127.0.0.1:6333/",
+          "curl -sf http://127.0.0.1:6333/collections | head -c 800"
+        ]
+      }
+    },
+    "apparmor": {
+      "runtime_probe_mismatch": {
+        "commands": [
+          "aq-runtime-diagnose --preset apparmor --json",
+          "systemctl status apparmor.service --no-pager",
+          "journalctl -k --no-pager | rg -i 'apparmor|DENIED|audit'"
+        ],
+        "files": [
+          "/etc/apparmor.d"
+        ]
+      }
+    }
+  }
+}
