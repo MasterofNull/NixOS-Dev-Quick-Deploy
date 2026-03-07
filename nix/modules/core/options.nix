@@ -989,6 +989,33 @@
             LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS into the hybrid-coordinator service.
           '';
         };
+
+        # ── Phase 20.1: Version tracking options ─────────────────────────────
+        trackLatest = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Track the latest llama.cpp releases via nix/pins/llama-cpp.json
+            instead of using the version bundled with nixpkgs.
+
+            When true: builds llama.cpp from source using the pinned version.
+            When false: uses the nixpkgs-provided llama-cpp package.
+
+            Update the pin with: scripts/ai/update-llama-cpp.sh
+          '';
+        };
+
+        useFallback = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Use the fallback (previous known-good) version from the pin file
+            instead of the current version. Useful for quick rollback when
+            the latest version has issues.
+
+            Only effective when trackLatest = true.
+          '';
+        };
       };
 
       embeddingServer = {
