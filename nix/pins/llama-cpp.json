@@ -1,0 +1,23 @@
+{
+  "current": {
+    "version": "8219",
+    "rev": "b8219",
+    "hash": "sha256-upOTYzBhSUd7xsA6l+Rlf7xd9dI1fqZ+T/+PUReW6zw=",
+    "date": "2026-03-07"
+  },
+  "fallback": {
+    "version": "8124",
+    "rev": "b8124",
+    "hash": "sha256-vS5Ye3b8jwSKYVd+zPrKoPYNlIlbu3Mf5plqGsb+M7E=",
+    "date": "2026-03-05"
+  },
+  "nixpkgs": {
+    "version": "6981",
+    "note": "Version from nixpkgs 25.11 as baseline reference"
+  },
+  "_meta": {
+    "repo": "ggml-org/llama.cpp",
+    "lastUpdated": "2026-03-06T00:00:00Z",
+    "updatedBy": "scripts/ai/update-llama-cpp.sh"
+  }
+}
