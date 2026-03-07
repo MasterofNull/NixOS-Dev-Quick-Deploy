@@ -55,8 +55,9 @@
       rocmGfxOverride                  = "9.0.0";
       # llama.cpp extra args for stability and performance on AMD APU
       llamaCpp.extraArgs               = [
-        # Disable auto memory fitting (crashes on APU with gfx900 override)
-        "--fit" "off"
+        # TEMPORARY: Disable GPU offload - ROCm gfx900 override crashes on Cezanne APU
+        # TODO: Investigate Vulkan backend as alternative to ROCm
+        "--n-gpu-layers" "0"
         # Prevent slot hangs: timeout after 120s
         "--timeout" "120"
         # Limit concurrent slots to prevent resource contention
