@@ -244,7 +244,9 @@ in {
         (import ../../lib/overlays/llama-cpp-latest.nix {
           pinFile = ../../pins/llama-cpp.json;
           useFallback = llama.useFallback;
-          enableRocm = (resolvedAccel == "rocm");
+          # Use Vulkan for AMD GPUs (better APU compatibility than ROCm)
+          enableVulkan = (resolvedAccel == "rocm");
+          enableRocm = false; # Disabled: ROCm crashes on Cezanne APU
           enableCuda = (resolvedAccel == "cuda");
         })
       ];

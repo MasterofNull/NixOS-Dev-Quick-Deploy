@@ -1,5 +1,5 @@
 /**
-  Phase 20.1 — llama.cpp latest version overlay with ROCm/CUDA support.
+  Phase 20.1 — llama.cpp latest version overlay with GPU support.
 
   This overlay enables tracking the latest llama.cpp releases independent of
   nixpkgs channel updates. It reads version pins from nix/pins/llama-cpp.json
@@ -8,7 +8,7 @@
   Features:
     • Tracks latest llama.cpp releases via pinned version file
     • Preserves fallback to previous known-good version
-    • Enables ROCm (AMD GPU) or CUDA (NVIDIA GPU) acceleration
+    • Enables Vulkan, ROCm, or CUDA GPU acceleration
     • Integrates with existing aarch64 NEON overlay
     • Updated via scripts/ai/update-llama-cpp.sh
 
@@ -18,10 +18,11 @@
     • mySystem.aiStack.llamaCpp.trackLatest = false — use nixpkgs version
 
   GPU Support:
-    • enableRocm = true  — AMD GPU acceleration (requires rocmPackages)
-    • enableCuda = false — NVIDIA GPU (requires cudaPackages)
+    • enableVulkan = true — Vulkan compute (best for AMD APUs via Mesa RADV)
+    • enableRocm = true   — AMD ROCm/HIP (discrete GPUs, unstable on APUs)
+    • enableCuda = true   — NVIDIA CUDA (requires cudaPackages)
 */
-{ pinFile, useFallback ? false, enableRocm ? false, enableCuda ? false }:
+{ pinFile, useFallback ? false, enableVulkan ? false, enableRocm ? false, enableCuda ? false }:
 
 final: prev:
 let
@@ -39,8 +40,11 @@ let
       flags;
 
   # Get the base llama-cpp with GPU support enabled
+  # Priority: Vulkan > ROCm > CUDA (Vulkan preferred for APUs)
   baseLlamaCpp =
-    if enableRocm then
+    if enableVulkan then
+      prev.llama-cpp.override { vulkanSupport = true; }
+    else if enableRocm then
       prev.llama-cpp.override { rocmSupport = true; }
     else if enableCuda then
       prev.llama-cpp.override { cudaSupport = true; }
@@ -75,6 +79,7 @@ in
         date = selected.date or "unknown";
         isFallback = useFallback;
         pinFile = toString pinFile;
+        vulkanEnabled = enableVulkan;
         rocmEnabled = enableRocm;
         cudaEnabled = enableCuda;
       };
@@ -82,7 +87,7 @@ in
 
     meta = (oldAttrs.meta or {}) // {
       description = (oldAttrs.meta.description or "llama.cpp") +
-        " (pinned: ${selected.rev}${if useFallback then " [fallback]" else ""}${if enableRocm then " +rocm" else ""}${if enableCuda then " +cuda" else ""})";
+        " (pinned: ${selected.rev}${if useFallback then " [fallback]" else ""}${if enableVulkan then " +vulkan" else ""}${if enableRocm then " +rocm" else ""}${if enableCuda then " +cuda" else ""})";
     };
   });
 }
