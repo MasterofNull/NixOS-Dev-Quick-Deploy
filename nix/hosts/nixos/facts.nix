@@ -45,10 +45,12 @@
     aiStack = {
       backend                          = "llamacpp";
       acceleration                     = "auto";
-      llamaCpp.model                   = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-      llamaCpp.huggingFaceRepo         = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
-      llamaCpp.huggingFaceFile         = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-      llamaCpp.sha256                  = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597";
+      # Qwen3.5-9B: 2.25x larger than Qwen3-4B with major agentic/tool-calling improvements
+      # Q6_K quantization: ~7.5 GB model, leaves ~19 GB for context on 27 GB system
+      llamaCpp.model                   = "/var/lib/llama-cpp/models/Qwen3.5-9B-Q6_K.gguf";
+      llamaCpp.huggingFaceRepo         = "unsloth/Qwen3.5-9B-GGUF";
+      llamaCpp.huggingFaceFile         = "Qwen3.5-9B-Q6_K.gguf";
+      llamaCpp.sha256                  = "91898433cf5ce0a8f45516a4cc3e9343b6e01d052d01f684309098c66a326c59";
       # Cezanne APU (Ryzen 5000U) uses gfx90c, which maps to ROCm gfx version 9.0.0
       rocmGfxOverride                  = "9.0.0";
       # llama.cpp extra args for stability and performance on AMD APU
