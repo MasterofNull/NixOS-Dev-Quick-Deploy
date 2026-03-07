@@ -109,8 +109,9 @@ let
     then embed.huggingFaceFile
     else baseNameOf embed.model;
   hasEmbedAutoDownload = embedHfRepo != null;
-  embedHfSha256 = embed.sha256;
-  embedHfSha256Valid = embedHfSha256 != null && builtins.match "^[a-fA-F0-9]{64}$" embedHfSha256 != null;
+  # Use empty string when sha256 is null to avoid coercion errors in shell scripts.
+  embedHfSha256 = if embed.sha256 != null then embed.sha256 else "";
+  embedHfSha256Valid = embed.sha256 != null && builtins.match "^[a-fA-F0-9]{64}$" embed.sha256 != null;
 
   aiHarnessCliWrappers = pkgs.symlinkJoin {
     name = "ai-harness-cli-wrappers";
@@ -186,7 +187,7 @@ in {
         {
           # sha256 = null is allowed (skips verification; set after first deploy).
           # sha256 = "..." must be 64 hex chars if provided.
-          assertion = !hasEmbedAutoDownload || embedHfSha256 == null || embedHfSha256Valid;
+          assertion = !hasEmbedAutoDownload || embed.sha256 == null || embedHfSha256Valid;
           message = "mySystem.aiStack.embeddingServer.sha256 must be 64 hex characters when set.";
         }
         # Phase 11.3.3 — Model allowlist enforcement
@@ -231,9 +232,24 @@ in {
         ) "AI stack: a 32B model requires ~20 GB RAM but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 12).";
     })
 
+    # ── Phase 20.1 — llama.cpp version tracking overlay ────────────────────────
+    # When trackLatest = true, build llama.cpp from source using the pinned
+    # version in nix/pins/llama-cpp.json. This allows tracking upstream releases
+    # independently of nixpkgs channel updates.
+    # Update the pin with: scripts/ai/update-llama-cpp.sh
+    (lib.mkIf (roleEnabled && llama.trackLatest) {
+      nixpkgs.overlays = [
+        (import ../../lib/overlays/llama-cpp-latest.nix {
+          pinFile = ../../pins/llama-cpp.json;
+          useFallback = llama.useFallback;
+        })
+      ];
+    })
+
     # Phase 16.5.1 — aarch64 NEON build of llama.cpp.
     # Inject the overlay only on aarch64-linux; on x86_64 it is a no-op.
     # The overlay patches cmakeFlags to enable NEON and disable Metal/OpenCL.
+    # Applied after the version overlay so NEON flags compose correctly.
     (lib.mkIf (roleEnabled && config.nixpkgs.hostPlatform.isAarch64) {
       nixpkgs.overlays = [
         (import ../../lib/overlays/llama-cpp-aarch64.nix)
