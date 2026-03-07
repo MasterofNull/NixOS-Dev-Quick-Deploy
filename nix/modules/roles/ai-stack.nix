@@ -99,8 +99,20 @@ let
     }
   );
 
+  # Vulkan environment for Mesa RADV on AMD GPUs.
+  # Required for ggml-vulkan to find the ICD loader.
+  vulkanEnv = {
+    # Point Vulkan loader to NixOS ICD files
+    VK_ICD_FILENAMES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
+    # Ensure libvulkan can find the driver
+    VK_DRIVER_FILES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
+  };
+
+  # Combined GPU environment: Vulkan for AMD (preferred), ROCm as fallback
+  gpuEnv = if resolvedAccel == "rocm" then vulkanEnv else rocmEnv;
+
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
-  rocmEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") rocmEnv;
+  rocmEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") gpuEnv;
 
   embed = ai.embeddingServer;
 
