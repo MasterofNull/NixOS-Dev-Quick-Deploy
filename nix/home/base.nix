@@ -287,7 +287,10 @@ let
     shellcheck                      # Shell script linting
     python3                         # Python runtime
     go                              # Go runtime
+    rustc                           # Rust compiler
     cargo                           # Rust toolchain
+    clippy                          # Rust lints used by rust-analyzer checkOnSave
+    rustfmt                         # Rust formatter for editor/tooling integration
     nodejs                          # Node.js runtime (required by AI extension language servers)
   ]);
 in
@@ -409,7 +412,7 @@ in
 
     # Core dev/tooling runtimes (critical for quick-deploy workflows)
     git gh tree file xxd
-    nodejs go cargo ruby
+    nodejs go rustc cargo clippy rustfmt ruby
     # vscodium is installed via programs.vscode below; listing it here too
     # would create a duplicate entry in the nix profile.
     # neovim is provided by system packages; avoid duplicate nvim.desktop.
@@ -774,9 +777,9 @@ in
     unset settings_file
   '';
 
-  # Remove stale Claude extension keys that can break startup:
+  # Remove stale AI extension keys that can break startup:
   #  - claudeProcessWrapper pointing to the same binary as executablePath
-  #  - ANTHROPIC_BASE_URL override to an unavailable local proxy
+  #  - ANTHROPIC_BASE_URL override to an unavailable or incompatible local proxy
   home.activation.migrateClaudeVscodeSettings = lib.hm.dag.entryAfter [ "enforceVSCodiumTheme" ] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
@@ -784,7 +787,13 @@ in
       if jq '
         del(.["claude-code.claudeProcessWrapper"], .["claudeCode.claudeProcessWrapper"]) |
         .["claude-code.environmentVariables"] = ((.["claude-code.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
-        .["claudeCode.environmentVariables"] = ((.["claudeCode.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL")))
+        .["claudeCode.environmentVariables"] = ((.["claudeCode.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["gpt-codex.environmentVariables"] = ((.["gpt-codex.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["gptCodex.environmentVariables"] = ((.["gptCodex.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["codex.environmentVariables"] = ((.["codex.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["codexIDE.environmentVariables"] = ((.["codexIDE.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["codexIde.environmentVariables"] = ((.["codexIde.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
+        .["openai.environmentVariables"] = ((.["openai.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL")))
       ' "$settings_file" > "$tmp"; then
         mv "$tmp" "$settings_file"
         chmod u+rw "$settings_file" || true

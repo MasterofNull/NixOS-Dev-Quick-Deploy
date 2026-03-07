@@ -34,6 +34,7 @@ let
     "ripgrep"
     "nodejs"
     "go"
+    "rustc"
     "cargo"
     "ruby"
     "neovim"
