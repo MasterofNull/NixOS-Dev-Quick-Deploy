@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""
+aq-capability-patch-apply — bounded application wrapper for capability catalog patch artifacts.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CATALOG_PATH = REPO_ROOT / "config" / "capability-gap-catalog.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate or apply a capability catalog patch artifact.")
+    parser.add_argument("--patch-file", required=True, help="Unified diff artifact produced by aq-capability-patch-prep.")
+    parser.add_argument("--catalog", default=str(CATALOG_PATH), help="Target catalog path.")
+    parser.add_argument("--backup-output", help="Optional backup path to write the pre-patch catalog contents before execute.")
+    parser.add_argument("--execute", action="store_true", help="Apply the patch after validation.")
+    parser.add_argument("--format", dest="fmt", default="json", choices=["json", "text"], help="Output format.")
+    return parser.parse_args()
+
+
+def parse_patch_headers(text: str) -> tuple[str, str]:
+    fromfile = ""
+    tofile = ""
+    for line in text.splitlines():
+        if line.startswith("--- "):
+            fromfile = line[4:].strip()
+        elif line.startswith("+++ "):
+            tofile = line[4:].strip()
+            break
+    return fromfile, tofile
+
+
+def run_patch(catalog_path: Path, patch_file: Path, execute: bool) -> subprocess.CompletedProcess[str]:
+    cmd = [
+        "git",
+        "apply",
+        "--unsafe-paths",
+        str(patch_file),
+    ]
+    if not execute:
+        cmd.insert(2, "--check")
+    return subprocess.run(cmd, cwd="/", capture_output=True, text=True, check=False)
+
+
+def render(payload: dict, fmt: str) -> None:
+    if fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(json.dumps(payload, indent=2))
+
+
+def main() -> int:
+    args = parse_args()
+    patch_file = Path(args.patch_file)
+    catalog_path = Path(args.catalog)
+    patch_text = patch_file.read_text(encoding="utf-8")
+    fromfile, tofile = parse_patch_headers(patch_text)
+    target_ok = fromfile == str(catalog_path)
+
+    if not fromfile or not tofile:
+        payload = {
+            "ok": False,
+            "error": "patch missing unified diff headers",
+            "patch_file": str(patch_file),
+        }
+        render(payload, args.fmt)
+        return 2
+    if not target_ok:
+        payload = {
+            "ok": False,
+            "error": "patch target does not match requested catalog",
+            "patch_file": str(patch_file),
+            "catalog": str(catalog_path),
+            "patch_fromfile": fromfile,
+            "patch_tofile": tofile,
+        }
+        render(payload, args.fmt)
+        return 2
+
+    backup_path = Path(args.backup_output) if args.backup_output else None
+    if args.execute and backup_path:
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(catalog_path, backup_path)
+
+    proc = run_patch(catalog_path, patch_file, args.execute)
+    payload = {
+        "ok": proc.returncode == 0,
+        "mode": "execute" if args.execute else "dry-run",
+        "catalog": str(catalog_path),
+        "patch_file": str(patch_file),
+        "patch_fromfile": fromfile,
+        "patch_tofile": tofile,
+        "backup_output": str(backup_path) if backup_path else "",
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+    }
+    render(payload, args.fmt)
+    return 0 if proc.returncode == 0 else proc.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

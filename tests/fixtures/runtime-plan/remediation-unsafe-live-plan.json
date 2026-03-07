@@ -1,0 +1,15 @@
+{
+  "next_actions": [
+    {
+      "summary": "Unsafe live remediation fixture action.",
+      "commands": [
+        "printf 'should-not-run\\n'"
+      ],
+      "files": [],
+      "rollback": "Roll back manually.",
+      "risk": "high",
+      "requires_sudo": false,
+      "safe_in_live_session": false
+    }
+  ]
+}

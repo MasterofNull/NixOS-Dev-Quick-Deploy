@@ -1,0 +1,31 @@
+{
+  "next_actions": [
+    {
+      "action_id": "command_meta_fixture",
+      "summary": "Per-command metadata fixture action.",
+      "commands": [
+        "printf 'first-ok\\n'",
+        "printf 'second-blocked\\n'"
+      ],
+      "command_entries": [
+        {
+          "cmd": "printf 'first-ok\\n'",
+          "risk": "low",
+          "requires_sudo": false,
+          "safe_in_live_session": true
+        },
+        {
+          "cmd": "printf 'second-blocked\\n'",
+          "risk": "high",
+          "requires_sudo": false,
+          "safe_in_live_session": false
+        }
+      ],
+      "files": [],
+      "rollback": "No rollback needed.",
+      "risk": "medium",
+      "requires_sudo": false,
+      "safe_in_live_session": true
+    }
+  ]
+}

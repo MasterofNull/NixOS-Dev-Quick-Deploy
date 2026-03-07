@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+# aq-runtime-diagnose — generic service/package/runtime diagnosis loop
+#
+# Use this before rebuilds or source patches when a service appears broken.
+# It gathers low-token evidence across four layers:
+#   1. systemd unit state
+#   2. package/runtime linkage
+#   3. confinement/path-scoped behavior
+#   4. functional probes and focused logs
+
+set -euo pipefail
+
+JSON_OUTPUT=0
+PRESET=""
+SERVICE=""
+HEALTH_URL=""
+EXPECTED_LIB=""
+SUCCESS_PATTERN=""
+JOURNAL_PATTERN=""
+PROBE_CMD=""
+ALIAS_PROBE_CMD=""
+SMOKE_CMD=""
+RUN_SMOKE=0
+
+usage() {
+  cat <<'EOF'
+Usage: aq-runtime-diagnose [options]
+
+Options:
+  --preset NAME         Built-in preset (llama-cpp, open-webui, hybrid-coordinator, qdrant, ai-aidb, ai-switchboard, apparmor)
+  --service UNIT        systemd unit to inspect
+  --health-url URL      Optional health endpoint
+  --expected-lib NAME   Shared library expected in ldd output
+  --success-pattern RE  Regex indicating success in probe/journal output
+  --journal-pattern RE  Regex used to extract focused journal lines
+  --probe-cmd CMD       Functional probe command; __BINARY__ is substituted
+  --alias-probe-cmd CMD Probe run against a copied binary alias
+  --smoke-cmd CMD       Optional bounded smoke command
+  --smoke               Execute the configured smoke command
+  --json                Machine-readable output
+  --help, -h            Show help
+EOF
+}
+
+apply_preset() {
+  case "$1" in
+    llama-cpp)
+      SERVICE="${SERVICE:-llama-cpp.service}"
+      HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
+      EXPECTED_LIB="${EXPECTED_LIB:-libggml-vulkan}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-Vulkan0|Vulkan_Host}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-usable GPU|dedicated memory|CPU_Mapped|Vulkan0|Vulkan_Host|ggml_vulkan|KV buffer|compute buffer|output buffer}"
+      PROBE_CMD="${PROBE_CMD:-__ENV__ __BINARY__ --list-devices}"
+      SMOKE_CMD="${SMOKE_CMD:-curl --max-time 30 -s http://127.0.0.1:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"local\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: aq-runtime-diagnose\"}],\"max_tokens\":8,\"temperature\":0}'}"
+      ;;
+    open-webui)
+      SERVICE="${SERVICE:-open-webui.service}"
+      HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3001/health}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-\"status\": ?true|Open WebUI|<!doctype html>}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-Traceback|ERROR|Exception|address already in use|permission denied}"
+      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:3001/health && printf '\n---\n' && curl -fsS http://127.0.0.1:3001/ | head -n 5}"
+      ;;
+    hybrid-coordinator)
+      SERVICE="${SERVICE:-ai-hybrid-coordinator.service}"
+      HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8003/health}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-\"status\": ?\"healthy\"|\"status\": ?\"ok\"}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-Traceback|ERROR|Exception|address already in use|permission denied|hints|workflow}"
+      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:8003/health && printf '\n---\n' && curl -fsS -H 'X-API-Key: __HYBRID_API_KEY__' 'http://127.0.0.1:8003/hints?q=test' | head -c 800}"
+      ;;
+    qdrant)
+      SERVICE="${SERVICE:-qdrant.service}"
+      HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:6333/}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-qdrant - vector search engine|\"title\":\"qdrant\"}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-ERROR|panic|address already in use|permission denied|failed}"
+      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:6333/ && printf '\n---\n' && curl -fsS http://127.0.0.1:6333/collections | head -c 800}"
+      ;;
+    ai-aidb)
+      SERVICE="${SERVICE:-ai-aidb.service}"
+      HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8002/health}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-\"status\": ?\"ok\"|\"database\": ?\"ok\"|\"redis\": ?\"ok\"}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-Traceback|ERROR|Exception|address already in use|permission denied|circuit_breakers|embeddings}"
+      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:8002/health && printf '\n---\n' && curl -fsS 'http://127.0.0.1:8002/documents?limit=1' | head -c 800}"
+      ;;
+    ai-switchboard)
+      SERVICE="${SERVICE:-ai-switchboard.service}"
+      HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8085/health}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-\"status\": ?\"ok\"|\"service\": ?\"ai-switchboard\"}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-Traceback|ERROR|Exception|address already in use|permission denied|routing|upstreams}"
+      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:8085/health}"
+      ;;
+    apparmor)
+      SERVICE="${SERVICE:-apparmor.service}"
+      SUCCESS_PATTERN="${SUCCESS_PATTERN:-active}"
+      JOURNAL_PATTERN="${JOURNAL_PATTERN:-DENIED|apparmor|audit}"
+      PROBE_CMD="${PROBE_CMD:-systemctl is-active apparmor.service && printf '\n---\n' && find /etc/apparmor.d -maxdepth 1 -type f | sort | head -n 20}"
+      ;;
+    "")
+      ;;
+    *)
+      printf 'aq-runtime-diagnose: unknown preset "%s"\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --preset) PRESET="${2:-}"; shift ;;
+    --service) SERVICE="${2:-}"; shift ;;
+    --health-url) HEALTH_URL="${2:-}"; shift ;;
+    --expected-lib) EXPECTED_LIB="${2:-}"; shift ;;
+    --success-pattern) SUCCESS_PATTERN="${2:-}"; shift ;;
+    --journal-pattern) JOURNAL_PATTERN="${2:-}"; shift ;;
+    --probe-cmd) PROBE_CMD="${2:-}"; shift ;;
+    --alias-probe-cmd) ALIAS_PROBE_CMD="${2:-}"; shift ;;
+    --smoke-cmd) SMOKE_CMD="${2:-}"; shift ;;
+    --smoke) RUN_SMOKE=1 ;;
+    --json) JSON_OUTPUT=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *)
+      printf 'aq-runtime-diagnose: unknown argument "%s"\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+apply_preset "$PRESET"
+
+if [[ -z "$SERVICE" ]]; then
+  printf 'aq-runtime-diagnose: --service or --preset is required\n' >&2
+  exit 2
+fi
+
+service_active="inactive"
+if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+  service_active="active"
+fi
+
+main_pid="$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || true)"
+exec_start="$(systemctl cat "$SERVICE" 2>/dev/null | awk -F= '/^ExecStart=/{print $2; exit}' || true)"
+env_blob="$(systemctl show -p Environment --value "$SERVICE" 2>/dev/null || true)"
+binary_path=""
+if [[ -n "${main_pid}" && "${main_pid}" != "0" && -e "/proc/${main_pid}/exe" ]]; then
+  binary_path="$(readlink -f "/proc/${main_pid}/exe" || true)"
+fi
+if [[ -z "$binary_path" && -n "$exec_start" ]]; then
+  binary_path="${exec_start%% *}"
+fi
+
+linked_expected="unknown"
+if [[ -n "$EXPECTED_LIB" && -n "$binary_path" && -x "$binary_path" ]]; then
+  if ldd "$binary_path" 2>/dev/null | grep -q "$EXPECTED_LIB"; then
+    linked_expected="yes"
+  else
+    linked_expected="no"
+  fi
+fi
+
+apparmor_profile_hits="$(
+  if [[ -n "$binary_path" && -d /etc/apparmor.d ]]; then
+    grep -R -nF "${binary_path##*/}" /etc/apparmor.d 2>/dev/null || true
+  fi
+)"
+
+env_tokens=()
+HYBRID_API_KEY=""
+if [[ -r /run/secrets/hybrid_coordinator_api_key ]]; then
+  HYBRID_API_KEY="$(tr -d '\n' < /run/secrets/hybrid_coordinator_api_key)"
+fi
+AIDB_API_KEY=""
+if [[ -r /run/secrets/aidb_api_key ]]; then
+  AIDB_API_KEY="$(tr -d '\n' < /run/secrets/aidb_api_key)"
+fi
+for token in $env_blob; do
+  case "$token" in
+    VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|GGML_VK_VISIBLE_DEVICES=*|LD_LIBRARY_PATH=*|LIBGL_DRIVERS_PATH=*)
+      env_tokens+=("$token")
+      ;;
+  esac
+done
+env_prefix=""
+for token in "${env_tokens[@]}"; do
+  env_prefix+="${token} "
+done
+env_prefix="${env_prefix% }"
+
+substitute_cmd() {
+  local cmd="$1"
+  cmd="${cmd//__BINARY__/$binary_path}"
+  cmd="${cmd//__ENV__/${env_prefix}}"
+  cmd="${cmd//__HYBRID_API_KEY__/$HYBRID_API_KEY}"
+  cmd="${cmd//__AIDB_API_KEY__/$AIDB_API_KEY}"
+  printf '%s' "$cmd"
+}
+
+run_probe() {
+  local cmd="$1"
+  if [[ -z "$cmd" ]]; then
+    return 0
+  fi
+  bash -lc "$cmd" 2>&1 || true
+}
+
+probe_output=""
+alias_probe_output=""
+alias_probe_diverges="no"
+tmpdir=""
+trap '[[ -n "${tmpdir}" ]] && rm -rf "${tmpdir}"' EXIT
+
+probe_uses_binary="no"
+if [[ "$PROBE_CMD" == *"__BINARY__"* || "$ALIAS_PROBE_CMD" == *"__BINARY__"* ]]; then
+  probe_uses_binary="yes"
+fi
+
+if [[ -n "$PROBE_CMD" ]]; then
+  probe_output="$(run_probe "$(substitute_cmd "$PROBE_CMD")")"
+fi
+
+if [[ "$probe_uses_binary" == "yes" && -n "$binary_path" && -x "$binary_path" ]]; then
+  tmpdir="$(mktemp -d)"
+  alias_binary="$tmpdir/${binary_path##*/}-alias"
+  cp "$binary_path" "$alias_binary"
+  chmod 0555 "$alias_binary"
+
+  if [[ -n "$ALIAS_PROBE_CMD" ]]; then
+    alias_cmd="${ALIAS_PROBE_CMD//__BINARY__/$alias_binary}"
+    alias_cmd="${alias_cmd//__ENV__/${env_prefix}}"
+  else
+    alias_cmd="$(substitute_cmd "$PROBE_CMD")"
+    alias_cmd="${alias_cmd//$binary_path/$alias_binary}"
+  fi
+  alias_probe_output="$(run_probe "$alias_cmd")"
+
+  if [[ -n "$SUCCESS_PATTERN" ]]; then
+    if grep -Eq "$SUCCESS_PATTERN" <<<"$alias_probe_output" && ! grep -Eq "$SUCCESS_PATTERN" <<<"$probe_output"; then
+      alias_probe_diverges="yes"
+    fi
+  elif [[ "$alias_probe_output" != "$probe_output" ]]; then
+    alias_probe_diverges="yes"
+  fi
+fi
+
+journal_focus=""
+if [[ -n "$JOURNAL_PATTERN" ]]; then
+  journal_focus="$(
+    journalctl -u "$SERVICE" -n 200 --no-pager 2>/dev/null | \
+      grep -E "$JOURNAL_PATTERN" || true
+  )"
+fi
+
+health_status="unknown"
+if [[ -n "$HEALTH_URL" ]]; then
+  if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+    health_status="ok"
+  else
+    health_status="fail"
+  fi
+fi
+
+smoke_output=""
+if [[ "$RUN_SMOKE" -eq 1 && -n "$SMOKE_CMD" ]]; then
+  smoke_output="$(run_probe "$SMOKE_CMD")"
+fi
+
+classification="unknown"
+recommendation="Inspect service state, probes, and focused logs."
+healthy=0
+
+if [[ "$service_active" != "active" ]]; then
+  classification="service_inactive"
+  recommendation="Start the unit and inspect systemd/journal output first."
+elif [[ "$linked_expected" == "no" ]]; then
+  classification="package_linkage_mismatch"
+  recommendation="Fix the package/overlay so the expected runtime library is linked."
+elif [[ "$health_status" == "fail" ]]; then
+  classification="health_probe_failed"
+  recommendation="Service is running but health checks fail; inspect unit env and recent logs."
+elif [[ "$alias_probe_diverges" == "yes" ]]; then
+  classification="path_scoped_confinement_likely"
+  recommendation="Probe succeeds under a copied alias binary. Inspect AppArmor or other path-scoped confinement before rebuilding."
+elif [[ -n "$SUCCESS_PATTERN" ]] && { grep -Eq "$SUCCESS_PATTERN" <<<"$probe_output" || grep -Eq "$SUCCESS_PATTERN" <<<"$journal_focus"; }; then
+  classification="runtime_probe_active"
+  recommendation="The configured runtime probe indicates the expected path is active."
+  healthy=1
+elif [[ -n "$PROBE_CMD" ]]; then
+  classification="runtime_probe_mismatch"
+  recommendation="The service is up but the configured runtime probe does not show the expected success pattern."
+fi
+
+if [[ "$JSON_OUTPUT" -eq 1 ]]; then
+  python3 - <<'PY' \
+"$SERVICE" "$service_active" "$binary_path" "$exec_start" "$linked_expected" "$health_status" \
+"$classification" "$recommendation" "$healthy" "$apparmor_profile_hits" "$probe_output" \
+"$alias_probe_output" "$alias_probe_diverges" "$journal_focus" "$smoke_output" "$env_blob"
+import json, sys
+(service, service_active, binary_path, exec_start, linked_expected, health_status,
+ classification, recommendation, healthy, apparmor_hits, probe_output,
+ alias_probe_output, alias_diverges, journal_focus, smoke_output, env_blob) = sys.argv[1:]
+print(json.dumps({
+    "service": service,
+    "service_active": service_active,
+    "binary_path": binary_path,
+    "exec_start": exec_start,
+    "linked_expected": linked_expected,
+    "health_status": health_status,
+    "classification": classification,
+    "recommendation": recommendation,
+    "healthy": healthy == "1",
+    "apparmor_profile_hits": apparmor_hits,
+    "probe_output": probe_output,
+    "alias_probe_output": alias_probe_output,
+    "alias_probe_diverges": alias_diverges == "yes",
+    "journal_focus": journal_focus,
+    "smoke_output": smoke_output,
+    "environment": env_blob,
+}, indent=2))
+PY
+else
+  printf '\nruntime diagnose: %s\n' "$SERVICE"
+  printf '  status:            %s\n' "$classification"
+  printf '  service active:    %s\n' "$service_active"
+  printf '  binary:            %s\n' "${binary_path:-<none>}"
+  printf '  expected library:  %s\n' "$linked_expected"
+  printf '  health:            %s\n' "$health_status"
+  printf '  alias diverges:    %s\n' "$alias_probe_diverges"
+  printf '  recommendation:    %s\n' "$recommendation"
+  printf '\nprobe output\n%s\n' "${probe_output:-<none>}"
+  if [[ -n "$alias_probe_output" ]]; then
+    printf '\nalias probe output\n%s\n' "$alias_probe_output"
+  fi
+  if [[ -n "$journal_focus" ]]; then
+    printf '\njournal focus\n%s\n' "$journal_focus"
+  fi
+fi
+
+if [[ "$healthy" -eq 1 ]]; then
+  exit 0
+fi
+exit 1

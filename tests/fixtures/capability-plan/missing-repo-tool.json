@@ -1,0 +1,50 @@
+{
+  "capability_id": "aq-context-bootstrap",
+  "capability_type": "tool",
+  "classification": "missing_repo_tooling",
+  "available": false,
+  "location": "",
+  "root_cause": "forced_missing_for_test",
+  "missing_origin": "repo_harness",
+  "ecosystem_hints": [
+    "repo-script",
+    "harness",
+    "python",
+    "bootstrap"
+  ],
+  "package_hints": [
+    "scripts/ai",
+    "repo-local wrapper, not OS package"
+  ],
+  "resolver_hints": [
+    {
+      "resolver": "repo_script",
+      "priority": 10,
+      "summary": "Treat the capability as a repo-local harness command, not an OS package.",
+      "targets": [
+        "scripts/ai",
+        "config/service-endpoints.sh"
+      ],
+      "matcher_id": "repo-harness-resolver"
+    }
+  ],
+  "stack_matchers_applied": [
+    "repo-harness"
+  ],
+  "summary": "aq-context-bootstrap is the repo-local bootstrap entrypoint for context and workflow selection.",
+  "preferred_fix_layer": "repo_script",
+  "source_hints": [
+    "scripts/ai/aq-context-bootstrap",
+    "config/agent-context-cards.json",
+    "docs/operations/agent-context-bootstrap.md"
+  ],
+  "recommended_actions": [
+    "test -x scripts/ai/aq-context-bootstrap",
+    "python3 scripts/ai/aq-context-bootstrap --task \"resume task\" --format json"
+  ],
+  "files": [
+    "scripts/ai/aq-context-bootstrap",
+    "config/agent-context-cards.json"
+  ],
+  "rollback": "Restore the previous repo-local bootstrap script if the new implementation regressed."
+}

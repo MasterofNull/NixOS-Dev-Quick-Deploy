@@ -68,7 +68,10 @@ in
       '';
     };
 
-    # Preserve cmake flags from nixpkgs, allowing further overlays to patch
+    # Preserve cmake flags from nixpkgs, allowing further overlays to patch.
+    # Note: We do NOT enable GGML_BACKEND_DL - static backend linking ensures
+    # GGML_USE_VULKAN is defined and the Vulkan backend auto-registers in the
+    # ggml_backend_registry constructor.
     cmakeFlags = stripConflicts (oldAttrs.cmakeFlags or []);
 
     patches = (oldAttrs.patches or []) ++ [

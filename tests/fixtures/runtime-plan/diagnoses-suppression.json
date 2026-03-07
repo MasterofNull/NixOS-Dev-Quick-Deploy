@@ -1,0 +1,14 @@
+[
+  {
+    "preset": "hybrid-coordinator",
+    "service": "ai-hybrid-coordinator.service",
+    "classification": "health_probe_failed",
+    "healthy": false
+  },
+  {
+    "preset": "hybrid-coordinator",
+    "service": "ai-hybrid-coordinator.service",
+    "classification": "health_probe_failed",
+    "healthy": false
+  }
+]

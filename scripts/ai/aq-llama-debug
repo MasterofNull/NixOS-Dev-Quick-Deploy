@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Compatibility wrapper around the generic runtime diagnosis loop.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/aq-runtime-diagnose" --preset llama-cpp "$@"

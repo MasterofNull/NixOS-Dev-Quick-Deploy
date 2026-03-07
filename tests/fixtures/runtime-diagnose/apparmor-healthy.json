@@ -1,0 +1,5 @@
+{
+  "service": "apparmor.service",
+  "classification": "runtime_probe_active",
+  "healthy": true
+}

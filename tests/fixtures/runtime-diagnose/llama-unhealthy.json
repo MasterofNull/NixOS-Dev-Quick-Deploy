@@ -1,0 +1,5 @@
+{
+  "service": "llama-cpp.service",
+  "classification": "path_scoped_confinement_likely",
+  "healthy": false
+}

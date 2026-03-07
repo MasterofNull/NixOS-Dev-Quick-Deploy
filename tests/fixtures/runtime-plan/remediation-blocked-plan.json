@@ -1,0 +1,12 @@
+{
+  "next_actions": [
+    {
+      "summary": "Blocked remediation fixture action.",
+      "commands": [
+        "rm -rf /tmp/should-not-run"
+      ],
+      "files": [],
+      "rollback": "No rollback needed."
+    }
+  ]
+}

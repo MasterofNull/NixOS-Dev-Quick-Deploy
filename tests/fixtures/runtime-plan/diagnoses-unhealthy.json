@@ -1,0 +1,15 @@
+[
+  {
+    "preset": "llama-cpp",
+    "service": "llama-cpp.service",
+    "binary_path": "/nix/store/example/bin/llama-server",
+    "classification": "path_scoped_confinement_likely",
+    "healthy": false
+  },
+  {
+    "preset": "hybrid-coordinator",
+    "service": "ai-hybrid-coordinator.service",
+    "classification": "health_probe_failed",
+    "healthy": false
+  }
+]

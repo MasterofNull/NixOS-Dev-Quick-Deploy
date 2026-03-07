@@ -865,12 +865,15 @@
       };
 
       acceleration = lib.mkOption {
-        type = lib.types.enum [ "auto" "rocm" "cuda" "cpu" ];
+        type = lib.types.enum [ "auto" "vulkan" "rocm" "cuda" "cpu" ];
         default = "auto";
         description = ''
           GPU acceleration for inference.
-          "auto" derives from hardware.gpuVendor: amd→rocm, nvidia→cuda, else→cpu.
-          Override only when auto detection is incorrect for your hardware.
+          "auto" derives from hardware.gpuVendor: amd→vulkan, nvidia→cuda, else→cpu.
+          "vulkan" — Vulkan compute via Mesa RADV (best for AMD APU/iGPU).
+          "rocm" — AMD ROCm/HIP (deprecated: crashes on APUs, remaps to vulkan).
+          "cuda" — NVIDIA CUDA.
+          "cpu" — CPU-only inference.
         '';
       };
 

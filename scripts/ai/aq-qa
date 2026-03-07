@@ -40,6 +40,9 @@ done
 
 PHASE="${PHASE#phase}"   # strip optional "phase" prefix
 
+AQ_QA_FIXTURE_LLAMA_DIAG="${AQ_QA_FIXTURE_LLAMA_DIAG:-}"
+AQ_QA_FIXTURE_APPARMOR_DIAG="${AQ_QA_FIXTURE_APPARMOR_DIAG:-}"
+
 # ---------------------------------------------------------------------------
 # Test result tracking
 # ---------------------------------------------------------------------------
@@ -232,6 +235,100 @@ run_phase_1() {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 2 — runtime/package/confinement diagnostics (llama preset)
+# ---------------------------------------------------------------------------
+run_phase_2() {
+  local diag_json classification healthy
+  if [[ -n "$AQ_QA_FIXTURE_LLAMA_DIAG" ]]; then
+    diag_json="$(cat "$AQ_QA_FIXTURE_LLAMA_DIAG" 2>/dev/null || true)"
+  else
+    if diag_json="$("${SCRIPT_DIR}/aq-runtime-diagnose" --preset llama-cpp --json 2>/dev/null)"; then
+      :
+    else
+      diag_json="$("${SCRIPT_DIR}/aq-runtime-diagnose" --preset llama-cpp --json 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -z "$diag_json" ]]; then
+    _fail "2.1.1" "aq-runtime-diagnose returned diagnostics" "no output"
+    return
+  fi
+
+  classification="$(python3 - <<'PY' "$diag_json"
+import json, sys
+try:
+    print(json.loads(sys.argv[1]).get("classification", ""))
+except Exception:
+    print("")
+PY
+)"
+  healthy="$(python3 - <<'PY' "$diag_json"
+import json, sys
+try:
+    print("yes" if json.loads(sys.argv[1]).get("healthy") else "no")
+except Exception:
+    print("no")
+PY
+)"
+
+  if [[ "$healthy" == "yes" ]]; then
+    _pass "2.1.1" "runtime/package/confinement loop passes (${classification})"
+  else
+    _fail "2.1.1" "runtime/package/confinement loop passes" "classification=${classification}"
+  fi
+
+  if [[ "$classification" == "path_scoped_confinement_likely" ]]; then
+    _fail "2.1.2" "no path-scoped confinement regression" "copied binary enumerates Vulkan but original does not"
+  else
+    _pass "2.1.2" "no path-scoped confinement regression detected"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Phase 3 — confinement/AppArmor diagnostics
+# ---------------------------------------------------------------------------
+run_phase_3() {
+  local diag_json classification healthy
+  if [[ -n "$AQ_QA_FIXTURE_APPARMOR_DIAG" ]]; then
+    diag_json="$(cat "$AQ_QA_FIXTURE_APPARMOR_DIAG" 2>/dev/null || true)"
+  else
+    if diag_json="$("${SCRIPT_DIR}/aq-runtime-diagnose" --preset apparmor --json 2>/dev/null)"; then
+      :
+    else
+      diag_json="$("${SCRIPT_DIR}/aq-runtime-diagnose" --preset apparmor --json 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -z "$diag_json" ]]; then
+    _fail "3.1.1" "aq-runtime-diagnose apparmor preset returned diagnostics" "no output"
+    return
+  fi
+
+  classification="$(python3 - <<'PY' "$diag_json"
+import json, sys
+try:
+    print(json.loads(sys.argv[1]).get("classification", ""))
+except Exception:
+    print("")
+PY
+)"
+  healthy="$(python3 - <<'PY' "$diag_json"
+import json, sys
+try:
+    print("yes" if json.loads(sys.argv[1]).get("healthy") else "no")
+except Exception:
+    print("no")
+PY
+)"
+
+  if [[ "$healthy" == "yes" ]]; then
+    _pass "3.1.1" "apparmor/confinement loop passes (${classification})"
+  else
+    _fail "3.1.1" "apparmor/confinement loop passes" "classification=${classification}"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Stub phases (not yet automated)
 # ---------------------------------------------------------------------------
 run_phase_stub() {
@@ -282,19 +379,23 @@ PYEOF
 case "$PHASE" in
   help|"")
     printf 'Usage: aq-qa <phase> [--json] [--sudo]\n'
-    printf '  phase: 0, 1, all, or help\n'
+    printf '  phase: 0, 1, 2, 3, all, or help\n'
     printf '  --json   Machine-readable JSON output\n'
     printf '  --sudo   Enable checks requiring sudo (AppArmor)\n'
     exit 0
     ;;
   0) run_phase_0 ;;
   1) run_phase_1 ;;
-  2|3|4|5|6|7|8|9|10) run_phase_stub "$PHASE" ;;
+  2) run_phase_2 ;;
+  3) run_phase_3 ;;
+  4|5|6|7|8|9|10) run_phase_stub "$PHASE" ;;
   all)
     PHASE="all"
     run_phase_0
     run_phase_1
-    for p in 2 3 4 5 6 7 8 9 10; do run_phase_stub "$p"; done
+    run_phase_2
+    run_phase_3
+    for p in 4 5 6 7 8 9 10; do run_phase_stub "$p"; done
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2

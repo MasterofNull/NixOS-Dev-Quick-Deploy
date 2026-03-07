@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""
+aq-capability-stub — generate a starter catalog entry for an unknown capability.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a starter capability-gap catalog entry.")
+    parser.add_argument("--tool", help="Binary or repo command to stub.")
+    parser.add_argument("--workflow", help="Workflow blueprint id to stub.")
+    parser.add_argument("--skill", help="Skill name to stub.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint, for example nix, python, shell.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint, for example nixos, ai-stack, prsi.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--format", dest="fmt", default="json", choices=["json", "text"], help="Output format.")
+    parser.add_argument("--fragment-only", action="store_true", help="Emit only the catalog entry JSON fragment.")
+    parser.add_argument("--save-artifact", help="Write the full stub payload to this path.")
+    return parser.parse_args()
+
+
+def normalize(args: argparse.Namespace) -> tuple[str, str]:
+    if args.workflow:
+        return f"workflow:{args.workflow}", "workflow"
+    if args.skill:
+        return f"skill:{args.skill}", "skill"
+    if args.tool:
+        return args.tool, "tool"
+    raise SystemExit("one of --tool, --workflow, or --skill is required")
+
+
+def preferred_layer(capability_type: str, capability_id: str) -> str:
+    if capability_type == "workflow":
+        return "workflow_blueprint"
+    if capability_type == "skill":
+        return "skill_registry"
+    if capability_id.startswith("aq-"):
+        return "repo_script"
+    return "declarative_nix"
+
+
+def context_from_args(args: argparse.Namespace) -> dict:
+    return {
+        "language": args.context_language or "",
+        "application": args.context_application or "",
+        "file": args.context_file or "",
+    }
+
+
+def commands(capability_type: str, capability_id: str, context: dict) -> list[str]:
+    if capability_type == "workflow":
+        workflow_id = capability_id.split("workflow:", 1)[1]
+        return [
+            "scripts/ai/aqd workflows list",
+            f"python3 scripts/ai/aq-context-bootstrap --task \"restore missing workflow {workflow_id}\" --scope harness-first --format json",
+        ]
+    if capability_type == "skill":
+        skill_name = capability_id.split("skill:", 1)[1]
+        return [
+            f"test -f .agent/skills/{skill_name}/SKILL.md",
+            f"sed -n '1,80p' .agent/skills/{skill_name}/SKILL.md",
+        ]
+    if capability_id.startswith("aq-"):
+        return [
+            f"test -x scripts/ai/{capability_id}",
+            f"python3 scripts/ai/{capability_id} --help",
+        ]
+    if context.get("language") == "nix" or context.get("application") == "nixos":
+        return [
+            f"command -v {capability_id} || true",
+            "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link",
+            f"aq-context-bootstrap --task \"restore missing capability {capability_id}\" --scope system-fix --format json",
+        ]
+    return [
+        f"command -v {capability_id} || true",
+        f"aq-context-bootstrap --task \"restore missing capability {capability_id}\" --scope system-fix --format json",
+    ]
+
+
+def files(capability_type: str, capability_id: str, context: dict) -> list[str]:
+    if capability_type == "workflow":
+        return ["config/workflow-blueprints.json", "scripts/ai/aqd"]
+    if capability_type == "skill":
+        skill_name = capability_id.split("skill:", 1)[1]
+        return [f".agent/skills/{skill_name}/SKILL.md"]
+    if capability_id.startswith("aq-"):
+        return [f"scripts/ai/{capability_id}", "config/capability-gap-catalog.json"]
+    if context.get("language") == "nix" or context.get("application") == "nixos":
+        return ["config/capability-gap-catalog.json", "nix/modules/core/options.nix", "templates/configuration.nix"]
+    if context.get("language") == "python":
+        return ["config/capability-gap-catalog.json", context.get("file") or "scripts/ai"]
+    return ["config/capability-gap-catalog.json", "templates/configuration.nix"]
+
+
+def build_entry(capability_id: str, capability_type: str, context: dict) -> dict:
+    layer = preferred_layer(capability_type, capability_id)
+    return {
+        "id": capability_id,
+        "type": capability_type,
+        "preferred_fix_layer": layer,
+        "summary": f"TODO: describe why `{capability_id}` matters and the preferred remediation path.",
+        "recommended_actions": commands(capability_type, capability_id, context),
+        "files": files(capability_type, capability_id, context),
+        "rollback": "TODO: replace with rollback guidance for this capability.",
+    }
+
+
+def artifact_meta() -> dict:
+    return {
+        "tool": "aq-capability-stub",
+        "cwd": str(REPO_ROOT),
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    capability_id, capability_type = normalize(args)
+    context = context_from_args(args)
+    entry = build_entry(capability_id, capability_type, context)
+    payload = {
+        "capability_id": capability_id,
+        "capability_type": capability_type,
+        "context": context,
+        "artifact_meta": artifact_meta(),
+        "entry": entry,
+        "catalog_fragment": entry,
+    }
+    if args.save_artifact:
+        artifact_path = Path(args.save_artifact)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        payload["artifact_path"] = str(artifact_path)
+    if args.fragment_only:
+        rendered = entry
+    else:
+        rendered = payload
+    if args.fmt == "json":
+        print(json.dumps(rendered, indent=2))
+    else:
+        print(json.dumps(rendered if args.fragment_only else payload["entry"], indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

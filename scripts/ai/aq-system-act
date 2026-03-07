@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""
+aq-system-act — unified bounded entrypoint across capability gaps, runtime incidents,
+and broader system/bootstrap tasks.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Unified bounded entrypoint across repo task types.")
+    parser.add_argument("--task", help="Free-form task or incident description.")
+    parser.add_argument("--tool", help="Binary or repo command to inspect.")
+    parser.add_argument("--workflow", help="Workflow blueprint id to inspect.")
+    parser.add_argument("--skill", help="Skill name to inspect.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint, for example nix, python, shell.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint, for example nixos, ai-stack, prsi.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--execute", action="store_true", help="Execute when the routed subsystem supports safe execution.")
+    parser.add_argument("--format", dest="fmt", default="json", choices=["json", "text"], help="Output format.")
+    return parser.parse_args()
+
+
+def run_json(cmd: list[str]) -> dict:
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "returncode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+        }
+    return json.loads(proc.stdout)
+
+
+def bootstrap_recommendation(result: dict) -> dict:
+    return {
+        "recommended_next_mode": result.get("recommended_next_mode", "proceed_primary"),
+        "recommended_scope": result.get("recommended_scope", result.get("scope", "")),
+        "recommended_action_id": "",
+    }
+
+
+def capability_recommendation(result: dict) -> dict:
+    action = result.get("action", {})
+    selection = result.get("selection", {})
+    classification = action.get("target_classification", "")
+    target_fix_layer = action.get("target_fix_layer", "")
+    if classification == "unknown_capability" or target_fix_layer == "catalog_extension":
+        mode = "extend_catalog"
+    elif result.get("mode") == "execute":
+        mode = "executed_primary"
+    else:
+        mode = "preview_primary"
+    return {
+        "recommended_next_mode": mode,
+        "recommended_scope": "capability-gap",
+        "recommended_action_id": selection.get("selected_action_id", action.get("action_id", "")),
+    }
+
+
+def runtime_recommendation(result: dict) -> dict:
+    selection = result.get("selection", {})
+    selected_action_id = result.get("selected_action_id", selection.get("selected_action_id", ""))
+    if result.get("mode") == "list":
+        mode = "inspect_actions"
+    elif result.get("result_mode") == "execute":
+        mode = "executed_primary"
+    else:
+        mode = "preview_primary"
+    return {
+        "recommended_next_mode": mode,
+        "recommended_scope": "runtime-incident",
+        "recommended_action_id": selected_action_id,
+    }
+
+
+def detect_missing_reference(task: str) -> dict:
+    lowered = task.lower()
+    patterns = [
+        (r"(?:tool|command)\s+(?:not available|missing|not found)[: ]+([A-Za-z0-9._-]+)", "tool"),
+        (r"missing workflow[: ]+([A-Za-z0-9._:-]+)", "workflow"),
+        (r"missing skill[: ]+([A-Za-z0-9._-]+)", "skill"),
+    ]
+    for pattern, kind in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            return {kind: match.group(1)}
+    return {}
+
+
+def route_from_args(args: argparse.Namespace) -> tuple[str, dict]:
+    if args.tool or args.workflow or args.skill:
+        return "capability", {"tool": args.tool, "workflow": args.workflow, "skill": args.skill}
+    if not args.task:
+        raise SystemExit("one of --task, --tool, --workflow, or --skill is required")
+
+    bootstrap_cmd = ["python3", "scripts/ai/aq-context-bootstrap", "--task", args.task, "--format", "json"]
+    if args.context_language:
+        bootstrap_cmd.extend(["--context-language", args.context_language])
+    if args.context_application:
+        bootstrap_cmd.extend(["--context-application", args.context_application])
+    if args.context_file:
+        bootstrap_cmd.extend(["--context-file", args.context_file])
+    bootstrap = run_json(bootstrap_cmd)
+    scope = bootstrap.get("scope", "harness-first")
+    missing = detect_missing_reference(args.task)
+    if scope == "runtime-incident":
+        return "runtime", {"bootstrap": bootstrap}
+    if scope == "capability-gap":
+        return "capability", {"bootstrap": bootstrap, **missing}
+    return "bootstrap", {"bootstrap": bootstrap}
+
+
+def capability_payload(route_args: dict, execute: bool, args: argparse.Namespace) -> dict:
+    cmd = ["python3", "scripts/ai/aq-capability-remediate"]
+    if route_args.get("workflow"):
+        cmd.extend(["--workflow", route_args["workflow"]])
+    elif route_args.get("skill"):
+        cmd.extend(["--skill", route_args["skill"]])
+    else:
+        cmd.extend(["--tool", route_args.get("tool", "")])
+    if args.context_language:
+        cmd.extend(["--context-language", args.context_language])
+    if args.context_application:
+        cmd.extend(["--context-application", args.context_application])
+    if args.context_file:
+        cmd.extend(["--context-file", args.context_file])
+    if execute:
+        cmd.append("--execute")
+    result = run_json(cmd)
+    payload = {
+        "subsystem": "capability",
+        "mode": "execute" if execute else "dry-run",
+        "context": {
+            "language": args.context_language or "",
+            "application": args.context_application or "",
+            "file": args.context_file or "",
+        },
+        "routing_hints": {
+            "prefer_declarative": bool(args.context_language == "nix" or args.context_application == "nixos"),
+            "prefer_harness": bool((route_args.get("tool") or "").startswith("aq-") or args.context_application in {"mcp", "ai-stack"}),
+        },
+        "stack_matchers_applied": result.get("stack_matchers_applied", []),
+        "resolver_hints": result.get("resolver_hints", []),
+        "repo_manifest_matches": result.get("repo_manifest_matches", []),
+        "result": result,
+    }
+    payload.update(capability_recommendation(result))
+    return payload
+
+
+def runtime_payload(execute: bool) -> dict:
+    cmd = ["python3", "scripts/ai/aq-runtime-act", "--brief"]
+    if execute:
+        cmd.append("--execute")
+    result = run_json(cmd)
+    payload = {
+        "subsystem": "runtime",
+        "mode": "execute" if execute else "dry-run",
+        "result": result,
+    }
+    payload.update(runtime_recommendation(result))
+    return payload
+
+
+def bootstrap_payload(bootstrap: dict) -> dict:
+    result = {
+        "scope": bootstrap.get("scope", ""),
+        "scope_summary": bootstrap.get("scope_summary", ""),
+        "scope_confidence": bootstrap.get("scope_confidence", "low"),
+        "scope_alternatives": bootstrap.get("scope_alternatives", []),
+        "fallback_scope": bootstrap.get("fallback_scope", ""),
+        "fallback_reason": bootstrap.get("fallback_reason", ""),
+        "recommended_next_mode": bootstrap.get("recommended_next_mode", "proceed_primary"),
+        "recommended_scope": bootstrap.get("recommended_scope", bootstrap.get("scope", "")),
+        "context": bootstrap.get("context", {}),
+        "ecosystem_hints": bootstrap.get("ecosystem_hints", []),
+        "package_hints": bootstrap.get("package_hints", []),
+        "source_hints": bootstrap.get("source_hints", []),
+        "stack_matchers_applied": bootstrap.get("stack_matchers_applied", []),
+        "card_stack_matchers_applied": bootstrap.get("card_stack_matchers_applied", []),
+        "card_overlay_matchers_applied": bootstrap.get("card_overlay_matchers_applied", []),
+        "scope_diagnostics": bootstrap.get("scope_diagnostics", {}),
+        "recommended_card_order": bootstrap.get("recommended_card_order", []),
+        "starter_commands": bootstrap.get("starter_commands", []),
+        "estimated_tokens": bootstrap.get("estimated_tokens", 0),
+    }
+    payload = {
+        "subsystem": "bootstrap",
+        "mode": "plan-only",
+        "result": result,
+    }
+    payload.update(bootstrap_recommendation(result))
+    return payload
+
+
+def format_text(payload: dict) -> str:
+    lines = [
+        f"subsystem: {payload['subsystem']}",
+        f"mode: {payload['mode']}",
+    ]
+    result = payload.get("result", {})
+    if payload["subsystem"] == "bootstrap":
+        lines.append(f"scope: {result.get('scope', '')}")
+        lines.append("recommended_card_order:")
+        for item in result.get("recommended_card_order", []):
+            lines.append(f"- {item}")
+        lines.append("starter_commands:")
+        for item in result.get("starter_commands", []):
+            lines.append(f"- {item}")
+    else:
+        lines.append(json.dumps(result, indent=2))
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    route, route_args = route_from_args(args)
+    if route == "capability":
+        payload = capability_payload(route_args, args.execute, args)
+    elif route == "runtime":
+        payload = runtime_payload(args.execute)
+    else:
+        payload = bootstrap_payload(route_args["bootstrap"])
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(format_text(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
