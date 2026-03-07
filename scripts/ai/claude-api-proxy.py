@@ -33,6 +33,7 @@ import logging
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, Optional
+import urllib.parse
 import urllib.request
 import urllib.error
 
@@ -74,6 +75,86 @@ class ClaudeAPIProxy(BaseHTTPRequestHandler):
         """Handle GET requests (rate limits, etc.)"""
         self._proxy_to_real_api("GET")
 
+    def _estimate_content_chars(self, content: Any) -> int:
+        """Estimate size from either a string or Anthropic content blocks."""
+
+        if isinstance(content, str):
+            return len(content)
+
+        if not isinstance(content, list):
+            return 0
+
+        total = 0
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            for key in ("text", "input"):
+                value = block.get(key)
+                if isinstance(value, str):
+                    total += len(value)
+        return total
+
+    def _extract_text_content(self, content: Any) -> str:
+        """Extract plain text from a content string or list of text blocks."""
+
+        if isinstance(content, str):
+            return content
+
+        if not isinstance(content, list):
+            return ""
+
+        parts = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text" and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+        return "\n".join(part for part in parts if part)
+
+    def _is_safe_for_local_routing(self, request: Dict[str, Any]) -> bool:
+        """
+        Only locally answer trivial single-turn text requests.
+
+        Anthropic assistant/tool/thinking content must be replayed byte-for-byte on
+        later turns, so any multi-turn or non-text conversation must bypass local
+        synthesis and be forwarded unchanged.
+        """
+
+        if request.get("stream"):
+            return False
+
+        for key in ("tools", "tool_choice", "thinking", "container", "context_management"):
+            if request.get(key):
+                return False
+
+        messages = request.get("messages", [])
+        if not isinstance(messages, list) or not messages:
+            return False
+
+        user_messages = [msg for msg in messages if isinstance(msg, dict) and msg.get("role") == "user"]
+        if len(user_messages) != 1 or messages[-1].get("role") != "user":
+            return False
+
+        for msg in messages:
+            if not isinstance(msg, dict):
+                return False
+
+            if msg.get("role") not in {"user", "system"}:
+                return False
+
+            content = msg.get("content")
+            if isinstance(content, str):
+                continue
+
+            if not isinstance(content, list):
+                return False
+
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "text":
+                    return False
+
+        return True
+
     def _handle_messages_request(self):
         """Route messages through local AI stack or remote API"""
 
@@ -88,7 +169,7 @@ class ClaudeAPIProxy(BaseHTTPRequestHandler):
             max_tokens = request_data.get("max_tokens", 1024)
 
             # Estimate complexity (simple heuristic)
-            total_chars = sum(len(msg.get("content", "")) for msg in messages)
+            total_chars = sum(self._estimate_content_chars(msg.get("content", "")) for msg in messages)
             estimated_tokens = total_chars // 4  # Rough approximation
 
             # Routing decision
@@ -116,6 +197,9 @@ class ClaudeAPIProxy(BaseHTTPRequestHandler):
 
     def _should_use_local(self, estimated_tokens: int, max_tokens: int, request: Dict) -> bool:
         """Decide whether to route locally or remotely"""
+
+        if not self._is_safe_for_local_routing(request):
+            return False
 
         # Always use remote for very complex queries
         if estimated_tokens > COMPLEX_QUERY_TOKENS or max_tokens > 2000:
@@ -145,7 +229,9 @@ class ClaudeAPIProxy(BaseHTTPRequestHandler):
                 raise ValueError("No messages in request")
 
             last_message = messages[-1]
-            query = last_message.get("content", "")
+            query = self._extract_text_content(last_message.get("content", ""))
+            if not query.strip():
+                raise ValueError("No plain-text user query available for local routing")
 
             # Get RAG context from AIDB
             context = self._get_rag_context(query)
