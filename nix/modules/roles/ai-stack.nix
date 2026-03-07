@@ -776,7 +776,12 @@ in {
             /proc/meminfo r,
             /proc/cpuinfo r,
             /sys/devices/system/cpu/** r,
+            /sys/devices/system/node/** r,
             /sys/bus/pci/devices/** r,
+
+            # --- ROCm/HSA sysfs paths for GPU enumeration --------------------
+            /sys/class/kfd/** r,
+            /sys/devices/virtual/kfd/** r,
 
             # --- Device access -----------------------------------------------
             /dev/null rw,
