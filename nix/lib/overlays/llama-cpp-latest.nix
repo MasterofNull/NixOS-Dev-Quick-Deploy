@@ -1,14 +1,14 @@
 /**
-  Phase 20.1 — llama.cpp latest version overlay.
+  Phase 20.1 — llama.cpp latest version overlay with ROCm/CUDA support.
 
   This overlay enables tracking the latest llama.cpp releases independent of
   nixpkgs channel updates. It reads version pins from nix/pins/llama-cpp.json
-  and builds llama.cpp from source with the same configuration as nixpkgs.
+  and builds llama.cpp from source with GPU acceleration enabled.
 
   Features:
     • Tracks latest llama.cpp releases via pinned version file
     • Preserves fallback to previous known-good version
-    • Maintains all nixpkgs build flags (CUDA, ROCm, Vulkan, etc.)
+    • Enables ROCm (AMD GPU) or CUDA (NVIDIA GPU) acceleration
     • Integrates with existing aarch64 NEON overlay
     • Updated via scripts/ai/update-llama-cpp.sh
 
@@ -17,15 +17,11 @@
     • mySystem.aiStack.llamaCpp.useFallback = true  — use fallback version
     • mySystem.aiStack.llamaCpp.trackLatest = false — use nixpkgs version
 
-  Usage in flake.nix or module:
-    nixpkgs.overlays = [
-      (import ./nix/lib/overlays/llama-cpp-latest.nix {
-        pinFile = ./nix/pins/llama-cpp.json;
-        useFallback = false;
-      })
-    ];
+  GPU Support:
+    • enableRocm = true  — AMD GPU acceleration (requires rocmPackages)
+    • enableCuda = false — NVIDIA GPU (requires cudaPackages)
 */
-{ pinFile, useFallback ? false }:
+{ pinFile, useFallback ? false, enableRocm ? false, enableCuda ? false }:
 
 final: prev:
 let
@@ -36,15 +32,23 @@ let
   selected = if useFallback then pins.fallback else pins.current;
 
   # Build flags to strip when applying platform-specific patches
-  # (allows aarch64 overlay to compose cleanly)
   platformPatterns = [ "GGML_NEON" "GGML_METAL" "GGML_OPENCL" ];
   stripConflicts = flags:
     builtins.filter
       (f: builtins.all (pat: !(prev.lib.hasPrefix "-D${pat}" f)) platformPatterns)
       flags;
+
+  # Get the base llama-cpp with GPU support enabled
+  baseLlamaCpp =
+    if enableRocm then
+      prev.llama-cpp.override { rocmSupport = true; }
+    else if enableCuda then
+      prev.llama-cpp.override { cudaSupport = true; }
+    else
+      prev.llama-cpp;
 in
 {
-  llama-cpp = prev.llama-cpp.overrideAttrs (oldAttrs: {
+  llama-cpp = baseLlamaCpp.overrideAttrs (oldAttrs: {
     version = selected.version;
 
     src = prev.fetchFromGitHub {
@@ -71,13 +75,14 @@ in
         date = selected.date or "unknown";
         isFallback = useFallback;
         pinFile = toString pinFile;
+        rocmEnabled = enableRocm;
+        cudaEnabled = enableCuda;
       };
     };
 
     meta = (oldAttrs.meta or {}) // {
-      # Update description to indicate pinned version
       description = (oldAttrs.meta.description or "llama.cpp") +
-        " (pinned: ${selected.rev}${if useFallback then " [fallback]" else ""})";
+        " (pinned: ${selected.rev}${if useFallback then " [fallback]" else ""}${if enableRocm then " +rocm" else ""}${if enableCuda then " +cuda" else ""})";
     };
   });
 }

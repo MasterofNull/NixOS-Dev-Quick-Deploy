@@ -242,6 +242,8 @@ in {
         (import ../../lib/overlays/llama-cpp-latest.nix {
           pinFile = ../../pins/llama-cpp.json;
           useFallback = llama.useFallback;
+          enableRocm = (resolvedAccel == "rocm");
+          enableCuda = (resolvedAccel == "cuda");
         })
       ];
     })
