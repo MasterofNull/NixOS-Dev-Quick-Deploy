@@ -55,6 +55,8 @@
       rocmGfxOverride                  = "9.0.0";
       # llama.cpp extra args for stability and performance on AMD APU
       llamaCpp.extraArgs               = [
+        # Disable auto memory fitting (crashes on APU with gfx900 override)
+        "--fit" "off"
         # Prevent slot hangs: timeout after 120s
         "--timeout" "120"
         # Limit concurrent slots to prevent resource contention
