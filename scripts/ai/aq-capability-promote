@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""
+aq-capability-promote — surface promotion guidance for repeated unknown capabilities.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_OBSERVATIONS_PATH = REPO_ROOT / ".cache" / "capability-gap-observations.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Promote repeated unknown capabilities into catalog candidates.")
+    parser.add_argument("--tool", help="Binary or repo command to inspect.")
+    parser.add_argument("--workflow", help="Workflow blueprint id to inspect.")
+    parser.add_argument("--skill", help="Skill name to inspect.")
+    parser.add_argument("--gap-file", help="Existing aq-capability-gap JSON file.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    parser.add_argument("--format", dest="fmt", default="json", choices=["json", "text"], help="Output format.")
+    return parser.parse_args()
+
+
+def observations_path() -> Path:
+    override = os.getenv("AQ_CAPABILITY_GAP_OBSERVATIONS_FILE", "").strip()
+    return Path(override) if override else DEFAULT_OBSERVATIONS_PATH
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_gap(args: argparse.Namespace) -> dict:
+    if args.gap_file:
+        return load_json(Path(args.gap_file))
+    cmd = ["python3", "scripts/ai/aq-capability-gap", "--format", "json"]
+    if args.context_language:
+        cmd.extend(["--context-language", args.context_language])
+    if args.context_application:
+        cmd.extend(["--context-application", args.context_application])
+    if args.context_file:
+        cmd.extend(["--context-file", args.context_file])
+    if args.workflow:
+        cmd.extend(["--workflow", args.workflow])
+    elif args.skill:
+        cmd.extend(["--skill", args.skill])
+    elif args.tool:
+        cmd.extend(["--tool", args.tool])
+    else:
+        raise SystemExit("one of --tool, --workflow, --skill, or --gap-file is required")
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    return json.loads(proc.stdout)
+
+
+def normalize_args(gap: dict) -> list[str]:
+    capability_type = gap.get("capability_type", "tool")
+    capability_id = gap.get("capability_id", "")
+    if capability_type == "workflow":
+        args = ["--workflow", capability_id.split("workflow:", 1)[1]]
+    elif capability_type == "skill":
+        args = ["--skill", capability_id.split("skill:", 1)[1]]
+    else:
+        args = ["--tool", capability_id]
+    context = gap.get("context", {})
+    if context.get("language"):
+        args.extend(["--context-language", context["language"]])
+    if context.get("application"):
+        args.extend(["--context-application", context["application"]])
+    if context.get("file"):
+        args.extend(["--context-file", context["file"]])
+    return args
+
+
+def main() -> int:
+    args = parse_args()
+    gap = build_gap(args)
+    observation = gap.get("observation", {})
+    promotion_candidate = bool(observation.get("promotion_candidate"))
+    base_args = normalize_args(gap)
+    stub_cmd = " ".join(["python3", "scripts/ai/aq-capability-stub", *base_args])
+    append_cmd = "python3 scripts/ai/aq-capability-catalog-append --stub-file <stub-artifact> --output <updated-catalog-artifact>"
+    patch_cmd = "python3 scripts/ai/aq-capability-patch-prep --updated-catalog-file <updated-catalog-artifact> --output <catalog-diff-artifact>"
+    payload = {
+        "capability_id": gap.get("capability_id", ""),
+        "capability_type": gap.get("capability_type", ""),
+        "classification": gap.get("classification", ""),
+        "observation": observation,
+        "promotion_candidate": promotion_candidate,
+        "promotion_state_file": str(observations_path()),
+        "summary": (
+            "Capability has repeated unknown-gap observations and should be promoted to a catalog candidate."
+            if promotion_candidate
+            else "Capability has not yet crossed the promotion threshold."
+        ),
+        "recommended_actions": [stub_cmd, append_cmd, patch_cmd] if promotion_candidate else [stub_cmd],
+        "files": ["config/capability-gap-catalog.json"],
+        "rollback": "Discard generated stub or catalog artifacts if the capability should not be promoted.",
+    }
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(json.dumps(payload, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

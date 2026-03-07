@@ -1,0 +1,18 @@
+{
+  "allowed_prefixes": [
+    "printf ",
+    "true",
+    "echo ",
+    "aq-qa ",
+    "python3 scripts/ai/aq-runtime-plan",
+    "python3 scripts/ai/aq-runtime-remediate",
+    "aq-runtime-diagnose ",
+    "journalctl ",
+    "systemctl status ",
+    "systemctl cat ",
+    "systemctl show ",
+    "curl ",
+    "ldd ",
+    "nix build "
+  ]
+}

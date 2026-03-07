@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""
+aq-runtime-remediate — execute or preview next actions from aq-runtime-plan
+
+Dry-run by default. Requires --execute to run commands.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+POLICY_PATH = REPO_ROOT / "config" / "runtime-remediation-policy.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Preview or execute aq-runtime-plan next actions.")
+    parser.add_argument("--plan-file", help="Use an existing aq-runtime-plan JSON file.")
+    parser.add_argument("--action-index", type=int, default=0, help="Index into next_actions. Defaults to 0.")
+    parser.add_argument("--action-id", help="Stable action_id from aq-runtime-plan. Overrides --action-index when set.")
+    parser.add_argument("--action-group", help="Planner action_groups bucket to select from, such as observe_first or safe_to_run_now.")
+    parser.add_argument("--prefer-group", action="append", dest="preferred_groups", help="Fallback-ordered planner group preference. Repeat to try multiple groups.")
+    parser.add_argument("--prefer-plan-order", action="store_true", help="Use execution_order.recommended_group_order from the plan.")
+    parser.add_argument("--group-action-index", type=int, default=0, help="Index within the selected action group. Defaults to 0.")
+    parser.add_argument("--list-actions", action="store_true", help="List available actions and exit without selecting one.")
+    parser.add_argument("--execute", action="store_true", help="Execute the selected action commands.")
+    parser.add_argument("--policy-file", default=str(POLICY_PATH), help="Path to the remediation execution policy JSON file.")
+    parser.add_argument("--allow-sudo", action="store_true", help="Allow actions marked requires_sudo=true.")
+    parser.add_argument("--allow-unsafe-live", action="store_true", help="Allow actions marked safe_in_live_session=false.")
+    parser.add_argument("--preset", action="append", dest="presets", help="Forward preset selection to aq-runtime-plan.")
+    parser.add_argument("--qa-fixture", help="Forwarded to aq-runtime-plan.")
+    parser.add_argument(
+        "--diagnosis-fixture",
+        action="append",
+        dest="diagnosis_fixtures",
+        help="Forwarded to aq-runtime-plan. Repeat for multiple fixtures.",
+    )
+    return parser.parse_args()
+
+
+def load_plan(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_policy(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_plan(args: argparse.Namespace) -> dict:
+    cmd = ["python3", "scripts/ai/aq-runtime-plan"]
+    for preset in args.presets or []:
+        cmd.extend(["--preset", preset])
+    if args.qa_fixture:
+        cmd.extend(["--qa-fixture", args.qa_fixture])
+    for fixture in args.diagnosis_fixtures or []:
+        cmd.extend(["--diagnosis-fixture", fixture])
+
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    return json.loads(proc.stdout)
+
+
+def render_preview(action: dict, index: int, selected_group: str = "") -> dict:
+    return {
+        "selected_action_index": index,
+        "selected_action_id": action.get("action_id", ""),
+        "selected_action_kind": action.get("action_kind", ""),
+        "selected_action_provenance": action.get("provenance", ""),
+        "selected_action_origin": action.get("action_origin", {}),
+        "selected_action_group": selected_group,
+        "summary": action.get("summary", ""),
+        "commands": action.get("commands", []),
+        "command_entries": action.get("command_entries", []),
+        "files": action.get("files", []),
+        "rollback": action.get("rollback", ""),
+        "risk": action.get("risk", "unknown"),
+        "requires_sudo": action.get("requires_sudo", False),
+        "safe_in_live_session": action.get("safe_in_live_session", True),
+    }
+
+
+def render_selection(action: dict, index: int, selected_group: str = "") -> dict:
+    return {
+        "selected_action_index": index,
+        "selected_action_id": action.get("action_id", ""),
+        "selected_action_kind": action.get("action_kind", ""),
+        "selected_action_provenance": action.get("provenance", ""),
+        "selected_action_origin": action.get("action_origin", {}),
+        "selected_action_group": selected_group,
+        "summary": action.get("summary", ""),
+    }
+
+
+def select_action(actions: list[dict], action_index: int, action_id: str | None) -> tuple[int, dict]:
+    if action_id:
+        for index, action in enumerate(actions):
+            if action.get("action_id", "") == action_id:
+                return index, action
+        raise KeyError(action_id)
+    if action_index < 0 or action_index >= len(actions):
+        raise IndexError(action_index)
+    return action_index, actions[action_index]
+
+
+def render_action_listing(actions: list[dict]) -> list[dict]:
+    listing: list[dict] = []
+    for index, action in enumerate(actions):
+        listing.append(
+            {
+                "action_index": index,
+                "action_id": action.get("action_id", ""),
+                "action_kind": action.get("action_kind", ""),
+                "provenance": action.get("provenance", ""),
+                "summary": action.get("summary", ""),
+                "action_origin": action.get("action_origin", {}),
+            }
+        )
+    return listing
+
+
+def render_group_listing(plan: dict) -> dict:
+    groups = plan.get("action_groups", {})
+    rendered: dict[str, list[dict]] = {}
+    for group_name, entries in groups.items():
+        rendered[group_name] = [
+            {
+                "action_index": item.get("action_index"),
+                "action_id": item.get("action_id", ""),
+                "action_kind": item.get("action_kind", ""),
+                "provenance": item.get("provenance", ""),
+                "summary": item.get("summary", ""),
+                "action_origin": item.get("action_origin", {}),
+            }
+            for item in entries or []
+        ]
+    return rendered
+
+
+def select_action_from_group(plan: dict, actions: list[dict], group_name: str, group_index: int) -> tuple[int, dict]:
+    groups = plan.get("action_groups", {})
+    entries = groups.get(group_name)
+    if entries is None:
+        raise LookupError(group_name)
+    if group_index < 0 or group_index >= len(entries):
+        raise IndexError(group_index)
+    target_action_id = entries[group_index].get("action_id", "")
+    if target_action_id:
+        return select_action(actions, 0, target_action_id)
+    target_action_index = entries[group_index].get("action_index")
+    if isinstance(target_action_index, int):
+        return select_action(actions, target_action_index, None)
+    raise KeyError(group_name)
+
+
+def select_action_from_preferred_groups(plan: dict, actions: list[dict], preferred_groups: list[str], group_index: int) -> tuple[str, int, dict]:
+    groups = plan.get("action_groups", {})
+    for group_name in preferred_groups:
+        entries = groups.get(group_name, [])
+        if not entries:
+            continue
+        selected_index, action = select_action_from_group(plan, actions, group_name, group_index)
+        return group_name, selected_index, action
+    raise LookupError(",".join(preferred_groups))
+
+
+def preferred_groups_from_plan(plan: dict) -> list[str]:
+    execution_order = plan.get("execution_order", {})
+    groups = execution_order.get("recommended_group_order", [])
+    return [group for group in groups if isinstance(group, str) and group]
+
+
+def is_allowed_command(command: str, policy: dict) -> bool:
+    allowed_prefixes = policy.get("allowed_prefixes", [])
+    return any(command == prefix or command.startswith(prefix) for prefix in allowed_prefixes)
+
+
+def action_command_entries(action: dict) -> list[dict]:
+    if action.get("command_entries"):
+        return action["command_entries"]
+    return [
+        {
+            "cmd": cmd,
+            "risk": action.get("risk", "unknown"),
+            "requires_sudo": action.get("requires_sudo", False),
+            "safe_in_live_session": action.get("safe_in_live_session", True),
+        }
+        for cmd in action.get("commands", [])
+    ]
+
+
+def execute_action(action: dict, policy: dict, allow_sudo: bool, allow_unsafe_live: bool) -> list[dict]:
+    results = []
+    for entry in action_command_entries(action):
+        cmd = entry.get("cmd", "")
+        if entry.get("requires_sudo", False) and not allow_sudo:
+            results.append(
+                {
+                    "command": cmd or "<command>",
+                    "returncode": 126,
+                    "stdout": "",
+                    "stderr": "blocked: command metadata requires sudo; pass --allow-sudo to override",
+                    "blocked": True,
+                    "block_reason": "requires_sudo",
+                    "required_overrides": ["--allow-sudo"],
+                    "rollback": action.get("rollback", ""),
+                }
+            )
+            break
+        if not entry.get("safe_in_live_session", True) and not allow_unsafe_live:
+            results.append(
+                {
+                    "command": cmd or "<command>",
+                    "returncode": 126,
+                    "stdout": "",
+                    "stderr": "blocked: command metadata is not safe in live session; pass --allow-unsafe-live to override",
+                    "blocked": True,
+                    "block_reason": "unsafe_live_session",
+                    "required_overrides": ["--allow-unsafe-live"],
+                    "rollback": action.get("rollback", ""),
+                }
+            )
+            break
+        if not is_allowed_command(cmd, policy):
+            results.append(
+                {
+                    "command": cmd,
+                    "returncode": 126,
+                    "stdout": "",
+                    "stderr": "blocked by runtime remediation policy",
+                    "blocked": True,
+                    "block_reason": "policy_prefix_not_allowed",
+                    "required_overrides": [],
+                    "rollback": action.get("rollback", ""),
+                }
+            )
+            break
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, shell=True, text=True, capture_output=True)
+        results.append(
+            {
+                "command": cmd,
+                "returncode": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+                "risk": entry.get("risk", "unknown"),
+                "requires_sudo": entry.get("requires_sudo", False),
+                "safe_in_live_session": entry.get("safe_in_live_session", True),
+                "blocked": False,
+                "block_reason": None,
+                "required_overrides": [],
+                "rollback": action.get("rollback", ""),
+            }
+        )
+        if proc.returncode != 0:
+            break
+    return results
+
+
+def main() -> int:
+    args = parse_args()
+    policy = load_policy(Path(args.policy_file))
+    if args.plan_file:
+        plan = load_plan(Path(args.plan_file))
+    else:
+        plan = build_plan(args)
+
+    actions = plan.get("next_actions", [])
+    if not actions:
+        print(json.dumps({"error": "no next_actions in plan"}, indent=2), file=sys.stderr)
+        return 1
+    if args.list_actions:
+        print(json.dumps({"mode": "list", "actions": render_action_listing(actions), "groups": render_group_listing(plan)}, indent=2))
+        return 0
+    try:
+        if args.prefer_plan_order:
+            preferred_groups = preferred_groups_from_plan(plan)
+            selected_group, selected_index, action = select_action_from_preferred_groups(plan, actions, preferred_groups, args.group_action_index)
+        elif args.preferred_groups:
+            selected_group, selected_index, action = select_action_from_preferred_groups(plan, actions, args.preferred_groups, args.group_action_index)
+        elif args.action_group:
+            selected_group = args.action_group
+            selected_index, action = select_action_from_group(plan, actions, args.action_group, args.group_action_index)
+        else:
+            selected_group = ""
+            selected_index, action = select_action(actions, args.action_index, args.action_id)
+    except IndexError:
+        print(
+            json.dumps(
+                {
+                    "error": "group-action-index out of range" if (args.action_group or args.preferred_groups) else "action-index out of range",
+                    "count": len(actions),
+                    "available_actions": render_action_listing(actions),
+                    "available_groups": render_group_listing(plan),
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    except KeyError as exc:
+        print(
+            json.dumps(
+                {
+                    "error": "action-id not found" if not (args.action_group or args.preferred_groups) else "group action resolution failed",
+                    "action_id": str(exc),
+                    "count": len(actions),
+                    "available_actions": render_action_listing(actions),
+                    "available_groups": render_group_listing(plan),
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 3
+    except LookupError as exc:
+        print(
+            json.dumps(
+                {
+                    "error": "preferred groups empty" if (args.preferred_groups or args.prefer_plan_order) else "action-group not found",
+                    "action_group": str(exc),
+                    "available_groups": render_group_listing(plan),
+                    "plan_execution_order": plan.get("execution_order", {}),
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 4
+    selection = render_selection(action, selected_index, selected_group)
+    output = {
+        "mode": "execute" if args.execute else "dry-run",
+        "selection": selection,
+        "action": render_preview(action, selected_index, selected_group),
+        **selection,
+        "policy_file": args.policy_file,
+    }
+
+    if args.execute:
+        output["results"] = execute_action(action, policy, args.allow_sudo, args.allow_unsafe_live)
+
+    print(json.dumps(output, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,15 @@
+[
+  {
+    "preset": "llama-cpp",
+    "service": "llama-cpp.service",
+    "binary_path": "/nix/store/example/bin/llama-server-unconfined",
+    "classification": "runtime_probe_active",
+    "healthy": true
+  },
+  {
+    "preset": "qdrant",
+    "service": "qdrant.service",
+    "classification": "runtime_probe_active",
+    "healthy": true
+  }
+]

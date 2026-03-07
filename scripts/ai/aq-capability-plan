@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""
+aq-capability-plan — select next actions from a capability gap classification.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Plan next actions for missing tools, workflows, or skills.")
+    parser.add_argument("--tool", help="Binary or repo command to inspect.")
+    parser.add_argument("--workflow", help="Workflow blueprint id to inspect.")
+    parser.add_argument("--skill", help="Skill name to inspect.")
+    parser.add_argument("--gap-file", help="Use an existing aq-capability-gap JSON file.")
+    parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint.")
+    parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint.")
+    parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
+    return parser.parse_args()
+
+
+def load_gap(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_gap(args: argparse.Namespace) -> dict:
+    if args.gap_file:
+        return load_gap(Path(args.gap_file))
+    cmd = ["python3", "scripts/ai/aq-capability-gap"]
+    if args.context_language:
+        cmd.extend(["--context-language", args.context_language])
+    if args.context_application:
+        cmd.extend(["--context-application", args.context_application])
+    if args.context_file:
+        cmd.extend(["--context-file", args.context_file])
+    if args.workflow:
+        cmd.extend(["--workflow", args.workflow, "--format", "json"])
+    elif args.skill:
+        cmd.extend(["--skill", args.skill, "--format", "json"])
+    else:
+        cmd.extend(["--tool", args.tool, "--format", "json"])
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    return json.loads(proc.stdout)
+
+
+def action_for_gap(gap: dict) -> dict:
+    classification = gap.get("classification", "unknown_capability")
+    capability_id = gap.get("capability_id", "")
+    preferred_fix_layer = gap.get("preferred_fix_layer", "unknown")
+    available = gap.get("available", False)
+
+    if available:
+        return {
+            "action_id": f"capability_available:{capability_id}",
+            "action_kind": "healthy_cleanup",
+            "provenance": "planner_builtin_healthy",
+            "summary": f"Capability `{capability_id}` is already available. No remediation needed.",
+            "commands": [
+                gap.get("recommended_actions", ["true"])[0]
+            ],
+            "command_entries": [
+                {
+                    "cmd": gap.get("recommended_actions", ["true"])[0],
+                    "risk": "low",
+                    "requires_sudo": False,
+                    "safe_in_live_session": True,
+                }
+            ],
+            "files": gap.get("files", []),
+            "source_hints": gap.get("source_hints", []),
+            "stack_matchers_applied": gap.get("stack_matchers_applied", []),
+            "rollback": gap.get("rollback", "No rollback needed."),
+            "risk": "low",
+            "requires_sudo": False,
+            "safe_in_live_session": True,
+        }
+
+    risk = "medium" if preferred_fix_layer in {"declarative_nix", "native_or_fallback_installer"} else "low"
+    safe = preferred_fix_layer != "native_or_fallback_installer"
+    return {
+        "action_id": f"capability_primary:{capability_id}",
+        "action_kind": "diagnosis_primary",
+        "provenance": "catalog_diagnosis",
+        "summary": f"Restore missing capability `{capability_id}` through the `{preferred_fix_layer}` fix layer.",
+        "commands": gap.get("recommended_actions", []),
+        "command_entries": [
+            {
+                "cmd": cmd,
+                "risk": risk,
+                "requires_sudo": False,
+                "safe_in_live_session": safe,
+            }
+            for cmd in gap.get("recommended_actions", [])
+        ],
+        "files": gap.get("files", []),
+        "source_hints": gap.get("source_hints", []),
+        "stack_matchers_applied": gap.get("stack_matchers_applied", []),
+        "rollback": gap.get("rollback", ""),
+        "risk": risk,
+        "requires_sudo": False,
+        "safe_in_live_session": safe,
+        "target_capability": capability_id,
+        "target_classification": classification,
+        "target_fix_layer": preferred_fix_layer,
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    gap = build_gap(args)
+    action = action_for_gap(gap)
+    group = "safe_to_run_now" if gap.get("available") else ("requires_override" if not action.get("safe_in_live_session", True) else "observe_first")
+    output = {
+        "summary": {
+            "capability_id": gap.get("capability_id", ""),
+            "classification": gap.get("classification", ""),
+            "available": gap.get("available", False),
+            "source_hints": gap.get("source_hints", []),
+            "missing_origin": gap.get("missing_origin", ""),
+            "ecosystem_hints": gap.get("ecosystem_hints", []),
+            "package_hints": gap.get("package_hints", []),
+            "resolver_hints": gap.get("resolver_hints", []),
+            "repo_manifest_matches": gap.get("repo_manifest_matches", []),
+            "stack_matchers_applied": gap.get("stack_matchers_applied", []),
+        },
+        "gap": gap,
+        "context_cards": {
+            "recommended_cards": [
+                {
+                    "card_id": "capability-gap",
+                    "level": "brief",
+                    "reason": "missing capability classification should drive the next fix path",
+                    "priority": 100,
+                }
+            ],
+            "recommended_card_order": ["capability-gap"],
+        },
+        "approval_summary": [
+            {
+                "action_index": 0,
+                "action_id": action["action_id"],
+                "summary": action["summary"],
+                "action_kind": action["action_kind"],
+                "bucket": group,
+                "highest_command_risk": action.get("risk", "unknown"),
+                "required_overrides": ["--allow-unsafe-live"] if not action.get("safe_in_live_session", True) else [],
+                "contains_sudo_steps": False,
+                "contains_unsafe_live_steps": not action.get("safe_in_live_session", True),
+                "provenance": action.get("provenance", ""),
+                "confidence": "high",
+                "source_hints": gap.get("source_hints", []),
+                "missing_origin": gap.get("missing_origin", ""),
+                "ecosystem_hints": gap.get("ecosystem_hints", []),
+                "resolver_hints": gap.get("resolver_hints", []),
+                "repo_manifest_matches": gap.get("repo_manifest_matches", []),
+                "stack_matchers_applied": gap.get("stack_matchers_applied", []),
+            }
+        ],
+        "action_groups": {
+            "observe_first": [action] if group == "observe_first" else [],
+            "safe_to_run_now": [action] if group == "safe_to_run_now" else [],
+            "requires_override": [action] if group == "requires_override" else [],
+        },
+        "execution_order": {
+            "default_group_order": ["observe_first", "safe_to_run_now", "requires_override"],
+            "non_empty_group_order": [group],
+            "recommended_group_order": [group],
+        },
+        "next_actions": [action],
+    }
+    print(json.dumps(output, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,175 @@
+{
+  "version": "1.0.0",
+  "capabilities": [
+    {
+      "id": "rg",
+      "type": "binary",
+      "aliases": ["ripgrep"],
+      "preferred_fix_layer": "declarative_nix",
+      "missing_origin": "nixos_or_os_packages",
+      "ecosystem_hints": ["cli", "shell", "nix", "nixos", "os"],
+      "package_hints": ["ripgrep", "nixpkgs", "environment.systemPackages"],
+      "source_hints": ["templates/configuration.nix", "flake.nix"],
+      "summary": "ripgrep is the preferred fast search primitive for repo work.",
+      "recommended_actions": [
+        "nix shell nixpkgs#ripgrep",
+        "rg --version"
+      ],
+      "files": [
+        "flake.nix",
+        "templates/configuration.nix"
+      ],
+      "rollback": "Remove the package from the declarative package list if it regresses the host."
+    },
+    {
+      "id": "jq",
+      "type": "binary",
+      "preferred_fix_layer": "declarative_nix",
+      "missing_origin": "nixos_or_os_packages",
+      "ecosystem_hints": ["cli", "shell", "nix", "nixos", "os"],
+      "package_hints": ["jq", "nixpkgs", "environment.systemPackages"],
+      "source_hints": ["templates/configuration.nix", "flake.nix"],
+      "summary": "jq is a common structured-output dependency for scripts and validation.",
+      "recommended_actions": [
+        "nix shell nixpkgs#jq",
+        "jq --version"
+      ],
+      "files": [
+        "flake.nix",
+        "templates/configuration.nix"
+      ],
+      "rollback": "Remove the package from the declarative package list if it causes issues."
+    },
+    {
+      "id": "aqd",
+      "type": "binary",
+      "preferred_fix_layer": "repo_script",
+      "missing_origin": "repo_harness",
+      "ecosystem_hints": ["repo-script", "harness", "shell", "cli"],
+      "package_hints": ["scripts/ai", "repo-local wrapper, not OS package"],
+      "source_hints": ["scripts/ai/aqd", "config/workflow-blueprints.json"],
+      "summary": "aqd is the repo workflow wrapper and should exist as a repo script, not an external dependency.",
+      "recommended_actions": [
+        "test -x scripts/ai/aqd",
+        "scripts/ai/aqd workflows list"
+      ],
+      "files": [
+        "scripts/ai/aqd"
+      ],
+      "rollback": "Restore the previous repo script if a local wrapper regression was introduced."
+    },
+    {
+      "id": "aq-context-bootstrap",
+      "type": "binary",
+      "preferred_fix_layer": "repo_script",
+      "missing_origin": "repo_harness",
+      "ecosystem_hints": ["repo-script", "harness", "python", "bootstrap"],
+      "package_hints": ["scripts/ai", "repo-local wrapper, not OS package"],
+      "source_hints": ["scripts/ai/aq-context-bootstrap", "config/agent-context-cards.json", "docs/operations/agent-context-bootstrap.md"],
+      "summary": "aq-context-bootstrap is the repo-local bootstrap entrypoint for context and workflow selection.",
+      "recommended_actions": [
+        "test -x scripts/ai/aq-context-bootstrap",
+        "python3 scripts/ai/aq-context-bootstrap --task \"resume task\" --format json"
+      ],
+      "files": [
+        "scripts/ai/aq-context-bootstrap",
+        "config/agent-context-cards.json"
+      ],
+      "rollback": "Restore the previous repo-local bootstrap script if the new implementation regressed."
+    },
+    {
+      "id": "aq-runtime-act",
+      "type": "binary",
+      "preferred_fix_layer": "repo_script",
+      "missing_origin": "repo_harness",
+      "ecosystem_hints": ["repo-script", "harness", "python", "runtime"],
+      "package_hints": ["scripts/ai", "repo-local wrapper, not OS package"],
+      "source_hints": ["scripts/ai/aq-runtime-act", "scripts/ai/aq-runtime-plan", "docs/operations/ai-stack-runtime-diagnosis-loop.md"],
+      "summary": "aq-runtime-act is the repo-local planner-to-action wrapper for runtime incidents.",
+      "recommended_actions": [
+        "test -x scripts/ai/aq-runtime-act",
+        "python3 scripts/ai/aq-runtime-act --brief"
+      ],
+      "files": [
+        "scripts/ai/aq-runtime-act",
+        "scripts/ai/aq-runtime-plan"
+      ],
+      "rollback": "Restore the previous runtime wrapper if the current repo script regressed."
+    },
+    {
+      "id": "openskills",
+      "type": "binary",
+      "preferred_fix_layer": "native_or_fallback_installer",
+      "missing_origin": "os_or_user_environment",
+      "ecosystem_hints": ["cli", "skill", "external-cli", "os"],
+      "package_hints": ["nixpkgs if available", "installer fallback only if declarative path is unavailable"],
+      "source_hints": ["config/npm-packages.sh", "docs/development/SYSTEM-UPGRADE-ROADMAP.md"],
+      "summary": "OpenSkills is an auxiliary skill CLI and may require installer or package fallback handling.",
+      "recommended_actions": [
+        "command -v openskills || true",
+        "aq-context-bootstrap --task \"restore missing openskills tooling\" --scope system-fix --format json"
+      ],
+      "files": [
+        "config/npm-packages.sh",
+        "docs/development/SYSTEM-UPGRADE-ROADMAP.md"
+      ],
+      "rollback": "Prefer reverting installer path changes before broadening fallback behavior."
+    },
+    {
+      "id": "claude",
+      "type": "binary",
+      "preferred_fix_layer": "native_or_fallback_installer",
+      "missing_origin": "os_or_user_environment",
+      "ecosystem_hints": ["cli", "external-cli", "os", "agent"],
+      "package_hints": ["nixpkgs if available", "installer fallback only if declarative path is unavailable"],
+      "source_hints": ["config/npm-packages.sh", "docs/development/SYSTEM-UPGRADE-ROADMAP.md"],
+      "summary": "Claude Code uses a native installer path with fallback logic; fix declaratively where possible.",
+      "recommended_actions": [
+        "command -v claude || true",
+        "aq-context-bootstrap --task \"restore missing claude cli\" --scope system-fix --format json"
+      ],
+      "files": [
+        "config/npm-packages.sh",
+        "docs/development/SYSTEM-UPGRADE-ROADMAP.md"
+      ],
+      "rollback": "Revert installer-path changes before broadening fallback behavior."
+    },
+    {
+      "id": "workflow:prsi-pessimistic-recursive-improvement",
+      "type": "workflow",
+      "preferred_fix_layer": "workflow_blueprint",
+      "missing_origin": "workflow_registry",
+      "ecosystem_hints": ["workflow", "harness", "prsi"],
+      "package_hints": [],
+      "source_hints": ["config/workflow-blueprints.json", "scripts/ai/aqd"],
+      "summary": "PRSI workflow should be available through the workflow blueprint catalog.",
+      "recommended_actions": [
+        "scripts/ai/aqd workflows list",
+        "python3 scripts/ai/aq-context-bootstrap --task \"restore missing PRSI workflow blueprint\" --scope prsi-operations --format json"
+      ],
+      "files": [
+        "config/workflow-blueprints.json",
+        "scripts/ai/aqd"
+      ],
+      "rollback": "Restore the previous blueprint definition if workflow metadata regressed."
+    },
+    {
+      "id": "skill:nixos-deployment",
+      "type": "skill",
+      "preferred_fix_layer": "skill_registry",
+      "missing_origin": "skill_registry",
+      "ecosystem_hints": ["skill", "agent-skill", "nix", "nixos"],
+      "package_hints": [],
+      "source_hints": [".agent/skills/nixos-deployment/SKILL.md", "docs/AGENTS.md"],
+      "summary": "nixos-deployment should exist as a local skill with a valid SKILL.md body.",
+      "recommended_actions": [
+        "test -f .agent/skills/nixos-deployment/SKILL.md",
+        "sed -n '1,80p' .agent/skills/nixos-deployment/SKILL.md"
+      ],
+      "files": [
+        ".agent/skills/nixos-deployment/SKILL.md"
+      ],
+      "rollback": "Restore the skill body from git if a bad edit removed or broke it."
+    }
+  ]
+}

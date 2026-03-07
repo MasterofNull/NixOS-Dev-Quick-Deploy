@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+aq-capability-catalog-append — prepare a validated updated capability catalog artifact.
+
+This does not mutate the live catalog in place by default. It writes an updated
+catalog artifact for review or later patching.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CATALOG_PATH = REPO_ROOT / "config" / "capability-gap-catalog.json"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Prepare a validated updated capability catalog artifact.")
+    parser.add_argument("--stub-file", help="Stub payload file produced by aq-capability-stub.")
+    parser.add_argument("--fragment-file", help="Raw catalog fragment JSON file.")
+    parser.add_argument("--catalog", default=str(CATALOG_PATH), help="Base capability catalog path.")
+    parser.add_argument("--output", required=True, help="Write the updated catalog artifact to this path.")
+    parser.add_argument("--format", dest="fmt", default="json", choices=["json", "text"], help="Output format.")
+    return parser.parse_args()
+
+
+def load_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_fragment(args: argparse.Namespace) -> dict:
+    if args.stub_file:
+        payload = load_json(Path(args.stub_file))
+        if "catalog_fragment" in payload:
+            return payload["catalog_fragment"]
+        if "entry" in payload:
+            return payload["entry"]
+        return payload
+    if args.fragment_file:
+        return load_json(Path(args.fragment_file))
+    raise SystemExit("one of --stub-file or --fragment-file is required")
+
+
+def main() -> int:
+    args = parse_args()
+    catalog = load_json(Path(args.catalog))
+    fragment = load_fragment(args)
+    capabilities = catalog.get("capabilities", [])
+    frag_id = fragment.get("id", "")
+
+    if any(item.get("id") == frag_id for item in capabilities if isinstance(item, dict)):
+        payload = {
+            "ok": False,
+            "error": "capability already exists",
+            "capability_id": frag_id,
+            "catalog": str(Path(args.catalog)),
+        }
+        if args.fmt == "json":
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"ERROR: capability already exists: {frag_id}")
+        return 2
+
+    updated = dict(catalog)
+    updated["capabilities"] = capabilities + [fragment]
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(updated, indent=2) + "\n", encoding="utf-8")
+
+    payload = {
+        "ok": True,
+        "capability_id": frag_id,
+        "catalog": str(Path(args.catalog)),
+        "output": str(output_path),
+        "next_step": "review artifact and convert to bounded repo patch if accepted",
+    }
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"prepared updated catalog artifact: {output_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

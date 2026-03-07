@@ -1,0 +1,73 @@
+{
+  "next_actions": [
+    {
+      "action_id": "safe_fixture",
+      "action_kind": "healthy_cleanup",
+      "provenance": "planner_builtin_healthy",
+      "action_origin": {
+        "source": "planner",
+        "trigger": "healthy_cleanup",
+        "preset": "",
+        "classification": "",
+        "service": "",
+        "layer": ""
+      },
+      "summary": "Safe remediation fixture action.",
+      "commands": [
+        "printf 'runner-ok\\n'",
+        "true"
+      ],
+      "files": [
+        "config/runtime-remediation-catalog.json"
+      ],
+      "rollback": "No rollback needed."
+    }
+  ],
+  "action_groups": {
+    "observe_first": [],
+    "safe_to_run_now": [
+      {
+        "action_index": 0,
+        "action_id": "safe_fixture",
+        "action_kind": "healthy_cleanup",
+        "provenance": "planner_builtin_healthy",
+        "summary": "Safe remediation fixture action.",
+        "action_origin": {
+          "source": "planner",
+          "trigger": "healthy_cleanup",
+          "preset": "",
+          "classification": "",
+          "service": "",
+          "layer": ""
+        }
+      }
+    ],
+    "requires_override": []
+  },
+  "execution_order": {
+    "default_group_order": [
+      "observe_first",
+      "safe_to_run_now",
+      "requires_override"
+    ],
+    "non_empty_group_order": [
+      "safe_to_run_now"
+    ],
+    "recommended_group_order": [
+      "safe_to_run_now"
+    ]
+  },
+  "context_cards": {
+    "recommended_cards": [
+      {
+        "card_id": "repo-baseline",
+        "level": "brief",
+        "reason": "minimum repo contract before deeper task-specific guidance",
+        "priority": 100
+      }
+    ],
+    "recommended_card_order": [
+      "repo-baseline"
+    ]
+  }
+}

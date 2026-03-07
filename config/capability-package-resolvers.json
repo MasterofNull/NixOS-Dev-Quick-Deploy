@@ -1,0 +1,341 @@
+{
+  "version": "1.0.0",
+  "defaults": {
+    "resolver_hints": [
+      {
+        "resolver": "manual_investigation",
+        "priority": 100,
+        "summary": "Inspect the repo and host integration surface before choosing an installer path."
+      }
+    ]
+  },
+  "matchers": [
+    {
+      "id": "repo-harness-resolver",
+      "capability_prefixes": ["aq-"],
+      "resolver_hints": [
+        {
+          "resolver": "repo_script",
+          "priority": 10,
+          "summary": "Treat the capability as a repo-local harness command, not an OS package.",
+          "targets": ["scripts/ai", "config/service-endpoints.sh"]
+        }
+      ]
+    },
+    {
+      "id": "workflow-resolver",
+      "capability_types": ["workflow"],
+      "resolver_hints": [
+        {
+          "resolver": "workflow_blueprint",
+          "priority": 10,
+          "summary": "Restore the workflow blueprint declaratively in the workflow registry.",
+          "targets": ["config/workflow-blueprints.json", "scripts/ai/aqd"]
+        }
+      ]
+    },
+    {
+      "id": "skill-resolver",
+      "capability_types": ["skill"],
+      "resolver_hints": [
+        {
+          "resolver": "skill_registry",
+          "priority": 10,
+          "summary": "Restore or add the skill body in the local skill registry.",
+          "targets": [".agent/skills", "docs/AGENTS.md"]
+        }
+      ]
+    },
+    {
+      "id": "nixpkgs-resolver",
+      "match_mode": "any",
+      "context_languages": ["nix"],
+      "context_applications": ["nixos"],
+      "preferred_fix_layers": ["declarative_nix"],
+      "resolver_hints": [
+        {
+          "resolver": "nixpkgs",
+          "priority": 10,
+          "summary": "Prefer declarative installation through nixpkgs and module wiring.",
+          "targets": ["environment.systemPackages", "nix/modules/core/options.nix", "templates/configuration.nix"]
+        }
+      ]
+    },
+    {
+      "id": "cargo-resolver",
+      "match_mode": "any",
+      "context_languages": ["rust"],
+      "repo_files_any": ["Cargo.toml"],
+      "ecosystem_hints": ["rust"],
+      "resolver_hints": [
+        {
+          "resolver": "cargo",
+          "priority": 20,
+          "summary": "Prefer Cargo-based installation or integration for Rust CLI tooling when appropriate.",
+          "targets": ["Cargo.toml", "cargo install", "flake.nix"]
+        },
+        {
+          "resolver": "cargo_binstall",
+          "priority": 28,
+          "summary": "Use cargo-binstall as a fallback for Rust CLI binaries when source builds are slow or unavailable.",
+          "targets": ["cargo-binstall", "Cargo.toml", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "uv-resolver",
+      "match_mode": "any",
+      "classifications": ["unknown_capability", "missing_declarative_tool"],
+      "capability_ids": ["uv"],
+      "context_languages": ["python"],
+      "repo_files_any": ["pyproject.toml", "requirements.txt"],
+      "ecosystem_hints": ["python"],
+      "resolver_hints": [
+        {
+          "resolver": "uv",
+          "priority": 20,
+          "summary": "Prefer uv-managed tool installation or project integration for Python tooling.",
+          "targets": ["uv tool install", "pyproject.toml", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "pipx-resolver",
+      "match_mode": "any",
+      "classifications": ["unknown_capability", "missing_external_cli"],
+      "context_languages": ["python"],
+      "repo_files_any": ["pyproject.toml", "requirements.txt"],
+      "ecosystem_hints": ["python"],
+      "resolver_hints": [
+        {
+          "resolver": "pipx",
+          "priority": 30,
+          "summary": "Use pipx only when the tool is external and no declarative package path is available.",
+          "targets": ["pipx", "user environment"]
+        }
+      ]
+    },
+    {
+      "id": "npm-resolver",
+      "match_mode": "any",
+      "classifications": ["missing_external_cli"],
+      "ecosystem_hints": ["external-cli"],
+      "capability_ids": ["openskills", "claude", "node", "npm", "npx", "pnpm", "yarn", "tsc", "vite"],
+      "repo_files_any": ["package.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb"],
+      "resolver_hints": [
+        {
+          "resolver": "npm",
+          "priority": 30,
+          "summary": "Use npm-based installer fallback only when nixpkgs or repo-local packaging is unavailable.",
+          "targets": ["config/npm-packages.sh", "npm", "user environment"]
+        }
+      ]
+    },
+    {
+      "id": "pnpm-resolver",
+      "match_mode": "any",
+      "context_languages": ["javascript", "js", "typescript", "ts"],
+      "repo_files_any": ["pnpm-lock.yaml"],
+      "resolver_hints": [
+        {
+          "resolver": "pnpm",
+          "priority": 14,
+          "summary": "Prefer pnpm when the repo already carries a pnpm lockfile.",
+          "targets": ["pnpm-lock.yaml", "package.json", "pnpm", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "yarn-resolver",
+      "match_mode": "any",
+      "context_languages": ["javascript", "js", "typescript", "ts"],
+      "repo_files_any": ["yarn.lock"],
+      "resolver_hints": [
+        {
+          "resolver": "yarn",
+          "priority": 15,
+          "summary": "Prefer yarn when the repo already carries a yarn lockfile.",
+          "targets": ["yarn.lock", "package.json", "yarn", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "bun-resolver",
+      "match_mode": "any",
+      "context_languages": ["javascript", "js", "typescript", "ts"],
+      "repo_files_any": ["bun.lockb"],
+      "resolver_hints": [
+        {
+          "resolver": "bun",
+          "priority": 15,
+          "summary": "Prefer Bun when the repo already carries a Bun lockfile.",
+          "targets": ["bun.lockb", "package.json", "bun", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "javascript-resolver",
+      "match_mode": "any",
+      "context_languages": ["javascript", "js", "typescript", "ts"],
+      "repo_files_any": ["package.json"],
+      "resolver_hints": [
+        {
+          "resolver": "node_package_manager",
+          "priority": 18,
+          "summary": "Prefer npm, pnpm, or yarn integration for JavaScript tooling present in the repo.",
+          "targets": ["package.json", "pnpm-lock.yaml", "yarn.lock", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "typescript-resolver",
+      "match_mode": "any",
+      "context_languages": ["typescript", "ts"],
+      "repo_files_any": ["tsconfig.json"],
+      "resolver_hints": [
+        {
+          "resolver": "typescript_toolchain",
+          "priority": 16,
+          "summary": "Prefer the repo TypeScript toolchain and package manager before ad hoc installs.",
+          "targets": ["tsconfig.json", "package.json", "pnpm-lock.yaml", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "go-resolver",
+      "match_mode": "any",
+      "context_languages": ["go", "golang"],
+      "repo_files_any": ["go.mod", "go.sum"],
+      "resolver_hints": [
+        {
+          "resolver": "go_modules",
+          "priority": 20,
+          "summary": "Prefer Go modules and go install for Go tooling present in the repo.",
+          "targets": ["go.mod", "go.sum", "go install", "flake.nix"]
+        },
+        {
+          "resolver": "go_install",
+          "priority": 26,
+          "summary": "Use go install for Go CLI binaries when module-aware installation is appropriate.",
+          "targets": ["go install", "go.mod", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "dotnet-resolver",
+      "match_mode": "any",
+      "context_languages": ["csharp", "cs", "dotnet"],
+      "repo_files_any": [".csproj", ".sln"],
+      "resolver_hints": [
+        {
+          "resolver": "dotnet_sdk",
+          "priority": 20,
+          "summary": "Prefer dotnet SDK and project-managed integration for .NET tooling.",
+          "targets": [".csproj", ".sln", "dotnet tool", "flake.nix"]
+        },
+        {
+          "resolver": "dotnet_tool",
+          "priority": 26,
+          "summary": "Use dotnet tool installation for standalone .NET CLI tools when appropriate.",
+          "targets": ["dotnet tool", ".csproj", ".sln", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "ruby-resolver",
+      "match_mode": "any",
+      "context_languages": ["ruby"],
+      "repo_files_any": ["Gemfile", "Gemfile.lock"],
+      "resolver_hints": [
+        {
+          "resolver": "bundler",
+          "priority": 20,
+          "summary": "Prefer Bundler and Gemfile-managed installation for Ruby tooling.",
+          "targets": ["Gemfile", "Gemfile.lock", "bundle exec", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "php-resolver",
+      "match_mode": "any",
+      "context_languages": ["php"],
+      "repo_files_any": ["composer.json", "composer.lock"],
+      "resolver_hints": [
+        {
+          "resolver": "composer",
+          "priority": 20,
+          "summary": "Prefer Composer-managed integration for PHP tooling and packages.",
+          "targets": ["composer.json", "composer.lock", "composer", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "dart-resolver",
+      "match_mode": "any",
+      "context_languages": ["dart", "flutter"],
+      "repo_files_any": ["pubspec.yaml"],
+      "resolver_hints": [
+        {
+          "resolver": "dart_pub",
+          "priority": 20,
+          "summary": "Prefer Dart pub or Flutter package integration for Dart tooling.",
+          "targets": ["pubspec.yaml", "dart pub", "flutter pub", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "swift-resolver",
+      "match_mode": "any",
+      "context_languages": ["swift"],
+      "repo_files_any": ["Package.swift"],
+      "resolver_hints": [
+        {
+          "resolver": "swift_package_manager",
+          "priority": 20,
+          "summary": "Prefer Swift Package Manager for Swift tooling and package integration.",
+          "targets": ["Package.swift", "swift package", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "elixir-resolver",
+      "match_mode": "any",
+      "context_languages": ["elixir"],
+      "repo_files_any": ["mix.exs", "mix.lock"],
+      "resolver_hints": [
+        {
+          "resolver": "mix",
+          "priority": 20,
+          "summary": "Prefer Mix-managed integration for Elixir tooling and packages.",
+          "targets": ["mix.exs", "mix.lock", "mix", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "java-resolver",
+      "match_mode": "any",
+      "context_languages": ["java"],
+      "repo_files_any": ["pom.xml", "build.gradle", "build.gradle.kts"],
+      "resolver_hints": [
+        {
+          "resolver": "maven_or_gradle",
+          "priority": 20,
+          "summary": "Prefer Maven or Gradle-managed integration for Java tooling present in the repo.",
+          "targets": ["pom.xml", "build.gradle", "build.gradle.kts", "flake.nix"]
+        }
+      ]
+    },
+    {
+      "id": "mcp-repo-resolver",
+      "context_applications": ["mcp"],
+      "resolver_hints": [
+        {
+          "resolver": "repo_mcp_harness",
+          "priority": 15,
+          "summary": "Prefer repo-local MCP harness wiring before external installation.",
+          "targets": ["scripts/ai", ".agent/skills/mcp-builder/SKILL.md"]
+        }
+      ]
+    }
+  ]
+}
