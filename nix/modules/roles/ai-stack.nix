@@ -270,6 +270,11 @@ in {
         description = "llama.cpp inference server";
         home = "/var/lib/llama-cpp";
         createHome = true;
+        # GPU access requires video/render groups for ROCm/CUDA
+        extraGroups = lib.optionals (resolvedAccel == "rocm" || resolvedAccel == "cuda") [
+          "video"
+          "render"
+        ];
       };
       users.users.${cfg.primaryUser}.extraGroups = lib.mkAfter ["llama"];
 
