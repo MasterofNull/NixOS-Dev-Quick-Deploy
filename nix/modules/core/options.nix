@@ -1143,6 +1143,20 @@
         '';
       };
 
+      vulkanVisibleDevices = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "0";
+        description = ''
+          Optional ggml-vulkan device selection override passed via
+          GGML_VK_VISIBLE_DEVICES.
+
+          Use this when llama.cpp's Vulkan auto-discovery fails to pick a usable
+          GPU even though the system Vulkan stack is healthy. The value follows
+          llama.cpp's device index syntax (for example "0" or "0,1").
+        '';
+      };
+
       # ── Switchboard: local/remote LLM routing proxy ─────────────────────────
       switchboard = {
         enable = lib.mkOption {

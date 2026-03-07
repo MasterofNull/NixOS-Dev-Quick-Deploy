@@ -6,8 +6,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=config/service-endpoints.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../../config/service-endpoints.sh
 if [[ -f "${SCRIPT_DIR}/config/service-endpoints.sh" ]]; then
     source "${SCRIPT_DIR}/config/service-endpoints.sh"
 fi
