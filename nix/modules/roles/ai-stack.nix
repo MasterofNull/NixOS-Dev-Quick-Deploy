@@ -102,17 +102,20 @@ let
   # Vulkan environment for Mesa RADV on AMD GPUs.
   # Required for ggml-vulkan to find the ICD loader.
   vulkanEnv = {
-    # Point Vulkan loader to NixOS ICD files
+    # Point the Vulkan loader at the RADV ICD shipped by NixOS.
     VK_ICD_FILENAMES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
-    # Ensure libvulkan can find the driver
     VK_DRIVER_FILES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
+  } // lib.optionalAttrs (ai.vulkanVisibleDevices != null) {
+    # Some AMD APUs need an explicit ggml-vulkan device index even when
+    # vulkaninfo can already enumerate the GPU correctly.
+    GGML_VK_VISIBLE_DEVICES = ai.vulkanVisibleDevices;
   };
 
-  # Combined GPU environment: Vulkan for AMD (preferred), ROCm as fallback
+  # Combined GPU environment: Vulkan for AMD, ROCm for explicit HIP builds.
   gpuEnv = if resolvedAccel == "rocm" then vulkanEnv else rocmEnv;
 
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
-  rocmEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") gpuEnv;
+  gpuEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") gpuEnv;
 
   embed = ai.embeddingServer;
 
@@ -306,8 +309,8 @@ in {
         wantedBy = ["multi-user.target"];
         after = ["network.target" "llama-cpp-model-fetch.service"];
         requires = ["llama-cpp-model-fetch.service"];
+        partOf = ["ai-stack.target"];
         serviceConfig = {
-          PartOf = ["ai-stack.target"];
           Type = "simple";
           User = "llama";
           Group = "llama";
@@ -318,9 +321,8 @@ in {
           # Phase 5.2.2: allow model weights to be locked in RAM (mlockall).
           # Prevents OS from paging out model pages during inference under pressure.
           LimitMEMLOCK = "infinity";
-          # ROCm environment variables for AMD GPU acceleration.
-          # Empty list when resolvedAccel != "rocm" — no overhead.
-          Environment = rocmEnvList;
+          # GPU backend environment for Vulkan/ROCm acceleration.
+          Environment = gpuEnvList;
           # Phase 13.1.3 — inference server never needs internet access;
           # model weights are fetched by a separate dedicated download service.
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
@@ -659,8 +661,8 @@ in {
         wantedBy = ["multi-user.target"];
         after = ["network.target" "llama-cpp-embed-model-fetch.service"];
         requires = ["llama-cpp-embed-model-fetch.service"];
+        partOf = ["ai-stack.target"];
         serviceConfig = {
-          PartOf = ["ai-stack.target"];
           Type = "simple";
           User = "llama";
           Group = "llama";
@@ -672,7 +674,7 @@ in {
           # Phase 13.1.3 — embedding server needs no internet access.
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
-          Environment = rocmEnvList;
+          Environment = gpuEnvList;
           ExecStart = lib.concatStringsSep " " ([
               "${pkgs.llama-cpp}/bin/llama-server"
               "--host"

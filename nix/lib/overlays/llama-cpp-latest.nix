@@ -71,6 +71,10 @@ in
     # Preserve cmake flags from nixpkgs, allowing further overlays to patch
     cmakeFlags = stripConflicts (oldAttrs.cmakeFlags or []);
 
+    patches = (oldAttrs.patches or []) ++ [
+      ../../patches/llama-cpp/allow-vulkan-igpu-offload.patch
+    ];
+
     # Add metadata for debugging/introspection
     passthru = (oldAttrs.passthru or {}) // {
       llamaCppPin = {

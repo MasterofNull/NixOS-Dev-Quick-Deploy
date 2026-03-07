@@ -51,6 +51,9 @@
       llamaCpp.huggingFaceRepo         = "unsloth/Qwen3.5-9B-GGUF";
       llamaCpp.huggingFaceFile         = "Qwen3.5-9B-Q6_K.gguf";
       llamaCpp.sha256                  = "91898433cf5ce0a8f45516a4cc3e9343b6e01d052d01f684309098c66a326c59";
+      # llama.cpp Vulkan auto-discovery currently misses this RADV APU unless
+      # the ggml backend is given the device index explicitly.
+      vulkanVisibleDevices             = "0";
       # Cezanne APU (Ryzen 5000U) uses gfx90c, which maps to ROCm gfx version 9.0.0
       rocmGfxOverride                  = "9.0.0";
       # llama.cpp extra args for stability and performance on AMD APU
