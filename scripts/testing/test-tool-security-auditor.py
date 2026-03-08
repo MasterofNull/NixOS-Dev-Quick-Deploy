@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def _load_auditor():
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parent.parent.parent
     sys.path.insert(0, str(root / "ai-stack" / "mcp-servers"))
     from shared.tool_security_auditor import ToolSecurityAuditor  # type: ignore
     return ToolSecurityAuditor

@@ -39,5 +39,5 @@ RECOVERY_GUIDE_SCRIPT="$PROJECT_ROOT/scripts/deploy/recovery-offline-fsck-guide.
   [[ "$output" == *"Current host: test-host"* ]]
   [[ "$output" == *"Current root UUID: abcd-1234"* ]]
   [[ "$output" == *"e2fsck -f -y /dev/disk/by-uuid/abcd-1234"* ]]
-  [[ "$output" == *"./scripts/deploy-clean.sh --host test-host --profile ai-dev"* ]]
+  [[ "$output" == *"./nixos-quick-deploy.sh --host test-host --profile ai-dev"* ]]
 }

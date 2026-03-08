@@ -41,4 +41,4 @@ echo "   smartctl -a /dev/nvme0"
 echo "   nvme smart-log /dev/nvme0"
 echo
 echo "6) Reboot into NixOS, then deploy from TTY (not GUI):"
-echo "   ./scripts/deploy/deploy-clean.sh --host ${host_name} --profile ai-dev"
+echo "   ./nixos-quick-deploy.sh --host ${host_name} --profile ai-dev"
