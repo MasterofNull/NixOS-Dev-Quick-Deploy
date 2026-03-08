@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test aq-capability-gap analysis and gap detection
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

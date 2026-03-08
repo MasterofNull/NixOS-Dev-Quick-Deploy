@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test aq-runtime-act wrapper action dispatch and safety controls
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

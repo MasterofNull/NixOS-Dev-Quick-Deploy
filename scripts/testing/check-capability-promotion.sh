@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test capability promotion workflow from stub to active
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

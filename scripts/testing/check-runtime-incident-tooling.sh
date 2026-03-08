@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Run full runtime incident tooling test suite
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
