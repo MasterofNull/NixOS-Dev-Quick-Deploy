@@ -234,7 +234,7 @@ Once Ralph is fixed, use it for automated task execution:
 ### Task Submission
 ```bash
 # Submit remaining tasks
-curl -X POST http://localhost:8098/tasks \
+curl -X POST http://localhost:8004/tasks \
   -H "Content-Type: application/json" \
   -d @ai-stack/ralph-tasks/remaining-tasks.json
 ```
@@ -242,10 +242,10 @@ curl -X POST http://localhost:8098/tasks \
 ### Monitor Progress
 ```bash
 # Check task status
-curl http://localhost:8098/tasks/{task_id}
+curl http://localhost:8004/tasks/{task_id}
 
 # View statistics
-curl http://localhost:8098/stats
+curl http://localhost:8004/stats
 ```
 
 ### Hooks & Loops
@@ -302,7 +302,7 @@ Ralph uses:
 - Container now starts successfully
 
 **Testing Results**:
-- Health endpoint: `http://localhost:8098/health` → {"status":"healthy"}
+- Health endpoint: `http://localhost:8004/health` → {"status":"healthy"}
 - Test task submitted: Task ID 4f7d75ca-aa8a-428f-a261-35f8fac81e43
 - Task status: completed in 2 iterations
 - Stats: 1 total task, 1 completed, 0 failed

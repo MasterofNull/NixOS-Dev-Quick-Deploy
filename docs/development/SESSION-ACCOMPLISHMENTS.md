@@ -141,7 +141,7 @@ User's Request: "I want to enter the planning phase and fully use the ralph wigg
 ### Services All Healthy
 
 ```bash
-✅ Ralph Wiggum: http://localhost:8098 (ACTIVELY WORKING!)
+✅ Ralph Wiggum: http://localhost:8004 (ACTIVELY WORKING!)
 ✅ Hybrid Coordinator: http://localhost:8092 (New endpoints added)
 ✅ AIDB: http://localhost:8091
 ✅ Dashboard API: http://127.0.0.1:8889 (New API created; current command center runtime)

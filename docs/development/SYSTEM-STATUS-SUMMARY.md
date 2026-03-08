@@ -16,7 +16,7 @@ Last Updated: 2026-03-05
 ## What's Actually Working ✅
 
 ### Backend Services (All Healthy)
-- ✅ **Ralph Wiggum**: http://localhost:8098 - Healthy, 5 backends available
+- ✅ **Ralph Wiggum**: http://localhost:8004 - Healthy, 5 backends available
 - ✅ **Hybrid Coordinator**: http://localhost:8092 - Running, health checks passing
 - ✅ **AIDB**: http://localhost:8091 - Running
 - ✅ **Qdrant**: http://localhost:6333 - Vector database operational

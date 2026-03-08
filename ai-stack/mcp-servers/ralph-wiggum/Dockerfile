@@ -53,15 +53,15 @@ RUN mkdir -p /data/telemetry /data/state /workspace
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV RALPH_MCP_SERVER_PORT=8098
+ENV PORT=8004
 ENV RALPH_LOOP_ENABLED=true
 
 # Health check (removed - OCI format doesn't support HEALTHCHECK directive)
 # Use Kubernetes probe configuration instead:
-# test: ["CMD", "curl", "-f", "http://localhost:8098/health"]
+# test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
 
 # Expose port
-EXPOSE 8098
+EXPOSE 8004
 
 # Run the server
 CMD ["python", "server.py"]
