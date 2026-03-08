@@ -208,7 +208,10 @@ License: MIT
    - **Current:** Exit code 137 (likely OOM or liveness kill).  
    - **Fix:** increase memory limits or relax liveness probe; or scale to 0 if not needed.
 
-3. **Dashboard API port-forwarding**: ensure `dashboard.html` points to a live `dashboard-api` port-forward.
+3. **Historical dashboard API port-forwarding**: ensure the legacy `dashboard.html` surface points to
+   a live `dashboard-api` port-forward when reproducing the earlier imperative dashboard flow. The
+   current operator-facing runtime is `command-center-dashboard-api.service` at
+   `http://127.0.0.1:8889/`.
 
 ---
 

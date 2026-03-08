@@ -1472,7 +1472,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 **Status Note (2026-02-09):** `./scripts/health/system-health-check.sh` passed (93/0/34). AI stack pods all Running; prior ImagePullBackOff resolved. Warnings remain for optional components (e.g., LlamaIndex/ChromaDB/Gradio, NPM config, pod restart history).
 **Status Note (2026-02-09):** Acceptance runner executed with `RUN_NETPOL_TEST=true RUN_REGISTRY_TEST=true RUN_DASHBOARD_TEST=true RUN_RESTART_BUDGET_TEST=true RUN_FEEDBACK_TEST=true RUN_VECTOR_DIM_TEST=true` — all checks passed. Timeout lint now clean.
-**Status Note (2026-02-09):** Fixed `dashboard-server.service` exit 127 (PATH missing home-manager profile). Updated `scripts/deploy/serve-dashboard.sh`, `scripts/deploy/serve-dashboard-api.sh`, and `scripts/deploy/setup-dashboard.sh`; reran setup and restarted service.
+**Status Note (2026-02-09):** Historical dashboard runtime fix for the older imperative path. The current operator/runtime path is `command-center-dashboard-api.service` at `http://127.0.0.1:8889/`.
 
 ## Senior Team Review Addendum (2026-02-09)
 
@@ -1646,8 +1646,8 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 | 11.2 | Service discovery abstraction layer | DONE |
 | 11.3 | Fix generate-dashboard-data.sh | DONE |
 | 11.4 | Fix container_manager.py bulk ops | DONE |
-| 11.5 | Fix serve-dashboard.sh | DONE |
-| 11.6 | Fix dashboard.html URL config | IN PROGRESS |
+| 11.5 | Fix serve-dashboard.sh (historical) | DONE |
+| 11.6 | Fix dashboard.html URL config (historical) | IN PROGRESS |
 | 11.7 | Deprecate legacy aiohttp server | DONE |
 | 11.8 | Fix launch & setup scripts | DONE |
 | 11.9 | Update lib/dashboard.sh & run tests | DONE |
@@ -1709,7 +1709,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 ---
 
-### 11.5 Fix `scripts/deploy/serve-dashboard.sh`
+### 11.5 Fix `scripts/deploy/serve-dashboard.sh` (Historical)
 
 **Tasks:**
 - [x] **11.5.1** Replace `podman restart` commands with K3s-first logic
@@ -1721,7 +1721,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 ---
 
-### 11.6 Fix Dashboard HTML URL Config
+### 11.6 Fix Dashboard HTML URL Config (Historical)
 
 **Tasks:**
 - [x] **11.6.1** Parameterize `FASTAPI_BASE` in `dashboard.html` to auto-detect from `window.location`
@@ -1732,7 +1732,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 **Acceptance Criteria:**
 **Acceptance Criteria (status 2026-02-02):**
-- [x] Dashboard works when accessed via any hostname (not just localhost) — verified via LAN host `http://192.168.86.153:8888/dashboard.html`.
+- [x] Historical HTML dashboard path worked when accessed via any hostname during the earlier imperative runtime evaluation.
 - [x] WebSocket connects without hardcoded port (uses window.location + WS_BASE)
 
 **Remediation Tasks (Acceptance Criteria):**
@@ -1742,7 +1742,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 **NodePort Decision (dev overlay):**
 - `dashboard-api` exposed as NodePort `31889` via `ai-stack/kustomize/overlays/dev/patches/dashboard-api-nodeport.yaml`.
 - Example: `curl http://localhost:31889/api/health` returns `200`.
-- Remote UI hint: `http://<host>:8888/dashboard.html?apiPort=31889`.
+- Historical remote UI hint: `http://<host>:8888/dashboard.html?apiPort=31889`.
 
 ---
 
