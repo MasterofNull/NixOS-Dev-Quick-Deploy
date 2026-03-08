@@ -42,7 +42,7 @@ Legacy user-service setup notes below are retained for migration history only.
 **Current Authoritative Components**:
 - [nix/modules/services/command-center-dashboard.nix](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/modules/services/command-center-dashboard.nix) - declarative dashboard runtime
 - [dashboard/backend/api/main.py](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard/backend/api/main.py) - API + SPA serving
-- [dashboard.html](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html) - served operator UI
+- [dashboard.html](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html) - historical static dashboard surface retained for implementation context
 
 Legacy scripts mentioned elsewhere in this document are compatibility or historical references only.
 
