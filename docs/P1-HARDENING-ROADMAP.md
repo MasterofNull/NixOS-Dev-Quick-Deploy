@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# P1 Hardening Roadmap
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This page is retained for existing links, but it no longer describes the active deployment and hardening path.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`

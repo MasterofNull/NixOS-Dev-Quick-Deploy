@@ -76,3 +76,21 @@ curl http://127.0.0.1:8889/api/health/aggregate | jq '.overall_status'
 - The production command center is served by the FastAPI dashboard service on one port.
 - Legacy `http.server` dashboard flows and standalone collectors are not the authoritative runtime path.
 - For dashboard frontend development only, use `cd dashboard && ./start-dashboard.sh`.
+
+## Security Features
+
+```bash
+# Runtime secret presence
+test -r /run/secrets/aidb_api_key
+test -r /run/secrets/hybrid_coordinator_api_key
+
+# Auth hardening smoke
+scripts/testing/check-api-auth-hardening.sh
+
+# Authenticated hybrid probe
+KEY="$(tr -d '\n' < /run/secrets/hybrid_coordinator_api_key)"
+curl -sf -H "X-API-Key: ${KEY}" http://127.0.0.1:8003/stats | jq .
+```
+
+- Core services are expected on host-local ports unless you intentionally change the deployment model.
+- Secrets and credentials should be managed through the repo secret workflows, not committed files.

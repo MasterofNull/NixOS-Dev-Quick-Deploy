@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# SOPS Nix Integration
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+The old version of this document was tied to a retired deployment model. Current secret handling and service wiring should be read from the active runbooks and Nix modules.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `nix/modules/roles/ai-stack.nix`

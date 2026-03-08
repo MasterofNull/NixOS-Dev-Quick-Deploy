@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# System Project Design
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+The older design notes behind this filename no longer match the active runtime. The current design is NixOS-declarative, host-local, and `systemd`-orchestrated.
 
+Use these current docs instead:
+- `README.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`

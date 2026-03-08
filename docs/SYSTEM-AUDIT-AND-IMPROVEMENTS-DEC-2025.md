@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# System Audit And Improvements Dec 2025
 
-This document has been retired for the K3s-only runtime.
+Status: Historical
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This is an older audit milestone reference, not a current operator runbook.
 
+Use these current docs instead:
+- `README.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
