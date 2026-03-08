@@ -30,6 +30,12 @@ from config import Config
 
 logger = logging.getLogger("hybrid-coordinator")
 
+LEGACY_MEMORY_TYPE_ALIASES = {
+    "fact": "semantic",
+    "decision": "procedural",
+    "context": "episodic",
+}
+
 # Injected from server.py
 _qdrant: Optional[Any] = None
 _embed: Optional[Callable] = None
@@ -37,6 +43,20 @@ _record_telemetry: Optional[Callable] = None
 _hybrid_search: Optional[Callable] = None
 _tree_search: Optional[Callable] = None
 _memory_collections: Dict[str, str] = {}
+
+
+def normalize_memory_type(memory_type: str) -> str:
+    """Map legacy caller aliases onto canonical memory tiers."""
+    normalized = str(memory_type or "").strip().lower()
+    return LEGACY_MEMORY_TYPE_ALIASES.get(normalized, normalized)
+
+
+def coerce_memory_summary(summary: Optional[str], content: Optional[str]) -> str:
+    """Prefer explicit summary, but fall back to content for legacy callers."""
+    summary_text = str(summary or "").strip()
+    if summary_text:
+        return summary_text
+    return str(content or "").strip()
 
 
 def init(
@@ -68,20 +88,24 @@ async def store_agent_memory(
     """Store agent memory in typed collections."""
     if not Config.AI_MEMORY_ENABLED:
         return {"status": "disabled"}
-    collection = _memory_collections.get(memory_type)
+    normalized_type = normalize_memory_type(memory_type)
+    normalized_summary = coerce_memory_summary(summary, content)
+    if not normalized_summary:
+        raise ValueError("summary or content required")
+    collection = _memory_collections.get(normalized_type)
     if not collection:
         raise ValueError("memory_type must be episodic|semantic|procedural")
     memory_id = str(uuid4())
     payload = {
         "memory_id": memory_id,
-        "memory_type": memory_type,
-        "summary": summary,
-        "content": content or summary,
+        "memory_type": normalized_type,
+        "summary": normalized_summary,
+        "content": content or normalized_summary,
         "timestamp": int(datetime.now().timestamp()),
     }
     if metadata:
         payload.update(metadata)
-    embedding = await _embed(f"{memory_type}\n{summary}\n{content or ''}")
+    embedding = await _embed(f"{normalized_type}\n{normalized_summary}\n{content or ''}")
     try:
         _qdrant.upsert(
             collection_name=collection,
@@ -93,7 +117,7 @@ async def store_agent_memory(
             logger.warning(
                 "Agent memory storage disabled due to embedding/collection dimension mismatch",
                 extra={
-                    "memory_type": memory_type,
+                    "memory_type": normalized_type,
                     "collection": collection,
                     "memory_id": memory_id,
                 },
@@ -101,14 +125,14 @@ async def store_agent_memory(
             return {
                 "status": "disabled",
                 "reason": "embedding_dimension_mismatch",
-                "memory_type": memory_type,
+                "memory_type": normalized_type,
             }
         raise
     _record_telemetry(
         "agent_memory_store",
-        {"memory_id": memory_id, "memory_type": memory_type, "collection": collection},
+        {"memory_id": memory_id, "memory_type": normalized_type, "collection": collection},
     )
-    return {"status": "stored", "memory_id": memory_id, "memory_type": memory_type}
+    return {"status": "stored", "memory_id": memory_id, "memory_type": normalized_type}
 
 
 async def recall_agent_memory(
@@ -121,7 +145,7 @@ async def recall_agent_memory(
     if not Config.AI_MEMORY_ENABLED:
         return {"status": "disabled", "results": []}
 
-    requested_types = memory_types or list(_memory_collections.keys())
+    requested_types = [normalize_memory_type(item) for item in (memory_types or list(_memory_collections.keys()))]
     collections = [_memory_collections[m] for m in requested_types if m in _memory_collections]
     if not collections:
         return {"status": "ok", "results": []}

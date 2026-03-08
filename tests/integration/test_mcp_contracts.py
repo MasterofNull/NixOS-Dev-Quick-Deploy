@@ -209,6 +209,21 @@ class TestMemory:
         assert "status" in body
         assert body["status"] in ("stored", "disabled")
 
+    def test_store_accepts_legacy_memory_aliases(self, client):
+        resp = client.post(
+            "/memory/store",
+            json={
+                "memory_type": "fact",
+                "content": "legacy memory payload without explicit summary",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "status" in body
+        assert body["status"] in ("stored", "disabled")
+        if body["status"] == "stored":
+            assert body["memory_type"] == "semantic"
+
     def test_recall_returns_shape(self, client):
         resp = client.post(
             "/memory/recall",

@@ -1228,6 +1228,17 @@
             default = 8;
             description = "Maximum memory entries returned per recall request.";
           };
+
+          repairMismatchedCollections = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Recreate mismatched `agent-memory-*` Qdrant collections during startup
+              when their vector dimensions no longer match the active embedding model.
+              This is intentionally limited to agent memory collections because those
+              entries are regenerable and otherwise fail permanently.
+            '';
+          };
         };
 
         retrieval = {

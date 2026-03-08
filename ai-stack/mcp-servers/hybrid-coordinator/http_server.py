@@ -38,6 +38,7 @@ from shared.tool_security_auditor import ToolSecurityAuditor
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
+from memory_manager import coerce_memory_summary, normalize_memory_type
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -1161,7 +1162,7 @@ async def run_http_mode(port: int) -> None:
                 "hints": [],
             }
             if semantic_tooling_autorun:
-                planned, tool_security = _audit_planned_tools(query, _workflow_tool_catalog(query))
+                planned, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
                 tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
                 tooling_layer["tool_security"] = tool_security
                 request["audit_metadata"]["tool_security_blocked"] = len(tool_security.get("blocked", []))
@@ -1275,13 +1276,17 @@ async def run_http_mode(port: int) -> None:
     async def handle_memory_store(request):
         try:
             data = await request.json()
+            memory_type = normalize_memory_type(data.get("memory_type", ""))
+            summary = coerce_memory_summary(data.get("summary"), data.get("content"))
             result = await _store_memory(
-                memory_type=data.get("memory_type", ""),
-                summary=data.get("summary", ""),
+                memory_type=memory_type,
+                summary=summary,
                 content=data.get("content"),
                 metadata=data.get("metadata"),
             )
             return web.json_response(result)
+        except ValueError as exc:
+            return web.json_response({"error": "memory_store_invalid", "detail": str(exc)}, status=400)
         except Exception as exc:
             return web.json_response({"error": "memory_store_failed", "detail": str(exc)}, status=500)
 
