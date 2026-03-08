@@ -12,6 +12,17 @@ source "$REPO_ROOT/config/service-endpoints.sh"
 
 AQD_CLI="$REPO_ROOT/scripts/ai/aqd"
 ACCEPTANCE_SCRIPT="$REPO_ROOT/scripts/automation/run-acceptance-checks.sh"
+HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+HYBRID_API_KEY="${HYBRID_API_KEY:-}"
+
+if [[ -z "$HYBRID_API_KEY" && -r "$HYBRID_API_KEY_FILE" ]]; then
+    HYBRID_API_KEY="$(tr -d '[:space:]' < "$HYBRID_API_KEY_FILE")"
+fi
+
+hybrid_auth_args=()
+if [[ -n "$HYBRID_API_KEY" ]]; then
+    hybrid_auth_args=(-H "X-API-Key: ${HYBRID_API_KEY}")
+fi
 
 require_cmd() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -25,8 +36,10 @@ assert_jq_expr() {
     local url="$2"
     local expr="$3"
     local payload=""
+    shift 3
+    local -a curl_args=("$@")
 
-    payload="$(curl -fsS --max-time 5 --connect-timeout 3 "$url")"
+    payload="$(curl -fsS --max-time 5 --connect-timeout 3 "${curl_args[@]}" "$url")"
     if echo "$payload" | jq -e "$expr" >/dev/null 2>&1; then
         printf '✅ %s\n' "$label"
     else
@@ -89,11 +102,11 @@ assert_jq_expr "Dashboard AI metrics endpoint responds" "${DASHBOARD_API_URL%/}/
 assert_jq_expr "AIDB service health is ok" "${AIDB_URL%/}/health" '.status == "ok"'
 assert_jq_expr "AIDB exposes tool risk policy" "${AIDB_URL%/}/health" '.tool_execution_policy.allow_high_risk_tools == false and .tool_execution_policy.allow_medium_risk_tools == true'
 assert_jq_expr "AIDB exposes outbound egress policy" "${AIDB_URL%/}/health" '.outbound_http_policy.block_private_ranges == true'
-assert_jq_expr "Hybrid service health is healthy" "${HYBRID_URL%/}/health" '.status == "healthy"'
-assert_jq_expr "Hybrid AI harness reports all core features enabled" "${HYBRID_URL%/}/health" '.ai_harness.enabled == true and .ai_harness.memory_enabled == true and .ai_harness.tree_search_enabled == true and .ai_harness.eval_enabled == true'
-assert_jq_expr "Hybrid selective capability discovery gate is enabled" "${HYBRID_URL%/}/health" '.ai_harness.capability_discovery_enabled == true and (.ai_harness.capability_discovery_ttl_seconds | tonumber) >= 60'
-assert_jq_expr "Hybrid capability discovery stats are exposed" "${HYBRID_URL%/}/health" '.capability_discovery.invoked >= 0 and .capability_discovery.skipped >= 0 and .capability_discovery.cache_hits >= 0 and .capability_discovery.errors >= 0'
-assert_jq_expr "Hybrid harness stats endpoint responds" "${HYBRID_URL%/}/stats" '.harness_stats.total_runs >= 0 and .capability_discovery.invoked >= 0'
+assert_jq_expr "Hybrid service health is healthy" "${HYBRID_URL%/}/health" '.status == "healthy"' "${hybrid_auth_args[@]}"
+assert_jq_expr "Hybrid AI harness reports all core features enabled" "${HYBRID_URL%/}/health" '.ai_harness.enabled == true and .ai_harness.memory_enabled == true and .ai_harness.tree_search_enabled == true and .ai_harness.eval_enabled == true' "${hybrid_auth_args[@]}"
+assert_jq_expr "Hybrid selective capability discovery gate is enabled" "${HYBRID_URL%/}/health" '.ai_harness.capability_discovery_enabled == true and (.ai_harness.capability_discovery_ttl_seconds | tonumber) >= 60' "${hybrid_auth_args[@]}"
+assert_jq_expr "Hybrid capability discovery stats are exposed" "${HYBRID_URL%/}/health" '.capability_discovery.invoked >= 0 and .capability_discovery.skipped >= 0 and .capability_discovery.cache_hits >= 0 and .capability_discovery.errors >= 0' "${hybrid_auth_args[@]}"
+assert_jq_expr "Hybrid harness stats endpoint responds" "${HYBRID_URL%/}/stats" '.harness_stats.total_runs >= 0 and .capability_discovery.invoked >= 0' "${hybrid_auth_args[@]}"
 assert_jq_expr "Monitoring service list reports core units running" "${DASHBOARD_API_URL%/}/api/services" '(map(select(.id == "ai-aidb" and .status == "running")) | length > 0) and (map(select(.id == "ai-hybrid-coordinator" and .status == "running")) | length > 0) and (map(select(.id == "ai-ralph-wiggum" and .status == "running")) | length > 0) and (map(select(.id == "llama-cpp" and .status == "running")) | length > 0)'
 
 if unit_declared "ai-switchboard.service"; then
