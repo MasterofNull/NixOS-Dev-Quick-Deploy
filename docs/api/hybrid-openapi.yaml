@@ -151,7 +151,7 @@ paths:
     post:
       tags: [Memory]
       summary: Store agent memory
-      description: Persist procedural or semantic memory for later recall
+      description: Persist episodic, semantic, or procedural memory for later recall
       requestBody:
         required: true
         content:
@@ -751,9 +751,14 @@ components:
       properties:
         content:
           type: string
+          description: Content payload; used as the summary when summary is omitted.
+        summary:
+          type: string
+          description: Optional compact summary for the stored memory entry.
         memory_type:
           type: string
           enum: [procedural, semantic, episodic]
+          description: Canonical memory type. Legacy aliases `fact`, `decision`, and `context` are also accepted by the runtime for compatibility.
         metadata:
           type: object
 
