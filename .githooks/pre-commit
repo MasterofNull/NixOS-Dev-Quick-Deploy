@@ -10,29 +10,90 @@ echo "Running pre-commit validation..."
 
 run_secret_scan() {
   # Phase 11.4.1 — block likely secrets from entering git history.
+  # Skip if SKIP_SECRET_SCAN=1 (for development/testing workflows)
+  if [[ "${SKIP_SECRET_SCAN:-0}" == "1" ]]; then
+    echo "pre-commit: secret scan skipped (SKIP_SECRET_SCAN=1)"
+    return 0
+  fi
+
   local regexes=(
     'sk-[A-Za-z0-9]{48}'
     '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
     'AKIA[0-9A-Z]{16}'
     'ghp_[A-Za-z0-9]{36,}'
   )
+
+  local placeholder_regexes=(
+    'AKIAIOSFODNN7EXAMPLE'
+    'sk-(test|live|proj)-(example|dummy|fake|placeholder|test)[A-Za-z0-9_-]*'
+    'ghp_(example|dummy|fake|placeholder|sample|test)[A-Za-z0-9_]*'
+  )
+
+  # Path patterns excluded from secret scanning (test fixtures, docs, examples)
+  local excluded_paths=(
+    'tests/fixtures/*'
+    'tests/*/fixtures/*'
+    '*/test_*.py'
+    '*_test.go'
+    '*.test.js'
+    '*.test.ts'
+    'docs/examples/*'
+    '*.example'
+    '*.sample'
+    'config/*.example.*'
+  )
+
   local files
   local blocked=0
   mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM)
   [[ ${#files[@]} -eq 0 ]] && return 0
 
   for file in "${files[@]}"; do
+    # Check if file matches any excluded path pattern
+    local excluded=0
+    for pattern in "${excluded_paths[@]}"; do
+      # shellcheck disable=SC2053  # Glob matching is intentional here
+      if [[ "$file" == $pattern ]]; then
+        excluded=1
+        break
+      fi
+    done
+    [[ "$excluded" -eq 1 ]] && continue
+
     if ! git cat-file -e ":${file}" 2>/dev/null; then
       continue
     fi
-    local content
-    content="$(git show ":${file}" 2>/dev/null || true)"
-    [[ -z "${content}" ]] && continue
+
+    local added_lines
+    added_lines="$(
+      git diff --cached --unified=0 --no-color -- "$file" \
+        | rg '^\+[^+]' \
+        | sed 's/^+//'
+    )"
+    [[ -z "${added_lines}" ]] && continue
 
     for re in "${regexes[@]}"; do
-      if printf '%s' "${content}" | rg -n --pcre2 "${re}" >/dev/null 2>&1; then
-        echo "pre-commit: blocked potential secret in staged file '${file}' (pattern: ${re})" >&2
-        blocked=1
+      local matches
+      matches=$(printf '%s\n' "${added_lines}" | rg -n --pcre2 "${re}" 2>/dev/null || true)
+      if [[ -n "$matches" ]]; then
+        local real_matches
+        real_matches="$matches"
+
+        local exempt_re
+        for exempt_re in "${placeholder_regexes[@]}"; do
+          real_matches=$(printf '%s\n' "${real_matches}" | rg -v --pcre2 "${exempt_re}" 2>/dev/null || true)
+          [[ -z "${real_matches}" ]] && break
+        done
+
+        if [[ -n "${real_matches}" ]]; then
+          real_matches=$(printf '%s\n' "${real_matches}" | grep -viE '(nosec|example|test|placeholder|fake|dummy|sample|xxx)' || true)
+        fi
+
+        if [[ -n "$real_matches" ]]; then
+          echo "pre-commit: blocked potential secret in staged file '${file}' (pattern: ${re})" >&2
+          printf '%s\n' "$real_matches" | head -3 >&2
+          blocked=1
+        fi
       fi
     done
   done
@@ -44,6 +105,12 @@ Fix:
   1. Remove/redact the secret from staged files
   2. Re-stage changes
   3. Re-commit
+
+To mark intentional test/example values, add one of these to the line:
+  # nosec, example, test, placeholder, fake, dummy, sample
+
+To skip secret scan entirely (development only):
+  SKIP_SECRET_SCAN=1 git commit -m "message"
 EOF
     return 1
   fi
