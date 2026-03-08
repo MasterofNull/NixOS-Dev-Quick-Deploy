@@ -1,93 +1,78 @@
 # Quick Reference Card
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-03-05
+Last Updated: 2026-03-08
 
-
-**System**: NixOS Hybrid AI Learning Stack v2.1.0  
-**Status**: ✅ PRODUCTION READY
+**System**: NixOS Hybrid AI Learning Stack  
+**Runtime Model**: Declarative NixOS + systemd  
+**Command Center**: `command-center-dashboard-api.service`
 
 ---
 
-## 🚀 Quick Start (30 seconds)
+## Quick Start
 
 ```bash
-# View dashboard
-open http://localhost:8000/dashboard.html
+# Check command center runtime
+systemctl status command-center-dashboard-api.service
 
-# Read documentation
-open http://localhost:8000/AI-AGENT-START-HERE.md
+# Open command center
+open http://127.0.0.1:8889/
 
-# Check AI metrics
-cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq .effectiveness
+# Check dashboard API health
+curl http://127.0.0.1:8889/api/health
+
+# Check aggregate stack health
+curl http://127.0.0.1:8889/api/health/aggregate | jq .
 ```
 
 ---
 
-## 📍 All Access Points
+## Access Points
 
-| Resource | URL |
-|----------|-----|
-| **Dashboard** | http://localhost:8000/dashboard.html |
-| **Start Here** | http://localhost:8000/AI-AGENT-START-HERE.md |
-| **Quick Start** | http://localhost:8000/docs/archive/legacy-sequence/00-QUICK-START.md |
-| **Test Report** | http://localhost:8000/FUNCTIONAL-TEST-REPORT.md |
-| **Session Summary** | http://localhost:8000/SESSION-COMPLETE.md |
+| Resource | URL / Command |
+|----------|----------------|
+| Dashboard | `http://127.0.0.1:8889/` |
+| Dashboard API docs | `http://127.0.0.1:8889/docs` |
+| Dashboard health | `http://127.0.0.1:8889/api/health` |
+| Aggregate health | `http://127.0.0.1:8889/api/health/aggregate` |
+| Prometheus | `http://127.0.0.1:9090` |
+| Declarative health check | `bash scripts/health/system-health-check.sh --detailed` |
 
 ---
 
-## 🔧 Running Services
+## Running Services
 
 ```bash
-# Check all services
-ps aux | grep -E "http.server|ai-metrics|dashboard" | grep -v grep
+# Dashboard service
+systemctl status command-center-dashboard-api.service
 
-# Expected:
-# - HTTP Server (port 8000)
-# - Dashboard Collector (2s updates)
-# - AI Metrics Updater (5s updates)
+# Core declarative AI stack
+systemctl --no-pager --type=service --type=target | \
+  awk '/ai-stack|ai-aidb|ai-hybrid|ai-ralph|qdrant|llama-cpp|postgresql|redis-mcp|command-center-dashboard/ {print}'
 ```
 
 ---
 
-## 📊 Key Metrics
+## Key Checks
 
-- **Local Routing**: 80% (target: 70%+) ✅
-- **Token Savings**: 1,730 tokens (test)
-- **Cost Savings**: $328.50/year (projected)
-- **Effectiveness**: 32/100 (growing)
+```bash
+# Full declarative stack check
+bash scripts/health/system-health-check.sh --detailed
 
----
+# AI stack focused check
+bash scripts/ai/ai-stack-health.sh
 
-## 📖 Documentation Priority
+# Prometheus readiness
+curl http://127.0.0.1:9090/-/ready
 
-1. **docs/archive/legacy-sequence/00-QUICK-START.md** (5 min) - Start here
-2. **docs/archive/legacy-sequence/01-SYSTEM-OVERVIEW.md** (10 min) - What & why
-3. **docs/archive/legacy-sequence/02-AGENT-INTEGRATION.md** (20 min) - How to use
-4. **docs/archive/legacy-sequence/03-PROGRESSIVE-DISCLOSURE.md** (15 min) - Token savings
-5. **docs/archive/legacy-sequence/04-CONTINUOUS-LEARNING.md** (15 min) - System learning
-6. **docs/05-07** - Reference (as needed)
+# Dashboard aggregate health
+curl http://127.0.0.1:8889/api/health/aggregate | jq '.overall_status'
+```
 
 ---
 
-## ✅ What Works
+## Notes
 
-- ✅ Dashboard with real-time graphs
-- ✅ AI metrics auto-updating (5s)
-- ✅ Progressive disclosure (87% token reduction)
-- ✅ Continuous learning (80% local routing)
-- ✅ Telemetry recording
-- ✅ All documentation organized
-
----
-
-## 📈 Next Actions
-
-**Optional (when ready)**:
-1. `bash scripts/deploy/enable-progressive-disclosure.sh` - Integrate discovery API
-2. Import codebase to knowledge base
-3. Use for real development questions
-
----
-
-**Everything is ready to use!** 🎉
+- The production command center is served by the FastAPI dashboard service on one port.
+- Legacy `http.server` dashboard flows and standalone collectors are not the authoritative runtime path.
+- For dashboard frontend development only, use `cd dashboard && ./start-dashboard.sh`.

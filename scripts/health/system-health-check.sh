@@ -42,7 +42,6 @@ check_unit llama-cpp-embed.service
 check_unit postgresql.service
 check_unit redis-mcp.service
 check_unit command-center-dashboard-api.service
-check_unit command-center-dashboard-frontend.service
 check_unit prometheus.service
 check_unit prometheus-node-exporter.service
 
