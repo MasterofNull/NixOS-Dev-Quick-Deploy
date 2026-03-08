@@ -158,6 +158,45 @@
             line-height: 1;
         }
 
+        .legacy-runtime-banner {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--status-warning);
+            border-radius: 8px;
+            background: rgba(255, 190, 11, 0.08);
+            box-shadow: 0 0 20px rgba(255, 190, 11, 0.08);
+        }
+
+        .legacy-runtime-banner strong {
+            color: var(--accent-yellow);
+            display: block;
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.8rem;
+        }
+
+        .legacy-runtime-banner p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin: 0;
+        }
+
+        .legacy-runtime-banner a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+
+        .legacy-runtime-banner a:hover {
+            text-decoration: underline;
+        }
+
         /* Grid Layout */
         .dashboard-grid {
             display: grid;
@@ -855,6 +894,14 @@
                 <div class="health-score-value" id="healthScore">--</div>
             </div>
         </header>
+
+        <div class="legacy-runtime-banner">
+            <div>
+                <strong>Legacy Static Surface</strong>
+                <p>This HTML dashboard is retained for historical and troubleshooting use only. The authoritative operator runtime is <code>command-center-dashboard-api.service</code> at <code>http://127.0.0.1:8889/</code>. Demo data is available only with <code>?demo=1</code>.</p>
+            </div>
+            <a href="http://127.0.0.1:8889/">Open Command Center</a>
+        </div>
 
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-bottom: 1rem; align-items: center;">
             <span id="refreshStatus" style="font-size: 0.75rem; color: var(--text-muted);"></span>
@@ -2823,7 +2870,7 @@
                     .filter((svc) => svc.status === 'running')
                     .map((svc) => svc.id || svc.name)
             );
-            const root = '/home/hyperd/.local/share/nixos-ai-stack';
+            const root = '$HOME/.local/share/nixos-ai-stack';
             const paths = [
                 { name: 'qdrant', path: `${root}/qdrant`, exists: running.has('qdrant') || running.has('qdrant.service'), size: 'managed' },
                 { name: 'postgres', path: `${root}/postgres`, exists: running.has('postgresql') || running.has('postgresql.service'), size: 'managed' },
@@ -3076,11 +3123,11 @@
                     timestamp: new Date().toISOString(),
                     connections: { active: 42 },
                     firewall: { enabled: true, rules_count: 15 },
-                    interfaces: [{name: 'wlan0', address: '192.168.86.192', state: 'UP'}],
+                    interfaces: [{name: 'wlan0', address: '192.0.2.10', state: 'UP'}],
                     dns: { status: 'configured (symlink)', resolvers: ['127.0.0.53'] },
                     neighbors: [
-                        { ip: '192.168.86.1', mac: 'aa:bb:cc:dd:ee:ff', state: 'REACHABLE', dev: 'wlan0' },
-                        { ip: '192.168.86.50', mac: '11:22:33:44:55:66', state: 'STALE', dev: 'wlan0' }
+                        { ip: '192.0.2.1', mac: 'aa:bb:cc:dd:ee:ff', state: 'REACHABLE', dev: 'wlan0' },
+                        { ip: '192.0.2.50', mac: '11:22:33:44:55:66', state: 'STALE', dev: 'wlan0' }
                     ],
                     listening_ports: [
                         registryServicePort('grafana'),
