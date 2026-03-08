@@ -159,9 +159,9 @@ Concurrent Load: 500 writes tested
    - Systemd timer integration
 
 4. **Control Center** - [control-center.html](../../dashboard/control-center.html)
-   - Unified dashboard
-   - Adjustable configuration
-   - Links to all 12 services
+   - Legacy non-authoritative surface
+   - Retained for historical/static reference
+   - Superseded for live operations by the declarative command center runtime
 
 ### Enhanced Components
 
@@ -176,6 +176,7 @@ Concurrent Load: 500 writes tested
    - [server.py](ai-stack/mcp-servers/hybrid-coordinator/server.py) - File locking
 
 7. **Dashboard Server** - [serve-dashboard.sh](scripts/deploy/serve-dashboard.sh)
+   - Historical implementation surface
    - Security fixes (no subprocess)
    - Rate limiting (60 req/min)
 
@@ -491,3 +492,6 @@ Your system now has:
 **Overall Completion**: 11/16 tasks (69%), all critical tasks done
 **Test Coverage**: 32/32 tests passing (100%)
 **Documentation**: 15 comprehensive documents
+> Runtime note (2026-03-08): the production/operator dashboard path is the declarative
+> `command-center-dashboard-api.service` at `http://127.0.0.1:8889/`.
+> Legacy references below to `control-center.html` and `serve-dashboard.sh` are historical context.

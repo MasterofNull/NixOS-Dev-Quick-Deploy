@@ -20,7 +20,7 @@ Last Updated: 2026-03-05
 - [x] 1.5: Verify Ralph can execute tasks
 
 ### Phase 2: Dashboard Backend API ✅ COMPLETE
-- [x] 2.1: Add configuration API endpoint to serve-dashboard.sh
+- [x] 2.1: Add configuration API endpoint to legacy `serve-dashboard.sh`
 - [x] 2.2: Create config update handler
 - [x] 2.3: Add service restart logic
 - [x] 2.4: Update frontend to use API
@@ -121,7 +121,7 @@ def get_circuit_breakers():
 ```
 
 ### Files to Modify
-- `scripts/deploy/serve-dashboard.sh` - Add API endpoints
+- `scripts/deploy/serve-dashboard.sh` - Add API endpoints (historical implementation path)
 - `dashboard.html` - Update JavaScript to use API (lines 3728-3733)
 - `ai-stack/mcp-servers/config/config.yaml` - Ensure all values are parameterized
 
@@ -411,3 +411,7 @@ Need to ensure these fixes persist in deployment templates.
 **Status**: Ready to begin Phase 1
 **Estimated Time**: 2-3 hours for all phases
 **Priority**: High - Core infrastructure improvements
+> Historical implementation note (2026-03-08): this plan documents the earlier
+> imperative dashboard API work centered on `serve-dashboard.sh`.
+> The current production/operator runtime is `command-center-dashboard-api.service`
+> at `http://127.0.0.1:8889/`.
