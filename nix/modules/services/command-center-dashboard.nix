@@ -38,9 +38,12 @@ in
     ];
 
     # ── API + dashboard serving ────────────────────────────────────────────────
-    # Serves the FastAPI backend (/api/*) and dashboard.html (/) from a single
-    # port.  dashboard/public/index.html is a symlink to ../../dashboard.html —
-    # no npm/TypeScript build needed.
+    # Production authority for the command center dashboard.
+    # This service serves both the FastAPI backend (/api/*) and the operator UI
+    # (/) from a single port. Legacy imperative launcher scripts remain
+    # compatibility helpers only and must not be treated as the production path.
+    # dashboard/public/index.html is a git-tracked symlink to ../../dashboard.html,
+    # so no separate frontend build is required for the canonical runtime.
     systemd.services.command-center-dashboard-api = {
       description = "NixOS Command Center Dashboard API";
       wantedBy = [ "multi-user.target" ];

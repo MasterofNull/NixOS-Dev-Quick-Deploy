@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Service Endpoints - Centralized URL definitions for all AI stack services
-# Purpose: Single source of truth for service URLs used by dashboard scripts
+# Purpose: Single source of truth for service URLs used by runtime scripts,
+# health checks, and dashboard helpers.
 # Version: 1.0.0
 #
 # Source this file from any script that needs service URLs.
@@ -41,9 +42,10 @@ fi
 : "${RALPH_URL:=http://${SERVICE_HOST}:${RALPH_PORT:-8004}}"
 : "${MINDSDB_URL:=http://${SERVICE_HOST}:${MINDSDB_PORT:-47334}}"
 : "${DASHBOARD_API_URL:=http://${SERVICE_HOST}:${DASHBOARD_API_PORT:-8889}}"
-# DASHBOARD_URL is now the same port as DASHBOARD_API_URL — the FastAPI backend
-# serves both the SPA (/) and the API (/api/*) from a single port.
-# DASHBOARD_PORT kept for back-compat but defaults to the unified API port.
+# DASHBOARD_URL is the canonical operator entry point.
+# In the authoritative Nix/systemd runtime, the FastAPI service serves both the
+# SPA (/) and the API (/api/*) from a single port. DASHBOARD_PORT is retained
+# only for compatibility helpers and defaults to the unified API port.
 : "${DASHBOARD_URL:=${DASHBOARD_API_URL}}"
 : "${EMBEDDINGS_URL:=http://${SERVICE_HOST}:${EMBEDDINGS_PORT:-8081}}"
 : "${SWITCHBOARD_URL:=http://${SERVICE_HOST}:${SWITCHBOARD_PORT:-8085}}"
@@ -70,4 +72,5 @@ fi
 : "${HINTS_URL:=${HYBRID_URL}/hints}"
 
 # In-cluster DNS endpoints were intentionally removed.
-# Host-mode declarative runtime is authoritative; use localhost URLs above.
+# Host-mode declarative runtime is authoritative; use the URLs above for
+# production health checks and compatibility helpers.
