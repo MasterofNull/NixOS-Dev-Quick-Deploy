@@ -252,7 +252,20 @@ def _repo_root() -> Path:
 
 
 def _script_path(name: str) -> Path:
-    return _repo_root() / "scripts" / name
+    candidates = [
+        _repo_root() / "scripts" / name,
+        _repo_root() / "scripts" / "automation" / name,
+        _repo_root() / "scripts" / "ai" / name,
+        _repo_root() / "scripts" / "testing" / name,
+        _repo_root() / "scripts" / "governance" / name,
+        _repo_root() / "scripts" / "deploy" / name,
+        _repo_root() / "scripts" / "security" / name,
+        _repo_root() / "scripts" / "health" / name,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
 
 
 def _safe_script_status(name: str) -> Dict[str, Any]:
@@ -652,6 +665,488 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
                 pass
 
 
+async def _redis_runtime_probe() -> Dict[str, Any]:
+    """Collect Redis runtime metrics with a raw RESP session."""
+    host = service_endpoints.SERVICE_HOST
+    port = service_endpoints.REDIS_PORT
+    reader = None
+    writer = None
+
+    async def _read_resp() -> Any:
+        prefix = await reader.readexactly(1)
+        if prefix == b"+":
+            return (await reader.readline()).decode("utf-8", errors="replace").strip()
+        if prefix == b":":
+            return int((await reader.readline()).decode("utf-8", errors="replace").strip())
+        if prefix == b"$":
+            length = int((await reader.readline()).decode("utf-8", errors="replace").strip())
+            if length < 0:
+                return None
+            payload = await reader.readexactly(length)
+            await reader.readexactly(2)
+            return payload.decode("utf-8", errors="replace")
+        if prefix == b"-":
+            err = (await reader.readline()).decode("utf-8", errors="replace").strip()
+            raise RuntimeError(err)
+        raise RuntimeError(f"unsupported_redis_resp_prefix:{prefix!r}")
+
+    def _encode_command(*parts: str) -> bytes:
+        chunks = [f"*{len(parts)}\r\n".encode("utf-8")]
+        for part in parts:
+            encoded = str(part).encode("utf-8")
+            chunks.append(f"${len(encoded)}\r\n".encode("utf-8"))
+            chunks.append(encoded + b"\r\n")
+        return b"".join(chunks)
+
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=2.0)
+        writer.write(_encode_command("DBSIZE"))
+        writer.write(_encode_command("INFO", "memory"))
+        writer.write(_encode_command("INFO", "clients"))
+        await writer.drain()
+
+        dbsize = await asyncio.wait_for(_read_resp(), timeout=2.0)
+        memory_info = await asyncio.wait_for(_read_resp(), timeout=2.0)
+        clients_info = await asyncio.wait_for(_read_resp(), timeout=2.0)
+
+        parsed: Dict[str, str] = {}
+        for payload in (memory_info, clients_info):
+            if not isinstance(payload, str):
+                continue
+            for line in payload.splitlines():
+                if ":" not in line or line.startswith("#"):
+                    continue
+                key, value = line.split(":", 1)
+                parsed[key.strip()] = value.strip()
+
+        memory_bytes = int(parsed.get("used_memory", "0") or 0)
+        connected_clients = int(parsed.get("connected_clients", "0") or 0)
+        return {
+            "keys": int(dbsize or 0),
+            "memory_bytes": memory_bytes,
+            "memory_human": parsed.get("used_memory_human"),
+            "connected_clients": connected_clients,
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "keys": 0,
+            "memory_bytes": None,
+            "memory_human": None,
+            "connected_clients": None,
+            "error": str(exc),
+        }
+    finally:
+        if writer is not None:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+async def _postgres_runtime_probe() -> Dict[str, Any]:
+    """Collect PostgreSQL runtime metrics beyond the basic SELECT 1 health probe."""
+    if not _ASYNCPG_AVAILABLE:
+        return {
+            "database_size_bytes": None,
+            "active_connections": None,
+            "idle_connections": None,
+            "database_name": os.getenv("AIDB_DB_NAME", "aidb"),
+            "error": "asyncpg_not_installed",
+        }
+
+    pg_user = os.getenv("AIDB_DB_USER", "aidb")
+    pg_name = os.getenv("AIDB_DB_NAME", "aidb")
+    dsn = _inject_password_into_dsn(
+        os.getenv(
+            "AIDB_DB_URL",
+            f"postgresql://{pg_user}@{service_endpoints.SERVICE_HOST}:{service_endpoints.POSTGRES_PORT}/{pg_name}",
+        ),
+        pg_user,
+    )
+
+    conn = None
+    try:
+        conn = await asyncio.wait_for(asyncpg.connect(dsn), timeout=3.0)
+        row = await asyncio.wait_for(
+            conn.fetchrow(
+                """
+                SELECT
+                  pg_database_size(current_database())::bigint AS database_size_bytes,
+                  COUNT(*) FILTER (WHERE state = 'active')::int AS active_connections,
+                  COUNT(*) FILTER (WHERE state = 'idle')::int AS idle_connections
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                """
+            ),
+            timeout=2.0,
+        )
+        return {
+            "database_size_bytes": int(row["database_size_bytes"]) if row and row["database_size_bytes"] is not None else None,
+            "active_connections": int(row["active_connections"]) if row and row["active_connections"] is not None else None,
+            "idle_connections": int(row["idle_connections"]) if row and row["idle_connections"] is not None else None,
+            "database_name": pg_name,
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "database_size_bytes": None,
+            "active_connections": None,
+            "idle_connections": None,
+            "database_name": pg_name,
+            "error": str(exc),
+        }
+    finally:
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _tail_text_line(path: Path) -> Optional[str]:
+    """Return the last non-empty line from a text file without loading it all."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            end = handle.tell()
+            if end == 0:
+                return None
+            cursor = end - 1
+            chunks = bytearray()
+            while cursor >= 0:
+                handle.seek(cursor)
+                byte = handle.read(1)
+                if byte == b"\n" and chunks:
+                    break
+                if byte not in (b"\n", b"\r"):
+                    chunks.extend(byte)
+                cursor -= 1
+            if not chunks:
+                return None
+            return bytes(reversed(chunks)).decode("utf-8", errors="replace").strip() or None
+    except OSError:
+        return None
+
+
+def _extract_event_timestamp(record: Dict[str, Any]) -> Optional[str]:
+    for key in ("timestamp", "created_at", "ts"):
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _first_existing_path(candidates: List[Path]) -> Path:
+    expanded = [path.expanduser() for path in candidates if path]
+    for path in expanded:
+        if path.exists():
+            return path
+    return expanded[0]
+
+
+def _telemetry_file_path(name: str) -> Path:
+    state_root = Path(os.getenv("AI_STACK_STATE_ROOT", "/var/lib/ai-stack"))
+    legacy_root = Path.home() / ".local/share/nixos-ai-stack/telemetry"
+    aidb_dir = Path(os.getenv("AIDB_VSCODE_TELEMETRY_DIR", str(state_root / "aidb" / "telemetry")))
+    hybrid_dir = Path(os.getenv("CONTINUOUS_LEARNING_TELEMETRY_DIR", str(state_root / "hybrid" / "telemetry")))
+    mapping = {
+        "aidb": _first_existing_path([
+            Path(os.getenv("AIDB_TELEMETRY_PATH", "")) if os.getenv("AIDB_TELEMETRY_PATH") else None,
+            aidb_dir / "aidb-events.jsonl",
+            state_root / "aidb" / "telemetry" / "aidb-events.jsonl",
+            legacy_root / "aidb-events.jsonl",
+        ]),
+        "hybrid": _first_existing_path([
+            Path(os.getenv("HYBRID_TELEMETRY_PATH", "")) if os.getenv("HYBRID_TELEMETRY_PATH") else None,
+            hybrid_dir / "hybrid-events.jsonl",
+            state_root / "hybrid" / "telemetry" / "hybrid-events.jsonl",
+            legacy_root / "hybrid-events.jsonl",
+        ]),
+        "ralph": _first_existing_path([
+            Path(os.getenv("RALPH_TELEMETRY_PATH", "")) if os.getenv("RALPH_TELEMETRY_PATH") else None,
+            state_root / "ralph" / "telemetry" / "ralph-events.jsonl",
+            legacy_root / "ralph-events.jsonl",
+        ]),
+        "hint_feedback": _first_existing_path([
+            Path(os.getenv("HINT_FEEDBACK_LOG_PATH", "/var/log/nixos-ai-stack/hint-feedback.jsonl")),
+        ]),
+        "query_gaps": _first_existing_path([
+            Path(os.getenv("QUERY_GAPS_LOG_PATH", "/var/log/nixos-ai-stack/query-gaps.jsonl")),
+        ]),
+    }
+    return mapping[name]
+
+
+def _count_text_records(path: Path) -> int:
+    if not path.exists() or not path.is_file():
+        return 0
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return sum(1 for line in handle if line.strip())
+    except OSError:
+        return 0
+
+
+def _tail_json_records(path: Path, limit: int = 20) -> List[Dict[str, Any]]:
+    if not path.exists() or not path.is_file():
+        return []
+    records: List[Dict[str, Any]] = []
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            lines = handle.readlines()[-limit:]
+    except OSError:
+        return []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
+def _systemd_memory_current_bytes(unit: str) -> Optional[int]:
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", unit, "--property=MemoryCurrent", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        value = (result.stdout or "").strip()
+        if result.returncode != 0 or not value:
+            return None
+        memory_bytes = int(value)
+        return memory_bytes if memory_bytes >= 0 else None
+    except (OSError, ValueError):
+        return None
+
+
+def _prometheus_metric_sum(metrics_text: str, metric_name: str) -> Optional[float]:
+    total = 0.0
+    matched = False
+    prefix = f"{metric_name}"
+    for line in metrics_text.splitlines():
+        if not line or line.startswith("#") or not line.startswith(prefix):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            total += float(parts[-1])
+            matched = True
+        except ValueError:
+            continue
+    return total if matched else None
+
+
+def _prometheus_metric_scalar(metrics_text: str, metric_name: str) -> Optional[float]:
+    prefix = f"{metric_name}"
+    for line in metrics_text.splitlines():
+        if not line or line.startswith("#") or not line.startswith(prefix):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            return float(parts[-1])
+        except ValueError:
+            continue
+    return None
+
+
+async def _fetch_aidb_prometheus_summary() -> Dict[str, Any]:
+    metrics_text = await fetch_text_with_fallback(f"{SERVICES['aidb']}/metrics", "")
+    if not isinstance(metrics_text, str) or not metrics_text.strip():
+        return {}
+    request_total = _prometheus_metric_sum(metrics_text, "aidb_http_requests_total")
+    error_total = _prometheus_metric_sum(metrics_text, "aidb_http_request_errors_total")
+    process_memory_bytes = _prometheus_metric_scalar(metrics_text, "process_resident_memory_bytes")
+    return {
+        "request_total": int(round(request_total)) if request_total is not None else None,
+        "error_total": int(round(error_total)) if error_total is not None else None,
+        "process_memory_bytes": int(round(process_memory_bytes)) if process_memory_bytes is not None else None,
+    }
+
+
+def _list_model_inventory() -> Dict[str, List[str]]:
+    model_dir = Path(os.getenv("LLAMA_CPP_MODEL_DIR", "/var/lib/llama-cpp/models"))
+    if not model_dir.exists():
+        return {"llama_cpp": [], "embeddings": []}
+
+    llama_models: List[str] = []
+    embedding_models: List[str] = []
+    for path in sorted(model_dir.glob("*.gguf")):
+        name = path.name
+        if name.endswith(".dl.tmp"):
+            continue
+        if "embed" in name.lower():
+            embedding_models.append(name)
+        else:
+            llama_models.append(name)
+    return {"llama_cpp": llama_models, "embeddings": embedding_models}
+
+
+def _collect_file_stats(path: Path) -> Dict[str, Any]:
+    exists = path.exists()
+    stats = path.stat() if exists else None
+    last_line = _tail_text_line(path) if exists and path.is_file() and (stats.st_size or 0) > 0 else None
+    last_event = None
+    if last_line:
+        try:
+            payload = json.loads(last_line)
+            if isinstance(payload, dict):
+                last_event = {
+                    "timestamp": _extract_event_timestamp(payload),
+                    "keys": sorted(payload.keys())[:8],
+                }
+        except json.JSONDecodeError:
+            last_event = {"timestamp": None, "keys": [], "raw": last_line[:160]}
+    return {
+        "path": str(path),
+        "exists": exists,
+        "bytes": int(stats.st_size) if stats else 0,
+        "record_count": _count_text_records(path) if exists and path.is_file() else 0,
+        "modified_at": datetime.utcfromtimestamp(stats.st_mtime).isoformat() if stats else None,
+        "last_event_at": (last_event or {}).get("timestamp"),
+        "last_event": last_event,
+    }
+
+
+def _build_feedback_pipeline_stats() -> Dict[str, Any]:
+    files = {
+        "aidb": _collect_file_stats(_telemetry_file_path("aidb")),
+        "hybrid": _collect_file_stats(_telemetry_file_path("hybrid")),
+        "ralph": _collect_file_stats(_telemetry_file_path("ralph")),
+        "hint_feedback": _collect_file_stats(_telemetry_file_path("hint_feedback")),
+        "query_gaps": _collect_file_stats(_telemetry_file_path("query_gaps")),
+    }
+    available = [meta for meta in files.values() if meta.get("exists")]
+    return {
+        "files": files,
+        "summary": {
+            "existing_files": len(available),
+            "total_bytes": sum(int(meta.get("bytes") or 0) for meta in available),
+            "total_records": sum(int(meta.get("record_count") or 0) for meta in available),
+            "latest_activity_at": max(
+                (meta.get("modified_at") for meta in available if meta.get("modified_at")),
+                default=None,
+            ),
+        },
+    }
+
+
+def _load_keyword_signals() -> Optional[Dict[str, Any]]:
+    candidates = [
+        _repo_root() / "data" / "keyword-signals.json",
+        Path.home() / ".local/share/nixos-system-dashboard/keyword-signals.json",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            payload.setdefault("source_path", str(path))
+            return payload
+    return None
+
+
+async def _prom_series(query: str) -> list[Dict[str, Any]]:
+    """Execute an instant Prometheus query and return the vector results."""
+    url = f"{service_endpoints.PROMETHEUS_URL}/api/v1/query"
+    try:
+        session = await get_http_session()
+        async with session.get(url, params={"query": query}) as resp:
+            if resp.status != 200:
+                return []
+            payload = await resp.json()
+    except Exception:
+        return []
+
+    result = payload.get("data", {}).get("result", [])
+    return result if isinstance(result, list) else []
+
+
+async def _fetch_discovery_trends(hybrid_health: Dict[str, Any]) -> Dict[str, Any]:
+    """Return richer capability-discovery counters and recent Prometheus-derived trends."""
+    queries = {
+        "invoked_1h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="invoked"}[1h]))',
+        "cache_hits_1h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="cache_hit"}[1h]))',
+        "skipped_1h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="skipped"}[1h]))',
+        "errors_1h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="error"}[1h]))',
+        "invoked_24h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="invoked"}[24h]))',
+        "cache_hits_24h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="cache_hit"}[24h]))',
+        "skipped_24h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="skipped"}[24h]))',
+        "errors_24h": 'sum(increase(hybrid_capability_discovery_decisions_total{decision="error"}[24h]))',
+        "latency_p95_ms": 'histogram_quantile(0.95, sum(rate(hybrid_capability_discovery_latency_seconds_bucket[1h])) by (le)) * 1000',
+    }
+    values = await asyncio.gather(*(_prom_scalar(query) for query in queries.values()))
+    trend = dict(zip(queries.keys(), values))
+    reason_rows = await _prom_series(
+        "topk(5, sum by (reason) (hybrid_capability_discovery_decisions_total))"
+    )
+    top_reasons = []
+    for row in reason_rows:
+        metric = row.get("metric", {})
+        value = row.get("value", [None, None])
+        try:
+            count = float(value[1])
+        except (IndexError, TypeError, ValueError):
+            count = 0.0
+        top_reasons.append(
+            {
+                "reason": metric.get("reason", "unknown"),
+                "count": int(round(count)),
+            }
+        )
+
+    discovery = hybrid_health.get("capability_discovery", {}) if isinstance(hybrid_health, dict) else {}
+    invoked = int(discovery.get("invoked", 0) or 0)
+    skipped = int(discovery.get("skipped", 0) or 0)
+    cache_hits = int(discovery.get("cache_hits", 0) or 0)
+    errors = int(discovery.get("errors", 0) or 0)
+    total = invoked + skipped + cache_hits + errors
+    return {
+        "lifetime": {
+            "invoked": invoked,
+            "skipped": skipped,
+            "cache_hits": cache_hits,
+            "errors": errors,
+            "total_decisions": total,
+            "cache_hit_rate_pct": round((cache_hits / total) * 100, 2) if total else 0.0,
+            "last_decision": discovery.get("last_decision"),
+            "last_reason": discovery.get("last_reason"),
+        },
+        "recent": {
+            "one_hour": {
+                "invoked": int(round(trend.get("invoked_1h") or 0)),
+                "cache_hits": int(round(trend.get("cache_hits_1h") or 0)),
+                "skipped": int(round(trend.get("skipped_1h") or 0)),
+                "errors": int(round(trend.get("errors_1h") or 0)),
+            },
+            "twenty_four_hours": {
+                "invoked": int(round(trend.get("invoked_24h") or 0)),
+                "cache_hits": int(round(trend.get("cache_hits_24h") or 0)),
+                "skipped": int(round(trend.get("skipped_24h") or 0)),
+                "errors": int(round(trend.get("errors_24h") or 0)),
+            },
+            "latency_p95_ms": round(float(trend.get("latency_p95_ms") or 0.0), 2),
+            "top_reasons": top_reasons,
+        },
+    }
+
+
 async def _aider_wrapper_task_summary() -> Dict[str, Any]:
     """Fetch queue depth and last terminal task state from aider-wrapper."""
     summary = await fetch_with_fallback(f"{SERVICES['aider_wrapper']}/tasks/summary", None)
@@ -876,6 +1371,54 @@ async def get_learning_stats() -> Dict[str, Any]:
         },
         headers=headers,
     )
+    feedback_pipeline = _build_feedback_pipeline_stats()
+    files = feedback_pipeline.get("files", {})
+    hint_feedback_path = _telemetry_file_path("hint_feedback")
+    hint_records = _tail_json_records(hint_feedback_path, limit=50)
+    hint_scores = [
+        float(record.get("score"))
+        for record in hint_records
+        if isinstance(record.get("score"), (int, float))
+    ]
+    high_value_events = sum(
+        1
+        for record in hint_records
+        if record.get("helpful") is True or float(record.get("score", 0) or 0) >= 0.5
+    )
+    finetune_path = Path(
+        os.getenv("FINETUNE_DATA_PATH", "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl")
+    )
+    finetune_records = _count_text_records(finetune_path)
+
+    backpressure = stats.setdefault("backpressure", {})
+    file_sizes = backpressure.setdefault("file_sizes", {})
+    file_sizes["aidb-events.jsonl"] = int(files.get("aidb", {}).get("bytes") or 0)
+    file_sizes["hybrid-events.jsonl"] = int(files.get("hybrid", {}).get("bytes") or 0)
+    file_sizes["ralph-events.jsonl"] = int(files.get("ralph", {}).get("bytes") or 0)
+    file_sizes["hint-feedback.jsonl"] = int(files.get("hint_feedback", {}).get("bytes") or 0)
+    file_sizes["query-gaps.jsonl"] = int(files.get("query_gaps", {}).get("bytes") or 0)
+
+    activity = {
+        "aidb_events": int(files.get("aidb", {}).get("record_count") or 0),
+        "hybrid_events": int(files.get("hybrid", {}).get("record_count") or 0),
+        "ralph_events": int(files.get("ralph", {}).get("record_count") or 0),
+        "hint_feedback_events": int(files.get("hint_feedback", {}).get("record_count") or 0),
+        "query_gap_events": int(files.get("query_gaps", {}).get("record_count") or 0),
+        "high_value_events": high_value_events,
+        "average_feedback_score": round(sum(hint_scores) / len(hint_scores), 3) if hint_scores else None,
+        "finetune_records": finetune_records,
+        "latest_feedback_at": files.get("hint_feedback", {}).get("last_event_at") or files.get("hint_feedback", {}).get("modified_at"),
+    }
+    activity["total_events"] = sum(
+        activity[key]
+        for key in ("aidb_events", "hybrid_events", "ralph_events", "hint_feedback_events", "query_gap_events")
+    )
+    stats["activity"] = activity
+
+    if int(stats.get("total_metrics_tracked") or 0) == 0 and activity["total_events"] > 0:
+        stats["total_metrics_tracked"] = activity["total_events"]
+    if int(stats.get("finetuning_dataset_size") or 0) == 0 and finetune_records > 0:
+        stats["finetuning_dataset_size"] = finetune_records
     return stats
 
 
@@ -891,6 +1434,15 @@ async def get_circuit_breakers() -> Dict[str, Any]:
         "circuit_breakers": circuit_breakers,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+@router.get("/discovery/signals")
+async def get_discovery_signals() -> Dict[str, Any]:
+    """Return keyword/discovery signal data from the current local source when available."""
+    payload = _load_keyword_signals()
+    if payload is None:
+        raise HTTPException(status_code=404, detail="keyword signals unavailable")
+    return payload
 
 
 @router.post("/memory/store")
@@ -1347,6 +1899,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
     # Fire all independent fetches and infra probes concurrently.
     (
         aidb_health,
+        aidb_metrics_summary,
         hybrid_health,
         llama_health,
         llama_models,
@@ -1358,10 +1911,13 @@ async def get_ai_metrics() -> Dict[str, Any]:
         qdrant_collections,
         redis_probe,
         postgres_probe,
+        redis_runtime,
+        postgres_runtime,
         aider_task_summary,
         prsi_stats,
     ) = await asyncio.gather(
         fetch_with_fallback(f"{SERVICES['aidb']}/health", {}),
+        _fetch_aidb_prometheus_summary(),
         fetch_with_fallback(f"{SERVICES['hybrid']}/health", {}),
         fetch_with_fallback(f"{SERVICES['llama_cpp']}/health", {}),
         fetch_with_fallback(f"{SERVICES['llama_cpp']}/v1/models", {}),
@@ -1373,6 +1929,8 @@ async def get_ai_metrics() -> Dict[str, Any]:
         fetch_with_fallback(f"{SERVICES['qdrant']}/collections", {}),
         _redis_ping_probe(),
         _postgres_select1_probe(),
+        _redis_runtime_probe(),
+        _postgres_runtime_probe(),
         _aider_wrapper_task_summary(),
         _fetch_prsi_stats(),
     )
@@ -1405,6 +1963,9 @@ async def get_ai_metrics() -> Dict[str, Any]:
         or embeddings_health.get("dim")
         or service_endpoints.EMBEDDING_DIMENSIONS
     )
+    model_inventory = _list_model_inventory()
+    llama_memory_bytes = _systemd_memory_current_bytes("llama-cpp.service")
+    embedding_memory_bytes = _systemd_memory_current_bytes("llama-cpp-embed.service")
 
     switchboard_status = _normalize_status(switchboard_health.get("status"), ("ok", "healthy"))
     aider_wrapper_status = _normalize_status(aider_wrapper_health.get("status"), ("ok", "healthy"))
@@ -1425,6 +1986,8 @@ async def get_ai_metrics() -> Dict[str, Any]:
     harness_stats = await get_harness_stats()
     harness_scorecard = await get_harness_scorecard()
     harness_overview = await get_harness_overview()
+    feedback_pipeline = _build_feedback_pipeline_stats()
+    discovery_metrics = await _fetch_discovery_trends(hybrid_health)
 
     knowledge_collections = {
         "codebase_context": collection_points.get("codebase-context", 0),
@@ -1478,6 +2041,9 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "status": llama_status,
                 "port": service_endpoints.LLAMA_CPP_PORT,
                 "model": llama_model,
+                "cached_models": model_inventory.get("llama_cpp", []),
+                "cached_models_count": len(model_inventory.get("llama_cpp", [])),
+                "memory_mb": round(llama_memory_bytes / (1024 * 1024), 1) if llama_memory_bytes else None,
             },
             "embeddings": {
                 "service": "embeddings",
@@ -1486,6 +2052,11 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "model": embeddings_model,
                 "dimensions": embeddings_dimensions,
                 "endpoint": SERVICES["embeddings"],
+                "models": model_inventory.get("embeddings", []),
+                "request_total": None,
+                "error_total": None,
+                "memory_mb": round(embedding_memory_bytes / (1024 * 1024), 1) if embedding_memory_bytes else None,
+                "metrics_exported": False,
             },
             "switchboard": {
                 "service": "switchboard",
@@ -1522,6 +2093,34 @@ async def get_ai_metrics() -> Dict[str, Any]:
             "redis_ping_ok_gauge": redis_ok_gauge,
             "postgres_query_ok_gauge": postgres_ok_gauge,
         },
+        "database_metrics": {
+            "postgresql": {
+                "status": "online" if postgres_probe.get("postgres_query_ok") else "offline",
+                "database_name": postgres_runtime.get("database_name"),
+                "database_size_bytes": postgres_runtime.get("database_size_bytes"),
+                "active_connections": postgres_runtime.get("active_connections"),
+                "idle_connections": postgres_runtime.get("idle_connections"),
+                "latency_ms": postgres_probe.get("postgres_latency_ms"),
+                "error": postgres_runtime.get("error") or postgres_probe.get("postgres_error"),
+            },
+            "redis": {
+                "status": "online" if redis_probe.get("redis_ping_ok") else "offline",
+                "keys": redis_runtime.get("keys"),
+                "memory_bytes": redis_runtime.get("memory_bytes"),
+                "memory_human": redis_runtime.get("memory_human"),
+                "connected_clients": redis_runtime.get("connected_clients"),
+                "latency_ms": redis_probe.get("redis_latency_ms"),
+                "error": redis_runtime.get("error") or redis_probe.get("redis_error"),
+            },
+            "qdrant": {
+                "status": qdrant_status,
+                "collection_count": len(collection_names),
+                "total_vectors": total_points,
+                "collections": collection_points,
+            },
+        },
+        "feedback_pipeline": feedback_pipeline,
+        "hybrid_discovery": discovery_metrics,
         "knowledge_base": {
             "total_points": total_points,
             "real_embeddings_percent": 100 if total_points > 0 else 0,
@@ -1549,6 +2148,9 @@ async def get_ai_metrics() -> Dict[str, Any]:
             ),
             "estimated_tokens_saved": 0,
             "knowledge_base_vectors": total_points,
+        },
+        "telemetry": {
+            "aidb": aidb_metrics_summary,
         },
         "harness": {
             "stats": harness_stats,

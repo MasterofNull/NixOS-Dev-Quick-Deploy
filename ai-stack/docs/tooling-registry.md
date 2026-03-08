@@ -11,7 +11,7 @@ discover what tools are available for a given task.
 
 | Name | Port | Auth | Key Endpoints | When to Use |
 |------|------|------|---------------|-------------|
-| **hybrid-coordinator** | 8003 | X-API-Key | POST /query, POST /augment_query, POST /memory/store, GET /memory/recall, GET /hints, POST /feedback, POST /harness/eval, GET /discovery/capabilities | Route queries between local/remote LLM; semantic search; agent memory; workflow hints; eval harness |
+| **hybrid-coordinator** | 8003 | X-API-Key | POST /query, POST /augment_query, POST /memory/store, GET /memory/recall, GET /hints, POST /feedback, POST /harness/eval, GET /discovery/capabilities, POST /workflow/tooling-manifest | Route queries between local/remote LLM; semantic search; agent memory; workflow hints; compact code-exec tooling manifest; eval harness |
 | **aidb** | 8002 | X-API-Key | POST /documents, GET /documents, POST /vector/search, POST /query, GET /health | Import/search documents; vector similarity search; knowledge base queries |
 | **ralph-wiggum** | 8004 | X-API-Key (shared with aidb) | POST /tasks, GET /tasks/{id}, GET /health | Async task orchestration; multi-step agentic workflows |
 | **aider-wrapper** | 8006 | — | POST /tasks, GET /tasks/{id}, GET /health | Code editing tasks via aider; sandboxed file modifications; AI-assisted development |

@@ -8,6 +8,7 @@ Tools exposed:
   - hybrid_search: semantic search + optional LLM synthesis
   - get_hints: workflow hints for current task
   - workflow_plan: create phased plan using hybrid harness
+  - tooling_manifest: compact code-execution-friendly tool manifest
   - workflow_run_start: start guarded workflow run with intent_contract
   - workflow_blueprints: fetch available workflow blueprints
   - aqd_workflows_list: list local AQD workflow catalog
@@ -34,6 +35,10 @@ AIDB_URL   = os.getenv("AIDB_URL",   "http://127.0.0.1:8002")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 AQD_BIN = os.path.join(REPO_ROOT, "scripts", "ai", "aqd")
+BRIDGE_MAX_RESULT_CHARS = max(
+    256,
+    int(os.getenv("AI_MCP_BRIDGE_MAX_RESULT_CHARS", os.getenv("AI_CODE_EXEC_MAX_RESULT_CHARS", "4000"))),
+)
 
 def _read_key(path_env: str, key_env: str) -> str:
     path = os.getenv(path_env, "")
@@ -104,6 +109,25 @@ def _default_intent_contract(query: str) -> dict:
     }
 
 
+def _format_result(value) -> str:
+    text = json.dumps(value, indent=2)
+    if len(text) <= BRIDGE_MAX_RESULT_CHARS:
+        return text
+
+    preview_budget = max(128, min(BRIDGE_MAX_RESULT_CHARS // 2, BRIDGE_MAX_RESULT_CHARS - 256))
+    summary = {
+        "truncated": True,
+        "max_result_chars": BRIDGE_MAX_RESULT_CHARS,
+        "result_type": type(value).__name__,
+        "preview": text[:preview_budget],
+    }
+    if isinstance(value, dict):
+        summary["top_level_keys"] = list(value.keys())[:12]
+    elif isinstance(value, list):
+        summary["item_count"] = len(value)
+    return json.dumps(summary, indent=2)
+
+
 TOOLS = [
     {
         "name": "hybrid_search",
@@ -150,6 +174,23 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Task objective"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "tooling_manifest",
+        "description": (
+            "Return a compact tooling manifest optimized for code-execution clients. "
+            "Use this to import tools on demand and keep tool output bounded."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Task objective"},
+                "runtime": {"type": "string", "enum": ["python", "typescript"], "default": "python"},
+                "max_tools": {"type": "integer", "default": 6},
+                "max_result_chars": {"type": "integer", "default": BRIDGE_MAX_RESULT_CHARS},
             },
             "required": ["query"],
         },
@@ -334,7 +375,7 @@ def _call_tool(name: str, args: dict) -> str:
             "limit":             args.get("limit", 5),
             "generate_response": args.get("generate_response", False),
         }, HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "get_hints":
         params = f"?limit={args.get('limit', 3)}"
@@ -342,13 +383,22 @@ def _call_tool(name: str, args: dict) -> str:
         if q:
             params += f"&q={urllib.parse.quote(q)}"
         r = _get(f"{HYBRID_URL}/hints{params}", HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "workflow_plan":
         r = _post(f"{HYBRID_URL}/workflow/plan", {
             "query": args.get("query", ""),
         }, HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
+
+    if name == "tooling_manifest":
+        r = _post(f"{HYBRID_URL}/workflow/tooling-manifest", {
+            "query": args.get("query", ""),
+            "runtime": args.get("runtime", "python"),
+            "max_tools": int(args.get("max_tools", 6)),
+            "max_result_chars": int(args.get("max_result_chars", BRIDGE_MAX_RESULT_CHARS)),
+        }, HYBRID_KEY)
+        return _format_result(r)
 
     if name == "workflow_run_start":
         query = args.get("query", "")
@@ -360,15 +410,15 @@ def _call_tool(name: str, args: dict) -> str:
             "tool_call_limit": int(args.get("tool_call_limit", 40)),
             "intent_contract": intent_contract,
         }, HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "workflow_blueprints":
         r = _get(f"{HYBRID_URL}/workflow/blueprints", HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "aqd_workflows_list":
         r = _run_local([AQD_BIN, "workflows", "list"])
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "bootstrap_agent_project":
         argv = [
@@ -389,7 +439,7 @@ def _call_tool(name: str, args: dict) -> str:
         if bool(args.get("force", False)):
             argv.append("--force")
         r = _run_local(argv)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "project_init_workflow":
         argv = [
@@ -410,7 +460,7 @@ def _call_tool(name: str, args: dict) -> str:
         if bool(args.get("force", False)):
             argv.append("--force")
         r = _run_local(argv)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "primer_workflow":
         argv = [
@@ -425,7 +475,7 @@ def _call_tool(name: str, args: dict) -> str:
         if args.get("output"):
             argv.extend(["--output", str(args.get("output"))])
         r = _run_local(argv)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "brownfield_workflow":
         argv = [
@@ -446,7 +496,7 @@ def _call_tool(name: str, args: dict) -> str:
         if bool(args.get("force", False)):
             argv.append("--force")
         r = _run_local(argv)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "retrofit_workflow":
         argv = [
@@ -467,7 +517,7 @@ def _call_tool(name: str, args: dict) -> str:
         if bool(args.get("force", False)):
             argv.append("--force")
         r = _run_local(argv)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "store_memory":
         r = _post(f"{HYBRID_URL}/memory/store", {
@@ -475,7 +525,7 @@ def _call_tool(name: str, args: dict) -> str:
             "agent_id":    args.get("agent_id", "continue"),
             "memory_type": args.get("memory_type", "fact"),
         }, HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "recall_memory":
         r = _post(f"{HYBRID_URL}/memory/recall", {
@@ -483,16 +533,16 @@ def _call_tool(name: str, args: dict) -> str:
             "agent_id": args.get("agent_id", "continue"),
             "limit":    args.get("limit", 5),
         }, HYBRID_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
     if name == "query_aidb":
         r = _post(f"{AIDB_URL}/query", {
             "query": args.get("query", ""),
             "limit": args.get("limit", 5),
         }, AIDB_KEY)
-        return json.dumps(r, indent=2)
+        return _format_result(r)
 
-    return json.dumps({"error": f"unknown tool: {name}"})
+    return _format_result({"error": f"unknown tool: {name}"})
 
 
 def _respond(req_id, result):

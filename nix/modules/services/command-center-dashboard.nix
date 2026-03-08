@@ -13,8 +13,6 @@ let
 
   dashboardRoot = "${mcp.repoPath}";
   dashboardBackendRoot = "${dashboardRoot}/dashboard/backend";
-  # dashboard/public/index.html is a git-tracked symlink → ../../dashboard.html
-  # No build step required — dashboard.html is a self-contained single-file app.
   dashboardPublicDir = "${dashboardRoot}/dashboard/public";
 
   dashboardPython = pkgs.python3.withPackages (ps: with ps; [
@@ -40,10 +38,8 @@ in
     # ── API + dashboard serving ────────────────────────────────────────────────
     # Production authority for the command center dashboard.
     # This service serves both the FastAPI backend (/api/*) and the operator UI
-    # (/) from a single port. Legacy imperative launcher scripts remain
-    # compatibility helpers only and must not be treated as the production path.
-    # dashboard/public/index.html is a git-tracked symlink to ../../dashboard.html,
-    # so no separate frontend build is required for the canonical runtime.
+    # (/) from a single port. The current operator surface is the static
+    # dashboard/public application mounted by the backend.
     systemd.services.command-center-dashboard-api = {
       description = "NixOS Command Center Dashboard API";
       wantedBy = [ "multi-user.target" ];

@@ -6,6 +6,7 @@ Do not edit manually.
 ## Python (`harness_sdk.py`)
 
 - `plan(query)`
+- `tooling_manifest(query, runtime='python', max_tools=None, max_result_chars=None)`
 - `start_session(query)`
 - `get_session(session_id)`
 - `get_session_with_lineage(session_id)`
@@ -15,7 +16,7 @@ Do not edit manually.
 - `fork_session(session_id, note='forked session')`
 - `review_acceptance(response, query='', criteria=None, expected_keywords=None, min_criteria_ratio=0.7, min_keyword_ratio=0.6, run_harness_eval=False)`
 - `harness_eval(query, expected_keywords=None, mode='auto', max_latency_ms=None)`
-- `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40)`
+- `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40, intent_contract=None)`
 - `run_get(session_id, replay=False)`
 - `run_set_mode(session_id, safety_mode, confirm=False)`
 - `run_get_isolation(session_id)`
@@ -36,6 +37,7 @@ Do not edit manually.
 ## TypeScript (`harness_sdk.ts`)
 
 - `plan(query: string)`
+- `toolingManifest(query: string, runtime: "python" | "typescript" = "python", maxTools?: number, maxResultChars?: number)`
 - `startSession(query: string)`
 - `getSession(sessionId: string)`
 - `getSessionWithLineage(sessionId: string)`
@@ -66,6 +68,7 @@ Do not edit manually.
 ## Covered Endpoints
 
 - `POST /workflow/plan`
+- `POST /workflow/tooling-manifest`
 - `POST /workflow/session/start`
 - `GET /workflow/sessions`
 - `GET /workflow/tree`

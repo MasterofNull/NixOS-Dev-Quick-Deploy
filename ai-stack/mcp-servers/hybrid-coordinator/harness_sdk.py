@@ -34,6 +34,23 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def tooling_manifest(
+        self,
+        query: str,
+        runtime: str = "python",
+        max_tools: Optional[int] = None,
+        max_result_chars: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"query": query, "runtime": runtime}
+        if max_tools is not None:
+            payload["max_tools"] = max_tools
+        if max_result_chars is not None:
+            payload["max_result_chars"] = max_result_chars
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(self._url("/workflow/tooling-manifest"), headers=self._headers(), json=payload)
+            r.raise_for_status()
+            return r.json()
+
     def start_session(self, query: str) -> Dict[str, Any]:
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(self._url("/workflow/session/start"), headers=self._headers(), json={"query": query})

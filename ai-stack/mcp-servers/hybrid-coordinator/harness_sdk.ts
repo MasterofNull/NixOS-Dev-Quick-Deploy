@@ -93,6 +93,21 @@ export class HarnessClient {
     });
   }
 
+  toolingManifest(
+    query: string,
+    runtime: "python" | "typescript" = "python",
+    maxTools?: number,
+    maxResultChars?: number,
+  ): Promise<Json> {
+    const payload: Json = { query, runtime };
+    if (typeof maxTools === "number") payload.max_tools = maxTools;
+    if (typeof maxResultChars === "number") payload.max_result_chars = maxResultChars;
+    return this.request("/workflow/tooling-manifest", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   startSession(query: string): Promise<Json> {
     return this.request("/workflow/session/start", {
       method: "POST",
@@ -292,7 +307,7 @@ export class HarnessClient {
       }),
     });
   }
-}
+
   private defaultIntentContract(query: string): NonNullable<RunStartRequest["intent_contract"]> {
     const normalized = String(query || "").trim() || "workflow run";
     return {
@@ -303,3 +318,4 @@ export class HarnessClient {
       no_early_exit_without: ["all requested checks complete"],
     };
   }
+}
