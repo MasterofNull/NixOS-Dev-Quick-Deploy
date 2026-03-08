@@ -4,6 +4,26 @@
 
 ---
 
+## Current Runtime Model
+
+- Canonical deployment path: `./scripts/deploy/deploy-clean.sh`
+- Authoritative dashboard/operator runtime: `command-center-dashboard-api.service`
+- Operator URL: `http://127.0.0.1:8889/`
+- Local dashboard development only: `cd dashboard && ./start-dashboard.sh`
+
+Notes:
+- The command center now serves both the operator UI and API from one runtime.
+- Legacy static dashboard surfaces such as `dashboard.html`, `dashboard/control-center.html`, and imperative helpers like `serve-dashboard.sh` are retained for historical/debug context only.
+- Dashboard mock data is disabled in normal production use and is available only in explicit demo mode.
+- Dashboard hostname exposure is redacted by default in the declarative runtime.
+
+See:
+- `docs/operations/reference/QUICK-REFERENCE.md`
+- `dashboard/README.md`
+- `.agents/plans/PROJECT-CLEANUP-EXECUTION-PASS.md`
+
+---
+
 ## Canonical Deployment Path (Clean)
 
 Use the clean flake-first entrypoint:
@@ -185,6 +205,23 @@ See [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for
 
 ```bash
 python3 ai-stack/tests/test_hospital_e2e.py
+```
+
+### Command Center
+
+The current command center runtime is declarative and systemd-managed:
+
+```bash
+systemctl status command-center-dashboard-api.service
+curl http://127.0.0.1:8889/api/health
+xdg-open http://127.0.0.1:8889/
+```
+
+For local dashboard development only:
+
+```bash
+cd dashboard
+./start-dashboard.sh
 ```
 
 ### AI Stack Security Considerations
@@ -590,7 +627,7 @@ These locations must be writable for a successful deploy. The script validates t
 | `TMPDIR` | `/tmp` | Temporary files/logs during deploy & tooling |
 | `${XDG_CACHE_HOME:-$HOME/.cache}/nixos-quick-deploy` | (derived) | Deploy state + logs |
 | `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-ai-stack` | (derived) | AI stack data (Qdrant, Postgres, Redis, etc.) |
-| `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-system-dashboard` | (derived) | Dashboard JSON data cache |
+| `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-system-dashboard` | (derived) | Legacy static dashboard JSON cache |
 | `${XDG_STATE_HOME:-$HOME/.local/state}/nixos-ai-stack/aidb-mcp.log` | (derived) | AIDB MCP server log |
 
 Overrides:
@@ -822,15 +859,15 @@ sudo iptables -I INPUT -p tcp -s 10.43.0.0/16 --dport 6443 -j ACCEPT
 ```
 Then persist via NixOS rebuild (see `templates/configuration.nix` firewall allowlist notes).
 
-### Dashboard server service exits with code 127
+### Command center dashboard unavailable
 
-**Symptom:** `systemctl --user status dashboard-server.service` shows exit code 127.
+**Symptom:** `http://127.0.0.1:8889/` or `/api/health` is unavailable.
 
 **Fix:**
 ```bash
-./scripts/deploy/setup-dashboard.sh
-systemctl --user daemon-reload
-systemctl --user restart dashboard-server.service
+systemctl status command-center-dashboard-api.service
+systemctl restart command-center-dashboard-api.service
+bash scripts/health/system-health-check.sh --detailed
 ```
 
 ### Health check fails on optional Python packages
