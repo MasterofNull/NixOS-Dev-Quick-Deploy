@@ -73,6 +73,35 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
         add("feedback", "/feedback", "Capture outcome and correction data.")
         add("learning_stats", "/learning/stats", "Inspect learning pipeline health and backlog.")
 
+    if any(
+        k in q
+        for k in (
+            "agentic",
+            "autonomous",
+            "delegate",
+            "delegation",
+            "long-running",
+            "long running",
+            "loop",
+            "multi-agent",
+            "multi step",
+            "multi-step",
+            "orchestrate",
+            "orchestration",
+            "workflow",
+        )
+    ):
+        add(
+            "loop_orchestrate",
+            "/workflow/orchestrate",
+            "Submit long-running or multi-agent work to the Ralph loop through the harness.",
+        )
+        add(
+            "loop_status",
+            "/workflow/orchestrate/{task_id}",
+            "Poll Ralph loop execution state and optionally fetch final results.",
+        )
+
     if "route_search" not in seen:
         add("route_search", "/query", "Default execution path for response generation with retrieval.")
 
@@ -134,6 +163,18 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": [],
         "output_focus": "Status booleans and degraded dependencies only.",
     },
+    "loop_orchestrate": {
+        "method": "POST",
+        "mcp_tool": "",
+        "args": ["prompt", "backend", "max_iterations", "require_approval", "context"],
+        "output_focus": "Task id, backend, queue status, and activation posture only.",
+    },
+    "loop_status": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": ["task_id", "include_result"],
+        "output_focus": "Current loop status, iteration count, and final result when requested.",
+    },
     "feedback": {
         "method": "POST",
         "mcp_tool": "",
@@ -158,8 +199,11 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
     phases = [
         {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search"])},
         {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery"])},
-        {"id": "execute", "tools": pick(["route_search", "memory_recall", "workflow_run_start", "feedback"])},
-        {"id": "validate", "tools": pick(["harness_eval", "health", "learning_stats"])},
+        {
+            "id": "execute",
+            "tools": pick(["route_search", "memory_recall", "workflow_run_start", "loop_orchestrate", "feedback"]),
+        },
+        {"id": "validate", "tools": pick(["harness_eval", "health", "loop_status", "learning_stats"])},
         {"id": "handoff", "tools": pick(["feedback", "learning_stats"])},
     ]
     return [phase for phase in phases if phase["tools"]]

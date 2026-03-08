@@ -95,6 +95,8 @@ class Config:
     EMBEDDING_API_KEY_FILE = os.getenv("EMBEDDING_API_KEY_FILE", "")
     EMBEDDING_API_KEY = ""
     AIDB_URL = _require_env("AIDB_URL") if STRICT_ENV else os.getenv("AIDB_URL", "")
+    RALPH_WIGGUM_URL = os.getenv("RALPH_WIGGUM_URL", "http://127.0.0.1:8004")
+    RALPH_WIGGUM_API_KEY_FILE = os.getenv("RALPH_WIGGUM_API_KEY_FILE", "")
 
     LOCAL_CONFIDENCE_THRESHOLD = float(
         os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)

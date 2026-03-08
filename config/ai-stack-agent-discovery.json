@@ -74,6 +74,22 @@
         "description": "Create workflow execution plan",
         "content_type": "application/json"
       },
+      "workflow_orchestrate": {
+        "url": "http://127.0.0.1:8003/workflow/orchestrate",
+        "method": "POST",
+        "description": "Submit a long-running or multi-agent workflow to the Ralph loop through the harness layer",
+        "content_type": "application/json"
+      },
+      "ralph_discovery": {
+        "url": "http://127.0.0.1:8004/discovery/capabilities",
+        "method": "GET",
+        "description": "Discover Ralph loop orchestration capabilities and endpoints"
+      },
+      "ralph_health": {
+        "url": "http://127.0.0.1:8004/health",
+        "method": "GET",
+        "description": "Check Ralph loop orchestrator health"
+      },
       "health": {
         "url": "http://127.0.0.1:8003/health",
         "method": "GET",
@@ -114,6 +130,14 @@
     "AI_STACK_AIDB_ENDPOINT": {
       "value": "http://127.0.0.1:8002",
       "description": "AIDB API base URL"
+    },
+    "AI_STACK_RALPH_ENDPOINT": {
+      "value": "http://127.0.0.1:8004",
+      "description": "Ralph loop orchestrator base URL"
+    },
+    "AI_STACK_WORKFLOW_ORCHESTRATE_ENDPOINT": {
+      "value": "http://127.0.0.1:8003/workflow/orchestrate",
+      "description": "Harness endpoint for loop orchestration"
     },
     "AI_STACK_INFERENCE_ENDPOINT": {
       "value": "http://127.0.0.1:8080/v1",
