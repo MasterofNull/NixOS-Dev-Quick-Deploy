@@ -1,19 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { DashboardAPI } from '@/lib/api';
+import type { AIInternalsMetrics } from '@/types/metrics';
 import { Database, Cpu, Zap } from 'lucide-react';
-
-interface AIInternalsData {
-  embedding_cache_hit_rate_pct: number;
-  llm_routing_local_pct: number;
-  tokens_compressed_last_hour: number;
-  timestamp: string;
-}
 
 const POLL_INTERVAL_MS = 30000;
 
 export function AIInternals() {
-  const [data, setData] = useState<AIInternalsData | null>(null);
+  const [data, setData] = useState<AIInternalsMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,11 +16,7 @@ export function AIInternals() {
 
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/metrics');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const json: AIInternalsData = await response.json();
+        const json = await DashboardAPI.getAIInternals();
         if (!cancelled) {
           setData(json);
           setError(null);
