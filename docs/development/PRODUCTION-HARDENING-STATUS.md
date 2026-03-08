@@ -16,6 +16,10 @@ The AI stack has been significantly hardened for production use with all **criti
 
 ## Completed Tasks (7/16)
 
+> Runtime note (2026-03-08): the authoritative operator dashboard is now the declarative
+> `command-center-dashboard-api.service` at `http://127.0.0.1:8889/`.
+> References below to `serve-dashboard.sh` or `control-center.html` are historical implementation context.
+
 ### ✅ Phase 1: Critical Security (3/3 - 100%)
 
 #### P1-SEC-001: Dashboard Proxy Subprocess Vulnerability
@@ -23,14 +27,14 @@ The AI stack has been significantly hardened for production use with all **criti
 - **Impact**: Eliminated critical shell injection vulnerability
 - **Implementation**: Replaced subprocess with urllib HTTP client, added endpoint whitelist
 - **Tests**: 3/3 passing
-- **Files**: [scripts/deploy/serve-dashboard.sh](scripts/deploy/serve-dashboard.sh)
+- **Files**: historical implementation in [scripts/deploy/serve-dashboard.sh](scripts/deploy/serve-dashboard.sh)
 
 #### P1-SEC-002: Rate Limiting for All API Endpoints
 - **Status**: COMPLETED
 - **Impact**: Protected against DoS attacks
 - **Implementation**: Token bucket rate limiter (60 req/min), HTTP 429 responses
 - **Tests**: 3/3 passing
-- **Files**: [scripts/deploy/serve-dashboard.sh](scripts/deploy/serve-dashboard.sh), [config.yaml](ai-stack/mcp-servers/config/config.yaml)
+- **Files**: historical implementation in [scripts/deploy/serve-dashboard.sh](scripts/deploy/serve-dashboard.sh), [config.yaml](ai-stack/mcp-servers/config/config.yaml)
 
 #### P1-SEC-003: Move Secrets to Environment Variables
 - **Status**: COMPLETED
@@ -222,7 +226,8 @@ Backpressure Monitoring:    5/5 ✅
 
 ## Control Center Dashboard
 
-**URL**: http://localhost:8888/dashboard/control-center.html
+**Legacy URL**: `dashboard/control-center.html` (non-authoritative static surface)
+**Current Operator URL**: `http://127.0.0.1:8889/`
 
 Features:
 - ✅ System overview with orchestrator status
@@ -299,8 +304,8 @@ Features:
 
 ### System Documentation
 
-- [dashboard.html](dashboard.html) - System monitoring dashboard
-- [control-center.html](../../dashboard/control-center.html) - Unified control center
+- [dashboard.html](dashboard.html) - served operator UI via declarative runtime
+- [control-center.html](../../dashboard/control-center.html) - legacy non-authoritative control surface
 - [ORCHESTRATION-VISUAL-SUMMARY.md](ORCHESTRATION-VISUAL-SUMMARY.md) - Architecture overview
 
 ## Next Steps
