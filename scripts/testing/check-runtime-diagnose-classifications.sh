@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test aq-runtime-diagnose classification accuracy across symptom types
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

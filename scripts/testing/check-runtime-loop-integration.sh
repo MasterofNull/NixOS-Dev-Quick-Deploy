@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test runtime loop integration (diagnose -> plan -> remediate pipeline)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

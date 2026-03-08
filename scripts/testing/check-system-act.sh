@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test aq-system-act system action execution and rollback
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

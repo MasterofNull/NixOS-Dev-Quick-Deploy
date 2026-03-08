@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Test capability catalog append operations and deduplication
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
