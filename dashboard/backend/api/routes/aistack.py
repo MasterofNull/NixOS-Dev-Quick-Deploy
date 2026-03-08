@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 _REDIS_PING_OK_GAUGE: float = 0.0
 _POSTGRES_QUERY_OK_GAUGE: float = 0.0
 _AQ_REPORT_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": {}}
+_AI_METRICS_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_QDRANT_POINTS_CACHE: Dict[str, Any] = {"ts": 0.0, "collections": tuple(), "payload": {}}
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -50,6 +52,8 @@ HARNESS_EVAL_TIMEOUT = aiohttp.ClientTimeout(
 )
 # Lightweight timeout used exclusively for health-probe HTTP GETs (Task 17.2)
 _HEALTH_PROBE_TIMEOUT = aiohttp.ClientTimeout(total=2)
+AI_METRICS_CACHE_TTL_SECONDS = float(os.getenv("DASHBOARD_AI_METRICS_TTL_SECONDS", "10"))
+QDRANT_POINTS_CACHE_TTL_SECONDS = float(os.getenv("DASHBOARD_QDRANT_POINTS_TTL_SECONDS", "30"))
 
 # Map from systemd unit name → /health endpoint URL.
 # Only units listed here receive an HTTP probe in addition to systemd check.
@@ -1323,14 +1327,31 @@ async def _run_full_health_probe() -> Dict[str, Any]:
 
 
 async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, int]:
-    results: Dict[str, int] = {}
-    if not collections:
-        return results
+    normalized = tuple(sorted(set(collections)))
+    if not normalized:
+        return {}
 
-    for name in collections:
-        info = await fetch_with_fallback(f"{SERVICES['qdrant']}/collections/{name}", {})
-        points = info.get("result", {}).get("points_count", 0)
+    now = time.time()
+    cached_payload = _QDRANT_POINTS_CACHE.get("payload")
+    cached_collections = tuple(_QDRANT_POINTS_CACHE.get("collections", tuple()))
+    if (
+        isinstance(cached_payload, dict)
+        and cached_collections == normalized
+        and (now - float(_QDRANT_POINTS_CACHE.get("ts", 0.0))) < QDRANT_POINTS_CACHE_TTL_SECONDS
+    ):
+        return dict(cached_payload)
+
+    infos = await asyncio.gather(
+        *(fetch_with_fallback(f"{SERVICES['qdrant']}/collections/{name}", {}) for name in normalized)
+    )
+    results: Dict[str, int] = {}
+    for name, info in zip(normalized, infos):
+        points = info.get("result", {}).get("points_count", 0) if isinstance(info, dict) else 0
         results[name] = points if isinstance(points, int) else 0
+
+    _QDRANT_POINTS_CACHE["ts"] = now
+    _QDRANT_POINTS_CACHE["collections"] = normalized
+    _QDRANT_POINTS_CACHE["payload"] = dict(results)
     return results
 
 
@@ -1920,6 +1941,14 @@ async def get_ai_metrics() -> Dict[str, Any]:
 
     Both probes are exposed under the top-level ``"infra_probes"`` key.
     """
+    now = time.time()
+    cached_payload = _AI_METRICS_CACHE.get("payload")
+    if (
+        isinstance(cached_payload, dict)
+        and (now - float(_AI_METRICS_CACHE.get("ts", 0.0))) < AI_METRICS_CACHE_TTL_SECONDS
+    ):
+        return cached_payload
+
     # Fire all independent fetches and infra probes concurrently.
     (
         aidb_health,
@@ -2039,7 +2068,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
         postgres_ok_gauge,
     )
 
-    return {
+    payload = {
         "timestamp": datetime.utcnow().isoformat(),
         "services": {
             "aidb": {
@@ -2210,6 +2239,9 @@ async def get_ai_metrics() -> Dict[str, Any]:
             },
         },
     }
+    _AI_METRICS_CACHE["ts"] = now
+    _AI_METRICS_CACHE["payload"] = payload
+    return payload
 
 
 @router.get("/ports/registry")
@@ -2387,43 +2419,63 @@ async def get_aistack_metrics() -> Dict[str, Any]:
 
     h = hits or 0.0
     m = misses or 0.0
-    embedding_cache_hit_rate_pct = round((h / (h + m) * 100) if (h + m) > 0 else 0.0, 2)
+    embedding_cache_hit_rate_pct = (
+        round((h / (h + m) * 100), 2)
+        if (hits is not None or misses is not None) and (h + m) > 0
+        else None
+    )
 
     loc = local_sel or 0.0
     tot = total_sel or 0.0
-    llm_routing_local_pct = round((loc / tot * 100) if tot > 0 else 0.0, 2)
+    llm_routing_local_pct = (
+        round((loc / tot * 100), 2)
+        if (local_sel is not None or total_sel is not None) and tot > 0
+        else None
+    )
 
     b = before_sum or 0.0
     a = after_sum or 0.0
-    tokens_compressed_last_hour = round(max(b - a, 0.0), 0)
+    tokens_compressed_last_hour = (
+        round(max(b - a, 0.0), 0)
+        if before_sum is not None or after_sum is not None
+        else None
+    )
 
     hint_adoption_pct = (
-        float(report.get("hint_adoption", {}).get("adoption_pct", 0.0) or 0.0)
-        if isinstance(report, dict) else 0.0
+        float(report.get("hint_adoption", {}).get("adoption_pct"))
+        if isinstance(report, dict) and report.get("hint_adoption", {}).get("adoption_pct") is not None
+        else None
     )
     eval_latest_pct = (
-        float(report.get("eval_trend", {}).get("latest_pct", 0.0) or 0.0)
-        if isinstance(report, dict) else 0.0
+        float(report.get("eval_trend", {}).get("latest_pct"))
+        if isinstance(report, dict) and report.get("eval_trend", {}).get("latest_pct") is not None
+        else None
     )
     tool_rows = (
         len(report.get("tool_performance", {}))
         if isinstance(report, dict) and isinstance(report.get("tool_performance"), dict)
-        else 0
+        else None
     )
     query_gap_count = (
         len(report.get("query_gaps", []))
         if isinstance(report, dict) and isinstance(report.get("query_gaps"), list)
-        else 0
+        else None
     )
 
     return {
         "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct,
         "llm_routing_local_pct": llm_routing_local_pct,
         "tokens_compressed_last_hour": tokens_compressed_last_hour,
-        "hint_adoption_pct": round(hint_adoption_pct, 2),
-        "eval_latest_pct": round(eval_latest_pct, 2),
-        "tool_performance_rows": int(tool_rows),
-        "query_gap_count": int(query_gap_count),
+        "hint_adoption_pct": round(hint_adoption_pct, 2) if hint_adoption_pct is not None else None,
+        "eval_latest_pct": round(eval_latest_pct, 2) if eval_latest_pct is not None else None,
+        "tool_performance_rows": int(tool_rows) if tool_rows is not None else None,
+        "query_gap_count": int(query_gap_count) if query_gap_count is not None else None,
+        "availability": {
+            "embedding_cache_hit_rate": hits is not None or misses is not None,
+            "llm_routing_local": local_sel is not None or total_sel is not None,
+            "tokens_compressed_last_hour": before_sum is not None or after_sum is not None,
+            "aq_report": isinstance(report, dict) and bool(report),
+        },
         "timestamp": datetime.utcnow().isoformat(),
     }
 
