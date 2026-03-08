@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "AI Stack agent-agnostic tool discovery manifest",
+
+  "discovery": {
+    "manifest_path": "/opt/nixos-quick-deploy/config/ai-stack-agent-discovery.json",
+    "environment_prefix": "AI_STACK_"
+  },
+
+  "tools": {
+    "cli": {
+      "aqd": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
+        "description": "Main workflow CLI wrapper for AI stack operations",
+        "usage": "aqd [command] [options]",
+        "subcommands": ["workflows", "skill", "mcp", "policy", "parity"]
+      },
+      "aq-hints": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aq-hints",
+        "description": "Get ranked AI workflow hints for any task",
+        "usage": "aq-hints [query] [--format json|text] [--max N] [--agent NAME]"
+      },
+      "aq-report": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aq-report",
+        "description": "AI stack health and metrics reporting",
+        "usage": "aq-report [--since DURATION] [--format json|text]"
+      },
+      "aq-qa": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aq-qa",
+        "description": "Run AI stack QA workflow",
+        "usage": "aq-qa [phase]"
+      },
+      "project-init": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
+        "args": ["workflows", "project-init"],
+        "description": "Initialize new AI-enabled projects",
+        "usage": "project-init --target DIR --name NAME --goal GOAL"
+      },
+      "workflow-primer": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
+        "args": ["workflows", "primer"],
+        "description": "Read-only session priming workflow",
+        "usage": "workflow-primer --target DIR [--objective TEXT]"
+      },
+      "workflow-brownfield": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
+        "args": ["workflows", "brownfield"],
+        "description": "Existing project improvement workflow",
+        "usage": "workflow-brownfield --target DIR --objective TEXT"
+      }
+    },
+    "http": {
+      "hints": {
+        "url": "http://127.0.0.1:8003/hints",
+        "method": "GET",
+        "description": "Get workflow hints via HTTP",
+        "parameters": {
+          "query": "Search query string",
+          "max": "Maximum hints to return (default: 5)",
+          "agent": "Agent type: human|claude|codex|qwen|aider"
+        },
+        "example": "curl -s 'http://127.0.0.1:8003/hints?query=nix+modules&max=3'"
+      },
+      "hybrid_query": {
+        "url": "http://127.0.0.1:8003/query",
+        "method": "POST",
+        "description": "Hybrid routing query",
+        "content_type": "application/json"
+      },
+      "workflow_plan": {
+        "url": "http://127.0.0.1:8003/workflow/plan",
+        "method": "POST",
+        "description": "Create workflow execution plan",
+        "content_type": "application/json"
+      },
+      "health": {
+        "url": "http://127.0.0.1:8003/health",
+        "method": "GET",
+        "description": "Check hybrid coordinator health"
+      },
+      "inference": {
+        "url": "http://127.0.0.1:8080/v1/chat/completions",
+        "method": "POST",
+        "description": "OpenAI-compatible LLM inference",
+        "content_type": "application/json"
+      },
+      "embeddings": {
+        "url": "http://127.0.0.1:8081/v1/embeddings",
+        "method": "POST",
+        "description": "Text embeddings API",
+        "content_type": "application/json"
+      }
+    }
+  },
+
+  "environment_variables": {
+    "AI_STACK_ROOT": {
+      "value": "/opt/nixos-quick-deploy",
+      "description": "Canonical root path for AI stack installation"
+    },
+    "AI_STACK_TOOLS_BIN": {
+      "value": "/opt/nixos-quick-deploy/scripts/ai",
+      "description": "Directory containing AI stack CLI tools"
+    },
+    "AI_STACK_HINTS_ENDPOINT": {
+      "value": "http://127.0.0.1:8003/hints",
+      "description": "HTTP endpoint for workflow hints"
+    },
+    "AI_STACK_HYBRID_ENDPOINT": {
+      "value": "http://127.0.0.1:8003",
+      "description": "Hybrid coordinator base URL"
+    },
+    "AI_STACK_AIDB_ENDPOINT": {
+      "value": "http://127.0.0.1:8002",
+      "description": "AIDB API base URL"
+    },
+    "AI_STACK_INFERENCE_ENDPOINT": {
+      "value": "http://127.0.0.1:8080/v1",
+      "description": "LLM inference API base URL"
+    }
+  },
+
+  "agent_integrations": {
+    "claude": {
+      "config_path": "~/.claude/settings.json",
+      "type": "mcp",
+      "notes": "Uses MCP server protocol"
+    },
+    "codex": {
+      "config_path": null,
+      "type": "shell",
+      "notes": "Uses shell commands via PATH"
+    },
+    "aider": {
+      "config_path": "~/.aider.conf.yml",
+      "type": "shell",
+      "notes": "Uses shell commands and can read AI_STACK_* env vars"
+    },
+    "continue": {
+      "config_path": "~/.continue/config.json",
+      "type": "http",
+      "notes": "Uses HTTP context providers"
+    },
+    "gpt": {
+      "config_path": null,
+      "type": "shell",
+      "notes": "Uses shell commands via PATH"
+    },
+    "qwen": {
+      "config_path": null,
+      "type": "shell",
+      "notes": "Uses shell commands via PATH"
+    },
+    "gemini": {
+      "config_path": null,
+      "type": "shell",
+      "notes": "Uses shell commands via PATH"
+    }
+  },
+
+  "quick_start": {
+    "shell": "source /etc/profile.d/aq-path.sh && ai_stack_tools",
+    "check_health": "curl -sf http://127.0.0.1:8003/health",
+    "get_hints": "aq-hints 'your task description here'",
+    "init_project": "project-init --target ./new-project --name my-project --goal 'project goal'"
+  }
+}
