@@ -112,10 +112,12 @@ Last Updated: 2026-03-05
 
 ## Root Causes
 
-### Problem 1: Dashboard Expects Old API Structure
-- Dashboard hardcoded to expect port 8889 API (we just created this)
-- Dashboard HTML was written expecting endpoints that didn't exist
-- Now endpoints exist but dashboard may need updates to consume them properly
+### Problem 1: Dashboard Expected an Earlier API Structure
+- Historical dashboard surfaces were hardcoded to expect a direct port 8889 API during initial
+  integration work
+- The static `dashboard.html` implementation was written before the backend/API contract stabilized
+- The current operator-facing runtime is `command-center-dashboard-api.service` at
+  `http://127.0.0.1:8889/`
 
 ### Problem 2: Error Handling Swallows Failures
 ```javascript
@@ -142,12 +144,14 @@ fetch(url, {timeout: 5000})
 
 ## Immediate Next Steps
 
-### Step 1: Update Dashboard HTML ⏳
-Wire up the new API endpoints created:
-- Connect to http://localhost:8889/api/stats/learning
-- Connect to http://localhost:8889/api/stats/circuit-breakers
-- Connect to http://localhost:8889/api/health/aggregate
-- Connect to http://localhost:8889/api/ralph/stats
+### Step 1: Update Legacy Dashboard HTML ⏳
+Historical implementation follow-up for the earlier `dashboard.html` surface:
+- Connect to the dashboard API aggregate/stat endpoints exposed by the runtime authority
+- Example endpoints during the earlier implementation pass:
+  - `http://127.0.0.1:8889/api/stats/learning`
+  - `http://127.0.0.1:8889/api/stats/circuit-breakers`
+  - `http://127.0.0.1:8889/api/health/aggregate`
+  - `http://127.0.0.1:8889/api/ralph/stats`
 - Add proper error handling with user feedback
 - Add timeout to all fetch calls (5 seconds)
 

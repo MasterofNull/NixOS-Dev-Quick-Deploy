@@ -39,11 +39,15 @@ Last Updated: 2026-03-05
 ## Phase 3: Dashboard Integration ✅ COMPLETE
 
 ### 3.1 Ralph iteration controls
-- [x] Add iteration controls section to control-center.html
+- [x] Add iteration controls section to legacy `control-center.html` during early dashboard prototyping
 - [x] Sliders for simple/default/complex iteration limits
 - [x] Toggle for adaptive iteration limits
 - [x] "Apply Settings" button updates .env file
 - [x] Live status showing current Ralph settings
+
+Historical note: this phase tracked work against the earlier static control-center surface. The
+current operator-facing dashboard runtime is `command-center-dashboard-api.service` at
+`http://127.0.0.1:8889/`.
 
 ### 3.2 Container health monitoring
 - [x] Dashboard section showing all container statuses
