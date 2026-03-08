@@ -79,7 +79,7 @@ We've completed comprehensive research on container orchestration for 2026 and c
 - Dashboard API now uses the Kubernetes API (not Podman/systemd).
 - Health aggregate uses Qdrant `/healthz` and correct Ralph service namespace.
 
-**Important:** The HTML dashboard at `http://localhost:8888/dashboard.html` expects the API at `http://localhost:8889`.
+**Important:** The authoritative command center runtime is `http://127.0.0.1:8889/`, served by `command-center-dashboard-api.service`.
 
 ### 5. Hospital E2E Validation (Jan 25, 2026)
 
