@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict, List, Optional
 from mcp.types import TextContent, Tool
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
+from memory_manager import coerce_memory_summary, normalize_memory_type
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -469,9 +470,11 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "store_agent_memory":
+            memory_type = normalize_memory_type(arguments.get("memory_type", ""))
+            summary = coerce_memory_summary(arguments.get("summary"), arguments.get("content"))
             result = await _store_memory(
-                memory_type=arguments.get("memory_type", ""),
-                summary=arguments.get("summary", ""),
+                memory_type=memory_type,
+                summary=summary,
                 content=arguments.get("content"),
                 metadata=arguments.get("metadata"),
             )

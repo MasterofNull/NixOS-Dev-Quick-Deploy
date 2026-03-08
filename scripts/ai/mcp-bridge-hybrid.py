@@ -128,6 +128,15 @@ def _format_result(value) -> str:
     return json.dumps(summary, indent=2)
 
 
+def _normalize_memory_type(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    return {
+        "fact": "semantic",
+        "decision": "procedural",
+        "context": "episodic",
+    }.get(normalized, normalized or "semantic")
+
+
 TOOLS = [
     {
         "name": "hybrid_search",
@@ -329,7 +338,11 @@ TOOLS = [
             "properties": {
                 "content":   {"type": "string", "description": "Fact or decision to store"},
                 "agent_id":  {"type": "string", "default": "continue"},
-                "memory_type": {"type": "string", "enum": ["fact","decision","context"], "default": "fact"},
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["semantic", "procedural", "episodic", "fact", "decision", "context"],
+                    "default": "semantic",
+                },
             },
             "required": ["content"],
         },
@@ -523,7 +536,7 @@ def _call_tool(name: str, args: dict) -> str:
         r = _post(f"{HYBRID_URL}/memory/store", {
             "content":     args.get("content", ""),
             "agent_id":    args.get("agent_id", "continue"),
-            "memory_type": args.get("memory_type", "fact"),
+            "memory_type": _normalize_memory_type(args.get("memory_type", "semantic")),
         }, HYBRID_KEY)
         return _format_result(r)
 

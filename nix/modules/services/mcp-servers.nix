@@ -859,6 +859,7 @@ in
             "AI_HARNESS_ENABLED=${if ai.aiHarness.enable then "true" else "false"}"
             "AI_MEMORY_ENABLED=${if ai.aiHarness.memory.enable then "true" else "false"}"
             "AI_MEMORY_MAX_RECALL_ITEMS=${toString ai.aiHarness.memory.maxRecallItems}"
+            "AI_MEMORY_REPAIR_MISMATCHED_COLLECTIONS=${if ai.aiHarness.memory.repairMismatchedCollections then "true" else "false"}"
             "AI_TREE_SEARCH_ENABLED=${if ai.aiHarness.retrieval.treeSearchEnable then "true" else "false"}"
             "AI_TREE_SEARCH_MAX_DEPTH=${toString ai.aiHarness.retrieval.treeSearchMaxDepth}"
             "AI_TREE_SEARCH_BRANCH_FACTOR=${toString ai.aiHarness.retrieval.treeSearchBranchFactor}"

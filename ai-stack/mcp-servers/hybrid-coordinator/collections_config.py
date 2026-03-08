@@ -161,6 +161,46 @@ MEMORY_COLLECTIONS: Dict[str, str] = {
 }
 
 
+def _is_repairable_memory_collection(collection_name: str) -> bool:
+    return collection_name in MEMORY_COLLECTIONS.values()
+
+
+def _create_collection(qdrant_client: Any, collection_name: str, schema: Dict[str, Any]) -> None:
+    qdrant_client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(
+            size=schema["vector_size"],
+            distance=schema["distance"],
+            hnsw_config=HnswConfigDiff(
+                m=Config.QDRANT_HNSW_M,
+                ef_construct=Config.QDRANT_HNSW_EF_CONSTRUCT,
+                full_scan_threshold=Config.QDRANT_HNSW_FULL_SCAN_THRESHOLD,
+            ),
+        ),
+    )
+
+
+def _recreate_collection(
+    qdrant_client: Any,
+    collection_name: str,
+    schema: Dict[str, Any],
+    *,
+    reason: str,
+    points_count: int = 0,
+) -> None:
+    logger.warning(
+        "Recreating collection",
+        extra={
+            "collection": collection_name,
+            "reason": reason,
+            "points": points_count,
+        },
+    )
+    qdrant_client.delete_collection(collection_name=collection_name)
+    _create_collection(qdrant_client, collection_name, schema)
+    logger.info("✓ Collection recreated: %s", collection_name)
+
+
 async def initialize_collections(qdrant_client: Any) -> None:
     """Initialize Qdrant collections if they don't exist."""
 
@@ -186,18 +226,7 @@ async def initialize_collections(qdrant_client: Any) -> None:
 
             if not exists:
                 logger.info(f"Creating collection: {collection_name}")
-                qdrant_client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=VectorParams(
-                        size=schema["vector_size"],
-                        distance=schema["distance"],
-                        hnsw_config=HnswConfigDiff(
-                            m=Config.QDRANT_HNSW_M,
-                            ef_construct=Config.QDRANT_HNSW_EF_CONSTRUCT,
-                            full_scan_threshold=Config.QDRANT_HNSW_FULL_SCAN_THRESHOLD,
-                        ),
-                    ),
-                )
+                _create_collection(qdrant_client, collection_name, schema)
                 logger.info(f"✓ Collection created: {collection_name}")
             else:
                 info = qdrant_client.get_collection(collection_name)
@@ -205,7 +234,19 @@ async def initialize_collections(qdrant_client: Any) -> None:
                 expected_size = schema["vector_size"]
                 points_count = getattr(info, "points_count", 0) or 0
                 if current_size is not None and current_size != expected_size:
-                    if points_count > 0:
+                    if (
+                        points_count > 0
+                        and _is_repairable_memory_collection(collection_name)
+                        and Config.AI_MEMORY_REPAIR_MISMATCHED_COLLECTIONS
+                    ):
+                        _recreate_collection(
+                            qdrant_client,
+                            collection_name,
+                            schema,
+                            reason="memory_dimension_mismatch",
+                            points_count=points_count,
+                        )
+                    elif points_count > 0:
                         logger.error(
                             "Collection dimension mismatch",
                             extra={
@@ -216,28 +257,12 @@ async def initialize_collections(qdrant_client: Any) -> None:
                             },
                         )
                     else:
-                        logger.warning(
-                            "Recreating collection due to dimension mismatch",
-                            extra={
-                                "collection": collection_name,
-                                "current": current_size,
-                                "expected": expected_size,
-                            },
+                        _recreate_collection(
+                            qdrant_client,
+                            collection_name,
+                            schema,
+                            reason="dimension_mismatch",
                         )
-                        qdrant_client.delete_collection(collection_name=collection_name)
-                        qdrant_client.create_collection(
-                            collection_name=collection_name,
-                            vectors_config=VectorParams(
-                                size=expected_size,
-                                distance=schema["distance"],
-                                hnsw_config=HnswConfigDiff(
-                                    m=Config.QDRANT_HNSW_M,
-                                    ef_construct=Config.QDRANT_HNSW_EF_CONSTRUCT,
-                                    full_scan_threshold=Config.QDRANT_HNSW_FULL_SCAN_THRESHOLD,
-                                ),
-                            ),
-                        )
-                        logger.info(f"✓ Collection recreated: {collection_name}")
                 else:
                     logger.info(f"✓ Collection exists: {collection_name}")
 
