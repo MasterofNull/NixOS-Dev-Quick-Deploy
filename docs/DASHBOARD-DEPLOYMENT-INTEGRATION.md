@@ -1,14 +1,14 @@
 # Dashboard Deployment Integration
 
-**Status**: ✅ Fully Integrated
+**Status**: Historical integration notes; runtime model superseded
 **Version**: 1.0.0
-**Integration Point**: Phase 8 (Finalization)
+**Integration Point**: Legacy Phase 8 integration notes
 
 ---
 
 ## Overview
 
-The **System Command Center Dashboard** is now automatically installed as part of the standard NixOS Quick Deploy process. Every new deployment will include the cyberpunk-themed monitoring dashboard by default.
+This document describes an older imperative dashboard deployment flow. The current production runtime is the declarative `command-center-dashboard-api.service`, which serves both the operator UI and API from `http://127.0.0.1:8889/`.
 
 ---
 
@@ -18,20 +18,14 @@ The **System Command Center Dashboard** is now automatically installed as part o
 
 **Location**: [phases/phase-08-finalization-and-report.sh](phases/phase-08-finalization-and-report.sh#L173-L183)
 
-**What Happens**:
+**Current Runtime**:
 ```bash
-# Step 8.5: System Monitoring Dashboard
-install_dashboard_to_deployment
+systemctl status command-center-dashboard-api.service
+curl http://127.0.0.1:8889/api/health
+xdg-open http://127.0.0.1:8889/
 ```
 
-**Process**:
-1. Creates systemd user services (dashboard-collector.timer, dashboard-server.service)
-2. Generates initial dashboard data
-3. Creates desktop launcher (if desktop environment detected)
-4. Adds shell aliases to ~/.zshrc
-5. Displays post-install instructions
-
-**Failure Handling**: Non-fatal - deployment continues if dashboard setup fails
+Legacy user-service setup notes below are retained for migration history only.
 
 ### 2. Libraries
 
@@ -45,14 +39,12 @@ install_dashboard_to_deployment
 
 ### 3. Scripts
 
-**Core Scripts**:
-- [scripts/deploy/setup-dashboard.sh](/scripts/deploy/setup-dashboard.sh) - Installation automation
-- [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Data collection
-- [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) - HTTP server
-- [scripts/deploy/launch-dashboard.sh](/scripts/deploy/launch-dashboard.sh) - Quick launcher
+**Current Authoritative Components**:
+- [nix/modules/services/command-center-dashboard.nix](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/modules/services/command-center-dashboard.nix) - declarative dashboard runtime
+- [dashboard/backend/api/main.py](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard/backend/api/main.py) - API + SPA serving
+- [dashboard.html](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html) - served operator UI
 
-**Dashboard UI**:
-- [dashboard.html](dashboard.html) - Main dashboard interface
+Legacy scripts mentioned elsewhere in this document are compatibility or historical references only.
 
 ---
 
@@ -68,27 +60,19 @@ After deployment completes, users will see:
 
 Quick Start Options:
 
-1. One-Command Launch (recommended for first use):
-   cd /home/hyperd/Documents/try/NixOS-Dev-Quick-Deploy
-   ./scripts/deploy/launch-dashboard.sh
+1. Declarative runtime:
+   systemctl status command-center-dashboard-api.service
+   xdg-open http://127.0.0.1:8889/
 
-2. As Systemd Service (runs in background):
-   systemctl --user start dashboard-server
-   systemctl --user start dashboard-collector.timer
-   xdg-open http://localhost:8888/dashboard.html
-
-3. Shell Alias (after reloading shell):
-   source ~/.zshrc  # or restart terminal
-   dashboard  # Quick launcher
+2. API health:
+   curl http://127.0.0.1:8889/api/health
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ### Created Resources
 
-**Systemd Services** (`~/.config/systemd/user/`):
-- `dashboard-collector.service` - Data collection (oneshot)
-- `dashboard-collector.timer` - Runs collector every 5 seconds
-- `dashboard-server.service` - HTTP server on port 8888
+**Current Runtime Service**:
+- `command-center-dashboard-api.service` - unified operator UI + API service
 
 **Data Directory**: `~/.local/share/nixos-system-dashboard/`
 - system.json - CPU, memory, disk, uptime
@@ -100,7 +84,7 @@ Quick Start Options:
 
 **Desktop Launcher**: `~/.local/share/applications/nixos-dashboard.desktop`
 
-**Shell Aliases** (added to `~/.zshrc`):
+**Legacy Shell Aliases** (historical references only):
 ```bash
 alias dashboard='cd /path/to/deploy && ./scripts/deploy/launch-dashboard.sh'
 alias dashboard-start='systemctl --user start dashboard-collector.timer dashboard-server.service'
@@ -187,23 +171,12 @@ Comment out Step 8.5 in [phases/phase-08-finalization-and-report.sh](phases/phas
 
 ### Customize Dashboard Port
 
-Default port is 8888. To change:
+The authoritative dashboard port is managed declaratively. To change it, update the Nix options for the command center service rather than editing helper scripts.
 
-**Before Deployment**:
-Edit [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh) and change `PORT` variable
-
-**After Deployment**:
+**After changing Nix configuration**:
 ```bash
-# Edit systemd service
-systemctl --user edit dashboard-server.service
-
-# Add override:
-[Service]
-Environment="DASHBOARD_PORT=9999"
-
-# Reload and restart
-systemctl --user daemon-reload
-systemctl --user restart dashboard-server
+sudo nixos-rebuild switch --flake .#$(hostname)
+systemctl restart command-center-dashboard-api.service
 ```
 
 ### Disable Auto-Collection
@@ -252,14 +225,14 @@ grep "dashboard" ~/.zshrc
 
 **Test Manually**:
 ```bash
-# Generate data
-./scripts/data/generate-dashboard-data.sh
+# Check service
+systemctl status command-center-dashboard-api.service
 
-# Start server
-./scripts/deploy/serve-dashboard.sh &
+# Check API
+curl http://127.0.0.1:8889/api/health
 
 # Open dashboard
-xdg-open http://localhost:8888/dashboard.html
+xdg-open http://127.0.0.1:8889/
 ```
 
 ---
@@ -269,12 +242,11 @@ xdg-open http://localhost:8888/dashboard.html
 ### Uninstall Dashboard
 
 ```bash
-# Stop and disable services
-systemctl --user stop dashboard-collector.timer dashboard-server.service
-systemctl --user disable dashboard-collector.timer dashboard-server.service
+# Stop declarative runtime
+systemctl stop command-center-dashboard-api.service
 
-# Remove systemd files
-rm ~/.config/systemd/user/dashboard-*
+# Revert dashboard-related configuration through Nix and rebuild
+sudo nixos-rebuild switch --flake .#$(hostname)
 
 # Remove data directory
 rm -rf ~/.local/share/nixos-system-dashboard

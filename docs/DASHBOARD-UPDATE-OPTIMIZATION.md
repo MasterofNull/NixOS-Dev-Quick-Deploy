@@ -120,8 +120,8 @@ $ watch -n 1 'stat -c "%y" ~/.local/share/nixos-system-dashboard/system.json'
 ### View Graphs
 
 ```bash
-$ bash scripts/deploy/serve-dashboard.sh
-# Open http://localhost:8888/dashboard.html
+$ systemctl status command-center-dashboard-api.service
+# Open http://127.0.0.1:8889/
 # Observe smooth graph updates every 2 seconds
 ```
 
@@ -210,4 +210,4 @@ User Request: "Update graphs every 0.5s like GNOME Resources"
 
 **Status**: Production ready and running
 **Collectors**: Active (PIDs 161811, 162629)
-**Dashboard**: http://localhost:8888/dashboard.html
+**Dashboard**: http://127.0.0.1:8889/
