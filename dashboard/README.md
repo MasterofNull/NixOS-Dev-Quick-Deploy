@@ -47,7 +47,7 @@ That path is for iterative local development only. It is intentionally separate 
 - `backend/`: FastAPI backend and service integration layer
 - `frontend/`: React/Vite frontend used for active UI development
 - `public/` via Nix module: production-served dashboard entry point
-- `control-center.html`: legacy dashboard surface pending cleanup/integration
+- `control-center.html`: legacy non-authoritative surface retained for historical reference only
 
 ## Phase 1 Cleanup Intent
 

@@ -24,6 +24,24 @@
             margin: 0 auto;
         }
 
+        .legacy-banner {
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(255, 193, 7, 0.65);
+            border-radius: 14px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+        }
+
+        .legacy-banner strong {
+            color: #ffd166;
+        }
+
+        .legacy-banner p {
+            margin-top: 6px;
+            opacity: 0.92;
+        }
+
         header {
             text-align: center;
             padding: 20px 0 40px;
@@ -409,9 +427,13 @@
 </head>
 <body>
     <div class="container">
+        <div class="legacy-banner">
+            <strong>Legacy Surface</strong>
+            <p>This page is retained for historical reference and limited static-mode inspection only. The authoritative operator dashboard is served by <code>command-center-dashboard-api.service</code> at <a href="http://127.0.0.1:8889/" style="color: #fff; text-decoration: underline;">http://127.0.0.1:8889/</a>.</p>
+        </div>
         <header>
             <h1>🎛️ AI Stack Control Center</h1>
-            <p class="subtitle">Unified Command, Control & Monitoring Dashboard</p>
+            <p class="subtitle">Legacy control surface for historical context; use the command center runtime for live operations</p>
         </header>
 
         <!-- System Status -->
@@ -424,7 +446,7 @@
                     <p>Services: <strong id="service-count">-/18 Healthy</strong></p>
                     <p>Security: <strong>Phase 1-2 Complete</strong></p>
                 </div>
-                <a href="http://localhost:8888/dashboard.html" class="btn btn-primary" target="_blank">📈 System Dashboard</a>
+                <a href="http://127.0.0.1:8889/" class="btn btn-primary" target="_blank">📈 Open Command Center</a>
             </div>
 
             <div class="card">
@@ -701,7 +723,7 @@
             <h2><span class="card-icon">🔗</span> All Dashboards & Services</h2>
             <div class="links-grid">
                 <div class="link-item">
-                    <a href="http://localhost:8888/dashboard.html" target="_blank">📊 System Monitor</a>
+                    <a href="http://127.0.0.1:8889/" target="_blank">📊 Command Center</a>
                 </div>
                 <div class="link-item">
                     <a href="https://localhost:8443/aidb/health" target="_blank">🏥 AIDB Health</a>
