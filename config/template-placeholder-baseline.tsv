@@ -1,4 +1,5 @@
 # count<TAB>path
+4	templates/agentic-workflow/README.md
 48	templates/configuration.nix
 8	templates/home.nix
 3	templates/nixos-improvements/ai-stack-autostart.nix

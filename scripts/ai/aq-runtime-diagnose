@@ -21,6 +21,7 @@ PROBE_CMD=""
 ALIAS_PROBE_CMD=""
 SMOKE_CMD=""
 RUN_SMOKE=0
+HYBRID_API_HEADER_NAME="${HYBRID_API_HEADER_NAME:-X-API-Key}"
 
 usage() {
   cat <<'EOF'
@@ -65,7 +66,7 @@ apply_preset() {
       HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8003/health}"
       SUCCESS_PATTERN="${SUCCESS_PATTERN:-\"status\": ?\"healthy\"|\"status\": ?\"ok\"}"
       JOURNAL_PATTERN="${JOURNAL_PATTERN:-Traceback|ERROR|Exception|address already in use|permission denied|hints|workflow}"
-      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:8003/health && printf '\n---\n' && curl -fsS -H 'X-API-Key: __HYBRID_API_KEY__' 'http://127.0.0.1:8003/hints?q=test' | head -c 800}"
+      PROBE_CMD="${PROBE_CMD:-curl -fsS http://127.0.0.1:8003/health && printf '\n---\n' && curl -fsS -H '${HYBRID_API_HEADER_NAME}: __HYBRID_API_KEY__' 'http://127.0.0.1:8003/hints?q=test' | head -c 800}"
       ;;
     qdrant)
       SERVICE="${SERVICE:-qdrant.service}"
