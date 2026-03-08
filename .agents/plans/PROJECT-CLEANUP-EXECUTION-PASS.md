@@ -1,10 +1,50 @@
 # Project Cleanup Execution Pass
 
 **Created:** 2026-03-08
-**Status:** Proposed
+**Status:** In progress; major cleanup slices executed
 **Owner:** Codex
 **Reviewer Gate:** Required at end of every phase
 **Target Outcome:** Lower drift, smaller exposed surface area, stable declarative runtime, and a command-center dashboard backed only by live contract-validated data.
+
+## Consolidated Status Update (2026-03-08)
+
+### Completed Outcomes
+
+- Established the declarative command center runtime as the single operator authority.
+- Aligned health checks and dashboard service discovery with the actual runtime.
+- Removed production mock masking from retained dashboard surfaces.
+- Quarantined `dashboard/control-center.html` and clearly labeled static dashboard surfaces as legacy/historical.
+- Normalized dashboard frontend/runtime data paths without changing the dashboard UI/themes.
+- Updated active docs, operator guides, development roadmaps, and the root README to point to `command-center-dashboard-api.service` at `http://127.0.0.1:8889/`.
+- Removed active hardcoded personal repo paths from `docs/`, `scripts/`, `dashboard/`, and `systemd/` non-archive surfaces.
+- Redacted dashboard hostname exposure by default in the declarative runtime.
+
+### Current Runtime Truth
+
+- Canonical deployment path: `./scripts/deploy/deploy-clean.sh`
+- Authoritative dashboard runtime: `command-center-dashboard-api.service`
+- Operator URL: `http://127.0.0.1:8889/`
+- Local dashboard development only: `cd dashboard && ./start-dashboard.sh`
+
+### Evidence Highlights
+
+- Dashboard/runtime commits executed across runtime authority, health alignment, contract normalization, mock fallback removal, legacy-surface quarantine, active-doc cleanup, privacy/path cleanup, and README refresh.
+- Active non-archive scan for `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`, `/home/hyperd/.nix-profile`, and absolute local markdown links is clean in `docs/`, `scripts/`, `dashboard/`, and `systemd/`.
+- Dashboard hostname is now redacted by default through:
+  - `DASHBOARD_EXPOSE_HOSTNAME=false`
+  - `DASHBOARD_HOSTNAME_ALIAS=local-node`
+
+### Security / Privacy Findings From This Pass
+
+- No confirmed live API key or private key blob was found in active repo content from the local scans available during this pass.
+- Expected references to `/run/secrets/*` remain and are intentional.
+- Remaining machine-specific tracked content is mostly intentional host inventory/config, primarily under `nix/hosts/*`.
+
+### Residual Follow-up
+
+- Decide whether tracked host-specific files under `nix/hosts/*` and `nix/hosts/nixos/deploy-options.local.nix` should remain in-repo, be templated further, or move to local-only handling.
+- If stronger assurance is required, run a detector-backed secret scan (`gitleaks` and/or `trufflehog`) in a later pass when those tools are available.
+- Continue field-by-field dashboard contract tightening only if new retained surfaces or widgets are added.
 
 ## Scope Lock
 
@@ -366,6 +406,17 @@ Reason:
 - runtime authority and health alignment should be fixed before frontend cleanup,
 - contract work should happen before mock-fallback removal,
 - shim retirement should happen after the canonical path is stable.
+
+## Phase Completion Snapshot
+
+| Phase | Status | Notes |
+| --- | --- | --- |
+| 1. Establish Runtime Authority | Complete | Declarative command center runtime established as operator authority. |
+| 2. Lock Dashboard Data Contract | Partial | Data-path normalization and dev-runtime parameterization completed; full field-by-field contract inventory remains optional follow-up. |
+| 3. Remove Mock Masking From Production | Complete | Production mock masking removed; demo fallback explicit only. |
+| 4. Align Health Checks With Real Services | Complete | CLI/backend/dashboard health expectations aligned with actual units/runtime. |
+| 5. Retire High-Drift Shims And Legacy Dashboard Surfaces | Complete | Legacy surfaces quarantined; active docs/operator references updated. |
+| 6. Final Stabilization And Evidence Pack | Partial | Evidence consolidated here and in README/operator docs; no separate evidence pack doc created. |
 
 ## Evidence Template Per Phase
 
