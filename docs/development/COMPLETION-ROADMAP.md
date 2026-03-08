@@ -172,7 +172,7 @@ current operator-facing dashboard runtime is `command-center-dashboard-api.servi
 - ✅ Grafana: v11.2.0 (ClusterIP 3002)
 - ✅ Backup jobs: PostgreSQL cronjob uses postgres:18 + bash; backup-encryption secret present
 - ⚠️ Open WebUI: CrashLoopBackOff (optional)
-- ✅ Prometheus target `ralph-wiggum:8098` up after image refresh
+- ✅ Prometheus target `ralph-wiggum:8004` up after image refresh
 - ✅ AIDB: tool discovery timezone fix applied and image rebuilt
 
 ### 7.2 Documentation verification
