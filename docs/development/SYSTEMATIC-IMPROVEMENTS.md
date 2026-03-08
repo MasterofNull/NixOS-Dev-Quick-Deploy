@@ -403,7 +403,7 @@ def test_aider_wrapper_accepts_ralph_payload():
 
 def test_ralph_health_endpoint():
     """Verify Ralph health endpoint responds"""
-    response = requests.get("http://ralph-wiggum:8098/health", timeout=5)
+    response = requests.get("http://ralph-wiggum:8004/health", timeout=5)
     assert response.status_code == 200
     assert "status" in response.json()
 

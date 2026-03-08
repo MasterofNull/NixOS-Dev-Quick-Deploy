@@ -35,7 +35,7 @@ Last Updated: 2026-03-05
 **Goal:** Ensure services are up and communicating.
 
 - [ ] **Service Health**: Query `/health` endpoints for:
-  - Ralph Wiggum (Port 8098)
+  - Ralph Wiggum (Port 8004)
   - Hybrid Coordinator (Port 8092)
   - AIDB (Port 8091)
   - Qdrant (Port 6333)
