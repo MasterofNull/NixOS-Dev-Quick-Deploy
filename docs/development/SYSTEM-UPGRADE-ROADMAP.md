@@ -1951,7 +1951,7 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/deploy/publish-
 **Verification Tests:**
 ```bash
 # Dashboard feedback endpoint (inside cluster)
-  /bin/sh -c 'curl -sS http://localhost:8889/api/feedback -H "Content-Type: application/json" \
+  /bin/sh -c 'curl -sS http://127.0.0.1:8889/api/feedback -H "Content-Type: application/json" \
   -d "{\"query\":\"Test feedback\",\"correction\":\"Use registry.local\", \"rating\":4}"'
 ```
 
