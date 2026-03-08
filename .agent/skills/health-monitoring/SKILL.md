@@ -6,7 +6,7 @@ description: Instructions and workflow for the health-monitoring skill.
 # Skill Name: health-monitoring
 
 ## Description
-Runs the comprehensive `./scripts/system-health-check.sh` routine to validate NixOS, Home Manager, AI tooling, Flatpaks, MCP services, and environment variables with actionable output.
+Runs the comprehensive `./scripts/health/system-health-check.sh` routine to validate NixOS, Home Manager, AI tooling, Flatpaks, MCP services, and environment variables with actionable output.
 
 ## When to Use
 - After running `nixos-quick-deploy.sh` to confirm success
@@ -26,19 +26,19 @@ Runs the comprehensive `./scripts/system-health-check.sh` routine to validate Ni
 ### Standard Health Check
 ```bash
 cd ~/Documents/NixOS-Dev-Quick-Deploy
-./scripts/system-health-check.sh
+./scripts/health/system-health-check.sh
 ```
 - Displays pass/warn/fail counts (defaults to brief mode).
 
 ### Detailed Output (per subsystem)
 ```bash
-./scripts/system-health-check.sh --detailed
+./scripts/health/system-health-check.sh --detailed
 ```
 - Prints version strings, directory counts, and tool paths for each section.
 
 ### Auto-Fix Optional Issues
 ```bash
-./scripts/system-health-check.sh --fix
+./scripts/health/system-health-check.sh --fix
 ```
 - Attempts to reinstall missing npm/python packages and refresh Flatpak remotes.
 
@@ -78,20 +78,20 @@ Summary block lists total counts and final verdict (`PASSED` / `FAILED`).
 
 ### Example 1 – Fresh Deployment Confirmation
 ```bash
-./scripts/system-health-check.sh
+./scripts/health/system-health-check.sh
 # Output: Passed 90 / Warnings 14 / Failed 0
 ```
 Use summary to document success in `DEPLOYMENT-SUCCESS-V5.md`.
 
 ### Example 2 – Detailed Investigation
 ```bash
-./scripts/system-health-check.sh --detailed | tee /tmp/health.log
+./scripts/health/system-health-check.sh --detailed | tee /tmp/health.log
 ```
 Attach `/tmp/health.log` to issue reports.
 
 ### Example 3 – Optional Fixes
 ```bash
-./scripts/system-health-check.sh --fix
+./scripts/health/system-health-check.sh --fix
 # Reinstalls missing npm/pip packages, updates remotes, reruns checks
 ```
 
