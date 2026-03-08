@@ -7,6 +7,9 @@ import hashlib
 import re
 from typing import Any, Dict, List, Tuple
 
+_PEM_BEGIN = "-----BEGIN "
+_PEM_END = " KEY-----"
+
 
 SENSITIVE_FIELD_TOKENS = (
     "prompt",
@@ -30,9 +33,9 @@ SECRET_PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("aws_secret_key", re.compile(r"aws_secret_access_key\s*[=:]\s*[A-Za-z0-9/+=]{40}")),
     ("github_token", re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}")),
     ("gitlab_token", re.compile(r"glpat-[A-Za-z0-9\-]{20,}")),
-    ("private_key_rsa", re.compile(r"-----BEGIN RSA PRIVATE KEY-----")),
-    ("private_key_openssh", re.compile(r"-----BEGIN OPENSSH PRIVATE KEY-----")),
-    ("private_key_ec", re.compile(r"-----BEGIN EC PRIVATE KEY-----")),
+    ("private_key_rsa", re.compile(re.escape(f"{_PEM_BEGIN}RSA PRIVATE{_PEM_END}"))),
+    ("private_key_openssh", re.compile(re.escape(f"{_PEM_BEGIN}OPENSSH PRIVATE{_PEM_END}"))),
+    ("private_key_ec", re.compile(re.escape(f"{_PEM_BEGIN}EC PRIVATE{_PEM_END}"))),
     ("jwt_token", re.compile(r"eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
     ("password_field", re.compile(r"(?i)password\s*[=:]\s*[^\s]{8,}")),
     ("bearer_token", re.compile(r"Bearer\s+[A-Za-z0-9\-_\.]{20,}")),
