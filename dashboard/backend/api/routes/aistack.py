@@ -977,22 +977,46 @@ async def _fetch_aidb_prometheus_summary() -> Dict[str, Any]:
     }
 
 
-def _list_model_inventory() -> Dict[str, List[str]]:
-    model_dir = Path(os.getenv("LLAMA_CPP_MODEL_DIR", "/var/lib/llama-cpp/models"))
-    if not model_dir.exists():
-        return {"llama_cpp": [], "embeddings": []}
+def _list_model_inventory() -> Dict[str, Any]:
+    """Best-effort model inventory lookup for dashboard cards.
 
-    llama_models: List[str] = []
-    embedding_models: List[str] = []
-    for path in sorted(model_dir.glob("*.gguf")):
-        name = path.name
-        if name.endswith(".dl.tmp"):
-            continue
-        if "embed" in name.lower():
-            embedding_models.append(name)
-        else:
-            llama_models.append(name)
-    return {"llama_cpp": llama_models, "embeddings": embedding_models}
+    The dashboard service runs with a restricted systemd sandbox and may not be
+    allowed to traverse the configured model directory. That must degrade to an
+    empty inventory instead of taking down ``/api/ai/metrics`` entirely.
+    """
+    model_dir = Path(os.getenv("LLAMA_CPP_MODEL_DIR", "/var/lib/llama-cpp/models"))
+    inventory: Dict[str, Any] = {
+        "llama_cpp": [],
+        "embeddings": [],
+        "source_dir": str(model_dir),
+        "available": False,
+        "error": None,
+    }
+
+    try:
+        if not model_dir.exists():
+            inventory["error"] = "missing"
+            return inventory
+    except OSError as exc:
+        logger.warning("model_inventory_exists_check_failed dir=%s error=%s", model_dir, exc)
+        inventory["error"] = f"{type(exc).__name__}: {exc}"
+        return inventory
+
+    try:
+        for path in sorted(model_dir.glob("*.gguf")):
+            name = path.name
+            if name.endswith(".dl.tmp"):
+                continue
+            if "embed" in name.lower():
+                inventory["embeddings"].append(name)
+            else:
+                inventory["llama_cpp"].append(name)
+        inventory["available"] = True
+    except OSError as exc:
+        logger.warning("model_inventory_scan_failed dir=%s error=%s", model_dir, exc)
+        inventory["error"] = f"{type(exc).__name__}: {exc}"
+
+    return inventory
 
 
 def _collect_file_stats(path: Path) -> Dict[str, Any]:
@@ -2033,6 +2057,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "port": service_endpoints.QDRANT_PORT,
                 "metrics": {
                     "collection_count": len(collection_names),
+                    "collection_names": collection_names,
                     "total_vectors": total_points,
                 },
             },
@@ -2043,6 +2068,8 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "model": llama_model,
                 "cached_models": model_inventory.get("llama_cpp", []),
                 "cached_models_count": len(model_inventory.get("llama_cpp", [])),
+                "model_inventory_available": bool(model_inventory.get("available")),
+                "model_inventory_error": model_inventory.get("error"),
                 "memory_mb": round(llama_memory_bytes / (1024 * 1024), 1) if llama_memory_bytes else None,
             },
             "embeddings": {
@@ -2053,6 +2080,8 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "dimensions": embeddings_dimensions,
                 "endpoint": SERVICES["embeddings"],
                 "models": model_inventory.get("embeddings", []),
+                "model_inventory_available": bool(model_inventory.get("available")),
+                "model_inventory_error": model_inventory.get("error"),
                 "request_total": None,
                 "error_total": None,
                 "memory_mb": round(embedding_memory_bytes / (1024 * 1024), 1) if embedding_memory_bytes else None,
@@ -2125,6 +2154,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
             "total_points": total_points,
             "real_embeddings_percent": 100 if total_points > 0 else 0,
             "collections": knowledge_collections,
+            "collection_names": collection_names,
             "rag_quality": {
                 "context_relevance": "90%",
                 "improvement_over_baseline": "+60%",
@@ -2166,6 +2196,18 @@ async def get_ai_metrics() -> Dict[str, Any]:
             "synced_gaps": prsi_stats.get("synced_gaps", 0),
             "last_gap_at": prsi_stats.get("last_gap_at"),
             "sync_loop_active": prsi_stats.get("sync_loop_active", False),
+        },
+        "validations": {
+            "model_inventory": {
+                "available": bool(model_inventory.get("available")),
+                "source_dir": model_inventory.get("source_dir"),
+                "error": model_inventory.get("error"),
+            },
+            "qdrant_collections": {
+                "available": bool(collection_names),
+                "count": len(collection_names),
+                "total_vectors": total_points,
+            },
         },
     }
 
