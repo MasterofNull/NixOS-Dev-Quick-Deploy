@@ -1,157 +1,110 @@
-# System Overview - NixOS Hybrid Learning Stack
+# System Overview
 
-**Purpose**: Understand what this system is and how it helps you work more efficiently
+**Purpose**: Describe the current local AI stack, how it is deployed, and which services are authoritative for operators and agents.
 
----
+## What This System Is
 
-**Agent quick links:** `AGENTS.md`, `docs/AGENTS.md`, `docs/agent-guides/01-QUICK-START.md`, `ai-stack/agents/skills/AGENTS.md`
+This repository runs a declarative NixOS AI stack with host-local `systemd` services, local model inference, retrieval infrastructure, and an operator-facing dashboard/API. The current runtime is not K3s-first and it is not a container-orchestrated control plane.
 
-## What Is This System?
+Core characteristics:
 
-A **unified AI development environment** that combines:
-- **Local LLMs** (llama.cpp) for fast, cheap inference
-- **Vector Database** (Qdrant) for context storage and retrieval
-- **Continuous Learning** that improves from every interaction
-- **Hybrid Architecture** that reduces remote API costs by 30-50%
-- **K3s-based AI stack** for reproducible services
-- **System dashboards + health checks** for operational visibility
+- NixOS modules define ports, service wiring, and environment injection.
+- `systemd` units run the active AI stack on host-local ports.
+- Local LLM inference is provided by `llama.cpp` and an embeddings service.
+- Retrieval, memory, and coordination depend on Qdrant, PostgreSQL, and Redis.
+- The dashboard API and shell QA scripts are the main operator health surface.
 
----
+## Main Components
 
-## How It Helps Remote Agents (Like You)
+### Dashboard API and Health Surface
 
-### Problem Without This System
-- Load 20,000+ tokens of documentation every time
-- No memory of past solutions
-- Repeat same mistakes
-- High API costs for simple tasks
+- `command-center-dashboard-api.service`
+- Endpoint: `http://127.0.0.1:8889`
+- Provides `/api/health`, `/api/health/aggregate`, and AI metrics endpoints.
 
-### Solution With This System
-1. **Context Augmentation**: Local context added to your queries automatically
-2. **Learning Storage**: Successful solutions stored for reuse
-3. **Error Prevention**: Past errors and fixes available instantly
-4. **Cost Reduction**: Use local LLM for 70% of tasks, remote API for 30%
+### AIDB
 
----
+- AIDB API endpoint: `http://127.0.0.1:8002`
+- Used for local project knowledge and AI stack integration workflows.
 
-## Core Components
+### Hybrid Coordinator
 
-### 0. **K3s AI Stack**
-- Declarative systemd orchestration for local AI services
-- Persistent data stored in K3s PersistentVolumeClaims
+- `ai-hybrid-coordinator.service`
+- Endpoint: `http://127.0.0.1:8003`
+- Handles hybrid orchestration, memory endpoints, and authenticated stats queries.
 
-### 1. **Qdrant Vector Database** (Port 6333)
-- Stores embeddings of code, solutions, errors
-- Fast semantic search (< 100ms)
-- 5 collections for different data types
+### Local Model Runtime
 
-### 2. **llama.cpp GGUF Inference** (Port 8080)
-- Runs Qwen Coder 7B locally
-- Good for: code explanation, syntax checking, simple refactoring
-- Fast (10-30 tokens/sec on GPU)
+- `llama-cpp.service` on `127.0.0.1:8080`
+- `llama-cpp-embed.service` on `127.0.0.1:8081`
+- Exposes OpenAI-compatible local inference and embeddings endpoints.
 
-### 3. **Embedding Models** (Sentence Transformers)
-- Provides embeddings for RAG (e.g., `all-MiniLM-L6-v2`)
-- Stored in the local Hugging Face cache and used by AIDB
+### Data Services
 
-### 4. **Learning System**
-- Tracks all interactions
-- Calculates value scores
-- Extracts reusable patterns
-- Stores high-value data automatically
+- Qdrant on `127.0.0.1:6333`
+- PostgreSQL on `127.0.0.1:5432`
+- Redis on `127.0.0.1:6379`
 
-### 5. **AIDB MCP Server** (Port 8091)
-- Health and metrics for learning and tool usage
-- Unified context API for local agents
+### Automation
 
-### 6. **System Command Center Dashboard** (Port 8888)
-- Real-time monitoring of services, data stores, and host health
-- Exports JSON for agent-friendly analysis
+- `ai-prsi-orchestrator.service`
+- `ai-prsi-orchestrator.timer`
+- Runs periodic PRSI/optimizer automation and can be validated manually.
 
----
+## Security Features
 
-## System Architecture Diagram
+- Secrets are loaded from runtime secret providers such as `/run/secrets/*`, not hardcoded into docs, code, or service definitions.
+- Sensitive hybrid routes require API-key authentication and should be checked with local secret-backed requests.
+- Core operator endpoints are documented as host-local services on `127.0.0.1`, which is the current safe default exposure model.
+- Port and endpoint values are intended to flow from Nix options and environment injection rather than scattered literals.
+- Operator validation includes both health and auth smoke checks, not only process liveness.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                          NixOS Host                              │
-│                                                                  │
-│  ┌────────────────────── K3s Cluster ─────────────────────────┐  │
-│  │                                                            │  │
-│  │  Namespace: ai-stack                                       │  │
-│  │    ├─ aidb (MCP server)                                    │  │
-│  │    ├─ hybrid-coordinator / embeddings                      │  │
-│  │    ├─ postgres / redis / qdrant                             │  │
-│  │    ├─ grafana / prometheus / loki / jaeger                  │  │
-│  │    └─ nginx (gateway)                                       │  │
-│  │                                                            │  │
-│  │  Secrets (SOPS): ai-stack/secrets/secrets.sops.yaml          │ │
-│  │  PVCs: postgres-data, qdrant-data, redis-data, backups      │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  Namespace: backups (cronjobs, snapshots)                        │
-│  Namespace: logging (promtail)                                   │
-└──────────────────────────────────────────────────────────────────┘
+## Current Runtime Model
+
+```text
+NixOS modules
+  -> typed options in nix/modules/core/options.nix
+  -> AI stack wiring in nix/modules/roles/ai-stack.nix
+  -> service endpoints exported through config/service-endpoints.sh
+
+systemd units
+  -> dashboard API
+  -> AIDB
+  -> hybrid coordinator
+  -> llama.cpp + embeddings
+  -> postgres / redis / qdrant
+  -> PRSI timer and one-shot automation
 ```
 
----
+## Operator Workflow
 
-## Data Flow
+Use these as the current source of operational truth:
 
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`
+- `docs/operations/reference/QUICK-REFERENCE-CARD.md`
+
+Use these commands for routine checks:
+
+```bash
+bash scripts/health/system-health-check.sh --detailed
+bash scripts/ai/ai-stack-health.sh
+aq-qa 0 --json
+aq-qa 1 --json
+python3 -m pytest tests/integration/test_mcp_contracts.py -v
 ```
-You (Remote Agent)
-    ↓ Send Query: "How to fix keyring error?"
-    ↓
-Hybrid Coordinator
-    ↓ Search Qdrant for: "keyring error"
-    ↓ Found: Past solution with 0.95 similarity
-    ↓
-Return to You: "Based on past experience: install libsecret..."
-    ↓
-You Apply Solution (2 seconds, 200 tokens)
 
-Without System: Load docs, figure it out, 5 minutes, 15,000 tokens
-```
+## What Is No Longer Current
 
----
+These are no longer the active operating model:
 
-## Key Principles
+- K3s-first operator guidance
+- pod or PVC-based runbook assumptions
+- AIDB on port `8091`
+- dashboard guidance that points to port `8888`
+- MindsDB and Hugging Face TGI as current required runtime components
 
-### 1. **Search Before Asking**
-Always check local context before using remote APIs
+## Next Step
 
-### 2. **Store Every Success**
-When something works, store it for future use
-
-### 3. **Learn From Failures**
-Errors are learning opportunities - store the fix
-
-### 4. **Incremental Loading**
-Load only what you need, not everything
-
----
-
-## Quick Stats
-
-- **Services**: 7+ (Qdrant, llama.cpp, WebUI, PostgreSQL, Redis, MindsDB, AIDB)
-- **Vector Collections**: 5
-- **Token Reduction**: 30-50% average
-- **Response Time**: Local < 1s, Hybrid < 2s
-- **Data Storage**: local service volumes managed declaratively
-
----
-
-## What You Can Do
-
-✅ Search past solutions instantly
-✅ Use local LLM for simple tasks (free)
-✅ Augment queries with project context
-✅ Store learnings automatically
-✅ Extract reusable patterns
-✅ Reduce API costs significantly
-
----
-
-## Next: Get Started
-
-Read: [Quick Start Guide](01-QUICK-START.md)
+Read [01-QUICK-START.md](01-QUICK-START.md) for the task-oriented entry point.

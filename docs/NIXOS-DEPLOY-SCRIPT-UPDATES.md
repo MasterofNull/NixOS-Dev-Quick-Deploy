@@ -1,4 +1,10 @@
-# NixOS Deploy Script Updates (K3s-only)
+# NixOS Deploy Script Updates
 
-The deploy script now targets K3s + containerd. Compose-specific notes are retired.
+Status: Redirect
 
+This filename is retained for compatibility, but it is not the current deployment authority.
+
+Use these current docs instead:
+- `README.md`
+- `DEPLOYMENT.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`

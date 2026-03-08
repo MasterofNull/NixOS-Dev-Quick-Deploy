@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# Container Versions Update
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This filename is retained only to avoid broken references. The live stack is no longer documented as a container-version update workflow.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`
