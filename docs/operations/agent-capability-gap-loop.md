@@ -79,7 +79,7 @@ artifact instead of manually editing JSON by hand.
 8. Prefer declarative/system configuration or repo-local fixes before imperative installs.
 
 For known capabilities, these hints should come from the catalog first rather than
-from heuristics. Extend [capability-gap-catalog.json](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/capability-gap-catalog.json)
+from heuristics. Extend [capability-gap-catalog.json](../../config/capability-gap-catalog.json)
 with explicit `missing_origin`, `ecosystem_hints`, `package_hints`, and `source_hints`
 when a tool has a stable remediation path.
 
