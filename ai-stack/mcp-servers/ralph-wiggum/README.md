@@ -115,7 +115,7 @@ cd /path/to/NixOS-Dev-Quick-Deploy
 
 This will:
 1. Build the Ralph Wiggum Docker container
-2. Start the MCP server on port 8098
+2. Start the MCP server on port 8004
 3. Connect to all agent backends
 4. Initialize the loop engine
 
@@ -127,7 +127,7 @@ This will:
 
 ```bash
 # Server
-RALPH_MCP_SERVER_PORT=8098
+PORT=8004
 
 # Loop engine
 RALPH_LOOP_ENABLED=true
@@ -202,7 +202,7 @@ resources:
 ### Health Check
 
 ```bash
-curl http://localhost:8098/health
+curl http://localhost:8004/health
 ```
 
 Response:
@@ -219,7 +219,7 @@ Response:
 ### Submit a Task
 
 ```bash
-curl -X POST http://localhost:8098/tasks \
+curl -X POST http://localhost:8004/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Implement user authentication with JWT tokens",
@@ -245,7 +245,7 @@ Response:
 ### Get Task Status
 
 ```bash
-curl http://localhost:8098/tasks/550e8400-e29b-41d4-a716-446655440000
+curl http://localhost:8004/tasks/550e8400-e29b-41d4-a716-446655440000
 ```
 
 Response:
@@ -264,13 +264,13 @@ Response:
 ### Stop a Task
 
 ```bash
-curl -X POST http://localhost:8098/tasks/550e8400-e29b-41d4-a716-446655440000/stop
+curl -X POST http://localhost:8004/tasks/550e8400-e29b-41d4-a716-446655440000/stop
 ```
 
 ### Approve a Task
 
 ```bash
-curl -X POST http://localhost:8098/tasks/550e8400-e29b-41d4-a716-446655440000/approve \
+curl -X POST http://localhost:8004/tasks/550e8400-e29b-41d4-a716-446655440000/approve \
   -H "Content-Type: application/json" \
   -d '{"approved": true}'
 ```
@@ -278,7 +278,7 @@ curl -X POST http://localhost:8098/tasks/550e8400-e29b-41d4-a716-446655440000/ap
 ### Get Statistics
 
 ```bash
-curl http://localhost:8098/stats
+curl http://localhost:8004/stats
 ```
 
 Response:
@@ -427,7 +427,7 @@ Sample event:
 **Solution**:
 ```bash
 # Stop the task
-curl -X POST http://localhost:8098/tasks/{task_id}/stop
+curl -X POST http://localhost:8004/tasks/{task_id}/stop
 
 # Review iterations
 tail ~/.local/share/nixos-ai-stack/telemetry/ralph-events.jsonl | grep {task_id}
@@ -486,7 +486,7 @@ ralph-wiggum/
 pip install -r requirements.txt
 
 # Set environment variables
-export RALPH_MCP_SERVER_PORT=8098
+export PORT=8004
 export RALPH_POSTGRES_HOST=localhost
 # ... etc
 
@@ -498,7 +498,7 @@ python server.py
 
 ```bash
 # Submit test task
-curl -X POST http://localhost:8098/tasks \
+curl -X POST http://localhost:8004/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Create a hello world script",
