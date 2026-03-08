@@ -1,6 +1,18 @@
-import type { SystemMetrics, ServiceStatus, ContainerInfo } from '@/types/metrics';
+import type {
+  AIInternalsMetrics,
+  ContainerInfo,
+  HealthScore,
+  ServiceStatus,
+  SystemMetrics,
+} from '@/types/metrics';
 
 const API_BASE_URL = '/api';
+const WS_METRICS_PATH = '/ws/metrics';
+
+function getWebSocketUrl(path: string): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${path}`;
+}
 
 export class DashboardAPI {
   private static async fetchJSON<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -28,8 +40,12 @@ export class DashboardAPI {
     return this.fetchJSON(`/metrics/history/${metric}?limit=${limit}`);
   }
 
-  static async getHealthScore() {
-    return this.fetchJSON<{ score: number; status: string }>('/metrics/health-score');
+  static async getHealthScore(): Promise<HealthScore> {
+    return this.fetchJSON<HealthScore>('/metrics/health-score');
+  }
+
+  static async getAIInternals(): Promise<AIInternalsMetrics> {
+    return this.fetchJSON<AIInternalsMetrics>('/metrics');
   }
 
   // Services
@@ -84,7 +100,7 @@ export class DashboardAPI {
 
   // WebSocket connection
   static connectWebSocket(onMessage: (data: SystemMetrics) => void): WebSocket {
-    const ws = new WebSocket(`ws://${window.location.hostname}:8889/ws/metrics`);
+    const ws = new WebSocket(getWebSocketUrl(WS_METRICS_PATH));
 
     ws.onopen = () => {
       console.log('WebSocket connected');

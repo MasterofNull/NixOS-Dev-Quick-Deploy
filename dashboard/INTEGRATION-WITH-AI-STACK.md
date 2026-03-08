@@ -7,7 +7,18 @@
 
 ## Overview
 
-This document describes the integration between the **NixOS System Dashboard v2.0** (web-based, port 8890) and the **AI Stack Monitor** (CLI-based, [scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)).
+This document describes the integration between the **NixOS System Dashboard v2.0** and the **AI Stack Monitor** (CLI-based, [scripts/ai/ai-stack-monitor.sh](../scripts/ai/ai-stack-monitor.sh)).
+
+## Runtime Status Note
+
+As of 2026-03-08, the production command-center runtime is the declarative NixOS/systemd service:
+
+- `command-center-dashboard-api.service`
+- Operator URL: `http://127.0.0.1:8889/`
+- API base: `http://127.0.0.1:8889/api`
+- WebSocket path: `/ws/metrics` on the same origin
+
+Local React/Vite development remains available via `dashboard/start-dashboard.sh`, but that dev path is not the production authority and should not be used as the operational deployment model.
 
 ---
 
