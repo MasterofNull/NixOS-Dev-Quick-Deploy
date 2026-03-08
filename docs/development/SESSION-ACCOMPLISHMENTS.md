@@ -8,6 +8,11 @@ Last Updated: 2026-03-05
 **Session Goal**: Actually USE Ralph Wiggum automation to complete production hardening
 **Status**: ✅ **MAJOR SUCCESS - Ralph Wiggum Now Operational**
 
+> Historical implementation note (2026-03-08): this session log captures an earlier dashboard
+> integration pass. The current operator-facing dashboard runtime is
+> `command-center-dashboard-api.service` at `http://127.0.0.1:8889/`. References below to
+> `dashboard.html` or `http://localhost:8888` are retained as historical context.
+
 ---
 
 ## 🎯 Mission Statement
@@ -40,10 +45,10 @@ User's Request: "I want to enter the planning phase and fully use the ralph wigg
 
 3. **All Endpoints Tested and Working** ✅
    ```bash
-   ✅ http://localhost:8889/api/stats/learning - Returns learning metrics
-   ✅ http://localhost:8889/api/stats/circuit-breakers - Returns breaker states
-   ✅ http://localhost:8889/api/health/aggregate - Returns aggregated health
-   ✅ http://localhost:8889/api/ralph/stats - Returns Ralph statistics
+   ✅ http://127.0.0.1:8889/api/stats/learning - Returns learning metrics
+   ✅ http://127.0.0.1:8889/api/stats/circuit-breakers - Returns breaker states
+   ✅ http://127.0.0.1:8889/api/health/aggregate - Returns aggregated health
+   ✅ http://127.0.0.1:8889/api/ralph/stats - Returns Ralph statistics
    ```
 
 ### Phase 2: Created Ralph Orchestrator (Completed)
@@ -139,8 +144,8 @@ User's Request: "I want to enter the planning phase and fully use the ralph wigg
 ✅ Ralph Wiggum: http://localhost:8098 (ACTIVELY WORKING!)
 ✅ Hybrid Coordinator: http://localhost:8092 (New endpoints added)
 ✅ AIDB: http://localhost:8091
-✅ Dashboard API: http://localhost:8889 (New API created)
-✅ Dashboard: http://localhost:8888 (690 new lines added)
+✅ Dashboard API: http://127.0.0.1:8889 (New API created; current command center runtime)
+✅ Legacy Dashboard HTML: http://localhost:8888 (historical static surface, 690 new lines added)
 ✅ Qdrant: http://localhost:6333
 ✅ PostgreSQL: Running
 ✅ Prometheus: http://localhost:9090
@@ -166,7 +171,7 @@ User's Request: "I want to enter the planning phase and fully use the ralph wigg
 
 ### 2. Dashboard Backend API
 
-**Before**: Dashboard expected port 8889 API that didn't exist
+**Before**: Historical dashboard surfaces expected a direct port 8889 API that didn't exist
 
 **Now**:
 - ✅ FastAPI backend on port 8889 operational
