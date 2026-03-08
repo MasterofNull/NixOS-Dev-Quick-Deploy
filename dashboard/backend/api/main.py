@@ -152,7 +152,6 @@ _FRONTEND_DIST = Path(
         str(Path(__file__).parent.parent.parent / "frontend" / "dist"),
     )
 )
-
 if _FRONTEND_DIST.is_dir():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True, follow_symlink=True), name="static")
     logger.info("Frontend dist mounted from %s", _FRONTEND_DIST)

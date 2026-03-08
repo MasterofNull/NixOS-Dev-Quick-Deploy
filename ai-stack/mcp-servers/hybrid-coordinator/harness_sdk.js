@@ -47,6 +47,16 @@ export class HarnessClient {
     });
   }
 
+  toolingManifest(query, runtime = "python", maxTools, maxResultChars) {
+    const payload = { query, runtime };
+    if (typeof maxTools === "number") payload.max_tools = maxTools;
+    if (typeof maxResultChars === "number") payload.max_result_chars = maxResultChars;
+    return this.request("/workflow/tooling-manifest", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   startSession(query) {
     return this.request("/workflow/session/start", {
       method: "POST",

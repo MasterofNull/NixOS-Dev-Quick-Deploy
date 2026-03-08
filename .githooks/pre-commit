@@ -68,7 +68,7 @@ run_secret_scan() {
     added_lines="$(
       git diff --cached --unified=0 --no-color -- "$file" \
         | rg '^\+[^+]' \
-        | sed 's/^+//'
+        | sed 's/^+//' || true
     )"
     [[ -z "${added_lines}" ]] && continue
 

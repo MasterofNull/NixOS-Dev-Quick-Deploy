@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from mcp.types import TextContent, Tool
 from shared.tool_audit import write_audit_entry as _write_audit_entry
+from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -338,6 +339,40 @@ TOOL_DEFINITIONS: List[Tool] = [
             "required": ["query"],
         },
     ),
+    Tool(
+        name="tooling_manifest",
+        description=(
+            "Return a compact, code-execution-friendly tool manifest for the current task. "
+            "Use this when you want the minimal tool surface, import-on-demand guidance, "
+            "and bounded result budgets instead of loading full tool schemas into context."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Task objective used to tailor the manifest",
+                },
+                "runtime": {
+                    "type": "string",
+                    "enum": ["python", "typescript"],
+                    "default": "python",
+                },
+                "max_tools": {
+                    "type": "integer",
+                    "default": 6,
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+                "max_result_chars": {
+                    "type": "integer",
+                    "default": 4000,
+                    "minimum": 256,
+                },
+            },
+            "required": ["query"],
+        },
+    ),
 ]
 
 
@@ -515,6 +550,19 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                     "query": arguments.get("query", ""),
                     "error": "hints_engine not available — run `scripts/ai/aq-hints` from CLI instead",
                 }
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "tooling_manifest":
+            query = arguments.get("query", "")
+            tools = workflow_tool_catalog(query)
+            result = build_tooling_manifest(
+                query,
+                tools,
+                runtime=arguments.get("runtime", "python"),
+                max_tools=arguments.get("max_tools"),
+                max_result_chars=arguments.get("max_result_chars"),
+            )
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

@@ -1491,6 +1491,36 @@
             };
           };
 
+          codeExecution = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Expose a compact tooling manifest optimized for code-execution
+                clients so they can import tools on demand instead of loading
+                full schemas and large raw results into prompt context.
+              '';
+            };
+
+            maxManifestTools = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 6;
+              description = "Maximum tool entries returned in the compact tooling manifest.";
+            };
+
+            maxResultChars = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 4000;
+              description = "Target response budget in characters for compact tool outputs.";
+            };
+
+            maxReasonChars = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 160;
+              description = "Maximum per-tool reason text length in compact manifests.";
+            };
+          };
+
           semanticToolingAutorun = lib.mkOption {
             type = lib.types.bool;
             default = true;

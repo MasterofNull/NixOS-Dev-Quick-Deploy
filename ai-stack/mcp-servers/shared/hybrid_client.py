@@ -9,8 +9,28 @@ import httpx
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import logging
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _load_hybrid_api_key() -> Optional[str]:
+    direct = (os.getenv("HYBRID_API_KEY") or "").strip()
+    if direct:
+        return direct
+    key_file = (
+        os.getenv("HYBRID_API_KEY_FILE")
+        or os.getenv("HYBRID_COORDINATOR_API_KEY_FILE")
+        or "/run/secrets/hybrid_coordinator_api_key"
+    )
+    path = Path(key_file)
+    if path.exists():
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            logger.warning("failed_to_read_hybrid_api_key_file", path=str(path), error=str(exc))
+    return None
 
 
 class CircuitState:
@@ -235,7 +255,11 @@ class HybridClient:
         """
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
-        self._client = httpx.AsyncClient(timeout=timeout)
+        headers = {}
+        api_key = _load_hybrid_api_key()
+        if api_key:
+            headers["X-API-Key"] = api_key
+        self._client = httpx.AsyncClient(timeout=timeout, headers=headers)
         
         # Initialize circuit breaker if enabled
         self.enable_circuit_breaker = enable_circuit_breaker

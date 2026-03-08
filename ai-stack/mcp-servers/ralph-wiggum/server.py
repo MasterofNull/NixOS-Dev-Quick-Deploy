@@ -39,7 +39,7 @@ try:
 except ImportError:
     from orchestrator import RalphOrchestrator as AgentOrchestrator
 from state_manager import StateManager
-from hooks import StopHook, ContextRecoveryHook, ResourceLimitHook
+from hooks import StopHook, ContextRecoveryHook, ResourceLimitHook, TelemetryHook
 
 # Add parent directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -186,7 +186,7 @@ CONFIG = {
     "telemetry_path": os.getenv("RALPH_TELEMETRY_PATH", DEFAULT_TELEMETRY_PATH),
     "require_approval": os.getenv("RALPH_REQUIRE_APPROVAL", "false").lower() == "true",
     "approval_threshold": os.getenv("RALPH_APPROVAL_THRESHOLD", "high"),
-    "audit_log": os.getenv("RALPH_AUDIT_LOG", os.getenv("AI_TELEMETRY_ENABLED", "false")).lower() == "true",
+    "audit_log": os.getenv("RALPH_AUDIT_LOG", os.getenv("AI_TELEMETRY_ENABLED", "true")).lower() == "true",
     "agent_backends": os.getenv("RALPH_AGENT_BACKENDS", "aider,continue-server,goose,autogpt,langchain").split(","),
     "default_backend": os.getenv("RALPH_DEFAULT_BACKEND", "aider"),
 }
@@ -267,9 +267,11 @@ async def lifespan(app: FastAPI):
             max_iterations_per_task=CONFIG["max_iterations"],
             max_cpu_percent=CONFIG["max_cpu_percent"],
         )
+        telemetry_hook = TelemetryHook(CONFIG["telemetry_path"])
 
         loop_engine.add_hook("stop", stop_hook)
         loop_engine.add_hook("iteration", resource_hook)
+        loop_engine.add_hook("iteration", telemetry_hook)
         if CONFIG["context_recovery"]:
             loop_engine.add_hook("recovery", recovery_hook)
 

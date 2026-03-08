@@ -37,6 +37,7 @@ from metrics import PROCESS_MEMORY_BYTES, REQUEST_COUNT, REQUEST_ERRORS, REQUEST
 from shared.tool_security_auditor import ToolSecurityAuditor
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
+from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -81,43 +82,6 @@ _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
 
 
-def _workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
-    """Heuristic tool assignment for a structured execution plan."""
-    q = (query or "").lower()
-    tools: List[Dict[str, str]] = []
-    seen = set()
-
-    def add(name: str, endpoint: str, reason: str) -> None:
-        if name in seen:
-            return
-        seen.add(name)
-        tools.append({"name": name, "endpoint": endpoint, "reason": reason})
-
-    add("hints", "/hints", "Ranked workflow hints and known pitfalls for the query.")
-    add("discovery", "/discovery/capabilities", "Progressive disclosure of available stack capabilities.")
-
-    if any(k in q for k in ("find", "search", "retrieve", "context", "rag", "semantic", "lexical")):
-        add("route_search", "/query", "Hybrid retrieval path (semantic + lexical + routing).")
-        add("memory_recall", "/memory/recall", "Recall prior procedural/semantic memory for similar tasks.")
-
-    if any(k in q for k in ("nixos", "service", "systemd", "deploy", "boot", "shutdown")):
-        add("route_search", "/query", "Search indexed NixOS docs/rules and prior fixes.")
-        add("tree_search", "/search/tree", "Broader branch-and-aggregate retrieval for infra issues.")
-
-    if any(k in q for k in ("test", "validate", "verify", "smoke", "check")):
-        add("harness_eval", "/harness/eval", "Deterministic eval scorecard for acceptance checks.")
-        add("health", "/health", "Runtime stack health and capability flags.")
-
-    if any(k in q for k in ("feedback", "learn", "improve", "regression", "quality")):
-        add("feedback", "/feedback", "Capture outcome and correction data.")
-        add("learning_stats", "/learning/stats", "Inspect learning pipeline health and backlog.")
-
-    if "route_search" not in seen:
-        add("route_search", "/query", "Default execution path for response generation with retrieval.")
-
-    return tools
-
-
 def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
     """Map high-value HTTP endpoints to tool names for audit coverage."""
     if path == "/query" and method == "POST":
@@ -140,6 +104,8 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "discovery"
     if path == "/workflow/plan":
         return "workflow_plan"
+    if path == "/workflow/tooling-manifest":
+        return "tooling_manifest"
     if path == "/workflow/run/start" and method == "POST":
         return "workflow_run_start"
     return None
@@ -633,8 +599,13 @@ async def _save_runtime_registry(data: Dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def _build_workflow_plan(query: str) -> Dict[str, Any]:
-    tools, tool_security = _audit_planned_tools(query, _workflow_tool_catalog(query))
+def _build_workflow_plan(
+    query: str,
+    tools: Optional[List[Dict[str, str]]] = None,
+    tool_security: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if tools is None or tool_security is None:
+        tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
     return {
         "objective": query,
         "workflow_version": "1.1",
@@ -1799,6 +1770,44 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_workflow_tooling_manifest(request: web.Request) -> web.Response:
+        """Return a compact tool manifest optimized for code-execution clients."""
+        try:
+            if request.method == "POST":
+                data = await request.json()
+                query = (data.get("query") or data.get("prompt") or "").strip()
+            else:
+                data = {}
+                query = (request.rel_url.query.get("q") or "").strip()
+            if not query:
+                return web.json_response({"error": "query required"}, status=400)
+            tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
+            plan = _build_workflow_plan(query, tools=tools, tool_security=tool_security)
+            return web.json_response(
+                build_tooling_manifest(
+                    query,
+                    tools,
+                    runtime=str(data.get("runtime") or request.rel_url.query.get("runtime") or "python"),
+                    max_tools=data.get("max_tools"),
+                    max_result_chars=data.get("max_result_chars"),
+                    phases=[
+                        {
+                            "id": str(phase.get("id", "")).strip(),
+                            "tools": [
+                                str(tool.get("name", "")).strip()
+                                for tool in phase.get("tools", [])
+                                if isinstance(tool, dict) and str(tool.get("name", "")).strip()
+                            ],
+                        }
+                        for phase in plan.get("phases", [])
+                        if isinstance(phase, dict)
+                    ],
+                    tool_security=tool_security,
+                )
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_workflow_session_start(request: web.Request) -> web.Response:
         """Start a persisted workflow session from a query."""
         try:
@@ -2821,6 +2830,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/hints/feedback", handle_hints_feedback)
     http_app.router.add_post("/workflow/plan", handle_workflow_plan)
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
+    http_app.router.add_post("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
+    http_app.router.add_get("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
     http_app.router.add_post("/workflow/session/start", handle_workflow_session_start)
     http_app.router.add_get("/workflow/sessions", handle_workflow_sessions_list)
     http_app.router.add_get("/workflow/tree", handle_workflow_tree)
