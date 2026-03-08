@@ -123,7 +123,7 @@
       };
 
       storageType = lib.mkOption {
-        type = lib.types.enum [ "nvme" "ssd" "hdd" ];
+        type = lib.types.enum [ "nvme" "ssd" "hdd" "sd" ];
         default = "ssd";
         description = "Primary storage device type. Controls I/O scheduler, fstrim, and power tuning.";
       };

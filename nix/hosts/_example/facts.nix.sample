@@ -20,7 +20,7 @@
       gpuVendor            = "amd";   # amd | intel | nvidia | none
       igpuVendor           = "none";  # amd | intel | none
       cpuVendor            = "amd";   # amd | intel | unknown
-      storageType          = "nvme";  # nvme | ssd | hdd
+      storageType          = "nvme";  # nvme | ssd | hdd | sd
       systemRamGb          = 32;
       isMobile             = false;
       firmwareType         = "efi";   # efi | bios | unknown

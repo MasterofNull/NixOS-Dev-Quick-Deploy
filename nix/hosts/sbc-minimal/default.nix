@@ -13,9 +13,9 @@
 */
 { lib, ... }:
 {
-  imports = [ ./facts.nix ];
-  # hardware-configuration.nix is intentionally absent in the reference config;
-  # add it from nixos-generate-config for a real deployment.
+  imports =
+    [ ./facts.nix ]
+    ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
 
   # Disable journald rate limiting — SD cards can drop messages under burst I/O.
   services.journald.extraConfig = lib.mkDefault ''
