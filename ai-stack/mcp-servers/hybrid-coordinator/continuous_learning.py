@@ -203,9 +203,15 @@ class ContinuousLearningPipeline:
         )
 
         # Telemetry paths
+        aidb_telemetry_dir = Path(
+            os.getenv("AIDB_VSCODE_TELEMETRY_DIR", str(data_root.parent / "aidb" / "telemetry"))
+        )
+        ralph_telemetry_path = Path(
+            os.getenv("RALPH_TELEMETRY_PATH", str(data_root.parent / "ralph" / "telemetry" / "ralph-events.jsonl"))
+        )
         self.telemetry_paths = [
-            telemetry_dir / "ralph-events.jsonl",
-            telemetry_dir / "aidb-events.jsonl",
+            ralph_telemetry_path,
+            aidb_telemetry_dir / "aidb-events.jsonl",
             telemetry_dir / "hybrid-events.jsonl",
         ]
 
@@ -306,6 +312,10 @@ class ContinuousLearningPipeline:
         }
         logger.info("deduplication_initialized")
 
+    @staticmethod
+    def _event_type(event: Dict[str, Any]) -> str:
+        return str(event.get("event") or event.get("event_type") or "").strip()
+
     def _reset_batch_insights(self) -> None:
         """Reset telemetry analysis for the current batch."""
         self.batch_insights = {
@@ -376,7 +386,7 @@ class ContinuousLearningPipeline:
 
     def _update_batch_insights(self, event: Dict[str, Any]) -> None:
         """Update analysis counters for the current batch."""
-        event_type = event.get("event")
+        event_type = self._event_type(event)
         if event_type != "task_completed":
             return
 
@@ -880,7 +890,7 @@ class ContinuousLearningPipeline:
         self, event: Dict[str, Any]
     ) -> Optional[InteractionPattern]:
         """Extract learning pattern from telemetry event"""
-        event_type = event.get("event")
+        event_type = self._event_type(event)
 
         if event_type == "task_completed":
             # Successful task completion

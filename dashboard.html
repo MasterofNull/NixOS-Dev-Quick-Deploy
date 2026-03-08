@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NixOS System Command Center</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a0f14'/%3E%3Cpath d='M18 32h28M32 18v28' stroke='%2300d9ff' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
     <script src="./assets/vendor/chart.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap');
@@ -195,6 +196,112 @@
 
         .legacy-runtime-banner a:hover {
             text-decoration: underline;
+        }
+
+        .operator-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .operator-tile {
+            background: linear-gradient(180deg, rgba(20, 29, 43, 0.96), rgba(10, 14, 20, 0.96));
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+
+        .operator-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+
+        .operator-value {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .operator-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+            background: var(--text-muted);
+            box-shadow: 0 0 12px rgba(136, 146, 166, 0.35);
+        }
+
+        .operator-value.online .operator-dot {
+            background: var(--status-online);
+            box-shadow: 0 0 14px rgba(0, 255, 136, 0.5);
+        }
+
+        .operator-value.warning .operator-dot {
+            background: var(--status-warning);
+            box-shadow: 0 0 14px rgba(255, 190, 11, 0.45);
+        }
+
+        .operator-value.offline .operator-dot,
+        .operator-value.error .operator-dot {
+            background: var(--status-error);
+            box-shadow: 0 0 14px rgba(255, 0, 110, 0.45);
+        }
+
+        .operator-detail {
+            margin-top: 0.35rem;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            min-height: 1.2em;
+        }
+
+        .operator-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding: 0.9rem 1rem;
+            background: rgba(17, 24, 34, 0.9);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+        }
+
+        .operator-actions-meta {
+            margin-right: auto;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .action-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            padding: 0.55rem 0.9rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.25s ease;
+        }
+
+        .action-link:hover {
+            border-color: var(--border-glow);
+            color: var(--accent-cyan);
+            transform: translateY(-1px);
         }
 
         /* Grid Layout */
@@ -699,6 +806,16 @@
             .metrics-grid {
                 grid-template-columns: 1fr;
             }
+
+            .legacy-runtime-banner,
+            .operator-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .operator-actions-meta {
+                margin-right: 0;
+            }
         }
 
         /* Accessibility */
@@ -897,13 +1014,65 @@
 
         <div class="legacy-runtime-banner">
             <div>
-                <strong>Legacy Static Surface</strong>
-                <p>This HTML dashboard is retained for historical and troubleshooting use only. The authoritative operator runtime is <code>command-center-dashboard-api.service</code> at <code>http://127.0.0.1:8889/</code>. Demo data is available only with <code>?demo=1</code>.</p>
+                <strong>Operator Static Surface</strong>
+                <p>This command center is the current operator dashboard, served by <code>command-center-dashboard-api.service</code> at <code>http://127.0.0.1:8889/</code>. Use <code>?demo=1</code> only when you want synthetic demo data instead of the live local stack.</p>
             </div>
             <a href="http://127.0.0.1:8889/">Open Command Center</a>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-bottom: 1rem; align-items: center;">
+        <div class="operator-strip">
+            <div class="operator-tile">
+                <div class="operator-label">Transport</div>
+                <div class="operator-value warning" id="transportState">
+                    <span class="operator-dot"></span>
+                    <span id="transportStateText">connecting</span>
+                </div>
+                <div class="operator-detail" id="transportStateDetail">Waiting for metrics stream</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Data Source</div>
+                <div class="operator-value" id="dataModeState">
+                    <span class="operator-dot"></span>
+                    <span id="dataModeStateText">live stack</span>
+                </div>
+                <div class="operator-detail" id="dataModeStateDetail">Using local service endpoints</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Runtime</div>
+                <div class="operator-value" id="runtimeState">
+                    <span class="operator-dot"></span>
+                    <span id="runtimeStateText">unknown</span>
+                </div>
+                <div class="operator-detail" id="runtimeStateDetail">Waiting for service inventory</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Stack Health</div>
+                <div class="operator-value warning" id="stackState">
+                    <span class="operator-dot"></span>
+                    <span id="stackStateText">checking</span>
+                </div>
+                <div class="operator-detail" id="stackStateDetail">No aggregate health data yet</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Full Refresh</div>
+                <div class="operator-value" id="refreshState">
+                    <span class="operator-dot"></span>
+                    <span id="refreshStateText">pending</span>
+                </div>
+                <div class="operator-detail" id="refreshStateDetail">Dashboard has not completed a full load yet</div>
+            </div>
+        </div>
+
+        <div class="operator-actions">
+            <div class="operator-actions-meta" id="operatorSummary">Primary operator view for local AI stack runtime and control actions.</div>
+            <a class="action-link" href="#section-stack-health">Stack Health</a>
+            <a class="action-link" href="#section-ai-services">AI Services</a>
+            <a class="action-link" href="#section-security">Security</a>
+            <a class="action-link" href="/api/health" target="_blank" rel="noreferrer">API Health</a>
+            <a class="action-link" href="/metrics" target="_blank" rel="noreferrer">Prometheus</a>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
             <span id="refreshStatus" style="font-size: 0.75rem; color: var(--text-muted);"></span>
             <button class="export-btn" onclick="refreshDashboard()">⟳ Refresh Now</button>
             <button class="export-btn" onclick="exportData()">⬇ Export JSON for AI</button>
@@ -1081,90 +1250,8 @@
                 </div>
             </div>
 
-            <!-- Container System Overview -->
-            <div class="dashboard-section full-width">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="collapsible-header" onclick="toggleCollapse(this)">
-                            <span class="collapsible-arrow">▼</span>
-                            <h2 class="card-title">System Overview (Container)</h2>
-                        </div>
-                        <span class="card-badge">Pod Metrics</span>
-                    </div>
-                    <div class="collapsible-content">
-                        <div class="hardware-grid">
-                            <div class="hardware-block">
-                                <div>
-                                    <div class="hardware-title">CPU</div>
-                                    <div class="hardware-metrics">
-                                        <div class="metric">
-                                            <div class="metric-label">CPU Usage</div>
-                                            <div class="metric-value" id="containerCpuUsage">--<span class="metric-unit">%</span></div>
-                                        </div>
-                                        <div class="metric">
-                                            <div class="metric-label">CPU Model</div>
-                                            <div class="metric-value" id="containerCpuModel">--</div>
-                                        </div>
-                                        <div class="metric">
-                                            <div class="metric-label">CPU Temp</div>
-                                            <div class="metric-value" id="containerCpuTemp">--</div>
-                                        </div>
-                                        <div class="metric">
-                                            <div class="metric-label">Load Avg</div>
-                                            <div class="metric-value copyable" id="containerLoadAvg">--</div>
-                                        </div>
-                                        <div class="metric">
-                                            <div class="metric-label">Arch</div>
-                                            <div class="metric-value" id="containerCpuArch">--</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="hardware-title">Memory</div>
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" id="containerMemoryBar" style="width: 0%"></div>
-                                    </div>
-                                    <div class="progress-labels">
-                                        <span>Used: <span id="containerMemoryUsed">--</span> GB</span>
-                                        <span>Total: <span id="containerMemoryTotal">--</span> GB</span>
-                                    </div>
-                                    <div class="metric" style="margin-top: 0.75rem;">
-                                        <div class="metric-label">Memory %</div>
-                                        <div class="metric-value" id="containerMemoryPercent">--</div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="hardware-title">Storage</div>
-                                    <div class="progress-bar">
-                                        <div class="progress-fill warning" id="containerDiskBar" style="width: 0%"></div>
-                                    </div>
-                                    <div class="progress-labels">
-                                        <span>Used: <span id="containerDiskUsed">--</span> GB</span>
-                                        <span>Total: <span id="containerDiskTotal">--</span> GB</span>
-                                    </div>
-                                    <div class="metric" style="margin-top: 0.75rem;">
-                                        <div class="metric-label">Disk %</div>
-                                        <div class="metric-value" id="containerDiskPercent">--</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="data-list" style="margin-top: 1rem;">
-                            <div class="data-item">
-                                <span>Container Hostname</span>
-                                <span class="data-meta" id="containerHostname">--</span>
-                            </div>
-                            <div class="data-item">
-                                <span>Container Uptime</span>
-                                <span class="data-meta" id="containerUptime">--</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- LLM Stack Status -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" id="section-stack-health">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -1221,7 +1308,7 @@
             </div>
 
             <!-- Agentic Readiness -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" id="section-security">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -1243,7 +1330,7 @@
             </div>
 
             <!-- AIDB Health Monitoring (P1/P2 Features) -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" id="section-ai-services">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -1361,19 +1448,19 @@
                     <div class="collapsible-content">
                         <div class="metrics-grid">
                             <div class="metric">
-                                <div class="metric-label">Total Documents</div>
+                                <div class="metric-label">Indexed Collections</div>
                                 <div class="metric-value" id="kbTotalPoints">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Real Embeddings</div>
+                                <div class="metric-label">Embeddings Status</div>
                                 <div class="metric-value" id="kbEmbeddingsPercent">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Context Relevance</div>
+                                <div class="metric-label">Default RAG Limit</div>
                                 <div class="metric-value" id="kbContextRelevance">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Quality Improvement</div>
+                                <div class="metric-label">Max Context Chars</div>
                                 <div class="metric-value" id="kbQualityImprovement">--</div>
                             </div>
                         </div>
@@ -1448,15 +1535,15 @@
                                 <div class="metric-value" id="hybridStatus">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Telemetry Events</div>
+                                <div class="metric-label">Discovery Decisions</div>
                                 <div class="metric-value" id="hybridEvents">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Avg Value Score</div>
+                                <div class="metric-label">Discovery Cache Hit</div>
                                 <div class="metric-value" id="hybridAvgValue">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">High-Value Count</div>
+                                <div class="metric-label">Discovery Invoked</div>
                                 <div class="metric-value" id="hybridHighValue">--</div>
                             </div>
                             <div class="metric">
@@ -1473,7 +1560,7 @@
                             </div>
                         </div>
                         <div style="margin-top: 1rem;">
-                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Value Score Trend</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Decision Trail</div>
                             <div id="hybridValueScores" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
                         </div>
                     </div>
@@ -1538,19 +1625,19 @@
                     <div class="collapsible-content">
                         <div class="metrics-grid">
                             <div class="metric">
-                                <div class="metric-label">Total Interactions</div>
+                                <div class="metric-label">Tracked Learning Events</div>
                                 <div class="metric-value" id="learningTotal">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">High-Value Interactions</div>
+                                <div class="metric-label">High-Value Events</div>
                                 <div class="metric-value" id="learningHighValue">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Learning Rate</div>
+                                <div class="metric-label">Deduplication Rate</div>
                                 <div class="metric-value" id="learningRate">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Avg Value Score</div>
+                                <div class="metric-label">Average Value Score</div>
                                 <div class="metric-value" id="learningAvgScore">--</div>
                             </div>
                             <div class="metric">
@@ -1602,7 +1689,7 @@
                     <div class="collapsible-content">
                         <div class="metrics-grid">
                             <div class="metric">
-                                <div class="metric-label">AIDB Status</div>
+                                <div class="metric-label">Runtime AIDB Status</div>
                                 <div class="metric-value" id="proofAidb">--</div>
                             </div>
                             <div class="metric">
@@ -1622,7 +1709,7 @@
                                 <div class="metric-value" id="proofSkills">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Telemetry Events</div>
+                                <div class="metric-label">Observed Telemetry Events</div>
                                 <div class="metric-value" id="proofTelemetry">--</div>
                             </div>
                             <div class="metric">
@@ -1655,21 +1742,25 @@
                     <div class="collapsible-content">
                         <div class="metrics-grid">
                             <div class="metric">
-                                <div class="metric-label">AIDB Status</div>
+                                <div class="metric-label">Pipeline AIDB Status</div>
                                 <div class="metric-value" id="feedbackAidb">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">AIDB Telemetry</div>
+                                <div class="metric-label">AIDB Telemetry Bytes</div>
                                 <div class="metric-value" id="feedbackAidbFile">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">AIDB Last Event</div>
+                                <div class="metric-label">Hybrid Telemetry Bytes</div>
                                 <div class="metric-value" id="feedbackAidbLast" style="font-size: 0.85rem;">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Hybrid Last Event</div>
+                                <div class="metric-label">Hint Feedback Log</div>
                                 <div class="metric-value" id="feedbackHybridLast" style="font-size: 0.85rem;">--</div>
                             </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Feedback Activity</div>
+                            <div id="feedbackPipelineDetails" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
                         </div>
                     </div>
                 </div>
@@ -1802,6 +1893,19 @@
                             <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Current Active Configuration:</div>
                             <pre id="currentConfig" style="font-size: 0.8rem; color: var(--accent-cyan); overflow-x: auto; margin: 0;">Loading...</pre>
                         </div>
+
+                        <div style="margin-top: 1.5rem;">
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+                                <div style="font-size: 0.9rem; color: var(--text-secondary);">Operator Runbook Actions</div>
+                                <div id="configActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
+                            </div>
+                            <div id="configList" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading action catalog...</span>
+                                    <span class="data-meta">pending</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1888,7 +1992,7 @@
                     <div class="collapsible-content">
                         <div class="metrics-grid">
                             <div class="metric">
-                                <div class="metric-label">Acceptance Pass Rate</div>
+                                <div class="metric-label">Recent Acceptance Pass Rate</div>
                                 <div class="metric-value" id="harnessPassRate">--</div>
                             </div>
                             <div class="metric">
@@ -1908,7 +2012,7 @@
                                 <div class="metric-value" id="harnessScriptsReady">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Research Candidates</div>
+                                <div class="metric-label">Research Candidates (If Available)</div>
                                 <div class="metric-value" id="harnessResearchCandidates">--</div>
                             </div>
                             <div class="metric">
@@ -1916,7 +2020,7 @@
                                 <div class="metric-value" id="harnessImprovementRuns">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">Improvement Success</div>
+                                <div class="metric-label">Improvement Success (24h)</div>
                                 <div class="metric-value" id="harnessImprovementSuccess">--</div>
                             </div>
                             <div class="metric">
@@ -2080,18 +2184,18 @@
                 </div>
             </div>
 
-            <!-- Container Status -->
+            <!-- Runtime Inventory -->
             <div class="dashboard-section full-width">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
                             <span class="collapsible-arrow">▼</span>
-                            <h2 class="card-title">Container Status</h2>
+                            <h2 class="card-title">Runtime Inventory</h2>
                         </div>
-                        <span class="card-badge" id="containerBadge">-- Containers</span>
+                        <span class="card-badge" id="containerBadge">-- Units</span>
                     </div>
                     <div class="collapsible-content">
-                        <input type="text" class="search-box" id="containerSearch" placeholder="🔍 Search containers..." onkeyup="filterContainers()">
+                        <input type="text" class="search-box" id="containerSearch" placeholder="🔍 Search runtime units..." onkeyup="filterContainers()">
                         <div id="containerList">
                             <div class="loading"><div class="spinner"></div></div>
                         </div>
@@ -2267,6 +2371,7 @@
                 console.warn('Chart.js unavailable; rendering dashboard without charts.');
                 disableCharts();
             }
+            renderOperatorStrip();
 
             // Load initial data
             loadData(); // Initial full load (AI stack, containers, etc.)
@@ -2537,7 +2642,7 @@
                     fetchCircuitBreakers(),
                     fetchAidbDetailedHealth(),
                     fetchHarnessStats(),
-                    fetchJSON('keyword-signals.json')
+                    fetchKeywordSignals()
                 ]);
 
                 const system = normalizeSystemData(systemMetrics);
@@ -2550,18 +2655,23 @@
                 const feedback = buildFeedbackData(aiMetrics, learningStats);
                 const config = buildConfigData(actions);
                 const proof = buildProofData(aiMetrics, services, learningStats);
-                const hybrid = buildHybridData(aiMetrics, learningStats);
+                const hybrid = buildHybridData(aiMetrics, learningStats, aiInternals);
                 const learning = normalizeLearningData(learningStats);
                 const tokenSavings = {
-                    routing: { local_percent: Number(aiMetrics?.effectiveness?.local_query_percentage ?? 0) },
-                    cache: { hit_rate: 0 }
+                    routing: { local_percent: Number(aiInternals?.llm_routing_local_pct ?? aiMetrics?.effectiveness?.local_query_percentage ?? 0) },
+                    cache: { hit_rate: Number(aiInternals?.embedding_cache_hit_rate_pct ?? 0) }
                 };
                 const telemetry = {
                     summary: {
-                        total_events: Number(aiMetrics?.effectiveness?.total_events_processed ?? 0),
+                        total_events: Number(
+                            aiMetrics?.feedback_pipeline?.summary?.total_records
+                            ?? learningStats?.activity?.total_events
+                            ?? aiMetrics?.effectiveness?.total_events_processed
+                            ?? 0
+                        ),
                         local_usage_rate: Number(aiMetrics?.effectiveness?.local_query_percentage ?? 0) / 100,
                         tokens_saved: Number(aiMetrics?.effectiveness?.estimated_tokens_saved ?? 0),
-                        last_event_at: aiMetrics?.timestamp || new Date().toISOString()
+                        last_event_at: aiMetrics?.feedback_pipeline?.summary?.latest_activity_at || aiMetrics?.timestamp || new Date().toISOString()
                     }
                 };
 
@@ -2613,8 +2723,16 @@
                 updatePRSIQueue(prsiActions);
                 updateHealthScore();
                 updateLastUpdate();
+                dashboardRuntimeState.refresh = 'online';
+                dashboardRuntimeState.refreshText = 'synced';
+                dashboardRuntimeState.refreshDetail = `Full dashboard load completed at ${new Date().toLocaleTimeString()}`;
+                renderOperatorStrip();
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
+                dashboardRuntimeState.refresh = 'error';
+                dashboardRuntimeState.refreshText = 'load failed';
+                dashboardRuntimeState.refreshDetail = error?.message || 'Dashboard data refresh failed';
+                renderOperatorStrip();
             }
         }
 
@@ -2749,23 +2867,37 @@
                 if (value === 'unhealthy' || value === 'stopped' || value === 'failed') return 'offline';
                 return value || 'unknown';
             };
+            const hybridCollections = aiServices?.hybrid_coordinator?.health_check?.collections || [];
+            const qdrantCollectionCount =
+                Number(aiServices?.qdrant?.metrics?.collection_count ?? hybridCollections.length ?? 0);
 
             const mappedServices = {
                 aidb: { status: normalize(aiServices?.aidb?.status), url: registryServiceUrl('aidb'), services: {} },
                 hybrid_coordinator: { status: normalize(aiServices?.hybrid_coordinator?.status), url: registryServiceUrl('hybrid_coordinator') },
-                qdrant: { status: normalize(aiServices?.qdrant?.status), url: registryServiceUrl('qdrant') },
+                qdrant: {
+                    status: normalize(aiServices?.qdrant?.status),
+                    url: registryServiceUrl('qdrant'),
+                    metrics: {
+                        collection_count: qdrantCollectionCount
+                    }
+                },
                 llama_cpp: {
                     status: normalize(aiServices?.llama_cpp?.status),
                     url: registryServiceUrl('llama_cpp'),
                     models: aiServices?.llama_cpp?.model ? [{ id: aiServices.llama_cpp.model }] : [],
-                    cached_models: []
+                    cached_models: Array.isArray(aiServices?.llama_cpp?.cached_models) ? aiServices.llama_cpp.cached_models : [],
+                    memory_mb: aiServices?.llama_cpp?.memory_mb
                 },
                 embeddings: {
                     status: normalize(aiServices?.embeddings?.status),
                     endpoint: registryServiceUrl('embeddings'),
                     model: aiServices?.embeddings?.model || 'unknown',
                     dimensions: aiServices?.embeddings?.dimensions || 0,
-                    models: []
+                    models: Array.isArray(aiServices?.embeddings?.models) ? aiServices.embeddings.models : [],
+                    request_total: aiServices?.embeddings?.request_total,
+                    error_total: aiServices?.embeddings?.error_total,
+                    memory_mb: aiServices?.embeddings?.memory_mb,
+                    metrics_exported: Boolean(aiServices?.embeddings?.metrics_exported)
                 },
                 switchboard: { status: normalize(aiServices?.switchboard?.status), url: registryServiceUrl('switchboard') },
                 aider_wrapper: { status: normalize(aiServices?.aider_wrapper?.status), url: registryServiceUrl('aider_wrapper') }
@@ -2790,11 +2922,11 @@
             const iface = metrics?.network?.interface || 'unknown';
             return {
                 timestamp: new Date().toISOString(),
-                connections: { active: '--' },
-                firewall: { rules_count: '--' },
+                connections: { active: Number(metrics?.network?.active_connections ?? 0) },
+                firewall: { rules_count: metrics?.security?.firewall?.rules_count ?? null },
                 dns: { status: 'managed declaratively' },
                 listening_ports: ports,
-                neighbors: [],
+                neighbors: Array.isArray(metrics?.network?.neighbors) ? metrics.network.neighbors : [],
                 traffic: {
                     iface,
                     rx_bytes: Number(metrics?.network?.bytes_recv ?? 0),
@@ -2821,25 +2953,71 @@
 
         function buildDatabaseData(aiMetrics) {
             const services = aiMetrics?.services || {};
+            const enriched = aiMetrics?.database_metrics || {};
+            const pgMetrics = enriched?.postgresql || {};
+            const redisMetrics = enriched?.redis || {};
+            const qdrantMetrics = enriched?.qdrant || {};
+            const qdrantCollectionCount = Number(
+                qdrantMetrics?.collection_count
+                ?? services?.qdrant?.metrics?.collection_count
+                ?? services?.hybrid_coordinator?.health_check?.collections?.length
+                ?? 0
+            );
             return {
-                postgresql: { status: 'online', database_size: '--', active_connections: '--' },
-                redis: { status: 'online', keys: '--', memory_used: '--' },
+                postgresql: {
+                    status: pgMetrics?.status || 'offline',
+                    database_size: hasNumeric(pgMetrics?.database_size_bytes)
+                        ? formatBytes(Number(pgMetrics.database_size_bytes))
+                        : (pgMetrics?.error || '--'),
+                    active_connections: [
+                        hasNumeric(pgMetrics?.active_connections) ? `${Number(pgMetrics.active_connections)} active` : null,
+                        hasNumeric(pgMetrics?.idle_connections) ? `${Number(pgMetrics.idle_connections)} idle` : null
+                    ].filter(Boolean).join(' / ') || '--'
+                },
+                redis: {
+                    status: redisMetrics?.status || 'offline',
+                    keys: hasNumeric(redisMetrics?.keys)
+                        ? `${Number(redisMetrics.keys)}`
+                        : (redisMetrics?.error || '--'),
+                    memory_used: redisMetrics?.memory_human
+                        || (hasNumeric(redisMetrics?.memory_bytes)
+                            ? formatBytes(Number(redisMetrics.memory_bytes))
+                            : (redisMetrics?.error || '--'))
+                },
                 qdrant: {
-                    status: String(services?.qdrant?.status || 'unknown').toLowerCase(),
-                    collections: services?.qdrant?.metrics?.collection_count ?? 0
+                    status: String(qdrantMetrics?.status || services?.qdrant?.status || 'unknown').toLowerCase(),
+                    collections: qdrantCollectionCount
                 },
                 mindsdb: { status: 'not-used' }
             };
         }
 
-        function buildHybridData(aiMetrics, learningStats) {
+        function buildHybridData(aiMetrics, learningStats, aiInternals) {
+            const discovery = aiMetrics?.hybrid_discovery || {};
+            const lifetime = discovery?.lifetime || {};
+            const recent = discovery?.recent || {};
+            const oneHour = recent?.one_hour || {};
+            const oneDay = recent?.twenty_four_hours || {};
+            const invoked = Number(lifetime?.invoked ?? 0);
+            const totalDecisions = Number(lifetime?.total_decisions ?? 0);
+            const cacheHitPct = hasNumeric(lifetime?.cache_hit_rate_pct)
+                ? Number(lifetime.cache_hit_rate_pct)
+                : Number(aiInternals?.embedding_cache_hit_rate_pct ?? 0);
+            const topReasons = Array.isArray(recent?.top_reasons) ? recent.top_reasons : [];
             return {
                 status: aiMetrics?.services?.hybrid_coordinator?.status || 'unknown',
                 telemetry: {
-                    events: Number(learningStats?.total_metrics_tracked ?? 0),
-                    avg_value_score: 0,
-                    high_value_count: 0,
-                    value_scores_recent: []
+                    events: totalDecisions,
+                    avg_value_score: cacheHitPct,
+                    high_value_count: invoked,
+                    value_scores_recent: [
+                        `1h i=${Number(oneHour?.invoked ?? 0)} c=${Number(oneHour?.cache_hits ?? 0)} s=${Number(oneHour?.skipped ?? 0)} e=${Number(oneHour?.errors ?? 0)}`,
+                        `24h i=${Number(oneDay?.invoked ?? 0)} c=${Number(oneDay?.cache_hits ?? 0)} s=${Number(oneDay?.skipped ?? 0)} e=${Number(oneDay?.errors ?? 0)}`,
+                        hasNumeric(recent?.latency_p95_ms) ? `p95=${Number(recent.latency_p95_ms).toFixed(1)}ms` : null,
+                        lifetime?.last_decision ? `last=${lifetime.last_decision}` : null,
+                        lifetime?.last_reason ? `reason=${lifetime.last_reason}` : null,
+                        topReasons.length ? `top=${topReasons.map((item) => `${item.reason}:${item.count}`).join(',')}` : null
+                    ].filter(Boolean)
                 },
                 learning: {
                     pattern_extractions: Number(learningStats?.total_patterns_learned ?? 0)
@@ -2849,11 +3027,11 @@
 
         function buildLinksData() {
             const docs = [
-                { title: 'Agent Guide', path: 'docs/agent-guides/00-SYSTEM-OVERVIEW.md' },
-                { title: 'Quick Start', path: 'docs/QUICK_START.md' },
-                { title: 'README', path: 'README.md' }
+                { title: 'README', path: 'README.md' },
+                { title: 'Agent Guide', path: 'docs/agent-guides/01-QUICK-START.md' },
+                { title: 'Skills & MCP Inventory', path: 'docs/SKILLS-AND-MCP-INVENTORY.md' }
             ];
-            const services = [
+            const serviceCandidates = [
                 { name: 'Dashboard API', url: `${FASTAPI_BASE}/docs` },
                 { name: 'Prometheus', url: registryServiceUrl('prometheus') },
                 { name: 'Grafana', url: registryServiceUrl('grafana') },
@@ -2861,6 +3039,10 @@
                 { name: 'llama.cpp', url: registryServiceUrl('llama_cpp') },
                 { name: 'Embeddings', url: registryServiceUrl('embeddings') }
             ];
+            const services = serviceCandidates.filter((service) => {
+                const url = String(service.url || '');
+                return url.startsWith('http://') || url.startsWith('https://');
+            });
             return { documentation: docs, services };
         }
 
@@ -2886,35 +3068,35 @@
         }
 
         function buildFeedbackData(aiMetrics, learningStats) {
-            const sizes = learningStats?.backpressure?.file_sizes || {};
-            const aidbBytes = Number(sizes['aidb-events.jsonl'] ?? 0);
-            const hybridBytes = Number(sizes['hybrid-events.jsonl'] ?? 0);
-            const nowTs = aiMetrics?.timestamp || new Date().toISOString();
+            const pipeline = aiMetrics?.feedback_pipeline || {};
+            const files = pipeline?.files || {};
+            const aidb = files?.aidb || {};
+            const hybrid = files?.hybrid || {};
+            const hints = files?.hint_feedback || {};
             return {
                 aidb_status: aiMetrics?.services?.aidb?.status || 'unknown',
                 telemetry: {
-                    exists: aidbBytes >= 0,
-                    bytes: aidbBytes,
-                    last_event_at: nowTs
+                    exists: !!aidb?.exists,
+                    bytes: hasNumeric(aidb?.bytes) ? Number(aidb.bytes) : null,
+                    last_event_at: aidb?.last_event_at || aidb?.modified_at || null
                 },
                 hybrid: {
-                    exists: hybridBytes >= 0,
-                    bytes: hybridBytes,
-                    last_event_at: nowTs
-                }
+                    exists: !!hybrid?.exists,
+                    bytes: hasNumeric(hybrid?.bytes) ? Number(hybrid.bytes) : null,
+                    last_event_at: hybrid?.last_event_at || hybrid?.modified_at || null
+                },
+                hint_feedback: {
+                    exists: !!hints?.exists,
+                    bytes: hasNumeric(hints?.bytes) ? Number(hints.bytes) : null,
+                    last_event_at: hints?.last_event_at || hints?.modified_at || null
+                },
+                summary: {
+                    latest_activity_at: pipeline?.summary?.latest_activity_at || null
+                },
             };
         }
 
         function buildConfigData(actions) {
-            const settings = [
-                { label: 'Dashboard API', value: FASTAPI_BASE, path: 'runtime', hint: 'Current API base URL used by dashboard.' },
-                { label: 'AIDB Endpoint', value: registryServiceUrl('aidb'), path: 'registry', hint: 'Centralized service registry value.' },
-                { label: 'Hybrid Endpoint', value: registryServiceUrl('hybrid_coordinator'), path: 'registry', hint: 'Centralized service registry value.' },
-                { label: 'Qdrant Endpoint', value: registryServiceUrl('qdrant'), path: 'registry', hint: 'Centralized service registry value.' },
-                { label: 'llama.cpp Endpoint', value: registryServiceUrl('llama_cpp'), path: 'registry', hint: 'Centralized service registry value.' },
-                { label: 'Embeddings Endpoint', value: registryServiceUrl('embeddings'), path: 'registry', hint: 'Centralized service registry value.' }
-            ];
-
             const filteredActions = (actions || []).filter((action) => {
                 const cmd = String(action.command || '').toLowerCase();
                 if (!cmd) return false;
@@ -2924,13 +3106,30 @@
                 return true;
             });
 
-            return { settings, actions: filteredActions };
+            return { actions: filteredActions };
+        }
+
+        function formatLoadAverage(loadAverage) {
+            if (loadAverage === null || loadAverage === undefined) return 'N/A';
+            if (typeof loadAverage === 'string') return loadAverage;
+            if (typeof loadAverage === 'object') {
+                const one = Number(loadAverage.one ?? 0).toFixed(2);
+                const five = Number(loadAverage.five ?? 0).toFixed(2);
+                const fifteen = Number(loadAverage.fifteen ?? 0).toFixed(2);
+                return `${one}, ${five}, ${fifteen}`;
+            }
+            return String(loadAverage);
         }
 
         function buildProofData(aiMetrics, services, learningStats) {
             const runningCount = (services || []).filter((svc) => svc.status === 'running').length;
             const collectionCount = Number(aiMetrics?.services?.qdrant?.metrics?.collection_count ?? 0);
-            const telemetryEvents = Number(aiMetrics?.effectiveness?.total_events_processed ?? 0);
+            const telemetryEvents = Number(
+                aiMetrics?.feedback_pipeline?.summary?.total_records
+                ?? learningStats?.activity?.total_events
+                ?? aiMetrics?.effectiveness?.total_events_processed
+                ?? 0
+            );
             const sampleSkills = ['aidb-knowledge', 'nixos-deployment', 'health-monitoring'];
             const llmModelRaw = aiMetrics?.services?.llama_cpp?.model || '';
             const embedModelRaw = aiMetrics?.services?.embeddings?.model || '';
@@ -2967,27 +3166,31 @@
         }
 
         function normalizeLearningData(learningStats) {
+            const activity = learningStats?.activity || {};
             return {
                 interactions: {
-                    total: Number(learningStats?.total_metrics_tracked ?? 0),
-                    high_value: 0
+                    total: Number(activity?.total_events ?? learningStats?.total_metrics_tracked ?? 0),
+                    high_value: Number(activity?.high_value_events ?? 0)
                 },
                 patterns: {
                     extractions: Number(learningStats?.total_patterns_learned ?? 0),
                     learning_rate: Number(learningStats?.deduplication?.deduplication_rate ?? 0)
                 },
                 value_scoring: {
-                    avg_score: 0
+                    avg_score: Number(activity?.average_feedback_score ?? 0)
                 },
                 fine_tuning: {
-                    samples: Number(learningStats?.finetuning_dataset_size ?? 0)
+                    samples: Number(activity?.finetune_records ?? learningStats?.finetuning_dataset_size ?? 0)
                 }
             };
         }
 
+        function hasNumeric(value) {
+            return typeof value === 'number' && Number.isFinite(value);
+        }
+
         function hideLegacySections() {
             const legacyTitles = new Set([
-                'System Overview (Container)',
                 'Production Hardening Progress'
             ]);
             const cards = document.querySelectorAll('.card');
@@ -3007,6 +3210,76 @@
                 return false;
             }
         })();
+
+        const dashboardRuntimeState = {
+            transport: 'warning',
+            transportText: 'connecting',
+            transportDetail: 'Waiting for metrics stream',
+            dataMode: DASHBOARD_DEMO_MODE ? 'warning' : 'online',
+            dataModeText: DASHBOARD_DEMO_MODE ? 'demo mode' : 'live stack',
+            dataModeDetail: DASHBOARD_DEMO_MODE
+                ? 'Synthetic data enabled through ?demo=1 or localStorage'
+                : 'Using local service endpoints',
+            runtime: 'warning',
+            runtimeText: 'unknown',
+            runtimeDetail: 'Waiting for service inventory',
+            stack: 'warning',
+            stackText: 'checking',
+            stackDetail: 'No aggregate health data yet',
+            refresh: 'warning',
+            refreshText: 'pending',
+            refreshDetail: 'Dashboard has not completed a full load yet'
+        };
+
+        function setOperatorValue(id, state, text, detail) {
+            const valueEl = document.getElementById(id);
+            if (!valueEl) return;
+            valueEl.className = `operator-value ${state}`;
+            const textEl = document.getElementById(`${id}Text`);
+            const detailEl = document.getElementById(`${id}Detail`);
+            if (textEl) textEl.textContent = text;
+            if (detailEl) detailEl.textContent = detail;
+        }
+
+        function renderOperatorStrip() {
+            setOperatorValue(
+                'transportState',
+                dashboardRuntimeState.transport,
+                dashboardRuntimeState.transportText,
+                dashboardRuntimeState.transportDetail
+            );
+            setOperatorValue(
+                'dataModeState',
+                dashboardRuntimeState.dataMode,
+                dashboardRuntimeState.dataModeText,
+                dashboardRuntimeState.dataModeDetail
+            );
+            setOperatorValue(
+                'runtimeState',
+                dashboardRuntimeState.runtime,
+                dashboardRuntimeState.runtimeText,
+                dashboardRuntimeState.runtimeDetail
+            );
+            setOperatorValue(
+                'stackState',
+                dashboardRuntimeState.stack,
+                dashboardRuntimeState.stackText,
+                dashboardRuntimeState.stackDetail
+            );
+            setOperatorValue(
+                'refreshState',
+                dashboardRuntimeState.refresh,
+                dashboardRuntimeState.refreshText,
+                dashboardRuntimeState.refreshDetail
+            );
+
+            const summary = document.getElementById('operatorSummary');
+            if (summary) {
+                summary.textContent =
+                    `${dashboardRuntimeState.dataModeText} | ${dashboardRuntimeState.runtimeText} | `
+                    + `${dashboardRuntimeState.transportText} | stack ${dashboardRuntimeState.stackText}`;
+            }
+        }
 
         async function fetchAIMetrics() {
             try {
@@ -3087,6 +3360,18 @@
 
             console.warn(`Dashboard data unavailable for ${filename}; demo fallback is disabled.`);
             return null;
+        }
+
+        async function fetchKeywordSignals() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/discovery/signals?ts=${Date.now()}`, { cache: 'no-store' });
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                // Fall through to compatibility file lookups.
+            }
+            return fetchJSON('keyword-signals.json');
         }
 
         // Mock data is available only in explicit demo mode (`?demo=1` or localStorage).
@@ -3302,7 +3587,7 @@
             document.getElementById('cpuModel').textContent = data.cpu.model || '--';
             document.getElementById('cpuTemp').textContent = data.cpu.temperature;
             document.getElementById('uptime').textContent = formatUptime(data.uptime_seconds);
-            document.getElementById('loadAvg').textContent = data.load_average;
+            document.getElementById('loadAvg').textContent = formatLoadAverage(data.load_average);
             document.getElementById('cpuArch').textContent = data.cpu.arch || '--';
 
             const gpu = data.gpu || {};
@@ -3443,11 +3728,11 @@
             if (usageContainer) {
                 const embeddings = services.embeddings || {};
                 const status = embeddings.status || 'unknown';
-                const requestTotal = embeddings.request_total ?? '--';
-                const errorTotal = embeddings.error_total ?? '--';
-                const memoryMb = embeddings.memory_mb !== undefined
+                const requestTotal = embeddings.request_total ?? (embeddings.metrics_exported ? 0 : 'unreported');
+                const errorTotal = embeddings.error_total ?? (embeddings.metrics_exported ? 0 : 'unreported');
+                const memoryMb = embeddings.memory_mb !== undefined && embeddings.memory_mb !== null
                     ? `${embeddings.memory_mb} MB`
-                    : '--';
+                    : 'unreported';
                 usageContainer.innerHTML = `
                     <div class="data-item">
                         <span>Status</span>
@@ -3533,27 +3818,33 @@
 
         // Update knowledge base metrics
         function updateKnowledgeBase(data) {
-            if (!data || !data.knowledge_base) return;
+            if (!data) return;
 
-            const kb = data.knowledge_base;
+            const directKb = data.knowledge_base || {};
+            const hybridCollections = data.services?.hybrid_coordinator?.health_check?.collections || [];
+            const rag = data.services?.aidb?.health_check?.rag || {};
+            const totalCollections = Number(
+                data.services?.qdrant?.metrics?.collection_count
+                ?? hybridCollections.length
+                ?? 0
+            );
+            const embeddingsStatus = String(data.services?.embeddings?.status || 'unknown').toUpperCase();
+            const defaultLimit = rag.default_limit;
+            const maxContextChars = rag.max_context_chars;
 
-            // Update main metrics
-            document.getElementById('kbTotalPoints').textContent = kb.total_points || 0;
-            document.getElementById('kbEmbeddingsPercent').textContent = `${kb.real_embeddings_percent || 0}%`;
-            document.getElementById('kbContextRelevance').textContent = kb.rag_quality?.context_relevance || '--';
-            document.getElementById('kbQualityImprovement').textContent = kb.rag_quality?.improvement_over_baseline || '--';
+            document.getElementById('kbTotalPoints').textContent = `${totalCollections}`;
+            document.getElementById('kbEmbeddingsPercent').textContent = embeddingsStatus;
+            document.getElementById('kbContextRelevance').textContent = hasNumeric(defaultLimit) ? `${defaultLimit}` : '--';
+            document.getElementById('kbQualityImprovement').textContent = hasNumeric(maxContextChars) ? `${maxContextChars}` : '--';
 
-            // Update collection breakdown
-            if (kb.collections) {
-                document.getElementById('kbCodebaseContext').textContent = kb.collections.codebase_context || 0;
-                document.getElementById('kbErrorSolutions').textContent = kb.collections.error_solutions || 0;
-                document.getElementById('kbBestPractices').textContent = kb.collections.best_practices || 0;
-            }
+            const namedCollections = hybridCollections.map(String);
+            document.getElementById('kbCodebaseContext').textContent = namedCollections.includes('codebase-context') ? 'present' : '--';
+            document.getElementById('kbErrorSolutions').textContent = namedCollections.includes('error-solutions') ? 'present' : '--';
+            document.getElementById('kbBestPractices').textContent = namedCollections.includes('best-practices') ? 'present' : '--';
 
-            // Update badge with total points
             const badge = document.getElementById('knowledgeBaseBadge');
             if (badge) {
-                badge.textContent = `${kb.total_points || 0} Docs`;
+                badge.textContent = `${totalCollections} Collections`;
             }
         }
 
@@ -3562,7 +3853,7 @@
             const container = document.getElementById('containerList');
             container.innerHTML = '';
 
-            document.getElementById('containerBadge').textContent = `${containers.length} Containers`;
+            document.getElementById('containerBadge').textContent = `${containers.length} Units`;
 
             containers.forEach(c => {
                 const item = document.createElement('div');
@@ -3571,7 +3862,7 @@
                 item.innerHTML = `
                     <div class="container-name">${c.name}</div>
                     <div class="container-meta">
-                        <span>📦 ${c.image}</span>
+                        <span>⚙ ${c.id || c.name}</span>
                         <span>⚡ ${c.status}</span>
                     </div>
                 `;
@@ -3584,14 +3875,17 @@
             if (!data) return;
 
             document.getElementById('activeConnections').textContent = data.connections.active;
-            document.getElementById('firewallRules').textContent = data.firewall.rules_count;
+            document.getElementById('firewallRules').textContent =
+                data.firewall.rules_count === null || data.firewall.rules_count === undefined
+                    ? 'restricted'
+                    : data.firewall.rules_count;
             document.getElementById('dnsStatus').textContent = data.dns.status;
             document.getElementById('openPorts').textContent = data.listening_ports.length;
             document.getElementById('portsList').textContent = data.listening_ports.join(', ');
 
             const devices = data.neighbors || [];
             if (devices.length === 0) {
-                document.getElementById('networkDevices').textContent = '--';
+                document.getElementById('networkDevices').textContent = 'none discovered';
             } else {
                 const sample = devices.slice(0, 10).map(d => `${d.ip || 'unknown'} (${d.mac || 'n/a'}) ${d.state || ''}`).join(', ');
                 document.getElementById('networkDevices').textContent = sample;
@@ -3741,10 +4035,16 @@
             if (!data || !data.summary) return;
 
             const summary = data.summary;
-            document.getElementById('telemetryTotal').textContent = summary.total_events ?? '--';
-            const localRate = parseFloat(summary.local_usage_rate ?? 0);
-            document.getElementById('telemetryLocalRate').textContent = `${localRate.toFixed(1)}%`;
-            document.getElementById('telemetryTokens').textContent = summary.tokens_saved ?? 0;
+            document.getElementById('telemetryTotal').textContent =
+                hasNumeric(summary.total_events) ? `${summary.total_events}` : '--';
+            const localRateRaw = summary.local_usage_rate;
+            const localRate = hasNumeric(localRateRaw)
+                ? (localRateRaw <= 1 ? localRateRaw * 100 : localRateRaw)
+                : null;
+            document.getElementById('telemetryLocalRate').textContent =
+                localRate === null ? '--' : `${localRate.toFixed(1)}%`;
+            document.getElementById('telemetryTokens').textContent =
+                hasNumeric(summary.tokens_saved) ? `${summary.tokens_saved}` : '--';
             document.getElementById('telemetryLast').textContent = formatTimestampWithStaleness(summary.last_event_at, 30);
         }
 
@@ -3752,14 +4052,16 @@
             if (!hybrid) return;
 
             const status = hybrid.status || 'offline';
+            const statusText = String(status).toLowerCase();
+            const healthy = ['online', 'healthy', 'ok'].includes(statusText);
             document.getElementById('hybridStatus').textContent = status.toUpperCase();
-            document.getElementById('hybridBadge').textContent = status === 'online' ? 'ONLINE' : 'OFFLINE';
+            document.getElementById('hybridBadge').textContent = healthy ? 'ONLINE' : 'OFFLINE';
 
             const telemetry = hybrid.telemetry || {};
             document.getElementById('hybridEvents').textContent = telemetry.events ?? 0;
 
             const avgScore = parseFloat(telemetry.avg_value_score ?? 0);
-            document.getElementById('hybridAvgValue').textContent = avgScore.toFixed(2);
+            document.getElementById('hybridAvgValue').textContent = `${avgScore.toFixed(1)}%`;
             document.getElementById('hybridHighValue').textContent = telemetry.high_value_count ?? 0;
 
             const learning = hybrid.learning || {};
@@ -3772,7 +4074,7 @@
 
             const scores = telemetry.value_scores_recent || [];
             document.getElementById('hybridValueScores').textContent = scores.length
-                ? scores.map(score => score.toFixed(2)).join(' → ')
+                ? scores.map(score => typeof score === 'number' ? score.toFixed(2) : score).join(' | ')
                 : '--';
         }
 
@@ -3788,12 +4090,12 @@
             document.getElementById('learningHighValue').textContent = interactions.high_value ?? 0;
 
             const learningRate = parseFloat(patterns.learning_rate ?? 0);
-            document.getElementById('learningRate').textContent = learningRate.toFixed(3);
+            document.getElementById('learningRate').textContent = hasNumeric(learningRate) ? learningRate.toFixed(3) : '--';
 
             const avgScore = parseFloat(scoring.avg_score ?? 0);
-            document.getElementById('learningAvgScore').textContent = avgScore.toFixed(2);
-            document.getElementById('learningPatterns').textContent = patterns.extractions ?? 0;
-            document.getElementById('learningFinetune').textContent = fineTuning.samples ?? 0;
+            document.getElementById('learningAvgScore').textContent = hasNumeric(avgScore) ? avgScore.toFixed(2) : '--';
+            document.getElementById('learningPatterns').textContent = hasNumeric(patterns.extractions) ? `${patterns.extractions}` : '--';
+            document.getElementById('learningFinetune').textContent = hasNumeric(fineTuning.samples) ? `${fineTuning.samples}` : '--';
         }
 
         function updateAIInternals(data) {
@@ -3852,7 +4154,7 @@
             document.getElementById('harnessImprovementSuccess').textContent =
                 improvementSuccess === null ? 'N/A' : `${improvementSuccess.toFixed(1)}%`;
             document.getElementById('harnessImprovementLast').textContent =
-                formatTimestampWithStaleness(improvement.last_run_at, 120);
+                improvement.last_run_at ? formatTimestampWithStaleness(improvement.last_run_at, 120) : 'never run';
 
             const toolPolicyPresent = Object.keys(policies.tool_execution_policy || {}).length > 0;
             const outboundPolicyPresent = Object.keys(policies.outbound_http_policy || {}).length > 0;
@@ -4020,11 +4322,17 @@
         }
 
         function updateDiscoverySignals(data) {
-            if (!data) return;
-
             const badge = document.getElementById('discoveryBadge');
             const candidatesEl = document.getElementById('discoveryCandidates');
             const signalsEl = document.getElementById('discoverySignals');
+            if (!badge || !candidatesEl || !signalsEl) return;
+
+            if (!data) {
+                badge.textContent = 'Source Missing';
+                candidatesEl.innerHTML = `<div class="data-item"><span>keyword-signals.json not available</span><span class="data-meta">missing source</span></div>`;
+                signalsEl.innerHTML = `<div class="data-item"><span>Discovery fallback inactive</span><span class="data-meta">no local file</span></div>`;
+                return;
+            }
 
             const candidates = Array.isArray(data.candidates) ? data.candidates : [];
             const signals = Array.isArray(data.signals) ? data.signals : [];
@@ -4037,7 +4345,7 @@
             } else if (signalCount > 0) {
                 badge.textContent = `${signalCount} Signals`;
             } else {
-                badge.textContent = 'No Data';
+                badge.textContent = 'No Signals';
             }
 
             const renderList = (container, items, emptyLabel, limit) => {
@@ -4080,8 +4388,8 @@
                 });
             };
 
-            renderList(candidatesEl, candidates, 'No high-value mentions yet', 6);
-            renderList(signalsEl, signals, 'No low-trust signals yet', 6);
+            renderList(candidatesEl, candidates, 'No high-value mentions in current source', 6);
+            renderList(signalsEl, signals, 'No low-trust signals in current source', 6);
         }
 
         // Update feedback pipeline metrics
@@ -4091,12 +4399,39 @@
             const aidbStatus = (data.aidb_status || 'offline').toUpperCase();
             document.getElementById('feedbackAidb').textContent = aidbStatus;
 
-            const telemetryExists = data.telemetry?.exists ? 'OK' : 'MISSING';
-            const telemetryBytes = data.telemetry?.bytes ?? 0;
-            document.getElementById('feedbackAidbFile').textContent = `${telemetryExists} (${formatBytes(telemetryBytes)})`;
+            const telemetryExists = data.telemetry?.exists ? (Number(data.telemetry?.bytes ?? 0) > 0 ? 'OK' : 'IDLE') : 'INITIALIZING';
+            const telemetryBytes = data.telemetry?.bytes;
+            document.getElementById('feedbackAidbFile').textContent =
+                telemetryBytes === null || telemetryBytes === undefined
+                    ? `${telemetryExists} (--)`
+                    : `${telemetryExists} (${formatBytes(telemetryBytes)})`;
 
-            document.getElementById('feedbackAidbLast').textContent = formatTimestampWithStaleness(data.telemetry?.last_event_at, 30);
-            document.getElementById('feedbackHybridLast').textContent = formatTimestampWithStaleness(data.hybrid?.last_event_at, 30);
+            const hybridExists = data.hybrid?.exists ? (Number(data.hybrid?.bytes ?? 0) > 0 ? 'OK' : 'IDLE') : 'INITIALIZING';
+            const hybridBytes = data.hybrid?.bytes;
+            document.getElementById('feedbackAidbLast').textContent =
+                hybridBytes === null || hybridBytes === undefined
+                    ? `${hybridExists} (--)`
+                    : `${hybridExists} (${formatBytes(hybridBytes)})`;
+
+            const hintExists = data.hint_feedback?.exists ? (Number(data.hint_feedback?.bytes ?? 0) > 0 ? 'OK' : 'IDLE') : 'INITIALIZING';
+            const hintBytes = data.hint_feedback?.bytes;
+            document.getElementById('feedbackHybridLast').textContent =
+                hintBytes === null || hintBytes === undefined
+                    ? `${hintExists} (--)`
+                    : `${hintExists} (${formatBytes(hintBytes)})`;
+
+            const details = document.getElementById('feedbackPipelineDetails');
+            if (details) {
+                const parts = [
+                    `aidb=${formatTimestampWithStaleness(data.telemetry?.last_event_at, 120)}`,
+                    `hybrid=${formatTimestampWithStaleness(data.hybrid?.last_event_at, 120)}`,
+                    `hint=${formatTimestampWithStaleness(data.hint_feedback?.last_event_at, 120)}`,
+                    data.summary?.latest_activity_at
+                        ? `latest=${formatTimestampWithStaleness(data.summary.latest_activity_at, 120)}`
+                        : null
+                ].filter(Boolean);
+                details.textContent = parts.join(' | ') || '--';
+            }
         }
 
         function updateProofMetrics(data) {
@@ -4145,7 +4480,9 @@
                 linksGrid.appendChild(docsHeader);
 
                 data.documentation.forEach(doc => {
-                    const link = createLinkItem('📄', doc.title, doc.path, doc.path);
+                    const href = String(doc.path || '');
+                    const safeHref = href.startsWith('/') || href.startsWith('http') ? href : `/${href}`;
+                    const link = createLinkItem('📄', doc.title, doc.path, safeHref);
                     linksGrid.appendChild(link);
                 });
             }
@@ -4176,42 +4513,12 @@
                 status.textContent = 'Ready';
             }
 
-            if (!data || (!data.settings && !data.actions)) {
-                container.textContent = 'No configuration data available';
+            if (!data || !data.actions) {
+                container.innerHTML = '<div class="data-item"><span>No operator actions available</span><span class="data-meta">empty</span></div>';
                 return;
             }
 
-            if (data.settings && data.settings.length) {
-                const settingsHeader = document.createElement('div');
-                settingsHeader.style.cssText = 'font-size: 0.75rem; color: var(--text-muted); margin: 0.5rem 0; text-transform: uppercase; letter-spacing: 0.1em;';
-                settingsHeader.textContent = 'Settings';
-                container.appendChild(settingsHeader);
-
-                const settingsGrid = document.createElement('div');
-                settingsGrid.className = 'data-list';
-
-                data.settings.forEach(setting => {
-                    const item = document.createElement('div');
-                    item.className = 'data-item';
-                    item.innerHTML = `
-                        <div>
-                            <div>${setting.label}</div>
-                            <div class="data-meta">${setting.path || ''}</div>
-                            <div class="data-meta">${setting.hint || ''}</div>
-                        </div>
-                        <div class="copyable" title="Click to copy">${setting.value ?? '--'}</div>
-                    `;
-                    settingsGrid.appendChild(item);
-                });
-                container.appendChild(settingsGrid);
-            }
-
             if (data.actions && data.actions.length) {
-                const actionsHeader = document.createElement('div');
-                actionsHeader.style.cssText = 'font-size: 0.75rem; color: var(--text-muted); margin: 1rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;';
-                actionsHeader.textContent = 'Actions';
-                container.appendChild(actionsHeader);
-
                 const byCategory = {};
                 data.actions.forEach(action => {
                     const category = action.category || 'General';
@@ -4248,6 +4555,8 @@
                     });
                     container.appendChild(actionsGrid);
                 });
+            } else {
+                container.innerHTML = '<div class="data-item"><span>No operator actions available</span><span class="data-meta">empty</span></div>';
             }
         }
 
@@ -4489,6 +4798,10 @@
 
                 metricsWebSocket.onopen = () => {
                     console.log('📡 WebSocket connected - Real-time metrics enabled');
+                    dashboardRuntimeState.transport = 'online';
+                    dashboardRuntimeState.transportText = 'websocket live';
+                    dashboardRuntimeState.transportDetail = 'Real-time metrics stream active';
+                    renderOperatorStrip();
                     // Send ping to keep connection alive
                     setInterval(() => {
                         if (metricsWebSocket?.readyState === WebSocket.OPEN) {
@@ -4516,16 +4829,28 @@
                 metricsWebSocket.onerror = (error) => {
                     console.warn('WebSocket error, falling back to HTTP polling:', error);
                     useWebSocketMetrics = false;
+                    dashboardRuntimeState.transport = 'warning';
+                    dashboardRuntimeState.transportText = 'polling fallback';
+                    dashboardRuntimeState.transportDetail = 'WebSocket degraded; using HTTP polling';
+                    renderOperatorStrip();
                 };
 
                 metricsWebSocket.onclose = () => {
                     console.log('WebSocket closed, attempting reconnect in 5s...');
+                    dashboardRuntimeState.transport = 'warning';
+                    dashboardRuntimeState.transportText = 'reconnecting';
+                    dashboardRuntimeState.transportDetail = 'Metrics socket closed; retrying in 5s';
+                    renderOperatorStrip();
                     setTimeout(connectMetricsWebSocket, 5000);
                 };
 
             } catch (error) {
                 console.error('Failed to create WebSocket:', error);
                 useWebSocketMetrics = false;
+                dashboardRuntimeState.transport = 'warning';
+                dashboardRuntimeState.transportText = 'polling fallback';
+                dashboardRuntimeState.transportDetail = 'WebSocket unavailable during startup';
+                renderOperatorStrip();
             }
         }
 
@@ -4538,14 +4863,26 @@
             try {
                 if (useHostMetrics) {
                     await loadSystemMetricsOnly();
+                    dashboardRuntimeState.transport = 'warning';
+                    dashboardRuntimeState.transportText = 'host polling';
+                    dashboardRuntimeState.transportDetail = 'Using host metrics polling path';
+                    renderOperatorStrip();
                     return;
                 }
                 const metrics = await fetch(`${FASTAPI_BASE}/api/metrics/system`).then(r => r.json());
                 updateSystemMetricsFromAPI(metrics);
+                dashboardRuntimeState.transport = 'warning';
+                dashboardRuntimeState.transportText = 'api polling';
+                dashboardRuntimeState.transportDetail = 'Using HTTP polling for metrics';
+                renderOperatorStrip();
             } catch (error) {
                 console.error('Error loading metrics from API:', error);
                 // Fall back to original JSON files
                 loadSystemMetricsOnly();
+                dashboardRuntimeState.transport = 'error';
+                dashboardRuntimeState.transportText = 'metrics offline';
+                dashboardRuntimeState.transportDetail = error?.message || 'Metrics transport unavailable';
+                renderOperatorStrip();
             }
         }
 
@@ -4555,47 +4892,13 @@
         }
 
         function updateSystemMetricsFromAPI(metrics) {
-            // Container metrics: update container panel
-            const cCpuUsage = metrics.cpu.usage_percent;
-            const cMemPercent = metrics.memory.percent;
-            const cDiskPercent = metrics.disk.percent;
-            const cMemUsedGB = (metrics.memory.used / (1024**3)).toFixed(2);
-            const cMemTotalGB = (metrics.memory.total / (1024**3)).toFixed(2);
-            const cDiskUsedGB = (metrics.disk.used / (1024**3)).toFixed(1);
-            const cDiskTotalGB = (metrics.disk.total / (1024**3)).toFixed(1);
-
-            const setText = (id, value) => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = value;
-            };
-            const setWidth = (id, value) => {
-                const el = document.getElementById(id);
-                if (el) el.style.width = value;
-            };
-
-            setText('containerCpuUsage', cCpuUsage.toFixed(1));
-            setText('containerCpuModel', metrics.cpu.model || 'Unknown');
-            setText('containerCpuTemp', metrics.cpu.temperature || 'N/A');
-            setText('containerCpuArch', metrics.cpu.arch || 'N/A');
-            setText('containerLoadAvg', metrics.load_average || 'N/A');
-            setText('containerMemoryPercent', cMemPercent.toFixed(1) + ' %');
-            setWidth('containerMemoryBar', cMemPercent + '%');
-            setText('containerMemoryUsed', cMemUsedGB);
-            setText('containerMemoryTotal', cMemTotalGB);
-            setText('containerDiskPercent', cDiskPercent.toFixed(1) + ' %');
-            setWidth('containerDiskBar', cDiskPercent + '%');
-            setText('containerDiskUsed', cDiskUsedGB);
-            setText('containerDiskTotal', cDiskTotalGB + ' GB');
-            setText('containerHostname', metrics.hostname || 'N/A');
-            setText('containerUptime', formatUptime(metrics.uptime));
-
             // Update CPU
             const cpuUsage = metrics.cpu.usage_percent;
             document.getElementById('cpuUsage').textContent = cpuUsage.toFixed(1);
             document.getElementById('cpuModel').textContent = metrics.cpu.model || 'Unknown';
             document.getElementById('cpuTemp').textContent = metrics.cpu.temperature || 'N/A';
             document.getElementById('cpuArch').textContent = metrics.cpu.arch || 'N/A';
-            document.getElementById('loadAvg').textContent = metrics.load_average || 'N/A';
+            document.getElementById('loadAvg').textContent = formatLoadAverage(metrics.load_average);
 
             // Update Memory
             const memPercent = metrics.memory.percent;
@@ -4683,6 +4986,10 @@
             if (status) {
                 status.textContent = 'Refreshing...';
             }
+            dashboardRuntimeState.refresh = 'warning';
+            dashboardRuntimeState.refreshText = 'refreshing';
+            dashboardRuntimeState.refreshDetail = 'Manual refresh in progress';
+            renderOperatorStrip();
             await loadData();
             await updateRuntimeMode();
             await loadStackHealth();
@@ -4709,17 +5016,27 @@
 
                 const services = data.services || {};
                 const entries = Object.entries(services);
+                const issueCount = entries.filter(([, info]) => {
+                    const current = String(info?.status || '').toLowerCase();
+                    return current && current !== 'healthy';
+                }).length;
 
                 overall.textContent = data.overall_status || '--';
                 count.textContent = String(entries.length);
 
                 if (data.overall_status === 'healthy') {
                     badge.style.background = 'var(--status-online)';
+                    dashboardRuntimeState.stack = 'online';
                 } else if (data.overall_status === 'degraded') {
                     badge.style.background = 'var(--status-warning)';
+                    dashboardRuntimeState.stack = 'warning';
                 } else {
                     badge.style.background = 'var(--status-error)';
+                    dashboardRuntimeState.stack = 'error';
                 }
+                dashboardRuntimeState.stackText = data.overall_status || 'unknown';
+                dashboardRuntimeState.stackDetail = `${issueCount} issue(s) across ${entries.length} checked services`;
+                renderOperatorStrip();
 
                 list.innerHTML = entries.map(([name, info]) => {
                     const status = info?.status || 'unknown';
@@ -4734,6 +5051,10 @@
                 overall.textContent = '--';
                 count.textContent = '--';
                 list.innerHTML = '<div class="data-item"><span>Stack health</span><span class="data-meta status-offline">unavailable</span></div>';
+                dashboardRuntimeState.stack = 'error';
+                dashboardRuntimeState.stackText = 'unavailable';
+                dashboardRuntimeState.stackDetail = 'Aggregate health endpoint did not respond';
+                renderOperatorStrip();
             }
         }
 
@@ -4773,8 +5094,18 @@
                 const services = await response.json();
                 const hasSystemd = (services || []).some((s) => s.type === 'systemd');
                 modeElement.textContent = hasSystemd ? 'systemd/local' : 'unknown';
+                dashboardRuntimeState.runtime = hasSystemd ? 'online' : 'warning';
+                dashboardRuntimeState.runtimeText = hasSystemd ? 'systemd/local' : 'unknown';
+                dashboardRuntimeState.runtimeDetail = hasSystemd
+                    ? 'Service inventory returned local systemd units'
+                    : 'API responded but runtime type is incomplete';
+                renderOperatorStrip();
             } catch (err) {
                 modeElement.textContent = 'api offline';
+                dashboardRuntimeState.runtime = 'error';
+                dashboardRuntimeState.runtimeText = 'api offline';
+                dashboardRuntimeState.runtimeDetail = 'Unable to load runtime service inventory';
+                renderOperatorStrip();
             }
         }
 
@@ -4961,13 +5292,14 @@
                 updateHealthBadge('startupProbe', startup);
 
                 // Update dependency health
-                if (detailed && detailed.dependencies) {
-                    updateDependencyHealth(detailed.dependencies);
+                const detailedDeps = detailed?.dependencies || detailed?.readiness?.details?.dependencies;
+                if (detailedDeps) {
+                    updateDependencyHealth(detailedDeps);
                 }
 
                 // Update metrics
-                if (detailed && detailed.metrics) {
-                    updateHealthMetrics(detailed.metrics);
+                if (detailed) {
+                    updateHealthMetrics(detailed);
                 }
 
                 // Update overall badge
@@ -5045,17 +5377,21 @@
         }
 
         function updateHealthMetrics(metrics) {
-            // Update health check latency
             const latencyEl = document.getElementById('healthLatency');
-            if (latencyEl && metrics.health_check_latency_ms) {
-                latencyEl.textContent = metrics.health_check_latency_ms.toFixed(1) + 'ms';
+            const samples = [
+                Number(metrics?.liveness?.duration_ms ?? NaN),
+                Number(metrics?.readiness?.duration_ms ?? NaN),
+                Number(metrics?.startup?.duration_ms ?? NaN)
+            ].filter((value) => Number.isFinite(value));
+            if (latencyEl) {
+                latencyEl.textContent = samples.length ? `${Math.max(...samples).toFixed(1)}ms` : 'unreported';
             }
 
-            // Try to get last backup time from filesystem (would need backend support)
-            // For now, just show a placeholder
             const backupEl = document.getElementById('lastBackup');
             if (backupEl) {
-                backupEl.textContent = 'Check logs';
+                backupEl.textContent = metrics?.backup?.last_success_at
+                    ? formatTimestampWithStaleness(metrics.backup.last_success_at, 1440)
+                    : 'Not configured';
             }
         }
 
@@ -5081,26 +5417,6 @@
             backpressure_threshold_mb: 100,
             log_level: 'INFO'
         };
-
-        // Load configuration from backend API
-        async function loadConfiguration() {
-            try {
-                const response = await fetch(`${FASTAPI_BASE}/api/config`);
-                if (response.ok) {
-                    const config = await response.json();
-                    Object.assign(systemConfig, config);
-                }
-            } catch (error) {
-                console.error('Failed to load configuration:', error);
-                // Fall back to localStorage if API fails
-                const saved = localStorage.getItem('systemConfig');
-                if (saved) {
-                    Object.assign(systemConfig, JSON.parse(saved));
-                }
-            }
-            updateConfigurationDisplay();
-            updateConfigurationInputs();
-        }
 
         // Update display of current configuration
         function updateConfigurationDisplay() {
@@ -5216,24 +5532,26 @@
                     document.getElementById('backpressureStatus').textContent =
                         isPaused ? 'PAUSED' : `${unprocessedMB.toFixed(1)} MB`;
                     document.getElementById('backpressureStatus').style.color =
-                        isPaused ? 'var(--status-error)' : 'var(--accent-green)';
+                        isPaused ? 'var(--status-error)' : 'var(--status-online)';
                     document.getElementById('backpressureDetails').textContent =
                         `Threshold: ${stats.backpressure_threshold_mb || 100} MB`;
 
                     // Update deduplication
                     const dedup = stats.deduplication || {};
-                    const dupRate = dedup.total_patterns > 0
-                        ? ((dedup.duplicates_found / dedup.total_patterns) * 100).toFixed(1)
-                        : 0;
+                    const totalPatterns = Number(dedup.total_patterns_seen ?? dedup.total_patterns ?? 0);
+                    const duplicatesFound = Number(dedup.duplicates_found ?? 0);
+                    const dupRate = totalPatterns > 0
+                        ? ((duplicatesFound / totalPatterns) * 100).toFixed(1)
+                        : '0.0';
                     document.getElementById('dedupStatus').textContent = `${dupRate}% duplicates`;
                     document.getElementById('dedupDetails').textContent =
-                        `Removed: ${dedup.duplicates_found || 0} / ${dedup.total_patterns || 0}`;
+                        `Removed: ${duplicatesFound} / ${totalPatterns}`;
 
                     // Update patterns
                     document.getElementById('patternsStatus').textContent =
-                        `${dedup.unique_patterns || 0} unique`;
+                        `${Number(dedup.unique_patterns ?? 0)} unique`;
                     document.getElementById('patternsDetails').textContent =
-                        `Total processed: ${dedup.total_patterns || 0}`;
+                        `Total processed: ${totalPatterns}`;
 
                     // Update badge
                     document.getElementById('learningBadge').textContent = 'Active';
@@ -5253,7 +5571,8 @@
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/stats/circuit-breakers`);
                 if (response.ok) {
-                    const breakers = await response.json();
+                    const payload = await response.json();
+                    const breakers = payload.circuit_breakers || payload || {};
                     const container = document.getElementById('circuitBreakerList');
 
                     if (Object.keys(breakers).length === 0) {
@@ -5265,7 +5584,9 @@
                     let openCount = 0;
                     let html = '';
 
-                    for (const [name, state] of Object.entries(breakers)) {
+                    for (const [name, info] of Object.entries(breakers)) {
+                        const state = String(info?.state || info || 'UNKNOWN').toUpperCase();
+                        const failureCount = Number(info?.failure_count ?? 0);
                         const stateColor = state === 'CLOSED' ? 'var(--status-online)' :
                                           state === 'OPEN' ? 'var(--status-error)' :
                                           'var(--status-warning)';
@@ -5275,6 +5596,7 @@
                             <div style="padding: 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 6px;">
                                 <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">${name}</div>
                                 <div style="font-size: 0.85rem; color: ${stateColor}; font-weight: 600;">${state}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">failures=${failureCount}</div>
                             </div>
                         `;
                     }

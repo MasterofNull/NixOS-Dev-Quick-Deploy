@@ -1,4 +1,5 @@
 """Metrics collection service."""
+import json
 import logging
 import os
 import platform
@@ -64,6 +65,8 @@ class MetricsCollector:
                 "bytes_sent": net_io.bytes_sent,
                 "bytes_recv": net_io.bytes_recv,
                 "interface": primary_iface,
+                "active_connections": self._count_active_connections(),
+                "neighbors": self._get_network_neighbors(),
             },
             "gpu": await self._get_gpu_info(),
             "security": self._get_security_signals(),
@@ -266,11 +269,82 @@ class MetricsCollector:
                 "provider": "nftables",
                 "active": firewall_active,
                 "enabled": firewall_enabled,
+                "rules_count": self._count_nft_rules(),
             },
             "mandatory_access_control": {
                 "apparmor_active": apparmor_active,
             },
         }
+
+    @staticmethod
+    def _count_active_connections() -> int:
+        active_states = {
+            "ESTABLISHED",
+            "SYN_SENT",
+            "SYN_RECV",
+            "FIN_WAIT1",
+            "FIN_WAIT2",
+            "TIME_WAIT",
+            "CLOSE_WAIT",
+            "CLOSING",
+            "LAST_ACK",
+        }
+        try:
+            connections = psutil.net_connections(kind="inet")
+            return sum(1 for conn in connections if str(conn.status).upper() in active_states)
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _get_network_neighbors() -> List[Dict[str, str]]:
+        try:
+            result = subprocess.run(
+                ["ip", "neigh"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if result.returncode != 0:
+                return []
+            neighbors: List[Dict[str, str]] = []
+            for line in (result.stdout or "").splitlines():
+                parts = line.split()
+                if not parts:
+                    continue
+                entry: Dict[str, str] = {"ip": parts[0]}
+                if "dev" in parts:
+                    idx = parts.index("dev")
+                    if idx + 1 < len(parts):
+                        entry["dev"] = parts[idx + 1]
+                if "lladdr" in parts:
+                    idx = parts.index("lladdr")
+                    if idx + 1 < len(parts):
+                        entry["mac"] = parts[idx + 1]
+                if parts[-1] not in {"dev", "lladdr"}:
+                    entry["state"] = parts[-1]
+                neighbors.append(entry)
+            return neighbors[:20]
+        except Exception:
+            return []
+
+    @staticmethod
+    def _count_nft_rules() -> int | None:
+        try:
+            result = subprocess.run(
+                ["nft", "-j", "list", "ruleset"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return None
+            payload = json.loads(result.stdout)
+            items = payload.get("nftables", [])
+            return sum(1 for item in items if "rule" in item)
+        except Exception:
+            return None
 
     @staticmethod
     def _systemctl_is_active(unit: str) -> bool:

@@ -458,6 +458,45 @@ paths:
         "200":
           description: Workflow plan
 
+  /workflow/tooling-manifest:
+    get:
+      tags: [Workflow]
+      summary: Get compact tooling manifest (GET)
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: runtime
+          in: query
+          schema:
+            type: string
+            enum: [python, typescript]
+      responses:
+        "200":
+          description: Compact tooling manifest
+    post:
+      tags: [Workflow]
+      summary: Generate compact tooling manifest (POST)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                runtime:
+                  type: string
+                  enum: [python, typescript]
+                max_tools:
+                  type: integer
+                max_result_chars:
+                  type: integer
+      responses:
+        "200":
+          description: Compact tooling manifest
+
   /workflow/run/start:
     post:
       tags: [Workflow]

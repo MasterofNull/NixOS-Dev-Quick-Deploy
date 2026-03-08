@@ -232,19 +232,27 @@ CIRCUIT_BREAKERS = CircuitBreakerRegistry(
     }
 )
 
+_CONTINUOUS_TELEMETRY_DIR = os.path.expanduser(
+    os.getenv(
+        "CONTINUOUS_LEARNING_TELEMETRY_DIR",
+        os.path.join(os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid"), "telemetry"),
+    )
+)
 TELEMETRY_PATH = os.path.expanduser(
     os.getenv(
         "HYBRID_TELEMETRY_PATH",
         os.getenv(
             "TELEMETRY_PATH",
-            "~/.local/share/nixos-ai-stack/telemetry/hybrid-events.jsonl",
+            os.path.join(_CONTINUOUS_TELEMETRY_DIR, "hybrid-events.jsonl"),
         ),
     )
 )
-TELEMETRY_ENABLED = os.getenv(
-    "HYBRID_TELEMETRY_ENABLED",
-    os.getenv("AI_TELEMETRY_ENABLED", "false"),
-).lower() == "true"
+_telemetry_enabled_raw = os.getenv("HYBRID_TELEMETRY_ENABLED")
+if _telemetry_enabled_raw is None:
+    _telemetry_enabled_raw = os.getenv("AI_TELEMETRY_ENABLED")
+if _telemetry_enabled_raw is None:
+    _telemetry_enabled_raw = "true" if os.getenv("CONTINUOUS_LEARNING_TELEMETRY_DIR") or os.getenv("HYBRID_TELEMETRY_PATH") else "false"
+TELEMETRY_ENABLED = str(_telemetry_enabled_raw).lower() == "true"
 
 HYBRID_STATS = {
     "total_queries": 0,
@@ -299,6 +307,7 @@ def record_telemetry_event(event_type: str, payload: Dict[str, Any]) -> None:
 
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event_type,
         "event_type": event_type,
         **payload,
     }

@@ -412,7 +412,7 @@ in
 
     # Core dev/tooling runtimes (critical for quick-deploy workflows)
     git gh tree file xxd
-    nodejs go rustc cargo clippy rustfmt ruby
+    nodejs chromium go rustc cargo clippy rustfmt ruby
     # vscodium is installed via programs.vscode below; listing it here too
     # would create a duplicate entry in the nix profile.
     # neovim is provided by system packages; avoid duplicate nvim.desktop.
@@ -1028,6 +1028,56 @@ PYEOF
   home.file.".config/systemd/user/enforce-cosmic-term-font.path".enable = false;
   home.file.".config/systemd/user/default.target.wants/enforce-cosmic-term-font.service".enable = false;
   home.file.".config/systemd/user/default.target.wants/enforce-cosmic-term-font.path".enable = false;
+  home.file.".config/playwright/cli.config.json".text = builtins.toJSON {
+    browser = {
+      launchOptions = {
+        executablePath = "${pkgs.chromium}/bin/chromium";
+        headless = true;
+      };
+      contextOptions = {
+        viewport = {
+          width = 1440;
+          height = 960;
+        };
+      };
+    };
+  };
+  home.file.".codex/skills/playwright/scripts/playwright_cli.sh" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      if ! command -v npx >/dev/null 2>&1; then
+        echo "Error: npx is required but not found on PATH." >&2
+        exit 1
+      fi
+
+      has_session_flag="false"
+      has_config_flag="false"
+      for arg in "$@"; do
+        case "$arg" in
+          --session|--session=*)
+            has_session_flag="true"
+            ;;
+          --config|--config=*)
+            has_config_flag="true"
+            ;;
+        esac
+      done
+
+      cmd=(npx --yes --package @playwright/cli playwright-cli)
+      if [[ "$has_session_flag" != "true" && -n "''${PLAYWRIGHT_CLI_SESSION:-}" ]]; then
+        cmd+=(--session "$PLAYWRIGHT_CLI_SESSION")
+      fi
+      if [[ "$has_config_flag" != "true" ]]; then
+        cmd+=(--config "$HOME/.config/playwright/cli.config.json")
+      fi
+      cmd+=("$@")
+
+      exec "''${cmd[@]}"
+    '';
+  };
 
   # Refresh font cache so newly installed user-profile fonts are picked up.
   home.activation.refreshUserFontCache = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -1243,6 +1293,14 @@ MCP_REGISTRY_EOF
       unset d name target
     fi
     unset src
+  '';
+
+  home.activation.ensureCodexSkillExecutables = lib.hm.dag.entryAfter [ "linkSharedAgentSkills" ] ''
+    skills_root="$HOME/.codex/skills"
+    if [ -d "$skills_root" ]; then
+      find "$skills_root" -type f \( -path '*/scripts/*.sh' -o -path '*/scripts/*.py' \) -exec chmod 0755 {} +
+    fi
+    unset skills_root
   '';
 
   # Seed ~/.claude/settings.json with the stdio MCP server catalog so Claude

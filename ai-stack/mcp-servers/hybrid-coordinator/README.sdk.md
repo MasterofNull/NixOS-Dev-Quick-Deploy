@@ -53,6 +53,7 @@ import { HarnessClient } from "@nixos-ai/harness-sdk";
 
 const client = new HarnessClient({ baseUrl: "http://127.0.0.1:8003" });
 const plan = await client.plan("smoke test all workflow profiles");
+const manifest = await client.toolingManifest("debug MCP tool chatter", "typescript");
 const session = await client.startSession("run branch-aware workflow checks");
 const tree = await client.workflowTree();
 ```
@@ -61,6 +62,7 @@ const tree = await client.workflowTree();
 
 Both SDKs cover:
 - `POST /workflow/plan`
+- `POST /workflow/tooling-manifest`
 - `POST /workflow/session/start`
 - `GET /workflow/sessions`
 - `GET /workflow/tree`

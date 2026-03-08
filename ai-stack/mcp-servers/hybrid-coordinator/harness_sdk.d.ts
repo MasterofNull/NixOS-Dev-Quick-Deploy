@@ -30,11 +30,24 @@ export interface RunStartRequest {
   safety_mode?: "plan-readonly" | "execute-mutating";
   token_limit?: number;
   tool_call_limit?: number;
+  intent_contract?: {
+    user_intent: string;
+    definition_of_done: string;
+    depth_expectation: "minimum" | "standard" | "deep";
+    spirit_constraints: string[];
+    no_early_exit_without: string[];
+  };
 }
 
 export declare class HarnessClient {
   constructor(opts?: HarnessClientOptions);
   plan(query: string): Promise<Json>;
+  toolingManifest(
+    query: string,
+    runtime?: "python" | "typescript",
+    maxTools?: number,
+    maxResultChars?: number,
+  ): Promise<Json>;
   startSession(query: string): Promise<Json>;
   getSession(sessionId: string): Promise<Json>;
   getSessionWithLineage(sessionId: string): Promise<Json>;
