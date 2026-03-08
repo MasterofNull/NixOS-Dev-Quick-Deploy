@@ -1,187 +1,65 @@
-# Migration from v1 to v2
+# Dashboard Migration Notes
 
-## Overview
+## Status
 
-Dashboard v2 is a **complete rewrite** with a modern React frontend and FastAPI backend. The old HTML/CSS/JS dashboard has been replaced with a full-stack application.
+This document is retained as migration history for the dashboard rewrite.
 
-## What Changed
+- Production/operator runtime: `command-center-dashboard-api.service`
+- Production/operator URL: `http://127.0.0.1:8889/`
+- Local frontend/backend development: `cd dashboard && ./start-dashboard.sh`
 
-### Architecture
-- **v1**: Static HTML + Chart.js + Vanilla JS
-- **v2**: React 19 + Vite + FastAPI + WebSocket
+## Runtime Split
 
-### Data Collection
-- **v1**: `scripts/data/generate-dashboard-data.sh` → JSON files
-- **v2**: FastAPI backend with psutil → WebSocket stream
+There are now two distinct paths:
 
-### Deployment
-- **v1**: Python HTTP server on port 8888
-- **v2**: Vite dev server (8890) + FastAPI (8889)
+### 1. Declarative Production Runtime
 
-### Features Added
-- ✅ Real-time WebSocket streaming (2s updates)
-- ✅ Interactive service controls (start/stop/restart)
-- ✅ Modern UI with shadcn components
-- ✅ TypeScript type safety
-- ✅ Responsive design
+Use this for normal operation:
 
-### Features Removed (Temporarily)
-- ⏳ Container list viewer (coming in Phase 2)
-- ⏳ Configuration editor (coming in Phase 3)
-- ⏳ Log viewer (coming in Phase 3)
-- ⏳ Network topology (planned)
-
-## Migration Steps
-
-### 1. Stop Old Dashboard
 ```bash
-# Kill old services
-systemctl --user stop dashboard-server.service
-systemctl --user stop dashboard-collector.timer
-
-# Or kill manually
-pkill -f "generate-dashboard-data.sh"
-pkill -f "serve-dashboard.sh"
+systemctl status command-center-dashboard-api.service
+curl http://127.0.0.1:8889/api/health
+xdg-open http://127.0.0.1:8889/
 ```
 
-### 2. Install New Dashboard
+This is the authoritative runtime. It serves both the operator UI and the API from one port.
+
+### 2. Local Development Runtime
+
+Use this only when iterating on the React/Vite frontend or the FastAPI dashboard backend:
+
 ```bash
-cd NixOS-Dev-Quick-Deploy/dashboard
+cd dashboard
 ./start-dashboard.sh
 ```
 
-### 3. Update Bookmarks
-- Old URL: `http://localhost:8888/dashboard.html`
-- New URL: `http://localhost:8890`
+Expected local-dev ports:
 
-### 4. Optional: Keep Old Dashboard
-The old dashboard files are preserved in the repo root:
-- `dashboard.html` (old)
-- `launch-dashboard.sh` (old)
-- `scripts/data/generate-dashboard-data.sh` (still used by old version)
+- Frontend dev server: `http://localhost:8890`
+- Backend API: `http://localhost:8889`
 
-You can run both side-by-side on different ports.
+These ports are for development only and are not the production deployment model.
 
-## Data Compatibility
+## Historical Context
 
-### JSON Files
-The new backend does **not** use the old JSON files in `~/.local/share/nixos-system-dashboard/`.
+Earlier versions used:
 
-Data is now:
-- Collected in real-time by FastAPI backend
-- Streamed via WebSocket to frontend
-- Stored in-memory (last 100 points)
+- static `dashboard.html`
+- JSON files under `~/.local/share/nixos-system-dashboard/`
+- helper scripts such as `serve-dashboard.sh` and `launch-dashboard.sh`
 
-### Historical Data
-To preserve old historical data:
-1. Old dashboard stored JSON snapshots every 15 seconds
-2. New dashboard stores data in-memory (resets on restart)
-3. Future: Database persistence (Phase 5)
-
-## Configuration
-
-### Old Dashboard
-```bash
-# Environment variables in launch-dashboard.sh
-DASHBOARD_COLLECT_INTERVAL=15
-DATA_DIR="${HOME}/.local/share/nixos-system-dashboard"
-```
-
-### New Dashboard
-```bash
-# Environment variables in backend/.env
-API_PORT=8889
-CORS_ORIGINS=http://localhost:8890
-AI_STACK_DATA=$HOME/.local/share/nixos-ai-stack
-```
-
-## Systemd Services
-
-### Old Services (disable these)
-```bash
-systemctl --user disable dashboard-collector.timer
-systemctl --user disable dashboard-server.service
-```
-
-### New Services (optional, not created yet)
-Future: Create systemd units for v2 dashboard
-```bash
-# backend/systemd/dashboard-api.service
-# frontend/systemd/dashboard-ui.service
-```
-
-## Rollback Plan
-
-If you need to rollback to v1:
-
-```bash
-# Stop v2
-cd dashboard
-# Press Ctrl+C in start-dashboard.sh terminal
-
-# Start v1
-cd ..
-./scripts/deploy/launch-dashboard.sh
-```
-
-Both dashboards can coexist:
-- v1 on port 8888
-- v2 on ports 8889/8890
-
-## Feature Parity Checklist
-
-### ✅ Implemented
-- [x] CPU, Memory, Disk metrics
-- [x] Real-time charts
-- [x] Service status monitoring
-- [x] System health score
-- [x] Dark theme
-
-### 🚧 In Progress
-- [ ] Container list with search
-- [ ] Network device listing
-- [ ] GPU monitoring (AMD)
-- [ ] Persistence & data export
-
-### 📋 Planned
-- [ ] Terminal emulator
-- [ ] File browser
-- [ ] Log viewer
-- [ ] Configuration editor
-- [ ] Alert notifications
+Those flows are now legacy compatibility/history paths. They should not be used as the operator guidance for current deployments.
 
 ## API Equivalents
 
-### Old Data Files → New API Endpoints
-
 ```bash
-# system.json
-curl http://localhost:8889/api/metrics/system
-
-# llm.json → services
-curl http://localhost:8889/api/services
-
-# container list
-curl http://localhost:8889/api/containers
-
-# health score
-curl http://localhost:8889/api/metrics/health-score
+curl http://127.0.0.1:8889/api/metrics/system
+curl http://127.0.0.1:8889/api/services
+curl http://127.0.0.1:8889/api/containers
+curl http://127.0.0.1:8889/api/metrics/health-score
 ```
 
-## Known Issues
+## Notes
 
-1. **No persistence**: Data lost on restart (in-memory only)
-2. **No alerts**: Notification system not yet implemented
-3. **Limited history**: Only last 100 points (vs. 24h in v1)
-4. **No export**: CSV/JSON export coming in Phase 5
-
-## Getting Help
-
-- Check [README.md](./README.md) for setup instructions
-- Review [API docs](http://localhost:8889/docs) when backend running
-- Check browser console for frontend errors
-- Check terminal output for backend errors
-
----
-
-**Last Updated**: 2025-01-01
+- `dashboard.html` remains in the repo as an active surface, but production access is through the declarative command center runtime.
+- If you are debugging frontend work, use the local dev path intentionally and treat its ports as temporary development details.
