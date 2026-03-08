@@ -4,6 +4,11 @@ Status: Active
 Owner: AI Stack Maintainers
 Last Updated: 2026-03-05
 
+Historical note:
+- Large portions of this roadmap were written during the K3s/container-era transition.
+- Keep it as execution history and planning evidence, not as the current operator runbook.
+- For the current runtime model and live procedures, use `README.md`, `docs/operations/OPERATOR-RUNBOOK.md`, and `docs/operations/reference/QUICK-REFERENCE.md`.
+
 **Goal**: Complete all recommended next actions and ensure changes propagate to future deployments
 
 ---
