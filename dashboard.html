@@ -2952,6 +2952,15 @@
             });
         }
 
+        const DASHBOARD_DEMO_MODE = (() => {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('demo') === '1' || window.localStorage?.getItem('dashboard-demo-mode') === '1';
+            } catch (_) {
+                return false;
+            }
+        })();
+
         async function fetchAIMetrics() {
             try {
                 if (typeof FASTAPI_BASE !== 'undefined' && FASTAPI_BASE) {
@@ -3025,11 +3034,15 @@
                 }
             }
 
-            // Return mock data if all paths fail
-            return getMockData(filename);
+            if (DASHBOARD_DEMO_MODE) {
+                return getMockData(filename);
+            }
+
+            console.warn(`Dashboard data unavailable for ${filename}; demo fallback is disabled.`);
+            return null;
         }
 
-        // Mock data for demo/fallback
+        // Mock data is available only in explicit demo mode (`?demo=1` or localStorage).
         function getMockData(filename) {
             const mock = {
                 'system.json': {

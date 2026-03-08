@@ -11,7 +11,7 @@ import { Activity } from 'lucide-react';
 const queryClient = new QueryClient();
 
 function DashboardContent() {
-  const { setCurrentMetrics, addToHistory, setServices, setHealthScore, setLoading } = useDashboardStore();
+  const { setCurrentMetrics, addToHistory, setServices, setHealthScore, setLoading, setError } = useDashboardStore();
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -29,9 +29,11 @@ function DashboardContent() {
         addToHistory(metrics);
         setServices(services);
         setHealthScore(healthScore.score);
+        setError(null);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching initial data:', error);
+        setError(error instanceof Error ? error.message : 'Unknown error');
         setLoading(false);
       }
     };
