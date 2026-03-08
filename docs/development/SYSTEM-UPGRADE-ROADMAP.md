@@ -294,7 +294,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 
 ### Phase 34 Test Gate (must pass before marking DONE)
 
-- [x] `nix flake check` (validated with `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`)
+- [x] `nix flake check` (validated with `nix flake check --no-build path:.`)
 - [x] `bash -n nixos-quick-deploy.sh scripts/deploy/deploy-clean.sh. scripts/data/download-llama-cpp-models.sh`
 - [ ] `tests/run-unit-tests.sh`
 - [ ] `tests/run-integration-tests.sh` (with applicable flags)
@@ -318,7 +318,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 - Validation run:
   - `bash -n` checks passed for modified shell scripts.
   - Python compile checks passed for modified runtime telemetry modules.
-  - `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy` passed.
+  - `nix flake check --no-build path:.` passed.
 
 ### Risk Notes
 
@@ -377,7 +377,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 ### Validation
 
 - [x] `python -m py_compile ai-stack/mcp-servers/hybrid-coordinator/server.py`
-- [x] `nix flake check --no-build path:/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`
+- [x] `nix flake check --no-build path:.`
 - [ ] Integration test run against live hybrid service (`/memory/*`, `/search/tree`, `/harness/*`)
 
 ---
