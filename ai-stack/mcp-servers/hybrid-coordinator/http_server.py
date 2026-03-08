@@ -83,6 +83,23 @@ _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
 
 
+def _read_secret_file(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return ""
+
+
+def _ralph_request_headers() -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    api_key = _read_secret_file(Config.RALPH_WIGGUM_API_KEY_FILE)
+    if api_key:
+        headers["X-API-Key"] = api_key
+    return headers
+
+
 def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
     """Map high-value HTTP endpoints to tool names for audit coverage."""
     if path == "/query" and method == "POST":
@@ -107,6 +124,10 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "workflow_plan"
     if path == "/workflow/tooling-manifest":
         return "tooling_manifest"
+    if path == "/workflow/orchestrate" and method == "POST":
+        return "loop_orchestrate"
+    if path.startswith("/workflow/orchestrate/") and method == "GET":
+        return "loop_status"
     if path == "/workflow/run/start" and method == "POST":
         return "workflow_run_start"
     return None
@@ -1813,6 +1834,51 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_workflow_orchestrate(request: web.Request) -> web.Response:
+        """Submit work to the Ralph loop through the harness layer."""
+        try:
+            data = await request.json()
+            prompt = (data.get("prompt") or data.get("query") or "").strip()
+            if not prompt:
+                return web.json_response({"error": "prompt required"}, status=400)
+            payload = {"prompt": prompt}
+            for key in ("backend", "max_iterations", "require_approval", "context"):
+                if key in data:
+                    payload[key] = data[key]
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    f"{Config.RALPH_WIGGUM_URL.rstrip('/')}/tasks",
+                    headers=_ralph_request_headers(),
+                    json=payload,
+                )
+            return web.json_response(response.json(), status=response.status_code)
+        except httpx.HTTPError as exc:
+            return web.json_response(_error_payload("ralph_unavailable", exc), status=502)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_orchestrate_status(request: web.Request) -> web.Response:
+        """Get Ralph loop task state or final result through the harness layer."""
+        try:
+            task_id = str(request.match_info.get("task_id", "")).strip()
+            if not task_id:
+                return web.json_response({"error": "task_id required"}, status=400)
+            include_result = (
+                str(request.rel_url.query.get("include_result", "false")).strip().lower()
+                in {"1", "true", "yes", "on"}
+            )
+            upstream_path = "/result" if include_result else ""
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(
+                    f"{Config.RALPH_WIGGUM_URL.rstrip('/')}/tasks/{task_id}{upstream_path}",
+                    headers=_ralph_request_headers(),
+                )
+            return web.json_response(response.json(), status=response.status_code)
+        except httpx.HTTPError as exc:
+            return web.json_response(_error_payload("ralph_unavailable", exc), status=502)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_workflow_session_start(request: web.Request) -> web.Response:
         """Start a persisted workflow session from a query."""
         try:
@@ -2837,6 +2903,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
     http_app.router.add_post("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
     http_app.router.add_get("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
+    http_app.router.add_post("/workflow/orchestrate", handle_workflow_orchestrate)
+    http_app.router.add_get("/workflow/orchestrate/{task_id}", handle_workflow_orchestrate_status)
     http_app.router.add_post("/workflow/session/start", handle_workflow_session_start)
     http_app.router.add_get("/workflow/sessions", handle_workflow_sessions_list)
     http_app.router.add_get("/workflow/tree", handle_workflow_tree)

@@ -20,7 +20,13 @@
       "health": "/health",
       "query": "/query",
       "augment": "/augment_query",
-      "stats": "/stats"
+      "stats": "/stats",
+      "workflow_orchestrate": "/workflow/orchestrate"
+    },
+    "ralph": {
+      "health": "/health",
+      "discovery": "/discovery/capabilities",
+      "tasks": "/tasks"
     }
   },
   "required_behaviors": {
@@ -28,7 +34,8 @@
     "intent_gated_lookup": true,
     "discovery_cache": true,
     "risk_tiered_tool_execution": true,
-    "weekly_research_sync": true
+    "weekly_research_sync": true,
+    "automatic_loop_layer_selection": true
   },
   "observability": {
     "required_health_fields": [

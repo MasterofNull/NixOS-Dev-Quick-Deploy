@@ -79,7 +79,7 @@
       "description": "Qdrant Vector Database - Semantic search across codebase and documentation"
     },
     "ralph-wiggum": {
-      "url": "http://localhost:8098",
+      "url": "http://localhost:8004",
       "command": "curl",
       "args": [
         "-s",
@@ -89,7 +89,7 @@
         "Content-Type: application/json",
         "-d",
         "@-",
-        "http://localhost:8098/api/tasks"
+        "http://localhost:8004/tasks"
       ],
       "env": {
         "RALPH_MAX_ITERATIONS": "0",
@@ -100,11 +100,12 @@
         "task-orchestration",
         "autonomous-coding",
         "multi-agent",
-        "continuous-loop"
+        "continuous-loop",
+        "workflow-selection"
       ],
-      "autoStart": false,
+      "autoStart": true,
       "priority": 4,
-      "description": "Ralph Wiggum Loop - Autonomous multi-agent task orchestration (manual activation)"
+      "description": "Ralph Wiggum Loop - Autonomous multi-agent task orchestration exposed for automatic workflow selection"
     },
     "container-engine": {
       "url": "http://localhost:8095",
@@ -174,7 +175,7 @@
     "logLevel": "info"
   },
   "discovery": {
-    "enabled": false,
+    "enabled": true,
     "mode": "progressive",
     "minimalToolCount": 5,
     "fullToolCount": 15,

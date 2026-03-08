@@ -11,9 +11,9 @@ discover what tools are available for a given task.
 
 | Name | Port | Auth | Key Endpoints | When to Use |
 |------|------|------|---------------|-------------|
-| **hybrid-coordinator** | 8003 | X-API-Key | POST /query, POST /augment_query, POST /memory/store, GET /memory/recall, GET /hints, POST /feedback, POST /harness/eval, GET /discovery/capabilities, POST /workflow/tooling-manifest | Route queries between local/remote LLM; semantic search; agent memory; workflow hints; compact code-exec tooling manifest; eval harness |
+| **hybrid-coordinator** | 8003 | X-API-Key | POST /query, POST /augment_query, POST /memory/store, GET /memory/recall, GET /hints, POST /feedback, POST /harness/eval, GET /discovery/capabilities, POST /workflow/tooling-manifest, POST /workflow/orchestrate, GET /workflow/orchestrate/{task_id} | Route queries between local/remote LLM; semantic search; agent memory; workflow hints; compact code-exec tooling manifest; eval harness; harness-level access to Ralph loop orchestration |
 | **aidb** | 8002 | X-API-Key | POST /documents, GET /documents, POST /vector/search, POST /query, GET /health | Import/search documents; vector similarity search; knowledge base queries |
-| **ralph-wiggum** | 8004 | X-API-Key (shared with aidb) | POST /tasks, GET /tasks/{id}, GET /health | Async task orchestration; multi-step agentic workflows |
+| **ralph-wiggum** | 8004 | X-API-Key (shared with aidb) | POST /tasks, GET /tasks/{id}, GET /tasks/{id}/result, GET /discovery/capabilities, GET /health | Async task orchestration; multi-step agentic workflows; discovery surface for automatic loop-layer selection |
 | **aider-wrapper** | 8006 | — | POST /tasks, GET /tasks/{id}, GET /health | Code editing tasks via aider; sandboxed file modifications; AI-assisted development |
 | **nixos-docs** | 8096 | optional | GET /health, GET /sources, POST /search, POST /sync | NixOS/nixpkgs documentation search; home-manager docs; nix.dev reference |
 | **switchboard** | 8085 | — | POST /v1/chat/completions, GET /v1/models | OpenAI-compatible proxy; routes to local llama.cpp or remote; use as default model endpoint |

@@ -880,6 +880,8 @@ in {
         AI_STACK_HINTS_ENDPOINT = "http://127.0.0.1:8003/hints";
         AI_STACK_HYBRID_ENDPOINT = "http://127.0.0.1:8003";
         AI_STACK_AIDB_ENDPOINT = "http://127.0.0.1:8002";
+        AI_STACK_RALPH_ENDPOINT = "http://127.0.0.1:${toString cfg.mcpServers.ralphPort}";
+        AI_STACK_WORKFLOW_ORCHESTRATE_ENDPOINT = "http://127.0.0.1:${toString cfg.mcpServers.hybridPort}/workflow/orchestrate";
         AI_STACK_INFERENCE_ENDPOINT = "http://127.0.0.1:${toString llama.port}/v1";
 
         # Tool paths (backwards compatible)
@@ -909,6 +911,8 @@ in {
             $AI_STACK_HINTS_ENDPOINT    - Hints API
             $AI_STACK_HYBRID_ENDPOINT   - Hybrid coordinator
             $AI_STACK_AIDB_ENDPOINT     - AIDB API
+            $AI_STACK_RALPH_ENDPOINT    - Ralph loop orchestrator
+            $AI_STACK_WORKFLOW_ORCHESTRATE_ENDPOINT - Harness loop orchestration
             $AI_STACK_INFERENCE_ENDPOINT - LLM inference
 
           Example usage:

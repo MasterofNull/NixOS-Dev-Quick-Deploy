@@ -829,6 +829,7 @@ in
             "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
             "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
             "SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"
+            "RALPH_WIGGUM_URL=http://127.0.0.1:${toString mcp.ralphPort}"
             "AI_TASK_CLASSIFICATION_ENABLED=true"
             "LOCAL_MAX_INPUT_TOKENS=600"
             "LOCAL_MAX_OUTPUT_TOKENS=300"
@@ -906,6 +907,7 @@ in
             "DATABASE_URL=${pgUrl}"
             ++ lib.optional sec.enable "EMBEDDING_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
             ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}"
+            ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}"
             ++ lib.optional sec.enable "POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
           EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";
         };

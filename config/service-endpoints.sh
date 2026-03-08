@@ -67,6 +67,7 @@ fi
 : "${LLAMA_CPP_URL:=${LLAMA_URL}}"
 : "${LLAMA_CPP_EMBED_URL:=${EMBEDDINGS_URL}}"
 : "${AIDER_URL:=${AIDER_WRAPPER_URL}}"
+: "${RALPH_WIGGUM_URL:=${RALPH_URL}}"
 
 # Phase 19.2.3 — hints API endpoint (sub-path of hybrid-coordinator, no separate port)
 : "${HINTS_URL:=${HYBRID_URL}/hints}"

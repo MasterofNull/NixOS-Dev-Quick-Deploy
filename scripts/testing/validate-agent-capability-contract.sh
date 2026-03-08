@@ -52,15 +52,25 @@ jq -e '.workflow == ["discover","plan","execute","verify","learn"]' "$CONTRACT_F
 
 aidb_health="$(curl -fsS --max-time 5 --connect-timeout 3 "${aidb_auth_args[@]}" "${AIDB_URL%/}/health")"
 hybrid_health="$(curl -fsS --max-time 5 --connect-timeout 3 "${hybrid_auth_args[@]}" "${HYBRID_URL%/}/health")"
+ralph_health="$(curl -fsS --max-time 5 --connect-timeout 3 "${aidb_auth_args[@]}" "${RALPH_URL%/}/health")"
+ralph_discovery="$(curl -fsS --max-time 5 --connect-timeout 3 "${aidb_auth_args[@]}" "${RALPH_URL%/}/discovery/capabilities")"
+loop_manifest="$(curl -fsS --max-time 8 --connect-timeout 3 "${hybrid_auth_args[@]}" \
+  -H 'Content-Type: application/json' \
+  -X POST "${HYBRID_URL%/}/workflow/tooling-manifest" \
+  -d '{"query":"orchestrate a long-running multi-agent workflow to implement and verify a repo change"}')"
 
 # Required behavior checks from contract + live state.
-jq -e '.required_behaviors.autonomous_capability_discovery == true and .required_behaviors.risk_tiered_tool_execution == true' "$CONTRACT_FILE" >/dev/null
+jq -e '.required_behaviors.autonomous_capability_discovery == true and .required_behaviors.risk_tiered_tool_execution == true and .required_behaviors.automatic_loop_layer_selection == true' "$CONTRACT_FILE" >/dev/null
 
 if echo "$hybrid_health" | jq -e '.ai_harness.capability_discovery_enabled? != null and .ai_harness.capability_discovery_on_query? != null' >/dev/null 2>&1; then
   echo "$hybrid_health" | jq -e '.ai_harness.capability_discovery_enabled == true and .ai_harness.capability_discovery_on_query == true' >/dev/null
 else
   echo "$hybrid_health" | jq -e '.ai_harness.enabled == true' >/dev/null
 fi
+
+echo "$ralph_health" | jq -e '.loop_enabled == true' >/dev/null
+echo "$ralph_discovery" | jq -e '.activation_mode == "automatic" and .selection_role == "loop-orchestration"' >/dev/null
+echo "$loop_manifest" | jq -e '.tools | map(.name) | index("loop_orchestrate") != null' >/dev/null
 
 if echo "$aidb_health" | jq -e '.tool_execution_policy? != null' >/dev/null 2>&1; then
   echo "$aidb_health" | jq -e '.tool_execution_policy.allow_high_risk_tools == false' >/dev/null
