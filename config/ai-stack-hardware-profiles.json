@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Hardware profiles for AI stack deployment across platforms",
+
+  "accelerators": {
+    "cuda": {
+      "name": "NVIDIA CUDA",
+      "platforms": ["x86_64-linux", "aarch64-linux", "x86_64-windows"],
+      "detection": {
+        "linux": "lspci | grep -i nvidia",
+        "windows": "nvidia-smi",
+        "env_check": "CUDA_VISIBLE_DEVICES"
+      },
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": "${device_index:-0}",
+        "CUDA_CACHE_PATH": "${state_dir}/cuda_cache"
+      },
+      "llama_cpp_flags": {
+        "cmake": ["GGML_CUDA:BOOL=TRUE"],
+        "runtime": ["--n-gpu-layers", "99"]
+      },
+      "container_deps": ["nvidia-container-toolkit"],
+      "min_vram_gb": 4
+    },
+
+    "vulkan": {
+      "name": "Vulkan Compute",
+      "platforms": ["x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin", "x86_64-windows"],
+      "vendors": {
+        "amd": {
+          "icd_linux": "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json",
+          "icd_linux_aarch64": "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.aarch64.json",
+          "driver": "radv"
+        },
+        "intel": {
+          "icd_linux": "/run/opengl-driver/share/vulkan/icd.d/intel_icd.x86_64.json",
+          "driver": "anv"
+        },
+        "nvidia": {
+          "icd_linux": "/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json",
+          "driver": "nvidia"
+        }
+      },
+      "detection": {
+        "linux": "vulkaninfo --summary 2>/dev/null | grep -i 'device'",
+        "macos": "system_profiler SPDisplaysDataType | grep -i 'metal'",
+        "windows": "vulkaninfo --summary"
+      },
+      "environment": {
+        "VK_ICD_FILENAMES": "${icd_path}",
+        "VK_DRIVER_FILES": "${icd_path}",
+        "GGML_VK_VISIBLE_DEVICES": "${device_index:-0}"
+      },
+      "llama_cpp_flags": {
+        "cmake": ["GGML_VULKAN:BOOL=TRUE"],
+        "runtime": ["--n-gpu-layers", "99"]
+      },
+      "container_deps": ["vulkan-loader", "mesa-vulkan-drivers"],
+      "min_vram_gb": 2
+    },
+
+    "rocm": {
+      "name": "AMD ROCm/HIP",
+      "platforms": ["x86_64-linux"],
+      "status": "deprecated",
+      "fallback": "vulkan",
+      "notes": "ROCm crashes on APUs; use Vulkan instead",
+      "detection": {
+        "linux": "rocminfo 2>/dev/null | grep -i 'agent'"
+      },
+      "environment": {
+        "HSA_OVERRIDE_GFX_VERSION": "${gfx_version}",
+        "HSA_ENABLE_SDMA": "0",
+        "GPU_MAX_ALLOC_PERCENT": "100",
+        "GGML_HIP_UMA": "1"
+      },
+      "llama_cpp_flags": {
+        "cmake": ["GGML_HIP:BOOL=TRUE"],
+        "runtime": ["--n-gpu-layers", "99"]
+      },
+      "container_deps": ["rocm-runtime", "hip-runtime"],
+      "min_vram_gb": 4
+    },
+
+    "metal": {
+      "name": "Apple Metal",
+      "platforms": ["aarch64-darwin", "x86_64-darwin"],
+      "detection": {
+        "macos": "system_profiler SPDisplaysDataType | grep -i 'metal support'"
+      },
+      "environment": {},
+      "llama_cpp_flags": {
+        "cmake": ["GGML_METAL:BOOL=TRUE"],
+        "runtime": ["--n-gpu-layers", "99"]
+      },
+      "container_deps": [],
+      "notes": "Native macOS only; no container support"
+    },
+
+    "cpu": {
+      "name": "CPU Only",
+      "platforms": ["x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin", "x86_64-windows", "aarch64-windows"],
+      "detection": {
+        "any": "true"
+      },
+      "environment": {
+        "OMP_NUM_THREADS": "${cpu_threads}",
+        "GGML_NTHREADS": "${cpu_threads}"
+      },
+      "llama_cpp_flags": {
+        "cmake": [],
+        "runtime": ["--threads", "${cpu_threads}"]
+      },
+      "container_deps": [],
+      "notes": "Universal fallback; no GPU acceleration"
+    }
+  },
+
+  "platform_defaults": {
+    "x86_64-linux": {
+      "priority": ["cuda", "vulkan", "rocm", "cpu"],
+      "nvidia": "cuda",
+      "amd": "vulkan",
+      "intel": "vulkan",
+      "none": "cpu"
+    },
+    "aarch64-linux": {
+      "priority": ["cuda", "vulkan", "cpu"],
+      "nvidia": "cuda",
+      "amd": "vulkan",
+      "none": "cpu"
+    },
+    "x86_64-darwin": {
+      "priority": ["metal", "cpu"],
+      "apple": "metal",
+      "none": "cpu"
+    },
+    "aarch64-darwin": {
+      "priority": ["metal", "cpu"],
+      "apple": "metal",
+      "none": "cpu"
+    },
+    "x86_64-windows": {
+      "priority": ["cuda", "vulkan", "cpu"],
+      "nvidia": "cuda",
+      "amd": "vulkan",
+      "intel": "vulkan",
+      "none": "cpu"
+    }
+  },
+
+  "hardware_tiers": {
+    "nano": {
+      "ram_range": [0, 2],
+      "recommended_quant": "Q2_K",
+      "max_model_params": "1B",
+      "ctx_size": 2048
+    },
+    "micro": {
+      "ram_range": [2, 8],
+      "recommended_quant": "Q4_K_S",
+      "max_model_params": "3B",
+      "ctx_size": 4096
+    },
+    "small": {
+      "ram_range": [8, 16],
+      "recommended_quant": "Q4_K_M",
+      "max_model_params": "7B",
+      "ctx_size": 8192
+    },
+    "medium": {
+      "ram_range": [16, 32],
+      "recommended_quant": "Q6_K",
+      "max_model_params": "14B",
+      "ctx_size": 16384
+    },
+    "large": {
+      "ram_range": [32, 9999],
+      "recommended_quant": "Q8_0",
+      "max_model_params": "70B",
+      "ctx_size": 32768
+    }
+  },
+
+  "container_export": {
+    "config_file": "ai-stack-config.env",
+    "compose_template": "docker-compose.ai-stack.yml",
+    "required_volumes": [
+      "${models_dir}:/models:ro",
+      "${state_dir}:/var/lib/llama-cpp:rw"
+    ],
+    "ports": {
+      "inference": 8080,
+      "embedding": 8081,
+      "webui": 3000
+    }
+  }
+}

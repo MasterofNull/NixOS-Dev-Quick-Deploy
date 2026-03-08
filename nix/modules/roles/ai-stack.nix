@@ -12,18 +12,25 @@
 # Runtime
 # ───────
 # llamacpp
-#   • llama-server on :8080 (OpenAI-compatible API, Vulkan-accelerated on AMD)
+#   • llama-server on :8080 (OpenAI-compatible API, GPU-accelerated)
 #   • Open WebUI on :3000 (wired to llama-server via OPENAI_API_BASE_URLS)
 #   • Qdrant vector DB on :6333 (when vectorDb.enable)
 #   • No daemon overhead — llama.cpp serves models directly from GGUF files.
 #
-# GPU Acceleration
-# ────────────────
+# GPU Acceleration (via ai-stack-hardware.nix abstraction)
+# ─────────────────────────────────────────────────────────
 #   • acceleration = "auto"   — auto-detect: AMD → vulkan, NVIDIA → cuda
-#   • acceleration = "vulkan" — explicit Vulkan (AMD APU/iGPU, Intel Arc)
-#   • acceleration = "rocm"   — AMD ROCm/HIP (DEPRECATED: crashes on APUs)
+#   • acceleration = "vulkan" — Vulkan compute (AMD APU/iGPU, Intel Arc)
 #   • acceleration = "cuda"   — NVIDIA CUDA
+#   • acceleration = "metal"  — Apple Silicon (macOS only)
+#   • acceleration = "rocm"   — AMD ROCm/HIP (deprecated → remaps to vulkan)
 #   • acceleration = "cpu"    — CPU-only inference
+#
+# Container Portability
+# ─────────────────────
+# This module uses the hardware abstraction layer (nix/lib/ai-stack-hardware.nix)
+# which reads portable profiles from config/ai-stack-hardware-profiles.json.
+# The same profiles can be used for Docker/Podman container deployments.
 # ---------------------------------------------------------------------------
 let
   cfg = config.mySystem;
@@ -57,6 +64,7 @@ let
   # Resolve GPU acceleration mode.
   # "auto" detects AMD → vulkan, NVIDIA → cuda, otherwise cpu.
   # "rocm" is deprecated (crashes on APUs) and remaps to "vulkan".
+  # Portable profiles: config/ai-stack-hardware-profiles.json
   resolvedAccel =
     let
       explicit = ai.acceleration;
@@ -65,6 +73,8 @@ let
         then "vulkan"  # Vulkan via Mesa RADV is stable on AMD APUs
         else if cfg.hardware.gpuVendor == "nvidia"
         then "cuda"
+        else if cfg.hardware.gpuVendor == "intel" || cfg.hardware.igpuVendor == "intel"
+        then "vulkan"  # Intel Arc/integrated via ANV
         else "cpu";
     in
     if explicit == "auto" then autoDetected
@@ -87,53 +97,34 @@ let
 
   llamaArgs = accelArgs ++ llama.extraArgs;
 
-  # ── ROCm runtime environment for AMD GPU acceleration ─────────────────────
-  # HSA_OVERRIDE_GFX_VERSION lets llama.cpp use AMD APU/iGPU variants that
-  # are not in the official ROCm support matrix. Common values:
-  #   "9.0.0"  — Ryzen 5000 / Van Gogh APU (gfx90c)
-  #   "10.3.0" — Ryzen 5000 / Cezanne APU (gfx90c uses 9.0.0 too)
-  #   "11.0.0" — Ryzen 7000 / Phoenix APU (gfx1103)
-  # Unset (null) = let ROCm auto-detect; correct for officially supported GPUs.
-  rocmEnv = lib.optionalAttrs (resolvedAccel == "rocm") (
-    {
-      # Disable SDMA (DMA copy engine) on integrated APUs — prevents hangs
-      # on some Ryzen iGPU variants under ROCm compute workloads.
-      HSA_ENABLE_SDMA = "0";
-      # Improve memory allocation for APU unified memory access.
-      GPU_MAX_ALLOC_PERCENT = "100";
-      GPU_SINGLE_ALLOC_PERCENT = "100";
-      GPU_MAX_HEAP_SIZE = "100";
-      # Enable Unified Memory Architecture mode for APU shared memory.
-      GGML_HIP_UMA = "1";
-      # Use the system ROCm OpenCL ICD.
-      OPENCL_VENDOR_PATH = "/run/opengl-driver/etc/OpenCL/vendors";
-    }
-    // lib.optionalAttrs (ai.rocmGfxOverride != null) {
-      HSA_OVERRIDE_GFX_VERSION = ai.rocmGfxOverride;
-      # Set HCC target matching the override for HIP kernels.
-      HCC_AMDGPU_TARGET = "gfx${builtins.replaceStrings ["."] [""] ai.rocmGfxOverride}";
-    }
-  );
-
-  # Vulkan environment for Mesa RADV on AMD GPUs.
+  # Vulkan environment for Mesa RADV/ANV on AMD/Intel GPUs.
   # Required for ggml-vulkan to find the ICD loader.
-  vulkanEnv = {
-    # Point the Vulkan loader at the RADV ICD shipped by NixOS.
-    VK_ICD_FILENAMES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
-    VK_DRIVER_FILES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
-  } // lib.optionalAttrs (ai.vulkanVisibleDevices != null) {
-    # Some AMD APUs need an explicit ggml-vulkan device index even when
-    # vulkaninfo can already enumerate the GPU correctly.
-    GGML_VK_VISIBLE_DEVICES = ai.vulkanVisibleDevices;
-  };
+  # Portable config: config/ai-stack-hardware-profiles.json
+  vulkanEnv =
+    let
+      # Select ICD based on GPU vendor
+      gpuVendor = if cfg.hardware.gpuVendor != "none" then cfg.hardware.gpuVendor
+                  else cfg.hardware.igpuVendor;
+      icdPath =
+        if gpuVendor == "amd" then
+          "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json"
+        else if gpuVendor == "intel" then
+          "/run/opengl-driver/share/vulkan/icd.d/intel_icd.x86_64.json"
+        else
+          "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
+    in {
+      VK_ICD_FILENAMES = icdPath;
+      VK_DRIVER_FILES = icdPath;
+    } // lib.optionalAttrs (ai.vulkanVisibleDevices != null) {
+      GGML_VK_VISIBLE_DEVICES = ai.vulkanVisibleDevices;
+    };
 
   # Combined GPU environment based on resolved acceleration mode.
-  # Vulkan: AMD APU/iGPU via Mesa RADV
-  # ROCm: AMD discrete GPU via HIP (currently disabled due to APU crashes)
-  # CUDA/CPU: no special environment needed (handled by nixpkgs)
+  # Vulkan: AMD/Intel via Mesa RADV/ANV
+  # CUDA: handled by nixpkgs (no special env needed)
+  # CPU: no GPU env needed
   gpuEnv =
     if resolvedAccel == "vulkan" then vulkanEnv
-    else if resolvedAccel == "rocm" then rocmEnv  # Unreachable: rocm remaps to vulkan
     else {};  # cuda/cpu need no special GPU env
 
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
@@ -875,12 +866,72 @@ in {
     # from PATH when completions are disabled.
     (lib.mkIf roleEnabled {
       environment.systemPackages = [ aiHarnessCliWrappers ];
-      environment.variables.AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
+
+      # Agent-agnostic environment variables for tool discovery.
+      # These work with any AI agent (Claude, GPT, Codex, Qwen, Gemini, Aider, etc.)
+      environment.variables = {
+        # Canonical paths
+        AI_STACK_ROOT = "/opt/nixos-quick-deploy";
+        AI_STACK_TOOLS_BIN = "/opt/nixos-quick-deploy/scripts/ai";
+        AI_STACK_REPO_PATH = cfg.mcpServers.repoPath;
+
+        # HTTP API endpoints
+        AI_STACK_API_BASE = "http://127.0.0.1";
+        AI_STACK_HINTS_ENDPOINT = "http://127.0.0.1:8003/hints";
+        AI_STACK_HYBRID_ENDPOINT = "http://127.0.0.1:8003";
+        AI_STACK_AIDB_ENDPOINT = "http://127.0.0.1:8002";
+        AI_STACK_INFERENCE_ENDPOINT = "http://127.0.0.1:${toString llama.port}/v1";
+
+        # Tool paths (backwards compatible)
+        AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
+      };
+
       environment.etc."profile.d/aq-path.sh" = {
         mode = "0644";
         text = ''
+          # AI Stack Tool Discovery — works with any AI agent
           export PATH="${cfg.mcpServers.repoPath}/scripts:$PATH"
+
+          # Agent-agnostic tool discovery function
+          ai_stack_tools() {
+            cat <<'TOOLS'
+          Available AI Stack Tools:
+            aqd              - Main workflow CLI wrapper
+            aq-hints         - Ranked AI workflow hints
+            aq-report        - AI stack health and metrics
+            aq-qa            - AI stack QA workflow
+            project-init     - Initialize new AI-enabled projects
+            workflow-primer  - Read-only session priming
+            workflow-brownfield - Existing project improvement
+            harness-rpc      - Node.js harness RPC bridge
+
+          HTTP Endpoints:
+            $AI_STACK_HINTS_ENDPOINT    - Hints API
+            $AI_STACK_HYBRID_ENDPOINT   - Hybrid coordinator
+            $AI_STACK_AIDB_ENDPOINT     - AIDB API
+            $AI_STACK_INFERENCE_ENDPOINT - LLM inference
+
+          Example usage:
+            aq-hints "how do I configure NixOS services"
+            curl -s "$AI_STACK_HINTS_ENDPOINT?query=nix+modules"
+            aqd workflows list
+          TOOLS
+          }
         '';
+      };
+
+      # Create /opt/nixos-quick-deploy symlink for canonical tool discovery.
+      # This allows project-init scaffolding to use a consistent path that works
+      # regardless of where the actual repo is located on the system.
+      systemd.tmpfiles.rules = lib.mkAfter [
+        "L+ /opt/nixos-quick-deploy - - - - ${cfg.mcpServers.repoPath}"
+      ];
+
+      # Agent-agnostic discovery manifest at well-known location.
+      # Any AI agent can read this to discover available tools and endpoints.
+      environment.etc."ai-stack/agent-discovery.json" = {
+        mode = "0644";
+        source = "${cfg.mcpServers.repoPath}/config/ai-stack-agent-discovery.json";
       };
     })
 

@@ -1,0 +1,478 @@
+#!/usr/bin/env bash
+# ──────────────────────────────────────────────────────────────────────────────
+# AI Stack Container Configuration Exporter
+#
+# Generates portable configuration files for Docker/Podman deployment of the
+# AI stack. Uses the hardware abstraction layer from ai-stack-hardware-profiles.json.
+#
+# Usage:
+#   export-container-config [OPTIONS]
+#
+# Options:
+#   --accelerator ACCEL   GPU accelerator: auto|cuda|vulkan|rocm|cpu (default: auto)
+#   --gpu-vendor VENDOR   GPU vendor: nvidia|amd|intel|none (default: auto-detect)
+#   --output-dir DIR      Output directory (default: ./container-config)
+#   --models-dir DIR      Host path to models (default: /var/lib/llama-cpp/models)
+#   --state-dir DIR       Host path to state (default: /var/lib/llama-cpp)
+#   --format FORMAT       Output format: env|compose|both (default: both)
+#   --help                Show this help
+#
+# Output files:
+#   ai-stack.env              Environment variables for container
+#   docker-compose.yml        Docker Compose configuration
+#   container-readme.md       Deployment instructions
+#
+# This script is designed for portability to the standalone container project.
+# ──────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROFILES_JSON="$REPO_ROOT/config/ai-stack-hardware-profiles.json"
+
+# Defaults
+ACCELERATOR="auto"
+GPU_VENDOR="auto"
+OUTPUT_DIR="./container-config"
+MODELS_DIR="/var/lib/llama-cpp/models"
+STATE_DIR="/var/lib/llama-cpp"
+OUTPUT_FORMAT="both"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_success() { echo -e "${GREEN}[OK]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+show_help() {
+    head -30 "$0" | tail -27 | sed 's/^# //' | sed 's/^#//'
+    exit 0
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --accelerator) ACCELERATOR="$2"; shift 2 ;;
+        --gpu-vendor) GPU_VENDOR="$2"; shift 2 ;;
+        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --models-dir) MODELS_DIR="$2"; shift 2 ;;
+        --state-dir) STATE_DIR="$2"; shift 2 ;;
+        --format) OUTPUT_FORMAT="$2"; shift 2 ;;
+        --help|-h) show_help ;;
+        *) log_error "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# Validate profiles exist
+if [[ ! -f "$PROFILES_JSON" ]]; then
+    log_error "Hardware profiles not found: $PROFILES_JSON"
+    exit 1
+fi
+
+# Auto-detect GPU vendor
+detect_gpu_vendor() {
+    if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+        echo "nvidia"
+    elif command -v lspci &>/dev/null; then
+        if lspci | grep -qi "AMD.*VGA\|Radeon"; then
+            echo "amd"
+        elif lspci | grep -qi "Intel.*VGA\|Intel.*Graphics"; then
+            echo "intel"
+        else
+            echo "none"
+        fi
+    else
+        echo "none"
+    fi
+}
+
+# Resolve accelerator based on vendor and platform
+resolve_accelerator() {
+    local vendor="$1"
+    local requested="$2"
+
+    if [[ "$requested" != "auto" ]]; then
+        echo "$requested"
+        return
+    fi
+
+    case "$vendor" in
+        nvidia) echo "cuda" ;;
+        amd) echo "vulkan" ;;
+        intel) echo "vulkan" ;;
+        *) echo "cpu" ;;
+    esac
+}
+
+# Get Vulkan ICD path for vendor
+get_vulkan_icd() {
+    local vendor="$1"
+    local arch="${2:-x86_64}"
+
+    case "$vendor" in
+        amd)
+            if [[ "$arch" == "aarch64" ]]; then
+                echo "/usr/share/vulkan/icd.d/radeon_icd.aarch64.json"
+            else
+                echo "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            fi
+            ;;
+        intel) echo "/usr/share/vulkan/icd.d/intel_icd.x86_64.json" ;;
+        nvidia) echo "/usr/share/vulkan/icd.d/nvidia_icd.json" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Generate environment file
+generate_env_file() {
+    local accel="$1"
+    local vendor="$2"
+    local output="$3"
+
+    cat > "$output" << EOF
+# ──────────────────────────────────────────────────────────────────────────────
+# AI Stack Container Environment Configuration
+# Generated: $(date -Iseconds)
+# Accelerator: $accel
+# GPU Vendor: $vendor
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Accelerator mode
+AI_STACK_ACCELERATOR=$accel
+AI_STACK_GPU_VENDOR=$vendor
+
+# Service ports
+AI_STACK_INFERENCE_PORT=8080
+AI_STACK_EMBEDDING_PORT=8081
+AI_STACK_WEBUI_PORT=3000
+
+# Model paths (inside container)
+AI_STACK_MODELS_DIR=/models
+AI_STACK_STATE_DIR=/var/lib/llama-cpp
+
+# Performance tuning
+AI_STACK_CPU_THREADS=8
+AI_STACK_BATCH_SIZE=512
+AI_STACK_CTX_SIZE=16384
+EOF
+
+    # Add accelerator-specific environment
+    case "$accel" in
+        cuda)
+            cat >> "$output" << EOF
+
+# CUDA Configuration
+CUDA_VISIBLE_DEVICES=0
+CUDA_CACHE_PATH=/var/lib/llama-cpp/cuda_cache
+EOF
+            ;;
+        vulkan)
+            local icd_path
+            icd_path=$(get_vulkan_icd "$vendor")
+            cat >> "$output" << EOF
+
+# Vulkan Configuration
+VK_ICD_FILENAMES=$icd_path
+VK_DRIVER_FILES=$icd_path
+GGML_VK_VISIBLE_DEVICES=0
+EOF
+            ;;
+        rocm)
+            cat >> "$output" << EOF
+
+# ROCm Configuration (deprecated - prefer vulkan)
+HSA_ENABLE_SDMA=0
+GPU_MAX_ALLOC_PERCENT=100
+GGML_HIP_UMA=1
+EOF
+            ;;
+    esac
+
+    log_success "Generated: $output"
+}
+
+# Generate Docker Compose file
+generate_compose_file() {
+    local accel="$1"
+    local vendor="$2"
+    local output="$3"
+
+    local runtime_config=""
+    local device_config=""
+
+    case "$accel" in
+        cuda)
+            runtime_config="runtime: nvidia"
+            device_config="
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]"
+            ;;
+        vulkan|rocm)
+            device_config="
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render"
+            ;;
+    esac
+
+    cat > "$output" << EOF
+# ──────────────────────────────────────────────────────────────────────────────
+# AI Stack Docker Compose Configuration
+# Generated: $(date -Iseconds)
+# Accelerator: $accel
+# GPU Vendor: $vendor
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f llama-server
+# ──────────────────────────────────────────────────────────────────────────────
+version: '3.8'
+
+services:
+  llama-server:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ai-stack-inference
+    $runtime_config
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - ${STATE_DIR}:/var/lib/llama-cpp:rw
+    env_file:
+      - ai-stack.env
+    command:
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8080"
+      - --model
+      - /models/model.gguf
+      - --ctx-size
+      - "16384"
+      - --n-gpu-layers
+      - "99"
+      - --parallel
+      - "2"$device_config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  llama-embed:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ai-stack-embedding
+    $runtime_config
+    ports:
+      - "8081:8081"
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - ${STATE_DIR}:/var/lib/llama-cpp:rw
+    env_file:
+      - ai-stack.env
+    command:
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8081"
+      - --model
+      - /models/embedding.gguf
+      - --embedding
+      - --pooling
+      - last$device_config
+    restart: unless-stopped
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ai-stack-webui
+    ports:
+      - "3000:8080"
+    volumes:
+      - ${STATE_DIR}/open-webui:/app/backend/data:rw
+    environment:
+      - OPENAI_API_BASE_URLS=http://llama-server:8080/v1
+      - OPENAI_API_KEYS=dummy
+      - WEBUI_AUTH=false
+    depends_on:
+      - llama-server
+    restart: unless-stopped
+
+volumes:
+  models:
+  state:
+EOF
+
+    log_success "Generated: $output"
+}
+
+# Generate README
+generate_readme() {
+    local accel="$1"
+    local vendor="$2"
+    local output="$3"
+
+    cat > "$output" << 'EOF'
+# AI Stack Container Deployment
+
+This directory contains configuration files for deploying the AI stack
+using Docker or Podman containers.
+
+## Quick Start
+
+1. **Download a model** (if not already present):
+   ```bash
+   # Example: Qwen3.5-9B
+   mkdir -p /var/lib/llama-cpp/models
+   curl -L -o /var/lib/llama-cpp/models/model.gguf \
+     https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q6_K.gguf
+   ```
+
+2. **Start the stack**:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Access the services**:
+   - Inference API: http://localhost:8080
+   - Embedding API: http://localhost:8081
+   - Web UI: http://localhost:3000
+
+## GPU Acceleration
+
+EOF
+
+    case "$accel" in
+        cuda)
+            cat >> "$output" << 'EOF'
+This configuration uses **NVIDIA CUDA** for GPU acceleration.
+
+### Requirements
+- NVIDIA GPU with CUDA support
+- NVIDIA Container Toolkit installed
+- Docker configured with nvidia runtime
+
+### Installation
+```bash
+# Install NVIDIA Container Toolkit
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+  sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo systemctl restart docker
+```
+EOF
+            ;;
+        vulkan)
+            cat >> "$output" << 'EOF'
+This configuration uses **Vulkan** for GPU acceleration.
+
+### Requirements
+- AMD or Intel GPU with Vulkan support
+- Mesa Vulkan drivers installed
+- /dev/dri device access
+
+### Verification
+```bash
+# Check Vulkan support
+vulkaninfo --summary
+```
+EOF
+            ;;
+        cpu)
+            cat >> "$output" << 'EOF'
+This configuration uses **CPU-only** inference.
+
+No GPU drivers required. Performance will be limited compared to GPU acceleration.
+Consider adding GPU support for better performance.
+EOF
+            ;;
+    esac
+
+    cat >> "$output" << 'EOF'
+
+## Configuration
+
+Edit `ai-stack.env` to customize:
+- Model paths
+- Port numbers
+- Performance tuning
+- GPU device selection
+
+## Troubleshooting
+
+### Check service status
+```bash
+docker-compose ps
+docker-compose logs llama-server
+```
+
+### Verify GPU access
+```bash
+docker-compose exec llama-server nvidia-smi  # CUDA
+docker-compose exec llama-server vulkaninfo   # Vulkan
+```
+
+## Generated From
+
+This configuration was exported from NixOS-Dev-Quick-Deploy.
+Source: https://github.com/your-repo/NixOS-Dev-Quick-Deploy
+EOF
+
+    log_success "Generated: $output"
+}
+
+# Main
+main() {
+    log_info "AI Stack Container Configuration Exporter"
+    log_info "─────────────────────────────────────────"
+
+    # Auto-detect GPU if needed
+    if [[ "$GPU_VENDOR" == "auto" ]]; then
+        GPU_VENDOR=$(detect_gpu_vendor)
+        log_info "Detected GPU vendor: $GPU_VENDOR"
+    fi
+
+    # Resolve accelerator
+    ACCELERATOR=$(resolve_accelerator "$GPU_VENDOR" "$ACCELERATOR")
+    log_info "Using accelerator: $ACCELERATOR"
+
+    # Create output directory
+    mkdir -p "$OUTPUT_DIR"
+    log_info "Output directory: $OUTPUT_DIR"
+
+    # Generate files
+    if [[ "$OUTPUT_FORMAT" == "env" || "$OUTPUT_FORMAT" == "both" ]]; then
+        generate_env_file "$ACCELERATOR" "$GPU_VENDOR" "$OUTPUT_DIR/ai-stack.env"
+    fi
+
+    if [[ "$OUTPUT_FORMAT" == "compose" || "$OUTPUT_FORMAT" == "both" ]]; then
+        generate_compose_file "$ACCELERATOR" "$GPU_VENDOR" "$OUTPUT_DIR/docker-compose.yml"
+    fi
+
+    generate_readme "$ACCELERATOR" "$GPU_VENDOR" "$OUTPUT_DIR/README.md"
+
+    log_info "─────────────────────────────────────────"
+    log_success "Container configuration exported to: $OUTPUT_DIR"
+    log_info ""
+    log_info "Next steps:"
+    log_info "  1. Review and customize $OUTPUT_DIR/ai-stack.env"
+    log_info "  2. Place model files in $MODELS_DIR"
+    log_info "  3. cd $OUTPUT_DIR && docker-compose up -d"
+}
+
+main "$@"
