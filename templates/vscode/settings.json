@@ -211,7 +211,7 @@
     "OPENAI_API_BASE": "http://localhost:8080/v1",
     "OPENAI_API_KEY": "local-llama-cpp",
     "ANTHROPIC_BASE_URL": "http://localhost:8092",
-    "RALPH_WIGGUM_URL": "http://localhost:8098",
+    "RALPH_WIGGUM_URL": "http://localhost:8004",
     "AISTACK_TELEMETRY_ENABLED": "true"
   },
 

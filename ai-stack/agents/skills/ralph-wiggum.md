@@ -114,35 +114,40 @@ Comprehensive tracking of loop performance:
 
 ### Basic Usage
 
-Submit a task to the Ralph loop:
+Submit a task to the Ralph loop directly, or prefer the harness endpoint for agent selection:
 
 ```bash
-# Using the MCP API
-curl -X POST http://localhost:8098/tasks \
+# Direct Ralph API
+curl -X POST http://localhost:8004/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Implement user authentication with JWT tokens",
     "backend": "aider",
     "max_iterations": 0
   }'
+
+# Harness-layer orchestration entry point
+curl -X POST http://localhost:8003/workflow/orchestrate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Implement user authentication with JWT tokens","backend":"aider"}'
 ```
 
 ### Check Task Status
 
 ```bash
-curl http://localhost:8098/tasks/{task_id}
+curl http://localhost:8004/tasks/{task_id}
 ```
 
 ### Stop a Running Task
 
 ```bash
-curl -X POST http://localhost:8098/tasks/{task_id}/stop
+curl -X POST http://localhost:8004/tasks/{task_id}/stop
 ```
 
 ### Approve a Task
 
 ```bash
-curl -X POST http://localhost:8098/tasks/{task_id}/approve \
+curl -X POST http://localhost:8004/tasks/{task_id}/approve \
   -H "Content-Type: application/json" \
   -d '{"approved": true}'
 ```
@@ -229,7 +234,7 @@ Check task status regularly:
 
 ```bash
 # Get statistics
-curl http://localhost:8098/stats
+curl http://localhost:8004/stats
 
 # View telemetry
 tail -f ~/.local/share/nixos-ai-stack/telemetry/ralph-events.jsonl
@@ -264,10 +269,10 @@ Check if completion criteria are too strict:
 
 ```bash
 # View task details
-curl http://localhost:8098/tasks/{task_id}
+curl http://localhost:8004/tasks/{task_id}
 
 # Stop if needed
-curl -X POST http://localhost:8098/tasks/{task_id}/stop
+curl -X POST http://localhost:8004/tasks/{task_id}/stop
 ```
 
 ### Agent Backend Not Responding
@@ -276,7 +281,7 @@ Check backend health:
 
 ```bash
 # Ralph health includes backend status
-curl http://localhost:8098/health
+curl http://localhost:8004/health
 ```
 
 ### Resource Limits Exceeded
