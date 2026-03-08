@@ -1,5 +1,6 @@
 """Metrics collection service."""
 import logging
+import os
 import platform
 import re
 import shutil
@@ -22,6 +23,8 @@ class MetricsCollector:
         self.max_history = 1000
         self._gpu_name_cache: Dict[str, str] = {}
         self._lspci_bin: str | None = self._resolve_lspci_bin()
+        self._hostname_alias = os.getenv("DASHBOARD_HOSTNAME_ALIAS", "local-node")
+        self._expose_hostname = os.getenv("DASHBOARD_EXPOSE_HOSTNAME", "false").lower() == "true"
 
     async def get_current_metrics(self) -> Dict[str, Any]:
         return {
@@ -66,7 +69,7 @@ class MetricsCollector:
             "security": self._get_security_signals(),
             "uptime": self._get_uptime(),
             "load_average": self._get_load_average(),
-            "hostname": platform.node(),
+            "hostname": self._get_hostname(),
         }
 
     async def get_metric_history(self, metric: str, limit: int) -> List[Any]:
@@ -111,6 +114,11 @@ class MetricsCollector:
             "vram_used_mb": None,
             "vram_total_mb": None,
         }
+
+    def _get_hostname(self) -> str:
+        if self._expose_hostname:
+            return platform.node() or self._hostname_alias
+        return self._hostname_alias
 
     def _get_gpu_info_from_sysfs(self) -> Dict[str, Any] | None:
         for busy_path in Path("/sys/class/drm").glob("card*/device/gpu_busy_percent"):
