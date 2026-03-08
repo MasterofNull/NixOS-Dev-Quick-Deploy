@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# AI Stack Full Integration
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This filename is retained for link compatibility. The active system is the host-local declarative AI stack, not the older K3s-first runtime this page originally described.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`

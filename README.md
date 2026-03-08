@@ -6,13 +6,15 @@
 
 ## Current Runtime Model
 
-- Canonical deployment path: `./scripts/deploy/deploy-clean.sh`
+- Canonical deployment path: `./nixos-quick-deploy.sh`
 - Authoritative dashboard/operator runtime: `command-center-dashboard-api.service`
 - Operator URL: `http://127.0.0.1:8889/`
 - Local dashboard development only: `cd dashboard && ./start-dashboard.sh`
 
 Notes:
 - The command center now serves both the operator UI and API from one runtime.
+- The AI stack runtime is declarative NixOS + systemd on host-local ports.
+- `scripts/deploy/deploy-clean.sh` is a compatibility shim that delegates to `./nixos-quick-deploy.sh`.
 - Legacy static dashboard surfaces such as `dashboard.html`, `dashboard/control-center.html`, and imperative helpers like `serve-dashboard.sh` are retained for historical/debug context only.
 - Dashboard mock data is disabled in normal production use and is available only in explicit demo mode.
 - Dashboard hostname exposure is redacted by default in the declarative runtime.
@@ -26,19 +28,28 @@ See:
 
 ## Canonical Deployment Path (Clean)
 
-Use the clean flake-first entrypoint:
+Use the primary entrypoint:
+
+```bash
+./nixos-quick-deploy.sh
+```
+
+Common variants:
+
+```bash
+./nixos-quick-deploy.sh --flake-first-profile ai-dev
+./nixos-quick-deploy.sh --dry-run --skip-switch
+./nixos-quick-deploy.sh --resume
+```
+
+Compatibility note:
 
 ```bash
 ./scripts/deploy/deploy-clean.sh
 ```
 
-For update/upgrade runs:
+This wrapper now prints a deprecation notice and execs `./nixos-quick-deploy.sh`.
 
-```bash
-./scripts/deploy/deploy-clean.sh --update-lock
-```
-
-This path is the canonical workflow. Legacy phase/template flow remains migration debt.
 See:
 - `docs/CLEAN-SETUP.md`
 - `docs/REPOSITORY-SCOPE-CONTRACT.md`
@@ -104,7 +115,7 @@ chmod +x nixos-quick-deploy.sh
 ./nixos-quick-deploy.sh
 ```
 
-**That's it!** Answer a few simple questions (including choosing between binary caches, remote builders/private Cachix, or local source builds), wait 20-120 minutes depending on your choice, reboot, and you're done.
+**That's it!** Answer the bootstrap prompts, choose your build acceleration mode, wait for the declarative rebuilds to complete, reboot, and verify the system with the built-in health checks.
 
 ## 🧪 Quick-Deploy Script Modes
 
@@ -127,31 +138,35 @@ Optional controls:
 ./nixos-quick-deploy.sh --legacy-phases
 ```
 
-Current state: use `scripts/deploy/deploy-clean.sh` for standard operations.
-Legacy phase/template mode is deprecated with planned removal on **July 1, 2026**.
+Current state: use `./nixos-quick-deploy.sh` for standard operations.
+`scripts/deploy/deploy-clean.sh` remains only as a compatibility wrapper.
 
-## ✨ NEW in v6.0.0: Fully Integrated AI Stack
+## Declarative AI Stack
 
-The AI stack is now a **first-class, public component** of this repository!
+The AI stack is a first-class declarative part of this repository and runs as host-local systemd services.
 
 ### Quick AI Stack Deployment
 
 ```bash
-# Deploy NixOS + complete AI development environment (single path)
+./nixos-quick-deploy.sh
 ```
 
 This single command gives you:
 
 - ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
-- ✅ **llama.cpp vLLM** - Local model inference (Qwen, DeepSeek, Phi, CodeLlama)
-- ✅ **23 Agent Skills** - Specialized AI agents for code, deployment, testing, design
-- ✅ **MCP Servers** - Model Context Protocol servers for AIDB, NixOS, GitHub
-- ✅ **Embeddings Service** - Dedicated sentence-transformers API for fast RAG
+- ✅ **llama.cpp Inference** - Local model inference on `127.0.0.1:8080`
+- ✅ **Embeddings Service** - Dedicated llama.cpp embedding server on `127.0.0.1:8081`
 - ✅ **Hybrid Coordinator** - Local/remote routing with telemetry-driven pattern extraction
-- ✅ **Nginx TLS Gateway** - HTTPS termination on `https://localhost:8443`
+- ✅ **Ralph Wiggum** - Loop orchestrator on `127.0.0.1:8004`
+- ✅ **AI Switchboard** - Routing proxy on `127.0.0.1:8085`
+- ✅ **Aider Wrapper** - Helper service on `127.0.0.1:8090`
+- ✅ **Command Center** - Unified operator UI/API on `127.0.0.1:8889`
 - ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
 
-See [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for complete documentation.
+See:
+- `docs/operations/reference/QUICK-REFERENCE.md`
+- `dashboard/README.md`
+- `config/service-endpoints.sh`
 
 ---
 
@@ -166,28 +181,28 @@ See [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for
 - **Performance Kernel Track** - Prefers the tuned `linuxPackages_6_18` build, then falls back to TKG, XanMod, Liquorix, Zen, and finally `linuxPackages_latest`
 - **225+ Packages** - Development tools, CLI utilities, and applications
 - **Nix Flakes** - Enabled and configured for reproducible builds
-- **K3s + containerd** - Kubernetes runtime for the integrated AI stack
+- **Declarative AI Stack** - Host-mode systemd services with typed ports and environment wiring
 - **Flatpak** - Sandboxed desktop applications with profile-aware provisioning and incremental updates
 - **Home Manager** - Declarative user environment configuration
 - **ZSH + Powerlevel10k** - Beautiful, fast terminal with auto-configuration
 
 ### Integrated AI Development Stack
 
-**Fully Integrated Components (v6.0.0):**
+**Current integrated components:**
 
 <br>
 
 | Component              | Location                        |   Status   | Purpose                                                                |
 | :--------------------- | :------------------------------ | :--------: | :--------------------------------------------------------------------- |
 | **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    | ✅ Active | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
-| **23 Agent Skills**    | `ai-stack/agents/skills/`       | ✅ Active | nixos-deployment, webapp-testing, code-review, canvas-design, and more |
-| **Embeddings Service** | `ai-stack/mcp-servers/`         | ✅ Active | Sentence-transformers API for embeddings                               |
+| **Embeddings Service** | `ai-stack/mcp-servers/`         | ✅ Active | llama.cpp embedding service                                             |
 | **Hybrid Coordinator** | `ai-stack/mcp-servers/`         | ✅ Active | Local/remote routing + telemetry-driven pattern extraction              |
+| **Ralph Wiggum**       | `ai-stack/mcp-servers/`         | ✅ Active | Loop orchestration and agent-chain execution                            |
+| **Aider Wrapper**      | `ai-stack/mcp-servers/`         | ✅ Active | Code-assistant execution wrapper                                        |
 | **NixOS Docs MCP**     | `ai-stack/mcp-servers/`         | ✅ Active | NixOS/Nix documentation search API                                     |
-| **MCP Servers**        | `ai-stack/mcp-servers/`         | ✅ Active | Model Context Protocol servers for AIDB, NixOS, GitHub                 |
 | **Model Registry**     | `ai-stack/models/registry.json` | ✅ Active | Model catalog with metadata, VRAM, speed, quality scores               |
 | **Vector Database**    | PostgreSQL + Qdrant             | ✅ Active | Semantic search and document embeddings                                |
-| **Redis Cache**        | Redis + Redis Insight           | ✅ Active | High-performance caching layer                                         |
+| **Redis Cache**        | Redis                           | ✅ Active | High-performance caching layer                                         |
 
 **AI Development Tools:**
 
@@ -201,10 +216,13 @@ See [`docs/AI-STACK-FULL-INTEGRATION.md`](docs/AI-STACK-FULL-INTEGRATION.md) for
 | **Aider**       | CLI code assistant               | AI pair programming from terminal                            |
 | **LM Studio**   | Flatpak app                      | Desktop LLM manager                                          |
 
-**Quick Start:**
+**Core operator endpoints:**
 
 ```bash
-python3 ai-stack/tests/test_hospital_e2e.py
+curl http://127.0.0.1:8889/api/health
+curl http://127.0.0.1:8889/api/health/aggregate | jq .
+bash scripts/health/system-health-check.sh --detailed
+bash scripts/ai/ai-stack-health.sh
 ```
 
 ### Command Center
@@ -226,9 +244,17 @@ cd dashboard
 
 ### AI Stack Security Considerations
 
-- **TLS by default**: External APIs are exposed via nginx at `https://localhost:8443` (self-signed cert).
-- **Local-only tools**: Open WebUI, MindsDB, and metrics UIs bind to `127.0.0.1`.
+- **Host-local by default**: Core services bind to `127.0.0.1` ports defined in `config/service-endpoints.sh`.
+- **Authenticated hybrid endpoints**: Some hybrid-coordinator routes require `X-API-Key` from `/run/secrets/hybrid_coordinator_api_key`.
 - **Privileged self-heal**: The health monitor runs only under the `self-heal` profile (opt-in).
+
+### Security Features
+
+- **Secrets out of git and code paths**: Runtime credentials are expected under `/run/secrets/*` and should be managed through the repo secret-management tooling rather than hardcoded files.
+- **Per-service auth checks**: Protected AI routes reject unauthenticated access and can be revalidated with `scripts/testing/check-api-auth-hardening.sh`.
+- **Host-local service exposure**: The validated operator path keeps AI APIs on loopback addresses unless you deliberately reconfigure exposure.
+- **Declarative port ownership**: Ports and URLs should come from Nix options and injected environment, which reduces drift and accidental public bind regressions.
+- **Operational verification**: `aq-qa 0 --json`, `aq-qa 1 --json`, and `bash scripts/health/system-health-check.sh --detailed` are the current top-level health and security smoke checks.
 
 ### Pre-Installed Development Tools
 
@@ -278,14 +304,21 @@ cd dashboard
 - `statix` - Nix linter
 - `nix-index` - File search in nixpkgs
 
-**Container Tools:**
-
-
 **AI Services (Systemd):**
 
-- Qdrant (vector database, enabled by default)
-- Hugging Face TGI (LLM inference server, manual enable)
-- Jupyter Lab (web-based notebooks, user service)
+- `ai-aidb.service`
+- `ai-hybrid-coordinator.service`
+- `ai-ralph-wiggum.service`
+- `ai-aider-wrapper.service`
+- `ai-switchboard.service`
+- `llama-cpp.service`
+- `llama-cpp-embed.service`
+- `qdrant.service`
+- `postgresql.service`
+- `redis-mcp.service`
+- `command-center-dashboard-api.service`
+- `prometheus.service`
+- `prometheus-node-exporter.service`
 
 ### Flatpak Applications
 
@@ -329,7 +362,7 @@ If you choose option 3, be ready to paste builder strings (e.g., `ssh://nix@buil
 
 The script automatically:
 
-- ✅ Updates NixOS system config (COSMIC, K3s, Flakes)
+- ✅ Updates NixOS system config (COSMIC, declarative AI stack, flakes)
 - ✅ Runs `sudo nixos-rebuild switch`
 - ✅ Creates home-manager configuration (~100 packages)
 - ✅ Runs `home-manager switch`
@@ -361,34 +394,28 @@ When you open a terminal, **Powerlevel10k wizard runs automatically**:
 
 ### Step 6: Verify Everything Works
 
-**Run the automated health check:**
+Run the current declarative health checks:
 
 ```bash
 cd ~/NixOS-Dev-Quick-Deploy
-./system-health-check.sh
+bash scripts/health/system-health-check.sh --detailed
+bash scripts/ai/ai-stack-health.sh
+aq-qa 0 --json
+aq-qa 1 --json
 ```
 
-The quick deploy runs this automatically after Phase 8, but you can rerun it anytime to confirm your setup.
+The deploy path and QA tools can be rerun any time to confirm the current host-mode runtime.
 
 This will verify:
 
-- ✅ Nix ecosystem (home-manager, flakes)
-- ✅ AI tools (claude-wrapper, gpt-codex-wrapper, codex-wrapper, openai-wrapper, gooseai-wrapper, ollama, aider)
-- ✅ **Python AI/ML packages (60+ packages)**:
-  - Deep Learning: PyTorch, TensorFlow
-  - LLM Frameworks: LangChain, LlamaIndex, OpenAI, Anthropic
-  - Vector DBs: ChromaDB, Qdrant client, FAISS, Sentence Transformers
-  - Data Science: Pandas, Polars, Dask, Jupyter Lab
-  - Code Quality: Black, Ruff, Mypy
-- ✅ Editors (VSCodium, Cursor, Neovim)
-- ✅ Shell configuration (aliases, functions)
-- ✅ Flatpak applications (including DBeaver)
-- ✅ **AI Systemd Services** (Qdrant, Hugging Face TGI, Jupyter Lab, Gitea)
-- ✅ Environment variables & PATH
+- ✅ Declarative systemd units and operator surfaces
+- ✅ Dashboard API and aggregate health
+- ✅ AIDB, hybrid coordinator, Ralph, switchboard, llama.cpp, embeddings
+- ✅ Postgres, Redis, and Qdrant
+- ✅ Prometheus readiness and observability surfaces
+- ✅ Runtime/package/confinement loops via `aq-qa`
 
-### K3s Runtime (Single Path)
-
-The AI stack runs on K3s + containerd. Verify the runtime is ready:
+### Runtime Verification
 
 **Verify manually:**
 
@@ -409,7 +436,6 @@ which gpt-codex-wrapper
 which codex-wrapper
 which openai-wrapper
 which gooseai-wrapper
-ollama --version
 aider --version
 
 # Check editors
@@ -417,28 +443,29 @@ codium --version
 code-cursor --help
 nvim --version
 
-# Enter development environment
-aidb-dev
+# Check AI stack units
+systemctl --no-pager --type=service | rg 'ai-|llama-cpp|qdrant|redis-mcp|postgresql|command-center-dashboard'
 
-# Check Flatpak apps
-flatpak list --user
+# Check key endpoints
+curl http://127.0.0.1:8889/api/health
+curl http://127.0.0.1:8002/health | jq .
+curl http://127.0.0.1:8003/health | jq .
 ```
 
 **If any checks fail:**
 
 ```bash
-# Attempt automatic fixes
-./system-health-check.sh --fix
+# Declarative health
+bash scripts/health/system-health-check.sh --detailed
 
-# Reload shell environment
-source ~/.zshrc
+# AI stack-focused health
+bash scripts/ai/ai-stack-health.sh
 
-# Or restart shell
-exec zsh
-
-# Re-apply home-manager config
-cd ~/.dotfiles/home-manager
-home-manager switch --flake .#$(whoami)
+# Runtime probes
+aq-qa 0 --json
+aq-qa 1 --json
+aq-qa 2 --json
+aq-qa 3 --json
 ```
 
 **All done!** Everything is installed and ready to use.
@@ -452,9 +479,10 @@ home-manager switch --flake .#$(whoami)
 **Comprehensive health check for all packages and services:**
 
 ```bash
-./system-health-check.sh           # Run full system health check
-./system-health-check.sh --detailed  # Show detailed output with versions
-./system-health-check.sh --fix     # Attempt automatic fixes
+bash scripts/health/system-health-check.sh --detailed
+bash scripts/ai/ai-stack-health.sh
+aq-qa 0 --json
+aq-qa 1 --json
 ```
 
 **Checks include:**
@@ -466,7 +494,7 @@ home-manager switch --flake .#$(whoami)
 - Editors and IDEs (VSCodium, Neovim, Cursor)
 - Shell configuration (ZSH, aliases, functions)
 - Flatpak applications (Firefox, Obsidian, DBeaver, etc.)
-- **AI systemd services** (Qdrant, Hugging Face TGI, Jupyter Lab)
+- **AI systemd services** (AIDB, hybrid, Ralph, switchboard, llama.cpp, Qdrant, Redis, Postgres)
 - Environment variables and PATH configuration
 
 ### System Management
@@ -500,9 +528,14 @@ aidb-update      # Update flake dependencies
 source ~/.zshrc  # Or: exec zsh
 ```
 
-### AI Stack Management (K3s)
+### AI Stack Management
 
 ```bash
+systemctl status ai-stack.target
+systemctl status ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service
+systemctl restart ai-hybrid-coordinator.service
+systemctl restart command-center-dashboard-api.service
+python3 -m pytest tests/integration/test_mcp_contracts.py -v
 ```
 
 ### CPU/iGPU-first model defaults
@@ -519,7 +552,7 @@ Swap models at any time:
 ./scripts/swap-embeddings-model.sh BAAI/bge-small-en-v1.5
 ```
 
-All other AI orchestration (vLLM endpoints, shared volumes, etc.) is managed by the ai-optimizer repository layered on top of this stack.
+All orchestration described in this README refers to the declarative host-local runtime in this repository.
 
 **CLI Tools:**
 
@@ -537,9 +570,14 @@ jupyter-lab
 obsidian-ai-bootstrap
 ```
 
-### Container Management
+### AI Stack QA
 
 ```bash
+aq-qa 0 --json
+aq-qa 1 --json
+aq-qa 2 --json
+aq-qa 3 --json
+bash scripts/testing/test-real-world-workflows.sh
 ```
 
 ### VSCodium / AI CLI wrappers
@@ -641,21 +679,22 @@ Overrides:
 
 ```
 NixOS-Dev-Quick-Deploy/
-├── nixos-quick-deploy.sh          # Main deployment script (run this)
+├── nixos-quick-deploy.sh              # Main deployment entrypoint
+├── ai-stack/                          # MCP servers, agents, models, monitoring, data
+├── config/                            # Ports, endpoints, policy, and settings
+├── dashboard/                         # Command center dashboard code and local dev helpers
+├── docs/                              # Active operator/development documentation
+├── nix/                               # NixOS and Home Manager modules/hosts
 ├── scripts/
-│   ├── health/system-health-check.sh  # System health verification and repair tool
-│   └── deploy/p10k-setup-wizard.sh    # Powerlevel10k configuration wizard
-├── templates/
-│   ├── configuration.nix          # NixOS system config template
-│   ├── home.nix                   # Home-manager config template
-│   └── flake.nix                  # Development flake template
-├── docs/
-│   ├── AIDB_SETUP.md              # AIDB setup and configuration guide
-│   ├── AGENTS.md                  # AI agent workflow documentation
-│   ├── CODE_REVIEW.md             # Code review and quality documentation
-│   └── SAFE_IMPROVEMENTS.md       # Safe improvement guidelines
-├── README.md                      # This file
-└── LICENSE                        # MIT License
+│   ├── ai/                            # AQD, QA, hints, and AI wrappers
+│   ├── automation/                    # Acceptance/regression/PRSI orchestration
+│   ├── deploy/                        # Deployment helpers and compatibility wrappers
+│   ├── governance/                    # Repo and policy enforcement
+│   ├── health/system-health-check.sh  # Declarative stack health check
+│   └── testing/                       # Smoke, workflow, and regression tests
+├── templates/                         # Bootstrap templates and compatibility assets
+├── README.md                          # This file
+└── LICENSE                            # MIT License
 ```
 
 ---
@@ -687,7 +726,7 @@ NixOS-Dev-Quick-Deploy/
 ```
 ✓ Backing up /etc/nixos/configuration.nix
 ✓ Adding COSMIC desktop configuration
-✓ Adding K3s + containerd runtime support
+✓ Adding declarative AI stack services and typed ports
 ✓ Enabling Nix flakes
 ✓ Allowing unfree packages
 Running: sudo nixos-rebuild switch
@@ -721,7 +760,7 @@ Running: home-manager switch
 ✓ All Flatpak applications installed!
 ```
 
-Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/flatpak` before touching anything, keeps existing repositories intact, and only installs packages that are missing from your selected profile or the project’s core Flatpak set. To force a clean slate, pass `--flatpak-reinstall`; otherwise the run simply layers the new defaults onto your current desktop. Need to re-seed the Hugging Face caches used by the DeepSeek and Scout TGI services? Add `--force-hf-download` so Phase 5 wipes both caches and pulls fresh weights before the switch.
+Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/flatpak` before touching anything, keeps existing repositories intact, and only installs packages that are missing from your selected profile or the project’s core Flatpak set. To force a clean slate, pass `--flatpak-reinstall`; otherwise the run simply layers the new defaults onto your current desktop. If you need to force model cache re-downloads during deploy, use `--force-hf-download`.
 
 Need Qalculate? It now ships from `pkgs.qalculate-qt` in the declarative package set, so the Flatpak profile stays lean even when Flathub temporarily removes the app. Goose CLI/Desktop are likewise provided by `pkgs.goose-cli`, eliminating the brittle `.deb` download in Phase 6.
 
@@ -841,24 +880,6 @@ Next steps:
    cat ~/.config/VSCodium/User/settings.json | grep -A5 "claude-code"
    ```
 
-### ImagePullBackOff in ai-stack pods
-
-
-**Fix:**
-```bash
-ONLY_IMAGES=ai-stack-aidb CONTAINER_CLI=skopeo ./scripts/deploy/publish-local-registry.sh
-```
-
-### K3s API not reachable from pods (connection refused)
-
-
-**Fix:**
-```bash
-sudo iptables -I INPUT -p tcp -s 10.42.0.0/16 --dport 6443 -j ACCEPT
-sudo iptables -I INPUT -p tcp -s 10.43.0.0/16 --dport 6443 -j ACCEPT
-```
-Then persist via NixOS rebuild (see `templates/configuration.nix` firewall allowlist notes).
-
 ### Command center dashboard unavailable
 
 **Symptom:** `http://127.0.0.1:8889/` or `/api/health` is unavailable.
@@ -868,15 +889,6 @@ Then persist via NixOS rebuild (see `templates/configuration.nix` firewall allow
 systemctl status command-center-dashboard-api.service
 systemctl restart command-center-dashboard-api.service
 bash scripts/health/system-health-check.sh --detailed
-```
-
-### Health check fails on optional Python packages
-
-**Symptom:** Health check reports missing LlamaIndex/ChromaDB/Gradio.
-
-**Fix:**
-```bash
-pip install -r ~/.config/ai-agents/requirements.txt
 ```
 
 ### Nix channel update fails with max-jobs=0
@@ -998,22 +1010,17 @@ You can still keep long-term configuration in `templates/home.nix → programs.v
 **Solution:**
 
 ```bash
-# Run health check with automatic fixes
-./system-health-check.sh --fix
-
-# Restart shell to load new PATH
+# Reload shell environment
 exec zsh
 
 # Or manually source session vars
 source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 
-# Verify
+# Verify common commands
 which home-manager
 which claude-wrapper
-which gpt-codex-wrapper
 which codex-wrapper
-which openai-wrapper
-which gooseai-wrapper
+which aider
 ```
 
 ### Boot Fails With "Root Account Is Locked" / Emergency Mode Loop
@@ -1073,7 +1080,7 @@ Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` 
 [DEPEND] Dependency failed for Local File Systems
 ```
 
-**Cause:** Older container deployments could leave stale storage configuration behind. The K3s path uses containerd, so legacy `/var/lib/containers` mounts should not be referenced by current runs. If you still see container storage mount failures, it usually means a legacy unit is still enabled.
+**Cause:** Older container-era deployments could leave stale storage configuration behind. The current host-mode runtime should not reference legacy `/var/lib/containers` mounts. If you still see container storage mount failures, it usually means an old unit or mount is still enabled.
 
 **Fix:** Re-run Quick Deploy with `--reset-state`, then rebuild:
 ```bash
@@ -1085,14 +1092,6 @@ sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
 If the error persists, check for lingering units:
 ```bash
 systemctl list-units | rg -i "containers"
-```
-
-### K3s Runtime Issues
-
-**Symptom:** Pods stuck in `ImagePullBackOff` or `CrashLoopBackOff`.
-
-**Fix:**
-```bash
 ```
 
 ### COSMIC Desktop Not Appearing
@@ -1166,7 +1165,7 @@ Phase 6 now installs the upstream OpenSkills automation toolkit directly from `h
 #   (1) CLI flag:
 ./nixos-quick-deploy.sh --flatpak-reinstall
 
-# Force a clean Hugging Face cache for both TGI services
+# Force a clean model cache download during deploy
 ./nixos-quick-deploy.sh --force-hf-download
 #   (2) Or environment variable:
 RESET_FLATPAK_STATE_BEFORE_SWITCH=true ./nixos-quick-deploy.sh
@@ -1403,15 +1402,17 @@ nfu    # nix flake update
 lg     # lazygit
 ```
 
-### 2. Quick Container AI Stack
+### 2. Quick AI Stack Checks
 
 ```bash
 # Check status
+bash scripts/ai/ai-stack-health.sh
 
 # Access Open WebUI at http://localhost:3001
 # Access llama.cpp at http://localhost:8080
-# Access Qdrant at https://localhost:8443/qdrant (use -k for self-signed)
-# Access AIDB MCP at https://localhost:8443/aidb (use -k for self-signed)
+# Access AIDB at http://localhost:8002
+# Access Hybrid at http://localhost:8003
+# Access Dashboard at http://localhost:8889
 ```
 
 ### 3. VSCodium vs Cursor - When to Use Each
@@ -1454,13 +1455,18 @@ flatpak update
 - `./nixos-quick-deploy.sh --resume --phase 5` &mdash; rerun the declarative deployment phase after editing templates.
 - `./nixos-quick-deploy.sh --rollback` &mdash; rollback to the last recorded generation (uses `rollback-info.json`).
 - `./nixos-quick-deploy.sh --test-rollback` &mdash; run a rollback + restore validation cycle after deployment.
-- `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer now pauses container services automatically when it runs this step.
+- `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer coordinates managed services when it runs this step.
 - `hms` (`home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)`) &mdash; apply user environment changes.
 - `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
 
 ### AI Runtime Orchestration
 
-- `python3 ai-stack/tests/test_hospital_e2e.py` &mdash; run the K3s health suite.
+- `bash scripts/ai/ai-stack-health.sh` &mdash; declarative AI stack health check
+- `aq-qa 0 --json` &mdash; service and port smoke
+- `aq-qa 1 --json` &mdash; infra and API smoke
+- `aq-qa 2 --json` &mdash; runtime/package/confinement loop
+- `aq-qa 3 --json` &mdash; AppArmor/confinement loop
+- `python3 -m pytest tests/integration/test_mcp_contracts.py -v` &mdash; hybrid contract suite
 
 ### Diagnostics & Recovery
 
@@ -1469,7 +1475,7 @@ flatpak update
   - User: `home-manager --rollback` (or use the generation path stored in `~/.cache/nixos-quick-deploy/rollback-info.json`)
   - Boot fallback: select a previous generation from the boot menu
 
-> ℹ️ **Automation note:** During Phase&nbsp;5 the deployer pauses managed services (systemd units and user-level container services), cleans stale container storage if needed, applies `nixos-rebuild switch`, and then restores everything it stopped. You no longer need to stop the AI stack manually before a rebuild.
+> ℹ️ **Automation note:** During Phase&nbsp;5 the deployer coordinates managed services, applies `nixos-rebuild switch`, and restores the runtime state it changed. You do not need to stop the AI stack manually before a normal rebuild.
 
 ---
 
@@ -1646,15 +1652,14 @@ When reporting problems, please include:
 
 ## Known Limitations
 
-- **AI Stack requires K3s**: The integrated AI stack runs on Kubernetes (K3s). Legacy Podman-based deployments are deprecated.
-- **Hardware requirements**: The full AI stack (with local LLM inference) needs at least 16 GB RAM and 50 GB free disk. GPU inference requires an NVIDIA GPU with 4+ GB VRAM.
+- **Host-local runtime only**: The validated operator path is declarative NixOS + systemd on host-local ports. Older K3s/container-era docs still exist in archive and stale docs but are not the authoritative runtime.
+- **Hardware requirements**: The full AI stack (with local LLM inference) still benefits from at least 16 GB RAM and 50 GB free disk. Larger local models benefit from more RAM/VRAM.
 - **Continuous learning is partial**: The Hybrid Coordinator collects interaction telemetry and extracts patterns, but automated model retraining and behavioral adaptation from feedback are not yet implemented.
-- **Agent skills are pre-packaged**: The 23 agent skills are static skill definitions (prompt templates + scripts); they do not autonomously learn or update themselves.
+- **Agent skills are pre-packaged**: Skills are static definitions plus local scripts; they do not autonomously learn or update themselves.
 - **NixOS only**: This project targets NixOS exclusively. It will not work on other Linux distributions, macOS, or WSL.
 - **Build times**: First deployment with source builds (no binary cache) can take 60-120 minutes depending on hardware.
 - **Python package overrides**: Some Python packages require Nix build overrides to compile. Updating nixpkgs may break overrides until they are re-adjusted.
-- **Single-node K3s**: The AI stack runs on a single-node K3s cluster. Multi-node distributed deployment is not supported.
-- **No automatic TLS renewal in dev mode**: Self-signed certificates are generated for local HTTPS but are not automatically renewed. See `scripts/security/renew-tls-certificate.sh` for manual renewal.
+- **Auth-sensitive endpoints**: Some hybrid/AIDB routes require local secrets under `/run/secrets/*` and will return `401` without the expected API key.
 
 ---
 

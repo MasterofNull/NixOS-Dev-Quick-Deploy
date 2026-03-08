@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# Vibe Coding System Architecture
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This filename remains for compatibility only. The active system architecture is documented in the current overview and runbook, not the retired K3s-first material.
 
+Use these current docs instead:
+- `README.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`

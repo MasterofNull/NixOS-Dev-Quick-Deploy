@@ -46,6 +46,24 @@ scripts/testing/test-prompt-injection-resilience.sh
 Detailed credential handling procedures:
 - `docs/operations/procedures/CREDENTIAL-MANAGEMENT-PROCEDURES.md`
 
+## Security Features
+
+Current operator-facing security controls:
+
+- Runtime secrets are sourced from `/run/secrets/*`.
+- Protected hybrid endpoints require API-key headers.
+- The validated runtime path keeps core services on host-local addresses.
+- Auth smoke should be rerun after secret rotation and service restarts.
+
+Recommended quick verification:
+
+```bash
+scripts/testing/check-api-auth-hardening.sh
+test -r /run/secrets/hybrid_coordinator_api_key
+KEY="$(tr -d '\n' < /run/secrets/hybrid_coordinator_api_key)"
+curl -sf -H "X-API-Key: ${KEY}" http://127.0.0.1:8003/stats | jq .
+```
+
 ## Backup and Restore
 
 ```bash

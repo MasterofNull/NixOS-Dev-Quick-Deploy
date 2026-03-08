@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# Hybrid AI System Guide
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This historical guide no longer matches the active deployment shape.
 
+Use these current docs instead:
+- `README.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`

@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# System Improvements V5
 
-This document has been retired for the K3s-only runtime.
+Status: Historical
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This page is an older milestone reference and not a current operator guide.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`

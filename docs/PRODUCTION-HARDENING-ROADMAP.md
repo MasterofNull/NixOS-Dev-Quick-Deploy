@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# Production Hardening Roadmap
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This page is kept for compatibility with older references. The current hardening and operator workflow lives in the active runbooks, not the retired K3s-only plan.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`

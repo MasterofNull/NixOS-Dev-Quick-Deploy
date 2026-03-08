@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# System Ready For AIDB
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This page is retained to avoid broken references. AIDB is part of the current local AI stack, but the old K3s-only readiness guidance is obsolete.
 
+Use these current docs instead:
+- `README.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`

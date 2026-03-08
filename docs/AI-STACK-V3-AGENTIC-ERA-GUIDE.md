@@ -1,4 +1,10 @@
-# AI Stack V3 Guide (K3s-only)
+# AI Stack V3 Agentic Era Guide
 
-This guide now assumes Kubernetes deployments. Use `DEPLOYMENT.md` for runbook steps.
+Status: Redirect
 
+This guide is retained for compatibility with historical references, but it is not the current operator documentation set.
+
+Use these current docs instead:
+- `README.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`

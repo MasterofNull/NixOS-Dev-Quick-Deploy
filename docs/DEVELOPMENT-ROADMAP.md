@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# Development Roadmap
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This historical roadmap filename is retained to preserve existing links. It no longer describes the active runtime or operator workflow.
 
+Use these current docs instead:
+- `README.md`
+- `docs/development/COMPLETION-ROADMAP.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`

@@ -1,8 +1,10 @@
-# Local AI Stack Starter (K3s-only)
+# Local AI Starter
 
-The local AI stack is now deployed through **K3s + containerd**. Compose-based scaffolding is retired.
+Status: Redirect
 
-Start here:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This page is kept because the README still points here, but the previous K3s/container guidance is obsolete.
 
+Start here instead:
+- `README.md`
+- `docs/agent-guides/01-QUICK-START.md`
+- `docs/agent-guides/20-LOCAL-LLM-USAGE.md`

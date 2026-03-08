@@ -1,8 +1,10 @@
-# K3s-only Deployment
+# Hand-In-Glove Integration
 
-This document has been retired for the K3s-only runtime.
+Status: Redirect
 
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+This historical filename now redirects to the current operator documentation for the local declarative AI stack.
 
+Use these current docs instead:
+- `README.md`
+- `docs/operations/OPERATOR-RUNBOOK.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
