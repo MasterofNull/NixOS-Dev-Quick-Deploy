@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 SDK_DIR="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
 OUT_DIR="${1:-${XDG_STATE_HOME:-$HOME/.local/state}/nixos-ai-stack/harness-sdk-provenance}"
 mkdir -p "$OUT_DIR"
