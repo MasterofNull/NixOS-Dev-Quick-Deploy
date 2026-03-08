@@ -210,10 +210,11 @@ async def broadcast_metrics():
 if __name__ == "__main__":
     import uvicorn
     bind_address = os.getenv("DASHBOARD_API_BIND_ADDRESS", "127.0.0.1")
+    port = int(os.getenv("DASHBOARD_API_PORT", "8889"))
     uvicorn.run(
         "main:app",
         host=bind_address,
-        port=8889,
+        port=port,
         reload=True,
         log_level="info"
     )
