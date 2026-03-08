@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 SDK_DIR="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
 PYPROJECT="${SDK_DIR}/pyproject.toml"
 NPM_PKG="${SDK_DIR}/package.json"

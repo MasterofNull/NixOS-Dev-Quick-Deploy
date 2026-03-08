@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 INDEX_PATH="${1:-${ROOT}/dist/skills/index.json}"
 PUBLIC_KEY="${2:-${ROOT}/config/keys/skill-registry-public.pem}"
 SIG_PATH="${3:-${INDEX_PATH}.sig}"

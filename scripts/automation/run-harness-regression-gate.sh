@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 CASES_FILE="${CASES_FILE:-${ROOT}/data/harness-golden-evals.json}"
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
 MODE="${1:---offline}"
