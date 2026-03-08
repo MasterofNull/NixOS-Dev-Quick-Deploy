@@ -1012,14 +1012,6 @@
             </div>
         </header>
 
-        <div class="legacy-runtime-banner">
-            <div>
-                <strong>Operator Static Surface</strong>
-                <p>This command center is the current operator dashboard, served by <code>command-center-dashboard-api.service</code> at <code>http://127.0.0.1:8889/</code>. Use <code>?demo=1</code> only when you want synthetic demo data instead of the live local stack.</p>
-            </div>
-            <a href="http://127.0.0.1:8889/">Open Command Center</a>
-        </div>
-
         <div class="operator-strip">
             <div class="operator-tile">
                 <div class="operator-label">Transport</div>
@@ -2617,20 +2609,21 @@
                 await loadPortRegistry();
                 hideLegacySections();
 
-                const [
-                    systemMetrics,
-                    aiMetrics,
-                    aiInternals,
-                    prsiActions,
-                    services,
-                    containers,
-                    actions,
-                    learningStats,
-                    circuitStats,
-                    aidbDetailed,
-                    harnessStats,
-                    keywordSignals
-                ] = await Promise.all([
+                const sourceNames = [
+                    'systemMetrics',
+                    'aiMetrics',
+                    'aiInternals',
+                    'prsiActions',
+                    'services',
+                    'containers',
+                    'actions',
+                    'learningStats',
+                    'circuitStats',
+                    'aidbDetailed',
+                    'harnessStats',
+                    'keywordSignals'
+                ];
+                const settled = await Promise.allSettled([
                     fetchSystemMetrics(),
                     fetchAIMetrics(),
                     fetchAIInternals(),
@@ -2644,6 +2637,33 @@
                     fetchHarnessStats(),
                     fetchKeywordSignals()
                 ]);
+                const payloads = {};
+                const failedSources = [];
+                settled.forEach((result, index) => {
+                    const key = sourceNames[index];
+                    if (result.status === 'fulfilled') {
+                        payloads[key] = result.value;
+                    } else {
+                        payloads[key] = null;
+                        failedSources.push(key);
+                        console.warn(`Dashboard source failed: ${key}`, result.reason);
+                    }
+                });
+                const systemMetrics = payloads.systemMetrics;
+                if (!systemMetrics) {
+                    throw new Error('systemMetrics unavailable');
+                }
+                const aiMetrics = payloads.aiMetrics;
+                const aiInternals = payloads.aiInternals;
+                const prsiActions = payloads.prsiActions;
+                const services = payloads.services;
+                const containers = payloads.containers;
+                const actions = payloads.actions;
+                const learningStats = payloads.learningStats;
+                const circuitStats = payloads.circuitStats;
+                const aidbDetailed = payloads.aidbDetailed;
+                const harnessStats = payloads.harnessStats;
+                const keywordSignals = payloads.keywordSignals;
 
                 const system = normalizeSystemData(systemMetrics);
                 const llm = buildLLMData(aiMetrics, containers);
@@ -2723,9 +2743,16 @@
                 updatePRSIQueue(prsiActions);
                 updateHealthScore();
                 updateLastUpdate();
-                dashboardRuntimeState.refresh = 'online';
-                dashboardRuntimeState.refreshText = 'synced';
-                dashboardRuntimeState.refreshDetail = `Full dashboard load completed at ${new Date().toLocaleTimeString()}`;
+                if (failedSources.length) {
+                    dashboardRuntimeState.refresh = 'warning';
+                    dashboardRuntimeState.refreshText = 'partial';
+                    dashboardRuntimeState.refreshDetail =
+                        `Loaded with degraded sources: ${failedSources.join(', ')}`;
+                } else {
+                    dashboardRuntimeState.refresh = 'online';
+                    dashboardRuntimeState.refreshText = 'synced';
+                    dashboardRuntimeState.refreshDetail = `Full dashboard load completed at ${new Date().toLocaleTimeString()}`;
+                }
                 renderOperatorStrip();
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
@@ -3219,7 +3246,7 @@
             dataModeText: DASHBOARD_DEMO_MODE ? 'demo mode' : 'live stack',
             dataModeDetail: DASHBOARD_DEMO_MODE
                 ? 'Synthetic data enabled through ?demo=1 or localStorage'
-                : 'Using local service endpoints',
+                : 'Live operator data from local service endpoints',
             runtime: 'warning',
             runtimeText: 'unknown',
             runtimeDetail: 'Waiting for service inventory',
@@ -3288,9 +3315,12 @@
                     if (response.ok) {
                         return await response.json();
                     }
+                    throw new Error(`ai metrics endpoint returned HTTP ${response.status}`);
                 }
-            } catch (_) {
-                // Fall back to static JSON data path resolution below.
+            } catch (error) {
+                if (!DASHBOARD_DEMO_MODE) {
+                    throw error;
+                }
             }
             return fetchJSON('ai_metrics.json');
         }
@@ -3687,7 +3717,14 @@
             const cachedContainer = document.getElementById('llamaCachedModels');
             if (cachedContainer) {
                 const cached = services.llama_cpp?.cached_models || [];
-                if (!cached.length) {
+                if (services.llama_cpp?.model_inventory_available === false) {
+                    cachedContainer.innerHTML = `
+                        <div class="data-item">
+                            <span>Cached GGUFs</span>
+                            <span class="data-meta">${services.llama_cpp?.model_inventory_error || 'inventory unavailable'}</span>
+                        </div>
+                    `;
+                } else if (!cached.length) {
                     cachedContainer.innerHTML = `
                         <div class="data-item">
                             <span>Cached GGUFs</span>
@@ -3707,7 +3744,14 @@
             const embeddingContainer = document.getElementById('embeddingCachedModels');
             if (embeddingContainer) {
                 const embeddingModels = services.embeddings?.models || [];
-                if (!embeddingModels.length) {
+                if (services.embeddings?.model_inventory_available === false) {
+                    embeddingContainer.innerHTML = `
+                        <div class="data-item">
+                            <span>Sentence-Transformers</span>
+                            <span class="data-meta">${services.embeddings?.model_inventory_error || 'inventory unavailable'}</span>
+                        </div>
+                    `;
+                } else if (!embeddingModels.length) {
                     embeddingContainer.innerHTML = `
                         <div class="data-item">
                             <span>Sentence-Transformers</span>
@@ -3822,22 +3866,37 @@
 
             const directKb = data.knowledge_base || {};
             const hybridCollections = data.services?.hybrid_coordinator?.health_check?.collections || [];
+            const qdrantMetrics = data.services?.qdrant?.metrics || {};
             const rag = data.services?.aidb?.health_check?.rag || {};
+            const collectionNames = Array.from(new Set([
+                ...(Array.isArray(qdrantMetrics.collection_names) ? qdrantMetrics.collection_names : []),
+                ...(Array.isArray(directKb.collection_names) ? directKb.collection_names : []),
+                ...hybridCollections
+            ].map(String)));
             const totalCollections = Number(
-                data.services?.qdrant?.metrics?.collection_count
-                ?? hybridCollections.length
+                qdrantMetrics.collection_count
+                ?? collectionNames.length
                 ?? 0
             );
-            const embeddingsStatus = String(data.services?.embeddings?.status || 'unknown').toUpperCase();
-            const defaultLimit = rag.default_limit;
-            const maxContextChars = rag.max_context_chars;
+            const totalPoints = Number(
+                directKb.total_points
+                ?? qdrantMetrics.total_vectors
+                ?? 0
+            );
+            const embeddingsPercent = hasNumeric(directKb.real_embeddings_percent)
+                ? `${Number(directKb.real_embeddings_percent).toFixed(0)}%`
+                : String(data.services?.embeddings?.status || 'unknown').toUpperCase();
+            const contextRelevance = directKb.rag_quality?.context_relevance
+                ?? (hasNumeric(rag.default_limit) ? `${rag.default_limit}` : '--');
+            const qualityImprovement = directKb.rag_quality?.improvement_over_baseline
+                ?? (hasNumeric(rag.max_context_chars) ? `${rag.max_context_chars}` : '--');
 
-            document.getElementById('kbTotalPoints').textContent = `${totalCollections}`;
-            document.getElementById('kbEmbeddingsPercent').textContent = embeddingsStatus;
-            document.getElementById('kbContextRelevance').textContent = hasNumeric(defaultLimit) ? `${defaultLimit}` : '--';
-            document.getElementById('kbQualityImprovement').textContent = hasNumeric(maxContextChars) ? `${maxContextChars}` : '--';
+            document.getElementById('kbTotalPoints').textContent = `${totalPoints}`;
+            document.getElementById('kbEmbeddingsPercent').textContent = embeddingsPercent;
+            document.getElementById('kbContextRelevance').textContent = contextRelevance;
+            document.getElementById('kbQualityImprovement').textContent = qualityImprovement;
 
-            const namedCollections = hybridCollections.map(String);
+            const namedCollections = collectionNames.map(String);
             document.getElementById('kbCodebaseContext').textContent = namedCollections.includes('codebase-context') ? 'present' : '--';
             document.getElementById('kbErrorSolutions').textContent = namedCollections.includes('error-solutions') ? 'present' : '--';
             document.getElementById('kbBestPractices').textContent = namedCollections.includes('best-practices') ? 'present' : '--';
