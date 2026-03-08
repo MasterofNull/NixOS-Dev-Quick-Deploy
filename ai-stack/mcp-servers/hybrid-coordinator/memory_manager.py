@@ -82,10 +82,28 @@ async def store_agent_memory(
     if metadata:
         payload.update(metadata)
     embedding = await _embed(f"{memory_type}\n{summary}\n{content or ''}")
-    _qdrant.upsert(
-        collection_name=collection,
-        points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
-    )
+    try:
+        _qdrant.upsert(
+            collection_name=collection,
+            points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
+        )
+    except Exception as exc:
+        error_text = str(exc)
+        if "Vector dimension error" in error_text:
+            logger.warning(
+                "Agent memory storage disabled due to embedding/collection dimension mismatch",
+                extra={
+                    "memory_type": memory_type,
+                    "collection": collection,
+                    "memory_id": memory_id,
+                },
+            )
+            return {
+                "status": "disabled",
+                "reason": "embedding_dimension_mismatch",
+                "memory_type": memory_type,
+            }
+        raise
     _record_telemetry(
         "agent_memory_store",
         {"memory_id": memory_id, "memory_type": memory_type, "collection": collection},

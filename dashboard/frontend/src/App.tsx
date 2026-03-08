@@ -60,7 +60,7 @@ function DashboardContent() {
       ws?.close();
       clearInterval(servicesInterval);
     };
-  }, []);
+  }, [addToHistory, setCurrentMetrics, setError, setHealthScore, setLoading, setServices]);
 
   const healthScore = useDashboardStore((state) => state.healthScore);
   const lastUpdate = useDashboardStore((state) => state.lastUpdate);
