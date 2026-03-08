@@ -329,7 +329,7 @@ wc -l ~/.local/share/nixos-ai-stack/fine-tuning/dataset.jsonl
 tail -f ~/.local/share/nixos-ai-stack/telemetry/*.jsonl
 
 # Dashboard
-open http://localhost:8888/dashboard.html
+open http://127.0.0.1:8889/
 ```
 
 ---
