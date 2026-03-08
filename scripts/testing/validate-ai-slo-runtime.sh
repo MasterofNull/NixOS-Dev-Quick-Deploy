@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
 SWB_URL="${SWB_URL:-http://127.0.0.1:8085}"
 SLO_FILE="${SLO_FILE:-${ROOT}/config/ai-slo-thresholds.json}"
