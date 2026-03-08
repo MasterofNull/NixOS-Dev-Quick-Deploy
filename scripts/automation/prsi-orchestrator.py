@@ -29,10 +29,11 @@ from typing import Any, Dict, List, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 AI_SCRIPT_DIR = SCRIPT_DIR.parent / "ai"
+REPO_ROOT = SCRIPT_DIR.parent.parent
 QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
-PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/runtime-prsi-policy.json"))
+PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", str(REPO_ROOT / "config/runtime-prsi-policy.json")))
 PRSI_STATE_PATH = Path(os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"))
 
 

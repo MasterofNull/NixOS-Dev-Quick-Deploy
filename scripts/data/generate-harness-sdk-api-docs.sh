@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 PY_SDK="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/harness_sdk.py"
 TS_SDK="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/harness_sdk.ts"
 OUT="${ROOT}/docs/generated/HARNESS-SDK-API.md"
