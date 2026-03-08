@@ -166,7 +166,7 @@ def demonstrate_learning_workflow():
     print("\n2. View telemetry:")
     print(f"   tail -10 {HYBRID_EVENTS}")
     print("\n3. Monitor dashboard:")
-    print("   http://localhost:8000/dashboard.html")
+    print("   http://127.0.0.1:8889/")
     print("\n4. System will learn from these interactions and improve routing over time!")
     print()
 

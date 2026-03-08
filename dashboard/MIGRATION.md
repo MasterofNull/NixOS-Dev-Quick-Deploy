@@ -36,7 +36,7 @@ cd dashboard
 Expected local-dev ports:
 
 - Frontend dev server: `http://localhost:8890`
-- Backend API: `http://localhost:8889`
+- Backend API (dev-only): `http://127.0.0.1:8889`
 
 These ports are for development only and are not the production deployment model.
 
