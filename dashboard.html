@@ -3977,21 +3977,30 @@
             if (!data || !data.postgresql) return;
 
             const pg = data.postgresql;
-            document.getElementById('dbStatus').textContent = pg.status.toUpperCase();
-            document.getElementById('dbSize').textContent = pg.database_size;
-            document.getElementById('dbConnections').textContent = pg.active_connections;
+            const dbStatusEl = document.getElementById('dbStatus');
+            const dbSizeEl = document.getElementById('dbSize');
+            const dbConnectionsEl = document.getElementById('dbConnections');
+            if (dbStatusEl) dbStatusEl.textContent = String(pg.status || 'unknown').toUpperCase();
+            if (dbSizeEl) dbSizeEl.textContent = pg.database_size || '--';
+            if (dbConnectionsEl) dbConnectionsEl.textContent = pg.active_connections || '--';
 
             if (data.redis) {
-                document.getElementById('redisStatus').textContent = data.redis.status.toUpperCase();
-                document.getElementById('redisKeys').textContent = data.redis.keys;
-                document.getElementById('redisMemory').textContent = data.redis.memory_used;
+                const redisStatusEl = document.getElementById('redisStatus');
+                const redisKeysEl = document.getElementById('redisKeys');
+                const redisMemoryEl = document.getElementById('redisMemory');
+                if (redisStatusEl) redisStatusEl.textContent = String(data.redis.status || 'unknown').toUpperCase();
+                if (redisKeysEl) redisKeysEl.textContent = data.redis.keys ?? '--';
+                if (redisMemoryEl) redisMemoryEl.textContent = data.redis.memory_used || '--';
             }
             if (data.qdrant) {
-                document.getElementById('qdrantStatus').textContent = data.qdrant.status.toUpperCase();
-                document.getElementById('qdrantCollections').textContent = data.qdrant.collections;
+                const qdrantStatusEl = document.getElementById('qdrantStatus');
+                const qdrantCollectionsEl = document.getElementById('qdrantCollections');
+                if (qdrantStatusEl) qdrantStatusEl.textContent = String(data.qdrant.status || 'unknown').toUpperCase();
+                if (qdrantCollectionsEl) qdrantCollectionsEl.textContent = data.qdrant.collections ?? '--';
             }
             if (data.mindsdb) {
-                document.getElementById('mindsdbStatus').textContent = data.mindsdb.status.toUpperCase();
+                const mindsdbStatusEl = document.getElementById('mindsdbStatus');
+                if (mindsdbStatusEl) mindsdbStatusEl.textContent = String(data.mindsdb.status || 'unknown').toUpperCase();
             }
         }
 
@@ -4022,7 +4031,7 @@
                         <div>${path.name}</div>
                         <div class="data-meta">${path.path}</div>
                     </div>
-                    <div>${path.exists ? path.size : 'missing'}</div>
+                    <div>${path.exists ? (path.size || (hasNumeric(path.bytes) ? formatBytes(Number(path.bytes)) : 'present')) : 'not present'}</div>
                 `;
                 grid.appendChild(item);
             });
@@ -4176,7 +4185,7 @@
                 } else {
                     list.innerHTML = scripts.map((script) => {
                         const ok = script.exists && script.executable;
-                        const state = ok ? 'ready' : 'missing';
+                        const state = ok ? 'ready' : 'not present';
                         return `
                             <div class="data-item">
                                 <span>${script.name}</span>
@@ -4329,7 +4338,7 @@
 
             if (!data) {
                 badge.textContent = 'Source Missing';
-                candidatesEl.innerHTML = `<div class="data-item"><span>keyword-signals.json not available</span><span class="data-meta">missing source</span></div>`;
+                candidatesEl.innerHTML = `<div class="data-item"><span>keyword-signals.json not available</span><span class="data-meta">source unavailable</span></div>`;
                 signalsEl.innerHTML = `<div class="data-item"><span>Discovery fallback inactive</span><span class="data-meta">no local file</span></div>`;
                 return;
             }
@@ -5279,11 +5288,20 @@
             try {
                 // Fetch all health endpoints via dashboard API
                 const baseUrl = `${FASTAPI_BASE}/api/aidb`;
+                const fetchHealth = async (path) => {
+                    try {
+                        const response = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+                        if (!response.ok) return null;
+                        return await response.json();
+                    } catch (_) {
+                        return null;
+                    }
+                };
                 const [liveness, readiness, startup, detailed] = await Promise.all([
-                    fetch(`${baseUrl}/health/live`).then(r => r.json()).catch(() => null),
-                    fetch(`${baseUrl}/health/ready`).then(r => r.json()).catch(() => null),
-                    fetch(`${baseUrl}/health/startup`).then(r => r.json()).catch(() => null),
-                    fetch(`${baseUrl}/health/detailed`).then(r => r.json()).catch(() => null)
+                    fetchHealth('/health/live'),
+                    fetchHealth('/health/ready'),
+                    fetchHealth('/health/startup'),
+                    fetchHealth('/health/detailed')
                 ]);
 
                 // Update health probe badges
@@ -5328,13 +5346,16 @@
             const el = document.getElementById(elementId);
             if (!el) return;
 
-            if (!healthData) {
+            const status = typeof healthData?.status === 'string'
+                ? healthData.status.toLowerCase()
+                : 'offline';
+
+            if (!healthData || status === 'offline') {
                 el.textContent = 'Offline';
                 el.className = 'status-badge status-offline';
                 return;
             }
 
-            const status = healthData.status;
             el.textContent = status.charAt(0).toUpperCase() + status.slice(1);
 
             if (status === 'healthy') {
