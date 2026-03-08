@@ -17,3 +17,8 @@ paths = [
   '''^tests/progressive-disclosure-validation\.py$''',
   '''^archive/scripts/test-password-migration\.sh$''',
 ]
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''sk-(test|live|proj)-(example|dummy|fake|placeholder|test)[A-Za-z0-9_-]*''',
+  '''ghp_(example|dummy|fake|placeholder|sample|test)[A-Za-z0-9_]*''',
+]
