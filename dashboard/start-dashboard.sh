@@ -4,10 +4,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASHBOARD_API_BIND_ADDRESS="${DASHBOARD_API_BIND_ADDRESS:-127.0.0.1}"
+DASHBOARD_API_PORT="${DASHBOARD_API_PORT:-8889}"
+DASHBOARD_API_PROXY_HOST="${DASHBOARD_API_PROXY_HOST:-127.0.0.1}"
+DASHBOARD_FRONTEND_PORT="${DASHBOARD_FRONTEND_PORT:-8890}"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 BACKEND_PID_FILE="${RUNTIME_DIR}/dashboard-backend.pid"
 FRONTEND_PID_FILE="${RUNTIME_DIR}/dashboard-frontend.pid"
 export DASHBOARD_API_BIND_ADDRESS
+export DASHBOARD_API_PORT
+export DASHBOARD_API_PROXY_HOST
+export DASHBOARD_FRONTEND_PORT
 
 mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 
@@ -59,10 +65,10 @@ setup_frontend() {
 
 # Start backend API
 start_backend() {
-    echo "🔧 Starting backend API on port 8889..."
+    echo "🔧 Starting backend API on port ${DASHBOARD_API_PORT}..."
     cd "$SCRIPT_DIR/backend"
     source venv/bin/activate
-    uvicorn api.main:app --host "$DASHBOARD_API_BIND_ADDRESS" --port 8889 --reload &
+    uvicorn api.main:app --host "$DASHBOARD_API_BIND_ADDRESS" --port "$DASHBOARD_API_PORT" --reload &
     BACKEND_PID=$!
     echo $BACKEND_PID > "$BACKEND_PID_FILE"
     echo "✅ Backend started (PID: $BACKEND_PID)"
@@ -70,7 +76,7 @@ start_backend() {
 
 # Start frontend dev server
 start_frontend() {
-    echo "🎨 Starting frontend on port 8890..."
+    echo "🎨 Starting frontend on port ${DASHBOARD_FRONTEND_PORT}..."
     cd "$SCRIPT_DIR/frontend"
     pnpm run dev &
     FRONTEND_PID=$!
@@ -120,8 +126,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  ✅ Dashboard is now running!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  📊 Dashboard URL:  http://localhost:8890"
-echo "  🔧 API URL:        http://127.0.0.1:8889 (dev-only)"
+echo "  📊 Dashboard URL:  http://localhost:${DASHBOARD_FRONTEND_PORT}"
+echo "  🔧 API URL:        http://${DASHBOARD_API_PROXY_HOST}:${DASHBOARD_API_PORT} (dev-only)"
 echo ""
 echo "  Press Ctrl+C to stop"
 echo ""
@@ -131,7 +137,7 @@ echo ""
 # Open browser
 if command -v xdg-open >/dev/null 2>&1; then
     sleep 2
-    xdg-open "http://localhost:8890" 2>/dev/null &
+    xdg-open "http://localhost:${DASHBOARD_FRONTEND_PORT}" 2>/dev/null &
 fi
 
 # Keep script running
