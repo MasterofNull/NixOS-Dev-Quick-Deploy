@@ -70,6 +70,8 @@ in
         DASHBOARD_API_BIND_ADDRESS = cc.bindAddress;
         DASHBOARD_API_PORT = toString cc.apiPort;
         DASHBOARD_MODE = "systemd";
+        DASHBOARD_EXPOSE_HOSTNAME = "false";
+        DASHBOARD_HOSTNAME_ALIAS = "local-node";
         DASHBOARD_FRONTEND_DIST = dashboardPublicDir;
         AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
         HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
