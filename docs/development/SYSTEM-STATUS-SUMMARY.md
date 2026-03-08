@@ -27,13 +27,16 @@ Last Updated: 2026-03-05
 - ✅ **Jaeger**: http://localhost:16686 - Tracing active
 
 ### New Dashboard API (Just Created) ✅
-- ✅ **Dashboard API**: http://localhost:8889 - FastAPI backend running
+- ✅ **Dashboard API**: http://127.0.0.1:8889 - FastAPI backend running
 - ✅ `/api/stats/learning` - Learning statistics endpoint
 - ✅ `/api/stats/circuit-breakers` - Circuit breaker states
 - ✅ `/api/health/aggregate` - Aggregated service health
 - ✅ `/api/ralph/stats` - Ralph task statistics
 - ✅ `/api/ralph/tasks` - Ralph task list
 - ✅ `/api/prometheus/query` - Prometheus proxy
+
+Current runtime note: the operator-facing dashboard path is the declarative command center runtime
+served by `command-center-dashboard-api.service` at `http://127.0.0.1:8889/`.
 
 ### New Ralph Orchestrator (Just Created) ✅
 - ✅ **ralph-orchestrator.sh**: Task submission script
