@@ -296,25 +296,25 @@ Behind the scenes, the dashboard calls:
 
 **Load services**:
 ```javascript
-GET http://localhost:8889/api/services
+GET http://127.0.0.1:8889/api/services
 → Returns array of service objects
 ```
 
 **Start service**:
 ```javascript
-POST http://localhost:8889/api/services/llama-cpp/start
+POST http://127.0.0.1:8889/api/services/llama-cpp/start
 → Returns success/error message
 ```
 
 **Stop service**:
 ```javascript
-POST http://localhost:8889/api/services/qdrant/stop
+POST http://127.0.0.1:8889/api/services/qdrant/stop
 → Returns success/error message
 ```
 
 **Restart service**:
 ```javascript
-POST http://localhost:8889/api/services/redis/restart
+POST http://127.0.0.1:8889/api/services/redis/restart
 → Returns success/error message
 ```
 
@@ -421,7 +421,7 @@ You can queue multiple actions:
 ### Tip 5: Backend Status
 Check if backend is running:
 ```bash
-curl http://localhost:8889/api/health
+curl http://127.0.0.1:8889/api/health
 ```
 
 Should return:

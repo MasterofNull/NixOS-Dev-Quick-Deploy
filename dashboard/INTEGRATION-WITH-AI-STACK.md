@@ -310,31 +310,31 @@ Use the existing browser session at `http://127.0.0.1:8889/`.
 ### Metrics
 ```bash
 # Current system metrics (includes container stats)
-curl http://localhost:8889/api/metrics/system
+curl http://127.0.0.1:8889/api/metrics/system
 
 # Health score
-curl http://localhost:8889/api/metrics/health-score
+curl http://127.0.0.1:8889/api/metrics/health-score
 ```
 
 ### Services
 ```bash
 # List all monitored services
-curl http://localhost:8889/api/services
+curl http://127.0.0.1:8889/api/services
 
 # Start nixos-docs MCP server
-curl -X POST http://localhost:8889/api/services/nixos-docs/start
+curl -X POST http://127.0.0.1:8889/api/services/nixos-docs/start
 
 # Restart llama-cpp
-curl -X POST http://localhost:8889/api/services/llama-cpp/restart
+curl -X POST http://127.0.0.1:8889/api/services/llama-cpp/restart
 ```
 
 ### Containers
 ```bash
 # List all containers
-curl http://localhost:8889/api/containers
+curl http://127.0.0.1:8889/api/containers
 
 # Get nixos-docs logs
-curl http://localhost:8889/api/containers/local-ai-nixos-docs/logs
+curl http://127.0.0.1:8889/api/containers/local-ai-nixos-docs/logs
 ```
 
 ### WebSocket (Real-time)
@@ -401,7 +401,7 @@ source venv/bin/activate
 python3 -c "import subprocess; print(subprocess.run(['podman', 'ps'], capture_output=True, text=True).stdout)"
 
 # Check backend logs
-curl http://localhost:8889/api/metrics/system | jq '.containers'
+curl http://127.0.0.1:8889/api/metrics/system | jq '.containers'
 ```
 
 ### Services Not Starting from Dashboard
