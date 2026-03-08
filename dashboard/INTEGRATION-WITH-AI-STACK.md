@@ -25,9 +25,11 @@ Local React/Vite development remains available via `dashboard/start-dashboard.sh
 ## Two Monitoring Tools - Complementary Approaches
 
 ### 1. **NixOS System Dashboard** (Web UI)
-**Port:** 8890 (Frontend) + 8889 (Backend API)
+**Production Runtime:** `command-center-dashboard-api.service`
+**Operator URL:** `http://127.0.0.1:8889/`
+**Local Dev Ports:** 8890 (Frontend) + 8889 (Backend API)
 **Location:** [dashboard/](.)
-**Start:** `./dashboard/start-dashboard.sh`
+**Start (local dev only):** `./dashboard/start-dashboard.sh`
 
 **Features:**
 - ✅ Real-time WebSocket metrics (2-second updates)
@@ -192,12 +194,12 @@ Both tools are now integrated into the deployment completion:
 **What happens:**
 1. Deployment completes successfully
 2. User sees: "AI Stack Monitor Dashboard available at: ./scripts/ai/ai-stack-monitor.sh"
-3. User can immediately run CLI monitor OR web dashboard
+3. User can immediately run CLI monitor or open the declarative command center
 
-**To start web dashboard after deployment:**
+**To open the web dashboard after deployment:**
 ```bash
-cd dashboard
-./start-dashboard.sh
+systemctl status command-center-dashboard-api.service
+xdg-open http://127.0.0.1:8889/
 ```
 
 **To start CLI monitor after deployment:**
@@ -211,51 +213,14 @@ cd dashboard
 
 #### Web Dashboard Auto-Start (Optional)
 
-**Option 1: Systemd User Service**
+For production/operator use, rely on the declarative runtime:
 
-Create: `~/.config/systemd/user/dashboard.service`
-
-```ini
-[Unit]
-Description=NixOS System Dashboard
-After=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=/path/to/NixOS-Dev-Quick-Deploy/dashboard
-ExecStart=/path/to/NixOS-Dev-Quick-Deploy/dashboard/start-dashboard.sh
-Restart=on-failure
-RestartSec=10s
-
-[Install]
-WantedBy=default.target
-```
-
-**Enable:**
 ```bash
-systemctl --user enable dashboard.service
-systemctl --user start dashboard.service
-loginctl enable-linger $USER
+systemctl status command-center-dashboard-api.service
+xdg-open http://127.0.0.1:8889/
 ```
 
-**Option 2: tmux Session**
-
-Add to `~/.bashrc`:
-```bash
-# Auto-start dashboard in background tmux session
-if command -v tmux &>/dev/null && [[ -z "$TMUX" ]]; then
-  if ! tmux has-session -t dashboard 2>/dev/null; then
-    tmux new-session -d -s dashboard \
-      'cd ~/Documents/try/NixOS-Dev-Quick-Deploy/dashboard && ./start-dashboard.sh'
-  fi
-fi
-```
-
-**Access:**
-```bash
-tmux attach -t dashboard  # View dashboard terminal
-# Or just visit: http://localhost:8890
-```
+If you want a persistent local development session, use `tmux` around `./start-dashboard.sh`, but treat that as a dev workflow only.
 
 ---
 
@@ -315,36 +280,28 @@ systemctl --user start ai-stack-monitor.service
 
 ### Scenario: Monitor AI stack during development
 
-**Step 1:** Start web dashboard (persistent monitoring)
+**Step 1:** Open the production command center
 ```bash
-cd dashboard
-./start-dashboard.sh
-# Leave running in terminal or tmux
+systemctl status command-center-dashboard-api.service
+xdg-open http://127.0.0.1:8889/
 ```
 
-**Step 2:** Open browser
-```
-http://localhost:8890
-```
-
-**Step 3:** Start CLI monitor in tmux (quick reference)
+**Step 2:** Start CLI monitor in tmux (quick reference)
 ```bash
 tmux new-session -s monitor
 ./scripts/ai/ai-stack-monitor.sh
 # Detach: Ctrl+B, D
 ```
 
-**Step 4:** Work on your project
+**Step 3:** Work on your project
 
-**Step 5:** Quick check via CLI
+**Step 4:** Quick check via CLI
 ```bash
 tmux attach -t monitor  # See instant status
 ```
 
-**Step 6:** Detailed analysis via Web
-```
-# Open browser, view charts, restart services as needed
-```
+**Step 5:** Detailed analysis via Web
+Use the existing browser session at `http://127.0.0.1:8889/`.
 
 ---
 
@@ -383,7 +340,7 @@ curl http://localhost:8889/api/containers/local-ai-nixos-docs/logs
 ### WebSocket (Real-time)
 ```javascript
 // Connect to metrics stream
-const ws = new WebSocket('ws://localhost:8889/ws/metrics');
+const ws = new WebSocket('ws://127.0.0.1:8889/ws/metrics');
 ws.onmessage = (event) => {
   const metrics = JSON.parse(event.data);
   console.log(metrics.containers.stats['local-ai-nixos-docs']);
@@ -397,13 +354,13 @@ ws.onmessage = (event) => {
 ### Web Dashboard Architecture
 ```
 ┌──────────────────────────────────────────┐
-│  Browser (http://localhost:8890)         │
-│  React 19 + TypeScript + shadcn/ui       │
+│  Browser (http://127.0.0.1:8889/)        │
+│  Operator UI served by dashboard backend │
 └────────────────┬─────────────────────────┘
                  │ HTTP + WebSocket
                  ▼
 ┌──────────────────────────────────────────┐
-│  Backend API (port 8889)                 │
+│  Declarative dashboard runtime           │
 │  FastAPI + Uvicorn + psutil              │
 └────────────────┬─────────────────────────┘
                  │
