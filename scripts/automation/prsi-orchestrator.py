@@ -500,7 +500,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
 
     argv = [
         sys.executable,
-        str(SCRIPT_DIR / "aq-optimizer"),
+        str(AI_SCRIPT_DIR / "aq-optimizer"),
         f"--actions-json={tmp_actions}",
         "--output-json",
     ]
