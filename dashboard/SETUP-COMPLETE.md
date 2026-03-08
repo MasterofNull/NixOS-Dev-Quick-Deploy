@@ -35,7 +35,7 @@ cd dashboard
 Expected development endpoints:
 
 - Frontend dev server: `http://localhost:8890`
-- Backend API: `http://localhost:8889`
+- Backend API (dev-only): `http://127.0.0.1:8889`
 
 ## Historical Achievements
 
