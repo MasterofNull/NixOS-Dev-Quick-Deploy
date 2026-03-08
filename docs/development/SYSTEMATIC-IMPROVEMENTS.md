@@ -297,7 +297,11 @@ def calculate_iteration_limit(self, task_prompt: str, base_limit: int) -> int:
 
 **C. Dashboard Controls**
 
-Add to dashboard `control-center.html`:
+Historical implementation note: the example below targeted the legacy `dashboard/control-center.html`
+surface during earlier dashboard experimentation. The current operator-facing dashboard runtime is
+`command-center-dashboard-api.service` at `http://127.0.0.1:8889/`.
+
+Add to legacy dashboard `control-center.html`:
 ```html
 <section id="ralph-controls">
     <h2>Ralph Wiggum Loop Controls</h2>
