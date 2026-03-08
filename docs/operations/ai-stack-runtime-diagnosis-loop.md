@@ -123,7 +123,7 @@ scripts/testing/check-runtime-plan-catalog.sh
 
 ## How To Extend
 
-Add a new preset to [aq-runtime-diagnose](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-runtime-diagnose) with:
+Add a new preset to [aq-runtime-diagnose](../../scripts/ai/aq-runtime-diagnose) with:
 
 - `SERVICE`
 - `HEALTH_URL`
@@ -290,7 +290,7 @@ commands, stable `action_id`, and rollback note.
 object and includes `available_actions` in selection errors, so callers can
 recover from stale indices or IDs without re-running a separate discovery step.
 
-Use [aq-runtime-act](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-runtime-act)
+Use [aq-runtime-act](../../scripts/ai/aq-runtime-act)
 when you want the shortest path:
 
 1. build or load the plan
@@ -325,7 +325,7 @@ own tool identity, repo root, and creation timestamp.
 
 Execution is bounded by:
 
-- [runtime-remediation-policy.json](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/runtime-remediation-policy.json)
+- [runtime-remediation-policy.json](../../config/runtime-remediation-policy.json)
 
 Only commands matching that allowlist may run under `--execute`. Everything
 else remains preview-only and returns a policy block.
@@ -338,7 +338,7 @@ honors metadata on individual commands and stops at the first blocked step.
 
 The planner’s next-step behavior is driven by:
 
-- [runtime-remediation-catalog.json](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/runtime-remediation-catalog.json)
+- [runtime-remediation-catalog.json](../../config/runtime-remediation-catalog.json)
 
 Tune that catalog when you want to change:
 
@@ -383,10 +383,10 @@ The diagnosis classification check validates:
 
 The wrapper runs both:
 
-- [check-runtime-plan-catalog.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/check-runtime-plan-catalog.sh)
-- [check-runtime-diagnose-classifications.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/check-runtime-diagnose-classifications.sh)
-- [check-runtime-loop-integration.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/check-runtime-loop-integration.sh)
-- [check-runtime-remediation-runner.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/check-runtime-remediation-runner.sh)
+- [check-runtime-plan-catalog.sh](../../scripts/testing/check-runtime-plan-catalog.sh)
+- [check-runtime-diagnose-classifications.sh](../../scripts/testing/check-runtime-diagnose-classifications.sh)
+- [check-runtime-loop-integration.sh](../../scripts/testing/check-runtime-loop-integration.sh)
+- [check-runtime-remediation-runner.sh](../../scripts/testing/check-runtime-remediation-runner.sh)
 
 The integration check validates:
 
