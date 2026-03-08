@@ -368,6 +368,43 @@ async def health_check_detailed():
     }
 
 
+@app.get("/discovery/capabilities")
+async def discovery_capabilities(auth: str = Depends(require_auth)):
+    """Progressive-disclosure summary for agents discovering Ralph capabilities."""
+    base_url = f"http://127.0.0.1:{CONFIG['port']}"
+    return {
+        "service": "ralph-wiggum",
+        "version": "1.0.0",
+        "activation_mode": "automatic",
+        "selection_role": "loop-orchestration",
+        "description": "Continuous loop orchestration for multi-step and long-running agentic workflows.",
+        "capabilities": [
+            {
+                "name": "loop_orchestrate",
+                "method": "POST",
+                "endpoint": f"{base_url}/tasks",
+                "description": "Queue a long-running or multi-agent workflow.",
+                "parameters": ["prompt", "backend", "max_iterations", "require_approval", "context"],
+            },
+            {
+                "name": "loop_status",
+                "method": "GET",
+                "endpoint": f"{base_url}/tasks/{{task_id}}",
+                "description": "Fetch current task state and iteration count.",
+                "parameters": ["task_id"],
+            },
+            {
+                "name": "loop_result",
+                "method": "GET",
+                "endpoint": f"{base_url}/tasks/{{task_id}}/result",
+                "description": "Fetch final result or full iteration history.",
+                "parameters": ["task_id"],
+            },
+        ],
+        "backends": CONFIG["agent_backends"],
+    }
+
+
 @app.post("/tasks", response_model=TaskResponse)
 async def create_task(task: TaskRequest, auth: str = Depends(require_auth)):
     """

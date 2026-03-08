@@ -76,6 +76,8 @@ Standard environment variables are exported for tool discovery:
 | `AI_STACK_HINTS_ENDPOINT` | `http://127.0.0.1:8003/hints` | Hints API endpoint |
 | `AI_STACK_HYBRID_ENDPOINT` | `http://127.0.0.1:8003` | Hybrid coordinator |
 | `AI_STACK_AIDB_ENDPOINT` | `http://127.0.0.1:8002` | AIDB API |
+| `AI_STACK_RALPH_ENDPOINT` | `http://127.0.0.1:8004` | Ralph loop orchestrator |
+| `AI_STACK_WORKFLOW_ORCHESTRATE_ENDPOINT` | `http://127.0.0.1:8003/workflow/orchestrate` | Harness loop orchestration |
 | `AI_STACK_INFERENCE_ENDPOINT` | `http://127.0.0.1:8080/v1` | LLM inference |
 
 Example usage in any agent:
@@ -102,11 +104,17 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/hints` | GET | Get workflow hints |
 | `/query` | POST | Hybrid routing query |
 | `/workflow/plan` | POST | Create execution plan |
+| `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/health` | GET | Check service health |
 
 ```bash
 # Works from any agent that can run curl
 curl -sf http://127.0.0.1:8003/hints?query=nixos+services
+
+# Queue long-running agentic work through the harness layer
+curl -s http://127.0.0.1:8003/workflow/orchestrate \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"orchestrate a multi-agent repo remediation workflow"}'
 ```
 
 ## Agent-Specific Integration
@@ -222,7 +230,7 @@ The scaffolded `.claude/settings.json` uses the canonical `/opt/nixos-quick-depl
 ### Claude Code
 ```bash
 # Already configured via ~/.claude/settings.json
-# Just use slash commands: /prime, /plan-feature, etc.
+# Harness and Ralph loop layers are available for automatic workflow selection.
 ```
 
 ### GPT / Codex / Qwen / Gemini
