@@ -2620,7 +2620,7 @@
                     'learningStats',
                     'circuitStats',
                     'aidbDetailed',
-                    'harnessStats',
+                    'harnessOverview',
                     'keywordSignals'
                 ];
                 const settled = await Promise.allSettled([
@@ -2634,7 +2634,7 @@
                     fetchLearningStats(),
                     fetchCircuitBreakers(),
                     fetchAidbDetailedHealth(),
-                    fetchHarnessStats(),
+                    fetchHarnessOverview(),
                     fetchKeywordSignals()
                 ]);
                 const payloads = {};
@@ -2662,13 +2662,13 @@
                 const learningStats = payloads.learningStats;
                 const circuitStats = payloads.circuitStats;
                 const aidbDetailed = payloads.aidbDetailed;
-                const harnessStats = payloads.harnessStats;
+                const harnessOverview = payloads.harnessOverview;
                 const keywordSignals = payloads.keywordSignals;
 
                 const system = normalizeSystemData(systemMetrics);
                 const llm = buildLLMData(aiMetrics, containers);
                 const network = buildNetworkData(systemMetrics);
-                const security = buildSecurityData(aidbDetailed, systemMetrics);
+                const security = buildSecurityData(aidbDetailed || aiMetrics?.services?.aidb?.health_check, systemMetrics);
                 const database = buildDatabaseData(aiMetrics);
                 const links = buildLinksData();
                 const persistence = buildPersistenceData(services, aiMetrics);
@@ -2716,7 +2716,9 @@
                         ...(aiMetrics || {}),
                         harness: {
                             ...(aiMetrics?.harness || {}),
-                            ...(harnessStats ? { stats: harnessStats } : {})
+                            ...(harnessOverview?.harness?.stats ? { stats: harnessOverview.harness.stats } : {}),
+                            ...(harnessOverview?.harness?.scorecard ? { scorecard: harnessOverview.harness.scorecard } : {}),
+                            ...(harnessOverview ? { overview: harnessOverview } : {})
                         },
                         circuit_breakers: circuitStats || {}
                     }
@@ -2840,6 +2842,9 @@
         }
 
         async function fetchAidbDetailedHealth() {
+            if (!DASHBOARD_DEMO_MODE) {
+                return null;
+            }
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/aidb/health/detailed`, { cache: 'no-store' });
                 if (!response.ok) return {};
@@ -2849,9 +2854,9 @@
             }
         }
 
-        async function fetchHarnessStats() {
+        async function fetchHarnessOverview() {
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/harness/stats`, { cache: 'no-store' });
+                const response = await fetch(`${FASTAPI_BASE}/api/harness/overview`, { cache: 'no-store' });
                 if (!response.ok) return null;
                 return await response.json();
             } catch (_) {
@@ -3214,6 +3219,29 @@
 
         function hasNumeric(value) {
             return typeof value === 'number' && Number.isFinite(value);
+        }
+
+        function displayCount(value, zeroLabel = 'none', nullLabel = 'unavailable') {
+            if (!hasNumeric(value)) return nullLabel;
+            if (Number(value) === 0) return zeroLabel;
+            return `${Math.round(Number(value))}`;
+        }
+
+        function displayPercent(value, decimals = 1, zeroLabel = 'none', nullLabel = 'unavailable') {
+            if (!hasNumeric(value)) return nullLabel;
+            if (Number(value) === 0) return zeroLabel;
+            return `${Number(value).toFixed(decimals)}%`;
+        }
+
+        function displayStatusText(value, nullLabel = 'not reported') {
+            const text = String(value ?? '').trim();
+            if (!text) return nullLabel;
+            if (text.toLowerCase() === 'unknown') return nullLabel;
+            return text.toUpperCase();
+        }
+
+        function numericOrNull(value) {
+            return value === null || value === undefined ? null : Number(value);
         }
 
         function hideLegacySections() {
@@ -4039,7 +4067,7 @@
             const dbStatusEl = document.getElementById('dbStatus');
             const dbSizeEl = document.getElementById('dbSize');
             const dbConnectionsEl = document.getElementById('dbConnections');
-            if (dbStatusEl) dbStatusEl.textContent = String(pg.status || 'unknown').toUpperCase();
+            if (dbStatusEl) dbStatusEl.textContent = displayStatusText(pg.status);
             if (dbSizeEl) dbSizeEl.textContent = pg.database_size || '--';
             if (dbConnectionsEl) dbConnectionsEl.textContent = pg.active_connections || '--';
 
@@ -4047,19 +4075,19 @@
                 const redisStatusEl = document.getElementById('redisStatus');
                 const redisKeysEl = document.getElementById('redisKeys');
                 const redisMemoryEl = document.getElementById('redisMemory');
-                if (redisStatusEl) redisStatusEl.textContent = String(data.redis.status || 'unknown').toUpperCase();
-                if (redisKeysEl) redisKeysEl.textContent = data.redis.keys ?? '--';
+                if (redisStatusEl) redisStatusEl.textContent = displayStatusText(data.redis.status);
+                if (redisKeysEl) redisKeysEl.textContent = hasNumeric(Number(data.redis.keys)) ? displayCount(Number(data.redis.keys), 'empty') : (data.redis.keys ?? '--');
                 if (redisMemoryEl) redisMemoryEl.textContent = data.redis.memory_used || '--';
             }
             if (data.qdrant) {
                 const qdrantStatusEl = document.getElementById('qdrantStatus');
                 const qdrantCollectionsEl = document.getElementById('qdrantCollections');
-                if (qdrantStatusEl) qdrantStatusEl.textContent = String(data.qdrant.status || 'unknown').toUpperCase();
-                if (qdrantCollectionsEl) qdrantCollectionsEl.textContent = data.qdrant.collections ?? '--';
+                if (qdrantStatusEl) qdrantStatusEl.textContent = displayStatusText(data.qdrant.status);
+                if (qdrantCollectionsEl) qdrantCollectionsEl.textContent = hasNumeric(Number(data.qdrant.collections)) ? displayCount(Number(data.qdrant.collections), 'empty') : (data.qdrant.collections ?? '--');
             }
             if (data.mindsdb) {
                 const mindsdbStatusEl = document.getElementById('mindsdbStatus');
-                if (mindsdbStatusEl) mindsdbStatusEl.textContent = String(data.mindsdb.status || 'unknown').toUpperCase();
+                if (mindsdbStatusEl) mindsdbStatusEl.textContent = displayStatusText(data.mindsdb.status);
             }
         }
 
@@ -4122,23 +4150,23 @@
             const status = hybrid.status || 'offline';
             const statusText = String(status).toLowerCase();
             const healthy = ['online', 'healthy', 'ok'].includes(statusText);
-            document.getElementById('hybridStatus').textContent = status.toUpperCase();
+            document.getElementById('hybridStatus').textContent = displayStatusText(status);
             document.getElementById('hybridBadge').textContent = healthy ? 'ONLINE' : 'OFFLINE';
 
             const telemetry = hybrid.telemetry || {};
-            document.getElementById('hybridEvents').textContent = telemetry.events ?? 0;
+            document.getElementById('hybridEvents').textContent = displayCount(Number(telemetry.events), 'idle');
 
             const avgScore = parseFloat(telemetry.avg_value_score ?? 0);
-            document.getElementById('hybridAvgValue').textContent = `${avgScore.toFixed(1)}%`;
-            document.getElementById('hybridHighValue').textContent = telemetry.high_value_count ?? 0;
+            document.getElementById('hybridAvgValue').textContent = displayPercent(avgScore, 1, 'not scored');
+            document.getElementById('hybridHighValue').textContent = displayCount(Number(telemetry.high_value_count), 'none');
 
             const learning = hybrid.learning || {};
-            document.getElementById('hybridPatterns').textContent = learning.pattern_extractions ?? 0;
+            document.getElementById('hybridPatterns').textContent = displayCount(Number(learning.pattern_extractions), 'none');
 
             const routingPercent = parseFloat(tokenSavings?.routing?.local_percent ?? 0);
-            document.getElementById('hybridLocalPercent').textContent = `${routingPercent.toFixed(1)}%`;
+            document.getElementById('hybridLocalPercent').textContent = displayPercent(routingPercent, 1, 'idle');
             const cacheHit = parseFloat(tokenSavings?.cache?.hit_rate ?? 0);
-            document.getElementById('hybridCacheHit').textContent = `${cacheHit.toFixed(1)}%`;
+            document.getElementById('hybridCacheHit').textContent = displayPercent(cacheHit, 1, 'cold');
 
             const scores = telemetry.value_scores_recent || [];
             document.getElementById('hybridValueScores').textContent = scores.length
@@ -4154,35 +4182,37 @@
             const scoring = data.value_scoring || {};
             const fineTuning = data.fine_tuning || {};
 
-            document.getElementById('learningTotal').textContent = interactions.total ?? 0;
-            document.getElementById('learningHighValue').textContent = interactions.high_value ?? 0;
+            document.getElementById('learningTotal').textContent = displayCount(Number(interactions.total), 'idle');
+            document.getElementById('learningHighValue').textContent = displayCount(Number(interactions.high_value), 'none');
 
             const learningRate = parseFloat(patterns.learning_rate ?? 0);
-            document.getElementById('learningRate').textContent = hasNumeric(learningRate) ? learningRate.toFixed(3) : '--';
+            document.getElementById('learningRate').textContent = hasNumeric(learningRate)
+                ? (learningRate === 0 ? 'stable' : learningRate.toFixed(3))
+                : '--';
 
             const avgScore = parseFloat(scoring.avg_score ?? 0);
-            document.getElementById('learningAvgScore').textContent = hasNumeric(avgScore) ? avgScore.toFixed(2) : '--';
-            document.getElementById('learningPatterns').textContent = hasNumeric(patterns.extractions) ? `${patterns.extractions}` : '--';
-            document.getElementById('learningFinetune').textContent = hasNumeric(fineTuning.samples) ? `${fineTuning.samples}` : '--';
+            document.getElementById('learningAvgScore').textContent = hasNumeric(avgScore)
+                ? (avgScore === 0 ? 'neutral' : avgScore.toFixed(2))
+                : '--';
+            document.getElementById('learningPatterns').textContent = hasNumeric(patterns.extractions) ? displayCount(Number(patterns.extractions), 'none') : '--';
+            document.getElementById('learningFinetune').textContent = hasNumeric(fineTuning.samples) ? displayCount(Number(fineTuning.samples), 'none') : '--';
         }
 
         function updateAIInternals(data) {
-            const cacheHit = Number(data?.embedding_cache_hit_rate_pct ?? 0);
-            const localRouting = Number(data?.llm_routing_local_pct ?? 0);
-            const tokensCompressed = Number(data?.tokens_compressed_last_hour ?? 0);
-            const hintAdoption = Number(data?.hint_adoption_pct ?? 0);
-            const evalLatest = Number(data?.eval_latest_pct ?? 0);
-            const toolRows = Number(data?.tool_performance_rows ?? 0);
-            const gapCount = Number(data?.query_gap_count ?? 0);
-            document.getElementById('aiInternalsCacheHit').textContent = `${cacheHit.toFixed(1)}%`;
-            document.getElementById('aiInternalsLocalRouting').textContent = `${localRouting.toFixed(1)}%`;
-            document.getElementById('aiInternalsTokensCompressed').textContent = Number.isFinite(tokensCompressed)
-                ? `${Math.round(tokensCompressed)}`
-                : '0';
-            document.getElementById('aiInternalsHintAdoption').textContent = `${hintAdoption.toFixed(1)}%`;
-            document.getElementById('aiInternalsEvalLatest').textContent = `${evalLatest.toFixed(1)}%`;
-            document.getElementById('aiInternalsToolRows').textContent = Number.isFinite(toolRows) ? `${Math.round(toolRows)}` : '0';
-            document.getElementById('aiInternalsGapCount').textContent = Number.isFinite(gapCount) ? `${Math.round(gapCount)}` : '0';
+            const cacheHit = numericOrNull(data?.embedding_cache_hit_rate_pct);
+            const localRouting = numericOrNull(data?.llm_routing_local_pct);
+            const tokensCompressed = numericOrNull(data?.tokens_compressed_last_hour);
+            const hintAdoption = numericOrNull(data?.hint_adoption_pct);
+            const evalLatest = numericOrNull(data?.eval_latest_pct);
+            const toolRows = numericOrNull(data?.tool_performance_rows);
+            const gapCount = numericOrNull(data?.query_gap_count);
+            document.getElementById('aiInternalsCacheHit').textContent = displayPercent(cacheHit, 1, 'cold', 'unavailable');
+            document.getElementById('aiInternalsLocalRouting').textContent = displayPercent(localRouting, 1, 'idle', 'unavailable');
+            document.getElementById('aiInternalsTokensCompressed').textContent = displayCount(tokensCompressed, 'none', 'unavailable');
+            document.getElementById('aiInternalsHintAdoption').textContent = displayPercent(hintAdoption, 1, 'none', 'unavailable');
+            document.getElementById('aiInternalsEvalLatest').textContent = displayPercent(evalLatest, 1, 'pending', 'unavailable');
+            document.getElementById('aiInternalsToolRows').textContent = displayCount(toolRows, 'none', 'unavailable');
+            document.getElementById('aiInternalsGapCount').textContent = displayCount(gapCount, 'clear', 'unavailable');
         }
 
         function updateHarnessOverview(aiMetrics) {
@@ -4210,24 +4240,24 @@
                 ? Number(discovery.cache_hit_rate) * 100
                 : null;
 
-            document.getElementById('harnessPassRate').textContent = passRate === null ? 'N/A' : `${passRate.toFixed(1)}%`;
-            document.getElementById('harnessDiscoveryInvoked').textContent = discoveryInvoked === null ? 'N/A' : `${discoveryInvoked}`;
-            document.getElementById('harnessDiscoveryCache').textContent = discoveryCache === null ? 'N/A' : `${discoveryCache.toFixed(1)}%`;
+            document.getElementById('harnessPassRate').textContent = passRate === null ? 'unavailable' : displayPercent(passRate, 1, 'pending');
+            document.getElementById('harnessDiscoveryInvoked').textContent = discoveryInvoked === null ? 'unavailable' : displayCount(discoveryInvoked, 'idle');
+            document.getElementById('harnessDiscoveryCache').textContent = discoveryCache === null ? 'unavailable' : displayPercent(discoveryCache, 1, 'cold');
             document.getElementById('harnessScriptsReady').textContent =
-                scriptsReady === null || scriptsTotal === null ? 'N/A' : `${scriptsReady}/${scriptsTotal}`;
-            document.getElementById('harnessResearchCandidates').textContent = researchCandidates === null ? 'N/A' : `${researchCandidates}`;
+                scriptsReady === null || scriptsTotal === null ? 'unavailable' : `${scriptsReady}/${scriptsTotal}`;
+            document.getElementById('harnessResearchCandidates').textContent = researchCandidates === null ? 'unavailable' : displayCount(researchCandidates, 'none');
             const improvementRuns = Number.isFinite(Number(improvement.total_runs)) ? Number(improvement.total_runs) : null;
             const improvementSuccess = Number.isFinite(Number(improvement.success_rate_pct)) ? Number(improvement.success_rate_pct) : null;
-            document.getElementById('harnessImprovementRuns').textContent = improvementRuns === null ? 'N/A' : `${improvementRuns}`;
+            document.getElementById('harnessImprovementRuns').textContent = improvementRuns === null ? 'unavailable' : displayCount(improvementRuns, 'never');
             document.getElementById('harnessImprovementSuccess').textContent =
-                improvementSuccess === null ? 'N/A' : `${improvementSuccess.toFixed(1)}%`;
+                improvementSuccess === null ? 'unavailable' : displayPercent(improvementSuccess, 1, 'not started');
             document.getElementById('harnessImprovementLast').textContent =
                 improvement.last_run_at ? formatTimestampWithStaleness(improvement.last_run_at, 120) : 'never run';
 
             const toolPolicyPresent = Object.keys(policies.tool_execution_policy || {}).length > 0;
             const outboundPolicyPresent = Object.keys(policies.outbound_http_policy || {}).length > 0;
             document.getElementById('harnessPolicyStatus').textContent =
-                toolPolicyPresent || outboundPolicyPresent ? 'CONFIGURED' : 'UNSET';
+                toolPolicyPresent || outboundPolicyPresent ? 'CONFIGURED' : 'NOT REPORTED';
 
             const badge = document.getElementById('harnessOpsBadge');
             if (badge) {
