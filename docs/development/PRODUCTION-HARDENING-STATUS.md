@@ -304,7 +304,7 @@ Features:
 
 ### System Documentation
 
-- [dashboard.html](dashboard.html) - served operator UI via declarative runtime
+- [dashboard.html](dashboard.html) - historical static dashboard surface retained for implementation context
 - [control-center.html](../../dashboard/control-center.html) - legacy non-authoritative control surface
 - [ORCHESTRATION-VISUAL-SUMMARY.md](ORCHESTRATION-VISUAL-SUMMARY.md) - Architecture overview
 

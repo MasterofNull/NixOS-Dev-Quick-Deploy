@@ -299,15 +299,15 @@ dashboard_websocket_connections
 #### Diagnostic Commands
 ```bash
 # Check dashboard health
-curl http://localhost:8889/api/health
+curl http://127.0.0.1:8889/api/health
 
 # Check WebSocket connection
-wscat -c ws://localhost:8889/ws/metrics
+wscat -c ws://127.0.0.1:8889/ws/metrics
 
 # View dashboard logs
 
 # Check metrics collection
-curl http://localhost:8889/api/metrics/system
+curl http://127.0.0.1:8889/api/metrics/system
 
 # Verify service connectivity
 ```
