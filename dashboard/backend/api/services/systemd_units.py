@@ -20,7 +20,6 @@ DEFAULT_AI_STACK_UNITS: List[str] = [
 
 DASHBOARD_UNITS: List[str] = [
     "command-center-dashboard-api",
-    "command-center-dashboard-frontend",
 ]
 
 NON_RUNTIME_AI_UNITS = {

@@ -20,7 +20,6 @@ required_units=(
   prometheus.service
   prometheus-node-exporter.service
   command-center-dashboard-api.service
-  command-center-dashboard-frontend.service
 )
 
 missing=0
