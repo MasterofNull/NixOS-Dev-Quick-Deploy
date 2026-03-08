@@ -68,12 +68,12 @@ aq-llama-debug --json
 1. `aq-qa 2`
 2. `aq-llama-debug --json`
 3. If classified as confinement:
-   - inspect [ai-stack.nix](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/modules/roles/ai-stack.nix)
+   - inspect [ai-stack.nix](../../nix/modules/roles/ai-stack.nix)
    - inspect `/etc/apparmor.d/ai-llama-cpp`
    - compare original vs copied binary behavior
 4. If classified as package/runtime:
-   - inspect [llama-cpp-latest.nix](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/lib/overlays/llama-cpp-latest.nix)
-   - inspect [allow-vulkan-igpu-offload.patch](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/patches/llama-cpp/allow-vulkan-igpu-offload.patch)
+   - inspect [llama-cpp-latest.nix](../../nix/lib/overlays/llama-cpp-latest.nix)
+   - inspect [allow-vulkan-igpu-offload.patch](../../nix/patches/llama-cpp/allow-vulkan-igpu-offload.patch)
 5. Only then start rebuild loops.
 
 ## Rebuild Gate
