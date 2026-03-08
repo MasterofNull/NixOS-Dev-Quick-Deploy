@@ -149,3 +149,4 @@ nix/hosts/*/deploy-options.local.nix
 nix/hosts/*/facts.nix
 nix/hosts/*/secrets.sops.yaml
 nix/hosts/*/.sops.yaml
+.claude/settings.json
