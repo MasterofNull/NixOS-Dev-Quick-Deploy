@@ -122,7 +122,7 @@ def get_circuit_breakers():
 
 ### Files to Modify
 - `scripts/deploy/serve-dashboard.sh` - Add API endpoints (historical implementation path)
-- `dashboard.html` - Update JavaScript to use API (lines 3728-3733)
+- `dashboard.html` - Update JavaScript to use API (historical static dashboard path; lines 3728-3733)
 - `ai-stack/mcp-servers/config/config.yaml` - Ensure all values are parameterized
 
 ---
@@ -375,7 +375,7 @@ Need to ensure these fixes persist in deployment templates.
 - Config API: ✓ Working (`/api/config`)
 - Learning Stats API: Ready (waiting for hybrid coordinator)
 - Circuit Breaker API: Ready (waiting for hybrid coordinator)
-- Dashboard server running on port 8888
+- Historical dashboard server path running on port 8888 during this implementation pass
 - Auto-refresh implemented with 30-second intervals
 
 **Files Modified**:
@@ -401,9 +401,9 @@ Need to ensure these fixes persist in deployment templates.
 ## 📚 References
 
 - [Ralph Wiggum Server](ai-stack/mcp-servers/ralph-wiggum/server.py)
-- [Dashboard HTML](dashboard.html) - Lines 1531-1599 (Configuration section)
-- [Dashboard JavaScript](dashboard.html) - Lines 3671-3768 (Config functions)
-- [Serve Dashboard Script](scripts/deploy/serve-dashboard.sh)
+- [Dashboard HTML](dashboard.html) - Historical static dashboard surface, lines 1531-1599
+- [Dashboard JavaScript](dashboard.html) - Historical static dashboard config functions, lines 3671-3768
+- [Serve Dashboard Script](scripts/deploy/serve-dashboard.sh) - Historical implementation surface
 - [Config YAML](ai-stack/mcp-servers/config/config.yaml)
 
 ---
