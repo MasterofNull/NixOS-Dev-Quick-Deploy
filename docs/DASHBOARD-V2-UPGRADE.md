@@ -202,7 +202,7 @@ AI_STACK_DATA=/home/${USER}/.local/share/nixos-ai-stack
 server: {
   port: 8890,
   proxy: {
-    '/api': 'http://localhost:8889'
+    '/api': 'http://127.0.0.1:8889'
   }
 }
 ```
