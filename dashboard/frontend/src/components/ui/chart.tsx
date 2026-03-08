@@ -7,13 +7,16 @@ type ChartContainerProps = React.HTMLAttributes<HTMLDivElement> & {
 };
 
 const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
-  ({ className, config: _config, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn("w-full h-full", className)}
-      {...props}
-    />
-  )
+  ({ className, config, ...props }, ref) => {
+    void config
+    return (
+      <div
+        ref={ref}
+        className={cn("w-full h-full", className)}
+        {...props}
+      />
+    )
+  }
 )
 ChartContainer.displayName = "ChartContainer"
 
