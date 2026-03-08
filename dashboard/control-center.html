@@ -935,7 +935,8 @@
                 // In production, this would go through a backend API
                 const url = `http://localhost:${endpoint.port}${endpoint.path || '/health'}`;
 
-                // Simulate health check (real implementation needs backend proxy)
+                // Static-mode browser checks are best-effort only; authoritative
+                // production health comes from the dashboard backend aggregate API.
                 const response = await fetch(url, {
                     method: 'GET',
                     mode: 'cors',
@@ -952,10 +953,10 @@
                     return false;
                 }
             } catch (error) {
-                // CORS errors are expected for cross-origin requests
-                // Mark as "checking" for services that need backend proxy
+                // CORS failures or cross-origin blocks mean static mode cannot
+                // authoritatively verify the service from the browser.
                 indicator.textContent = '⚠️';
-                detail.textContent = 'Check via CLI';
+                detail.textContent = 'Unavailable in static mode';
                 return null;
             }
         }

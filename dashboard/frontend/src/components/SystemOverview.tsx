@@ -5,12 +5,15 @@ import { Cpu, MemoryStick, HardDrive, Activity } from 'lucide-react';
 
 export function SystemOverview() {
   const currentMetrics = useDashboardStore((state) => state.currentMetrics);
+  const error = useDashboardStore((state) => state.error);
 
   if (!currentMetrics) {
     return (
       <Card>
         <CardContent className="p-6">
-          <div className="text-muted-foreground">Loading system metrics...</div>
+          <div className="text-muted-foreground">
+            {error ? `System metrics unavailable: ${error}` : 'Loading system metrics...'}
+          </div>
         </CardContent>
       </Card>
     );
