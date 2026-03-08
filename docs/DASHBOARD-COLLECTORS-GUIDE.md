@@ -221,14 +221,16 @@ systemd.user.services.dashboard-collectors = {
 };
 ```
 
-### Dashboard Server
+### Dashboard Runtime
 
-The dashboard is served by [scripts/deploy/serve-dashboard.sh](/scripts/deploy/serve-dashboard.sh):
+The authoritative production dashboard runtime is the declarative command center service:
 
 ```bash
-bash scripts/deploy/serve-dashboard.sh
-# Open http://localhost:8888/dashboard.html
+systemctl status command-center-dashboard-api.service
+xdg-open http://127.0.0.1:8889/
 ```
+
+Historical collector/server flows described in this document are legacy implementation context, not the current deployment model.
 
 ## Related Documentation
 

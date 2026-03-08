@@ -316,8 +316,8 @@ python3 scripts/testing/demo-local-ai-usage.py
 
 2. Check telemetry generated:
 ```bash
-bash scripts/data/generate-dashboard-data.sh
-xdg-open http://localhost:8888/dashboard.html
+systemctl status command-center-dashboard-api.service
+xdg-open http://127.0.0.1:8889/
 ```
 
 3. Choose enforcement strategy:

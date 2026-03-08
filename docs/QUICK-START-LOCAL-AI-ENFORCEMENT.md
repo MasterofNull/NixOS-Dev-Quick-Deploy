@@ -83,11 +83,11 @@ tail -5 ~/.local/share/nixos-ai-stack/telemetry/events-$(date +%Y-%m-%d).jsonl
 
 ### Step 3: Check dashboard
 ```bash
-# Regenerate dashboard data
-bash scripts/data/generate-dashboard-data.sh --lite-mode
+# Check dashboard service
+systemctl status command-center-dashboard-api.service
 
 # Open dashboard
-xdg-open http://localhost:8888/dashboard.html
+xdg-open http://127.0.0.1:8889/
 ```
 
 **Look for**:

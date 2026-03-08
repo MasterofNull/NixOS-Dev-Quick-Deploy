@@ -1,15 +1,15 @@
 # Dashboard Quick Reference
 
-**TL;DR**: Your dashboard now updates graphs every 2 seconds, matching GNOME Resources quality! 🚀
+**TL;DR**: The production command center is the declarative dashboard service on `http://127.0.0.1:8889/`. Collector timing notes below are historical implementation context for the HTML dashboard path.
 
 ## Quick Commands
 
 ```bash
 # View dashboard
-bash scripts/deploy/serve-dashboard.sh
-# Open: http://localhost:8888/dashboard.html
+systemctl status command-center-dashboard-api.service
+xdg-open http://127.0.0.1:8889/
 
-# Manage collectors
+# Legacy collector management context
 bash scripts/governance/manage-dashboard-collectors.sh status   # Check if running
 bash scripts/governance/manage-dashboard-collectors.sh restart  # Restart if needed
 bash scripts/governance/manage-dashboard-collectors.sh logs     # View logs
