@@ -6,7 +6,7 @@
 
 ## 🎯 New Features Location
 
-Open http://localhost:8888/dashboard.html and scroll to find:
+Open http://127.0.0.1:8889/ and scroll to find:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -439,7 +439,7 @@ Should return:
 
 ### Step 1: Access Dashboard
 1. Open browser
-2. Navigate to: http://localhost:8888/dashboard.html
+2. Navigate to: http://127.0.0.1:8889/
 3. Wait for page to load (<1 second)
 
 ### Step 2: Find Service Controls

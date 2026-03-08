@@ -172,7 +172,7 @@ bash scripts/data/generate-dashboard-data.sh --lite-mode
 Open dashboard:
 
 ```bash
-xdg-open http://localhost:8888/dashboard.html
+xdg-open http://127.0.0.1:8889/
 ```
 
 Check the **Discovery Signals** card:
