@@ -1,11 +1,11 @@
-# K3s-only Deployment
-Status: Active
+# AI Stack Release Updates - 2025-12-22
+Status: Historical
 Owner: AI Stack Maintainers
-Last Updated: 2026-03-05
+Last Updated: 2026-03-08
 
+This release-update note was written against an older K3s/container-era plan and is no longer authoritative for the current repository state.
 
-This document has been retired for the K3s-only runtime.
-
-Use the current runbook:
-- `DEPLOYMENT.md`
-- `../archive/K3S-PORTAINER-MIGRATION-PLAN.md`
+Use these current docs instead:
+- `README.md`
+- `docs/operations/reference/QUICK-REFERENCE.md`
+- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`

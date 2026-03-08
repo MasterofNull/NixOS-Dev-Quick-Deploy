@@ -7,6 +7,11 @@ Last Updated: 2026-03-05
 **Target Completion:** 2026-02-28
 **Status:** COMPLETE (CLOSED 2026-03-04)
 
+Historical note:
+- This closed roadmap contains substantial K3s-first planning and implementation history.
+- It remains useful for audit and change-trace purposes, but it is not the current operator-facing source of truth.
+- For the live runtime model and current verification flow, use `README.md`, `docs/operations/OPERATOR-RUNBOOK.md`, and `docs/operations/reference/QUICK-REFERENCE.md`.
+
 ---
 
 ## Executive Summary
