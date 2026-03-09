@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Compatibility shim over the declarative secrets manager for one service API key.
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MANAGER="${ROOT_DIR}/scripts/governance/manage-secrets.sh"
 HOST_NAME=""
