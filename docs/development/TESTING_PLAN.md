@@ -13,7 +13,7 @@ Last Updated: 2026-03-05
 
 **Goal:** Ensure the foundation is secure and properly configured.
 
-- [ ] **TLS Certificates**: Verify `generate-nginx-certs.sh` creates valid keys/certs with correct permissions (0600/0644).
+- [ ] **TLS Certificates**: Verify declarative ingress TLS via `scripts/security/renew-tls-certificate.sh --status` and confirm certificate files have the expected permissions.
 - [ ] **File Permissions**: Check that sensitive config files are not world-readable.
 - [ ] **Environment Variables**: Verify `.env` exists and contains required keys (without logging values).
 

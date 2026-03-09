@@ -232,7 +232,6 @@ scripts/data/generate-dashboard-data-lite.sh
 scripts/data/generate-dashboard-data.sh
 scripts/data/generate-harness-sdk-api-docs.sh
 scripts/data/generate-harness-sdk-provenance.sh
-scripts/data/generate-nginx-certs.sh
 scripts/data/generate-package-counts.sh
 scripts/data/generate-passwords.sh
 scripts/data/generate-test-telemetry.sh
@@ -243,7 +242,6 @@ scripts/data/import-ai-behavior-snapshot.sh
 scripts/data/import-collections.sh
 scripts/data/import-documents.py
 scripts/data/import-project-knowledge.sh
-scripts/data/init-package-database.sh
 scripts/data/initialize-qdrant-collections.sh
 scripts/deploy/install-ai-research-sync-timer.sh
 scripts/deploy/install-backup-timers.sh

@@ -2122,7 +2122,7 @@ CONTAINER_CLI=skopeo ONLY_IMAGES=ai-stack-aidb TAG=dev ./scripts/deploy/publish-
   - `ai-stack/mcp-servers/nixos-docs/server.py` (3 fixes: Redis stats, cache clear, memory read)
   - `scripts/governance/manage-secrets.py` (json.JSONDecodeError/OSError + added logger)
   - `scripts/ai/claude-api-proxy.py` (urllib.error.URLError/OSError)
-- Fixed 3 bash scripts with incomplete set options: `run-acceptance-checks.sh`, `record-claude-code-errors.sh`, `init-package-database.sh`
+- Fixed 3 bash scripts with incomplete set options: `run-acceptance-checks.sh`, `record-claude-code-errors.sh`, and one later-retired package database helper.
 - Added design-intent comments to `system-health-check.sh` and `generate-dashboard-data.sh` explaining intentional `-e` omission
 - Replaced `|| true` with `if ! cmd; then log_warning ...` in `phase-05` (sanitize_generated_configs, chown/chmod backup artifacts) and `phase-09` (sed model preferences)
 - Added `aggregate_deployment_errors()` to `lib/logging.sh` and error summary section to `print_post_install()` in `lib/reporting.sh`
@@ -2791,7 +2791,7 @@ Feature audit results:
 **Progress Note (2026-02-05):**
 - 17.5.1: Audit found 13 files with mktemp usage lacking trap handlers across scripts/, phases/, and lib/. 6 were standalone scripts, 2 were phases, 5 were library functions.
 - 17.5.2: Fixed the highest-impact cases:
-  - `scripts/data/generate-nginx-certs.sh`: Added `trap 'rm -f "$CATFILE"' EXIT` after mktemp
+  - Deprecated nginx certificate helper: Added `trap 'rm -f "$CATFILE"' EXIT` after mktemp before retirement
   - `scripts/ai/ai-stack-feature-scenario.sh`: Added `trap 'rm -f "$RESULTS_JSONL"' EXIT` after mktemp
   - `scripts/lib/download-cache.sh`: Added `rm -f "$temp_file"` to error path that was leaking
   - Library functions (common.sh, config.sh, tools.sh, timeout.sh, secrets-sops.sh): Cannot add process-level traps inside library functions as they would override the caller's existing trap. These use manual cleanup patterns which is the correct approach for shared library code.

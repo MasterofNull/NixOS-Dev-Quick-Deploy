@@ -44,13 +44,11 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 
 | Script | Active refs | Code | Docs | Tests | Nix | Archive | Rationale |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `scripts/data/generate-nginx-certs.sh` | 4 | 0 | 2 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |
 | `scripts/deploy/local-registry.sh` | 4 | 0 | 2 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-full.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-lite.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/download-lemonade-models.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/generate-test-telemetry.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
-| `scripts/data/init-package-database.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/initialize-qdrant-collections.sh` | 3 | 0 | 1 | 0 | 0 | 3 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/populate-knowledge-base.py` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/populate-knowledge-from-web.py` | 3 | 0 | 1 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |

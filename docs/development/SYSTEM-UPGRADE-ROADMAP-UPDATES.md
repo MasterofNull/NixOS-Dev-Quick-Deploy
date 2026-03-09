@@ -2064,7 +2064,7 @@ Last Updated: 2026-03-05
 - [x] Migrated bootstrap/init/migrate/proxy wrappers:
   - `scripts/ai/`: `claude-api-proxy.py`, `claude-local-wrapper.py`, `complete-via-ralph.sh`
   - `scripts/deploy/`: `deploy-aidb-mcp-server.sh`, `quick-deploy-fast-verify.sh`
-  - `scripts/data/`: `bootstrap-prsi-confidence-samples.sh`, `bootstrap_aidb_data.sh`, `init-package-database.sh`, `initialize-qdrant-collections.sh`, `migrate-reports-to-database.sh`
+  - `scripts/data/`: `bootstrap-prsi-confidence-samples.sh`, `bootstrap_aidb_data.sh`, `initialize-qdrant-collections.sh`, `migrate-reports-to-database.sh`
   - `scripts/governance/`: `preflight-auto-remediate.sh`
 - [x] Migrated smoke/test utility scripts out of root:
   - `scripts/testing/`: `smoke-*`, `chaos-harness-smoke.sh`, `rag-smoke-test.sh`, `telemetry-smoke-test.sh`, `test_real_world_workflows.sh`, `test_services.sh`
@@ -2091,7 +2091,7 @@ Last Updated: 2026-03-05
 - `bash -n scripts/deploy/recovery-*.sh scripts/deploy/restore-drill.sh scripts/security/renew-tls-certificate.sh scripts/security/rotate-api-key.sh scripts/data/rebuild-qdrant-collections.sh scripts/data/rotate-telemetry.sh scripts/governance/record-claude-code-errors.sh` → PASS
 - `bash -n scripts/testing/smoke-*.sh scripts/testing/chaos-harness-smoke.sh scripts/testing/rag-smoke-test.sh scripts/testing/telemetry-smoke-test.sh scripts/testing/test_real_world_workflows.sh scripts/testing/test_services.sh scripts/health/system-health-check.sh` → PASS
 - `bash -n scripts/ai/ai-*.sh scripts/security/security-*.sh scripts/ai/mcp-* scripts/data/update-*.sh scripts/governance/{apply-project-root.sh,new-improvement-proposal.sh,smart_config_gen.sh,git-safe.sh} scripts/deploy/local-registry.sh` → PASS
-- `bash -n scripts/ai/complete-via-ralph.sh scripts/deploy/{deploy-aidb-mcp-server.sh,quick-deploy-fast-verify.sh} scripts/data/{bootstrap-prsi-confidence-samples.sh,bootstrap_aidb_data.sh,init-package-database.sh,initialize-qdrant-collections.sh,migrate-reports-to-database.sh} scripts/governance/preflight-auto-remediate.sh` → PASS
+- `bash -n scripts/ai/complete-via-ralph.sh scripts/deploy/{deploy-aidb-mcp-server.sh,quick-deploy-fast-verify.sh} scripts/data/{bootstrap-prsi-confidence-samples.sh,bootstrap_aidb_data.sh,initialize-qdrant-collections.sh,migrate-reports-to-database.sh} scripts/governance/preflight-auto-remediate.sh` → PASS
 - `python3 -m py_compile scripts/data/sync-hint-feedback-db.py scripts/testing/test-continuous-learning.py scripts/testing/test-discovery-system.py scripts/testing/test-rag-workflow.py scripts/testing/test-tool-security-auditor.py` → PASS
 - `python3 -m py_compile scripts/data/import-documents.py scripts/data/populate-knowledge-base.py scripts/data/populate-knowledge-from-web.py scripts/data/populate-qdrant-directly.py scripts/data/populate-qdrant-with-embeddings.py` → PASS
 - `python3 -m py_compile scripts/governance/discover-focused-agent-repos.py scripts/governance/discover-improvements.py scripts/governance/discover-semantic-github-repos.py scripts/governance/manage-secrets.py scripts/governance/record-issue.py` → PASS
