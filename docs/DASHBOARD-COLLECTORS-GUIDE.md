@@ -43,7 +43,7 @@ The system dashboard uses **two separate collectors** to optimize performance:
         │                                       │
 ┌───────▼────────────┐              ┌──────────▼──────────┐
 │  Lite Collector    │              │  Full Collector     │
-│  (PID 161811)      │              │  (PID 162629)       │
+│  (runtime-managed) │              │  (runtime-managed)  │
 │                    │              │                     │
 │  Cycle: ~2.5s      │              │  Cycle: ~69s        │
 │  - Run: 0.5s       │              │  - Run: 9s          │
@@ -72,6 +72,8 @@ bash scripts/governance/manage-dashboard-collectors.sh logs     # View logs
 # Manual collection (for testing)
 bash scripts/data/generate-dashboard-data-lite.sh   # Only system + network
 bash scripts/data/generate-dashboard-data.sh        # Full collection
+bash scripts/observability/collect-ai-metrics.sh    # Refresh AI metrics cache
+scripts/ai/aq-report --since=7d --format=text       # Inspect routing/cache summary
 ```
 
 ## Performance Metrics
@@ -153,6 +155,9 @@ bash scripts/governance/manage-dashboard-collectors.sh start
 ### Dashboard graphs not updating
 
 ```bash
+# Check declarative service first
+systemctl status command-center-dashboard-api.service
+
 # Check data freshness
 ls -lh ~/.local/share/nixos-system-dashboard/*.json
 
@@ -224,6 +229,20 @@ xdg-open http://127.0.0.1:8889/
 ```
 
 Historical collector/server flows described in this document are legacy implementation context, not the current deployment model.
+
+## AI Routing Visibility
+
+The dashboard cache and AI report are the supported operator surfaces for
+local-vs-remote visibility:
+
+```bash
+scripts/observability/collect-ai-metrics.sh
+cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq '.effectiveness, .services'
+scripts/ai/aq-report --since=7d --format=text
+```
+
+Use `aq-report` when you need routing split, cache behavior, or recent
+coaching/remediation signals rather than just raw dashboard cache files.
 
 ## Related Documentation
 

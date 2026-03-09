@@ -17,12 +17,14 @@ bash scripts/governance/manage-dashboard-collectors.sh logs     # View logs
 
 ## What's Running
 
-Two background processes collect dashboard data:
+The supported operator view is:
 
-| Collector | Updates | Metrics | PID |
-|-----------|---------|---------|-----|
-| **Lite** | Every 2.5s | CPU, Memory, Disk I/O, Network, Processes | 161811 |
-| **Full** | Every 69s | LLM, Database, Security, Telemetry, etc. | 162629 |
+```bash
+systemctl status command-center-dashboard-api.service
+bash scripts/governance/manage-dashboard-collectors.sh status
+```
+
+Collector PIDs are intentionally omitted here because they change every restart.
 
 ## Dashboard Update Rates
 
@@ -64,6 +66,14 @@ sed -n '1,120p' scripts/data/generate-dashboard-data-lite.sh
 bash scripts/governance/manage-dashboard-collectors.sh restart
 ```
 
+### Need local-vs-remote AI visibility?
+
+```bash
+bash scripts/observability/collect-ai-metrics.sh
+cat ~/.local/share/nixos-system-dashboard/ai_metrics.json | jq '.effectiveness'
+scripts/ai/aq-report --since=7d --format=text
+```
+
 ## Complete Documentation
 
 - [DASHBOARD-COLLECTORS-GUIDE.md](DASHBOARD-COLLECTORS-GUIDE.md) - Architecture and details
@@ -72,6 +82,6 @@ bash scripts/governance/manage-dashboard-collectors.sh restart
 
 ---
 
-**Status**: ✅ Running perfectly
-**CPU Usage**: ~2% (both collectors)
-**Update Latency**: 2-3 seconds for graphs
+**Status**: Check `systemctl status command-center-dashboard-api.service`
+**AI Metrics Cache**: `~/.local/share/nixos-system-dashboard/ai_metrics.json`
+**Routing Summary**: `scripts/ai/aq-report --since=7d --format=text`
