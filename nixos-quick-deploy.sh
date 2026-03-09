@@ -426,6 +426,14 @@ print_completion_test_results() {
     recent_route_window="$(printf '%s' "${json}" | jq -r '.recent_routing.window // "1h"')"
     recent_route_local="$(printf '%s' "${json}" | jq -r '.recent_routing.local_n // 0')"
     recent_route_remote="$(printf '%s' "${json}" | jq -r '.recent_routing.remote_n // 0')"
+    historical_watch_has_items="$(printf '%s' "${json}" | jq -r '.historical_watchlist.has_items // false')"
+    historical_watch_window="$(printf '%s' "${json}" | jq -r '.historical_watchlist.window // "7d"')"
+    historical_watch_flaky_tool="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].tool // empty')"
+    historical_watch_flaky_ok="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].success_pct // empty')"
+    historical_watch_flaky_calls="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].calls // empty')"
+    historical_watch_slow_tool="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].tool // empty')"
+    historical_watch_slow_p95="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].p95_ms // empty')"
+    historical_watch_slow_calls="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].calls // empty')"
     top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
@@ -469,6 +477,21 @@ print_completion_test_results() {
     printf '  %-28s %s%% (%s)\n' "Eval latest" "${eval_latest}" "${eval_trend}"
     printf '  %-28s %s%%\n' "Intent-contract coverage" "${intent_cov}"
     printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
+    if [[ "${historical_watch_has_items}" == "true" ]]; then
+      if [[ -n "${historical_watch_flaky_tool}" ]]; then
+        printf '  %-28s %s OK %s%% (%s calls)\n' \
+          "Historical watchlist (${historical_watch_window})" \
+          "${historical_watch_flaky_tool}" \
+          "${historical_watch_flaky_ok}" \
+          "${historical_watch_flaky_calls}"
+      elif [[ -n "${historical_watch_slow_tool}" ]]; then
+        printf '  %-28s %s p95 %sms (%s calls)\n' \
+          "Historical watchlist (${historical_watch_window})" \
+          "${historical_watch_slow_tool}" \
+          "${historical_watch_slow_p95}" \
+          "${historical_watch_slow_calls}"
+      fi
+    fi
     printf '  %-28s %s\n' "Semantic autorun route calls" "${semantic_route_calls}"
 
     if [[ -n "${recommendations}" ]]; then
