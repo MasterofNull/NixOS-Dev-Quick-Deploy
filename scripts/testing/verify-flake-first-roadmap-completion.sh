@@ -267,6 +267,7 @@ check_pattern "scripts/ai/aq-report" 'def recent_health_snapshot\(' 'aq-report c
 check_pattern "scripts/ai/aq-report" '## 8\. Recent Health Snapshot|\[ 8\. Recent Health Snapshot' 'aq-report surfaces a recent health snapshot section'
 check_pattern "scripts/ai/aq-report" '"recent_health": recent_health' 'aq-report JSON output includes recent health state'
 check_pattern "scripts/ai/aq-report" 'Latency context: \{_tool_latency_context\(stats, fresh\)\}' 'aq-report latency recommendations include recent-window context'
+check_pattern "scripts/ai/aq-report" 'Recent context: \{_autorun_block_context\(recent_semantic_autorun\)\}' 'aq-report autorun security recommendations include recent-window context'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'Objective \| Constraints \| Context \| Validation' 'Prompt coaching uses compact progressive-disclosure template by default'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_is_curated_stale_gap' 'Hints engine suppresses curated stale gap topics'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_is_synthetic_gap' 'Hints engine suppresses synthetic gap topics'
