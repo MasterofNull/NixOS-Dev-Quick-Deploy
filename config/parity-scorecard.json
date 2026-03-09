@@ -1,11 +1,11 @@
 {
-  "version": "1.0",
-  "updated_at": "2026-03-03",
+  "version": "1.1",
+  "updated_at": "2026-03-08",
   "tracks": [
     {
       "id": "run_trajectory_replay",
-      "weight": 0.2,
-      "status": "partial",
+      "weight": 0.12,
+      "status": "implemented",
       "checks": [
         "/workflow/run/start",
         "/workflow/run/{id}/event",
@@ -14,8 +14,8 @@
     },
     {
       "id": "runtime_control_plane",
-      "weight": 0.2,
-      "status": "partial",
+      "weight": 0.12,
+      "status": "implemented",
       "checks": [
         "/control/runtimes/register",
         "/control/runtimes",
@@ -25,8 +25,8 @@
     },
     {
       "id": "runtime_safety_envelope",
-      "weight": 0.2,
-      "status": "partial",
+      "weight": 0.12,
+      "status": "implemented",
       "checks": [
         "safety_mode",
         "risk_class",
@@ -35,8 +35,8 @@
     },
     {
       "id": "budget_guardrails",
-      "weight": 0.15,
-      "status": "partial",
+      "weight": 0.1,
+      "status": "implemented",
       "checks": [
         "token_limit",
         "tool_call_limit",
@@ -45,8 +45,8 @@
     },
     {
       "id": "cli_workflow_ergonomics",
-      "weight": 0.15,
-      "status": "partial",
+      "weight": 0.1,
+      "status": "implemented",
       "checks": [
         "harness-rpc run-start",
         "harness-rpc run-event",
@@ -55,11 +55,60 @@
     },
     {
       "id": "mcp_workflow_blueprints",
-      "weight": 0.1,
-      "status": "partial",
+      "weight": 0.08,
+      "status": "implemented",
       "checks": [
         "/workflow/blueprints",
         "config/workflow-blueprints.json"
+      ]
+    },
+    {
+      "id": "distributed_tracing",
+      "weight": 0.12,
+      "status": "implemented",
+      "phase": "21.1",
+      "checks": [
+        "tempo_backend",
+        "otlp_exporter",
+        "otel_collector_config"
+      ]
+    },
+    {
+      "id": "llm_performance_metrics",
+      "weight": 0.12,
+      "status": "implemented",
+      "phase": "21.2",
+      "checks": [
+        "llama_cpp_metrics_flag",
+        "prometheus_scrape_llama",
+        "grafana_token_throughput",
+        "grafana_kv_cache",
+        "grafana_latency_p95"
+      ]
+    },
+    {
+      "id": "cache_intelligence",
+      "weight": 0.1,
+      "status": "implemented",
+      "phase": "21.3",
+      "checks": [
+        "cache_invalidate_endpoint",
+        "cache_stats_endpoint",
+        "rebuild_cache_clear",
+        "embedding_cache_metrics",
+        "grafana_cache_panels"
+      ]
+    },
+    {
+      "id": "model_management",
+      "weight": 0.1,
+      "status": "implemented",
+      "phase": "5",
+      "checks": [
+        "reload_model_endpoint",
+        "model_status_endpoint",
+        "model_reload_metrics",
+        "grafana_model_panels"
       ]
     }
   ]

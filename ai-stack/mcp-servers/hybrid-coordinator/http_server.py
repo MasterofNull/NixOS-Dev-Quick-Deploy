@@ -77,6 +77,7 @@ _local_llm_healthy_ref: Optional[Callable] = None   # lambda: _local_llm_healthy
 _local_llm_loading_ref: Optional[Callable] = None   # lambda: _local_llm_loading
 _queue_depth_ref: Optional[Callable] = None          # lambda: _model_loading_queue_depth
 _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
+_embedding_cache_ref: Optional[Callable] = None      # Phase 21.3 — lambda: embedding_cache
 _workflow_sessions_lock = asyncio.Lock()
 _runtime_registry_lock = asyncio.Lock()
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
@@ -852,6 +853,7 @@ def init(
     local_llm_loading_ref: Callable,
     queue_depth_ref: Callable,
     queue_max_ref: Callable,
+    embedding_cache_ref: Optional[Callable] = None,
 ) -> None:
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
     global _augment_query, _route_search, _tree_search, _store_memory, _recall_memory
@@ -861,6 +863,7 @@ def init(
     global _multi_turn_manager, _progressive_disclosure, _feedback_api, _learning_pipeline
     global _COLLECTIONS, _HYBRID_STATS, _HARNESS_STATS, _CIRCUIT_BREAKERS, _SERVICE_NAME
     global _local_llm_healthy_ref, _local_llm_loading_ref, _queue_depth_ref, _queue_max_ref
+    global _embedding_cache_ref
     global _TOOL_SECURITY_AUDITOR
 
     _augment_query = augment_query_fn
@@ -892,6 +895,7 @@ def init(
     _local_llm_loading_ref = local_llm_loading_ref
     _queue_depth_ref = queue_depth_ref
     _queue_max_ref = queue_max_ref
+    _embedding_cache_ref = embedding_cache_ref
     audit_enabled = os.getenv("AI_TOOL_SECURITY_AUDIT_ENABLED", "true").lower() == "true"
     audit_enforce = os.getenv("AI_TOOL_SECURITY_AUDIT_ENFORCE", "true").lower() == "true"
     audit_ttl_hours = int(os.getenv("AI_TOOL_SECURITY_CACHE_TTL_HOURS", "168"))
@@ -1495,7 +1499,80 @@ async def run_http_mode(port: int) -> None:
 
     async def handle_metrics(_request):
         PROCESS_MEMORY_BYTES.set(_get_process_memory())
+        # Phase 21.3 — update embedding cache size gauge
+        if _embedding_cache_ref:
+            try:
+                cache = _embedding_cache_ref()
+                if cache:
+                    from metrics import EMBEDDING_CACHE_SIZE
+                    size = await cache.get_cache_size()
+                    EMBEDDING_CACHE_SIZE.set(size)
+            except Exception:
+                pass
         return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
+
+    # Phase 21.3 — Cache invalidation endpoint for event-driven cache management
+    async def handle_cache_invalidate(request):
+        """
+        Invalidate embedding cache entries.
+
+        POST /cache/invalidate
+        Body:
+            {"trigger": "rebuild"|"manual"|"model_change", "scope": "all"|"prefix", "prefix": "..."}
+
+        Returns:
+            {"status": "ok", "keys_deleted": N}
+        """
+        if not _embedding_cache_ref:
+            return web.json_response({"error": "cache not initialized"}, status=503)
+
+        try:
+            cache = _embedding_cache_ref()
+            if not cache:
+                return web.json_response({"error": "cache not available"}, status=503)
+
+            data = await request.json()
+            trigger = data.get("trigger", "manual")
+            scope = data.get("scope", "all")
+
+            from metrics import EMBEDDING_CACHE_INVALIDATIONS
+            EMBEDDING_CACHE_INVALIDATIONS.labels(trigger=trigger).inc()
+
+            if scope == "all":
+                deleted = await cache.clear_all()
+                logger.info("cache_invalidation trigger=%s scope=all deleted=%d", trigger, deleted)
+                return web.json_response({"status": "ok", "keys_deleted": deleted})
+            else:
+                # Future: support prefix-based invalidation
+                return web.json_response({"error": "unsupported scope"}, status=400)
+
+        except Exception as exc:
+            logger.error("cache_invalidation_error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_cache_stats(_request):
+        """
+        Get embedding cache statistics.
+
+        GET /cache/stats
+        Returns cache hit/miss stats and current size.
+        """
+        if not _embedding_cache_ref:
+            return web.json_response({"error": "cache not initialized"}, status=503)
+
+        try:
+            cache = _embedding_cache_ref()
+            if not cache:
+                return web.json_response({"error": "cache not available"}, status=503)
+
+            stats = cache.get_stats()
+            size = await cache.get_cache_size()
+            stats["current_size"] = size
+            return web.json_response(stats)
+
+        except Exception as exc:
+            logger.error("cache_stats_error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
 
     async def handle_learning_stats(_request):
         try:
@@ -1591,30 +1668,81 @@ async def run_http_mode(port: int) -> None:
 
     _RELOAD_ALLOWLIST = {
         "llama-cpp": "llama-cpp.service",
+        "llama-cpp-embed": "llama-cpp-embed.service",
         "ai-embeddings": "ai-embeddings.service",
     }
 
     async def handle_reload_model(request: web.Request) -> web.Response:
-        """POST /reload-model — restart a whitelisted systemd service."""
+        """POST /reload-model — restart a whitelisted systemd service with metrics."""
+        from metrics import MODEL_RELOADS, MODEL_RELOAD_DURATION
+        import time as _time
         try:
             body = await request.json()
         except Exception:
             body = {}
         service = body.get("service", "llama-cpp")
         if service not in _RELOAD_ALLOWLIST:
+            MODEL_RELOADS.labels(service=service, status="failure").inc()
             return web.json_response({"error": "service not in allowlist"}, status=400)
         service_unit = _RELOAD_ALLOWLIST[service]
+        start = _time.monotonic()
         proc = await asyncio.create_subprocess_exec(
             "systemctl", "restart", service_unit,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        await proc.communicate()
-        return web.json_response({
-            "status": "restarting",
-            "service": service_unit,
-            "note": "service will be unavailable briefly",
-        })
+        stdout, stderr = await proc.communicate()
+        duration = _time.monotonic() - start
+        MODEL_RELOAD_DURATION.labels(service=service).observe(duration)
+        if proc.returncode == 0:
+            MODEL_RELOADS.labels(service=service, status="success").inc()
+            return web.json_response({
+                "status": "restarted",
+                "service": service_unit,
+                "duration_seconds": round(duration, 2),
+            })
+        else:
+            MODEL_RELOADS.labels(service=service, status="failure").inc()
+            return web.json_response({
+                "status": "failed",
+                "service": service_unit,
+                "error": stderr.decode("utf-8", errors="replace")[:500],
+            }, status=500)
+
+    async def handle_model_status(request: web.Request) -> web.Response:
+        """GET /model/status — return status of model services (Phase 5)."""
+        from metrics import MODEL_ACTIVE_INFO
+        results = {}
+        for name, unit in _RELOAD_ALLOWLIST.items():
+            proc = await asyncio.create_subprocess_exec(
+                "systemctl", "is-active", unit,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            status = stdout.decode().strip()
+            # Try to get model path from environment
+            model_path = "unknown"
+            if name in ("llama-cpp", "llama-cpp-embed"):
+                env_proc = await asyncio.create_subprocess_exec(
+                    "systemctl", "show", unit, "--property=ExecStart",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                env_out, _ = await env_proc.communicate()
+                env_str = env_out.decode()
+                # Extract --model path from ExecStart
+                import re
+                model_match = re.search(r'--model\s+([^\s;]+)', env_str)
+                if model_match:
+                    model_path = model_match.group(1)
+            MODEL_ACTIVE_INFO.labels(service=name, model_path=model_path).set(1 if status == "active" else 0)
+            results[name] = {
+                "unit": unit,
+                "status": status,
+                "model_path": model_path,
+            }
+        return web.json_response({"services": results})
 
     # ------------------------------------------------------------------
     # Phase 19.2.1/19.2.2 — /hints endpoint (agent-agnostic hint API)
@@ -2891,11 +3019,15 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/discovery/capabilities", handle_discover_capabilities)
     http_app.router.add_post("/discovery/token_budget", handle_token_budget_recommendations)
     http_app.router.add_get("/metrics", handle_metrics)
+    # Phase 21.3 — cache management endpoints
+    http_app.router.add_post("/cache/invalidate", handle_cache_invalidate)
+    http_app.router.add_get("/cache/stats", handle_cache_stats)
     http_app.router.add_get("/learning/stats", handle_learning_stats)
     http_app.router.add_post("/learning/process", handle_learning_process)
     http_app.router.add_post("/learning/export", handle_learning_export)
     http_app.router.add_post("/learning/ab_compare", handle_learning_ab_compare)
     http_app.router.add_post("/reload-model", handle_reload_model)
+    http_app.router.add_get("/model/status", handle_model_status)  # Phase 5
     http_app.router.add_post("/hints", handle_hints)           # Phase 19.2.1
     http_app.router.add_get("/hints", handle_hints)            # Phase 19.2.2
     http_app.router.add_post("/hints/feedback", handle_hints_feedback)
