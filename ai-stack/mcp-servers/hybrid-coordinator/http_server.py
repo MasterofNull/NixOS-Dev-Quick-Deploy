@@ -180,6 +180,43 @@ def _audit_http_request(request: web.Request, status: int, latency_ms: float) ->
     )
 
 
+def _audit_internal_tool_execution(
+    request: web.Request,
+    tool_name: str,
+    latency_ms: float,
+    *,
+    parameters: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    outcome: str = "success",
+    error_message: Optional[str] = None,
+) -> None:
+    token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+    caller_identity = token if token else "anonymous"
+    payload = {
+        "transport": "http-autorun",
+        "parent_path": request.path,
+        "http_method": request.method,
+    }
+    if isinstance(parameters, dict):
+        payload.update(parameters)
+    audit_metadata = {
+        "http_status": 200 if outcome == "success" else 500,
+        "transport": "http-autorun",
+    }
+    if isinstance(metadata, dict):
+        audit_metadata.update(metadata)
+    _write_audit_entry(
+        service="hybrid-coordinator-http",
+        tool_name=tool_name,
+        caller_identity=caller_identity,
+        parameters=payload,
+        outcome=outcome,
+        error_message=error_message,
+        latency_ms=latency_ms,
+        metadata=audit_metadata,
+    )
+
+
 def _audit_planned_tools(query: str, tools: List[Dict[str, str]]) -> tuple[List[Dict[str, str]], Dict[str, Any]]:
     """Audit tools on first use and keep only approved/sanitized tool entries."""
     if not _TOOL_SECURITY_AUDITOR:
@@ -1393,6 +1430,7 @@ async def run_http_mode(port: int) -> None:
                 # Auto-hints: pull top semantic hint and pass into route context.
                 if any(p.get("name") == "hints" for p in planned):
                     try:
+                        _hint_start = time.perf_counter()
                         import sys as _sys
                         from pathlib import Path as _Path
                         _hints_dir = _Path(__file__).parent
@@ -1410,12 +1448,27 @@ async def run_http_mode(port: int) -> None:
                             request_context["tool_hints"] = hint_snippets[:2]
                             tooling_layer["hints"] = hint_snippets[:2]
                             tooling_layer["executed"].append("hints")
+                            _audit_internal_tool_execution(
+                                request,
+                                "hints",
+                                (time.perf_counter() - _hint_start) * 1000.0,
+                                parameters={"query": query[:200], "result_count": len(hint_snippets[:2])},
+                            )
                     except Exception as exc:
+                        _audit_internal_tool_execution(
+                            request,
+                            "hints",
+                            0.0,
+                            parameters={"query": query[:200]},
+                            outcome="error",
+                            error_message=str(exc),
+                        )
                         logger.debug("semantic_tooling_hints_skipped error=%s", exc)
 
                 # Auto-discovery summary: enrich context with capability overview.
                 if _progressive_disclosure and any(p.get("name") == "discovery" for p in planned):
                     try:
+                        _discovery_start = time.perf_counter()
                         disc = await _progressive_disclosure.discover(
                             level="overview",
                             categories=None,
@@ -1432,7 +1485,24 @@ async def run_http_mode(port: int) -> None:
                             "capability_count": len(disc_data.get("capabilities", []) or []),
                         }
                         tooling_layer["executed"].append("discovery")
+                        _audit_internal_tool_execution(
+                            request,
+                            "discovery",
+                            (time.perf_counter() - _discovery_start) * 1000.0,
+                            parameters={
+                                "query": query[:200],
+                                "capability_count": int(request_context["tool_discovery"].get("capability_count", 0)),
+                            },
+                        )
                     except Exception as exc:
+                        _audit_internal_tool_execution(
+                            request,
+                            "discovery",
+                            0.0,
+                            parameters={"query": query[:200]},
+                            outcome="error",
+                            error_message=str(exc),
+                        )
                         logger.debug("semantic_tooling_discovery_skipped error=%s", exc)
 
                 if (
@@ -1441,6 +1511,7 @@ async def run_http_mode(port: int) -> None:
                     and any(p.get("name") == "memory_recall" for p in planned)
                 ):
                     try:
+                        _memory_start = time.perf_counter()
                         memory_result = await _recall_memory(
                             query=query,
                             memory_types=None,
@@ -1457,7 +1528,21 @@ async def run_http_mode(port: int) -> None:
                             request_context["memory_recall"] = memory_summaries[:3]
                             tooling_layer["memory_recall"] = memory_summaries[:2]
                             tooling_layer["executed"].append("memory_recall")
+                            _audit_internal_tool_execution(
+                                request,
+                                "recall_agent_memory",
+                                (time.perf_counter() - _memory_start) * 1000.0,
+                                parameters={"query": query[:200], "result_count": len(memory_summaries[:3])},
+                            )
                     except Exception as exc:
+                        _audit_internal_tool_execution(
+                            request,
+                            "recall_agent_memory",
+                            0.0,
+                            parameters={"query": query[:200]},
+                            outcome="error",
+                            error_message=str(exc),
+                        )
                         logger.debug("semantic_tooling_memory_recall_skipped error=%s", exc)
 
             prefer_local = bool(data.get("prefer_local", True))
