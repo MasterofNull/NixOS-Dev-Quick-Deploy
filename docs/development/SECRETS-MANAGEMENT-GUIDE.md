@@ -56,6 +56,18 @@ Show current status without printing secret values:
 ./scripts/governance/manage-secrets.sh status --host nixos
 ```
 
+Show readiness plus the exact next commands to run:
+
+```bash
+./scripts/governance/manage-secrets.sh doctor --host nixos
+```
+
+To also require optional or remote-routing secrets in that readiness check:
+
+```bash
+./scripts/governance/manage-secrets.sh doctor --host nixos --include-optional --include-remote
+```
+
 Show filesystem paths used by the secrets flow:
 
 ```bash
@@ -124,7 +136,7 @@ The matching `remote_llm_api_key` belongs only in the external SOPS bundle, not 
 
 For new users, the lowest-friction path is:
 1. `./scripts/governance/manage-secrets.sh init --host <host>`
-2. `./scripts/governance/manage-secrets.sh status --host <host>`
+2. `./scripts/governance/manage-secrets.sh doctor --host <host>`
 3. `./nixos-quick-deploy.sh --host <host> --profile ai-dev`
 
 The CLI is intentionally dependency-light and terminal-first:
