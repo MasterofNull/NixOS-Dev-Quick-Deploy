@@ -949,6 +949,10 @@ in
       partOf      = [ "ai-stack.target" ];
       after       = [ "network-online.target" "ai-stack.target" ];
       wants       = [ "network-online.target" ];
+      unitConfig = {
+        StartLimitIntervalSec = "300";
+        StartLimitBurst = 5;
+      };
       serviceConfig = {
         ExecStart = lib.escapeShellArgs [
           "${switchboardPy}/bin/python3"
@@ -977,8 +981,6 @@ in
         User                  = cfg.primaryUser;
         Restart               = "on-failure";
         RestartSec            = "5s";
-        StartLimitIntervalSec = "300";
-        StartLimitBurst       = 5;
         TimeoutStopSec        = "15s";
         KillMode              = "mixed";
         NoNewPrivileges       = true;
