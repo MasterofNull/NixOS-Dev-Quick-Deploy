@@ -50,6 +50,7 @@ The template is intentionally broad enough for deploy and verification loops, bu
 - allows `systemctl` inspection and restart flows
 - allows `nixos-rebuild`
 - does not grant arbitrary shell execution
+- the sudoers command aliases include argument wildcards because deploy and service commands are invoked with subcommands and flags
 
 Agent policy still blocks:
 - repo/system deletions without approval

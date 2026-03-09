@@ -85,6 +85,7 @@ check_pattern "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md" 'Approval-Gated 
 check_pattern "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md" 'nixos-quick-deploy.sh' 'Autonomous operations policy allows unattended deploy loops'
 check_pattern "docs/operations/procedures/AUTONOMOUS-SUDOERS-SETUP.md" 'templates/agentic-workflow/autonomous-ops-sudoers.example' 'Autonomous sudoers guide references the installable template'
 check_pattern "templates/agentic-workflow/autonomous-ops-sudoers.example" 'NOPASSWD: AIOPS_DEPLOY, AIOPS_REBUILD, AIOPS_SYSTEMCTL, AIOPS_JOURNALCTL' 'Autonomous sudoers template scopes passwordless access to deploy and verification commands'
+check_pattern "templates/agentic-workflow/autonomous-ops-sudoers.example" 'nixos-quick-deploy\.sh \*|systemctl \*|journalctl \*|nixos-rebuild \*' 'Autonomous sudoers template allows arguments for approved unattended commands'
 check_pattern "nixos-quick-deploy.sh" 'run_roadmap_completion_verification\(\)' 'Roadmap verification hook exists'
 check_pattern "nixos-quick-deploy.sh" 'run_readiness_analysis\(\)' 'Readiness analyzer hook exists'
 check_pattern "nixos-quick-deploy.sh" 'sudo_passwordless_ready\(\)' 'Quick deploy detects scoped passwordless sudo without requiring sudo -n true'
