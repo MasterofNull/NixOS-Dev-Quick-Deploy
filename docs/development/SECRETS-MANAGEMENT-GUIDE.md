@@ -161,7 +161,7 @@ Example safe committed config:
 ```nix
 {
   mySystem.aiStack.switchboard.remoteUrl = "https://openrouter.ai/api";
-  mySystem.aiStack.switchboard.remoteBudget.dailyTokenCap = 200000;
+  mySystem.aiStack.switchboard.remoteBudget.dailyTokenCap = 0;
 }
 ```
 
@@ -186,6 +186,29 @@ Example OpenRouter aliases current as of 2026-03-09:
 
 These are examples, not hard requirements. Re-check OpenRouter model availability
 before pinning them as local defaults on a new host.
+
+## What "Missing" Actually Means
+
+Not every missing secret is a blocker.
+
+- Core secrets:
+  Generated locally by `init` or `bootstrap`. These are deploy-critical for the local AI stack.
+- Optional secrets:
+  Only needed if you enable the related service path.
+- Remote secrets:
+  User-supplied provider credentials such as `remote_llm_api_key`. These are only needed if you want remote routing.
+
+The current intent is progressive disclosure and token efficiency by default, not synthetic quota enforcement.
+Provider or subscription limits are the actual hard limits. The local `dailyTokenCap` can stay `0` unless you explicitly want a local heuristic guardrail for monitoring or special workflows.
+
+Use these commands to make the missing pieces concrete:
+
+```bash
+./scripts/governance/manage-secrets.sh status --host nixos
+./scripts/governance/manage-secrets.sh doctor --host nixos --include-remote
+```
+
+Both now explain what each missing secret is for and, when it is external, where you would obtain it.
 
 ## UX Recommendation
 
