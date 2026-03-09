@@ -850,6 +850,17 @@ run_nonfatal_postflight_check() {
   fi
 }
 
+run_inline_postflight_script_if_present() {
+  local script_path="$1"
+  local start_message="$2"
+  local timeout_seconds="$3"
+  shift 3
+
+  [[ -x "${script_path}" ]] || return 0
+  log "${start_message}"
+  run_with_timeout_if_available "${timeout_seconds}" "${script_path}" "$@" 2>/dev/null || true
+}
+
 current_system_generation() {
   readlink -f /nix/var/nix/profiles/system 2>/dev/null || true
 }
@@ -2911,35 +2922,33 @@ if [[ "${POST_FLIGHT_MODE}" == "declarative" || "${POST_FLIGHT_MODE}" == "both" 
 fi
 
 if [[ "${run_inline_postflight}" == true ]]; then
-  if [[ -x "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" ]]; then
-    log "Priming AI harness tooling defaults..."
-    run_with_timeout_if_available "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" 2>/dev/null || true
-  fi
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" \
+    "Priming AI harness tooling defaults..." \
+    "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}"
 
   # ---- Routing traffic seed (non-blocking) ----------------------------------
   # Sends a small batch of queries through hybrid-coordinator so that §2 routing
   # split and §3 semantic cache metrics are populated after every deploy.
-  if [[ -x "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" ]]; then
-    log "Seeding routing traffic (bootstrap §2/§3 metrics)..."
-    run_with_timeout_if_available "${POST_FLIGHT_SEED_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" --count 4 2>/dev/null || true
-  fi
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" \
+    "Seeding routing traffic (bootstrap §2/§3 metrics)..." \
+    "${POST_FLIGHT_SEED_TIMEOUT_SECONDS}" \
+    --count 4
 
   # ---- Rebuild Qdrant vector index (non-blocking) ---------------------------
   # Re-indexes any documents that were imported but not yet embedded.
-  if [[ -x "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" ]]; then
-    log "Rebuilding Qdrant vector index from AIDB documents..."
-    run_with_timeout_if_available "${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" 2>/dev/null || true
-  fi
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" \
+    "Rebuilding Qdrant vector index from AIDB documents..." \
+    "${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS}"
 
   # ---- Phase 18.1.3: AI stack performance digest (non-blocking) -------------
-  if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
-    log "AI stack performance digest (last 7d):"
-    run_with_timeout_if_available "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
-      "${REPO_ROOT}/scripts/ai/aq-report" --since=7d --format=text 2>/dev/null || true
-  fi
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/ai/aq-report" \
+    "AI stack performance digest (last 7d):" \
+    "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
+    --since=7d --format=text
 fi
 
 print_completion_test_results
