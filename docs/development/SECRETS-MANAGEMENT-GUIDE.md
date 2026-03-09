@@ -61,6 +61,7 @@ Show current status without printing secret values:
 - core readiness for deploy-critical secrets
 - all-managed readiness including optional and remote-routing secrets
 - missing optional secrets separately from missing remote-routing secrets
+- recommended next commands for each missing scope
 
 For scripts or agents that need the same status information in JSON:
 
