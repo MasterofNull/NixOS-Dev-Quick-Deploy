@@ -44,6 +44,7 @@ class Hint:
 # ---------------------------------------------------------------------------
 
 _STATIC_RULES: List[dict] = [
+    # ── NixOS / Nix Language ─────────────────────────────────────────────────
     {
         "id": "nixos_mkforce_rule",
         "title": "Use lib.mkForce for module conflicts",
@@ -75,6 +76,27 @@ _STATIC_RULES: List[dict] = [
         "tags": ["nixos", "conditional", "module"],
     },
     {
+        "id": "nix_flake_inputs",
+        "title": "Pin flake inputs for reproducibility",
+        "keywords": ["flake", "input", "lock", "pin", "version", "dependency"],
+        "snippet": (
+            "Use `nix flake lock --update-input <name>` to update single inputs. "
+            "Never `nix flake update` blindly -- it updates ALL inputs."
+        ),
+        "tags": ["nixos", "flake", "reproducibility"],
+    },
+    {
+        "id": "nix_overlay_patterns",
+        "title": "Use overlays for package customization",
+        "keywords": ["overlay", "package", "customize", "override", "derivation"],
+        "snippet": (
+            "Define in `nix/overlays/default.nix`. Use `final: prev:` pattern. "
+            "Avoid `self: super:` (deprecated). Apply via `nixpkgs.overlays = [...]`."
+        ),
+        "tags": ["nixos", "overlay", "package"],
+    },
+    # ── Agentic / Code Generation ────────────────────────────────────────────
+    {
         "id": "aider_scope_small",
         "title": "Keep aider tasks small and targeted",
         "keywords": ["aider", "code", "generate", "edit", "change", "modify"],
@@ -84,6 +106,27 @@ _STATIC_RULES: List[dict] = [
         ),
         "tags": ["aider", "code_generation", "scope"],
     },
+    {
+        "id": "verify_delegated_output",
+        "title": "Verify all qwen/codex output before use",
+        "keywords": ["qwen", "codex", "delegate", "agent", "generate"],
+        "snippet": (
+            "Cross-check every file path and code reference with Grep/Read. "
+            "Validate with `python3 -m py_compile` or `bash -n` before committing."
+        ),
+        "tags": ["workflow", "verification", "agent"],
+    },
+    {
+        "id": "orchestrator_delegation",
+        "title": "Orchestrator delegates implementation, not decisions",
+        "keywords": ["orchestrator", "delegate", "task", "agent", "routing"],
+        "snippet": (
+            "As orchestrator: Research → Plan → Delegate → Audit. Route code/config "
+            "to qwen/codex. Keep architecture decisions, security audits in-house."
+        ),
+        "tags": ["orchestrator", "workflow", "delegation"],
+    },
+    # ── Systemd / Services ───────────────────────────────────────────────────
     {
         "id": "systemd_hardening",
         "title": "Always include systemd hardening in new services",
@@ -96,15 +139,16 @@ _STATIC_RULES: List[dict] = [
         "tags": ["systemd", "hardening", "nixos"],
     },
     {
-        "id": "verify_delegated_output",
-        "title": "Verify all qwen/codex output before use",
-        "keywords": ["qwen", "codex", "delegate", "agent", "generate"],
+        "id": "systemd_dependency_order",
+        "title": "Use After/Wants for service dependencies",
+        "keywords": ["dependency", "order", "after", "wants", "requires"],
         "snippet": (
-            "Cross-check every file path and code reference with Grep/Read. "
-            "Validate with `python3 -m py_compile` or `bash -n` before committing."
+            "Use `After=` for ordering, `Wants=` for soft deps, `Requires=` for hard deps. "
+            "Never rely on alphabetical order. Add `network-online.target` for network."
         ),
-        "tags": ["workflow", "verification", "agent"],
+        "tags": ["systemd", "dependency", "nixos"],
     },
+    # ── Testing / Validation ─────────────────────────────────────────────────
     {
         "id": "strategy_tag_evals",
         "title": "Tag eval runs with strategy names",
@@ -124,6 +168,110 @@ _STATIC_RULES: List[dict] = [
             "`scripts/ai/aq-prompt-eval --id <id>` to update mean_score before deploying."
         ),
         "tags": ["prompt", "registry", "eval", "measurement"],
+    },
+    {
+        "id": "parity_suite_before_merge",
+        "title": "Run parity suite before merging",
+        "keywords": ["merge", "pr", "pull", "request", "check", "parity"],
+        "snippet": (
+            "Run `scripts/ai/aqd parity advanced-suite` before merging. "
+            "Blocks merge if: security gates fail, eval regression >5%, or boot-shutdown breaks."
+        ),
+        "tags": ["parity", "validation", "ci"],
+    },
+    # ── Debugging / Troubleshooting ──────────────────────────────────────────
+    {
+        "id": "debug_service_logs",
+        "title": "Check journalctl for service errors",
+        "keywords": ["error", "fail", "crash", "debug", "log", "journal"],
+        "snippet": (
+            "Use `journalctl -u <service> --since='10 min ago' -n 100`. "
+            "Add `-f` for follow mode. Check `systemctl status <service>` first."
+        ),
+        "tags": ["debugging", "journalctl", "systemd"],
+    },
+    {
+        "id": "debug_nix_build",
+        "title": "Debug Nix build failures with --show-trace",
+        "keywords": ["build", "error", "trace", "fail", "nix", "derivation"],
+        "snippet": (
+            "Add `--show-trace` to nix build/switch commands. Use `nix log` for build logs. "
+            "Check `nix why-depends` for dependency issues."
+        ),
+        "tags": ["debugging", "nix", "build"],
+    },
+    {
+        "id": "debug_python_import",
+        "title": "Debug Python import errors with PYTHONPATH",
+        "keywords": ["python", "import", "module", "path", "error"],
+        "snippet": (
+            "Check `echo $PYTHONPATH`. Add repo root: `PYTHONPATH=$PWD:$PYTHONPATH`. "
+            "Verify venv activation. Use `python -c 'import sys; print(sys.path)'`."
+        ),
+        "tags": ["debugging", "python", "import"],
+    },
+    # ── Security ─────────────────────────────────────────────────────────────
+    {
+        "id": "security_no_secrets",
+        "title": "Never hardcode secrets in source",
+        "keywords": ["secret", "password", "token", "key", "credential", "api"],
+        "snippet": (
+            "Use sops-nix for secrets. Load from `/run/secrets/<name>` at runtime. "
+            "Never commit .env files with real credentials."
+        ),
+        "tags": ["security", "secrets", "policy"],
+    },
+    {
+        "id": "security_input_validation",
+        "title": "Validate all external input",
+        "keywords": ["input", "validate", "sanitize", "injection", "xss", "sql"],
+        "snippet": (
+            "Use Pydantic models for API input. Parameterize SQL queries (never interpolate). "
+            "Escape HTML output. Check SSRF for URLs."
+        ),
+        "tags": ["security", "validation", "input"],
+    },
+    # ── Performance / Optimization ───────────────────────────────────────────
+    {
+        "id": "perf_cache_semantic",
+        "title": "Use semantic cache for repeated queries",
+        "keywords": ["cache", "performance", "repeat", "embed", "vector"],
+        "snippet": (
+            "Check `aq-report` for cache hit rate. Target >30%. Seed cache with "
+            "`scripts/data/seed-routing-traffic.sh --count 100`."
+        ),
+        "tags": ["performance", "cache", "optimization"],
+    },
+    {
+        "id": "perf_local_routing",
+        "title": "Prefer local LLM for simple tasks",
+        "keywords": ["local", "llm", "routing", "cost", "token", "remote"],
+        "snippet": (
+            "Route complexity <5 queries to local. Check routing split in `aq-report`. "
+            "Target >80% local for cost efficiency."
+        ),
+        "tags": ["performance", "routing", "cost"],
+    },
+    # ── Documentation / Git ──────────────────────────────────────────────────
+    {
+        "id": "git_commit_protocol",
+        "title": "Follow commit protocol with evidence",
+        "keywords": ["commit", "git", "message", "push", "change"],
+        "snippet": (
+            "Format: `<phase>.<task>: <description>`. Include Evidence: line. "
+            "Add `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>` trailer."
+        ),
+        "tags": ["git", "commit", "protocol"],
+    },
+    {
+        "id": "doc_progressive_disclosure",
+        "title": "Use progressive disclosure for docs",
+        "keywords": ["document", "doc", "readme", "guide", "explain"],
+        "snippet": (
+            "Keep CLAUDE.md compact (<200 lines). Link to deep docs in `docs/agent-guides/`. "
+            "Load context on-demand, not upfront."
+        ),
+        "tags": ["documentation", "progressive", "disclosure"],
     },
 ]
 
