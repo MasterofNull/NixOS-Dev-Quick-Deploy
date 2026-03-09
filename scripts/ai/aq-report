@@ -1084,18 +1084,28 @@ def aggregate_tool_audit(entries: List[dict]) -> Dict[str, dict]:
             continue
         name = e.get("tool_name", "unknown")
         if name not in per_tool:
-            per_tool[name] = {"latencies": [], "success": 0, "error": 0, "client_error": 0, "unknown": 0}
+            per_tool[name] = {
+                "latencies": [],
+                "success": 0,
+                "error": 0,
+                "client_error": 0,
+                "unknown": 0,
+                "recovered_fallback": 0,
+            }
         lat = e.get("latency_ms")
         if isinstance(lat, (int, float)):
             per_tool[name]["latencies"].append(float(lat))
         outcome = str(e.get("outcome", "") or "").strip().lower()
         metadata = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
         http_status = metadata.get("http_status")
+        fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
         if outcome == "client_error" or (isinstance(http_status, int) and 400 <= http_status < 500):
             per_tool[name]["client_error"] += 1
             continue
         if outcome == "success" or (isinstance(http_status, int) and 200 <= http_status < 400):
             per_tool[name]["success"] += 1
+            if fallback_reason == "remote_4xx_local_fallback":
+                per_tool[name]["recovered_fallback"] += 1
         elif outcome in {"error", "failed", "failure"} or (isinstance(http_status, int) and http_status >= 500):
             per_tool[name]["error"] += 1
         else:
@@ -1118,6 +1128,7 @@ def aggregate_tool_audit(entries: List[dict]) -> Dict[str, dict]:
             "error_count": stats["error"],
             "client_error_count": stats["client_error"],
             "unknown_count": stats["unknown"],
+            "recovered_fallback_count": stats["recovered_fallback"],
         }
     return result
 
@@ -1230,6 +1241,32 @@ def semantic_autorun_health(entries: List[dict]) -> Dict[str, Any]:
         "tool_security_cache_hits_total": cache_hits_total,
         "tool_security_first_seen_total": first_seen_total,
         "backend_counts": backend_counts,
+    }
+
+
+def route_provider_fallback_health(entries: List[dict]) -> Dict[str, Any]:
+    """Summarize recovered remote-provider fallback events for route_search."""
+    route_events = [
+        e for e in entries
+        if str(e.get("tool_name", "")).strip().lower() == "route_search"
+    ]
+    recovered_count = 0
+    status_counts: Dict[int, int] = {}
+    for entry in route_events:
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
+        if fallback_reason != "remote_4xx_local_fallback":
+            continue
+        recovered_count += 1
+        fallback_status = metadata.get("fallback_status_code")
+        if isinstance(fallback_status, int):
+            status_counts[fallback_status] = status_counts.get(fallback_status, 0) + 1
+    return {
+        "available": True,
+        "route_calls": len(route_events),
+        "recovered_count": recovered_count,
+        "recovered_pct": round(100 * recovered_count / len(route_events), 1) if route_events else None,
+        "status_counts": sorted(status_counts.items(), key=lambda item: (-item[1], item[0])),
     }
 
 
@@ -1371,6 +1408,7 @@ def build_recommendations(
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_tool_stats: Optional[Dict[str, dict]] = None,
     recent_semantic_autorun: Optional[Dict[str, Any]] = None,
+    recent_provider_fallbacks: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """Derive actionable workflow recommendations from measured data."""
     recs: List[str] = []
@@ -1441,6 +1479,16 @@ def build_recommendations(
                     f"Memory recall usage is low ({memory_share}% of recent retrieval calls). "
                     "For ongoing repo/system tasks, prefer memory recall before broad route_search when prior context exists."
                 )
+
+    if recent_provider_fallbacks and recent_provider_fallbacks.get("available"):
+        recovered_count = int(recent_provider_fallbacks.get("recovered_count", 0) or 0)
+        if recovered_count > 0:
+            status_counts = recent_provider_fallbacks.get("status_counts") or []
+            status_text = _format_provider_fallback_statuses(status_counts) if status_counts else "4xx"
+            recs.append(
+                f"Recovered remote-provider fallbacks observed ({recovered_count} recent route_search calls; upstream {status_text}). "
+                "Treat this as provider-budget or remote-routing pressure, not a local backend outage."
+            )
 
     # Query gaps — check AIDB for existing docs before recommending import
     top_gaps = [
@@ -1806,12 +1854,18 @@ def _backend_reliability_summary(item: Dict[str, Any], *, window_label: str, rec
     calls = int(item.get("calls", 0) or 0)
     ok_pct = _na(item.get("success_pct"), '.1f', '%')
     client_errors = int(item.get("client_error_count", 0) or 0)
+    recovered_fallbacks = int(item.get("recovered_fallback_count", 0) or 0)
+    provider_recovered = int(item.get("provider_recovered_count", 0) or 0)
     period = "recent valid calls" if recent else "valid calls"
     prefix = f"{window_label} " if window_label else ""
     text = f"{prefix}backend OK {ok_pct} across {calls} {period}"
     if client_errors:
         text += f" (+{client_errors} invalid client requests)"
     text += f" (server={item.get('error_count', 0)})"
+    if recovered_fallbacks:
+        text += f" (recovered-fallbacks={recovered_fallbacks})"
+    if provider_recovered and provider_recovered != recovered_fallbacks:
+        text += f" (provider-recovered={provider_recovered})"
     return text
 
 
@@ -1976,7 +2030,10 @@ def rag_posture(
     }
 
 
-def recent_health_snapshot(recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
+def recent_health_snapshot(
+    recent_tool_stats: Dict[str, dict],
+    recent_provider_fallbacks: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Summarize active issues in the recent monitoring window."""
     snapshot: Dict[str, Any] = {
         "available": True,
@@ -2002,15 +2059,17 @@ def recent_health_snapshot(recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]
                 }
             )
         if tool.lower() not in ignored_flaky_tools and float(stats.get("success_pct", 0.0) or 0.0) < 90.0:
-            snapshot["flaky_tools"].append(
-                {
-                    "tool": tool,
-                    "calls": calls,
-                    "success_pct": round(float(stats.get("success_pct", 0.0) or 0.0), 1),
-                    "error_count": int(stats.get("error_count", 0) or 0),
-                    "client_error_count": int(stats.get("client_error_count", 0) or 0),
-                }
-            )
+            item = {
+                "tool": tool,
+                "calls": calls,
+                "success_pct": round(float(stats.get("success_pct", 0.0) or 0.0), 1),
+                "error_count": int(stats.get("error_count", 0) or 0),
+                "client_error_count": int(stats.get("client_error_count", 0) or 0),
+                "recovered_fallback_count": int(stats.get("recovered_fallback_count", 0) or 0),
+            }
+            if tool == "route_search" and recent_provider_fallbacks and recent_provider_fallbacks.get("available"):
+                item["provider_recovered_count"] = int(recent_provider_fallbacks.get("recovered_count", 0) or 0)
+            snapshot["flaky_tools"].append(item)
     snapshot["healthy"] = not snapshot["slow_tools"] and not snapshot["flaky_tools"]
     return snapshot
 
@@ -2048,9 +2107,15 @@ def historical_watchlist(tool_stats: Dict[str, dict], recent_tool_stats: Dict[st
                 "success_pct": round(float(stats.get("success_pct", 0.0) or 0.0), 1),
                 "error_count": int(stats.get("error_count", 0) or 0),
                 "client_error_count": int(stats.get("client_error_count", 0) or 0),
+                "recovered_fallback_count": int(stats.get("recovered_fallback_count", 0) or 0),
             })
     watch["has_items"] = bool(watch["slow_tools"] or watch["flaky_tools"])
     return watch
+
+
+def _format_provider_fallback_statuses(status_counts: List[Tuple[int, int]]) -> str:
+    labels = [f"{status}={count}" for status, count in status_counts[:3]]
+    return ", ".join(labels)
 
 
 def format_md(
@@ -2066,6 +2131,7 @@ def format_md(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
@@ -2262,6 +2328,21 @@ def format_md(
                 lines.append(
                     f"  - `{item['tool']}` — {_backend_reliability_summary(item, window_label='', recent=True).lstrip()}"
                 )
+    lines.append("")
+
+    lines += [f"## 8a. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')})", ""]
+    recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
+    if recovered_count <= 0:
+        lines.append("*No recovered remote-provider fallback events in this window.*")
+    else:
+        lines.append(
+            f"- Recovered local fallbacks: **{recovered_count}**"
+            f" ({_na(provider_fallbacks.get('recovered_pct'), '.1f', '%')} of route_search calls)"
+        )
+        status_counts = provider_fallbacks.get("status_counts") or []
+        if status_counts:
+            lines.append(f"- Upstream status mix: {_format_provider_fallback_statuses(status_counts)}")
+        lines.append("- These are tracked separately from backend failures because the user-visible request recovered locally.")
     lines.append("")
 
     # 8b. Historical watchlist
@@ -2463,6 +2544,7 @@ def format_text(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
@@ -2660,6 +2742,21 @@ def format_text(
                 lines.append(
                     f"    {item['tool']}: {_backend_reliability_summary(item, window_label='', recent=True)}"
                 )
+    lines.append("")
+
+    lines += [f"[ 8a. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')}) ]"]
+    recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
+    if recovered_count <= 0:
+        lines.append("  No recovered remote-provider fallback events in this window.")
+    else:
+        lines.append(
+            f"  Recovered local fallbacks: {recovered_count}"
+            f" ({_na(provider_fallbacks.get('recovered_pct'), '.1f', '%')} of route_search calls)"
+        )
+        status_counts = provider_fallbacks.get("status_counts") or []
+        if status_counts:
+            lines.append(f"  Upstream status mix: {_format_provider_fallback_statuses(status_counts)}")
+        lines.append("  These are tracked separately from backend failures because the request recovered locally.")
     lines.append("")
 
     lines += [f"[ 8b. Historical Watchlist ({historical_watch.get('window', '7d')}) ]"]
@@ -2861,6 +2958,7 @@ def format_json(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
@@ -2898,6 +2996,7 @@ def format_json(
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
+        "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
         "recommendations": recs,
         "hint_adoption": adoption or {"available": False},
@@ -3010,6 +3109,8 @@ def main() -> None:
     route = routing_split(audit_entries)
     recent_route = routing_split(recent_audit_entries)
     recent_route["window"] = "1h"
+    recent_provider_fallbacks = route_provider_fallback_health(recent_audit_entries)
+    recent_provider_fallbacks["window"] = "1h"
     cache = cache_hit_rate()
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
@@ -3019,7 +3120,7 @@ def main() -> None:
     security_auditor = security_auditor_health(audit_entries)
     semantic_autorun = semantic_autorun_health(audit_entries)
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
-    recent_health = recent_health_snapshot(recent_tool_stats)
+    recent_health = recent_health_snapshot(recent_tool_stats, recent_provider_fallbacks)
     historical_health_watch = historical_watchlist(tool_stats, recent_tool_stats)
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
@@ -3055,6 +3156,7 @@ def main() -> None:
         recent_hint_diversity_stats,
         recent_tool_stats,
         recent_semantic_autorun,
+        recent_provider_fallbacks,
     )
     structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps)
 
@@ -3072,6 +3174,7 @@ def main() -> None:
         gaps,
         rag_posture_summary,
         recent_health,
+        recent_provider_fallbacks,
         historical_health_watch,
         recs,
         adoption,
