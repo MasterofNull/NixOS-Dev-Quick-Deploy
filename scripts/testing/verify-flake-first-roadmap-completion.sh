@@ -126,6 +126,8 @@ check_pattern "scripts/governance/manage-secrets.py" 'subparsers\.add_parser\("d
 check_pattern "scripts/governance/manage-secrets.py" 'Requested secret set ready:' 'Secrets manager doctor reports readiness summary'
 check_pattern "scripts/governance/manage-secrets.py" '"next_steps": next_steps|--format", choices=\["text", "json"\]' 'Secrets manager doctor exposes machine-readable readiness output'
 check_pattern "scripts/governance/manage-secrets.py" 'print_post_action_doctor_summary\(' 'Secrets manager reuses readiness summary after mutating commands'
+check_pattern "scripts/governance/manage-secrets.py" 'resolve_runtime_context\(' 'Secrets manager centralizes host/path runtime context loading'
+check_pattern "scripts/governance/manage-secrets.py" 'ensure_secret_wiring\(' 'Secrets manager centralizes age+sops+local override wiring'
 check_pattern "scripts/governance/audit-deprecated-script-usage.py" 'Rank deprecated scripts by active repo references and classify keep vs archive' 'Deprecated-script auditor exists for keep-vs-archive prioritization'
 check_pattern "docs/operations/deprecated-script-audit.md" '## Keep As Shim' 'Deprecated-script audit report records keep-as-shim classification'
 check_pattern "docs/operations/deprecated-script-audit.md" '## Archive Or Remove' 'Deprecated-script audit report records archive-or-remove classification'
