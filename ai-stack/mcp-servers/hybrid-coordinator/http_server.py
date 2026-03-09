@@ -682,9 +682,9 @@ def _build_workflow_plan(
         "token_policy": {
             "approach": "progressive-disclosure",
             "rules": [
-                "Start with concise hints/capability summaries and load deeper context only when a phase requires it.",
-                "Prefer retrieval over full-policy prompt stuffing; escalate to remote only when scope, context size, or prior failures justify the spend.",
-                "Use free or provider-routed experimentation for low-stakes probing, and keep reusable prefixes compact so provider-side prompt caching can reduce repeated token spend.",
+                {"id": "compact-first", "summary": "Start concise; load deeper context only when needed."},
+                {"id": "retrieve-before-restating", "summary": "Prefer retrieval over prompt stuffing; escalate remote only when justified."},
+                {"id": "cheap-probe-then-cache", "summary": "Use low-cost probing first and keep reusable prefixes compact for caching."},
             ],
         },
         "metadata": {
