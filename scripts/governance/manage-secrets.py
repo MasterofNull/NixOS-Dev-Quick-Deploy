@@ -454,6 +454,32 @@ def command_status(args: argparse.Namespace) -> int:
         for spec in SECRET_SPECS
         if spec["scope"] == "optional" and not payload.get(spec["name"])
     ]
+    if args.format == "json":
+        print(
+            json.dumps(
+                {
+                    "host": host,
+                    "bundle": str(paths["bundle"]),
+                    "age_key_file": str(paths["age_key_file"]),
+                    "local_override": str(paths["deploy_options_local"]),
+                    "core_ready": core_state["is_ready"],
+                    "all_managed_ready": full_state["is_ready"],
+                    "optional_missing": optional_missing,
+                    "secrets": [
+                        {
+                            "name": spec["name"],
+                            "scope": spec["scope"],
+                            "services": spec["services"],
+                            "present": bool(payload.get(spec["name"])),
+                        }
+                        for spec in SECRET_SPECS
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     print(f"Host: {host}")
     print(f"Bundle: {paths['bundle']}")
     print(f"AGE key: {paths['age_key_file']}")
@@ -697,7 +723,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", help="Host config name under nix/hosts/")
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("status", help="Show presence/absence of managed secrets.")
+    status_parser = subparsers.add_parser("status", help="Show presence/absence of managed secrets.")
+    status_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
     subparsers.add_parser("paths", help="Show key filesystem paths used by the secrets flow.")
     subparsers.add_parser("validate", help="Check that age key, bundle, and local override are usable.")
     doctor_parser = subparsers.add_parser("doctor", help="Explain readiness and recommended next steps.")
