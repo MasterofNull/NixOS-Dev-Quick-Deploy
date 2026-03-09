@@ -245,6 +245,8 @@ check_pattern "nixos-quick-deploy.sh" 'systemd_unit_declared\(\)' 'Quick deploy 
 check_pattern "nixos-quick-deploy.sh" 'systemd_unit_enabled_or_running\(\)' 'Quick deploy centralizes systemd unit state checks'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "service restart"' 'Quick deploy reuses repo-backed AI gating for service restarts'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "capability verification"' 'Quick deploy reuses repo-backed AI gating for capability verification'
+check_pattern "nixos-quick-deploy.sh" 'ai_service_health_targets\(\)' 'Quick deploy centralizes AI service readiness targets'
+check_pattern "nixos-quick-deploy.sh" 'done < <\(ai_service_health_targets\)' 'Quick deploy iterates AI readiness checks from the shared target table'
 check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
 check_pattern "nixos-quick-deploy.sh" '/workflow/plan' 'Deploy verification probes workflow plan capability activation'
 check_pattern "nixos-quick-deploy.sh" '/qa/check' 'Deploy verification probes hybrid QA endpoint activation'
