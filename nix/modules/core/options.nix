@@ -792,6 +792,12 @@
           description = "SOPS key name for aider-wrapper API auth secret.";
         };
 
+        remoteLlmApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "remote_llm_api_key";
+          description = "SOPS key name for switchboard remote LLM/OpenRouter API auth secret.";
+        };
+
         nixosDocsApiKey = lib.mkOption {
           type = lib.types.str;
           default = "nixos_docs_api_key";

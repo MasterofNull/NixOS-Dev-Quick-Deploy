@@ -48,6 +48,7 @@ in
         "${sec.names.postgresPassword}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
         "${sec.names.redisPassword}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
         "${sec.names.aiderWrapperApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
+        "${sec.names.remoteLlmApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
       };
     };
   };
