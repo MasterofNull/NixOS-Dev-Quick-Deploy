@@ -397,12 +397,15 @@ print_completion_test_results() {
     local routing_local routing_remote cache_hit hint_rate eval_latest eval_trend
     local intent_cov security_cache recommendations top_hint top_hint_count
     local semantic_route_calls hint_diversity_status hint_dominant_share hint_unique
+    local cache_hits cache_misses cache_total cache_summary
     local recent_hint_window recent_hint_total recent_hint_status recent_hint_dominant_share
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
     routing_remote="$(printf '%s' "${json}" | jq -r '.routing.remote_n // 0')"
     cache_hit="$(printf '%s' "${json}" | jq -r '.cache.hit_pct // 0')"
+    cache_hits="$(printf '%s' "${json}" | jq -r '.cache.hits // 0')"
+    cache_misses="$(printf '%s' "${json}" | jq -r '.cache.misses // 0')"
     hint_rate="$(printf '%s' "${json}" | jq -r '.hint_adoption.adoption_pct // 0')"
     eval_latest="$(printf '%s' "${json}" | jq -r '.eval_trend.latest_pct // "n/a"')"
     eval_trend="$(printf '%s' "${json}" | jq -r '.eval_trend.trend // "unknown"')"
@@ -419,10 +422,15 @@ print_completion_test_results() {
     top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
+    cache_total=$(( cache_hits + cache_misses ))
+    cache_summary="${cache_hit}% (${cache_hits}/${cache_total})"
+    if (( cache_total > 0 && cache_total < 50 )); then
+      cache_summary="${cache_summary}; low sample"
+    fi
 
     log "AI stack report (summary):"
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote}"
-    printf '  %-28s %s%%\n' "Semantic cache hit rate" "${cache_hit}"
+    printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s%%\n' "Hint adoption success" "${hint_rate}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_status}" "${hint_unique}" "${hint_dominant_share}"
     if [[ "${recent_hint_total}" == "0" ]]; then
