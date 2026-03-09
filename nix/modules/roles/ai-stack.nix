@@ -353,6 +353,8 @@ in {
           # model weights are fetched by a separate dedicated download service.
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
+          # Phase 21.2 — Enable Prometheus metrics endpoint on /metrics.
+          # Exposes token throughput, latency histograms, slot utilization, KV cache stats.
           ExecStart = lib.concatStringsSep " " ([
               llamaServerExec
               "--host"
@@ -363,6 +365,7 @@ in {
               (lib.escapeShellArg llama.model)
               "--ctx-size"
               (toString llama.ctxSize)
+              "--metrics"
             ]
             ++ (map lib.escapeShellArg llamaArgs));
         };
@@ -701,6 +704,7 @@ in {
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
           Environment = gpuEnvList;
+          # Phase 21.2 — Enable Prometheus metrics endpoint on /metrics.
           ExecStart = lib.concatStringsSep " " ([
               "${pkgs.llama-cpp}/bin/llama-server"
               "--host"
@@ -718,6 +722,7 @@ in {
               "8"
               "--n-gpu-layers"
               "99"
+              "--metrics"
             ]
             ++ (map lib.escapeShellArg embed.extraArgs));
         };

@@ -71,6 +71,16 @@ EMBEDDING_CACHE_MISSES = Counter(
     "embedding_cache_misses_total",
     "Total embedding cache misses",
 )
+# Phase 21.3 — cache invalidation metrics
+EMBEDDING_CACHE_INVALIDATIONS = Counter(
+    "embedding_cache_invalidations_total",
+    "Total embedding cache invalidation events",
+    ["trigger"],  # "manual", "rebuild", "model_change"
+)
+EMBEDDING_CACHE_SIZE = Gauge(
+    "embedding_cache_size_keys",
+    "Current number of keys in the embedding cache",
+)
 # Phase 17.4.2 — context compression observability
 CONTEXT_COMPRESSION_TOKENS_BEFORE = Histogram(
     "context_compression_tokens_before",
@@ -81,4 +91,21 @@ CONTEXT_COMPRESSION_TOKENS_AFTER = Histogram(
     "context_compression_tokens_after",
     "Token count of context after compression",
     buckets=[64, 128, 256, 512, 1024, 2048, 4096, 8192],
+)
+# Phase 5 — Model management observability
+MODEL_RELOADS = Counter(
+    "model_reloads_total",
+    "Total model reload operations",
+    ["service", "status"],  # status: "success", "failure"
+)
+MODEL_RELOAD_DURATION = Histogram(
+    "model_reload_duration_seconds",
+    "Duration of model reload operations",
+    ["service"],
+    buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0],
+)
+MODEL_ACTIVE_INFO = Gauge(
+    "model_active_info",
+    "Active model information (value=1 when model is loaded)",
+    ["service", "model_path"],
 )

@@ -291,6 +291,8 @@ let
   authSelfTestUnit = "ai-auth-selftest.service";
   otlpCollectorUnit = "ai-otel-collector.service";
   otlpEndpoint = "http://127.0.0.1:${toString ports.otlpGrpc}";
+  # Phase 21.1 — OTEL collector config with Tempo exporter for trace persistence.
+  # Traces are forwarded to Grafana Tempo for storage and querying.
   otelCollectorConfig = pkgs.writeText "ai-otel-collector.yaml" ''
     receivers:
       otlp:
@@ -301,10 +303,17 @@ let
             endpoint: 127.0.0.1:${toString ports.otlpHttp}
 
     processors:
-      batch: {}
+      batch:
+        timeout: 5s
+        send_batch_size: 512
 
     exporters:
-      nop: {}
+      # Phase 21.1 — Export traces to Grafana Tempo for distributed tracing.
+      # Tempo receives traces via OTLP gRPC on port 4320.
+      otlp/tempo:
+        endpoint: 127.0.0.1:${toString cfg.monitoring.tracing.tempoOtlpGrpcPort}
+        tls:
+          insecure: true
 
     service:
       telemetry:
@@ -321,7 +330,7 @@ let
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [nop]
+          exporters: [otlp/tempo]
   '';
   requiredSecretFiles =
     [
@@ -547,8 +556,11 @@ in
         description = "AI stack OpenTelemetry collector";
         wantedBy = [ "ai-stack.target" ];
         partOf = [ "ai-stack.target" ];
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
+        # Phase 21.1 — Wait for Tempo to be ready before forwarding traces.
+        after = [ "network-online.target" ]
+          ++ lib.optional cfg.monitoring.tracing.enable "ai-tempo.service";
+        wants = [ "network-online.target" ]
+          ++ lib.optional cfg.monitoring.tracing.enable "ai-tempo.service";
         serviceConfig = {
           Type = "simple";
           User = svcUser;

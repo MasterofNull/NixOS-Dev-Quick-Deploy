@@ -688,6 +688,8 @@ async def initialize_server():
         local_llm_loading_ref=lambda: model_loader._local_llm_loading,
         queue_depth_ref=lambda: model_loader._model_loading_queue_depth,
         queue_max_ref=lambda: model_loader._MODEL_QUEUE_MAX,
+        # Phase 21.3 — embedding cache reference for cache invalidation endpoint
+        embedding_cache_ref=lambda: embedding_cache,
     )
 
     # Phase 6.1 — wire model_loader (health check + loading queue)

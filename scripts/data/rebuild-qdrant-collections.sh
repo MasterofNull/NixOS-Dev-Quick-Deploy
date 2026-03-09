@@ -135,4 +135,28 @@ fi
 if [[ $_failed -gt 0 ]]; then
     exit 1
 fi
+
+# ---------------------------------------------------------------------------
+# Phase 21.3 — Invalidate embedding cache after rebuild
+# ---------------------------------------------------------------------------
+HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
+HYBRID_API_KEY="${HYBRID_API_KEY:-$(cat /run/secrets/hybrid_api_key 2>/dev/null || true)}"
+HYBRID_API_KEY="${HYBRID_API_KEY//[$'\t\r\n ']/}"
+
+printf '\nrebuild-qdrant-collections: invalidating embedding cache...\n'
+_cache_resp="$(curl -s --max-time 10 \
+    -X POST \
+    -H "Content-Type: application/json" \
+    ${HYBRID_API_KEY:+-H "X-API-Key: ${HYBRID_API_KEY}"} \
+    -d '{"trigger":"rebuild","scope":"all"}' \
+    "${HYBRID_URL}/cache/invalidate" 2>/dev/null || echo '{"error":"request_failed"}')"
+
+if printf '%s' "$_cache_resp" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+    _deleted="$(printf '%s' "$_cache_resp" | jq -r '.keys_deleted // 0')"
+    printf '  ✓ Embedding cache invalidated (%s keys deleted)\n' "$_deleted"
+else
+    # Cache invalidation is best-effort; don't fail the rebuild
+    printf '  ⚠ Cache invalidation skipped: %s\n' "$_cache_resp"
+fi
+
 printf '\nrebuild-qdrant-collections: complete\n'
