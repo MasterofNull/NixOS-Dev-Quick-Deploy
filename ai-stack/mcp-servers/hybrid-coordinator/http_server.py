@@ -1958,14 +1958,14 @@ async def run_http_mode(port: int) -> None:
                 query = body.get("query", "") or body.get("fullInput", "")
                 ctx = body.get("context", {})
                 file_ext = ctx.get("file_ext", "") if isinstance(ctx, dict) else str(ctx)
-                max_hints = int(body.get("max_hints", 5))
+                max_hints = int(body.get("max_hints", 4))
                 agent_type = ctx.get("agent_type", "remote") if isinstance(ctx, dict) else "remote"
                 include_debug_metadata = bool(body.get("include_debug_metadata") or body.get("debug"))
             else:
                 is_continue = request.rel_url.query.get("format") == "continue"
                 query = request.rel_url.query.get("q", "")
                 file_ext = request.rel_url.query.get("context", "")
-                max_hints = int(request.rel_url.query.get("max", "5"))
+                max_hints = int(request.rel_url.query.get("max", "4"))
                 agent_type = request.rel_url.query.get("agent", "remote")
                 include_debug_metadata = request.rel_url.query.get("debug", "0").strip().lower() in {"1", "true", "yes"}
 

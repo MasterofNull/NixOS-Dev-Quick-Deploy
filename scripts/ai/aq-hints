@@ -90,7 +90,7 @@ def _parse_args() -> argparse.Namespace:
         "--context", default="",
         help="File extension or domain filter (e.g. .nix, .py, nixos, rag, aider, systemd)",
     )
-    p.add_argument("--max", type=int, default=5, help="Max hints to return (default: 5)")
+    p.add_argument("--max", type=int, default=4, help="Max hints to return (default: 4)")
     p.add_argument(
         "--agent", default="human",
         choices=["human", "claude", "codex", "qwen", "aider", "continue"],
