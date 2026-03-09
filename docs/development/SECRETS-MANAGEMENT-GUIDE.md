@@ -35,6 +35,7 @@ This will:
 - create the external SOPS bundle path
 - generate the core AI stack secrets
 - create or refresh the gitignored `deploy-options.local.nix`
+- print a readiness summary with the next commands to run
 
 To also provision optional service keys:
 
@@ -149,5 +150,6 @@ The CLI is intentionally dependency-light and terminal-first:
 - no extra Python packages required
 - safe for local laptops and servers
 - compatible with the existing deploy/bootstrap flow
+- `init`, `bootstrap`, `set`, and `ensure-local-config` now end with the same readiness summary used by `doctor`
 
 If a richer UI is needed later, the right next step is a small Textual TUI layered on top of this script, not a separate secrets system.
