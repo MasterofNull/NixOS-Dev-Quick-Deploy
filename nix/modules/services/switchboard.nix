@@ -26,6 +26,7 @@ let
     then "/run/secrets/${sec.names.hybridApiKey}"
     else "";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
+  remoteBudgetStatePath = "${mutableOptimizerDir}/switchboard-remote-budget.json";
   continueLocalCard = ''
     [profile-card:continue-local]
     Keep responses concise and execution-focused.
@@ -37,6 +38,21 @@ let
     Optimize for token efficiency.
     Use brief answers first, expand only when requested.
     Avoid restating long policy docs unless explicitly asked.
+  '';
+  remoteFreeCard = ''
+    [profile-card:remote-free]
+    Use low-cost or free remote capacity for probing, not for unrestricted context bloat.
+    Keep prompts compact and prefer retrieval before raising token spend.
+  '';
+  remoteCodingCard = ''
+    [profile-card:remote-coding]
+    Use the configured coding-optimized remote model for concrete implementation help.
+    Keep file scope explicit and avoid broad background dumps.
+  '';
+  remoteReasoningCard = ''
+    [profile-card:remote-reasoning]
+    Use the configured higher-judgment remote model for architecture, policy, and tradeoff work.
+    Spend tokens intentionally and only after scoping the decision clearly.
   '';
   embeddingLocalCard = ''
     [profile-card:embedding-local]
@@ -111,7 +127,17 @@ let
     EMBEDDED_ASSIST_MAX_MESSAGES = max(2, int(os.environ.get("SWB_EMBEDDED_ASSIST_MAX_MESSAGES", "10")))
     CARD_CONTINUE_LOCAL = ${builtins.toJSON continueLocalCard}
     CARD_REMOTE_DEFAULT = ${builtins.toJSON remoteDefaultCard}
+    CARD_REMOTE_FREE = ${builtins.toJSON remoteFreeCard}
+    CARD_REMOTE_CODING = ${builtins.toJSON remoteCodingCard}
+    CARD_REMOTE_REASONING = ${builtins.toJSON remoteReasoningCard}
     CARD_EMBEDDING_LOCAL = ${builtins.toJSON embeddingLocalCard}
+    REMOTE_MODEL_ALIASES_ENABLED = os.environ.get("SWB_REMOTE_MODEL_ALIASES_ENABLED", "1").strip() not in ("0", "false", "no")
+    REMOTE_MODEL_ALIAS_FREE = os.environ.get("SWB_REMOTE_MODEL_ALIAS_FREE", "").strip()
+    REMOTE_MODEL_ALIAS_CODING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_CODING", "").strip()
+    REMOTE_MODEL_ALIAS_REASONING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_REASONING", "").strip()
+    REMOTE_DAILY_TOKEN_CAP = max(0, int(os.environ.get("SWB_REMOTE_DAILY_TOKEN_CAP", "0")))
+    REMOTE_BUDGET_FALLBACK_LOCAL = os.environ.get("SWB_REMOTE_BUDGET_FALLBACK_LOCAL", "1").strip() not in ("0", "false", "no")
+    REMOTE_BUDGET_STATE_PATH = os.environ.get("SWB_REMOTE_BUDGET_STATE_PATH", "").strip()
     _hybrid_key_file = os.environ.get("HYBRID_API_KEY_FILE", "").strip()
     HYBRID_API_KEY  = ""
     if _hybrid_key_file:
@@ -153,6 +179,7 @@ let
 
     @app.get("/health")
     async def health():
+        budget_state = _budget_state_current()
         return {
             "status": "ok",
             "service": "ai-switchboard",
@@ -168,6 +195,9 @@ let
                 "default": {"force_provider": None, "inject_hints": HINTS_INJECT},
                 "continue-local": {"force_provider": "local", "inject_hints": False},
                 "remote-default": {"force_provider": "remote", "inject_hints": False},
+                "remote-free": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_FREE or None},
+                "remote-coding": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_CODING or None},
+                "remote-reasoning": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_REASONING or None},
                 "embedding-local": {"force_provider": "local", "inject_hints": False, "embeddings_only": True},
                 "embedded-assist": {"force_provider": "local", "inject_hints": False, "embeddings_only": False},
             },
@@ -184,13 +214,17 @@ let
                 "lexical_enabled": LEXICAL_ENABLED,
                 "decompose_enabled": DECOMPOSE_ENABLED,
                 "answerability_gate_enabled": ANSWERABILITY_GATE_ENABLED,
+                "remote_daily_token_cap": REMOTE_DAILY_TOKEN_CAP,
+                "remote_budget_fallback_local": REMOTE_BUDGET_FALLBACK_LOCAL,
+                "remote_model_aliases_enabled": REMOTE_MODEL_ALIASES_ENABLED,
             },
+            "remote_budget": budget_state,
         }
 
     def _route_target(request: Request, payload: dict | None, profile: str) -> str:
         if profile == "continue-local":
             return "local"
-        if profile == "remote-default":
+        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning"):
             return "remote" if REMOTE_URL else "local"
         if profile == "embedding-local":
             return "local"
@@ -220,24 +254,98 @@ let
             return "remote"
         return "local"
 
-    def _rewrite_model(payload: dict) -> dict:
+    def _remote_model_alias(name: str) -> str:
+        lowered = (name or "").strip().lower()
+        if lowered in ("free", "budget", "cheap"):
+            return REMOTE_MODEL_ALIAS_FREE
+        if lowered in ("coding", "code", "coder"):
+            return REMOTE_MODEL_ALIAS_CODING
+        if lowered in ("reasoning", "architecture", "thinking"):
+            return REMOTE_MODEL_ALIAS_REASONING
+        return ""
+
+    def _rewrite_model(payload: dict, profile: str) -> dict:
         if not isinstance(payload, dict):
             return payload
         model = str(payload.get("model", ""))
+        alias_model = ""
+        if REMOTE_MODEL_ALIASES_ENABLED:
+            if profile == "remote-free":
+                alias_model = REMOTE_MODEL_ALIAS_FREE
+            elif profile == "remote-coding":
+                alias_model = REMOTE_MODEL_ALIAS_CODING
+            elif profile == "remote-reasoning":
+                alias_model = REMOTE_MODEL_ALIAS_REASONING
         for prefix in REMOTE_MODEL_PREFIXES:
             if model.lower().startswith(prefix):
-                payload["model"] = model[len(prefix):] or "default"
+                suffix = model[len(prefix):] or "default"
+                alias_model = alias_model or _remote_model_alias(suffix)
+                payload["model"] = alias_model or suffix
                 break
         if model.lower().startswith("local/"):
             payload["model"] = model[len("local/"):] or "local-model"
+        elif alias_model and not model:
+            payload["model"] = alias_model
         return payload
 
     def _effective_profile(request: Request) -> str:
         profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
         if not profile:
             profile = request.query_params.get("ai_profile", "").strip().lower()
-        allowed = ("continue-local", "remote-default", "embedding-local", "embedded-assist", "default")
+        allowed = ("continue-local", "remote-default", "remote-free", "remote-coding", "remote-reasoning", "embedding-local", "embedded-assist", "default")
         return profile if profile in allowed else "default"
+
+    def _budget_state_current() -> dict:
+        today = __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d")
+        state = {"date": today, "remote_tokens_used": 0}
+        if not REMOTE_BUDGET_STATE_PATH:
+            return state
+        try:
+            with open(REMOTE_BUDGET_STATE_PATH, "r", encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if isinstance(loaded, dict) and loaded.get("date") == today:
+                state["remote_tokens_used"] = int(loaded.get("remote_tokens_used", 0) or 0)
+        except Exception:
+            pass
+        return state
+
+    def _budget_state_save(remote_tokens_used: int) -> None:
+        if not REMOTE_BUDGET_STATE_PATH:
+            return
+        state_path = __import__("pathlib").Path(REMOTE_BUDGET_STATE_PATH)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "date": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d"),
+            "remote_tokens_used": max(0, int(remote_tokens_used)),
+        }
+        tmp = state_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        tmp.replace(state_path)
+
+    def _estimate_payload_tokens(payload: dict | None) -> int:
+        if not isinstance(payload, dict):
+            return 0
+        if isinstance(payload.get("messages"), list):
+            return _estimate_messages_tokens(payload.get("messages", []))
+        if isinstance(payload.get("input"), list):
+            return _estimate_messages_tokens(payload.get("input", []))
+        if "prompt" in payload:
+            return _estimate_tokens(str(payload.get("prompt", "")))
+        return 0
+
+    def _remote_budget_status(projected_delta: int) -> tuple[bool, dict]:
+        state = _budget_state_current()
+        used = int(state.get("remote_tokens_used", 0) or 0)
+        projected = used + max(0, int(projected_delta))
+        remaining = max(0, REMOTE_DAILY_TOKEN_CAP - used) if REMOTE_DAILY_TOKEN_CAP > 0 else None
+        allowed = REMOTE_DAILY_TOKEN_CAP <= 0 or projected <= REMOTE_DAILY_TOKEN_CAP
+        return allowed, {
+            "date": state.get("date"),
+            "remote_tokens_used": used,
+            "projected_remote_tokens_used": projected,
+            "remote_daily_token_cap": REMOTE_DAILY_TOKEN_CAP,
+            "remote_tokens_remaining": remaining,
+        }
 
     def _timeout_for(target_type: str, is_stream: bool) -> httpx.Timeout:
         if is_stream:
@@ -522,6 +630,12 @@ let
             return CARD_CONTINUE_LOCAL.strip()
         if profile == "remote-default":
             return CARD_REMOTE_DEFAULT.strip()
+        if profile == "remote-free":
+            return CARD_REMOTE_FREE.strip()
+        if profile == "remote-coding":
+            return CARD_REMOTE_CODING.strip()
+        if profile == "remote-reasoning":
+            return CARD_REMOTE_REASONING.strip()
         if profile == "embedding-local":
             return CARD_EMBEDDING_LOCAL.strip()
         if profile == "embedded-assist":
@@ -594,12 +708,12 @@ let
         profile = _effective_profile(request)
         target_type = _route_target(request, payload, profile)
         target = REMOTE_URL if target_type == "remote" and REMOTE_URL else LLAMA_URL
-        if profile == "remote-default" and not REMOTE_URL:
+        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning") and not REMOTE_URL:
             return JSONResponse(
                 status_code=503,
                 content={
                     "error": {
-                        "message": "remote-default profile requested but no REMOTE_LLM_URL is configured",
+                        "message": f"{profile} profile requested but no REMOTE_LLM_URL is configured",
                         "type": "route_configuration_error",
                     }
                 },
@@ -640,7 +754,7 @@ let
             )
 
         if isinstance(payload, dict):
-            payload = _rewrite_model(payload)
+            payload = _rewrite_model(payload, profile)
             if path == "chat/completions":
                 msgs = payload.get("messages")
                 if isinstance(msgs, list):
@@ -656,6 +770,33 @@ let
                     relevance = 1.0
                     gate_applied = False
             body = json.dumps(payload).encode("utf-8")
+
+        remote_token_delta = _estimate_payload_tokens(payload)
+        remote_budget = None
+        payload_model = str(payload.get("model", "")).strip().lower() if isinstance(payload, dict) else ""
+        explicit_remote = (
+            profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning")
+            or request.headers.get(ROUTE_HINT_HEADER, "").strip().lower() == "remote"
+            or request.headers.get(PROVIDER_HINT_HEADER, "").strip().lower() == "remote"
+            or any(payload_model.startswith(prefix) for prefix in REMOTE_MODEL_PREFIXES)
+        )
+        if target_type == "remote" and REMOTE_DAILY_TOKEN_CAP > 0:
+            allowed, remote_budget = _remote_budget_status(remote_token_delta)
+            if not allowed:
+                if REMOTE_BUDGET_FALLBACK_LOCAL and not explicit_remote and path != "embeddings":
+                    target_type = "local"
+                    target = EMBEDDING_URL if path == "embeddings" and EMBEDDING_URL else LLAMA_URL
+                else:
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "error": {
+                                "message": "remote daily token budget exhausted",
+                                "type": "remote_budget_exhausted",
+                                "budget": remote_budget,
+                            }
+                        },
+                    )
 
         use_hints = HINTS_INJECT and profile != "continue-local"
         if use_hints and path == "chat/completions" and isinstance(payload, dict):
@@ -769,6 +910,10 @@ let
 
         response.headers["X-AI-Route"] = target_type
         response.headers["X-AI-Profile"] = profile
+        if remote_budget:
+            response.headers["X-AI-Remote-Tokens-Used"] = str(remote_budget.get("remote_tokens_used", 0))
+            if remote_budget.get("remote_tokens_remaining") is not None:
+                response.headers["X-AI-Remote-Tokens-Remaining"] = str(remote_budget.get("remote_tokens_remaining"))
         if input_trimmed:
             response.headers["X-AI-Input-Trimmed"] = "1"
             response.headers["X-AI-Input-Tokens-Before"] = str(input_tokens_before)
@@ -780,6 +925,12 @@ let
             response.headers["X-AI-Answerability-Gate"] = "1"
         if profile_card_applied:
             response.headers["X-AI-Profile-Card"] = "1"
+        if target_type == "remote" and REMOTE_DAILY_TOKEN_CAP > 0:
+            latest_budget = _budget_state_current()
+            used = int(latest_budget.get("remote_tokens_used", 0) or 0) + max(0, int(remote_token_delta))
+            _budget_state_save(used)
+            response.headers["X-AI-Remote-Tokens-Used"] = str(used)
+            response.headers["X-AI-Remote-Tokens-Remaining"] = str(max(0, REMOTE_DAILY_TOKEN_CAP - used))
         return response
 
     if __name__ == "__main__":
@@ -809,6 +960,13 @@ in
           "DEFAULT_PROVIDER=${swb.defaultProvider}"
           "REMOTE_LLM_URL=${remoteUrl}"
           "REMOTE_LLM_API_KEY_FILE=${remoteKeyFile}"
+          "SWB_REMOTE_MODEL_ALIASES_ENABLED=${if swb.remoteModelAliases.enable then "1" else "0"}"
+          "SWB_REMOTE_MODEL_ALIAS_FREE=${if swb.remoteModelAliases.free != null then swb.remoteModelAliases.free else ""}"
+          "SWB_REMOTE_MODEL_ALIAS_CODING=${if swb.remoteModelAliases.coding != null then swb.remoteModelAliases.coding else ""}"
+          "SWB_REMOTE_MODEL_ALIAS_REASONING=${if swb.remoteModelAliases.reasoning != null then swb.remoteModelAliases.reasoning else ""}"
+          "SWB_REMOTE_DAILY_TOKEN_CAP=${toString swb.remoteBudget.dailyTokenCap}"
+          "SWB_REMOTE_BUDGET_FALLBACK_LOCAL=${if swb.remoteBudget.fallbackToLocal then "1" else "0"}"
+          "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
         ];

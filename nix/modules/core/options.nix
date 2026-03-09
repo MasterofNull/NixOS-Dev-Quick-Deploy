@@ -1206,6 +1206,58 @@
           example = "/run/secrets/remote_llm_api_key";
           description = "Path to remote LLM API key file for switchboard upstream authentication.";
         };
+
+        remoteModelAliases = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable declarative remote model aliases such as free/coding/reasoning in switchboard.";
+          };
+
+          free = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "openrouter/free";
+            description = ''
+              Remote model alias used for low-cost or free experimentation.
+              Set this to an OpenRouter free router or another low-cost remote model id.
+            '';
+          };
+
+          coding = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "qwen/qwen3-coder";
+            description = "Remote model alias used for coding-oriented requests.";
+          };
+
+          reasoning = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "anthropic/claude-sonnet-4.5";
+            description = "Remote model alias used for architecture and higher-judgment reasoning requests.";
+          };
+        };
+
+        remoteBudget = {
+          dailyTokenCap = lib.mkOption {
+            type = lib.types.ints.nonnegative;
+            default = 0;
+            description = ''
+              Approximate daily remote input-token cap enforced by switchboard.
+              Set to 0 to disable runtime budget enforcement.
+            '';
+          };
+
+          fallbackToLocal = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              When the remote daily token cap is exhausted, allow switchboard to
+              fall back to local for non-explicit remote requests instead of failing.
+            '';
+          };
+        };
       };
 
       # ── AI harness architecture (memory + eval + tree-search retrieval) ─────
