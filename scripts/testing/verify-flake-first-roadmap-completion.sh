@@ -129,6 +129,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_bash_binary' 'Hybrid QA tool resolves an explicit bash binary for systemd-safe execution'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_python3_binary|_build_qa_exec_env' 'Hybrid QA tool resolves python3 and PATH for systemd-safe execution'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/tooling_manifest.py" 'run_qa_check' 'Tooling manifest surfaces QA tool for validation tasks'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'qa_check", "harness_eval", "health", "learning_stats"' 'Workflow plan validate phase surfaces QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/qa/check' 'Hybrid coordinator exposes HTTP QA endpoint'
