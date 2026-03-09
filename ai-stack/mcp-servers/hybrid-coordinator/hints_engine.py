@@ -1073,6 +1073,22 @@ class HintsEngine:
             d["agent_hints"] = hint.agent_hints
         return d
 
+    def _compact_prompt_coaching_payload(self, prompt_coaching: Dict[str, object]) -> Dict[str, object]:
+        """Keep default prompt coaching small on hint surfaces."""
+        token_discipline = prompt_coaching.get("token_discipline", {})
+        token_plan = {
+            "spend_tier": str(token_discipline.get("spend_tier", "lean") or "lean"),
+            "recommended_input_budget": str(token_discipline.get("recommended_input_budget", "") or "").strip(),
+            "cloud_when": str(token_discipline.get("cloud_when", "") or "").strip(),
+        }
+        return {
+            "score": float(prompt_coaching.get("score", 0.0) or 0.0),
+            "missing_fields": list(prompt_coaching.get("missing_fields", []) or []),
+            "recommended_agent": str(prompt_coaching.get("recommended_agent", "codex") or "codex"),
+            "token_discipline": token_plan,
+            "suggested_prompt": str(prompt_coaching.get("suggested_prompt", "") or "").strip(),
+        }
+
     def rank_as_dict(
         self,
         query: str,
@@ -1094,12 +1110,17 @@ class HintsEngine:
             output_type_counts[t] = output_type_counts.get(t, 0) + 1
         if include_debug_metadata is None:
             include_debug_metadata = os.getenv("AI_HINTS_INCLUDE_DEBUG_METADATA", "false").strip().lower() == "true"
+        prompt_coaching_payload = (
+            prompt_coaching
+            if include_debug_metadata
+            else self._compact_prompt_coaching_payload(prompt_coaching)
+        )
         result = {
             "hints": [self.to_dict(h, include_debug_metadata=include_debug_metadata) for h in hints],
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
             "agent_type": agent_type,
-            "prompt_coaching": prompt_coaching,
+            "prompt_coaching": prompt_coaching_payload,
             "feedback_contract": {
                 "endpoint": "/hints/feedback",
                 "required_any_of": ["helpful", "score"],
