@@ -179,6 +179,7 @@ check_pattern "docs/DASHBOARD-COLLECTORS-GUIDE.md" 'collect-ai-metrics\.sh|aq-re
 check_pattern "docs/QUICK-DASHBOARD-REFERENCE.md" 'collect-ai-metrics\.sh|ai_metrics\.json|aq-report --since=7d --format=text' 'Quick dashboard reference documents supported AI metrics and routing summary paths'
 check_absent_pattern "docs/QUICK-DASHBOARD-REFERENCE.md" 'Running perfectly|PID 161811|PID 162629' 'Quick dashboard reference avoids stale fixed runtime claims'
 check_absent_pattern "docs/DASHBOARD-UPDATE-OPTIMIZATION.md" 'PID 161811|PID 162629|\$\{TMPDIR:-/tmp\}/run-dashboard-collector' 'Dashboard optimization guide avoids retired temp collector entrypoints and stale PIDs'
+check_pattern "docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md" 'command-center-dashboard-api\.service|manage-dashboard-collectors\.sh|collect-ai-metrics\.sh|aq-report' 'Dashboard architecture reference documents supported runtime and AI observability surfaces'
 check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'
 check_pattern "scripts/security/rotate-api-key.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API key rotation shim delegates to declarative secrets manager'
 check_pattern "scripts/data/generate-passwords.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'Password generator delegates to declarative secrets manager'
