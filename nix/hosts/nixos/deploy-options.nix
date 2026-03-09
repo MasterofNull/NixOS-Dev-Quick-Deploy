@@ -54,6 +54,16 @@
         enable = lib.mkDefault true;
         routingMode = lib.mkDefault "auto";
         defaultProvider = lib.mkDefault "local";
+        # Host-local remote routing examples belong in deploy-options.local.nix
+        # when you do not want model preferences committed. Example aliases
+        # current as of 2026-03-09:
+        # remoteUrl = "https://openrouter.ai/api";
+        # remoteModelAliases = {
+        #   free = "openrouter/free";
+        #   coding = "qwen/qwen3-coder-next";
+        #   reasoning = "anthropic/claude-sonnet-4.5";
+        # };
+        # remoteBudget.dailyTokenCap = 200000;
       };
 
       # Expose inference server and Open WebUI on LAN (default: loopback only).
