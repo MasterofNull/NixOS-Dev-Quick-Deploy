@@ -93,6 +93,36 @@ export class HarnessClient {
     });
   }
 
+  query(
+    query: string,
+    opts: {
+      agentType?: string;
+      preferLocal?: boolean;
+      generateResponse?: boolean;
+      mode?: string;
+      context?: Json;
+      limit?: number;
+      keywordLimit?: number;
+      scoreThreshold?: number;
+    } = {},
+  ): Promise<Json> {
+    const payload: Json = {
+      query,
+      agent_type: opts.agentType ?? "human",
+      prefer_local: opts.preferLocal ?? true,
+      generate_response: opts.generateResponse ?? false,
+      mode: opts.mode ?? "auto",
+      limit: opts.limit ?? 5,
+      keyword_limit: opts.keywordLimit ?? 5,
+      score_threshold: opts.scoreThreshold ?? 0.7,
+    };
+    if (opts.context) payload.context = opts.context;
+    return this.request("/query", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   toolingManifest(
     query: string,
     runtime: "python" | "typescript" = "python",

@@ -34,6 +34,36 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def query(
+        self,
+        query: str,
+        *,
+        agent_type: str = "human",
+        prefer_local: bool = True,
+        generate_response: bool = False,
+        mode: str = "auto",
+        context: Optional[Dict[str, Any]] = None,
+        limit: int = 5,
+        keyword_limit: int = 5,
+        score_threshold: float = 0.7,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "query": query,
+            "agent_type": agent_type,
+            "prefer_local": prefer_local,
+            "generate_response": generate_response,
+            "mode": mode,
+            "limit": limit,
+            "keyword_limit": keyword_limit,
+            "score_threshold": score_threshold,
+        }
+        if context is not None:
+            payload["context"] = context
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(self._url("/query"), headers=self._headers(), json=payload)
+            r.raise_for_status()
+            return r.json()
+
     def tooling_manifest(
         self,
         query: str,
