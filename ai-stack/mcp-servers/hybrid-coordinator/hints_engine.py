@@ -1630,6 +1630,20 @@ class HintsEngine:
                     "rag", "retriev", "cache", "memory", "context", "hint", "report", "improv", "optimiz"
                 )
             )
+            continuation_focus = any(
+                token in query_lower
+                for token in (
+                    "resume",
+                    "continue",
+                    "follow-up",
+                    "follow up",
+                    "previous",
+                    "prior context",
+                    "pick up where",
+                    "last agent",
+                    "ongoing",
+                )
+            )
             if query_focus and rag_status == "low_sample":
                 prewarm_ids = [
                     str(candidate.get("id", "")).strip()
@@ -1653,7 +1667,23 @@ class HintsEngine:
                         agent_hints={},
                     )
                 )
-            if query_focus and memory_share is not None and float(memory_share) <= 15.0 and recent_calls >= 12:
+            if continuation_focus and memory_share is not None and float(memory_share) <= 20.0 and recent_calls >= 8:
+                hints.append(
+                    Hint(
+                        id="runtime_resume_memory_first",
+                        type="runtime_signal",
+                        title="Resume/continue tasks should recall memory before broad retrieval",
+                        score=0.83,
+                        snippet=(
+                            f"This looks like continuation work, but memory recall is only {float(memory_share):.1f}% "
+                            "of recent retrieval calls. Recall prior context before route_search to cut token overhead."
+                        )[:220],
+                        reason="Derived from live aq-report rag posture and a continuation-style query",
+                        tags=["runtime", "rag", "memory", "continuation"],
+                        agent_hints={},
+                    )
+                )
+            elif query_focus and memory_share is not None and float(memory_share) <= 15.0 and recent_calls >= 12:
                 hints.append(
                     Hint(
                         id="runtime_memory_recall_underused",

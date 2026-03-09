@@ -15,6 +15,7 @@ LEARNING_PROCESS_OUT="${POST_DEPLOY_LEARNING_PROCESS_OUT:-${DATA_DIR}/hybrid/tel
 LEARNING_EXPORT_OUT="${POST_DEPLOY_LEARNING_EXPORT_OUT:-${DATA_DIR}/hybrid/telemetry/learning-export-latest.json}"
 AQ_QA_PHASE0_OUT="${POST_DEPLOY_AQ_QA_PHASE0_OUT:-${DATA_DIR}/hybrid/telemetry/aq-qa-phase0-latest.json}"
 AGENT_INSTRUCTIONS_IMPORT_OUT="${POST_DEPLOY_AGENT_INSTRUCTIONS_IMPORT_OUT:-${DATA_DIR}/hybrid/telemetry/agent-instructions-import-latest.txt}"
+RAG_PREWARM_OUT="${POST_DEPLOY_RAG_PREWARM_OUT:-${DATA_DIR}/hybrid/telemetry/rag-prewarm-latest.json}"
 HINT_FEEDBACK_LOG_PATH="${HINT_FEEDBACK_LOG_PATH:-/var/log/nixos-ai-stack/hint-feedback.jsonl}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-}"
 AUTO_REMEDIATE_ENABLE="${POST_DEPLOY_AUTO_REMEDIATE_ENABLE:-true}"
@@ -141,6 +142,7 @@ mkdir -p "$(dirname "${LEARNING_PROCESS_OUT}")"
 mkdir -p "$(dirname "${LEARNING_EXPORT_OUT}")"
 mkdir -p "$(dirname "${AQ_QA_PHASE0_OUT}")"
 mkdir -p "$(dirname "${AGENT_INSTRUCTIONS_IMPORT_OUT}")"
+mkdir -p "$(dirname "${RAG_PREWARM_OUT}")"
 
 if [[ -x "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" ]]; then
   ready=false
@@ -205,6 +207,15 @@ fi
 
 if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
   run_step "aq_report_refresh" refresh_aq_report_snapshot || true
+fi
+
+if [[ -x "${REPO_ROOT}/scripts/ai/aq-rag-prewarm" && -f "${AQ_REPORT_OUT}" ]]; then
+  run_step "rag_targeted_prewarm" run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
+    "${BASH_BIN}" "${REPO_ROOT}/scripts/ai/aq-rag-prewarm" \
+      --from-report "${AQ_REPORT_OUT}" \
+      --max-prompts 2 \
+      --json > "${RAG_PREWARM_OUT}" || true
+  run_step "aq_report_refresh_post_prewarm" refresh_aq_report_snapshot || true
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/data/import-agent-instructions.sh" ]]; then

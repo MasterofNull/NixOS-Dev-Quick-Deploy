@@ -649,6 +649,21 @@ def _build_workflow_plan(
     except Exception:
         prompt_coaching = {}
     tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
+    query_lower = str(query or "").lower()
+    continuation_query = any(
+        token in query_lower
+        for token in (
+            "resume",
+            "continue",
+            "follow-up",
+            "follow up",
+            "previous",
+            "prior context",
+            "pick up where",
+            "last agent",
+            "ongoing",
+        )
+    )
 
     def pick_tool_names(names: set[str]) -> List[str]:
         return [name for name in tool_catalog if name in names]
@@ -660,13 +675,18 @@ def _build_workflow_plan(
             {
                 "id": "discover",
                 "goal": "Collect high-signal context first.",
-                "tools": pick_tool_names({"hints", "discovery", "route_search", "tree_search"}),
+                "tools": pick_tool_names(
+                    {"hints", "discovery", "route_search", "tree_search"}
+                    | ({"memory_recall"} if continuation_query else set())
+                ),
                 "exit_criteria": "Top risks identified.",
             },
             {
                 "id": "plan",
                 "goal": "Turn findings into verified steps.",
-                "tools": pick_tool_names({"hints", "discovery"}),
+                "tools": pick_tool_names(
+                    {"hints", "discovery"} | ({"memory_recall"} if continuation_query else set())
+                ),
                 "exit_criteria": "Ordered task list exists.",
             },
             {
@@ -712,6 +732,7 @@ def _build_workflow_plan(
                 else _compact_tool_security(tool_security or {})
             ),
             "created_epoch_s": int(time.time()),
+            "memory_recall_priority": continuation_query,
         },
     }
 
