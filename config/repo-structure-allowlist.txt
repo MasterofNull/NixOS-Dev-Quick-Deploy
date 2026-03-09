@@ -234,7 +234,6 @@ scripts/data/generate-harness-sdk-api-docs.sh
 scripts/data/generate-harness-sdk-provenance.sh
 scripts/data/generate-package-counts.sh
 scripts/data/generate-passwords.sh
-scripts/data/generate-test-telemetry.sh
 scripts/governance/git-safe.sh
 scripts/ai/harness-rpc.js
 scripts/data/import-agent-instructions.sh
@@ -255,7 +254,6 @@ scripts/governance/lint-skills-podman.sh
 scripts/governance/lint-template-placeholders.sh
 scripts/governance/list-issues.py
 scripts/ai/llama-model-cli.sh
-scripts/deploy/local-registry.sh
 scripts/governance/manage-dashboard-collectors.sh
 scripts/governance/manage-secrets.py
 scripts/governance/manage-secrets.sh
