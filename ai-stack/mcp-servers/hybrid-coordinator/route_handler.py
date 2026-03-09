@@ -390,7 +390,10 @@ async def route_search(
                     if _swb and Config.SWITCHBOARD_URL:
                         _inference_client = _swb
                         _inference_path = "/v1/chat/completions"
-                        _inference_headers = {"x-ai-route": "remote"}
+                        _inference_headers = {
+                            "x-ai-route": "remote",
+                            "x-ai-profile": "remote-reasoning",
+                        }
                         logger.info(
                             "task_complexity_remote type=%s tokens=%d → switchboard",
                             _complexity.task_type, _complexity.token_estimate,
@@ -477,26 +480,81 @@ async def route_search(
                         max(0.0, time.perf_counter() - _llm_start)
                     )
                 except Exception as exc:  # noqa: BLE001
-                    _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
-                    logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
-                    LLM_BACKEND_SELECTIONS.labels(
-                        backend=selected_backend,
-                        reason_class="error",
-                    ).inc()
-                    LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
-                        max(0.0, time.perf_counter() - _llm_start)
-                    )
                     if (
-                        _is_timeout
-                        and _record_query_gap is not None
-                        and postgres_client is not None
-                        and not (_context_requests_gap_skip(context) or _is_synthetic_gap_query(query))
+                        selected_backend == "remote"
+                        and llama_cpp_client is not None
+                        and "400" in str(exc)
                     ):
-                        _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
-                        asyncio.create_task(_record_query_gap(
-                            query_hash=_t_hash, query_text=query[:500], score=-1.0,
-                            collection="inference_timeout",
-                        ))
+                        try:
+                            fallback_messages = []
+                            local_system_prompt = Config.build_local_system_prompt()
+                            if local_system_prompt:
+                                fallback_messages.append({"role": "system", "content": local_system_prompt})
+                            fallback_messages.append({"role": "user", "content": prompt})
+                            llm_resp = await llama_cpp_client.post(
+                                "/chat/completions",
+                                headers={},
+                                json={"messages": fallback_messages, "temperature": 0.2, "max_tokens": 400},
+                                timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
+                            )
+                            llm_resp.raise_for_status()
+                            llm_json = llm_resp.json()
+                            response_text = llm_json["choices"][0]["message"]["content"]
+                            usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
+                            cached_tokens = int(
+                                usage.get("cached_tokens")
+                                or (usage.get("prompt_tokens_details", {}) or {}).get("cached_tokens", 0)
+                                or 0
+                            )
+                            results["prompt_cache"] = {
+                                "policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
+                                "prefix_hash": prompt_prefix_hash,
+                                "cached_tokens": cached_tokens,
+                            }
+                            if compressed_tokens:
+                                results["context_compression"] = {
+                                    "enabled": True,
+                                    "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
+                                    "compressed_tokens": compressed_tokens,
+                                }
+                            results["synthesis_fallback"] = {
+                                "reason": "remote_400_local_fallback",
+                                "original_backend": "remote",
+                            }
+                            selected_backend = "local"
+                            backend_reason_class = "remote_400_local_fallback"
+                            LLM_BACKEND_SELECTIONS.labels(
+                                backend=selected_backend,
+                                reason_class=backend_reason_class,
+                            ).inc()
+                            LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
+                                max(0.0, time.perf_counter() - _llm_start)
+                            )
+                            logger.info("route_search_remote_400_local_fallback")
+                            exc = None
+                        except Exception as fallback_exc:  # noqa: BLE001
+                            exc = fallback_exc
+                    if exc is not None:
+                        _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
+                        logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
+                        LLM_BACKEND_SELECTIONS.labels(
+                            backend=selected_backend,
+                            reason_class="error",
+                        ).inc()
+                        LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
+                            max(0.0, time.perf_counter() - _llm_start)
+                        )
+                        if (
+                            _is_timeout
+                            and _record_query_gap is not None
+                            and postgres_client is not None
+                            and not (_context_requests_gap_skip(context) or _is_synthetic_gap_query(query))
+                        ):
+                            _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
+                            asyncio.create_task(_record_query_gap(
+                                query_hash=_t_hash, query_text=query[:500], score=-1.0,
+                                collection="inference_timeout",
+                            ))
 
         ROUTE_DECISIONS.labels(route=route).inc()
         _record_telemetry(
