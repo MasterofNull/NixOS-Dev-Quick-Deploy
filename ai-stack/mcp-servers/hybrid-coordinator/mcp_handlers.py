@@ -53,6 +53,43 @@ def _resolve_bash_binary() -> str:
     raise FileNotFoundError("bash binary not found for aq-qa execution")
 
 
+def _resolve_python3_binary() -> str:
+    candidates = [
+        os.environ.get("PYTHON3"),
+        shutil.which("python3"),
+        "/run/current-system/sw/bin/python3",
+        "/usr/bin/python3",
+        "/bin/python3",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return str(candidate)
+    raise FileNotFoundError("python3 binary not found for aq-qa execution")
+
+
+def _build_qa_exec_env() -> Dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env.setdefault("HOME", str(_REPO_ROOT))
+
+    bash_bin = _resolve_bash_binary()
+    python3_bin = _resolve_python3_binary()
+    path_entries = [
+        str(Path(bash_bin).parent),
+        str(Path(python3_bin).parent),
+        "/run/current-system/sw/bin",
+        "/usr/bin",
+        "/bin",
+    ]
+    existing_path = env.get("PATH", "")
+    if existing_path:
+        path_entries.extend(segment for segment in existing_path.split(":") if segment)
+    env["PATH"] = ":".join(dict.fromkeys(path_entries))
+    env.setdefault("BASH", bash_bin)
+    env.setdefault("PYTHON3", python3_bin)
+    return env
+
+
 def _normalize_qa_phase(value: Any) -> str:
     phase = str(value or "0").strip().lower()
     if not phase:
@@ -80,8 +117,7 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
     if include_sudo:
         cmd.append("--sudo")
 
-    env = os.environ.copy()
-    env.setdefault("PYTHONUNBUFFERED", "1")
+    env = _build_qa_exec_env()
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=str(_REPO_ROOT),
