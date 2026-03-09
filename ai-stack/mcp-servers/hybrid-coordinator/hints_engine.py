@@ -1074,6 +1074,13 @@ class HintsEngine:
             d["agent_hints"] = hint.agent_hints
         return d
 
+    def _compact_missing_fields(self, missing_fields: object, limit: int = 3) -> Dict[str, object]:
+        fields = [str(item).strip() for item in (missing_fields or []) if str(item).strip()]
+        return {
+            "missing_fields": fields[:limit],
+            "missing_count": len(fields),
+        }
+
     def _compact_prompt_coaching_payload(self, prompt_coaching: Dict[str, object]) -> Dict[str, object]:
         """Keep default prompt coaching small on hint surfaces."""
         token_discipline = prompt_coaching.get("token_discipline", {})
@@ -1082,13 +1089,14 @@ class HintsEngine:
             "recommended_input_budget": str(token_discipline.get("recommended_input_budget", "") or "").strip(),
             "cloud_when": str(token_discipline.get("cloud_when", "") or "").strip(),
         }
-        return {
+        compact = {
             "score": float(prompt_coaching.get("score", 0.0) or 0.0),
-            "missing_fields": list(prompt_coaching.get("missing_fields", []) or []),
             "recommended_agent": str(prompt_coaching.get("recommended_agent", "codex") or "codex"),
             "token_discipline": token_plan,
             "suggested_prompt": str(prompt_coaching.get("suggested_prompt", "") or "").strip(),
         }
+        compact.update(self._compact_missing_fields(prompt_coaching.get("missing_fields", [])))
+        return compact
 
     def rank_as_dict(
         self,
