@@ -285,6 +285,8 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'if incl
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'if include_debug_metadata and hint.agent_hints' 'Hints engine only emits per-hint agent hints on explicit debug opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_compact_prompt_coaching_payload' 'Hints engine keeps default prompt coaching compact on hint surfaces'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_compact_missing_fields' 'Hints engine caps default missing-field coaching payloads'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'runtime_rag_low_sample' 'Hints engine surfaces low-sample RAG warmup guidance from the live report'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'runtime_memory_recall_underused' 'Hints engine surfaces underused memory-recall guidance from the live report'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata = .*debug' 'Hints HTTP endpoint exposes explicit debug metadata opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'result\["prompt_coaching"\]|metadata\["prompt_coaching"\]' 'Query responses expose prompt coaching guidance'

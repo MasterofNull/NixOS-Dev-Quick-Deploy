@@ -1616,6 +1616,59 @@ class HintsEngine:
                         agent_hints={},
                     )
                 )
+
+        rag_posture = data.get("rag_posture", {})
+        if isinstance(rag_posture, dict) and rag_posture.get("available"):
+            rag_status = str(rag_posture.get("status", "unknown") or "unknown").strip().lower()
+            recent_calls = int(rag_posture.get("recent_retrieval_calls", 0) or 0)
+            cache_context = str(rag_posture.get("cache_context", "") or "").strip()
+            prewarm_candidates = rag_posture.get("prewarm_candidates") or []
+            memory_share = rag_posture.get("memory_recall_share_pct")
+            query_focus = any(
+                token in query_lower
+                for token in (
+                    "rag", "retriev", "cache", "memory", "context", "hint", "report", "improv", "optimiz"
+                )
+            )
+            if query_focus and rag_status == "low_sample":
+                prewarm_ids = [
+                    str(candidate.get("id", "")).strip()
+                    for candidate in prewarm_candidates
+                    if isinstance(candidate, dict) and str(candidate.get("id", "")).strip()
+                ]
+                snippet = "RAG cache is still warming. Prefer bounded local prewarm before tuning cache size."
+                if prewarm_ids:
+                    snippet += f" Start with: {', '.join(prewarm_ids[:3])}."
+                if cache_context:
+                    snippet += f" Context: {cache_context}."
+                hints.append(
+                    Hint(
+                        id="runtime_rag_low_sample",
+                        type="runtime_signal",
+                        title="RAG cache is still in warmup, not yet in a stable efficiency window",
+                        score=0.79,
+                        snippet=snippet[:220],
+                        reason="Derived from live aq-report rag posture showing low-sample cache state",
+                        tags=["runtime", "rag", "cache", "prewarm"],
+                        agent_hints={},
+                    )
+                )
+            if query_focus and memory_share is not None and float(memory_share) <= 15.0 and recent_calls >= 12:
+                hints.append(
+                    Hint(
+                        id="runtime_memory_recall_underused",
+                        type="runtime_signal",
+                        title="Memory recall is underused relative to broad retrieval",
+                        score=0.77,
+                        snippet=(
+                            f"Memory recall is only {float(memory_share):.1f}% of recent retrieval calls. "
+                            "For continuing repo/system work, recall prior context before broad route_search."
+                        )[:220],
+                        reason="Derived from live aq-report rag posture showing low memory-recall share",
+                        tags=["runtime", "rag", "memory", "retrieval"],
+                        agent_hints={},
+                    )
+                )
         return hints
 
     def _hints_from_tool_audit_errors(self, query: str, query_tokens: List[str]) -> List[Hint]:
