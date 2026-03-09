@@ -1270,6 +1270,35 @@ def route_provider_fallback_health(entries: List[dict]) -> Dict[str, Any]:
     }
 
 
+def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
+    """Summarize route_search retrieval breadth from audit metadata."""
+    route_events = [
+        e for e in entries
+        if str(e.get("tool_name", "")).strip().lower() == "route_search"
+    ]
+    if not route_events:
+        return {"available": True, "route_calls": 0}
+    total_count = 0
+    with_count = 0
+    profile_counts: Dict[str, int] = {}
+    for entry in route_events:
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        retrieval_profile = str(metadata.get("retrieval_profile", "") or "").strip().lower()
+        if retrieval_profile:
+            profile_counts[retrieval_profile] = profile_counts.get(retrieval_profile, 0) + 1
+        collection_count = metadata.get("retrieval_collection_count")
+        if isinstance(collection_count, int):
+            total_count += collection_count
+            with_count += 1
+    return {
+        "available": True,
+        "route_calls": len(route_events),
+        "with_count": with_count,
+        "avg_collection_count": round(total_count / with_count, 2) if with_count else None,
+        "top_profiles": sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:3],
+    }
+
+
 def routing_split(entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Fetch local vs remote routing split from Prometheus."""
     local_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="local"}) or vector(0)')
@@ -1409,6 +1438,7 @@ def build_recommendations(
     recent_tool_stats: Optional[Dict[str, dict]] = None,
     recent_semantic_autorun: Optional[Dict[str, Any]] = None,
     recent_provider_fallbacks: Optional[Dict[str, Any]] = None,
+    recent_retrieval_breadth: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """Derive actionable workflow recommendations from measured data."""
     recs: List[str] = []
@@ -1488,6 +1518,15 @@ def build_recommendations(
             recs.append(
                 f"Recovered remote-provider fallbacks observed ({recovered_count} recent route_search calls; upstream {status_text}). "
                 "Treat this as provider-budget or remote-routing pressure, not a local backend outage."
+            )
+    if recent_retrieval_breadth and recent_retrieval_breadth.get("available"):
+        avg_collection_count = recent_retrieval_breadth.get("avg_collection_count")
+        if avg_collection_count is not None and float(avg_collection_count) > 4.0:
+            top_profiles = recent_retrieval_breadth.get("top_profiles") or []
+            profile_note = f" Dominant profile: {top_profiles[0][0]}." if top_profiles else ""
+            recs.append(
+                f"route_search is still scanning a broad collection set ({avg_collection_count} collections/call recent avg)."
+                + profile_note
             )
 
     # Query gaps — check AIDB for existing docs before recommending import
@@ -2131,6 +2170,7 @@ def format_md(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -2330,7 +2370,19 @@ def format_md(
                 )
     lines.append("")
 
-    lines += [f"## 8a. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')})", ""]
+    lines += [f"## 8a. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
+    avg_collection_count = retrieval_breadth.get("avg_collection_count")
+    if avg_collection_count is None:
+        lines.append("*No route_search retrieval-breadth metadata in this window.*")
+    else:
+        lines.append(f"- Avg collections/call: **{_na(avg_collection_count, '.2f')}**")
+        top_profiles = retrieval_breadth.get("top_profiles") or []
+        if top_profiles:
+            labels = ", ".join(f"`{name}` ({count})" for name, count in top_profiles[:3])
+            lines.append(f"- Active profiles: {labels}")
+    lines.append("")
+
+    lines += [f"## 8b. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')})", ""]
     recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
     if recovered_count <= 0:
         lines.append("*No recovered remote-provider fallback events in this window.*")
@@ -2345,8 +2397,8 @@ def format_md(
         lines.append("- These are tracked separately from backend failures because the user-visible request recovered locally.")
     lines.append("")
 
-    # 8b. Historical watchlist
-    lines += [f"## 8b. Historical Watchlist ({historical_watch.get('window', '7d')})", ""]
+    # 8c. Historical watchlist
+    lines += [f"## 8c. Historical Watchlist ({historical_watch.get('window', '7d')})", ""]
     if not historical_watch.get("has_items"):
         lines.append("*No background watchlist items outside the recent window.*")
     else:
@@ -2544,6 +2596,7 @@ def format_text(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -2744,7 +2797,19 @@ def format_text(
                 )
     lines.append("")
 
-    lines += [f"[ 8a. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')}) ]"]
+    lines += [f"[ 8a. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]
+    avg_collection_count = retrieval_breadth.get("avg_collection_count")
+    if avg_collection_count is None:
+        lines.append("  No route_search retrieval-breadth metadata in this window.")
+    else:
+        lines.append(f"  Avg collections/call: {_na(avg_collection_count, '.2f')}")
+        top_profiles = retrieval_breadth.get("top_profiles") or []
+        if top_profiles:
+            labels = ", ".join(f"{name}({count})" for name, count in top_profiles[:3])
+            lines.append(f"  Active profiles: {labels}")
+    lines.append("")
+
+    lines += [f"[ 8b. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')}) ]"]
     recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
     if recovered_count <= 0:
         lines.append("  No recovered remote-provider fallback events in this window.")
@@ -2759,7 +2824,7 @@ def format_text(
         lines.append("  These are tracked separately from backend failures because the request recovered locally.")
     lines.append("")
 
-    lines += [f"[ 8b. Historical Watchlist ({historical_watch.get('window', '7d')}) ]"]
+    lines += [f"[ 8c. Historical Watchlist ({historical_watch.get('window', '7d')}) ]"]
     if not historical_watch.get("has_items"):
         lines.append("  No background watchlist items outside the recent window.")
     else:
@@ -2958,6 +3023,7 @@ def format_json(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -2996,6 +3062,7 @@ def format_json(
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
+        "route_retrieval_breadth": retrieval_breadth,
         "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
         "recommendations": recs,
@@ -3109,6 +3176,8 @@ def main() -> None:
     route = routing_split(audit_entries)
     recent_route = routing_split(recent_audit_entries)
     recent_route["window"] = "1h"
+    recent_retrieval_breadth = route_retrieval_breadth(recent_audit_entries)
+    recent_retrieval_breadth["window"] = "1h"
     recent_provider_fallbacks = route_provider_fallback_health(recent_audit_entries)
     recent_provider_fallbacks["window"] = "1h"
     cache = cache_hit_rate()
@@ -3157,6 +3226,7 @@ def main() -> None:
         recent_tool_stats,
         recent_semantic_autorun,
         recent_provider_fallbacks,
+        recent_retrieval_breadth,
     )
     structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps)
 
@@ -3174,6 +3244,7 @@ def main() -> None:
         gaps,
         rag_posture_summary,
         recent_health,
+        recent_retrieval_breadth,
         recent_provider_fallbacks,
         historical_health_watch,
         recs,
