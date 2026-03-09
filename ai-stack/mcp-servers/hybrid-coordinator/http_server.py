@@ -210,6 +210,7 @@ def _audit_internal_tool_execution(
         tool_name=tool_name,
         caller_identity=caller_identity,
         parameters=payload,
+        risk_tier="low",
         outcome=outcome,
         error_message=error_message,
         latency_ms=latency_ms,
