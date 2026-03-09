@@ -780,7 +780,14 @@ restart_repo_backed_ai_services_if_needed() {
   log "Restarting mutable repo-backed AI services so live processes pick up checkout changes"
   if has_timeout_cmd && [[ "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] && \
      (( POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS > 0 )); then
-    if run_privileged timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
+    if sudo_passwordless_ready && sudo_passwordless_command_allowed systemctl; then
+      if timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
+          sudo -n systemctl restart "${restart_units[@]}"; then
+        log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
+      else
+        die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
+      fi
+    elif run_privileged timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
         systemctl restart "${restart_units[@]}"; then
       log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
     else
@@ -1504,12 +1511,27 @@ run_privileged() {
     "$@"
   else
     require_command sudo
-    if sudo_passwordless_ready; then
+    if sudo_passwordless_ready && sudo_passwordless_command_allowed "${1:-}"; then
       sudo -n "$@"
+    elif [[ ! -t 0 ]]; then
+      return 1
     else
       sudo "$@"
     fi
   fi
+}
+
+sudo_passwordless_command_allowed() {
+  local cmd="${1:-}"
+  local base=""
+  [[ -n "${cmd}" ]] || return 1
+  base="$(basename -- "${cmd}")"
+  case "${base}" in
+    systemctl|journalctl|nixos-rebuild|bootctl|nixos-quick-deploy.sh)
+      return 0
+      ;;
+  esac
+  return 1
 }
 
 sudo_passwordless_ready() {
