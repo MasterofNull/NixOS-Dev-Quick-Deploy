@@ -106,6 +106,10 @@ check_pattern "nix/modules/services/switchboard.nix" 'remote-free|remote-coding|
 check_pattern "nix/modules/services/switchboard.nix" '_remote_budget_status|remote_budget_exhausted' 'Switchboard enforces remote budget guardrails'
 check_pattern "nix/modules/services/switchboard.nix" 'unitConfig = \{' 'Switchboard declares systemd unit-level settings explicitly'
 check_pattern "nix/modules/services/switchboard.nix" 'StartLimitIntervalSec = "300";' 'Switchboard sets restart rate limiting on the unit'
+check_absent_pattern "scripts/governance/manage-secrets.py" 'This script is deprecated' 'Secrets manager entrypoint is active, not deprecated'
+check_pattern "scripts/governance/manage-secrets.py" 'Manage external SOPS secrets for the AI stack' 'Secrets manager exposes a real CLI parser'
+check_pattern "scripts/governance/manage-secrets.py" 'ensure-local-config' 'Secrets manager can refresh gitignored local host wiring'
+check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
 # Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
