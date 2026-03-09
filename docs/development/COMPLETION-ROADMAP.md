@@ -130,8 +130,6 @@ current operator-facing dashboard runtime is `command-center-dashboard-api.servi
 - [x] scripts/deploy/setup-config.sh
   - Initialize .env from template
   - Set default values
-- [x] scripts/deploy/local-registry.sh
-  - Local registry start/stop/status
 - [x] scripts/deploy/publish-local-registry.sh
   - Tag + push immutable images to localhost:5000
 
