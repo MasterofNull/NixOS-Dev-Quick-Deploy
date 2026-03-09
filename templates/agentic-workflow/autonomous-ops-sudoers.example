@@ -1,0 +1,20 @@
+# Install with:
+#   sudo install -m 0440 templates/agentic-workflow/autonomous-ops-sudoers.example /etc/sudoers.d/nixos-quick-deploy-agent
+# Validate with:
+#   sudo visudo -cf /etc/sudoers.d/nixos-quick-deploy-agent
+#
+# This template is intentionally narrow:
+# - allows unattended deploy/restart/verify loops
+# - does not grant NOPASSWD: ALL
+# - does not grant arbitrary root shells
+#
+# Adjust the username if needed.
+
+User_Alias AIOPS_USER = hyperd
+
+Cmnd_Alias AIOPS_DEPLOY = /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh
+Cmnd_Alias AIOPS_REBUILD = /run/current-system/sw/bin/nixos-rebuild
+Cmnd_Alias AIOPS_SYSTEMCTL = /run/current-system/sw/bin/systemctl
+Cmnd_Alias AIOPS_JOURNALCTL = /run/current-system/sw/bin/journalctl
+
+AIOPS_USER ALL=(root) NOPASSWD: AIOPS_DEPLOY, AIOPS_REBUILD, AIOPS_SYSTEMCTL, AIOPS_JOURNALCTL

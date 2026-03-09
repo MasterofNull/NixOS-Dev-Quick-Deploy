@@ -125,6 +125,7 @@ curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
 - Default unattended scope: deploy, verify, restart, test, non-destructive edits, and non-destructive commits.
 - Approval-gated: repo/system deletions, destructive git, rollback execution, boot/disk changes, external account actions.
 - Operational reference: `docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md`
+- Sudoers setup reference: `docs/operations/procedures/AUTONOMOUS-SUDOERS-SETUP.md`
 
 ## Full Policy Reference
 For specialist profiles, skills index, MCP inventory, coding standards, and detailed workflows, use:
