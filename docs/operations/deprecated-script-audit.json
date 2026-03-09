@@ -168,18 +168,6 @@
     "rationale": "widely referenced in active docs/workflows (3 doc, 2 other)"
   },
   {
-    "path": "scripts/data/generate-nginx-certs.sh",
-    "active_references": 4,
-    "code_references": 0,
-    "docs_references": 2,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 2,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
     "path": "scripts/deploy/local-registry.sh",
     "active_references": 4,
     "code_references": 0,
@@ -241,18 +229,6 @@
   },
   {
     "path": "scripts/data/generate-test-telemetry.sh",
-    "active_references": 3,
-    "code_references": 0,
-    "docs_references": 1,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/data/init-package-database.sh",
     "active_references": 3,
     "code_references": 0,
     "docs_references": 1,

@@ -130,6 +130,8 @@ check_path_absent "scripts/governance/manage-cache.sh" 'Low-signal deprecated ma
 check_path_absent "scripts/governance/smart-config-gen.sh" 'Low-signal deprecated smart-config-gen shim has been removed'
 check_path_absent "scripts/governance/smart_config_gen.sh" 'Low-signal deprecated smart_config_gen compatibility shim has been removed'
 check_path_absent "scripts/testing/verify-pytorch-fix.sh" 'Low-signal deprecated verify-pytorch-fix shim has been removed'
+check_path_absent "scripts/data/generate-nginx-certs.sh" 'Low-signal deprecated generate-nginx-certs shim has been removed'
+check_path_absent "scripts/data/init-package-database.sh" 'Low-signal deprecated init-package-database shim has been removed'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh bootstrap --host' 'Secrets guide documents delegated quick-deploy bootstrap flow'
 check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'

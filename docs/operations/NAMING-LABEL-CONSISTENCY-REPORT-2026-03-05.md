@@ -74,12 +74,10 @@ Generated: 2026-03-05 07:57 UTC
 - `scripts/data/generate-dashboard-data.sh`
 - `scripts/data/generate-harness-sdk-api-docs.sh`
 - `scripts/data/generate-harness-sdk-provenance.sh`
-- `scripts/data/generate-nginx-certs.sh`
 - `scripts/data/generate-passwords.sh`
 - `scripts/data/generate-test-telemetry.sh`
 - `scripts/data/import-collections.sh`
 - `scripts/data/import-documents.py`
-- `scripts/data/init-package-database.sh`
 
 ### Docs: Missing Metadata Block (Top 60)
 - `docs/AGENT-INTEGRATION-WORKFLOW.md`
@@ -166,4 +164,3 @@ Generated: 2026-03-05 07:57 UTC
 1. Add metadata block to active operations/development docs first.
 2. Normalize high-touch script names (or add stable wrappers if renaming would break callers).
 3. Enforce header standard for new scripts in CI lint stage.
-
