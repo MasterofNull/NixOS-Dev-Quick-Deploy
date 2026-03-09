@@ -204,42 +204,6 @@
     "rationale": "only low-signal references remain; remove after doc cleanup"
   },
   {
-    "path": "scripts/data/populate-knowledge-base.py",
-    "active_references": 3,
-    "code_references": 0,
-    "docs_references": 1,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/data/populate-knowledge-from-web.py",
-    "active_references": 3,
-    "code_references": 0,
-    "docs_references": 1,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 2,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/data/populate-qdrant-with-embeddings.py",
-    "active_references": 3,
-    "code_references": 0,
-    "docs_references": 1,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
     "path": "scripts/data/populate-qdrant-collections.sh",
     "active_references": 2,
     "code_references": 0,
