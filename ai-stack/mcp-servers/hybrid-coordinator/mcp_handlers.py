@@ -46,7 +46,7 @@ def _normalize_qa_phase(value: Any) -> str:
     return _QA_PHASE_ALIASES.get(phase, phase)
 
 
-async def _run_qa_check(arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
     phase = _normalize_qa_phase(arguments.get("phase", "0"))
     output_format = str(arguments.get("format", "json")).strip().lower()
     include_sudo = bool(arguments.get("include_sudo", False))
@@ -673,7 +673,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "run_qa_check":
-            result = await _run_qa_check(arguments)
+            result = await run_qa_check_as_dict(arguments)
             qa_result = result.get("qa_result") if isinstance(result, dict) else {}
             _write_audit(
                 name,

@@ -104,6 +104,7 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/hints` | GET | Get workflow hints |
 | `/query` | POST | Hybrid routing query |
 | `/workflow/plan` | POST | Create execution plan |
+| `/qa/check` | POST | Run bounded `aq-qa` validation via hybrid coordinator |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/health` | GET | Check service health |
 
