@@ -519,7 +519,7 @@ PY
     printf '  %-28s %s\n' "Recent health" "${recent_health_label}"
     if [[ "${historical_watch_has_items}" == "true" ]]; then
       if [[ -n "${historical_watch_flaky_tool}" ]]; then
-        historical_watch_label="${historical_watch_flaky_tool} backend OK ${historical_watch_flaky_ok}%% (${historical_watch_flaky_calls} valid calls)"
+        historical_watch_label="${historical_watch_flaky_tool} backend OK ${historical_watch_flaky_ok}% (${historical_watch_flaky_calls} valid calls)"
         if [[ "${historical_watch_flaky_invalid}" != "0" ]]; then
           historical_watch_label="${historical_watch_label}; +${historical_watch_flaky_invalid} invalid"
         fi
@@ -537,6 +537,10 @@ PY
     printf '  %-28s %s\n' "Semantic autorun route calls" "${semantic_route_calls}"
 
     if [[ -n "${recommendations}" ]]; then
+      if [[ "${recommendations}" == "No critical issues detected. System is operating within normal parameters." ]]; then
+        log "Top recommended next actions: none"
+        return
+      fi
       log "Top recommended next actions:"
       while IFS= read -r rec; do
         [[ -z "${rec}" ]] && continue
