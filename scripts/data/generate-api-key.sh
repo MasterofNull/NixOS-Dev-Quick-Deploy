@@ -1,24 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate API keys for AI stack services
-# Usage:
-#   ./generate-api-key.sh                    # Generate master stack_api_key
-#   ./generate-api-key.sh --service aidb     # Generate service-specific key
-
-SECRETS_DIR="${SECRETS_DIR:-$(pwd)/ai-stack/secrets/generated}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MANAGER="${ROOT_DIR}/scripts/governance/manage-secrets.sh"
+HOST_NAME=""
 SERVICE=""
+FORCE=false
 
-# Parse arguments
+service_to_secret() {
+  case "${1:-}" in
+    aidb) echo "aidb_api_key" ;;
+    hybrid|hybrid-coordinator|coordinator) echo "hybrid_coordinator_api_key" ;;
+    embeddings) echo "embeddings_api_key" ;;
+    aider|aider-wrapper) echo "aider_wrapper_api_key" ;;
+    nixos-docs|docs) echo "nixos_docs_api_key" ;;
+    remote|openrouter|remote-llm) echo "remote_llm_api_key" ;;
+    "")
+      echo ""
+      ;;
+    *)
+      echo "Unknown service '${1}'. Expected one of: aidb, hybrid, embeddings, aider-wrapper, nixos-docs, remote-llm." >&2
+      return 1
+      ;;
+  esac
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --service)
       SERVICE="$2"
       shift 2
       ;;
+    --host)
+      HOST_NAME="$2"
+      shift 2
+      ;;
+    --force)
+      FORCE=true
+      shift
+      ;;
     --help)
       echo "Usage: $0 [--service SERVICE_NAME]"
-      echo "  --service  Generate key for specific service (aidb, embeddings, hybrid, nixos-docs)"
+      echo "       $0 --service SERVICE_NAME [--host HOST_NAME] [--force]"
+      echo ""
+      echo "Generate or rotate a service API key inside the external SOPS bundle."
+      echo "This is a compatibility shim over scripts/governance/manage-secrets.sh."
       exit 0
       ;;
     *)
@@ -28,30 +54,24 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-mkdir -p "${SECRETS_DIR}"
-
-# Determine key file name
-if [[ -n "${SERVICE}" ]]; then
-  KEY_FILE="${SECRETS_DIR}/${SERVICE}_api_key"
-else
-  KEY_FILE="${SECRETS_DIR}/stack_api_key"
+if [[ ! -x "${MANAGER}" ]]; then
+  echo "Missing secrets manager wrapper: ${MANAGER}" >&2
+  exit 1
 fi
 
-if [[ -f "${KEY_FILE}" ]]; then
-  echo "⚠️  API key already exists at ${KEY_FILE}" >&2
-  echo "To rotate this key, use: ./scripts/security/rotate-api-key.sh --service ${SERVICE:-stack}" >&2
-  exit 0
+manager_args=()
+if [[ -n "${HOST_NAME}" ]]; then
+  manager_args+=(--host "${HOST_NAME}")
 fi
 
-# Generate secure random key
-umask 077
-openssl rand -hex 32 > "${KEY_FILE}"
-chmod 0400 "${KEY_FILE}"  # Read-only for owner
-
-echo "✅ Generated API key at ${KEY_FILE}"
-echo "   Permissions: $(stat -c %a "${KEY_FILE}") (owner read-only)"
-
-# Log key generation for audit trail
-if [[ -d "${SECRETS_DIR}/../audit" ]] || mkdir -p "${SECRETS_DIR}/../audit"; then
-  echo "$(date -Iseconds) | GENERATE | ${KEY_FILE##*/} | $(whoami)" >> "${SECRETS_DIR}/../audit/api-keys.log"
+if [[ -z "${SERVICE}" ]]; then
+  if [[ "${FORCE}" == true ]]; then
+    echo "Refusing to rotate all API keys via ${0}. Use ${MANAGER} init --include-optional --force explicitly." >&2
+    exit 2
+  fi
+  exec "${MANAGER}" "${manager_args[@]}" init --include-optional
 fi
+
+secret_name="$(service_to_secret "${SERVICE}")"
+set_args=(set "${secret_name}" --generate)
+exec "${MANAGER}" "${manager_args[@]}" "${set_args[@]}"
