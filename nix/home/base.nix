@@ -108,6 +108,10 @@ let
     };
   };
 
+  # Continue CLI — @continuedev/cli packaged from source
+  # Provides terminal-based AI coding assistance (cn command)
+  continueCli = pkgs.callPackage ../pkgs/continue-cli.nix { };
+
   continueMutableVsix = pkgs.fetchurl {
     url = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
     sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
@@ -466,6 +470,9 @@ in
       gradio
     ]))
 
+    # Continue CLI — AI-powered coding assistant for the terminal
+    continueCli
+
     # Lightweight fallback editor (override in per-host home.nix)
     micro
   ];
@@ -540,6 +547,8 @@ in
       nrb = "sudo nixos-rebuild boot --flake .";
       nrd = "sudo nixos-rebuild dry-build --flake .";
       hms = "home-manager switch --flake .";
+      # AI CLI tools
+      continue = "cn";  # Continue CLI shorthand
       # pi-coding-agent wired to local switchboard (OpenAI-compatible proxy at :8085)
       pi  = "OPENAI_BASE_URL=\"http://127.0.0.1:${toString aiSwitchboardPort}/v1\" OPENAI_API_KEY=dummy $HOME/.npm-global/bin/pi --provider openai";
     };
@@ -623,6 +632,16 @@ in
       session_serialization = true;
       scroll_buffer_size = 10000;
     };
+  };
+
+  # ---- npm: global packages configuration ---------------------------------
+  # NPM global packages are installed to ~/.npm-global to avoid conflicts
+  # with Nix-managed packages. Used by AI CLI tools like @continuedev/cli.
+  programs.npm = {
+    enable = true;
+    npmrc = ''
+      prefix=${config.home.homeDirectory}/.npm-global
+    '';
   };
 
   programs.vim = {
