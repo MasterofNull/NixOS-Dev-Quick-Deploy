@@ -1508,18 +1508,37 @@ run_privileged() {
   fi
 }
 
+sudo_passwordless_ready() {
+  [[ "${EUID:-$(id -u)}" -eq 0 ]] && return 0
+  require_command sudo
+  sudo -n true >/dev/null 2>&1 && return 0
+
+  local -a probes=(
+    "/run/current-system/sw/bin/systemctl --version"
+    "/run/current-system/sw/bin/journalctl --version"
+    "/run/current-system/sw/bin/nixos-rebuild --help"
+  )
+  local probe
+  for probe in "${probes[@]}"; do
+    if sudo -n ${probe} >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 prime_sudo_session() {
   [[ "${EUID:-$(id -u)}" -eq 0 ]] && return 0
   [[ "${PRIME_SUDO_EARLY}" == "true" ]] || return 0
 
   require_command sudo
-  if ! sudo -n true >/dev/null 2>&1; then
+  if ! sudo_passwordless_ready; then
     section "Privilege Auth"
     log "Requesting sudo authentication once upfront to avoid mid-run stalls..."
     sudo -v
   fi
 
-  if [[ "${KEEP_SUDO_ALIVE}" == "true" && -z "${SUDO_KEEPALIVE_PID}" ]]; then
+  if [[ "${KEEP_SUDO_ALIVE}" == "true" && -z "${SUDO_KEEPALIVE_PID}" ]] && sudo -n true >/dev/null 2>&1; then
     (
       while true; do
         sleep 45
