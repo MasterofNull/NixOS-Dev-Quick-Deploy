@@ -165,6 +165,86 @@ def _runtime_context_blocks(context: Optional[Dict[str, Any]]) -> List[str]:
     return blocks
 
 
+def _non_memory_collections() -> List[str]:
+    return [
+        name for name in _COLLECTIONS.keys()
+        if not str(name).startswith("agent-memory-")
+    ]
+
+
+def _select_route_collections(
+    query: str,
+    *,
+    route: str,
+    context: Optional[Dict[str, Any]],
+    generate_response: bool,
+) -> Dict[str, Any]:
+    """Choose a bounded collection subset instead of fanning out across all stores."""
+    ordered = _non_memory_collections()
+    if not ordered:
+        return {"profile": "all", "collections": list(_COLLECTIONS.keys())}
+
+    q = str(query or "").strip().lower()
+    ctx = context if isinstance(context, dict) else {}
+    token_count = len(_normalize_tokens(query))
+    has_memory = bool(ctx.get("memory_recall"))
+    has_discovery = bool(ctx.get("tool_discovery"))
+    continuation = has_memory or any(
+        phrase in q
+        for phrase in ("continue", "resume", "previous", "prior", "next patch", "last deploy", "last patch")
+    )
+    wants_history = (
+        not has_memory
+        and any(term in q for term in ("history", "previous", "earlier", "last run", "prior interaction"))
+    )
+    wants_error = any(term in q for term in ("error", "failure", "fail", "timeout", "latency", "problem", "bug"))
+    wants_code = any(
+        term in q
+        for term in ("file", "module", "service", "nixos", "patch", "config", "flake", "option", "systemd", "repo", "code")
+    )
+    wants_patterns = has_discovery or any(
+        term in q
+        for term in ("pattern", "workflow", "best practice", "guide", "how", "approach", "strategy")
+    )
+
+    selected: List[str] = []
+
+    def add(name: str) -> None:
+        if name in ordered and name not in selected:
+            selected.append(name)
+
+    add("best-practices")
+    if wants_error or route in {"tree", "hybrid"}:
+        add("error-solutions")
+    if wants_code or generate_response or route == "tree" or continuation:
+        add("codebase-context")
+    if wants_patterns or (generate_response and token_count >= 10):
+        add("skills-patterns")
+    if wants_history:
+        add("interaction-history")
+
+    if not selected:
+        selected = ordered[:3]
+
+    if continuation and "interaction-history" in selected:
+        selected.remove("interaction-history")
+
+    max_collections = 3
+    profile = "standard"
+    if route == "tree" or (generate_response and token_count >= 12):
+        max_collections = 4
+        profile = "detailed"
+    if wants_history:
+        profile = "history-aware"
+    elif continuation:
+        profile = "continuation"
+
+    return {
+        "profile": profile,
+        "collections": selected[:max_collections],
+    }
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -259,6 +339,13 @@ async def route_search(
     }
 
     try:
+        retrieval_profile = _select_route_collections(
+            query,
+            route=route,
+            context=context,
+            generate_response=generate_response,
+        )
+        target_collections = retrieval_profile["collections"]
         if Config.AI_CAPABILITY_DISCOVERY_ON_QUERY:
             _cap_disc = await capability_discovery.discover(query)
 
@@ -269,28 +356,28 @@ async def route_search(
             )
         elif route == "keyword":
             hybrid_results = await _hybrid_search(
-                query=query, collections=list(_COLLECTIONS.keys()),
+                query=query, collections=target_collections,
                 limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
             )
             results = {"keyword_results": hybrid_results["keyword_results"]}
             response_text = _summarize(hybrid_results["keyword_results"])
         elif route == "semantic":
             hybrid_results = await _hybrid_search(
-                query=_working_query, collections=list(_COLLECTIONS.keys()),
+                query=_working_query, collections=target_collections,
                 limit=limit, keyword_limit=0, score_threshold=score_threshold,
             )
             results = {"semantic_results": hybrid_results["semantic_results"]}
             response_text = _summarize(hybrid_results["semantic_results"])
         elif route == "tree":
             tree_results = await _tree_search(
-                query=query, collections=list(_COLLECTIONS.keys()),
+                query=query, collections=target_collections,
                 limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
             )
             results = tree_results
             response_text = _summarize(tree_results["combined_results"])
         else:
             hybrid_results = await _hybrid_search(
-                query=_working_query, collections=list(_COLLECTIONS.keys()),
+                query=_working_query, collections=target_collections,
                 limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
             )
             results = hybrid_results
@@ -585,6 +672,11 @@ async def route_search(
                     "server_count": len(_cap_disc.get("servers", [])),
                     "dataset_count": len(_cap_disc.get("datasets", [])),
                 },
+                "retrieval_profile": {
+                    "profile": retrieval_profile.get("profile", "standard"),
+                    "collection_count": len(target_collections),
+                    "collections": target_collections,
+                },
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -597,6 +689,7 @@ async def route_search(
         "route": route, "backend": selected_backend, "response": response_text,
         "results": results, "latency_ms": latency_ms,
         "interaction_id": interaction_id,
+        "retrieval_profile": retrieval_profile,
         "capability_discovery": {
             "decision": _cap_disc.get("decision", "unknown"),
             "reason": _cap_disc.get("reason", "unknown"),
