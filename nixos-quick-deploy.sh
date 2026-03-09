@@ -400,6 +400,7 @@ print_completion_test_results() {
     local cache_hits cache_misses cache_total cache_summary
     local recent_hint_window recent_hint_total recent_hint_status recent_hint_dominant_share
     local recent_hint_adoption_total recent_hint_adoption_rate hint_adoption_label
+    local recent_route_window recent_route_local recent_route_remote recent_route_label
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -422,6 +423,9 @@ print_completion_test_results() {
     recent_hint_dominant_share="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.dominant_share_pct // "n/a"')"
     recent_hint_adoption_total="$(printf '%s' "${json}" | jq -r '.recent_hint_adoption.total // 0')"
     recent_hint_adoption_rate="$(printf '%s' "${json}" | jq -r '.recent_hint_adoption.adoption_pct // "n/a"')"
+    recent_route_window="$(printf '%s' "${json}" | jq -r '.recent_routing.window // "1h"')"
+    recent_route_local="$(printf '%s' "${json}" | jq -r '.recent_routing.local_n // 0')"
+    recent_route_remote="$(printf '%s' "${json}" | jq -r '.recent_routing.remote_n // 0')"
     top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
@@ -435,9 +439,14 @@ print_completion_test_results() {
     else
       hint_adoption_label="${hint_rate}% (recent ${recent_hint_window}: ${recent_hint_adoption_rate}%)"
     fi
+    if (( recent_route_local + recent_route_remote == 0 )); then
+      recent_route_label="historical only; no recent route_search traffic in ${recent_route_window}"
+    else
+      recent_route_label="recent ${recent_route_window}: local=${recent_route_local} remote=${recent_route_remote}"
+    fi
 
     log "AI stack report (summary):"
-    printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote}"
+    printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote} (${recent_route_label})"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_status}" "${hint_unique}" "${hint_dominant_share}"

@@ -767,6 +767,21 @@ def _hint_adoption_recent_context(recent_hint_adoption: Optional[Dict[str, Any]]
     )
 
 
+def _routing_recent_context(recent_route: Optional[Dict[str, Any]]) -> str:
+    if not recent_route or not recent_route.get("available"):
+        return "Recent context unavailable."
+    window = str(recent_route.get("window", "1h") or "1h")
+    local_n = int(recent_route.get("local_n", 0) or 0)
+    remote_n = int(recent_route.get("remote_n", 0) or 0)
+    total = local_n + remote_n
+    if total <= 0:
+        return f"no recent route_search traffic in the last {window}"
+    return (
+        f"recent {window} routing: local={local_n} remote={remote_n} "
+        f"({_na(recent_route.get('local_pct'), '.1f', '%')} local)"
+    )
+
+
 def _task_tooling_from_hint_adoption(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(adoption, dict):
         return {"available": True, "total": 0}
@@ -1619,6 +1634,7 @@ def format_md(
     since_label: str,
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
+    recent_route: Dict[str, Any],
     cache: Dict[str, Any],
     cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
@@ -1677,6 +1693,7 @@ def format_md(
             lines.append(
                 f"- Backend split metric missing; observed **{route['query_ok_n']}** successful `/query` requests."
             )
+        lines.append(f"- Recent context: {_routing_recent_context(recent_route)}")
     else:
         lines.append("*Prometheus unreachable — routing metrics unavailable.*")
     lines.append("")
@@ -1916,6 +1933,7 @@ def format_text(
     since_label: str,
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
+    recent_route: Dict[str, Any],
     cache: Dict[str, Any],
     cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
@@ -1999,6 +2017,7 @@ def format_text(
             lines.append(
                 f"  Backend split metric missing; successful /query requests observed: {route['query_ok_n']}"
             )
+        lines.append(f"  Recent context: {_routing_recent_context(recent_route)}")
     else:
         lines.append("  Prometheus unreachable.")
     lines.append("")
@@ -2214,6 +2233,7 @@ def format_json(
     since_label: str,
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
+    recent_route: Dict[str, Any],
     cache: Dict[str, Any],
     cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
@@ -2237,6 +2257,7 @@ def format_json(
         "window": since_label,
         "tool_performance": tool_stats,
         "routing": route,
+        "recent_routing": recent_route,
         "cache": cache,
         "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
@@ -2354,6 +2375,8 @@ def main() -> None:
     ]
     recent_tool_stats = aggregate_tool_audit(recent_audit_entries)
     route = routing_split(audit_entries)
+    recent_route = routing_split(recent_audit_entries)
+    recent_route["window"] = "1h"
     cache = cache_hit_rate()
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
@@ -2397,6 +2420,7 @@ def main() -> None:
         since_label,
         tool_stats,
         route,
+        recent_route,
         cache,
         cache_prewarm,
         eval_trend,
