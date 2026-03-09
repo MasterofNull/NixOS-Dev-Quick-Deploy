@@ -78,6 +78,10 @@ echo "[verify] Flake-first roadmap completion checks"
 
 # Flake-first orchestration guardrails (current architecture)
 check_pattern "nixos-quick-deploy.sh" 'MODE="switch"' 'Flake-first deploy defaults to switch mode'
+check_pattern "AGENTS.md" 'Autonomous Ops Boundary' 'Compact agent guide documents unattended operating boundary'
+check_pattern "AGENTS.md" 'docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md' 'Compact agent guide links to autonomous operations policy'
+check_pattern "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md" 'Approval-Gated Actions' 'Autonomous operations policy defines approval-gated actions'
+check_pattern "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md" 'nixos-quick-deploy.sh' 'Autonomous operations policy allows unattended deploy loops'
 check_pattern "nixos-quick-deploy.sh" 'run_roadmap_completion_verification\(\)' 'Roadmap verification hook exists'
 check_pattern "nixos-quick-deploy.sh" 'run_readiness_analysis\(\)' 'Readiness analyzer hook exists'
 check_pattern "nixos-quick-deploy.sh" 'Skipping imperative runtime orchestration in deploy-clean' 'Imperative runtime orchestration is explicitly skipped'
