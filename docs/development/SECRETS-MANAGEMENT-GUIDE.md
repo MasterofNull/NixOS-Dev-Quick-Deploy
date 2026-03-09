@@ -172,6 +172,21 @@ gitignored host-local override when you want to keep model choices and budgets
 private during setup. If those values are non-sensitive for your team, you can
 instead commit them in the normal host config and keep only the API key in SOPS.
 
+Example OpenRouter aliases current as of 2026-03-09:
+
+```nix
+{
+  mySystem.aiStack.switchboard.remoteModelAliases = {
+    free = "openrouter/free";
+    coding = "qwen/qwen3-coder-next";
+    reasoning = "anthropic/claude-sonnet-4.5";
+  };
+}
+```
+
+These are examples, not hard requirements. Re-check OpenRouter model availability
+before pinning them as local defaults on a new host.
+
 ## UX Recommendation
 
 For new users, the lowest-friction path is:

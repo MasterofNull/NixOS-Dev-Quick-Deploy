@@ -387,14 +387,16 @@ def remote_onboarding_config_snippet() -> str:
     return (
         "{ lib, ... }:\n"
         "{\n"
+        "  # Example OpenRouter aliases current as of 2026-03-09.\n"
+        "  # Re-check https://openrouter.ai/models and OpenRouter docs before pinning new defaults.\n"
         "  mySystem.aiStack.switchboard = {\n"
         "    enable = true;\n"
         "    remoteUrl = \"https://openrouter.ai/api\";\n"
         "\n"
         "    remoteModelAliases = {\n"
-        "      free = \"<openrouter-free-model-id>\";\n"
-        "      coding = \"<coding-model-id>\";\n"
-        "      reasoning = \"<reasoning-model-id>\";\n"
+        "      free = \"openrouter/free\";\n"
+        "      coding = \"qwen/qwen3-coder-next\";\n"
+        "      reasoning = \"anthropic/claude-sonnet-4.5\";\n"
         "    };\n"
         "\n"
         "    remoteBudget = {\n"
@@ -430,6 +432,12 @@ def remote_onboarding_guide(host: str, paths: Dict[str, Path]) -> Dict[str, obje
             "remote-coding",
             "remote-reasoning",
         ],
+        "example_aliases_current_as_of": "2026-03-09",
+        "example_aliases": {
+            "free": "openrouter/free",
+            "coding": "qwen/qwen3-coder-next",
+            "reasoning": "anthropic/claude-sonnet-4.5",
+        },
         "commands": [
             f"./scripts/governance/manage-secrets.sh set remote_llm_api_key --host {host}",
             f"./scripts/governance/manage-secrets.sh doctor --host {host} --include-remote",
