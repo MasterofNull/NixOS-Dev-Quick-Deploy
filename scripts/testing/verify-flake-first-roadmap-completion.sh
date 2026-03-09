@@ -276,6 +276,7 @@ check_pattern "scripts/ai/aq-hints" 'default=4' 'aq-hints defaults to compact hi
 check_pattern "scripts/ai/aq-hints" 'debug_meta and reason' 'aq-hints text and continue renderers only emit per-hint reasons on explicit debug opt-in'
 check_pattern "scripts/ai/aq-hints" 'if agent != "human"' 'aq-hints text output suppresses redundant agent labels on the default human path'
 check_pattern "scripts/ai/aq-hints" '\[:100\]' 'aq-hints text output uses shorter compact snippet previews'
+check_pattern "scripts/ai/aq-hints" 'extra_missing > 0|compact_missing \+=' 'aq-hints text output compacts long missing-field lists'
 check_pattern "scripts/ai/aq-report" '_cache_recommendation_actionable' 'aq-report gates cache recommendations on meaningful sample size'
 check_pattern "scripts/ai/aq-report" '_is_curated_stale_gap' 'aq-report suppresses curated stale residual gaps'
 check_pattern "scripts/ai/aq-report" 'r_calls >= 5 and r_blocked == 0' 'aq-report suppresses stale tool-security warnings when recent traffic is clean'
