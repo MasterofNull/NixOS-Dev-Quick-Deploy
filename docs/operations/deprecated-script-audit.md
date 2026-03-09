@@ -46,7 +46,6 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `scripts/data/generate-nginx-certs.sh` | 4 | 0 | 2 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |
 | `scripts/deploy/local-registry.sh` | 4 | 0 | 2 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
-| `scripts/governance/lint-timeouts.sh` | 4 | 0 | 0 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-full.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-lite.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/download-lemonade-models.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
@@ -65,7 +64,4 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 | `scripts/governance/analyze-test-results.sh` | 2 | 0 | 0 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/governance/comprehensive-mcp-search.py` | 2 | 0 | 0 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/governance/lint-skills-podman.sh` | 2 | 0 | 0 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
-| `scripts/governance/manage-cache.sh` | 2 | 0 | 0 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |
-| `scripts/testing/verify-pytorch-fix.sh` | 2 | 0 | 0 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
-| `scripts/governance/smart-config-gen.sh` | 1 | 0 | 0 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 
