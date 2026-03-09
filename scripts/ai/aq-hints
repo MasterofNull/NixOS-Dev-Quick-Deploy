@@ -243,7 +243,10 @@ def _format_text(result: Dict[str, Any], agent: str, debug_meta: bool = False) -
         _c(_ANSI_BOLD, f"\n── AI Stack Hints {'─' * 34}"),
     ]
     if query:
-        lines.append(f"  Query: {_c(_ANSI_CYAN, repr(query))}   Agent: {agent}")
+        query_line = f"  Query: {_c(_ANSI_CYAN, repr(query))}"
+        if agent != "human":
+            query_line += f"   Agent: {agent}"
+        lines.append(query_line)
     lines.append("")
 
     if not hints:
@@ -261,9 +264,9 @@ def _format_text(result: Dict[str, Any], agent: str, debug_meta: bool = False) -
             tags = h.get("tags", [])
             if tags:
                 lines.append(f"     Tags: {_c(_ANSI_DIM, ', '.join(tags))}")
-            snippet = h.get("snippet", "")[:120]
+            snippet = h.get("snippet", "")[:100]
             if snippet:
-                lines.append(f"     → {snippet}{'…' if len(h.get('snippet','')) > 120 else ''}")
+                lines.append(f"     → {snippet}{'…' if len(h.get('snippet','')) > 100 else ''}")
             reason = h.get("reason", "")
             if debug_meta and reason:
                 lines.append(f"     {_c(_ANSI_DIM, 'Reason: ' + reason)}")
