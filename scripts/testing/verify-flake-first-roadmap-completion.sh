@@ -114,6 +114,9 @@ check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over sc
 check_pattern "scripts/security/rotate-api-key.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API key rotation shim delegates to declarative secrets manager'
 check_pattern "scripts/data/generate-passwords.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'Password generator delegates to declarative secrets manager'
 check_pattern "scripts/data/generate-api-key.sh" 'service_to_secret' 'Single API key generator maps services into declarative secret names'
+check_pattern "scripts/security/security-scan.sh" 'compatibility shim over supported security tooling' 'Security scan shim delegates to supported audit tooling'
+check_pattern "scripts/security/renew-tls-certificate.sh" 'compatibility shim for declarative ingress TLS' 'TLS renewal shim points to declarative ingress flow'
+check_pattern "scripts/observability/collect-ai-metrics.sh" 'ai_metrics\.json' 'AI metrics collector refreshes the legacy dashboard cache file'
 # Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
