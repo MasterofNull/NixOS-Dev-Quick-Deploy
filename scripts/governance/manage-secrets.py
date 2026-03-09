@@ -522,21 +522,8 @@ def command_doctor(args: argparse.Namespace) -> int:
         include_optional=args.include_optional,
         include_remote=args.include_remote,
     )
-
-    print(f"Host: {host}")
-    print(f"Bundle: {paths['bundle']}")
-    print(f"AGE key: {'present' if state['age_key_exists'] else 'missing'}")
-    print(f"Encrypted bundle: {'present' if state['bundle_exists'] else 'missing'}")
-    print(f"Local override: {'present' if state['local_override_exists'] else 'missing'}")
-    print(f"Requested secret set ready: {'yes' if state['is_ready'] else 'no'}")
-
-    if state["missing_secrets"]:
-        print("")
-        print("Missing secrets:")
-        for name in state["missing_secrets"]:
-            print(f"- {name}")
-
     next_steps: List[str] = []
+
     if not state["age_key_exists"] or not state["bundle_exists"] or not state["local_override_exists"]:
         bootstrap_cmd = "./scripts/governance/manage-secrets.sh bootstrap --host " + host
         if args.include_optional:
@@ -551,6 +538,40 @@ def command_doctor(args: argparse.Namespace) -> int:
     else:
         next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
         next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
+
+    if args.format == "json":
+        print(
+            json.dumps(
+                {
+                    "host": host,
+                    "bundle": str(paths["bundle"]),
+                    "age_key_exists": state["age_key_exists"],
+                    "bundle_exists": state["bundle_exists"],
+                    "local_override_exists": state["local_override_exists"],
+                    "is_ready": state["is_ready"],
+                    "missing_secrets": state["missing_secrets"],
+                    "next_steps": next_steps,
+                    "include_optional": args.include_optional,
+                    "include_remote": args.include_remote,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0 if state["is_ready"] else 1
+
+    print(f"Host: {host}")
+    print(f"Bundle: {paths['bundle']}")
+    print(f"AGE key: {'present' if state['age_key_exists'] else 'missing'}")
+    print(f"Encrypted bundle: {'present' if state['bundle_exists'] else 'missing'}")
+    print(f"Local override: {'present' if state['local_override_exists'] else 'missing'}")
+    print(f"Requested secret set ready: {'yes' if state['is_ready'] else 'no'}")
+
+    if state["missing_secrets"]:
+        print("")
+        print("Missing secrets:")
+        for name in state["missing_secrets"]:
+            print(f"- {name}")
 
     print("")
     print("Next steps:")
@@ -628,6 +649,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="Explain readiness and recommended next steps.")
     doctor_parser.add_argument("--include-optional", action="store_true", help="Also check optional service secrets.")
     doctor_parser.add_argument("--include-remote", action="store_true", help="Also check remote_llm_api_key readiness.")
+    doctor_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
     subparsers.add_parser("list", help="List supported managed secret names.")
     subparsers.add_parser("ensure-local-config", help="Create or refresh deploy-options.local.nix wiring.")
 

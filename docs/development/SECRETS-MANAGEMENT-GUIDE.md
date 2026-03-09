@@ -68,6 +68,12 @@ To also require optional or remote-routing secrets in that readiness check:
 ./scripts/governance/manage-secrets.sh doctor --host nixos --include-optional --include-remote
 ```
 
+For scripts or agents that need machine-readable readiness output:
+
+```bash
+./scripts/governance/manage-secrets.sh doctor --host nixos --format json
+```
+
 Show filesystem paths used by the secrets flow:
 
 ```bash
