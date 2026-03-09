@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-03-09T00:23:13Z",
+  "mode": "primer",
+  "read_only": true,
+  "objective": "explore harness",
+  "tiers_loaded": [
+    "tier0_agent_metadata",
+    "tier1_latest_evidence",
+    "tier2_git_status"
+  ],
+  "agent_file_count": 247,
+  "latest_evidence_files": [],
+  "changed_files_count": 2,
+  "next": [
+    "request on-demand docs/telemetry only if needed",
+    "run /brownfield or task-specific workflow after objective confirmation"
+  ]
+}

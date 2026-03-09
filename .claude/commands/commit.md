@@ -1,10 +1,10 @@
 ---
-description: Commit and push current isolated slice
+description: Commit current isolated slice
 ---
 
-# Commit
+# Commit Slice
 
-1. Confirm one logical slice only.
-2. Ensure validation evidence is present.
-3. Commit with atomic message (`feat|fix|docs|refactor: ...`).
+1. Confirm one logical slice.
+2. Confirm validation evidence exists.
+3. Commit with atomic message (`feat|fix|docs|refactor`).
 4. Push.

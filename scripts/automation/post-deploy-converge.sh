@@ -11,6 +11,9 @@ CONVERGE_SUMMARY_OUT="${POST_DEPLOY_SUMMARY_OUT:-${DATA_DIR}/hybrid/telemetry/po
 AI_TOOLING_SNAPSHOT_OUT="${POST_DEPLOY_AI_TOOLING_SNAPSHOT_OUT:-${DATA_DIR}/hybrid/telemetry/ai-tooling-prime-latest.json}"
 HINT_FEEDBACK_SYNC_OUT="${POST_DEPLOY_HINT_FEEDBACK_SYNC_OUT:-${DATA_DIR}/hybrid/telemetry/hint-feedback-sync-latest.json}"
 AUTO_REMEDIATE_SUMMARY_OUT="${POST_DEPLOY_AUTO_REMEDIATE_OUT:-${DATA_DIR}/hybrid/telemetry/aq-auto-remediation-latest.json}"
+LEARNING_PROCESS_OUT="${POST_DEPLOY_LEARNING_PROCESS_OUT:-${DATA_DIR}/hybrid/telemetry/learning-process-latest.json}"
+LEARNING_EXPORT_OUT="${POST_DEPLOY_LEARNING_EXPORT_OUT:-${DATA_DIR}/hybrid/telemetry/learning-export-latest.json}"
+AQ_QA_PHASE0_OUT="${POST_DEPLOY_AQ_QA_PHASE0_OUT:-${DATA_DIR}/hybrid/telemetry/aq-qa-phase0-latest.json}"
 HINT_FEEDBACK_LOG_PATH="${HINT_FEEDBACK_LOG_PATH:-/var/log/nixos-ai-stack/hint-feedback.jsonl}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-}"
 AUTO_REMEDIATE_ENABLE="${POST_DEPLOY_AUTO_REMEDIATE_ENABLE:-true}"
@@ -89,6 +92,36 @@ probe_hints_feedback_endpoint() {
   printf '%s' "${response}" | jq -e '.status == "recorded"' >/dev/null
 }
 
+run_hybrid_post_json() {
+  local endpoint="$1"
+  local payload="$2"
+  local output_path="$3"
+  local curl_args=()
+  curl_args=(--fail --silent --show-error --max-time 20 --connect-timeout 3 -H "Content-Type: application/json")
+  if [[ -n "${HYBRID_API_KEY_FILE}" && -r "${HYBRID_API_KEY_FILE}" ]]; then
+    local key
+    key="$(tr -d '\r\n' < "${HYBRID_API_KEY_FILE}")"
+    if [[ -n "${key}" ]]; then
+      curl_args+=(-H "X-API-Key: ${key}")
+    fi
+  fi
+  curl "${curl_args[@]}" -X POST "${HYBRID_URL%/}${endpoint}" -d "${payload}" | tee "${output_path}" >/dev/null
+}
+
+run_learning_process() {
+  run_hybrid_post_json "/learning/process" '{}' "${LEARNING_PROCESS_OUT}"
+}
+
+run_learning_export() {
+  run_hybrid_post_json "/learning/export" '{}' "${LEARNING_EXPORT_OUT}"
+}
+
+run_phase0_qa() {
+  [[ -x "${REPO_ROOT}/scripts/ai/aq-qa" ]] || return 0
+  run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
+    "${BASH_BIN}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 --json > "${AQ_QA_PHASE0_OUT}"
+}
+
 declare -a STEP_RESULTS=()
 START_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -97,6 +130,9 @@ mkdir -p "$(dirname "${CONVERGE_SUMMARY_OUT}")"
 mkdir -p "$(dirname "${AI_TOOLING_SNAPSHOT_OUT}")"
 mkdir -p "$(dirname "${HINT_FEEDBACK_SYNC_OUT}")"
 mkdir -p "$(dirname "${AUTO_REMEDIATE_SUMMARY_OUT}")"
+mkdir -p "$(dirname "${LEARNING_PROCESS_OUT}")"
+mkdir -p "$(dirname "${LEARNING_EXPORT_OUT}")"
+mkdir -p "$(dirname "${AQ_QA_PHASE0_OUT}")"
 
 if [[ -x "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" ]]; then
   ready=false
@@ -152,6 +188,11 @@ if [[ -x "${REPO_ROOT}/scripts/data/sync-hint-feedback-db.py" ]]; then
     "${PYTHON_BIN}" "${REPO_ROOT}/scripts/data/sync-hint-feedback-db.py" \
       --feedback-log "${HINT_FEEDBACK_LOG_PATH}" \
       --summary-out "${HINT_FEEDBACK_SYNC_OUT}" || true
+fi
+
+if curl -fsS --max-time 5 --connect-timeout 3 "${HYBRID_URL%/}/health" >/dev/null 2>&1; then
+  run_step "learning_process" run_learning_process || true
+  run_step "learning_export" run_learning_export || true
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
@@ -218,6 +259,10 @@ fi
 if [[ -x "${REPO_ROOT}/scripts/testing/check-aq-report-runtime-sections.sh" ]]; then
   run_step "aq_report_runtime_sections" \
     "${BASH_BIN}" "${REPO_ROOT}/scripts/testing/check-aq-report-runtime-sections.sh" || true
+fi
+
+if [[ -x "${REPO_ROOT}/scripts/ai/aq-qa" ]]; then
+  run_step "aq_qa_phase0" run_phase0_qa || true
 fi
 
 run_step "hints_feedback_endpoint_probe" probe_hints_feedback_endpoint || true

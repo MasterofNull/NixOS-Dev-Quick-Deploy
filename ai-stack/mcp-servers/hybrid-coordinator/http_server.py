@@ -629,6 +629,12 @@ def _build_workflow_plan(
 ) -> Dict[str, Any]:
     if tools is None or tool_security is None:
         tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
+    prompt_coaching: Dict[str, Any] = {}
+    try:
+        from hints_engine import HintsEngine  # type: ignore[import]
+        prompt_coaching = HintsEngine().prompt_coaching_as_dict(query, agent_type="codex")
+    except Exception:
+        prompt_coaching = {}
     return {
         "objective": query,
         "workflow_version": "1.1",
@@ -676,6 +682,7 @@ def _build_workflow_plan(
             "query_length": len(query),
             "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
+            "prompt_coaching": prompt_coaching,
             "tool_security": tool_security,
             "created_epoch_s": int(time.time()),
         },
