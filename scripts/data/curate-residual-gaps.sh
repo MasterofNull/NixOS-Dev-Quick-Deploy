@@ -137,6 +137,17 @@ post_doc "Qdrant and hybrid routing configuration quick reference" \
   "Configure Qdrant and hybrid routing declaratively through Nix options rather than hardcoded URLs. Define ports in nix/modules/core/options.nix, wire them into nix/modules/roles/ai-stack.nix and nix/modules/services/mcp-servers.nix, and let the hybrid coordinator consume injected environment variables such as QDRANT_URL and related service endpoints. Validate with aq-qa 0, check-mcp-health, hybrid /health, and aq-report so storage, retrieval, and routing all confirm the same effective configuration."
 delete_gap "how to configure qdrant and hybrid routing in this repo"
 
+post_doc "NixOS module merge patterns quick reference" \
+  "knowledge/nixos-module-merge-patterns-quick-reference.md" \
+  "Use lib.mkIf to gate config by condition, lib.mkDefault to provide a low-priority default, and lib.mkForce only when a higher-priority override is required. Keep one authoritative owner for each option where possible, prefer narrow conditional blocks over broad overrides, and inspect merged behavior through nix eval or nixos-option when module interactions are unclear. For service tuning such as rate limits, express the intended default once and reserve mkForce for conflict resolution, not ordinary composition."
+delete_gap "Summarize NixOS service option patterns and explain mkIf mkDefault mkForce tradeoffs"
+delete_gap "nixos mkIf mkForce rate limiter options"
+
+post_doc "Systemd service configuration quick reference" \
+  "knowledge/systemd-service-configuration-quick-reference.md" \
+  "Configure systemd services declaratively under systemd.services.<name> in NixOS modules. Put dependency edges in wantedBy, after, requires, and unitConfig; put runtime execution settings in serviceConfig; and keep ports, URLs, and credentials injected through options and environment variables instead of literals. Validate unit behavior with systemctl status, systemctl cat, and journalctl, and prefer StateDirectory or RuntimeDirectory for writable state instead of ad hoc paths."
+delete_gap "systemd service configuration"
+
 post_doc "Declarative runtime tool security policy quick reference" \
   "knowledge/declarative-runtime-tool-security-policy-quick-reference.md" \
   "Define runtime tool security policy declaratively in ai.aiHarness.runtime.toolSecurity.policy. Configure blocked tools, blocked endpoint patterns, blocked parameter keys, and max parameter string length from Nix options. Keep enforcement enabled and persist safe-audit cache to reduce repeat scanning."

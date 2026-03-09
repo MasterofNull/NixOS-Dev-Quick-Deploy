@@ -373,6 +373,32 @@ _CURATED_STALE_GAP_PATTERNS = (
 )
 
 
+def _is_synthetic_gap(query_text: str) -> bool:
+    text = (query_text or "").strip().lower()
+    if not text:
+        return True
+    if text in {"test", "nix", "ping", "health"}:
+        return True
+    synthetic_prefixes = (
+        "analysis only task ",
+        "analysis only:",
+        "analysis task ",
+        "analyze docs/",
+        "please analyze and summarize docs/",
+        "analyze and summarize docs/",
+        "summarize docs/",
+        "nixos-rag-test-probe-unique-sentinel",
+        "fetch http://127.0.0.1",
+        "fetch https://127.0.0.1",
+        "fetch http://localhost",
+        "curl http://127.0.0.1",
+        "curl http://localhost",
+        "get http://127.0.0.1",
+        "get http://localhost",
+    )
+    return text.startswith(synthetic_prefixes)
+
+
 def _normalize_gap_text(query_text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (query_text or "").strip().lower()).strip()
 
@@ -752,6 +778,11 @@ class HintsEngine:
                 take(h)
                 target -= 1
 
+        available_non_overused = [
+            h for h in remaining
+            if h.id not in selected_ids and h.id not in overused_ids and can_take(h)
+        ]
+
         # Pass 2: fill remaining with non-overused first while honoring type max.
         deferred_overused: List[Hint] = []
         for h in remaining:
@@ -765,6 +796,10 @@ class HintsEngine:
             take(h)
 
         # Pass 3: if still not enough, allow overused hints as fallback.
+        # When enough non-overused candidates exist, keep dominant hints out
+        # of the final set entirely for this ranking window.
+        if len(available_non_overused) >= max_hints:
+            return selected[:max_hints]
         for h in deferred_overused:
             if len(selected) >= max_hints:
                 break
@@ -1680,7 +1715,7 @@ class HintsEngine:
             except json.JSONDecodeError:
                 continue
             gap_text = str(obj.get("query_text") or "").strip()
-            if gap_text and not _is_curated_stale_gap(gap_text):
+            if gap_text and not _is_curated_stale_gap(gap_text) and not _is_synthetic_gap(gap_text):
                 gap_counts[gap_text] = gap_counts.get(gap_text, 0) + 1
 
         hints: List[Hint] = []
