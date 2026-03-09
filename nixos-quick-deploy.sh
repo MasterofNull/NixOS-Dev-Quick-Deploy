@@ -430,7 +430,11 @@ print_completion_test_results() {
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
     cache_total=$(( cache_hits + cache_misses ))
-    cache_summary="${cache_hit}% (${cache_hits}/${cache_total})"
+    if (( cache_total == 0 )); then
+      cache_summary="n/a (0/0; no samples)"
+    else
+      cache_summary="${cache_hit}% (${cache_hits}/${cache_total})"
+    fi
     if (( cache_total > 0 && cache_total < 50 )); then
       cache_summary="${cache_summary}; low sample"
     fi
@@ -438,6 +442,11 @@ print_completion_test_results() {
       hint_adoption_label="${hint_rate}% (historical)"
     else
       hint_adoption_label="${hint_rate}% (recent ${recent_hint_window}: ${recent_hint_adoption_rate}%)"
+    fi
+    if [[ "${recent_hint_total}" == "0" ]]; then
+      hint_diversity_label="${hint_diversity_status} (historical)"
+    else
+      hint_diversity_label="${hint_diversity_status}"
     fi
     if (( recent_route_local + recent_route_remote == 0 )); then
       recent_route_label="historical only; no recent route_search traffic in ${recent_route_window}"
@@ -449,7 +458,7 @@ print_completion_test_results() {
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote} (${recent_route_label})"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
-    printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_status}" "${hint_unique}" "${hint_dominant_share}"
+    printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_label}" "${hint_unique}" "${hint_dominant_share}"
     if [[ "${recent_hint_total}" == "0" ]]; then
       printf '  %-28s %s\n' "Recent hint activity (${recent_hint_window})" "none"
       printf '  %-28s %sx %s\n' "Top hint (historical)" "${top_hint_count}" "${top_hint}"

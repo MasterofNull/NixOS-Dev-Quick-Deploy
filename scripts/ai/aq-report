@@ -782,6 +782,19 @@ def _routing_recent_context(recent_route: Optional[Dict[str, Any]]) -> str:
     )
 
 
+def _cache_sample_context(cache: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not cache or not cache.get("available"):
+        return None
+    hits = int(cache.get("hits", 0) or 0)
+    misses = int(cache.get("misses", 0) or 0)
+    total = hits + misses
+    if total == 0:
+        return "no cache samples collected in this window"
+    if total < 50:
+        return f"low sample ({hits}/{total} hits)"
+    return None
+
+
 def _task_tooling_from_hint_adoption(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(adoption, dict):
         return {"available": True, "total": 0}
@@ -1744,6 +1757,9 @@ def format_md(
             f"- Hits: **{cache['hits']}**, Misses: **{cache['misses']}**",
             f"- Hit rate: **{_na(cache['hit_pct'], '.1f', '%')}**",
         ]
+        cache_context = _cache_sample_context(cache)
+        if cache_context:
+            lines.append(f"- Context: {cache_context}")
         if cache_prewarm.get("available"):
             lines.append(
                 f"- Cache prewarm timer: **{cache_prewarm.get('enabled_state', 'unknown')}** / "
@@ -2091,6 +2107,9 @@ def format_text(
             f"  Misses:  {cache['misses']}",
             f"  Hit rate: {_na(cache['hit_pct'], '.1f', '%')}",
         ]
+        cache_context = _cache_sample_context(cache)
+        if cache_context:
+            lines.append(f"  Context: {cache_context}")
         if cache_prewarm.get("available"):
             lines.append(
                 f"  Cache prewarm: {cache_prewarm.get('enabled_state', 'unknown')} / "
