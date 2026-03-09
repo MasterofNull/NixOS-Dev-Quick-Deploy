@@ -638,6 +638,11 @@ def _build_workflow_plan(
         prompt_coaching = HintsEngine().prompt_coaching_as_dict(query, agent_type="codex")
     except Exception:
         prompt_coaching = {}
+    tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
+
+    def pick_tool_names(names: set[str]) -> List[str]:
+        return [name for name in tool_catalog if name in names]
+
     return {
         "objective": query,
         "workflow_version": "1.1",
@@ -645,31 +650,31 @@ def _build_workflow_plan(
             {
                 "id": "discover",
                 "goal": "Collect high-signal context first.",
-                "tools": [t for t in tools if t["name"] in {"hints", "discovery", "route_search", "tree_search"}],
+                "tools": pick_tool_names({"hints", "discovery", "route_search", "tree_search"}),
                 "exit_criteria": "Top risks identified.",
             },
             {
                 "id": "plan",
                 "goal": "Turn findings into verified steps.",
-                "tools": [t for t in tools if t["name"] in {"hints", "discovery"}],
+                "tools": pick_tool_names({"hints", "discovery"}),
                 "exit_criteria": "Ordered task list exists.",
             },
             {
                 "id": "execute",
                 "goal": "Apply small reversible changes.",
-                "tools": [t for t in tools if t["name"] in {"route_search", "memory_recall", "feedback"}],
+                "tools": pick_tool_names({"route_search", "memory_recall", "feedback"}),
                 "exit_criteria": "Primary objective implemented.",
             },
             {
                 "id": "validate",
                 "goal": "Run checks and confirm behavior.",
-                "tools": [t for t in tools if t["name"] in {"qa_check", "harness_eval", "health", "learning_stats"}],
+                "tools": pick_tool_names({"qa_check", "harness_eval", "health", "learning_stats"}),
                 "exit_criteria": "Checks pass or failures are documented.",
             },
             {
                 "id": "handoff",
                 "goal": "Capture outcomes, risk, and rollback.",
-                "tools": [t for t in tools if t["name"] in {"feedback", "learning_stats"}],
+                "tools": pick_tool_names({"feedback", "learning_stats"}),
                 "exit_criteria": "Handoff summary ready.",
             },
         ],
@@ -686,6 +691,7 @@ def _build_workflow_plan(
             "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
             "prompt_coaching": _compact_prompt_coaching_metadata(prompt_coaching),
+            "tool_catalog": tool_catalog,
             "tool_security": tool_security,
             "created_epoch_s": int(time.time()),
         },
@@ -755,6 +761,21 @@ def _compact_tooling_layer_response(
         enriched["summary"] = compact
         return enriched
     return compact
+
+
+def _phase_tool_names(phase: Dict[str, Any]) -> List[str]:
+    """Accept compact plan tool names and legacy tool dicts."""
+    names: List[str] = []
+    for tool in phase.get("tools", []):
+        if isinstance(tool, str):
+            name = tool.strip()
+        elif isinstance(tool, dict):
+            name = str(tool.get("name", "")).strip()
+        else:
+            name = ""
+        if name:
+            names.append(name)
+    return names
 
 
 def _session_lineage(sessions: Dict[str, Any], session_id: str) -> List[str]:
@@ -2073,11 +2094,7 @@ async def run_http_mode(port: int) -> None:
                     phases=[
                         {
                             "id": str(phase.get("id", "")).strip(),
-                            "tools": [
-                                str(tool.get("name", "")).strip()
-                                for tool in phase.get("tools", [])
-                                if isinstance(tool, dict) and str(tool.get("name", "")).strip()
-                            ],
+                            "tools": _phase_tool_names(phase),
                         }
                         for phase in plan.get("phases", [])
                         if isinstance(phase, dict)

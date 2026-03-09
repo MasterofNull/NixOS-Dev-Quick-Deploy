@@ -256,6 +256,8 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'result\[
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_compact_prompt_coaching_metadata' 'Hybrid HTTP surfaces compact coaching metadata instead of duplicating full payloads'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_query_prompt_coaching_response' 'Query endpoint defaults top-level prompt coaching to compact progressive-disclosure output'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_compact_tooling_layer_response' 'Query endpoint defaults tooling layer to compact progressive-disclosure output'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_phase_tool_names' 'Workflow consumers accept compact phase tool-name lists'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '"tool_catalog": tool_catalog' 'Workflow plans keep detailed tool metadata in one catalog instead of repeating it per phase'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'provider-side prompt caching|free or provider-routed experimentation' 'Workflow token policy teaches bounded cloud/provider token usage'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata and h\.get\("reason"\)' 'Hints HTTP continue context only emits per-hint reasons on explicit debug opt-in'
 check_pattern "scripts/ai/aq-hints" 'Token plan:' 'aq-hints renders token-discipline coaching text'
