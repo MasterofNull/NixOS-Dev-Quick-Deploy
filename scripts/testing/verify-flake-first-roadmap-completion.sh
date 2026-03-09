@@ -123,6 +123,12 @@ check_pattern "scripts/testing/telemetry-smoke-test.sh" 'compatibility shim over
 check_pattern "scripts/ai/ai-model-manager.sh" 'compatibility shim over current model tooling' 'Legacy AI model manager delegates to supported model tooling'
 check_pattern "scripts/ai/llama-model-cli.sh" 'compatibility shim over ai-model-manager\.sh and systemd logs' 'Legacy llama model CLI delegates to current model tooling'
 check_pattern "scripts/ai/ai-stack-e2e-test.sh" 'compatibility shim over aq-qa and real-world workflow smoke tests' 'Legacy AI stack E2E test delegates to declarative validation paths'
+check_pattern "scripts/ai/ai-model-setup.sh" 'compatibility shim over current declarative model tooling' 'Legacy AI model setup delegates to current model lifecycle tooling'
+check_pattern "scripts/ai/ai-model-setup.sh" 'ai-model-manager\.sh status|update-llama-cpp\.sh' 'Legacy AI model setup exposes current status and update flows'
+check_pattern "scripts/ai/ai-stack-feature-scenario.sh" 'compatibility shim over current feature-planning and workflow smoke tooling' 'Legacy AI feature scenario delegates to current planning and smoke tooling'
+check_pattern "scripts/ai/ai-stack-feature-scenario.sh" 'aq-context-bootstrap|test-real-world-workflows\.sh' 'Legacy AI feature scenario uses bootstrap and workflow smoke tools'
+check_pattern "scripts/ai/ai-stack-resume-recovery.sh" 'compatibility shim over current bounded runtime recovery tooling' 'Legacy AI resume/recovery delegates to bounded runtime tooling'
+check_pattern "scripts/ai/ai-stack-resume-recovery.sh" 'aq-system-act|aq-runtime-act' 'Legacy AI resume/recovery uses current runtime recovery entrypoints'
 # Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
