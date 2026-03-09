@@ -1609,6 +1609,14 @@ async def run_http_mode(port: int) -> None:
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
             request["audit_metadata"]["backend"] = str(result.get("backend", "unknown"))
+            retrieval_profile = result.get("retrieval_profile")
+            if isinstance(retrieval_profile, dict):
+                request["audit_metadata"]["retrieval_profile"] = str(
+                    retrieval_profile.get("profile", "standard")
+                )
+                collections = retrieval_profile.get("collections")
+                if isinstance(collections, list):
+                    request["audit_metadata"]["retrieval_collection_count"] = len(collections)
             synthesis_fallback = None
             result_payload = result.get("results")
             if isinstance(result_payload, dict):
