@@ -55,8 +55,6 @@ Generated: 2026-03-05 07:57 UTC
 - `scripts/ai/route-reasoning-mode.py`
 - `scripts/automation/prsi-orchestrator.py`
 - `scripts/automation/run-advanced-parity-suite.sh`
-- `scripts/automation/run-dashboard-collector-full.sh`
-- `scripts/automation/run-dashboard-collector-lite.sh`
 - `scripts/automation/run-gap-eval-pack.py`
 - `scripts/automation/run-harness-regression-gate.sh`
 - `scripts/automation/run-hint-adoption-remediation-bounded.sh`
