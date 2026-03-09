@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# aq-gap-auto-remediate — Automatically remediate top knowledge gaps
+#
+# Phase 21.4: Self-Improvement Loop Gap Auto-Remediation
+#
+# This script:
+# 1. Fetches top knowledge gaps from the database
+# 2. Filters actionable gaps (excludes file-specific or meta queries)
+# 3. Attempts remediation via aq-knowledge-import.sh
+# 4. Logs remediation attempts and outcomes
+# 5. Clears successfully remediated gaps
+#
+# Usage:
+#   aq-gap-auto-remediate              # remediate top 5 gaps
+#   aq-gap-auto-remediate --limit 10   # remediate top 10 gaps
+#   aq-gap-auto-remediate --dry-run    # show what would be remediated
+#   aq-gap-auto-remediate --verify     # re-eval after remediation
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# shellcheck source=../../config/service-endpoints.sh
+source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
+
+# Configuration
+LIMIT=5
+DRY_RUN=false
+VERIFY=false
+DAYS=7
+MIN_OCCURRENCES=2
+LOG_DIR="${HOME}/.local/state/nixos-ai-stack/gap-remediation"
+LOG_FILE="${LOG_DIR}/remediation-$(date -u +%Y%m%d).jsonl"
+
+# Database config
+PG_HOST="${POSTGRES_HOST}"
+PG_PORT="${POSTGRES_PORT}"
+PG_USER="${POSTGRES_USER:-aidb}"
+PG_DB="${POSTGRES_DB:-aidb}"
+PG_PASS_FILE="${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}"
+
+usage() {
+    cat <<EOF
+Usage: aq-gap-auto-remediate [OPTIONS]
+
+Automatically remediate top knowledge gaps using AI-powered knowledge import.
+
+Options:
+  --limit N        Number of gaps to remediate (default: 5)
+  --days N         Look back period in days (default: 7)
+  --min-occur N    Minimum occurrences to qualify (default: 2)
+  --dry-run        Show what would be remediated without executing
+  --verify         Re-evaluate queries after remediation
+  -h, --help       Show this help message
+
+Examples:
+  aq-gap-auto-remediate                    # remediate top 5 gaps
+  aq-gap-auto-remediate --limit 10         # remediate top 10 gaps
+  aq-gap-auto-remediate --dry-run          # preview only
+  aq-gap-auto-remediate --verify           # with post-verification
+EOF
+}
+
+log_event() {
+    local event="$1"
+    mkdir -p "$LOG_DIR"
+    echo "$event" >> "$LOG_FILE"
+}
+
+is_actionable_gap() {
+    local query="$1"
+
+    # Skip file-specific analysis requests
+    if [[ "$query" =~ ^Analyze.*\.md ]]; then
+        return 1
+    fi
+
+    # Skip meta/procedural queries
+    if [[ "$query" =~ ^(verify|check|create.*plan|diagnose) ]]; then
+        return 1
+    fi
+
+    # Skip very short queries (likely fragments)
+    if [[ ${#query} -lt 15 ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
+remediate_gap() {
+    local query="$1"
+    local occurrences="$2"
+
+    echo "  → Remediating: \"${query:0:60}...\" (${occurrences}x)"
+
+    if $DRY_RUN; then
+        echo "    [DRY-RUN] Would run: aq-knowledge-import.sh \"$query\""
+        return 0
+    fi
+
+    local start_time
+    start_time=$(date +%s)
+
+    # Attempt remediation
+    local result
+    if result=$("${SCRIPT_DIR}/aq-knowledge-import.sh" "$query" --clear-gaps 2>&1); then
+        local end_time
+        end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+
+        echo "    ✓ Remediation successful (${duration}s)"
+
+        log_event "$(jq -nc \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg query "$query" \
+            --arg occurrences "$occurrences" \
+            --arg status "success" \
+            --arg duration "$duration" \
+            '{timestamp: $ts, query: $query, occurrences: ($occurrences|tonumber), status: $status, duration_s: ($duration|tonumber)}'
+        )"
+
+        return 0
+    else
+        echo "    ✗ Remediation failed"
+
+        log_event "$(jq -nc \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg query "$query" \
+            --arg occurrences "$occurrences" \
+            --arg status "failed" \
+            --arg error "$result" \
+            '{timestamp: $ts, query: $query, occurrences: ($occurrences|tonumber), status: $status, error: $error}'
+        )"
+
+        return 1
+    fi
+}
+
+verify_remediation() {
+    local query="$1"
+
+    echo "  → Verifying: \"${query:0:50}...\""
+
+    # Query the search endpoint to check if we now have good coverage
+    local response
+    if response=$(curl -s -X POST "${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}/search" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: ${HYBRID_API_KEY:-$(cat /run/secrets/hybrid_api_key 2>/dev/null || echo 'dev-key')}" \
+        -d "{\"query\": \"$query\", \"limit\": 3}" 2>/dev/null); then
+
+        local top_score
+        top_score=$(echo "$response" | jq -r '.results[0].score // 0' 2>/dev/null || echo "0")
+
+        if (( $(echo "$top_score > 0.6" | bc -l) )); then
+            echo "    ✓ Verification passed (score: ${top_score})"
+            return 0
+        else
+            echo "    ⚠ Verification marginal (score: ${top_score})"
+            return 1
+        fi
+    else
+        echo "    ✗ Verification failed (search error)"
+        return 1
+    fi
+}
+
+main() {
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --limit) LIMIT="$2"; shift 2 ;;
+            --days) DAYS="$2"; shift 2 ;;
+            --min-occur) MIN_OCCURRENCES="$2"; shift 2 ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            --verify) VERIFY=true; shift ;;
+            -h|--help) usage; exit 0 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    echo "=== Automated Gap Remediation ==="
+    echo "Looking back: ${DAYS} days | Limit: ${LIMIT} | Min occurrences: ${MIN_OCCURRENCES}"
+    $DRY_RUN && echo "[DRY-RUN MODE]"
+    echo ""
+
+    # Read postgres password
+    if [[ -r "$PG_PASS_FILE" ]]; then
+        export PGPASSWORD=$(tr -d '[:space:]' < "$PG_PASS_FILE")
+    fi
+
+    # Fetch gaps
+    local gaps
+    gaps=$(psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -A -F$'\t' <<SQL
+SELECT
+    COUNT(*) AS occurrences,
+    query_text
+FROM query_gaps
+WHERE created_at >= NOW() - INTERVAL '${DAYS} days'
+GROUP BY query_hash, query_text
+HAVING COUNT(*) >= ${MIN_OCCURRENCES}
+ORDER BY occurrences DESC
+LIMIT ${LIMIT};
+SQL
+    )
+
+    if [[ -z "$gaps" ]]; then
+        echo "No actionable gaps found."
+        exit 0
+    fi
+
+    local total=0
+    local success=0
+    local skipped=0
+    local failed=0
+    local remediated_queries=()
+
+    echo "Found gaps to remediate:"
+    echo ""
+
+    while IFS=$'\t' read -r occurrences query_text; do
+        total=$((total + 1))
+
+        if ! is_actionable_gap "$query_text"; then
+            echo "  ⊘ Skipping (not actionable): \"${query_text:0:50}...\""
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        if remediate_gap "$query_text" "$occurrences"; then
+            success=$((success + 1))
+            remediated_queries+=("$query_text")
+        else
+            failed=$((failed + 1))
+        fi
+
+        echo ""
+    done <<< "$gaps"
+
+    echo "=== Summary ==="
+    echo "Total gaps processed: $total"
+    echo "Successfully remediated: $success"
+    echo "Skipped (not actionable): $skipped"
+    echo "Failed: $failed"
+
+    # Post-remediation verification
+    if $VERIFY && [[ ${#remediated_queries[@]} -gt 0 ]]; then
+        echo ""
+        echo "=== Post-Remediation Verification ==="
+        local verified=0
+        for query in "${remediated_queries[@]}"; do
+            if verify_remediation "$query"; then
+                verified=$((verified + 1))
+            fi
+        done
+        echo ""
+        echo "Verified: ${verified}/${#remediated_queries[@]}"
+    fi
+
+    # Log summary
+    log_event "$(jq -nc \
+        --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg total "$total" \
+        --arg success "$success" \
+        --arg skipped "$skipped" \
+        --arg failed "$failed" \
+        '{timestamp: $ts, type: "summary", total: ($total|tonumber), success: ($success|tonumber), skipped: ($skipped|tonumber), failed: ($failed|tonumber)}'
+    )"
+
+    echo ""
+    echo "Log written to: $LOG_FILE"
+}
+
+main "$@"
