@@ -265,11 +265,8 @@ scripts/governance/new-improvement-proposal.sh
 scripts/nix-static-analysis.sh
 scripts/npm-security-monitor.sh
 scripts/p10k-setup-wizard.sh
-scripts/data/populate-knowledge-base.py
-scripts/data/populate-knowledge-from-web.py
 scripts/data/populate-qdrant-collections.sh
 scripts/data/populate-qdrant-directly.py
-scripts/data/populate-qdrant-with-embeddings.py
 scripts/post-deploy-converge.sh
 scripts/governance/preflight-auto-remediate.sh
 scripts/automation/prsi-orchestrator.py
