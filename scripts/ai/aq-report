@@ -1197,7 +1197,7 @@ def build_recommendations(
                 if recent_semantic_autorun and recent_semantic_autorun.get("available"):
                     r_calls = int(recent_semantic_autorun.get("route_calls", 0) or 0)
                     r_blocked = int(recent_semantic_autorun.get("tool_security_blocked_total", 0) or 0)
-                    if r_calls >= 20 and r_blocked == 0:
+                    if r_calls >= 5 and r_blocked == 0:
                         pass
                     else:
                         blocked_tools = []
@@ -1285,7 +1285,7 @@ def build_recommendations(
     for tool, stats in sorted(slow_tools, key=lambda x: -x[1]["p95_ms"])[:2]:
         if recent_tool_stats and tool in recent_tool_stats:
             fresh = recent_tool_stats[tool]
-            if int(fresh.get("calls", 0) or 0) >= 10 and float(fresh.get("p95_ms", 0.0) or 0.0) <= 5000.0:
+            if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("p95_ms", 0.0) or 0.0) <= 5000.0:
                 continue
         if stats["p95_ms"] >= 300000:
             recs.append(
@@ -1307,6 +1307,10 @@ def build_recommendations(
         and t.lower() not in ignored_flaky_tools
     ]
     for tool, stats in sorted(flaky_tools, key=lambda x: x[1]["success_pct"])[:2]:
+        if recent_tool_stats and tool in recent_tool_stats:
+            fresh = recent_tool_stats[tool]
+            if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("success_pct", 0.0) or 0.0) >= 90.0:
+                continue
         recs.append(
             f"Tool `{tool}` success rate is low ({stats['success_pct']}% across {stats['calls']} calls). "
             "Inspect recent failures and tighten retries/timeouts or fallback behavior."
