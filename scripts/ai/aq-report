@@ -29,6 +29,7 @@ import os
 import re
 import sqlite3
 import statistics
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -1051,6 +1052,38 @@ def cache_hit_rate() -> Dict[str, Any]:
     }
 
 
+def cache_prewarm_status() -> Dict[str, Any]:
+    """Inspect declarative cache-prewarm timer state for monitoring context."""
+    timer = "ai-cache-prewarm.timer"
+    service = "ai-cache-prewarm.service"
+    try:
+        enabled = subprocess.run(
+            ["systemctl", "is-enabled", timer],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        active = subprocess.run(
+            ["systemctl", "is-active", timer],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return {"available": False}
+    return {
+        "available": True,
+        "timer": timer,
+        "service": service,
+        "enabled": enabled.returncode == 0,
+        "enabled_state": (enabled.stdout or enabled.stderr or "").strip() or "unknown",
+        "active": active.returncode == 0,
+        "active_state": (active.stdout or active.stderr or "").strip() or "unknown",
+    }
+
+
 def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Compute eval score statistics over the window."""
     pcts: List[float] = []
@@ -1467,6 +1500,7 @@ def format_md(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
     cache: Dict[str, Any],
+    cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
     leaderboard: List[dict],
     top_prompts: List[dict],
@@ -1531,6 +1565,11 @@ def format_md(
             f"- Hits: **{cache['hits']}**, Misses: **{cache['misses']}**",
             f"- Hit rate: **{_na(cache['hit_pct'], '.1f', '%')}**",
         ]
+        if cache_prewarm.get("available"):
+            lines.append(
+                f"- Cache prewarm timer: **{cache_prewarm.get('enabled_state', 'unknown')}** / "
+                f"active **{cache_prewarm.get('active_state', 'unknown')}**"
+            )
     else:
         lines.append("*Cache metrics unavailable.*")
     lines.append("")
@@ -1731,6 +1770,7 @@ def format_text(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
     cache: Dict[str, Any],
+    cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
     leaderboard: List[dict],
     top_prompts: List[dict],
@@ -1820,6 +1860,11 @@ def format_text(
             f"  Misses:  {cache['misses']}",
             f"  Hit rate: {_na(cache['hit_pct'], '.1f', '%')}",
         ]
+        if cache_prewarm.get("available"):
+            lines.append(
+                f"  Cache prewarm: {cache_prewarm.get('enabled_state', 'unknown')} / "
+                f"active {cache_prewarm.get('active_state', 'unknown')}"
+            )
     else:
         lines.append("  Cache metrics unavailable.")
     lines.append("")
@@ -1997,6 +2042,7 @@ def format_json(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
     cache: Dict[str, Any],
+    cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
     leaderboard: List[dict],
     top_prompts: List[dict],
@@ -2016,6 +2062,7 @@ def format_json(
         "tool_performance": tool_stats,
         "routing": route,
         "cache": cache,
+        "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
         "strategy_leaderboard": leaderboard,
         "top_prompts": [
@@ -2129,6 +2176,7 @@ def main() -> None:
     recent_tool_stats = aggregate_tool_audit(recent_audit_entries)
     route = routing_split(audit_entries)
     cache = cache_hit_rate()
+    cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
     adoption = hint_adoption(since_dt)  # Phase 19.3.4
     tooling_quality = task_tooling_quality(since_dt, adoption)
@@ -2165,6 +2213,7 @@ def main() -> None:
         tool_stats,
         route,
         cache,
+        cache_prewarm,
         eval_trend,
         leaderboard,
         top_prompts,
