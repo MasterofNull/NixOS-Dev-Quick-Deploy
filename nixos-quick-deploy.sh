@@ -426,6 +426,7 @@ print_completion_test_results() {
     recent_route_window="$(printf '%s' "${json}" | jq -r '.recent_routing.window // "1h"')"
     recent_route_local="$(printf '%s' "${json}" | jq -r '.recent_routing.local_n // 0')"
     recent_route_remote="$(printf '%s' "${json}" | jq -r '.recent_routing.remote_n // 0')"
+    report_generated_at="$(printf '%s' "${json}" | jq -r '.generated_at // empty')"
     recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
     recent_health_healthy="$(printf '%s' "${json}" | jq -r '.recent_health.healthy // false')"
     recent_health_slow_n="$(printf '%s' "${json}" | jq -r '(.recent_health.slow_tools // []) | length')"
@@ -467,6 +468,29 @@ print_completion_test_results() {
     else
       recent_route_label="recent ${recent_route_window}: local=${recent_route_local} remote=${recent_route_remote}"
     fi
+    if [[ -n "${report_generated_at}" ]]; then
+      report_freshness_label="$(
+        python3 - "${report_generated_at}" <<'PY'
+from datetime import datetime, timezone
+import sys
+
+raw = sys.argv[1]
+try:
+    dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    now = datetime.now(timezone.utc)
+    age_s = max(0, int((now - dt).total_seconds()))
+    age_m = age_s // 60
+    if age_m >= 15:
+        print(f"stale ({age_m}m old)")
+    else:
+        print(f"current ({age_m}m old)")
+except Exception:
+    print(raw)
+PY
+      )"
+    else
+      report_freshness_label="unknown"
+    fi
     if [[ "${recent_health_healthy}" == "true" ]]; then
       recent_health_label="clean (${recent_health_window})"
     else
@@ -476,6 +500,7 @@ print_completion_test_results() {
 
     log "AI stack report (summary):"
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote} (${recent_route_label})"
+    printf '  %-28s %s\n' "Report freshness" "${report_freshness_label}"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s\n' "Cache prewarm" "${cache_prewarm_label}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
