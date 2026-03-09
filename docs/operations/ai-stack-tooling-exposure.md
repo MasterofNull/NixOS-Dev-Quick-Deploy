@@ -118,6 +118,15 @@ curl -s http://127.0.0.1:8003/workflow/orchestrate \
   -d '{"prompt":"orchestrate a multi-agent repo remediation workflow"}'
 ```
 
+### Harness SDKs
+
+The hybrid coordinator SDKs now expose both planning and the coached query path:
+
+- Python: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qa_check(...)`
+- TypeScript/JavaScript: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qaCheck(...)`
+
+That means SDK consumers receive the same `prompt_coaching` and token-discipline guidance that raw `POST /query` returns.
+
 ## Agent-Specific Integration
 
 ### Claude Code
