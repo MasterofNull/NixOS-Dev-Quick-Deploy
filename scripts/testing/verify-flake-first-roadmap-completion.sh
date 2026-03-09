@@ -62,6 +62,18 @@ check_absent_pattern() {
   fi
 }
 
+check_path_absent() {
+  local path="$1"
+  local label="$2"
+  if [[ -e "$path" ]]; then
+    printf '[FAIL] %s\n' "$label"
+    fail_count=$((fail_count + 1))
+  else
+    printf '[PASS] %s\n' "$label"
+    pass_count=$((pass_count + 1))
+  fi
+}
+
 echo "[verify] Flake-first roadmap completion checks"
 
 # Flake-first orchestration guardrails (current architecture)
@@ -113,6 +125,11 @@ check_pattern "scripts/governance/manage-secrets.py" 'subparsers\.add_parser\("b
 check_pattern "scripts/governance/audit-deprecated-script-usage.py" 'Rank deprecated scripts by active repo references and classify keep vs archive' 'Deprecated-script auditor exists for keep-vs-archive prioritization'
 check_pattern "docs/operations/deprecated-script-audit.md" '## Keep As Shim' 'Deprecated-script audit report records keep-as-shim classification'
 check_pattern "docs/operations/deprecated-script-audit.md" '## Archive Or Remove' 'Deprecated-script audit report records archive-or-remove classification'
+check_path_absent "scripts/governance/lint-timeouts.sh" 'Low-signal deprecated lint-timeouts shim has been removed'
+check_path_absent "scripts/governance/manage-cache.sh" 'Low-signal deprecated manage-cache shim has been removed'
+check_path_absent "scripts/governance/smart-config-gen.sh" 'Low-signal deprecated smart-config-gen shim has been removed'
+check_path_absent "scripts/governance/smart_config_gen.sh" 'Low-signal deprecated smart_config_gen compatibility shim has been removed'
+check_path_absent "scripts/testing/verify-pytorch-fix.sh" 'Low-signal deprecated verify-pytorch-fix shim has been removed'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh bootstrap --host' 'Secrets guide documents delegated quick-deploy bootstrap flow'
 check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'
