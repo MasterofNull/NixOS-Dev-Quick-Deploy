@@ -152,6 +152,13 @@ def host_paths(root: Path, host: str, primary_user: str) -> Dict[str, Path]:
     }
 
 
+def resolve_runtime_context(args: argparse.Namespace) -> tuple[Path, str, str, Dict[str, Path]]:
+    root = repo_root()
+    host = resolve_host(root, args.host)
+    primary_user = resolve_primary_user()
+    return root, host, primary_user, host_paths(root, host, primary_user)
+
+
 def ensure_mode(path: Path, mode: int) -> None:
     current = stat.S_IMODE(path.stat().st_mode)
     if current != mode:
@@ -280,6 +287,13 @@ def encrypt_bundle(paths: Dict[str, Path], payload: Dict[str, str], public_key: 
         ensure_mode(paths["bundle"], 0o600)
     finally:
         Path(tmp_name).unlink(missing_ok=True)
+
+
+def ensure_secret_wiring(paths: Dict[str, Path], primary_user: str) -> str:
+    public_key = ensure_age_key(paths)
+    ensure_sops_config(paths, public_key)
+    create_or_update_local_override(paths, primary_user)
+    return public_key
 
 
 def random_secret(kind: str) -> str:
@@ -431,10 +445,7 @@ def bootstrap_payload(args: argparse.Namespace, existing: Dict[str, str]) -> Dic
 
 
 def command_status(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
+    _, host, _, paths = resolve_runtime_context(args)
     state = describe_secret_state(paths, include_optional=True, include_remote=True)
     payload = state["payload"]
     print(f"Host: {host}")
@@ -451,20 +462,14 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_paths(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
+    _, _, _, paths = resolve_runtime_context(args)
     for key in ("bundle", "sops_config", "age_key_file", "deploy_options_local", "backups_dir"):
         print(f"{key}={paths[key]}")
     return 0
 
 
 def command_validate(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
+    _, _, _, paths = resolve_runtime_context(args)
     state = describe_secret_state(paths, include_optional=False, include_remote=False)
     problems = []
     if not state["age_key_exists"]:
@@ -484,13 +489,8 @@ def command_validate(args: argparse.Namespace) -> int:
 
 
 def command_init(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
-    public_key = ensure_age_key(paths)
-    ensure_sops_config(paths, public_key)
-    create_or_update_local_override(paths, primary_user)
+    _, host, primary_user, paths = resolve_runtime_context(args)
+    public_key = ensure_secret_wiring(paths, primary_user)
     payload = decrypt_bundle(paths) if paths["bundle"].exists() else {}
     updates = 0
     for spec in selected_specs(args.include_optional, args.include_remote):
@@ -520,16 +520,11 @@ def command_init(args: argparse.Namespace) -> int:
 
 
 def command_set(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
+    _, host, primary_user, paths = resolve_runtime_context(args)
     specs = spec_map()
     if args.secret not in specs:
         raise SystemExit(f"Unknown secret '{args.secret}'. Use 'list' to inspect supported names.")
-    public_key = ensure_age_key(paths)
-    ensure_sops_config(paths, public_key)
-    create_or_update_local_override(paths, primary_user)
+    public_key = ensure_secret_wiring(paths, primary_user)
     payload = decrypt_bundle(paths) if paths["bundle"].exists() else {}
     spec = specs[args.secret]
     if args.generate:
@@ -552,13 +547,8 @@ def command_set(args: argparse.Namespace) -> int:
 
 
 def command_bootstrap(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
-    public_key = ensure_age_key(paths)
-    ensure_sops_config(paths, public_key)
-    create_or_update_local_override(paths, primary_user)
+    _, host, primary_user, paths = resolve_runtime_context(args)
+    public_key = ensure_secret_wiring(paths, primary_user)
     payload = decrypt_bundle(paths) if paths["bundle"].exists() else {}
     names = selected_secret_names(args.include_optional, args.include_remote)
     if not args.force and all(payload.get(name) for name in names):
@@ -585,10 +575,7 @@ def command_bootstrap(args: argparse.Namespace) -> int:
 
 
 def command_doctor(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
+    _, host, _, paths = resolve_runtime_context(args)
     state = describe_secret_state(
         paths,
         include_optional=args.include_optional,
@@ -650,13 +637,8 @@ def command_list(_: argparse.Namespace) -> int:
 
 
 def command_ensure_local_config(args: argparse.Namespace) -> int:
-    root = repo_root()
-    host = resolve_host(root, args.host)
-    primary_user = resolve_primary_user()
-    paths = host_paths(root, host, primary_user)
-    public_key = ensure_age_key(paths)
-    ensure_sops_config(paths, public_key)
-    create_or_update_local_override(paths, primary_user)
+    _, host, primary_user, paths = resolve_runtime_context(args)
+    ensure_secret_wiring(paths, primary_user)
     print(f"Ensured {paths['deploy_options_local']}")
     print_post_action_doctor_summary(host, paths, include_optional=False, include_remote=False)
     return 0
