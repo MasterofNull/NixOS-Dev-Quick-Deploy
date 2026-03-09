@@ -1057,7 +1057,7 @@ class HintsEngine:
             agent_hints=hint.agent_hints,
         )
 
-    def to_dict(self, hint: Hint) -> dict:
+    def to_dict(self, hint: Hint, include_debug_metadata: bool = True) -> dict:
         """Return a JSON-serialisable dict for *hint*."""
         d: dict = {
             "id": hint.id,
@@ -1065,9 +1065,10 @@ class HintsEngine:
             "title": hint.title,
             "score": round(hint.score, 4),
             "snippet": hint.snippet,
-            "reason": hint.reason,
             "tags": hint.tags,
         }
+        if include_debug_metadata and hint.reason:
+            d["reason"] = hint.reason
         if hint.agent_hints:
             d["agent_hints"] = hint.agent_hints
         return d
@@ -1094,7 +1095,7 @@ class HintsEngine:
         if include_debug_metadata is None:
             include_debug_metadata = os.getenv("AI_HINTS_INCLUDE_DEBUG_METADATA", "false").strip().lower() == "true"
         result = {
-            "hints": [self.to_dict(h) for h in hints],
+            "hints": [self.to_dict(h, include_debug_metadata=include_debug_metadata) for h in hints],
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
             "agent_type": agent_type,

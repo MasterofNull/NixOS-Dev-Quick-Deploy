@@ -250,6 +250,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'Objecti
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_is_curated_stale_gap' 'Hints engine suppresses curated stale gap topics'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'AI_HINTS_INCLUDE_DEBUG_METADATA' 'Hints engine gates heavy hint metadata behind explicit debug opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '"debug_metadata"' 'Hints engine nests verbose diagnostics under debug_metadata'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'if include_debug_metadata and hint.reason' 'Hints engine only emits per-hint reasons on explicit debug opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata = .*debug' 'Hints HTTP endpoint exposes explicit debug metadata opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'result\["prompt_coaching"\]|metadata\["prompt_coaching"\]' 'Query responses expose prompt coaching guidance'
