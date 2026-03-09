@@ -1065,11 +1065,12 @@ class HintsEngine:
             "title": hint.title,
             "score": round(hint.score, 4),
             "snippet": hint.snippet,
-            "tags": hint.tags,
         }
         if include_debug_metadata and hint.reason:
             d["reason"] = hint.reason
-        if hint.agent_hints:
+        if include_debug_metadata and hint.tags:
+            d["tags"] = hint.tags
+        if include_debug_metadata and hint.agent_hints:
             d["agent_hints"] = hint.agent_hints
         return d
 
