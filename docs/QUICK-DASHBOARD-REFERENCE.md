@@ -76,6 +76,7 @@ scripts/ai/aq-report --since=7d --format=text
 
 ## Complete Documentation
 
+- [docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md](operations/DASHBOARD-ARCHITECTURE-REFERENCE.md) - Supported runtime, collector, and AI observability boundaries
 - [DASHBOARD-COLLECTORS-GUIDE.md](DASHBOARD-COLLECTORS-GUIDE.md) - Architecture and details
 - [DASHBOARD-UPDATE-OPTIMIZATION.md](DASHBOARD-UPDATE-OPTIMIZATION.md) - What changed
 - [SYSTEM-DASHBOARD-GUIDE.md]/docs/archive/stubs/SYSTEM-DASHBOARD-GUIDE.md - Complete guide

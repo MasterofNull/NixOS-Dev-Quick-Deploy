@@ -246,6 +246,7 @@ coaching/remediation signals rather than just raw dashboard cache files.
 
 ## Related Documentation
 
+- [docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md](operations/DASHBOARD-ARCHITECTURE-REFERENCE.md) - Supported runtime and maintenance boundaries
 - [SYSTEM-DASHBOARD-GUIDE.md]/docs/archive/stubs/SYSTEM-DASHBOARD-GUIDE.md - Complete dashboard guide
 - [SYSTEM-DASHBOARD-README.md]/docs/archive/stubs/SYSTEM-DASHBOARD-README.md - Dashboard overview
 - [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Main collection script
