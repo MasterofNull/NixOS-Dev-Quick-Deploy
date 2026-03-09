@@ -96,6 +96,11 @@ def _parse_args() -> argparse.Namespace:
         choices=["human", "claude", "codex", "qwen", "aider", "continue"],
         help="Agent type — adjusts output verbosity and augments inject fields",
     )
+    p.add_argument(
+        "--debug-meta",
+        action="store_true",
+        help="Include verbose hint/debug metadata in JSON output",
+    )
     return p.parse_args()
 
 
@@ -104,18 +109,26 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-def _fetch_local(query: str, context: str, max_hints: int, agent: str) -> Optional[Dict[str, Any]]:
+def _fetch_local(query: str, context: str, max_hints: int, agent: str, debug_meta: bool) -> Optional[Dict[str, Any]]:
     if not _ENGINE_AVAILABLE:
         return None
     try:
         engine = HintsEngine()
-        return engine.rank_as_dict(query, context=context, max_hints=max_hints, agent_type=agent)
+        return engine.rank_as_dict(
+            query,
+            context=context,
+            max_hints=max_hints,
+            agent_type=agent,
+            include_debug_metadata=debug_meta,
+        )
     except Exception:
         return None
 
 
-def _fetch_rest(query: str, context: str, max_hints: int, agent: str) -> Optional[Dict[str, Any]]:
-    params = urllib.parse.urlencode({"q": query, "context": context, "max": max_hints, "agent": agent})
+def _fetch_rest(query: str, context: str, max_hints: int, agent: str, debug_meta: bool) -> Optional[Dict[str, Any]]:
+    params = urllib.parse.urlencode(
+        {"q": query, "context": context, "max": max_hints, "agent": agent, "debug": "1" if debug_meta else "0"}
+    )
     url = f"{HYBRID_URL}/hints?{params}"
     try:
         headers = {"Accept": "application/json"}
@@ -129,8 +142,8 @@ def _fetch_rest(query: str, context: str, max_hints: int, agent: str) -> Optiona
         return None
 
 
-def get_hints(query: str, context: str, max_hints: int, agent: str) -> Dict[str, Any]:
-    result = _fetch_local(query, context, max_hints, agent) or _fetch_rest(query, context, max_hints, agent)
+def get_hints(query: str, context: str, max_hints: int, agent: str, debug_meta: bool) -> Dict[str, Any]:
+    result = _fetch_local(query, context, max_hints, agent, debug_meta) or _fetch_rest(query, context, max_hints, agent, debug_meta)
     if result is None:
         print(
             "ERROR: hints_engine unavailable locally and REST fallback failed.\n"
@@ -161,20 +174,8 @@ def _c(code: str, text: str) -> str:
 def _augment_for_agent(result: Dict[str, Any], agent: str) -> Dict[str, Any]:
     result.setdefault("feedback_contract", {
         "endpoint": "/hints/feedback",
-        "fields": {
-            "hint_id": "string (required)",
-            "helpful": "boolean (optional if score present)",
-            "score": "number -1..1 (optional if helpful present)",
-            "comment": "string optional",
-            "task_id": "string optional",
-            "agent": "string optional",
-            "agent_preferences": {
-                "preferred_tools": ["string"],
-                "preferred_data_sources": ["string"],
-                "preferred_hint_types": ["string"],
-                "preferred_tags": ["string"],
-            },
-        },
+        "required_any_of": ["helpful", "score"],
+        "required": ["hint_id"],
     })
     hints = result.get("hints", [])
     if not hints:
@@ -324,7 +325,7 @@ def _format_shell_complete(result: Dict[str, Any]) -> str:
 
 def main() -> None:
     args = _parse_args()
-    result = get_hints(args.query, args.context, args.max, args.agent)
+    result = get_hints(args.query, args.context, args.max, args.agent, args.debug_meta)
     result = _augment_for_agent(result, args.agent)
 
     if args.fmt == "json":
