@@ -39,6 +39,7 @@ from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
+import mcp_handlers
 
 logger = logging.getLogger("hybrid-coordinator")
 
