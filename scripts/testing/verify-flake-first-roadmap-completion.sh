@@ -274,6 +274,7 @@ check_pattern "nixos-quick-deploy.sh" 'done < <\(ai_service_health_targets\)' 'Q
 check_pattern "nixos-quick-deploy.sh" 'run_nonfatal_postflight_check\(' 'Quick deploy centralizes non-fatal post-flight command handling'
 check_pattern "nixos-quick-deploy.sh" 'run_inline_postflight_script_if_present\(' 'Quick deploy centralizes optional inline post-flight script execution'
 check_pattern "nixos-quick-deploy.sh" 'run_postflight_convergence\(' 'Quick deploy centralizes post-flight convergence mode dispatch'
+check_pattern "nixos-quick-deploy.sh" 'run_dashboard_runtime_postflight\(' 'Quick deploy centralizes dashboard and Prometheus post-flight handling'
 check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
 check_pattern "nixos-quick-deploy.sh" '/workflow/plan' 'Deploy verification probes workflow plan capability activation'
 check_pattern "nixos-quick-deploy.sh" '/qa/check' 'Deploy verification probes hybrid QA endpoint activation'
