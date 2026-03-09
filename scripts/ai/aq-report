@@ -1271,7 +1271,8 @@ def build_recommendations(
                         reason_suffix = f" Top reasons: {', '.join(blocked_reasons)}." if blocked_reasons else ""
                         recs.append(
                             "Tool security auditor blocked one or more planned tools during autorun. "
-                            "Review `runtime-tool-security-policy.json` and blocked tool metadata in tool-audit logs."
+                            "Review `runtime-tool-security-policy.json` and blocked tool metadata in tool-audit logs. "
+                            f"Recent context: {_autorun_block_context(recent_semantic_autorun)}."
                             + blocked_suffix
                             + reason_suffix
                         )
@@ -1291,7 +1292,8 @@ def build_recommendations(
                     reason_suffix = f" Top reasons: {', '.join(blocked_reasons)}." if blocked_reasons else ""
                     recs.append(
                         "Tool security auditor blocked one or more planned tools during autorun. "
-                        "Review `runtime-tool-security-policy.json` and blocked tool metadata in tool-audit logs."
+                        "Review `runtime-tool-security-policy.json` and blocked tool metadata in tool-audit logs. "
+                        f"Recent context: {_autorun_block_context(recent_semantic_autorun)}."
                         + blocked_suffix
                         + reason_suffix
                     )
@@ -1520,6 +1522,18 @@ def _tool_latency_context(stats: Dict[str, Any], fresh: Optional[Dict[str, Any]]
         f"last hour p95={_na(fresh.get('p95_ms'), '.0f', 'ms')} across "
         f"{int(fresh.get('calls', 0) or 0)} calls"
     )
+
+
+def _autorun_block_context(recent_semantic_autorun: Optional[Dict[str, Any]] = None) -> str:
+    if not recent_semantic_autorun or not recent_semantic_autorun.get("available"):
+        return "recent autorun state unavailable"
+    recent_calls = int(recent_semantic_autorun.get("route_calls", 0) or 0)
+    recent_blocked = int(recent_semantic_autorun.get("tool_security_blocked_total", 0) or 0)
+    if recent_calls == 0:
+        return "no recent autorun traffic in the last hour"
+    if recent_blocked == 0:
+        return f"last hour clean across {recent_calls} autorun calls"
+    return f"last hour blocked {recent_blocked} tool actions across {recent_calls} autorun calls"
 
 
 def recent_health_snapshot(recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
