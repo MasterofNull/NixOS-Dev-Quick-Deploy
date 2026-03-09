@@ -400,7 +400,9 @@ print_completion_test_results() {
     local cache_hits cache_misses cache_total cache_summary
     local recent_hint_window recent_hint_total recent_hint_status recent_hint_dominant_share
     local recent_hint_adoption_total recent_hint_adoption_rate hint_adoption_label
+    local historical_hint_watch_has_items historical_hint_watch_window historical_hint_watch_id historical_hint_watch_share historical_hint_watch_alt
     local recent_route_window recent_route_local recent_route_remote recent_route_label
+    local rag_posture_status rag_posture_recent rag_posture_gaps rag_posture_label
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -426,6 +428,9 @@ print_completion_test_results() {
     recent_route_window="$(printf '%s' "${json}" | jq -r '.recent_routing.window // "1h"')"
     recent_route_local="$(printf '%s' "${json}" | jq -r '.recent_routing.local_n // 0')"
     recent_route_remote="$(printf '%s' "${json}" | jq -r '.recent_routing.remote_n // 0')"
+    rag_posture_status="$(printf '%s' "${json}" | jq -r '.rag_posture.status // "unknown"')"
+    rag_posture_recent="$(printf '%s' "${json}" | jq -r '.rag_posture.recent_retrieval_calls // 0')"
+    rag_posture_gaps="$(printf '%s' "${json}" | jq -r '.rag_posture.actionable_gap_count // 0')"
     report_generated_at="$(printf '%s' "${json}" | jq -r '.generated_at // empty')"
     recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
     recent_health_healthy="$(printf '%s' "${json}" | jq -r '.recent_health.healthy // false')"
@@ -442,6 +447,11 @@ print_completion_test_results() {
     historical_watch_slow_tool="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].tool // empty')"
     historical_watch_slow_p95="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].p95_ms // empty')"
     historical_watch_slow_calls="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].calls // empty')"
+    historical_hint_watch_has_items="$(printf '%s' "${json}" | jq -r '.historical_hint_watchlist.has_items // false')"
+    historical_hint_watch_window="$(printf '%s' "${json}" | jq -r '.historical_hint_watchlist.window // "7d"')"
+    historical_hint_watch_id="$(printf '%s' "${json}" | jq -r '.historical_hint_watchlist.dominant_hint_id // empty')"
+    historical_hint_watch_share="$(printf '%s' "${json}" | jq -r '.historical_hint_watchlist.dominant_share_pct // empty')"
+    historical_hint_watch_alt="$(printf '%s' "${json}" | jq -r '.historical_hint_watchlist.alternative_hints[0].hint_id // empty')"
     top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
@@ -454,6 +464,7 @@ print_completion_test_results() {
     if (( cache_total > 0 && cache_total < 50 )); then
       cache_summary="${cache_summary}; low sample"
     fi
+    rag_posture_label="${rag_posture_status} (recent=${rag_posture_recent}, gaps=${rag_posture_gaps})"
     if [[ "${recent_hint_adoption_total}" == "0" ]]; then
       hint_adoption_label="${hint_rate}% (historical)"
     else
@@ -503,6 +514,7 @@ PY
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote} (${recent_route_label})"
     printf '  %-28s %s\n' "Report freshness" "${report_freshness_label}"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
+    printf '  %-28s %s\n' "RAG posture" "${rag_posture_label}"
     printf '  %-28s %s\n' "Cache prewarm" "${cache_prewarm_label}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_label}" "${hint_unique}" "${hint_dominant_share}"
@@ -533,6 +545,14 @@ PY
           "${historical_watch_slow_p95}" \
           "${historical_watch_slow_calls}"
       fi
+    fi
+    if [[ "${historical_hint_watch_has_items}" == "true" && -n "${historical_hint_watch_id}" ]]; then
+      local hint_watch_label
+      hint_watch_label="${historical_hint_watch_id} dominant ${historical_hint_watch_share}%"
+      if [[ -n "${historical_hint_watch_alt}" ]]; then
+        hint_watch_label="${hint_watch_label}; alt=${historical_hint_watch_alt}"
+      fi
+      printf '  %-28s %s\n' "Hint watchlist (${historical_hint_watch_window})" "${hint_watch_label}"
     fi
     printf '  %-28s %s\n' "Semantic autorun route calls" "${semantic_route_calls}"
 
