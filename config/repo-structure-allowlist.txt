@@ -133,7 +133,6 @@ scripts/ai/ai-stack-resume-recovery.sh
 scripts/ai/ai-stack-troubleshoot.sh
 scripts/governance/analyze-clean-deploy-readiness.sh
 scripts/governance/analyze-issues.py
-scripts/governance/analyze-test-results.sh
 scripts/governance/apply-project-root.sh
 scripts/governance/apply-readme-ai-stack-updates.py
 scripts/apply-tls-certificates.sh
@@ -243,12 +242,10 @@ scripts/data/import-project-knowledge.sh
 scripts/deploy/install-ai-research-sync-timer.sh
 scripts/deploy/install-backup-timers.sh
 scripts/deploy/install-git-hooks.sh
-scripts/deploy/install-lemonade-gui.sh
 scripts/deploy/install-library-catalog-timer.sh
 scripts/governance/lint-color-echo-usage.sh
 scripts/governance/lint-skill-external-deps.sh
 scripts/governance/lint-skill-template.sh
-scripts/governance/lint-skills-podman.sh
 scripts/governance/lint-template-placeholders.sh
 scripts/governance/list-issues.py
 scripts/ai/llama-model-cli.sh
@@ -317,8 +314,6 @@ scripts/deploy/serve-dashboard-api.sh
 scripts/deploy/serve-dashboard.sh
 scripts/deploy/setup-claude-proxy.sh
 scripts/deploy/setup-dashboard.sh
-scripts/deploy/setup-dvc-remote.sh
-scripts/deploy/setup-hybrid-learning.sh
 scripts/deploy/setup-mcp-databases.sh
 scripts/sign-skill-registry.sh
 scripts/skill-bundle-registry.py
@@ -339,7 +334,6 @@ scripts/data/sync-flatpak-profile.sh
 scripts/data/sync-hint-feedback-db.py
 scripts/data/sync-knowledge-sources
 scripts/data/sync-learning-data.sh
-scripts/data/sync-npm-ai-tools.sh
 scripts/sync_docs_to_ai.sh
 scripts/health/system-health-check.sh
 scripts/testing/telemetry-smoke-test.sh
