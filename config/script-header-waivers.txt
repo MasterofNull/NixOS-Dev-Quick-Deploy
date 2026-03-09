@@ -39,7 +39,6 @@ scripts/data/generate-passwords.sh
 scripts/data/generate-test-telemetry.sh
 scripts/data/import-collections.sh
 scripts/data/init-package-database.sh
-scripts/data/populate-qdrant-collections.sh
 scripts/data/rotate-telemetry.sh
 scripts/data/sync-npm-ai-tools.sh
 scripts/deploy/fast-rebuild.sh

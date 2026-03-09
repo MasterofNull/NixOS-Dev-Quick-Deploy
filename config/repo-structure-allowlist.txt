@@ -265,7 +265,6 @@ scripts/governance/new-improvement-proposal.sh
 scripts/nix-static-analysis.sh
 scripts/npm-security-monitor.sh
 scripts/p10k-setup-wizard.sh
-scripts/data/populate-qdrant-collections.sh
 scripts/data/populate-qdrant-directly.py
 scripts/post-deploy-converge.sh
 scripts/governance/preflight-auto-remediate.sh
