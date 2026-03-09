@@ -69,6 +69,19 @@ def _enforce_startup_env() -> None:
             )
 
 
+def _json_str_list_env(name: str, default: Optional[list[str]] = None) -> list[str]:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return list(default or [])
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return list(default or [])
+    if not isinstance(data, list):
+        return list(default or [])
+    return [str(item).strip() for item in data if str(item).strip()]
+
+
 # ============================================================================
 # Configuration
 # ============================================================================
@@ -159,12 +172,35 @@ class Config:
         "AI_PROMPT_CACHE_STATIC_PREFIX",
         "You are the NixOS AI stack coordinator. Prefer local-first secure execution.",
     )
+    AI_LOCAL_SYSTEM_PROMPT = os.getenv("AI_LOCAL_SYSTEM_PROMPT", "true").lower() == "true"
+    AI_LOCAL_SYSTEM_PROMPT_RULES = _json_str_list_env(
+        "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON",
+        default=[
+            "Prefer declarative Nix/module changes over imperative runtime fixes when both are viable.",
+            "Never hardcode ports, URLs, API keys, passwords, or tokens; use typed options or injected env vars.",
+            "Return validation evidence and rollback guidance instead of claiming completion from edits alone.",
+        ],
+    )
     AI_SPECULATIVE_DECODING_ENABLED = os.getenv("AI_SPECULATIVE_DECODING_ENABLED", "false").lower() == "true"
     AI_SPECULATIVE_DECODING_MODE = os.getenv("AI_SPECULATIVE_DECODING_MODE", "draft-model")
     AI_CONTEXT_MAX_TOKENS = int(os.getenv("AI_CONTEXT_MAX_TOKENS", "3000"))
     AI_TASK_CLASSIFICATION_ENABLED = os.getenv("AI_TASK_CLASSIFICATION_ENABLED", "true").lower() == "true"
     LOCAL_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_MAX_INPUT_TOKENS", "600"))
     LOCAL_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_MAX_OUTPUT_TOKENS", "300"))
+
+    @classmethod
+    def build_local_system_prompt(cls) -> str:
+        if not cls.AI_LOCAL_SYSTEM_PROMPT:
+            return ""
+        rules = [rule for rule in cls.AI_LOCAL_SYSTEM_PROMPT_RULES if rule]
+        if not rules:
+            return ""
+        bullets = "\n".join(f"- {rule}" for rule in rules[:5])
+        return (
+            "You are the NixOS AI stack coordinator operating inside this repository.\n"
+            "Follow these repo rules during local synthesis:\n"
+            f"{bullets}"
+        )
 
 
 def _read_secret(path: str) -> str:

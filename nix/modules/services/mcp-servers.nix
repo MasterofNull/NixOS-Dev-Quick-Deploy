@@ -912,6 +912,8 @@ in
             "AI_CODE_EXEC_MAX_TOOLS=${toString ai.aiHarness.runtime.codeExecution.maxManifestTools}"
             "AI_CODE_EXEC_MAX_RESULT_CHARS=${toString ai.aiHarness.runtime.codeExecution.maxResultChars}"
             "AI_CODE_EXEC_MAX_REASON_CHARS=${toString ai.aiHarness.runtime.codeExecution.maxReasonChars}"
+            "AI_LOCAL_SYSTEM_PROMPT=${if ai.aiHarness.runtime.localSystemPrompt.enable then "true" else "false"}"
+            "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.rules}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/hybrid-coordinator"
             # Phase 12.3.2 — audit sidecar socket path
             "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
