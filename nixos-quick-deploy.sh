@@ -60,6 +60,8 @@ POST_FLIGHT_REPORT_TIMEOUT_SECONDS="${POST_FLIGHT_REPORT_TIMEOUT_SECONDS:-60}"
 POST_FLIGHT_SEED_TIMEOUT_SECONDS="${POST_FLIGHT_SEED_TIMEOUT_SECONDS:-120}"
 POST_FLIGHT_CONVERGE_START_DELAY_SECONDS="${POST_FLIGHT_CONVERGE_START_DELAY_SECONDS:-2}"
 POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS="${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS:-90}"
+POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS="${POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS:-45}"
+POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT="${POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT:-2}"
 COMPLETION_PRINT_TEST_RESULTS="${COMPLETION_PRINT_TEST_RESULTS:-true}"
 COMPLETION_TEST_MODE="${COMPLETION_TEST_MODE:-summary}" # summary|full|off
 COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS="${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS:-45}"
@@ -194,6 +196,10 @@ Environment overrides:
                             Timeout for inline routing seed task
   POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS=90
                             Timeout for mutable repo-backed AI service restarts
+  POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS=45
+                            Timeout for each mutable repo-backed capability probe
+  POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT=2
+                            Maximum restart+verify attempts for repo-backed AI services
   POST_FLIGHT_REBUILD_TIMEOUT_SECONDS=900
                             Timeout for inline Qdrant rebuild task
   POST_FLIGHT_REPORT_TIMEOUT_SECONDS=60
@@ -527,6 +533,174 @@ load_service_endpoints() {
   fi
 }
 
+resolve_hybrid_api_key() {
+  local key="${HYBRID_API_KEY:-}"
+  local key_file="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+  if [[ -z "${key}" && -r "${key_file}" ]]; then
+    key="$(tr -d '[:space:]' < "${key_file}")"
+  fi
+  if [[ -z "${key}" && -r "/run/secrets/hybrid_api_key" ]]; then
+    key="$(tr -d '[:space:]' < /run/secrets/hybrid_api_key)"
+  fi
+  printf '%s' "${key}"
+}
+
+hybrid_post_json_capture() {
+  local endpoint="$1"
+  local payload="$2"
+  local output_file="$3"
+  local api_key="$4"
+  local -a curl_args=(
+    -sS
+    -o "${output_file}"
+    -w "%{http_code}"
+    --connect-timeout 3
+    --max-time "${POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS}"
+    -H "Content-Type: application/json"
+    -X POST
+  )
+  if [[ -n "${api_key}" ]]; then
+    curl_args+=(-H "X-API-Key: ${api_key}")
+  fi
+  curl "${curl_args[@]}" "${HYBRID_URL%/}${endpoint}" -d "${payload}"
+}
+
+verify_repo_backed_ai_service_capabilities_once() {
+  load_service_endpoints
+
+  if ! command -v curl >/dev/null 2>&1; then
+    die "curl is required to verify repo-backed AI service capabilities."
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    die "python3 is required to verify repo-backed AI service capabilities."
+  fi
+
+  if ! systemctl list-unit-files ai-hybrid-coordinator.service >/dev/null 2>&1; then
+    log "Skipping repo-backed AI capability verification: ai-hybrid-coordinator.service is not declared"
+    return 0
+  fi
+
+  if ! systemctl is-enabled --quiet ai-hybrid-coordinator.service 2>/dev/null && \
+     ! systemctl is-active --quiet ai-hybrid-coordinator.service 2>/dev/null && \
+     ! systemctl is-activating --quiet ai-hybrid-coordinator.service 2>/dev/null; then
+    log "Skipping repo-backed AI capability verification: ai-hybrid-coordinator.service is not enabled for this host"
+    return 0
+  fi
+
+  local hybrid_api_key workflow_plan_body qa_check_body learning_export_body http_code
+  hybrid_api_key="$(resolve_hybrid_api_key)"
+  if [[ -z "${hybrid_api_key}" ]]; then
+    die "Unable to verify repo-backed AI service capabilities: missing hybrid coordinator API key."
+  fi
+
+  workflow_plan_body="$(mktemp)"
+  qa_check_body="$(mktemp)"
+  learning_export_body="$(mktemp)"
+  chmod 0600 "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+
+  http_code="$(hybrid_post_json_capture \
+    "/workflow/plan" \
+    '{"query":"validate deploy health and smoke checks after patch"}' \
+    "${workflow_plan_body}" \
+    "${hybrid_api_key}" || true)"
+  if [[ ! "${http_code}" =~ ^2 ]]; then
+    log_warn "Repo-backed AI capability check failed: /workflow/plan returned HTTP ${http_code}"
+    sed -n '1,40p' "${workflow_plan_body}" >&2 || true
+    rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+    return 1
+  fi
+  if ! python3 - "${workflow_plan_body}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+phases = payload.get("phases", [])
+validate_phase = next((phase for phase in phases if phase.get("id") == "validate"), {})
+tools = {
+    str(tool.get("name", "")).strip()
+    for tool in validate_phase.get("tools", [])
+    if isinstance(tool, dict)
+}
+metadata = payload.get("metadata", {})
+prompt_coaching = metadata.get("prompt_coaching")
+
+if "qa_check" not in tools:
+    raise SystemExit(1)
+if not isinstance(prompt_coaching, dict):
+    raise SystemExit(2)
+PY
+  then
+    log_warn "Repo-backed AI capability check failed: /workflow/plan is missing validate.qa_check or metadata.prompt_coaching"
+    sed -n '1,80p' "${workflow_plan_body}" >&2 || true
+    rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+    return 1
+  fi
+
+  http_code="$(hybrid_post_json_capture \
+    "/qa/check" \
+    '{"phase":"0","format":"json","timeout_seconds":30}' \
+    "${qa_check_body}" \
+    "${hybrid_api_key}" || true)"
+  if [[ ! "${http_code}" =~ ^2 ]]; then
+    log_warn "Repo-backed AI capability check failed: /qa/check returned HTTP ${http_code}"
+    sed -n '1,80p' "${qa_check_body}" >&2 || true
+    rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+    return 1
+  fi
+  if ! python3 - "${qa_check_body}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+if payload.get("status") != "ok":
+    raise SystemExit(1)
+PY
+  then
+    log_warn "Repo-backed AI capability check failed: /qa/check did not return status=ok"
+    sed -n '1,80p' "${qa_check_body}" >&2 || true
+    rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+    return 1
+  fi
+
+  http_code="$(hybrid_post_json_capture \
+    "/learning/export" \
+    '{}' \
+    "${learning_export_body}" \
+    "${hybrid_api_key}" || true)"
+  if [[ ! "${http_code}" =~ ^2 ]]; then
+    log_warn "Repo-backed AI capability check failed: /learning/export returned HTTP ${http_code}"
+    sed -n '1,80p' "${learning_export_body}" >&2 || true
+    rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+    return 1
+  fi
+  if ! python3 - "${learning_export_body}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+dataset_path = payload.get("dataset_path")
+if payload.get("status") != "ok":
+    raise SystemExit(1)
+if not isinstance(dataset_path, str) or not dataset_path.strip():
+    raise SystemExit(2)
+PY
+  then
+    log_warn "Repo-backed AI capability check failed: /learning/export did not return status=ok with dataset_path"
+    sed -n '1,80p' "${learning_export_body}" >&2 || true
+    rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+    return 1
+  fi
+
+  rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
+  log "Repo-backed AI capability verification passed: workflow plan, qa_check, learning export"
+}
+
 resolve_configured_repo_path() {
   nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.mcpServers.repoPath" 2>/dev/null || true
 }
@@ -585,8 +759,51 @@ restart_repo_backed_ai_services_if_needed() {
       run_privileged systemctl restart "${restart_units[@]}"; then
     log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
   else
-    log "WARNING: mutable repo-backed AI service restart reported issues: ${restart_units[*]}"
+    die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
   fi
+}
+
+verify_repo_backed_ai_services_are_live_if_needed() {
+  [[ "${MODE}" == "switch" ]] || return 0
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local configured_repo="" current_repo="" attempts attempt
+  configured_repo="$(resolve_configured_repo_path)"
+  current_repo="$(readlink -f "${REPO_ROOT}" 2>/dev/null || printf '%s\n' "${REPO_ROOT}")"
+
+  if [[ -z "${configured_repo}" ]]; then
+    log "Skipping mutable repo-backed AI capability verification: unable to resolve configured repoPath"
+    return 0
+  fi
+
+  configured_repo="$(readlink -f "${configured_repo}" 2>/dev/null || printf '%s\n' "${configured_repo}")"
+  if [[ "${configured_repo}" != "${current_repo}" ]]; then
+    log "Skipping mutable repo-backed AI capability verification: configured repoPath (${configured_repo}) does not match deploy repo (${current_repo})"
+    return 0
+  fi
+
+  attempts="${POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT}"
+  if [[ ! "${attempts}" =~ ^[0-9]+$ ]] || (( attempts < 1 )); then
+    attempts=1
+  fi
+
+  for (( attempt=1; attempt<=attempts; attempt++ )); do
+    if verify_repo_backed_ai_service_capabilities_once; then
+      return 0
+    fi
+
+    if (( attempt < attempts )); then
+      log_warn "Repo-backed AI capability verification failed on attempt ${attempt}/${attempts}; restarting services and retrying"
+      restart_repo_backed_ai_services_if_needed
+      wait_for_ai_services
+    fi
+  done
+
+  die "Mutable repo-backed AI service capability verification failed after ${attempts} attempt(s)."
 }
 
 run_declarative_postflight_converge() {
@@ -2773,6 +2990,7 @@ wait_for_ai_services() {
 
 # Wait for services before health checks
 wait_for_ai_services
+verify_repo_backed_ai_services_are_live_if_needed
 
 # Verify TCP connectivity to Redis/Qdrant/Postgres and HTTP /health endpoints
 # for all MCP services. Runs --optional to also report aider-wrapper and
