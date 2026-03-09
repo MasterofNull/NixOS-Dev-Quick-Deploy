@@ -318,6 +318,8 @@ check_pattern "scripts/ai/aq-report" '_hint_diversity_recent_context\(recent_hin
 check_pattern "scripts/ai/aq-report" '"recent_hint_diversity": recent_hint_diversity_stats or \{"available": False\}' 'aq-report JSON output includes recent hint-diversity state'
 check_pattern "nixos-quick-deploy.sh" 'recent_hint_diversity.window // "1h"' 'quick deploy summary reads recent hint-diversity state from aq-report JSON'
 check_pattern "nixos-quick-deploy.sh" 'Top hint \(historical\)' 'quick deploy summary labels historical top hints when there is no recent hint activity'
+check_pattern "nixos-quick-deploy.sh" 'cache_summary="\$\{cache_hit\}% \(\$\{cache_hits\}/\$\{cache_total\}\)"' 'quick deploy summary includes semantic cache sample counts'
+check_pattern "nixos-quick-deploy.sh" 'low sample' 'quick deploy summary labels low-sample semantic cache metrics'
 check_pattern "scripts/ai/aq-report" '_is_curated_stale_gap' 'aq-report suppresses curated stale residual gaps'
 check_pattern "scripts/ai/aq-report" 'r_calls >= 5 and r_blocked == 0' 'aq-report suppresses stale tool-security warnings when recent traffic is clean'
 check_pattern "scripts/ai/aq-report" '400 <= http_status < 500' 'aq-report ignores client-side 4xx misuse in tool reliability scoring'
