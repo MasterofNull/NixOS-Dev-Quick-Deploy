@@ -16,6 +16,23 @@ Agents may proceed without pausing the user for:
 - log inspection, diagnostics, and runtime verification
 - non-destructive commits
 
+## Batching Rule
+
+Default execution cadence:
+1. stack 3-5 repo-only improvement slices
+2. run local validation gates
+3. commit each logical slice separately
+4. run one `nixos-quick-deploy.sh` activation pass for the batch
+5. use live system output to choose the next batch
+
+Deploy earlier only when:
+- a change must be activated to verify correctness
+- live telemetry is needed to prioritize the next slice
+- the previous slice fixed a deploy/runtime blocker
+- a service contract changed and stale in-memory code would mislead the next step
+
+Avoid deploy-after-every-commit unless one of those conditions is true.
+
 ## Approval-Gated Actions
 
 Agents must stop for explicit approval before:

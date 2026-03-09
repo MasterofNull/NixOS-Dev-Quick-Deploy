@@ -34,6 +34,9 @@ Canonical full policy: `docs/AGENTS.md`
   - tests run
   - evidence output
   - rollback note
+- Batch deploy cadence:
+  - Prefer 3-5 repo-only slices per batch before running `nixos-quick-deploy.sh`.
+  - Deploy earlier only for runtime activation checks, live-signal-dependent prioritization, or deploy/runtime blocker fixes.
 - Reject any task without validation evidence, or that regresses routing/cache/security health.
 - Declarative-first rule: implement via Nix options/modules first; use scripts/runtime fallback only when declarative is not viable.
 - Never exit on planning alone when execution is feasible in the current session.
