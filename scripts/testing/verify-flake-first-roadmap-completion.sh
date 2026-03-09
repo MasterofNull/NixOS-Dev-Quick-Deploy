@@ -139,6 +139,7 @@ check_path_absent "scripts/data/initialize-qdrant-collections.sh" 'Low-signal de
 check_path_absent "scripts/data/populate-knowledge-base.py" 'Low-signal deprecated populate-knowledge-base stub has been removed'
 check_path_absent "scripts/data/populate-knowledge-from-web.py" 'Low-signal deprecated populate-knowledge-from-web stub has been removed'
 check_path_absent "scripts/data/populate-qdrant-with-embeddings.py" 'Low-signal deprecated populate-qdrant-with-embeddings stub has been removed'
+check_path_absent "scripts/data/populate-qdrant-collections.sh" 'Low-signal deprecated populate-qdrant-collections stub has been removed'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh bootstrap --host' 'Secrets guide documents delegated quick-deploy bootstrap flow'
 check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'
