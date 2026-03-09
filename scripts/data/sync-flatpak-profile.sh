@@ -86,7 +86,11 @@ if [[ "$INSTALL_SCOPE" == "system" && "$EUID" -ne 0 ]]; then
     echo "ERROR: --scope system requires sudo when not root." >&2
     exit 1
   fi
-  FLATPAK_CMD=(sudo flatpak)
+  if [[ "$NON_INTERACTIVE" == true ]]; then
+    FLATPAK_CMD=(sudo -n flatpak)
+  else
+    FLATPAK_CMD=(sudo flatpak)
+  fi
 fi
 
 flatpak_run() {
