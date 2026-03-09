@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SOURCES_FILE="$REPO_ROOT/ai-stack/data/knowledge-sources.yaml"
 AIDB_URL="${AIDB_URL:-http://127.0.0.1:${AI_AIDB_PORT:-${AIDB_PORT:-8002}}}"
 AIDB_IMPORT_ENDPOINT="${AIDB_IMPORT_ENDPOINT:-/documents}"

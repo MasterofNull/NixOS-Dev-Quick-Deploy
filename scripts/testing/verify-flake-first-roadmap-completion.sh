@@ -251,6 +251,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'result\[
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'provider-side prompt caching|free or provider-routed experimentation' 'Workflow token policy teaches bounded cloud/provider token usage'
 check_pattern "scripts/ai/aq-hints" 'Token plan:' 'aq-hints renders token-discipline coaching text'
 check_pattern "config/agent-context-cards.json" 'OpenRouter-routed models|provider-side prompt caching' 'Token-discipline context card includes remote/provider budget rules'
+check_pattern "scripts/data/sync-knowledge-sources" 'SCRIPT_DIR/../\.\.' 'Knowledge source sync resolves repository root correctly'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_bash_binary' 'Hybrid QA tool resolves an explicit bash binary for systemd-safe execution'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_python3_binary|_build_qa_exec_env' 'Hybrid QA tool resolves python3 and PATH for systemd-safe execution'
