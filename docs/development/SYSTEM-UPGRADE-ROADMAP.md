@@ -1505,7 +1505,7 @@ AI_STACK_DEV_MODE=true ./nixos-quick-deploy.sh --restart-phase 9 --test-phase 9
 
 **Fix Solution:**
 - Set `EMBEDDING_DIMENSIONS=384` in ConfigMap + `aidb` + `hybrid-coordinator` deployments.
-- Derive vector size in `initialize-qdrant-collections.sh` from `EMBEDDING_DIMENSIONS`.
+- Derive vector size in `rebuild-qdrant-collections.sh` from `EMBEDDING_DIMENSIONS`.
 - Recreate the Qdrant `learning-feedback` collection with size 384.
 
 **Acceptance Criteria:**

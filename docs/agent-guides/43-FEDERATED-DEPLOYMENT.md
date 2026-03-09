@@ -497,7 +497,7 @@ jq . data/collections/snapshots/skills-patterns-*.json | head -20
 
 2. **Collections don't exist**
    ```bash
-   bash scripts/data/initialize-qdrant-collections.sh
+   bash scripts/data/rebuild-qdrant-collections.sh
    ```
 
 3. **Corrupt snapshots**
