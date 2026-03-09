@@ -1182,6 +1182,7 @@ async def run_http_mode(port: int) -> None:
             request_context = data.get("context")
             if not isinstance(request_context, dict):
                 request_context = {}
+            prompt_coaching: Dict[str, Any] = {}
             request["audit_metadata"] = {
                 "semantic_autorun_enabled": bool(semantic_tooling_autorun),
                 "semantic_autorun_planned": 0,
@@ -1189,6 +1190,8 @@ async def run_http_mode(port: int) -> None:
                 "tool_security_blocked": 0,
                 "tool_security_cache_hits": 0,
                 "tool_security_first_seen": 0,
+                "prompt_coaching_score": 0.0,
+                "prompt_coaching_missing_fields": 0,
             }
             tooling_layer = {
                 "enabled": semantic_tooling_autorun,
@@ -1196,6 +1199,23 @@ async def run_http_mode(port: int) -> None:
                 "executed": [],
                 "hints": [],
             }
+            try:
+                import sys as _sys
+                from pathlib import Path as _Path
+                _hints_dir = _Path(__file__).parent
+                if str(_hints_dir) not in _sys.path:
+                    _sys.path.insert(0, str(_hints_dir))
+                from hints_engine import HintsEngine  # type: ignore[import]
+                prompt_coaching = HintsEngine().prompt_coaching_as_dict(
+                    query,
+                    agent_type=str(data.get("agent_type") or "human"),
+                )
+                request["audit_metadata"]["prompt_coaching_score"] = float(prompt_coaching.get("score", 0.0) or 0.0)
+                request["audit_metadata"]["prompt_coaching_missing_fields"] = len(
+                    prompt_coaching.get("missing_fields", []) or []
+                )
+            except Exception as exc:
+                logger.debug("prompt_coaching_skipped error=%s", exc)
             if semantic_tooling_autorun:
                 planned, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
                 tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
@@ -1274,6 +1294,13 @@ async def run_http_mode(port: int) -> None:
             )
             if semantic_tooling_autorun:
                 result["tooling_layer"] = tooling_layer
+            if prompt_coaching:
+                result["prompt_coaching"] = prompt_coaching
+                metadata = result.get("metadata")
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                    result["metadata"] = metadata
+                metadata["prompt_coaching"] = prompt_coaching
             request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
