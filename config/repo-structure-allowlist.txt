@@ -255,11 +255,9 @@ scripts/governance/lint-skill-external-deps.sh
 scripts/governance/lint-skill-template.sh
 scripts/governance/lint-skills-podman.sh
 scripts/governance/lint-template-placeholders.sh
-scripts/governance/lint-timeouts.sh
 scripts/governance/list-issues.py
 scripts/ai/llama-model-cli.sh
 scripts/deploy/local-registry.sh
-scripts/governance/manage-cache.sh
 scripts/governance/manage-dashboard-collectors.sh
 scripts/governance/manage-secrets.py
 scripts/governance/manage-secrets.sh
@@ -334,7 +332,6 @@ scripts/deploy/setup-hybrid-learning.sh
 scripts/deploy/setup-mcp-databases.sh
 scripts/sign-skill-registry.sh
 scripts/skill-bundle-registry.py
-scripts/governance/smart_config_gen.sh
 scripts/testing/smoke-agent-harness-parity.sh
 scripts/testing/smoke-cross-client-compat.sh
 scripts/testing/smoke-focused-parity.sh
@@ -384,5 +381,4 @@ scripts/testing/validate-tool-management-policy.sh
 scripts/testing/verify-flake-first-roadmap-completion.sh
 scripts/testing/verify-local-llm-feedback.sh
 scripts/testing/verify-model-safety.sh
-scripts/testing/verify-pytorch-fix.sh
 scripts/testing/verify-skill-registry.sh

@@ -192,18 +192,6 @@
     "rationale": "only low-signal references remain; remove after doc cleanup"
   },
   {
-    "path": "scripts/governance/lint-timeouts.sh",
-    "active_references": 4,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 4,
-    "archive_references": 0,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
     "path": "scripts/deploy/deploy-aidb-mcp-server.sh",
     "active_references": 3,
     "code_references": 1,
@@ -427,42 +415,6 @@
     "test_references": 0,
     "nix_references": 0,
     "other_references": 2,
-    "archive_references": 0,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/governance/manage-cache.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 2,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/testing/verify-pytorch-fix.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/governance/smart-config-gen.sh",
-    "active_references": 1,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 1,
     "archive_references": 0,
     "recommendation": "archive_or_remove",
     "rationale": "only low-signal references remain; remove after doc cleanup"
