@@ -2942,16 +2942,23 @@ check_dashboard_postflight() {
     log "  Rerun: scripts/testing/check-mcp-health.sh --optional"
   fi
 }
-check_dashboard_postflight
 
-# ---- Restart Prometheus so it picks up new nftables GID allowlist -----------
-# After nixos-rebuild switch the nftables ai_localhost_isolation table is
-# updated but Prometheus may have cached a "no route to host" error from before
-# the prometheus GID was added to the loopback filter.  A restart clears that.
-if systemctl is-active prometheus.service &>/dev/null; then
-  log "Restarting prometheus (nftables GID allowlist updated)..."
-  sudo systemctl restart prometheus.service 2>/dev/null || true
-fi
+restart_prometheus_after_nftables_update_if_needed() {
+  # After nixos-rebuild switch the nftables ai_localhost_isolation table is
+  # updated but Prometheus may have cached a "no route to host" error from before
+  # the prometheus GID was added to the loopback filter. A restart clears that.
+  if systemctl is-active prometheus.service &>/dev/null; then
+    log "Restarting prometheus (nftables GID allowlist updated)..."
+    sudo systemctl restart prometheus.service 2>/dev/null || true
+  fi
+}
+
+run_dashboard_runtime_postflight() {
+  check_dashboard_postflight
+  restart_prometheus_after_nftables_update_if_needed
+}
+
+run_dashboard_runtime_postflight
 
 run_postflight_convergence
 
