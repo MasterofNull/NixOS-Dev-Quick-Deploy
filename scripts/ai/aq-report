@@ -738,6 +738,20 @@ def hint_diversity(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _hint_diversity_recent_context(recent_hint_diversity: Optional[Dict[str, Any]]) -> str:
+    if not recent_hint_diversity or not recent_hint_diversity.get("available"):
+        return "Recent context unavailable."
+    window = str(recent_hint_diversity.get("window", "1h") or "1h")
+    total = int(recent_hint_diversity.get("total_injections", 0) or 0)
+    if total <= 0:
+        return f"no recent hint injections in the last {window}"
+    status = str(recent_hint_diversity.get("status", "unknown") or "unknown")
+    dom = recent_hint_diversity.get("dominant_share_pct")
+    if dom is None:
+        return f"recent hint activity in the last {window}: status={status}"
+    return f"recent {window} hint diversity is {status} (dominant share {float(dom):.1f}%)"
+
+
 def _task_tooling_from_hint_adoption(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(adoption, dict):
         return {"available": True, "total": 0}
@@ -1126,6 +1140,7 @@ def build_recommendations(
     semantic_autorun: Optional[Dict[str, Any]] = None,
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_tool_stats: Optional[Dict[str, dict]] = None,
     recent_semantic_autorun: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
@@ -1330,7 +1345,8 @@ def build_recommendations(
         dominant_share_pct = hint_diversity_stats.get("dominant_share_pct")
         unique_hints = int(hint_diversity_stats.get("unique_hints", 0) or 0)
         diversity_status = str(hint_diversity_stats.get("status", "")).strip().lower()
-        if total_injections >= 10 and (
+        recent_total = int((recent_hint_diversity_stats or {}).get("total_injections", 0) or 0)
+        if total_injections >= 10 and recent_total >= 5 and (
             diversity_status == "concentrated"
             or unique_hints <= 1
             or (dominant_share_pct is not None and float(dominant_share_pct) >= 70)
@@ -1602,6 +1618,7 @@ def format_md(
     semantic_autorun: Optional[Dict[str, Any]] = None,
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -1870,6 +1887,7 @@ def format_md(
                 lines.append(f"- Dominant hint ID: `{hint_diversity_stats.get('dominant_hint_id')}`")
             if str(hint_diversity_stats.get("status", "")).lower() == "concentrated":
                 lines.append("- Monitoring note: hint selection is concentrated; prefer adding alternative high-signal hints or stronger feedback diversity.")
+            lines.append(f"- Recent context: {_hint_diversity_recent_context(recent_hint_diversity_stats)}")
     else:
         lines.append("*Hint-diversity metrics unavailable.*")
     lines.append("")
@@ -1895,6 +1913,7 @@ def format_text(
     semantic_autorun: Optional[Dict[str, Any]] = None,
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -2165,6 +2184,7 @@ def format_text(
                 lines.append(f"  Dominant hint ID: {hint_diversity_stats.get('dominant_hint_id')}")
             if str(hint_diversity_stats.get("status", "")).lower() == "concentrated":
                 lines.append("  Monitoring note: hint selection is concentrated; add alternative high-signal hints or stronger feedback rotation.")
+            lines.append(f"  Recent context: {_hint_diversity_recent_context(recent_hint_diversity_stats)}")
     else:
         lines.append("  Hint-diversity metrics unavailable.")
     lines += ["", sep]
@@ -2189,6 +2209,7 @@ def format_json(
     semantic_autorun: Optional[Dict[str, Any]] = None,
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     structured_actions: Optional[List[dict]] = None,
 ) -> str:
     doc = {
@@ -2213,6 +2234,7 @@ def format_json(
         "tool_security_auditor": security_auditor or {"available": False},
         "semantic_tooling_autorun": semantic_autorun or {"available": False},
         "hint_diversity": hint_diversity_stats or {"available": False},
+        "recent_hint_diversity": recent_hint_diversity_stats or {"available": False},
         "structured_actions": structured_actions or [],
     }
     return json.dumps(doc, indent=2, default=str)
@@ -2322,6 +2344,9 @@ def main() -> None:
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats)
     hint_diversity_stats = hint_diversity(adoption)
+    recent_hint_adoption = hint_adoption(recent_cutoff)
+    recent_hint_diversity_stats = hint_diversity(recent_hint_adoption)
+    recent_hint_diversity_stats["window"] = "1h"
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
         [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
@@ -2339,6 +2364,7 @@ def main() -> None:
         semantic_autorun,
         tooling_quality,
         hint_diversity_stats,
+        recent_hint_diversity_stats,
         recent_tool_stats,
         recent_semantic_autorun,
     )
@@ -2363,6 +2389,7 @@ def main() -> None:
         semantic_autorun,
         tooling_quality,
         hint_diversity_stats,
+        recent_hint_diversity_stats,
     )
     if args.fmt == "md":
         output = format_md(*fmt_args)
