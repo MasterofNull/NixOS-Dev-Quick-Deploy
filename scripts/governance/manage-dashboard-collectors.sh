@@ -32,11 +32,7 @@ run_cmd() {
   fi
 }
 
-show_status() {
-  echo "scripts/governance/manage-dashboard-collectors.sh is a compatibility shim over the dashboard service and collect-ai-metrics.sh." >&2
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl status "${SERVICE_NAME}" --no-pager --lines=0 2>/dev/null || true
-  fi
+show_cache_status() {
   if [[ -f "${CACHE_FILE}" ]]; then
     printf 'Legacy cache: %s\n' "${CACHE_FILE}"
     stat --format='  modified: %y' "${CACHE_FILE}" 2>/dev/null || true
@@ -46,8 +42,22 @@ show_status() {
   fi
 }
 
-refresh_cache() {
+run_service_action() {
+  local action="$1"
+  run_cmd systemctl "${action}" "${SERVICE_NAME}"
+}
+
+refresh_cache_if_supported() {
+  [[ -x "${REFRESH_SCRIPT}" ]] || return 0
   "${REFRESH_SCRIPT}"
+}
+
+show_status() {
+  echo "scripts/governance/manage-dashboard-collectors.sh is a compatibility shim over the dashboard service and collect-ai-metrics.sh." >&2
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl status "${SERVICE_NAME}" --no-pager --lines=0 2>/dev/null || true
+  fi
+  show_cache_status
 }
 
 cmd="status"
@@ -78,15 +88,15 @@ case "${cmd}" in
     show_status
     ;;
   start)
-    run_cmd systemctl start "${SERVICE_NAME}"
-    refresh_cache
+    run_service_action start
+    refresh_cache_if_supported
     ;;
   stop)
-    run_cmd systemctl stop "${SERVICE_NAME}"
+    run_service_action stop
     ;;
   restart)
-    run_cmd systemctl restart "${SERVICE_NAME}"
-    refresh_cache
+    run_service_action restart
+    refresh_cache_if_supported
     ;;
   logs)
     if [[ "${USE_SUDO}" == 1 && "${EUID}" -ne 0 ]]; then
@@ -95,6 +105,6 @@ case "${cmd}" in
     exec journalctl -u "${SERVICE_NAME}" -n "${LOG_LINES}" --no-pager
     ;;
   refresh)
-    refresh_cache
+    refresh_cache_if_supported
     ;;
 esac
