@@ -124,11 +124,13 @@ check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_size_keys' 
 check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_invalidations_total' 'Dashboard tracks cache invalidation rate'
 check_pattern "scripts/automation/post-deploy-converge.sh" '/learning/process' 'Post-deploy convergence triggers learning pattern extraction'
 check_pattern "scripts/automation/post-deploy-converge.sh" '/learning/export' 'Post-deploy convergence triggers fine-tuning dataset export'
+check_pattern "scripts/automation/post-deploy-converge.sh" 'agent_instructions_import' 'Post-deploy convergence refreshes agent instruction imports'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching' 'Hints engine exposes prompt coaching guidance'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/tooling_manifest.py" 'run_qa_check' 'Tooling manifest surfaces QA tool for validation tasks'
 check_pattern "scripts/ai/aq-hints" 'parent\.parent\.parent' 'aq-hints resolves repository root correctly for local engine imports'
+check_pattern "scripts/data/import-agent-instructions.sh" 'dirname "\$0"\)/\.\./\.\.' 'Agent instruction import resolves repository root correctly'
 
 # Phase 21.5 — Post-deploy auto Phase 0 validation
 check_pattern "nixos-quick-deploy.sh" 'qa_script=.*aq-qa|"\$\{qa_script\}" 0 --json' 'Deploy completion runs aq-qa phase 0 summary'
