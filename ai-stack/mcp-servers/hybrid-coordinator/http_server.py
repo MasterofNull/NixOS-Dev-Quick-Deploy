@@ -629,6 +629,7 @@ def _build_workflow_plan(
     query: str,
     tools: Optional[List[Dict[str, str]]] = None,
     tool_security: Optional[Dict[str, Any]] = None,
+    include_debug_metadata: bool = False,
 ) -> Dict[str, Any]:
     if tools is None or tool_security is None:
         tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
@@ -691,8 +692,16 @@ def _build_workflow_plan(
             "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
             "prompt_coaching": _compact_prompt_coaching_metadata(prompt_coaching),
-            "tool_catalog": tool_catalog,
-            "tool_security": tool_security,
+            "tool_catalog": (
+                tool_catalog
+                if include_debug_metadata
+                else _compact_workflow_tool_catalog(tool_catalog)
+            ),
+            "tool_security": (
+                tool_security
+                if include_debug_metadata
+                else _compact_tool_security(tool_security or {})
+            ),
             "created_epoch_s": int(time.time()),
         },
     }
@@ -760,6 +769,36 @@ def _compact_tooling_layer_response(
         enriched = dict(tooling_layer)
         enriched["summary"] = compact
         return enriched
+    return compact
+
+
+def _compact_tool_security(tool_security: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep tool-security state compact on default metadata surfaces."""
+    if not isinstance(tool_security, dict):
+        tool_security = {}
+    return {
+        "enabled": bool(tool_security.get("enabled", False)),
+        "approved_count": len(tool_security.get("approved", []) or []),
+        "blocked_count": len(tool_security.get("blocked", []) or []),
+        "cache_hits": int(tool_security.get("cache_hits", 0) or 0),
+        "first_seen": int(tool_security.get("first_seen", 0) or 0),
+    }
+
+
+def _compact_workflow_tool_catalog(tool_catalog: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep workflow-plan tool metadata compact by default."""
+    compact: Dict[str, Any] = {}
+    if not isinstance(tool_catalog, dict):
+        return compact
+    for name, payload in tool_catalog.items():
+        if not isinstance(payload, dict):
+            continue
+        tool_name = str(payload.get("name", "") or name).strip()
+        if not tool_name:
+            continue
+        compact[tool_name] = {
+            "endpoint": str(payload.get("endpoint", "") or "").strip(),
+        }
     return compact
 
 
@@ -2062,12 +2101,14 @@ async def run_http_mode(port: int) -> None:
             if request.method == "POST":
                 data = await request.json()
                 query = (data.get("query") or data.get("prompt") or "").strip()
+                include_debug_metadata = bool(data.get("include_debug_metadata") or data.get("debug"))
             else:
                 data = {}
                 query = (request.rel_url.query.get("q") or "").strip()
+                include_debug_metadata = request.rel_url.query.get("debug", "0").strip().lower() in {"1", "true", "yes"}
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
-            return web.json_response(_build_workflow_plan(query))
+            return web.json_response(_build_workflow_plan(query, include_debug_metadata=include_debug_metadata))
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
