@@ -399,6 +399,7 @@ print_completion_test_results() {
     local semantic_route_calls hint_diversity_status hint_dominant_share hint_unique
     local cache_hits cache_misses cache_total cache_summary
     local recent_hint_window recent_hint_total recent_hint_status recent_hint_dominant_share
+    local recent_hint_adoption_total recent_hint_adoption_rate hint_adoption_label
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -419,6 +420,8 @@ print_completion_test_results() {
     recent_hint_total="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.total_injections // 0')"
     recent_hint_status="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.status // "unknown"')"
     recent_hint_dominant_share="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.dominant_share_pct // "n/a"')"
+    recent_hint_adoption_total="$(printf '%s' "${json}" | jq -r '.recent_hint_adoption.total // 0')"
+    recent_hint_adoption_rate="$(printf '%s' "${json}" | jq -r '.recent_hint_adoption.adoption_pct // "n/a"')"
     top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
@@ -427,11 +430,16 @@ print_completion_test_results() {
     if (( cache_total > 0 && cache_total < 50 )); then
       cache_summary="${cache_summary}; low sample"
     fi
+    if [[ "${recent_hint_adoption_total}" == "0" ]]; then
+      hint_adoption_label="${hint_rate}% (historical)"
+    else
+      hint_adoption_label="${hint_rate}% (recent ${recent_hint_window}: ${recent_hint_adoption_rate}%)"
+    fi
 
     log "AI stack report (summary):"
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote}"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
-    printf '  %-28s %s%%\n' "Hint adoption success" "${hint_rate}"
+    printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_status}" "${hint_unique}" "${hint_dominant_share}"
     if [[ "${recent_hint_total}" == "0" ]]; then
       printf '  %-28s %s\n' "Recent hint activity (${recent_hint_window})" "none"
