@@ -320,6 +320,33 @@ def selected_secret_names(include_optional: bool, include_remote: bool) -> List[
     return [spec["name"] for spec in selected_specs(include_optional, include_remote)]
 
 
+def current_secret_payload(paths: Dict[str, Path]) -> Dict[str, str]:
+    return decrypt_bundle(paths) if paths["bundle"].exists() else {}
+
+
+def missing_secret_names(payload: Dict[str, str], *, include_optional: bool, include_remote: bool) -> List[str]:
+    return [name for name in selected_secret_names(include_optional, include_remote) if not payload.get(name)]
+
+
+def describe_secret_state(paths: Dict[str, Path], *, include_optional: bool, include_remote: bool) -> Dict[str, object]:
+    payload = current_secret_payload(paths)
+    missing = missing_secret_names(payload, include_optional=include_optional, include_remote=include_remote)
+    state = {
+        "bundle_exists": paths["bundle"].exists(),
+        "age_key_exists": paths["age_key_file"].exists(),
+        "local_override_exists": paths["deploy_options_local"].exists(),
+        "payload": payload,
+        "missing_secrets": missing,
+    }
+    state["is_ready"] = (
+        state["bundle_exists"]
+        and state["age_key_exists"]
+        and state["local_override_exists"]
+        and not missing
+    )
+    return state
+
+
 def bootstrap_mode(args: argparse.Namespace) -> str:
     if args.mode in {"auto", "manual"}:
         return args.mode
@@ -367,11 +394,13 @@ def command_status(args: argparse.Namespace) -> int:
     host = resolve_host(root, args.host)
     primary_user = resolve_primary_user()
     paths = host_paths(root, host, primary_user)
-    payload = decrypt_bundle(paths) if paths["bundle"].exists() else {}
+    state = describe_secret_state(paths, include_optional=True, include_remote=True)
+    payload = state["payload"]
     print(f"Host: {host}")
     print(f"Bundle: {paths['bundle']}")
     print(f"AGE key: {paths['age_key_file']}")
     print(f"Local override: {paths['deploy_options_local']}")
+    print(f"Ready: {'yes' if state['is_ready'] else 'no'}")
     print("")
     for spec in SECRET_SPECS:
         present = spec["name"] in payload and bool(payload[spec["name"]])
@@ -395,15 +424,16 @@ def command_validate(args: argparse.Namespace) -> int:
     host = resolve_host(root, args.host)
     primary_user = resolve_primary_user()
     paths = host_paths(root, host, primary_user)
+    state = describe_secret_state(paths, include_optional=False, include_remote=False)
     problems = []
-    if not paths["age_key_file"].exists():
+    if not state["age_key_exists"]:
         problems.append(f"Missing age key: {paths['age_key_file']}")
-    if not paths["bundle"].exists():
+    if not state["bundle_exists"]:
         problems.append(f"Missing encrypted bundle: {paths['bundle']}")
-    if not paths["deploy_options_local"].exists():
+    if not state["local_override_exists"]:
         problems.append(f"Missing local override: {paths['deploy_options_local']}")
-    if not problems and paths["bundle"].exists():
-        decrypt_bundle(paths)
+    for name in state["missing_secrets"]:
+        problems.append(f"Missing core secret value: {name}")
     if problems:
         for problem in problems:
             eprint(problem)
@@ -482,6 +512,54 @@ def command_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_doctor(args: argparse.Namespace) -> int:
+    root = repo_root()
+    host = resolve_host(root, args.host)
+    primary_user = resolve_primary_user()
+    paths = host_paths(root, host, primary_user)
+    state = describe_secret_state(
+        paths,
+        include_optional=args.include_optional,
+        include_remote=args.include_remote,
+    )
+
+    print(f"Host: {host}")
+    print(f"Bundle: {paths['bundle']}")
+    print(f"AGE key: {'present' if state['age_key_exists'] else 'missing'}")
+    print(f"Encrypted bundle: {'present' if state['bundle_exists'] else 'missing'}")
+    print(f"Local override: {'present' if state['local_override_exists'] else 'missing'}")
+    print(f"Requested secret set ready: {'yes' if state['is_ready'] else 'no'}")
+
+    if state["missing_secrets"]:
+        print("")
+        print("Missing secrets:")
+        for name in state["missing_secrets"]:
+            print(f"- {name}")
+
+    next_steps: List[str] = []
+    if not state["age_key_exists"] or not state["bundle_exists"] or not state["local_override_exists"]:
+        bootstrap_cmd = "./scripts/governance/manage-secrets.sh bootstrap --host " + host
+        if args.include_optional:
+            bootstrap_cmd += " --include-optional"
+        if args.include_remote:
+            bootstrap_cmd += " --include-remote"
+        next_steps.append(bootstrap_cmd)
+    elif state["missing_secrets"]:
+        next_steps.append("./scripts/governance/manage-secrets.sh status --host " + host)
+        for name in state["missing_secrets"]:
+            next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+    else:
+        next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
+        next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
+
+    print("")
+    print("Next steps:")
+    for step in next_steps:
+        print(f"- {step}")
+
+    return 0 if state["is_ready"] else 1
+
+
 def command_list(_: argparse.Namespace) -> int:
     for spec in SECRET_SPECS:
         print(f"{spec['name']}\t{spec['scope']}\t{spec['services']}")
@@ -547,6 +625,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("status", help="Show presence/absence of managed secrets.")
     subparsers.add_parser("paths", help="Show key filesystem paths used by the secrets flow.")
     subparsers.add_parser("validate", help="Check that age key, bundle, and local override are usable.")
+    doctor_parser = subparsers.add_parser("doctor", help="Explain readiness and recommended next steps.")
+    doctor_parser.add_argument("--include-optional", action="store_true", help="Also check optional service secrets.")
+    doctor_parser.add_argument("--include-remote", action="store_true", help="Also check remote_llm_api_key readiness.")
     subparsers.add_parser("list", help="List supported managed secret names.")
     subparsers.add_parser("ensure-local-config", help="Create or refresh deploy-options.local.nix wiring.")
 
@@ -571,9 +652,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def normalize_global_host_flag(argv: List[str]) -> List[str]:
+    normalized = list(argv)
+    if "--host" not in normalized:
+        return normalized
+    if normalized.index("--host") == 0:
+        return normalized
+    if normalized[0] != "--host":
+        idx = normalized.index("--host")
+        if idx + 1 >= len(normalized):
+            raise SystemExit("--host requires a value")
+        host_args = normalized[idx : idx + 2]
+        del normalized[idx : idx + 2]
+        normalized = host_args + normalized
+    return normalized
+
+
 def main() -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(normalize_global_host_flag(sys.argv[1:]))
     if not args.command:
         if sys.stdin.isatty():
             return interactive_menu(args)
@@ -584,6 +681,7 @@ def main() -> int:
         "status": command_status,
         "paths": command_paths,
         "validate": command_validate,
+        "doctor": command_doctor,
         "list": command_list,
         "ensure-local-config": command_ensure_local_config,
         "init": command_init,
