@@ -1247,7 +1247,7 @@
 
         remoteBudget = {
           dailyTokenCap = lib.mkOption {
-            type = lib.types.ints.nonnegative;
+            type = lib.types.addCheck lib.types.int (value: value >= 0);
             default = 0;
             description = ''
               Approximate daily remote input-token cap enforced by switchboard.
