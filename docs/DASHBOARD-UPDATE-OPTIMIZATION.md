@@ -84,8 +84,7 @@ Created new management infrastructure:
 
 1. [scripts/data/generate-dashboard-data.sh](/scripts/data/generate-dashboard-data.sh) - Added `--lite-mode` flag
 2. [dashboard.html](dashboard.html) - Updated refresh intervals
-3. `${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh` - Lite collector loop (new)
-4. `${TMPDIR:-/tmp}/run-dashboard-collector-full.sh` - Full collector loop (new)
+3. Runtime-managed collector loops created internally by [scripts/governance/manage-dashboard-collectors.sh](/scripts/governance/manage-dashboard-collectors.sh)
 
 ## Files Created
 
@@ -102,9 +101,9 @@ Created new management infrastructure:
 $ bash scripts/governance/manage-dashboard-collectors.sh status
 ℹ Dashboard Collectors Status:
 
-✓ Lite collector (system+network) running - PID 161811
+✓ Lite collector (system+network) running
    Updates every ~2.5 seconds
-✓ Full collector (all metrics) running - PID 162629
+✓ Full collector (all metrics) running
    Updates every ~69 seconds
 
 Last system.json update: 1s ago
@@ -160,7 +159,7 @@ User Request: "Update graphs every 0.5s like GNOME Resources"
 
 ### Future Enhancements
 
-1. **Persistent collectors** - Convert to systemd services for auto-start on boot
+1. **Declarative hardening** - Keep the command center dashboard service as the primary runtime and reduce reliance on ad-hoc collector loops
 2. **Adaptive intervals** - Adjust update rates based on system load
 3. **WebSocket updates** - Replace polling with push-based updates
 4. **Historical data** - Store metrics in time-series database (e.g., InfluxDB)
@@ -208,6 +207,6 @@ User Request: "Update graphs every 0.5s like GNOME Resources"
 
 ---
 
-**Status**: Production ready and running
-**Collectors**: Active (PIDs 161811, 162629)
+**Status**: Production ready
+**Collectors**: Check `bash scripts/governance/manage-dashboard-collectors.sh status`
 **Dashboard**: http://127.0.0.1:8889/
