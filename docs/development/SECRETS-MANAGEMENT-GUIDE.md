@@ -57,6 +57,10 @@ Show current status without printing secret values:
 ./scripts/governance/manage-secrets.sh status --host nixos
 ```
 
+`status` now reports both:
+- core readiness for deploy-critical secrets
+- all-managed readiness including optional and remote-routing secrets
+
 Show readiness plus the exact next commands to run:
 
 ```bash

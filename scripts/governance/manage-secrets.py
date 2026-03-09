@@ -446,13 +446,22 @@ def bootstrap_payload(args: argparse.Namespace, existing: Dict[str, str]) -> Dic
 
 def command_status(args: argparse.Namespace) -> int:
     _, host, _, paths = resolve_runtime_context(args)
-    state = describe_secret_state(paths, include_optional=True, include_remote=True)
-    payload = state["payload"]
+    core_state = describe_secret_state(paths, include_optional=False, include_remote=False)
+    full_state = describe_secret_state(paths, include_optional=True, include_remote=True)
+    payload = full_state["payload"]
+    optional_missing = [
+        spec["name"]
+        for spec in SECRET_SPECS
+        if spec["scope"] == "optional" and not payload.get(spec["name"])
+    ]
     print(f"Host: {host}")
     print(f"Bundle: {paths['bundle']}")
     print(f"AGE key: {paths['age_key_file']}")
     print(f"Local override: {paths['deploy_options_local']}")
-    print(f"Ready: {'yes' if state['is_ready'] else 'no'}")
+    print(f"Core ready: {'yes' if core_state['is_ready'] else 'no'}")
+    print(f"All managed secrets ready: {'yes' if full_state['is_ready'] else 'no'}")
+    if optional_missing:
+        print(f"Optional/remote missing: {', '.join(optional_missing)}")
     print("")
     for spec in SECRET_SPECS:
         present = spec["name"] in payload and bool(payload[spec["name"]])
