@@ -1669,6 +1669,45 @@ class HintsEngine:
                         agent_hints={},
                     )
                 )
+
+        agent_lessons = data.get("agent_lessons", {})
+        lesson_candidates = agent_lessons.get("candidates") if isinstance(agent_lessons, dict) else []
+        if isinstance(lesson_candidates, list):
+            lesson_focus = any(
+                token in query_lower
+                for token in ("improv", "hint", "agent", "rag", "retriev", "memory", "review", "training")
+            )
+            for item in lesson_candidates[:2]:
+                if not isinstance(item, dict):
+                    continue
+                hint_id = str(item.get("hint_id", "") or "").strip()
+                direction = str(item.get("direction", "") or "").strip().lower()
+                agent = str(item.get("agent", "") or "").strip().lower()
+                if not hint_id or direction not in {"promote", "avoid"} or not lesson_focus:
+                    continue
+                comments = item.get("comments") or []
+                example = str(comments[0] or "").strip() if comments else ""
+                title = (
+                    f"Promote {hint_id} as a reusable {agent} lesson"
+                    if direction == "promote"
+                    else f"Reduce {hint_id} for {agent} tasks"
+                )
+                snippet = (
+                    f"{agent} feedback repeatedly marked `{hint_id}` as {direction}."
+                    + (f" Example: {example}" if example else "")
+                )
+                hints.append(
+                    Hint(
+                        id=f"runtime_agent_lesson_{agent}_{direction}_{re.sub(r'[^a-z0-9]+', '_', hint_id.lower())}",
+                        type="runtime_signal",
+                        title=title[:96],
+                        score=0.74,
+                        snippet=snippet[:220],
+                        reason="Derived from repeated cross-agent hint feedback promoted into the live report",
+                        tags=["runtime", "agent-learning", direction, agent],
+                        agent_hints={},
+                    )
+                )
         return hints
 
     def _hints_from_tool_audit_errors(self, query: str, query_tokens: List[str]) -> List[Hint]:

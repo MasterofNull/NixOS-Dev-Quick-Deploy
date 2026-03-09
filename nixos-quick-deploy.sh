@@ -405,6 +405,7 @@ print_completion_test_results() {
     local rag_posture_status rag_posture_recent rag_posture_gaps rag_posture_label
     local rag_recent_route rag_recent_tree rag_recent_memory rag_mix_label
     local rag_memory_share rag_prewarm_prompt rag_prewarm_label
+    local agent_lesson_label
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -438,6 +439,7 @@ print_completion_test_results() {
     rag_recent_memory="$(printf '%s' "${json}" | jq -r '.rag_posture.retrieval_mix.recent.recall_agent_memory // 0')"
     rag_memory_share="$(printf '%s' "${json}" | jq -r '.rag_posture.memory_recall_share_pct // "n/a"')"
     rag_prewarm_prompt="$(printf '%s' "${json}" | jq -r '.rag_posture.prewarm_candidates[0].id // empty')"
+    agent_lesson_label="$(printf '%s' "${json}" | jq -r '.agent_lessons.candidates[0] | if .hint_id then "\(.agent):\(.direction) \(.hint_id)" else empty end')"
     report_generated_at="$(printf '%s' "${json}" | jq -r '.generated_at // empty')"
     recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
     recent_health_healthy="$(printf '%s' "${json}" | jq -r '.recent_health.healthy // false')"
@@ -530,6 +532,9 @@ PY
     printf '  %-28s %s\n' "RAG mix (1h)" "${rag_mix_label}"
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
     printf '  %-28s %s\n' "Prewarm candidate" "${rag_prewarm_label}"
+    if [[ -n "${agent_lesson_label}" ]]; then
+      printf '  %-28s %s\n' "Agent lesson" "${agent_lesson_label}"
+    fi
     printf '  %-28s %s\n' "Cache prewarm" "${cache_prewarm_label}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_label}" "${hint_unique}" "${hint_dominant_share}"
