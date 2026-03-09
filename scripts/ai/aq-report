@@ -1513,6 +1513,45 @@ def _tool_reliability_context(stats: Dict[str, Any], fresh: Optional[Dict[str, A
     return "; ".join(parts)
 
 
+def recent_health_snapshot(recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
+    """Summarize active issues in the recent monitoring window."""
+    snapshot: Dict[str, Any] = {
+        "available": True,
+        "window": "1h",
+        "slow_tools": [],
+        "flaky_tools": [],
+    }
+    ignored_flaky_tools = {
+        t.strip().lower()
+        for t in os.getenv("AQ_REPORT_FLAKY_TOOL_IGNORE", "run_sandboxed,shell_execute").split(",")
+        if t.strip()
+    }
+    for tool, stats in sorted(recent_tool_stats.items(), key=lambda item: (-item[1]["calls"], item[0])):
+        calls = int(stats.get("calls", 0) or 0)
+        if calls <= 0:
+            continue
+        if float(stats.get("p95_ms", 0.0) or 0.0) > 5000.0:
+            snapshot["slow_tools"].append(
+                {
+                    "tool": tool,
+                    "calls": calls,
+                    "p95_ms": round(float(stats.get("p95_ms", 0.0) or 0.0), 1),
+                }
+            )
+        if tool.lower() not in ignored_flaky_tools and float(stats.get("success_pct", 0.0) or 0.0) < 90.0:
+            snapshot["flaky_tools"].append(
+                {
+                    "tool": tool,
+                    "calls": calls,
+                    "success_pct": round(float(stats.get("success_pct", 0.0) or 0.0), 1),
+                    "error_count": int(stats.get("error_count", 0) or 0),
+                    "client_error_count": int(stats.get("client_error_count", 0) or 0),
+                }
+            )
+    snapshot["healthy"] = not snapshot["slow_tools"] and not snapshot["flaky_tools"]
+    return snapshot
+
+
 def format_md(
     since_label: str,
     tool_stats: Dict[str, dict],
@@ -1523,6 +1562,7 @@ def format_md(
     leaderboard: List[dict],
     top_prompts: List[dict],
     gaps: List[dict],
+    recent_health: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
@@ -1653,14 +1693,36 @@ def format_md(
         lines.append("*No query gaps found (Postgres unreachable or table empty).*")
     lines.append("")
 
-    # 8. Recommendations
-    lines += ["## 8. Workflow Recommendations", ""]
+    # 8. Recent health snapshot
+    lines += [f"## 8. Recent Health Snapshot ({recent_health.get('window', '1h')})", ""]
+    if recent_health.get("healthy"):
+        lines.append("*No active slow or flaky tools in the recent window.*")
+    else:
+        slow_tools = recent_health.get("slow_tools") or []
+        flaky_tools = recent_health.get("flaky_tools") or []
+        if slow_tools:
+            lines.append("- Slow tools still active:")
+            for item in slow_tools[:3]:
+                lines.append(
+                    f"  - `{item['tool']}` — p95 {item['p95_ms']:.0f}ms across {item['calls']} recent calls"
+                )
+        if flaky_tools:
+            lines.append("- Reliability issues still active:")
+            for item in flaky_tools[:3]:
+                lines.append(
+                    f"  - `{item['tool']}` — OK {_na(item.get('success_pct'), '.1f', '%')} across {item['calls']} recent calls"
+                    f" (server={item.get('error_count', 0)}, 4xx={item.get('client_error_count', 0)})"
+                )
+    lines.append("")
+
+    # 9. Recommendations
+    lines += ["## 9. Workflow Recommendations", ""]
     for i, rec in enumerate(recs, 1):
         lines.append(f"{i}. {rec}")
     lines.append("")
 
-    # 9. Hint Adoption (Phase 19.3.4)
-    lines += ["## 9. Hint Adoption (aq-hints → aider-wrapper)", ""]
+    # 10. Hint Adoption (Phase 19.3.4)
+    lines += ["## 10. Hint Adoption (aq-hints → aider-wrapper)", ""]
     if adoption and adoption.get("available"):
         if adoption["total"] == 0:
             lines.append("*No hint-injected aider tasks in this window.*")
@@ -1695,8 +1757,8 @@ def format_md(
         lines.append("*Hint audit unavailable — ensure AI_HINTS_ENABLED=true in aider-wrapper.*")
     lines.append("")
 
-    # 10. Intent-contract compliance
-    lines += ["## 10. Intent Contract Compliance", ""]
+    # 11. Intent-contract compliance
+    lines += ["## 11. Intent Contract Compliance", ""]
     if intent_compliance and intent_compliance.get("available"):
         total = int(intent_compliance.get("total_runs", 0) or 0)
         if total == 0:
@@ -1720,8 +1782,8 @@ def format_md(
         lines.append("*Workflow session store unavailable.*")
     lines.append("")
 
-    # 11. Security auditor
-    lines += ["## 11. Tool Security Auditor", ""]
+    # 12. Security auditor
+    lines += ["## 12. Tool Security Auditor", ""]
     if security_auditor and security_auditor.get("available"):
         events = int(security_auditor.get("events", 0) or 0)
         if events == 0:
@@ -1738,8 +1800,8 @@ def format_md(
         lines.append("*Tool-security auditor metrics unavailable.*")
     lines.append("")
 
-    # 12. Semantic autorun
-    lines += ["## 12. Semantic Tooling Autorun", ""]
+    # 13. Semantic autorun
+    lines += ["## 13. Semantic Tooling Autorun", ""]
     if semantic_autorun and semantic_autorun.get("available"):
         route_calls = int(semantic_autorun.get("route_calls", 0) or 0)
         if route_calls == 0:
@@ -1757,8 +1819,8 @@ def format_md(
         lines.append("*Semantic autorun metrics unavailable.*")
     lines.append("")
 
-    # 13. Hint Diversity
-    lines += ["## 13. Hint Diversity", ""]
+    # 14. Hint Diversity
+    lines += ["## 14. Hint Diversity", ""]
     if hint_diversity_stats and hint_diversity_stats.get("available"):
         total_injections = int(hint_diversity_stats.get("total_injections", 0) or 0)
         if total_injections == 0:
@@ -1793,6 +1855,7 @@ def format_text(
     leaderboard: List[dict],
     top_prompts: List[dict],
     gaps: List[dict],
+    recent_health: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
@@ -1924,7 +1987,28 @@ def format_text(
         lines.append("  No gaps data (Postgres unavailable or table empty).")
     lines.append("")
 
-    lines += ["[ 8. Workflow Recommendations ]"]
+    lines += [f"[ 8. Recent Health Snapshot ({recent_health.get('window', '1h')}) ]"]
+    if recent_health.get("healthy"):
+        lines.append("  No active slow or flaky tools in the recent window.")
+    else:
+        slow_tools = recent_health.get("slow_tools") or []
+        flaky_tools = recent_health.get("flaky_tools") or []
+        if slow_tools:
+            lines.append("  Slow tools still active:")
+            for item in slow_tools[:3]:
+                lines.append(
+                    f"    {item['tool']}: p95 {item['p95_ms']:.0f}ms across {item['calls']} recent calls"
+                )
+        if flaky_tools:
+            lines.append("  Reliability issues still active:")
+            for item in flaky_tools[:3]:
+                lines.append(
+                    f"    {item['tool']}: OK {_na(item.get('success_pct'), '.1f', '%')} across {item['calls']} recent calls"
+                    f" (server={item.get('error_count', 0)}, 4xx={item.get('client_error_count', 0)})"
+                )
+    lines.append("")
+
+    lines += ["[ 9. Workflow Recommendations ]"]
     for i, rec in enumerate(recs, 1):
         # Wrap at ~72 chars
         words = rec.split()
@@ -1939,7 +2023,7 @@ def format_text(
         lines.append(cur_line)
     lines.append("")
 
-    lines += ["[ 9. Hint Adoption (aq-hints → aider-wrapper) ]"]
+    lines += ["[ 10. Hint Adoption (aq-hints → aider-wrapper) ]"]
     if adoption and adoption.get("available"):
         if adoption["total"] == 0:
             lines.append("  No hint-injected aider tasks in this window.")
@@ -1971,7 +2055,7 @@ def format_text(
         lines.append("  Hint audit unavailable (AI_HINTS_ENABLED=true required).")
     lines.append("")
 
-    lines += ["[ 10. Intent Contract Compliance ]"]
+    lines += ["[ 11. Intent Contract Compliance ]"]
     if intent_compliance and intent_compliance.get("available"):
         total = int(intent_compliance.get("total_runs", 0) or 0)
         if total == 0:
@@ -1995,7 +2079,7 @@ def format_text(
         lines.append("  Workflow session store unavailable.")
     lines.append("")
 
-    lines += ["[ 11. Tool Security Auditor ]"]
+    lines += ["[ 12. Tool Security Auditor ]"]
     if security_auditor and security_auditor.get("available"):
         events = int(security_auditor.get("events", 0) or 0)
         if events == 0:
@@ -2012,7 +2096,7 @@ def format_text(
         lines.append("  Tool-security auditor metrics unavailable.")
     lines.append("")
 
-    lines += ["[ 12. Semantic Tooling Autorun ]"]
+    lines += ["[ 13. Semantic Tooling Autorun ]"]
     if semantic_autorun and semantic_autorun.get("available"):
         route_calls = int(semantic_autorun.get("route_calls", 0) or 0)
         if route_calls == 0:
@@ -2031,7 +2115,7 @@ def format_text(
         lines.append("  Semantic autorun metrics unavailable.")
     lines.append("")
 
-    lines += ["[ 13. Hint Diversity ]"]
+    lines += ["[ 14. Hint Diversity ]"]
     if hint_diversity_stats and hint_diversity_stats.get("available"):
         total_injections = int(hint_diversity_stats.get("total_injections", 0) or 0)
         if total_injections == 0:
@@ -2065,6 +2149,7 @@ def format_json(
     leaderboard: List[dict],
     top_prompts: List[dict],
     gaps: List[dict],
+    recent_health: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
@@ -2088,6 +2173,7 @@ def format_json(
             for p in top_prompts
         ],
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
+        "recent_health": recent_health,
         "recommendations": recs,
         "hint_adoption": adoption or {"available": False},
         "task_tooling_quality": tooling_quality or {"available": False},
@@ -2202,6 +2288,7 @@ def main() -> None:
     security_auditor = security_auditor_health(audit_entries)
     semantic_autorun = semantic_autorun_health(audit_entries)
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
+    recent_health = recent_health_snapshot(recent_tool_stats)
     hint_diversity_stats = hint_diversity(adoption)
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
@@ -2236,6 +2323,7 @@ def main() -> None:
         leaderboard,
         top_prompts,
         gaps,
+        recent_health,
         recs,
         adoption,
         intent_compliance,
