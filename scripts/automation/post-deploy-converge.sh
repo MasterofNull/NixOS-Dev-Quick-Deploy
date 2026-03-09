@@ -14,6 +14,7 @@ AUTO_REMEDIATE_SUMMARY_OUT="${POST_DEPLOY_AUTO_REMEDIATE_OUT:-${DATA_DIR}/hybrid
 LEARNING_PROCESS_OUT="${POST_DEPLOY_LEARNING_PROCESS_OUT:-${DATA_DIR}/hybrid/telemetry/learning-process-latest.json}"
 LEARNING_EXPORT_OUT="${POST_DEPLOY_LEARNING_EXPORT_OUT:-${DATA_DIR}/hybrid/telemetry/learning-export-latest.json}"
 AQ_QA_PHASE0_OUT="${POST_DEPLOY_AQ_QA_PHASE0_OUT:-${DATA_DIR}/hybrid/telemetry/aq-qa-phase0-latest.json}"
+AGENT_INSTRUCTIONS_IMPORT_OUT="${POST_DEPLOY_AGENT_INSTRUCTIONS_IMPORT_OUT:-${DATA_DIR}/hybrid/telemetry/agent-instructions-import-latest.txt}"
 HINT_FEEDBACK_LOG_PATH="${HINT_FEEDBACK_LOG_PATH:-/var/log/nixos-ai-stack/hint-feedback.jsonl}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-}"
 AUTO_REMEDIATE_ENABLE="${POST_DEPLOY_AUTO_REMEDIATE_ENABLE:-true}"
@@ -122,6 +123,12 @@ run_phase0_qa() {
     "${BASH_BIN}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 --json > "${AQ_QA_PHASE0_OUT}"
 }
 
+run_agent_instructions_import() {
+  [[ -x "${REPO_ROOT}/scripts/data/import-agent-instructions.sh" ]] || return 0
+  run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
+    "${BASH_BIN}" "${REPO_ROOT}/scripts/data/import-agent-instructions.sh" > "${AGENT_INSTRUCTIONS_IMPORT_OUT}"
+}
+
 declare -a STEP_RESULTS=()
 START_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -133,6 +140,7 @@ mkdir -p "$(dirname "${AUTO_REMEDIATE_SUMMARY_OUT}")"
 mkdir -p "$(dirname "${LEARNING_PROCESS_OUT}")"
 mkdir -p "$(dirname "${LEARNING_EXPORT_OUT}")"
 mkdir -p "$(dirname "${AQ_QA_PHASE0_OUT}")"
+mkdir -p "$(dirname "${AGENT_INSTRUCTIONS_IMPORT_OUT}")"
 
 if [[ -x "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" ]]; then
   ready=false
@@ -197,6 +205,10 @@ fi
 
 if [[ -x "${REPO_ROOT}/scripts/ai/aq-report" ]]; then
   run_step "aq_report_refresh" refresh_aq_report_snapshot || true
+fi
+
+if [[ -x "${REPO_ROOT}/scripts/data/import-agent-instructions.sh" ]]; then
+  run_step "agent_instructions_import" run_agent_instructions_import || true
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" ]]; then
