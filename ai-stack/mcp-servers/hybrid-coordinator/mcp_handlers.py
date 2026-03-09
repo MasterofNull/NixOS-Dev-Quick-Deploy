@@ -22,8 +22,11 @@ Usage in server.py:
 
 import json
 import logging
+import os
+from pathlib import Path
 import time as _time
 from typing import Any, Callable, Dict, List, Optional
+import asyncio
 
 from mcp.types import TextContent, Tool
 from shared.tool_audit import write_audit_entry as _write_audit_entry
@@ -31,6 +34,73 @@ from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 
 logger = logging.getLogger("hybrid-coordinator")
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_AQ_QA_SCRIPT = _REPO_ROOT / "scripts" / "ai" / "aq-qa"
+_QA_PHASE_ALIASES = {"phase0": "0", "phase1": "1", "phase2": "2", "phase3": "3", "all": "all"}
+
+
+def _normalize_qa_phase(value: Any) -> str:
+    phase = str(value or "0").strip().lower()
+    if not phase:
+        return "0"
+    return _QA_PHASE_ALIASES.get(phase, phase)
+
+
+async def _run_qa_check(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    phase = _normalize_qa_phase(arguments.get("phase", "0"))
+    output_format = str(arguments.get("format", "json")).strip().lower()
+    include_sudo = bool(arguments.get("include_sudo", False))
+    timeout_seconds = int(arguments.get("timeout_seconds", 60) or 60)
+    if timeout_seconds < 5:
+        timeout_seconds = 5
+    if output_format not in {"json", "text"}:
+        raise ValueError("format must be 'json' or 'text'")
+    if phase not in {"0", "1", "2", "3", "all"}:
+        raise ValueError("phase must be one of 0, 1, 2, 3, all")
+    if not _AQ_QA_SCRIPT.exists():
+        raise FileNotFoundError(f"aq-qa script not found at {_AQ_QA_SCRIPT}")
+
+    cmd = [str(_AQ_QA_SCRIPT), phase]
+    if output_format == "json":
+        cmd.append("--json")
+    if include_sudo:
+        cmd.append("--sudo")
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        cwd=str(_REPO_ROOT),
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        raise TimeoutError(f"aq-qa timed out after {timeout_seconds}s")
+
+    stdout_text = stdout.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr.decode("utf-8", errors="replace").strip()
+    result: Dict[str, Any] = {
+        "status": "ok" if proc.returncode == 0 else "failed",
+        "phase": phase,
+        "format": output_format,
+        "exit_code": int(proc.returncode),
+        "command": cmd,
+        "stdout": stdout_text if output_format == "text" else None,
+        "stderr": stderr_text or None,
+    }
+    if output_format == "json":
+        try:
+            result["qa_result"] = json.loads(stdout_text or "{}")
+        except json.JSONDecodeError as exc:
+            result["status"] = "error"
+            result["parse_error"] = str(exc)
+            result["stdout"] = stdout_text
+    return result
 
 
 def _write_audit(
@@ -374,6 +444,39 @@ TOOL_DEFINITIONS: List[Tool] = [
             "required": ["query"],
         },
     ),
+    Tool(
+        name="run_qa_check",
+        description=(
+            "Run the repo QA phase runner (`aq-qa`) with bounded timeout and return "
+            "structured validation output. Use this for service health, runtime smoke, "
+            "or infrastructure checks during validation and reviewer gates."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "phase": {
+                    "type": "string",
+                    "description": "QA phase to run: 0, 1, 2, 3, phase0-phase3, or all",
+                    "default": "0",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["json", "text"],
+                    "default": "json",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "default": 60,
+                    "minimum": 5,
+                    "maximum": 600,
+                },
+                "include_sudo": {
+                    "type": "boolean",
+                    "default": False,
+                },
+            },
+        },
+    ),
 ]
 
 
@@ -567,6 +670,25 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 max_result_chars=arguments.get("max_result_chars"),
             )
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "run_qa_check":
+            result = await _run_qa_check(arguments)
+            qa_result = result.get("qa_result") if isinstance(result, dict) else {}
+            _write_audit(
+                name,
+                'success' if result.get("status") == "ok" else 'error',
+                result.get("stderr"),
+                (_time.perf_counter() - _start) * 1000,
+                arguments,
+                metadata={
+                    "phase": result.get("phase"),
+                    "exit_code": result.get("exit_code"),
+                    "qa_passed": (qa_result or {}).get("passed") if isinstance(qa_result, dict) else None,
+                    "qa_failed": (qa_result or {}).get("failed") if isinstance(qa_result, dict) else None,
+                    "qa_skipped": (qa_result or {}).get("skipped") if isinstance(qa_result, dict) else None,
+                },
+            )
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         else:

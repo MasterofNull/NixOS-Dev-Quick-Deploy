@@ -66,6 +66,7 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
         add("tree_search", "/search/tree", "Broader branch-and-aggregate retrieval for infra issues.")
 
     if any(k in q for k in ("test", "validate", "verify", "smoke", "check")):
+        add("qa_check", "mcp://run_qa_check", "Run aq-qa phases for bounded repo-aware validation evidence.")
         add("harness_eval", "/harness/eval", "Deterministic eval scorecard for acceptance checks.")
         add("health", "/health", "Runtime stack health and capability flags.")
 
@@ -157,6 +158,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["query", "mode", "expected_keywords"],
         "output_focus": "Pass/fail summary, score, and failure category.",
     },
+    "qa_check": {
+        "method": "MCP",
+        "mcp_tool": "run_qa_check",
+        "args": ["phase", "format", "timeout_seconds"],
+        "output_focus": "QA phase summary with pass/fail/skipped counts and failing checks only.",
+    },
     "health": {
         "method": "GET",
         "mcp_tool": "",
@@ -203,7 +210,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
             "id": "execute",
             "tools": pick(["route_search", "memory_recall", "workflow_run_start", "loop_orchestrate", "feedback"]),
         },
-        {"id": "validate", "tools": pick(["harness_eval", "health", "loop_status", "learning_stats"])},
+        {"id": "validate", "tools": pick(["qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
         {"id": "handoff", "tools": pick(["feedback", "learning_stats"])},
     ]
     return [phase for phase in phases if phase["tools"]]
