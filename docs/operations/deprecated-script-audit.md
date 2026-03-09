@@ -46,7 +46,6 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `scripts/automation/run-dashboard-collector-full.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-lite.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
-| `scripts/data/populate-qdrant-collections.sh` | 2 | 0 | 0 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/sync-npm-ai-tools.sh` | 2 | 0 | 0 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/deploy/fast-rebuild.sh` | 2 | 0 | 0 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |
 | `scripts/deploy/install-lemonade-gui.sh` | 2 | 0 | 0 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
