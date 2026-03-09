@@ -121,6 +121,22 @@ post_doc "Switchboard profile routing header verification quick reference" \
   "Verify switchboard profile routing headers by sending explicit requests through the hybrid or switchboard HTTP path and checking response metadata plus logged backend/profile selection. Confirm that x-ai-profile or equivalent routing intent maps to the expected local, remote-free, remote-coding, or remote-reasoning lane, and validate with aq-report plus tool-audit metadata rather than assuming header parsing alone."
 delete_gap "verify switchboard response headers for profile routing"
 
+post_doc "Progressive disclosure token efficiency defaults quick reference" \
+  "knowledge/progressive-disclosure-token-efficiency-defaults-quick-reference.md" \
+  "Reduce token overhead by making compact responses the default across prompts, hints, plans, and query flows. Start with the minimum sufficient objective, constraints, concrete repo context, and validation checks, then expand only when a failure, ambiguity, or explicit user request justifies more context. Prefer retrieval and narrow references over prompt stuffing, keep tool catalogs and coaching summaries compact by default, and move verbose diagnostics behind explicit debug or deep-detail opt-ins. Route simple work locally first, escalate to remote only when scope, context length, or prior failures require it, and keep reusable prefixes short so provider-side prompt caching stays effective."
+delete_gap "reduce token overhead through progressive disclosure defaults"
+
+post_doc "Workflow run start intent contract quick reference" \
+  "knowledge/workflow-run-start-intent-contract-quick-reference.md" \
+  "Start workflow execution with a compact intent contract that states the objective, constraints, context scope, validation checks, and requested depth. Use minimum depth by default, add explicit files or services only when they are relevant, and keep routing intent separate from implementation details so the workflow can expand context later if needed. The contract should be concise enough to guide planning without front-loading every diagnostic or recovery step into the initial payload."
+delete_gap "intent contract fields for workflow start"
+delete_gap "show workflow run start intent contract requirements"
+
+post_doc "Qdrant and hybrid routing configuration quick reference" \
+  "knowledge/qdrant-and-hybrid-routing-configuration-quick-reference.md" \
+  "Configure Qdrant and hybrid routing declaratively through Nix options rather than hardcoded URLs. Define ports in nix/modules/core/options.nix, wire them into nix/modules/roles/ai-stack.nix and nix/modules/services/mcp-servers.nix, and let the hybrid coordinator consume injected environment variables such as QDRANT_URL and related service endpoints. Validate with aq-qa 0, check-mcp-health, hybrid /health, and aq-report so storage, retrieval, and routing all confirm the same effective configuration."
+delete_gap "how to configure qdrant and hybrid routing in this repo"
+
 post_doc "Declarative runtime tool security policy quick reference" \
   "knowledge/declarative-runtime-tool-security-policy-quick-reference.md" \
   "Define runtime tool security policy declaratively in ai.aiHarness.runtime.toolSecurity.policy. Configure blocked tools, blocked endpoint patterns, blocked parameter keys, and max parameter string length from Nix options. Keep enforcement enabled and persist safe-audit cache to reduce repeat scanning."
