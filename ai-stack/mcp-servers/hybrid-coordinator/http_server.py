@@ -1517,6 +1517,7 @@ async def run_http_mode(port: int) -> None:
                 ):
                     try:
                         _memory_start = time.perf_counter()
+                        request_context["memory_recall_attempted"] = True
                         memory_result = await _recall_memory(
                             query=query,
                             memory_types=None,
@@ -1532,13 +1533,20 @@ async def run_http_mode(port: int) -> None:
                         if memory_summaries:
                             request_context["memory_recall"] = memory_summaries[:3]
                             tooling_layer["memory_recall"] = memory_summaries[:2]
-                            tooling_layer["executed"].append("memory_recall")
-                            _audit_internal_tool_execution(
-                                request,
-                                "recall_agent_memory",
-                                (time.perf_counter() - _memory_start) * 1000.0,
-                                parameters={"query": query[:200], "result_count": len(memory_summaries[:3])},
-                            )
+                        else:
+                            request_context["memory_recall_miss"] = True
+                            tooling_layer["memory_recall"] = ["no stored prior context matched this continuation query"]
+                        tooling_layer["executed"].append("memory_recall")
+                        _audit_internal_tool_execution(
+                            request,
+                            "recall_agent_memory",
+                            (time.perf_counter() - _memory_start) * 1000.0,
+                            parameters={
+                                "query": query[:200],
+                                "result_count": len(memory_summaries[:3]),
+                                "memory_recall_miss": not bool(memory_summaries),
+                            },
+                        )
                     except Exception as exc:
                         _audit_internal_tool_execution(
                             request,
@@ -1578,6 +1586,13 @@ async def run_http_mode(port: int) -> None:
                     tooling_layer,
                     include_debug_metadata=include_debug_metadata,
                 )
+            if request_context.get("memory_recall_attempted"):
+                metadata = result.get("metadata")
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                    result["metadata"] = metadata
+                metadata["memory_recall_attempted"] = True
+                metadata["memory_recall_miss"] = bool(request_context.get("memory_recall_miss"))
             if request_context.get("memory_recall"):
                 result["memory_recall"] = request_context.get("memory_recall")
             if prompt_coaching:
