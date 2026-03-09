@@ -644,33 +644,33 @@ def _build_workflow_plan(
         "phases": [
             {
                 "id": "discover",
-                "goal": "Collect only high-signal context first.",
+                "goal": "Collect high-signal context first.",
                 "tools": [t for t in tools if t["name"] in {"hints", "discovery", "route_search", "tree_search"}],
-                "exit_criteria": "Top risks and likely root causes identified.",
+                "exit_criteria": "Top risks identified.",
             },
             {
                 "id": "plan",
-                "goal": "Convert findings into discrete steps with verification points.",
+                "goal": "Turn findings into verified steps.",
                 "tools": [t for t in tools if t["name"] in {"hints", "discovery"}],
-                "exit_criteria": "Ordered task list with acceptance checks exists.",
+                "exit_criteria": "Ordered task list exists.",
             },
             {
                 "id": "execute",
-                "goal": "Apply changes in small reversible increments.",
+                "goal": "Apply small reversible changes.",
                 "tools": [t for t in tools if t["name"] in {"route_search", "memory_recall", "feedback"}],
                 "exit_criteria": "Primary objective implemented.",
             },
             {
                 "id": "validate",
-                "goal": "Run smoke/eval checks and confirm expected behavior.",
+                "goal": "Run checks and confirm behavior.",
                 "tools": [t for t in tools if t["name"] in {"qa_check", "harness_eval", "health", "learning_stats"}],
-                "exit_criteria": "All mandatory checks pass or failures are documented.",
+                "exit_criteria": "Checks pass or failures are documented.",
             },
             {
                 "id": "handoff",
-                "goal": "Capture outcomes, residual risk, and rollback path.",
+                "goal": "Capture outcomes, risk, and rollback.",
                 "tools": [t for t in tools if t["name"] in {"feedback", "learning_stats"}],
-                "exit_criteria": "Actionable handoff summary ready.",
+                "exit_criteria": "Handoff summary ready.",
             },
         ],
         "token_policy": {
