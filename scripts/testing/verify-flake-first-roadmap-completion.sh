@@ -351,6 +351,8 @@ check_pattern "nixos-quick-deploy.sh" 'historical_watchlist\.has_items' 'quick d
 check_pattern "nixos-quick-deploy.sh" 'Historical watchlist \(\$\{historical_watch_window\}\)' 'quick deploy summary surfaces background watchlist items'
 check_pattern "nixos-quick-deploy.sh" 'historical_watch_label=.*backend OK .*valid calls' 'quick deploy summary distinguishes backend reliability in historical watchlist output'
 check_pattern "nixos-quick-deploy.sh" 'historical_watch_label="\$\{historical_watch_label\}; \+\$\{historical_watch_flaky_invalid\} invalid"' 'quick deploy summary surfaces invalid-input counts separately in historical watchlist output'
+check_pattern "nixos-quick-deploy.sh" 'historical_watch_label=.*backend OK .*% .*valid calls' 'quick deploy summary avoids duplicated percent markers in backend watchlist output'
+check_pattern "nixos-quick-deploy.sh" 'Top recommended next actions: none' 'quick deploy summary collapses no-action recommendation state into a neutral status line'
 check_pattern "scripts/ai/aq-report" '\| Tool \| Valid \| P50 ms \| P95 ms \| Success % \| Err \| 4xx \|' 'aq-report markdown tool table labels backend-only calls as valid'
 check_pattern "scripts/ai/aq-report" "\{'Tool':<30\} \{'Valid':>6\}" 'aq-report text tool table labels backend-only calls as valid'
 check_pattern "scripts/ai/aq-report" 'Valid counts backend-attributable calls only; invalid client requests are shown in `?4xx`?' 'aq-report explains valid-call semantics inline in text and markdown outputs'
