@@ -171,7 +171,7 @@ def _c(code: str, text: str) -> str:
     return f"{code}{text}{_ANSI_RESET}" if _USE_COLOR else text
 
 
-def _augment_for_agent(result: Dict[str, Any], agent: str) -> Dict[str, Any]:
+def _augment_for_agent(result: Dict[str, Any], agent: str, debug_meta: bool = False) -> Dict[str, Any]:
     result.setdefault("feedback_contract", {
         "endpoint": "/hints/feedback",
         "required_any_of": ["helpful", "score"],
@@ -196,11 +196,13 @@ def _augment_for_agent(result: Dict[str, Any], agent: str) -> Dict[str, Any]:
         # Reformat as a Continue.dev context item
         text_lines = [f"# AI Stack Hints for: {result.get('query', '')}\n"]
         for i, h in enumerate(hints, 1):
-            text_lines.append(
+            block = (
                 f"{i}. [{h['type']}] {h['title']} ({h.get('score', 0):.0%})\n"
                 f"   {h.get('snippet', '')[:100]}\n"
-                f"   Reason: {h.get('reason', '')}\n"
             )
+            if debug_meta and h.get("reason"):
+                block += f"   Reason: {h.get('reason', '')}\n"
+            text_lines.append(block)
         result["continue_context"] = {
             "name": "aq-hints",
             "description": "AI Stack workflow hints",
@@ -227,7 +229,7 @@ def _format_json(result: Dict[str, Any]) -> str:
     return json.dumps(result, indent=2, default=str)
 
 
-def _format_text(result: Dict[str, Any], agent: str) -> str:
+def _format_text(result: Dict[str, Any], agent: str, debug_meta: bool = False) -> str:
     hints = result.get("hints", [])
     query = result.get("query", "")
     coaching = result.get("prompt_coaching", {})
@@ -263,7 +265,7 @@ def _format_text(result: Dict[str, Any], agent: str) -> str:
             if snippet:
                 lines.append(f"     → {snippet}{'…' if len(h.get('snippet','')) > 120 else ''}")
             reason = h.get("reason", "")
-            if reason:
+            if debug_meta and reason:
                 lines.append(f"     {_c(_ANSI_DIM, 'Reason: ' + reason)}")
             lines.append("")
 
@@ -326,7 +328,7 @@ def _format_shell_complete(result: Dict[str, Any]) -> str:
 def main() -> None:
     args = _parse_args()
     result = get_hints(args.query, args.context, args.max, args.agent, args.debug_meta)
-    result = _augment_for_agent(result, args.agent)
+    result = _augment_for_agent(result, args.agent, args.debug_meta)
 
     if args.fmt == "json":
         print(_format_json(result))
@@ -335,7 +337,7 @@ def main() -> None:
         if output:
             print(output)
     else:
-        print(_format_text(result, args.agent))
+        print(_format_text(result, args.agent, args.debug_meta))
 
 
 if __name__ == "__main__":
