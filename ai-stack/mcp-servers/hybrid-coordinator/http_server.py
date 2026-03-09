@@ -674,20 +674,24 @@ async def _save_runtime_registry(data: Dict[str, Any]) -> None:
 
 def _is_continuation_query(query: str) -> bool:
     query_lower = str(query or "").lower()
-    return any(
-        token in query_lower
-        for token in (
-            "resume",
-            "continue",
-            "follow-up",
-            "follow up",
-            "previous",
-            "prior context",
-            "pick up where",
-            "last agent",
-            "ongoing",
-        )
+    direct_tokens = (
+        "resume",
+        "continue",
+        "follow-up",
+        "follow up",
+        "prior context",
+        "pick up where",
+        "last agent",
+        "ongoing",
     )
+    if any(token in query_lower for token in direct_tokens):
+        return True
+    has_previous_ref = any(token in query_lower for token in ("previous", "prior", "last"))
+    has_resume_target = any(
+        token in query_lower
+        for token in ("context", "patch", "deploy", "troubleshooting", "debug", "loop", "work")
+    )
+    return has_previous_ref and has_resume_target
 
 
 def _build_workflow_plan(
