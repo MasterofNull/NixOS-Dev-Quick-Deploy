@@ -1671,6 +1671,17 @@ def _autorun_block_context(recent_semantic_autorun: Optional[Dict[str, Any]] = N
     return f"last hour blocked {recent_blocked} tool actions across {recent_calls} autorun calls"
 
 
+def _format_retrieval_mix(mix: Optional[Dict[str, Any]]) -> str:
+    if not mix:
+        return "n/a"
+    parts: List[str] = []
+    for key in ("route_search", "tree_search", "recall_agent_memory"):
+        value = int(mix.get(key, 0) or 0)
+        if value > 0:
+            parts.append(f"{key}={value}")
+    return ", ".join(parts) if parts else "none"
+
+
 def rag_posture(
     tool_stats: Dict[str, dict],
     recent_tool_stats: Dict[str, dict],
@@ -1679,8 +1690,16 @@ def rag_posture(
 ) -> Dict[str, Any]:
     """Summarize retrieval/RAG posture from live traffic, cache posture, and actionable gaps."""
     retrieval_tools = ("route_search", "tree_search", "recall_agent_memory")
-    recent_calls = sum(int((recent_tool_stats.get(name) or {}).get("calls", 0) or 0) for name in retrieval_tools)
-    total_calls = sum(int((tool_stats.get(name) or {}).get("calls", 0) or 0) for name in retrieval_tools)
+    recent_mix = {
+        name: int((recent_tool_stats.get(name) or {}).get("calls", 0) or 0)
+        for name in retrieval_tools
+    }
+    total_mix = {
+        name: int((tool_stats.get(name) or {}).get("calls", 0) or 0)
+        for name in retrieval_tools
+    }
+    recent_calls = sum(recent_mix.values())
+    total_calls = sum(total_mix.values())
     actionable_gaps = [
         g for g in gaps
         if int(g.get("occurrences", 1) or 0) >= 3
@@ -1699,9 +1718,14 @@ def rag_posture(
     if cache.get("available"):
         total_cache = int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0)
         hit_pct = cache.get("hit_pct")
+        if status != "watch" and recent_calls > 0 and total_cache < 20:
+            status = "low_sample"
+            reasons.append(f"cache sample still warming ({total_cache} samples)")
         if total_cache >= 20 and hit_pct is not None and float(hit_pct) < 20.0:
             status = "watch"
             reasons.append(f"cache hit rate {_na(hit_pct, '.1f', '%')}")
+    dominant_recent = max(recent_mix.items(), key=lambda item: item[1])[0] if recent_calls > 0 else None
+    dominant_total = max(total_mix.items(), key=lambda item: item[1])[0] if total_calls > 0 else None
     return {
         "available": True,
         "status": status,
@@ -1710,6 +1734,12 @@ def rag_posture(
         "actionable_gap_count": len(actionable_gaps),
         "cache_hit_pct": cache.get("hit_pct") if cache.get("available") else None,
         "cache_context": cache_context,
+        "retrieval_mix": {
+            "recent": recent_mix,
+            "total": total_mix,
+            "dominant_recent": dominant_recent,
+            "dominant_total": dominant_total,
+        },
         "reasons": reasons,
     }
 
@@ -1951,6 +1981,9 @@ def format_md(
             f"- Recent retrieval calls: **{rag_posture_summary.get('recent_retrieval_calls', 0)}**",
             f"- Actionable gaps: **{rag_posture_summary.get('actionable_gap_count', 0)}**",
         ]
+        recent_mix = ((rag_posture_summary.get("retrieval_mix") or {}).get("recent") or {})
+        if recent_mix:
+            lines.append(f"- Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"- Cache hit rate: **{_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}**")
         cache_context = rag_posture_summary.get("cache_context")
@@ -1958,7 +1991,7 @@ def format_md(
             lines.append(f"- Cache context: {cache_context}")
         reasons = rag_posture_summary.get("reasons") or []
         if reasons:
-            lines.append(f"- Watch reasons: {', '.join(str(r) for r in reasons)}")
+            lines.append(f"- Notes: {', '.join(str(r) for r in reasons)}")
     else:
         lines.append("*RAG posture unavailable.*")
     lines.append("")
@@ -2318,6 +2351,9 @@ def format_text(
             f"  Recent retrieval calls: {rag_posture_summary.get('recent_retrieval_calls', 0)}",
             f"  Actionable gaps: {rag_posture_summary.get('actionable_gap_count', 0)}",
         ]
+        recent_mix = ((rag_posture_summary.get("retrieval_mix") or {}).get("recent") or {})
+        if recent_mix:
+            lines.append(f"  Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"  Cache hit rate: {_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}")
         cache_context = rag_posture_summary.get("cache_context")
@@ -2325,7 +2361,7 @@ def format_text(
             lines.append(f"  Cache context: {cache_context}")
         reasons = rag_posture_summary.get("reasons") or []
         if reasons:
-            lines.append(f"  Watch reasons: {', '.join(str(r) for r in reasons)}")
+            lines.append(f"  Notes: {', '.join(str(r) for r in reasons)}")
     else:
         lines.append("  RAG posture unavailable.")
     lines.append("")

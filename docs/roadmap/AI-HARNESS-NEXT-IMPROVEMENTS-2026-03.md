@@ -106,3 +106,9 @@ Default batching rule:
 - Keep historical hint concentration visible without promoting it to an active recommendation
 - Surface first alternate remediation candidates directly in the report and deploy summary
 - Goal: steer future loops from the live summary instead of digging through raw JSON
+
+### Batch G — RAG and Retrieval Utilization
+- Distinguish healthy retrieval posture from low-sample cache posture
+- Surface recent retrieval mix across route search, tree search, and memory recall
+- Keep RAG, hint steering, and operator guidance aligned in the same report/deploy summary loop
+- Goal: treat embedded agent memory + retrieval as a first-class steering system, not a separate subsystem
