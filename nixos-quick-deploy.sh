@@ -405,6 +405,7 @@ print_completion_test_results() {
     local rag_posture_status rag_posture_recent rag_posture_gaps rag_posture_label
     local rag_recent_route rag_recent_tree rag_recent_memory rag_mix_label
     local rag_memory_share rag_prewarm_prompt rag_prewarm_label
+    local provider_fallback_window provider_fallback_count provider_fallback_pct provider_fallback_status provider_fallback_label
     local agent_lesson_label
     local i=0
 
@@ -439,6 +440,10 @@ print_completion_test_results() {
     rag_recent_memory="$(printf '%s' "${json}" | jq -r '.rag_posture.retrieval_mix.recent.recall_agent_memory // 0')"
     rag_memory_share="$(printf '%s' "${json}" | jq -r '.rag_posture.memory_recall_share_pct // "n/a"')"
     rag_prewarm_prompt="$(printf '%s' "${json}" | jq -r '.rag_posture.prewarm_candidates[0].id // empty')"
+    provider_fallback_window="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.window // "1h"')"
+    provider_fallback_count="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_count // 0')"
+    provider_fallback_pct="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_pct // "n/a"')"
+    provider_fallback_status="$(printf '%s' "${json}" | jq -r '(.provider_fallback_recovery.status_counts[0] // empty) | if length == 2 then "\(.[0])=\(.[1])" else empty end')"
     agent_lesson_label="$(printf '%s' "${json}" | jq -r '.agent_lessons.candidates[0] | if .hint_id then "\(.agent):\(.direction) \(.hint_id)" else empty end')"
     report_generated_at="$(printf '%s' "${json}" | jq -r '.generated_at // empty')"
     recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
@@ -476,6 +481,15 @@ print_completion_test_results() {
     rag_posture_label="${rag_posture_status} (recent=${rag_posture_recent}, gaps=${rag_posture_gaps})"
     rag_mix_label="route=${rag_recent_route} tree=${rag_recent_tree} memory=${rag_recent_memory}"
     rag_prewarm_label="${rag_prewarm_prompt:-none}"
+    if [[ "${provider_fallback_count}" == "0" ]]; then
+      provider_fallback_label="none (${provider_fallback_window})"
+    else
+      provider_fallback_label="${provider_fallback_count} recovered (${provider_fallback_pct}%"
+      if [[ -n "${provider_fallback_status}" ]]; then
+        provider_fallback_label="${provider_fallback_label}; upstream ${provider_fallback_status}"
+      fi
+      provider_fallback_label="${provider_fallback_label})"
+    fi
     if [[ "${rag_memory_share}" != "n/a" ]]; then
       rag_memory_share="${rag_memory_share}%"
     fi
@@ -531,6 +545,7 @@ PY
     printf '  %-28s %s\n' "RAG posture" "${rag_posture_label}"
     printf '  %-28s %s\n' "RAG mix (1h)" "${rag_mix_label}"
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
+    printf '  %-28s %s\n' "Provider fallback (${provider_fallback_window})" "${provider_fallback_label}"
     printf '  %-28s %s\n' "Prewarm candidate" "${rag_prewarm_label}"
     if [[ -n "${agent_lesson_label}" ]]; then
       printf '  %-28s %s\n' "Agent lesson" "${agent_lesson_label}"
