@@ -1417,6 +1417,7 @@ def build_recommendations(
             if isinstance(candidate, dict) and str(candidate.get("id", "")).strip()
         )
         memory_share = rag_posture_summary.get("memory_recall_share_pct")
+        memory_miss_pct = rag_posture_summary.get("memory_recall_miss_pct")
         if rag_status == "low_sample":
             suffix = f" Candidate prewarm prompts: {prewarm_label}." if prewarm_label else ""
             recs.append(
@@ -1430,10 +1431,16 @@ def build_recommendations(
                 f"Prewarm recent low-cost patterns first: {prewarm_label}."
             )
         if memory_share is not None and float(memory_share) <= 15.0:
-            recs.append(
-                f"Memory recall usage is low ({memory_share}% of recent retrieval calls). "
-                "For ongoing repo/system tasks, prefer memory recall before broad route_search when prior context exists."
-            )
+            if memory_miss_pct is not None and float(memory_miss_pct) >= 50.0:
+                recs.append(
+                    f"Memory recall misses are high ({memory_miss_pct}% of recent attempts). "
+                    "Refresh stored milestone summaries or persist sharper task checkpoints before relying on broad route_search."
+                )
+            else:
+                recs.append(
+                    f"Memory recall usage is low ({memory_share}% of recent retrieval calls). "
+                    "For ongoing repo/system tasks, prefer memory recall before broad route_search when prior context exists."
+                )
 
     # Query gaps — check AIDB for existing docs before recommending import
     top_gaps = [
@@ -1872,9 +1879,27 @@ def _rag_prewarm_candidates(
     return candidates[:3]
 
 
+def _memory_recall_quality(entries: List[dict]) -> Dict[str, Any]:
+    attempts = 0
+    misses = 0
+    for entry in entries:
+        if str(entry.get("tool_name", "")).strip().lower() != "recall_agent_memory":
+            continue
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        attempts += 1
+        if bool(metadata.get("memory_recall_miss")):
+            misses += 1
+    return {
+        "attempts": attempts,
+        "misses": misses,
+        "miss_pct": round(100.0 * misses / attempts, 1) if attempts else None,
+    }
+
+
 def rag_posture(
     tool_stats: Dict[str, dict],
     recent_tool_stats: Dict[str, dict],
+    recent_audit_entries: List[dict],
     cache: Dict[str, Any],
     gaps: List[dict],
     top_prompts: Optional[List[dict]] = None,
@@ -1920,8 +1945,12 @@ def rag_posture(
     route_recent = int(recent_mix.get("route_search", 0) or 0)
     memory_recent = int(recent_mix.get("recall_agent_memory", 0) or 0)
     tree_recent = int(recent_mix.get("tree_search", 0) or 0)
+    recall_quality = _memory_recall_quality(recent_audit_entries)
+    recall_miss_pct = recall_quality.get("miss_pct")
     if route_recent >= 12 and memory_recent <= max(2, int(route_recent * 0.15)):
         reasons.append("memory recall is lightly used relative to route_search")
+    if recall_miss_pct is not None and float(recall_miss_pct) >= 50.0:
+        reasons.append(f"memory recall misses are high ({_na(recall_miss_pct, '.1f', '%')})")
     prewarm_candidates = _rag_prewarm_candidates(top_prompts or [], recent_mix)
     return {
         "available": True,
@@ -1938,6 +1967,9 @@ def rag_posture(
             "dominant_total": dominant_total,
         },
         "memory_recall_share_pct": round(100.0 * memory_recent / recent_calls, 1) if recent_calls else None,
+        "memory_recall_attempts": int(recall_quality.get("attempts", 0) or 0),
+        "memory_recall_misses": int(recall_quality.get("misses", 0) or 0),
+        "memory_recall_miss_pct": recall_miss_pct,
         "tree_search_share_pct": round(100.0 * tree_recent / recent_calls, 1) if recent_calls else None,
         "prewarm_candidates": prewarm_candidates,
         "reasons": reasons,
@@ -2186,8 +2218,11 @@ def format_md(
         if recent_mix:
             lines.append(f"- Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
         memory_share = rag_posture_summary.get("memory_recall_share_pct")
+        memory_miss_pct = rag_posture_summary.get("memory_recall_miss_pct")
         if memory_share is not None:
             lines.append(f"- Memory recall share: **{_na(memory_share, '.1f', '%')}**")
+        if memory_miss_pct is not None:
+            lines.append(f"- Memory recall miss rate: **{_na(memory_miss_pct, '.1f', '%')}**")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"- Cache hit rate: **{_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}**")
         cache_context = rag_posture_summary.get("cache_context")
@@ -2581,8 +2616,11 @@ def format_text(
         if recent_mix:
             lines.append(f"  Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
         memory_share = rag_posture_summary.get("memory_recall_share_pct")
+        memory_miss_pct = rag_posture_summary.get("memory_recall_miss_pct")
         if memory_share is not None:
             lines.append(f"  Memory recall share: {_na(memory_share, '.1f', '%')}")
+        if memory_miss_pct is not None:
+            lines.append(f"  Memory recall miss rate: {_na(memory_miss_pct, '.1f', '%')}")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"  Cache hit rate: {_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}")
         cache_context = rag_posture_summary.get("cache_context")
@@ -2988,7 +3026,7 @@ def main() -> None:
         [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
         key=lambda x: -x["mean_score"],
     )[:3]
-    rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, cache, gaps, top_prompts)
+    rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, recent_audit_entries, cache, gaps, top_prompts)
     agent_lessons = agent_lesson_candidates(since_dt)
     hint_diversity_stats = hint_diversity(adoption)
     recent_hint_adoption = hint_adoption(recent_cutoff)

@@ -9,7 +9,7 @@ source "${REPO_ROOT}/config/service-endpoints.sh"
 REPORT_PATH="${AQ_REPORT_PATH:-/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json}"
 HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
 MAX_PROMPTS=2
-REPLAY_COUNT=1
+REPLAY_COUNT=2
 JSON_OUTPUT=false
 declare -a PROMPT_IDS=()
 declare -a SELECTED_PROMPT_IDS=()

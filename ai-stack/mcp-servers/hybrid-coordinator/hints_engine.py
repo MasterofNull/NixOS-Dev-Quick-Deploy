@@ -1624,6 +1624,7 @@ class HintsEngine:
             cache_context = str(rag_posture.get("cache_context", "") or "").strip()
             prewarm_candidates = rag_posture.get("prewarm_candidates") or []
             memory_share = rag_posture.get("memory_recall_share_pct")
+            memory_miss_pct = rag_posture.get("memory_recall_miss_pct")
             query_focus = any(
                 token in query_lower
                 for token in (
@@ -1667,7 +1668,28 @@ class HintsEngine:
                         agent_hints={},
                     )
                 )
-            if continuation_focus and memory_share is not None and float(memory_share) <= 20.0 and recent_calls >= 8:
+            if (
+                continuation_focus
+                and memory_miss_pct is not None
+                and float(memory_miss_pct) >= 50.0
+                and recent_calls >= 8
+            ):
+                hints.append(
+                    Hint(
+                        id="runtime_resume_memory_refresh",
+                        type="runtime_signal",
+                        title="Continuation memory is being attempted, but stored context quality is weak",
+                        score=0.84,
+                        snippet=(
+                            f"This looks like continuation work, and memory recall misses {float(memory_miss_pct):.1f}% "
+                            "of recent attempts. Persist clearer milestone summaries or recent task checkpoints before broad route_search."
+                        )[:220],
+                        reason="Derived from live aq-report memory-recall miss rate and a continuation-style query",
+                        tags=["runtime", "rag", "memory", "continuation"],
+                        agent_hints={},
+                    )
+                )
+            elif continuation_focus and memory_share is not None and float(memory_share) <= 20.0 and recent_calls >= 8:
                 hints.append(
                     Hint(
                         id="runtime_resume_memory_first",
