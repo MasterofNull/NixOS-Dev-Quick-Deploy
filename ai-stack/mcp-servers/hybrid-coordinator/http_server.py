@@ -1634,11 +1634,12 @@ async def run_http_mode(port: int) -> None:
                 dataset_path = await _learning_pipeline.export_dataset_for_training()
             else:
                 dataset_path = await _generate_dataset()
+            dataset_path_str = str(dataset_path) if dataset_path else ""
             count = 0
-            if dataset_path and Path(dataset_path).exists():
-                with open(dataset_path, "r") as f:
+            if dataset_path_str and Path(dataset_path_str).exists():
+                with open(dataset_path_str, "r") as f:
                     count = sum(1 for _ in f)
-            return web.json_response({"status": "ok", "dataset_path": dataset_path, "examples": count})
+            return web.json_response({"status": "ok", "dataset_path": dataset_path_str, "examples": count})
         except Exception as exc:
             return web.json_response({"status": "error", "detail": str(exc)}, status=500)
 
