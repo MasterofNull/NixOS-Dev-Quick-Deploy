@@ -726,6 +726,37 @@ def _query_prompt_coaching_response(
     return enriched
 
 
+def _compact_tooling_layer_response(
+    tooling_layer: Dict[str, Any],
+    include_debug_metadata: bool = False,
+) -> Dict[str, Any]:
+    """Keep normal query tooling metadata compact and operational."""
+    planned_tools = list(tooling_layer.get("planned_tools", []) or [])
+    executed_tools = list(tooling_layer.get("executed", []) or [])
+    hints = list(tooling_layer.get("hints", []) or [])
+    tool_security = tooling_layer.get("tool_security", {})
+    if not isinstance(tool_security, dict):
+        tool_security = {}
+    compact = {
+        "enabled": bool(tooling_layer.get("enabled", False)),
+        "planned_tools": planned_tools,
+        "planned_count": len(planned_tools),
+        "executed": executed_tools,
+        "executed_count": len(executed_tools),
+        "hints_count": len(hints),
+        "tool_security": {
+            "blocked_count": len(tool_security.get("blocked", []) or []),
+            "cache_hits": int(tool_security.get("cache_hits", 0) or 0),
+            "first_seen": int(tool_security.get("first_seen", 0) or 0),
+        },
+    }
+    if include_debug_metadata:
+        enriched = dict(tooling_layer)
+        enriched["summary"] = compact
+        return enriched
+    return compact
+
+
 def _session_lineage(sessions: Dict[str, Any], session_id: str) -> List[str]:
     """Return root->...->session lineage for a session id."""
     lineage: List[str] = []
@@ -1328,7 +1359,10 @@ async def run_http_mode(port: int) -> None:
                 generate_response=bool(data.get("generate_response", False)),
             )
             if semantic_tooling_autorun:
-                result["tooling_layer"] = tooling_layer
+                result["tooling_layer"] = _compact_tooling_layer_response(
+                    tooling_layer,
+                    include_debug_metadata=include_debug_metadata,
+                )
             if prompt_coaching:
                 result["prompt_coaching"] = _query_prompt_coaching_response(
                     prompt_coaching,
