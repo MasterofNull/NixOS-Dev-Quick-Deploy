@@ -1277,6 +1277,62 @@ class HintsEngine:
         agent = (agent_type or "").strip().lower()
         return agent if agent in _AGENT_STRENGTHS else "codex"
 
+    def _estimate_prompt_tokens(self, text: str) -> int:
+        return max(1, (len(text or "") + 3) // 4)
+
+    def _build_token_discipline(
+        self,
+        query_text: str,
+        query_lower: str,
+        missing: List[str],
+        recommended_agent: str,
+    ) -> Dict[str, object]:
+        estimated_input_tokens = self._estimate_prompt_tokens(query_text)
+        remote_warranted = any(
+            token in query_lower
+            for token in (
+                "architecture",
+                "tradeoff",
+                "compare",
+                "migration",
+                "cross-file",
+                "multi-file",
+                "deep analysis",
+                "research",
+                "provider",
+                "openrouter",
+                "large context",
+            )
+        )
+        if remote_warranted or estimated_input_tokens >= 350:
+            spend_tier = "deep"
+            recommended_budget = 2200
+            rationale = "Use higher token spend only for architecture, broad comparisons, or large-context execution."
+        elif missing or estimated_input_tokens <= 120:
+            spend_tier = "lean"
+            recommended_budget = 600
+            rationale = "Keep the first pass compact until the task shape and failing layer are concrete."
+        else:
+            spend_tier = "standard"
+            recommended_budget = 1200
+            rationale = "Use a bounded implementation budget once the prompt has objective, context, and validation."
+
+        return {
+            "estimated_input_tokens": estimated_input_tokens,
+            "spend_tier": spend_tier,
+            "recommended_input_budget": recommended_budget,
+            "remote_warranted": remote_warranted,
+            "rationale": rationale,
+            "tactics": [
+                "Start with a brief prompt plus retrieval/hints instead of pasting full background.",
+                "Escalate token spend only after a concrete gap, failed lean pass, or proven high-context need.",
+                "Cloud/provider-routed models remove local RAM pressure, but they still need explicit budget discipline.",
+                "Use free/provider-routed models for experimentation or low-stakes retries, not as a default for every task.",
+                "Keep stable prompt prefixes and repeated instructions compact so provider-side prompt caching can work.",
+                f"Route high-judgment work to {recommended_agent}, but keep the request scoped before increasing budget.",
+            ],
+        }
+
     def _build_prompt_coaching(self, query: str, agent_type: str) -> Dict[str, object]:
         query_text = str(query or "").strip()
         query_lower = query_text.lower()
@@ -1293,12 +1349,19 @@ class HintsEngine:
         score = round(sum(1 for value in present.values() if value) / max(1, len(_PROMPT_COACHING_FIELDS)), 4)
         recommended_agent = self._choose_recommended_agent(query_lower, agent_type)
         strength = _AGENT_STRENGTHS.get(recommended_agent, _AGENT_STRENGTHS["codex"])
+        token_discipline = self._build_token_discipline(query_text, query_lower, missing, recommended_agent)
         suggested_prompt_lines = [
             f"Objective: {query_text or '<state the concrete outcome>'}",
             "Constraints: list safety, style, or repo rules that must be preserved",
             "Context: name the files, services, endpoints, or failing path",
             "Validation: specify tests, smoke checks, or acceptance evidence",
             f"Agent routing: use {recommended_agent} for {strength['best_for']}",
+            (
+                "Token plan: start "
+                f"{token_discipline['spend_tier']} "
+                f"(~{token_discipline['recommended_input_budget']} input tokens max) "
+                "and only escalate when the narrower pass leaves a concrete gap"
+            ),
         ]
         return {
             "score": score,
@@ -1307,12 +1370,14 @@ class HintsEngine:
             "recommended_agent": recommended_agent,
             "recommended_agent_rationale": strength["best_for"],
             "agent_prompt_shape": strength["prompt_shape"],
+            "token_discipline": token_discipline,
             "suggested_prompt": "\n".join(suggested_prompt_lines),
             "teaching_points": [
                 "Lead with the outcome, not background history.",
                 "Name constraints explicitly so agents do not infer them.",
                 "Include validation expectations to prevent low-signal completions.",
                 "Route architecture questions to Claude, implementation slices to Qwen, and integration/review to Codex.",
+                "Treat cloud or free-provider access as routing flexibility, not permission for unbounded token spend.",
             ],
         }
 
@@ -1329,6 +1394,9 @@ class HintsEngine:
         score = float(coaching.get("score", 0.0) or 0.0)
         recommended_agent = str(coaching.get("recommended_agent", "codex") or "codex")
         agent_strength = _AGENT_STRENGTHS.get(recommended_agent, _AGENT_STRENGTHS["codex"])
+        token_discipline = coaching.get("token_discipline", {})
+        if not isinstance(token_discipline, dict):
+            token_discipline = {}
         hints: List[Hint] = []
 
         if missing:
@@ -1368,6 +1436,31 @@ class HintsEngine:
                     reason="Agent-strength coaching based on the task shape and routing intent",
                     tags=["prompting", "coaching", "agent-routing", recommended_agent],
                     agent_hints={recommended_agent: "Use this task shape as the default routing profile."},
+                )
+            )
+
+        if token_discipline:
+            spend_tier = str(token_discipline.get("spend_tier", "lean") or "lean")
+            recommended_budget = int(token_discipline.get("recommended_input_budget", 0) or 0)
+            rationale = str(token_discipline.get("rationale", "") or "")
+            hints.append(
+                Hint(
+                    id=f"prompt_coaching_tokens_{spend_tier}",
+                    type="prompt_coaching",
+                    title="Apply a token-spend plan before broadening the prompt",
+                    score=0.63 if spend_tier == "lean" else 0.57,
+                    snippet=(
+                        f"Start {spend_tier} with ~{recommended_budget} input tokens max. "
+                        f"{rationale}"
+                    ).strip(),
+                    reason="Token-discipline coaching keeps cloud and remote routing effective without wasting context budget",
+                    tags=["prompting", "coaching", "token-discipline", spend_tier],
+                    agent_hints={
+                        "human": "Keep the first request compact and escalate only after a concrete failure or missing signal.",
+                        "codex": "Enforce progressive disclosure before loading extra docs or expanding context.",
+                        "qwen": "Request the smallest file set and expected behavior before spending larger context budgets.",
+                        "claude": "Use deeper token budgets only for architecture or tradeoff work that clearly needs them.",
+                    },
                 )
             )
 

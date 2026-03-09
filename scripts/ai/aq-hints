@@ -277,6 +277,18 @@ def _format_text(result: Dict[str, Any], agent: str) -> str:
             f"     Score: {_c(_ANSI_BOLD, str(coaching_score) + '%')}"
             f"   Recommended agent: {_c(_ANSI_GREEN, str(coaching.get('recommended_agent', 'codex')))}"
         )
+        token_discipline = coaching.get("token_discipline", {})
+        if isinstance(token_discipline, dict) and token_discipline:
+            spend_tier = str(token_discipline.get("spend_tier", "lean"))
+            recommended_budget = str(token_discipline.get("recommended_input_budget", ""))
+            lines.append(
+                "     Token plan: "
+                + f"{_c(_ANSI_BOLD, spend_tier)}"
+                + (f" (~{recommended_budget} input tokens max)" if recommended_budget else "")
+            )
+            rationale = str(token_discipline.get("rationale", "") or "")
+            if rationale:
+                lines.append(f"     Budget fit: {rationale}")
         missing = coaching.get("missing_fields", [])
         if isinstance(missing, list) and missing:
             lines.append(f"     Missing: {', '.join(str(item) for item in missing)}")
@@ -286,7 +298,7 @@ def _format_text(result: Dict[str, Any], agent: str) -> str:
         suggested_prompt = str(coaching.get("suggested_prompt", "") or "")
         if suggested_prompt:
             lines.append("     Suggested prompt skeleton:")
-            for row in suggested_prompt.splitlines()[:5]:
+            for row in suggested_prompt.splitlines()[:6]:
                 lines.append(f"       {row}")
         lines.append("")
 

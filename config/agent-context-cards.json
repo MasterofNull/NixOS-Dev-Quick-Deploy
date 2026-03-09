@@ -409,11 +409,15 @@
         "Escalate to deep only for the failing layer, not the whole system.",
         "Prefer structured outputs and classifications over long prose logs.",
         "Do not load full docs when a small command or card can answer the next question.",
-        "Add tests around new automation so future agents need less explanatory context."
+        "Add tests around new automation so future agents need less explanatory context.",
+        "Treat cloud-hosted or OpenRouter-routed models as a pressure valve for RAM and context, not as permission for unbounded token spend.",
+        "Use a lean first pass, then increase token budget only when architecture depth, broad comparison, or repeated failures justify it.",
+        "Keep reusable prompt prefixes stable and compact so provider-side prompt caching can reduce repeated token cost."
       ],
       "commands": [
         "aq-context-card --recommend \"<task>\" --level brief --format=json",
         "aq-hints \"<task>\" --format=json --agent=codex",
+        "aq-context-card --card token-discipline --level standard",
         "scripts/testing/check-runtime-incident-tooling.sh"
       ],
       "paths": [
@@ -425,7 +429,9 @@
       "anti_patterns": [
         "front-loading whole runbooks into context before task classification",
         "using deep disclosure as the default",
-        "adding tooling without regression coverage or a short operator contract"
+        "adding tooling without regression coverage or a short operator contract",
+        "sending every task to a remote or free-tier model when a smaller local or retrieval-first pass would answer it",
+        "treating provider flexibility as a substitute for budget guardrails"
       ],
       "expands_to": [
         "repo-baseline",
