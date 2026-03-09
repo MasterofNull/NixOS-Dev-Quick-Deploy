@@ -264,6 +264,7 @@ check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "se
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "capability verification"' 'Quick deploy reuses repo-backed AI gating for capability verification'
 check_pattern "nixos-quick-deploy.sh" 'ai_service_health_targets\(\)' 'Quick deploy centralizes AI service readiness targets'
 check_pattern "nixos-quick-deploy.sh" 'done < <\(ai_service_health_targets\)' 'Quick deploy iterates AI readiness checks from the shared target table'
+check_pattern "nixos-quick-deploy.sh" 'run_nonfatal_postflight_check\(' 'Quick deploy centralizes non-fatal post-flight command handling'
 check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
 check_pattern "nixos-quick-deploy.sh" '/workflow/plan' 'Deploy verification probes workflow plan capability activation'
 check_pattern "nixos-quick-deploy.sh" '/qa/check' 'Deploy verification probes hybrid QA endpoint activation'

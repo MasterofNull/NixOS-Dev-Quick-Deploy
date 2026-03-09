@@ -836,6 +836,20 @@ run_declarative_postflight_converge() {
   return 1
 }
 
+run_nonfatal_postflight_check() {
+  local start_message="$1"
+  local success_message="$2"
+  local failure_message="$3"
+  shift 3
+
+  log "${start_message}"
+  if "$@"; then
+    log "${success_message}"
+  else
+    log "${failure_message}"
+  fi
+}
+
 current_system_generation() {
   readlink -f /nix/var/nix/profiles/system 2>/dev/null || true
 }
@@ -2676,21 +2690,19 @@ fi
 
 if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/health/system-health-check.sh" ]]; then
   section "Post-flight Health"
-  log "Running post-deploy health check"
-  if run_timed_step "System Health Check" "${REPO_ROOT}/scripts/health/system-health-check.sh" --detailed; then
-    log "Post-deploy health check passed"
-  else
-    log "Post-deploy health check reported issues (non-critical)"
-  fi
+  run_nonfatal_postflight_check \
+    "Running post-deploy health check" \
+    "Post-deploy health check passed" \
+    "Post-deploy health check reported issues (non-critical)" \
+    run_timed_step "System Health Check" "${REPO_ROOT}/scripts/health/system-health-check.sh" --detailed
 fi
 
 if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
-  log "Running installed-vs-intended package comparison"
-  if "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" --host "${HOST_NAME}" --profile "${PROFILE}" --flake-ref "${FLAKE_REF}"; then
-    log "Installed-vs-intended comparison passed"
-  else
-    log "Installed-vs-intended comparison reported gaps (non-critical)"
-  fi
+  run_nonfatal_postflight_check \
+    "Running installed-vs-intended package comparison" \
+    "Installed-vs-intended comparison passed" \
+    "Installed-vs-intended comparison reported gaps (non-critical)" \
+    "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" --host "${HOST_NAME}" --profile "${PROFILE}" --flake-ref "${FLAKE_REF}"
 fi
 
 # ---- AI MCP stack post-flight ------------------------------------------------
@@ -2745,12 +2757,11 @@ verify_repo_backed_ai_services_are_live_if_needed
 # for all MCP services. Runs --optional to also report aider-wrapper and
 # supplementary services. Non-blocking: issues are logged but do not abort.
 if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" ]]; then
-  log "Running AI stack MCP health check"
-  if "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" --optional; then
-    log "AI MCP health check passed"
-  else
-    log "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details (non-critical)"
-  fi
+  run_nonfatal_postflight_check \
+    "Running AI stack MCP health check" \
+    "AI MCP health check passed" \
+    "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details (non-critical)" \
+    "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" --optional
 fi
 
 # ---- Embedding dimension migration (post-deploy) ----------------------------
