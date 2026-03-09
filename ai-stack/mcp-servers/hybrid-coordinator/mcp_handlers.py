@@ -743,6 +743,9 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
 
         else:
             raise ValueError(f"Unknown tool: {name}")
+    except ValueError as exc:
+        _write_audit(name, 'client_error', str(exc), (_time.perf_counter() - _start) * 1000, arguments)
+        raise
     except Exception as exc:
         _write_audit(name, 'error', str(exc), (_time.perf_counter() - _start) * 1000, arguments)
         raise
