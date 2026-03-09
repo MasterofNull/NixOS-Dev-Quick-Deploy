@@ -767,6 +767,57 @@ def _hint_adoption_recent_context(recent_hint_adoption: Optional[Dict[str, Any]]
     )
 
 
+def historical_hint_watchlist(
+    adoption: Optional[Dict[str, Any]],
+    recent_hint_adoption: Optional[Dict[str, Any]],
+    hint_diversity_stats: Optional[Dict[str, Any]],
+    recent_hint_diversity_stats: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Summarize concentrated hint patterns that are visible historically but not recently active."""
+    watch: Dict[str, Any] = {
+        "available": True,
+        "window": "7d",
+        "has_items": False,
+        "dominant_hint_id": None,
+        "dominant_share_pct": None,
+        "total_injections": 0,
+        "alternative_hints": [],
+    }
+    if not adoption or not adoption.get("available"):
+        return watch
+    total = int(adoption.get("total", 0) or 0)
+    recent_total = int((recent_hint_adoption or {}).get("total", 0) or 0)
+    status = str((hint_diversity_stats or {}).get("status", "") or "").strip().lower()
+    recent_status = str((recent_hint_diversity_stats or {}).get("status", "") or "").strip().lower()
+    dominant_hint_id = adoption.get("dominant_hint_id")
+    dominant_share_pct = adoption.get("dominant_share_pct")
+    top_hints = adoption.get("top_hints") if isinstance(adoption.get("top_hints"), list) else []
+    alternatives: List[Dict[str, Any]] = []
+    for item in top_hints[1:3]:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        hint_id = str(item[0]).strip()
+        count = int(item[1] or 0)
+        if hint_id:
+            alternatives.append({"hint_id": hint_id, "count": count})
+    if total <= 0 or recent_total > 0:
+        return watch
+    if status not in {"concentrated", "narrow"} and recent_status not in {"no_data", ""}:
+        return watch
+    if dominant_share_pct is None or float(dominant_share_pct) < 50.0:
+        return watch
+    watch.update(
+        {
+            "has_items": True,
+            "dominant_hint_id": dominant_hint_id,
+            "dominant_share_pct": dominant_share_pct,
+            "total_injections": total,
+            "alternative_hints": alternatives,
+        }
+    )
+    return watch
+
+
 def _routing_recent_context(recent_route: Optional[Dict[str, Any]]) -> str:
     if not recent_route or not recent_route.get("available"):
         return "Recent context unavailable."
@@ -1620,6 +1671,49 @@ def _autorun_block_context(recent_semantic_autorun: Optional[Dict[str, Any]] = N
     return f"last hour blocked {recent_blocked} tool actions across {recent_calls} autorun calls"
 
 
+def rag_posture(
+    tool_stats: Dict[str, dict],
+    recent_tool_stats: Dict[str, dict],
+    cache: Dict[str, Any],
+    gaps: List[dict],
+) -> Dict[str, Any]:
+    """Summarize retrieval/RAG posture from live traffic, cache posture, and actionable gaps."""
+    retrieval_tools = ("route_search", "tree_search", "recall_agent_memory")
+    recent_calls = sum(int((recent_tool_stats.get(name) or {}).get("calls", 0) or 0) for name in retrieval_tools)
+    total_calls = sum(int((tool_stats.get(name) or {}).get("calls", 0) or 0) for name in retrieval_tools)
+    actionable_gaps = [
+        g for g in gaps
+        if int(g.get("occurrences", 1) or 0) >= 3
+        and not _is_synthetic_gap(str(g.get("query_text", "")))
+        and not _is_curated_stale_gap(str(g.get("query_text", "")))
+    ]
+    status = "healthy"
+    reasons: List[str] = []
+    cache_context = _cache_sample_context(cache) if cache.get("available") else None
+    if recent_calls == 0:
+        status = "historical"
+        reasons.append("no recent retrieval traffic")
+    if actionable_gaps:
+        status = "watch"
+        reasons.append(f"{len(actionable_gaps)} actionable gaps")
+    if cache.get("available"):
+        total_cache = int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0)
+        hit_pct = cache.get("hit_pct")
+        if total_cache >= 20 and hit_pct is not None and float(hit_pct) < 20.0:
+            status = "watch"
+            reasons.append(f"cache hit rate {_na(hit_pct, '.1f', '%')}")
+    return {
+        "available": True,
+        "status": status,
+        "recent_retrieval_calls": recent_calls,
+        "total_retrieval_calls": total_calls,
+        "actionable_gap_count": len(actionable_gaps),
+        "cache_hit_pct": cache.get("hit_pct") if cache.get("available") else None,
+        "cache_context": cache_context,
+        "reasons": reasons,
+    }
+
+
 def recent_health_snapshot(recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
     """Summarize active issues in the recent monitoring window."""
     snapshot: Dict[str, Any] = {
@@ -1708,6 +1802,7 @@ def format_md(
     leaderboard: List[dict],
     top_prompts: List[dict],
     gaps: List[dict],
+    rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -1719,6 +1814,7 @@ def format_md(
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    historical_hint_watch: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -1848,6 +1944,25 @@ def format_md(
     lines.append("")
 
     # 8. Recent health snapshot
+    lines += ["## 7b. RAG Posture", ""]
+    if rag_posture_summary.get("available"):
+        lines += [
+            f"- Status: **{rag_posture_summary.get('status', 'unknown')}**",
+            f"- Recent retrieval calls: **{rag_posture_summary.get('recent_retrieval_calls', 0)}**",
+            f"- Actionable gaps: **{rag_posture_summary.get('actionable_gap_count', 0)}**",
+        ]
+        if rag_posture_summary.get("cache_hit_pct") is not None:
+            lines.append(f"- Cache hit rate: **{_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}**")
+        cache_context = rag_posture_summary.get("cache_context")
+        if cache_context:
+            lines.append(f"- Cache context: {cache_context}")
+        reasons = rag_posture_summary.get("reasons") or []
+        if reasons:
+            lines.append(f"- Watch reasons: {', '.join(str(r) for r in reasons)}")
+    else:
+        lines.append("*RAG posture unavailable.*")
+    lines.append("")
+
     lines += [f"## 8. Recent Health Snapshot ({recent_health.get('window', '1h')})", ""]
     if recent_health.get("healthy"):
         lines.append("*No active slow or flaky tools in the recent window.*")
@@ -2018,6 +2133,27 @@ def format_md(
         lines.append("*Hint-diversity metrics unavailable.*")
     lines.append("")
 
+    lines += [f"## 14b. Historical Hint Watchlist ({(historical_hint_watch or {}).get('window', '7d')})", ""]
+    if not historical_hint_watch or not historical_hint_watch.get("has_items"):
+        lines.append("*No historical hint concentration issues outside the recent window.*")
+    else:
+        lines.append(
+            f"- Dominant hint: `{historical_hint_watch.get('dominant_hint_id')}`"
+            f" at **{_na(historical_hint_watch.get('dominant_share_pct'), '.1f', '%')}**"
+            f" across **{historical_hint_watch.get('total_injections', 0)}** injections"
+        )
+        alternatives = historical_hint_watch.get("alternative_hints") or []
+        if alternatives:
+            alt_text = ", ".join(
+                f"`{item.get('hint_id')}` ({item.get('count', 0)})"
+                for item in alternatives[:2]
+                if item.get("hint_id")
+            )
+            if alt_text:
+                lines.append(f"- Candidate alternates: {alt_text}")
+        lines.append("- Status: historical concentration only; diversify future high-signal hints before this becomes active again.")
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -2032,6 +2168,7 @@ def format_text(
     leaderboard: List[dict],
     top_prompts: List[dict],
     gaps: List[dict],
+    rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -2043,6 +2180,7 @@ def format_text(
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    historical_hint_watch: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -2171,6 +2309,25 @@ def format_text(
             lines.append(f"  {i}. [{g.get('occurrences', 1)}x] {q}")
     else:
         lines.append("  No gaps data (Postgres unavailable or table empty).")
+    lines.append("")
+
+    lines += ["[ 7b. RAG Posture ]"]
+    if rag_posture_summary.get("available"):
+        lines += [
+            f"  Status: {rag_posture_summary.get('status', 'unknown')}",
+            f"  Recent retrieval calls: {rag_posture_summary.get('recent_retrieval_calls', 0)}",
+            f"  Actionable gaps: {rag_posture_summary.get('actionable_gap_count', 0)}",
+        ]
+        if rag_posture_summary.get("cache_hit_pct") is not None:
+            lines.append(f"  Cache hit rate: {_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}")
+        cache_context = rag_posture_summary.get("cache_context")
+        if cache_context:
+            lines.append(f"  Cache context: {cache_context}")
+        reasons = rag_posture_summary.get("reasons") or []
+        if reasons:
+            lines.append(f"  Watch reasons: {', '.join(str(r) for r in reasons)}")
+    else:
+        lines.append("  RAG posture unavailable.")
     lines.append("")
 
     lines += [f"[ 8. Recent Health Snapshot ({recent_health.get('window', '1h')}) ]"]
@@ -2342,6 +2499,27 @@ def format_text(
             lines.append(f"  Recent context: {_hint_diversity_recent_context(recent_hint_diversity_stats)}")
     else:
         lines.append("  Hint-diversity metrics unavailable.")
+    lines.append("")
+
+    lines += [f"[ 14b. Historical Hint Watchlist ({(historical_hint_watch or {}).get('window', '7d')}) ]"]
+    if not historical_hint_watch or not historical_hint_watch.get("has_items"):
+        lines.append("  No historical hint concentration issues outside the recent window.")
+    else:
+        lines.append(
+            f"  Dominant hint: {historical_hint_watch.get('dominant_hint_id')} "
+            f"at {_na(historical_hint_watch.get('dominant_share_pct'), '.1f', '%')} "
+            f"across {historical_hint_watch.get('total_injections', 0)} injections"
+        )
+        alternatives = historical_hint_watch.get("alternative_hints") or []
+        if alternatives:
+            alt_text = ", ".join(
+                f"{item.get('hint_id')} ({item.get('count', 0)})"
+                for item in alternatives[:2]
+                if item.get("hint_id")
+            )
+            if alt_text:
+                lines.append(f"  Candidate alternates: {alt_text}")
+        lines.append("  Status: historical concentration only; diversify future high-signal hints before this becomes active again.")
     lines += ["", sep]
     return "\n".join(lines)
 
@@ -2357,6 +2535,7 @@ def format_json(
     leaderboard: List[dict],
     top_prompts: List[dict],
     gaps: List[dict],
+    rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -2368,6 +2547,7 @@ def format_json(
     tooling_quality: Optional[Dict[str, Any]] = None,
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
+    historical_hint_watch: Optional[Dict[str, Any]] = None,
     structured_actions: Optional[List[dict]] = None,
 ) -> str:
     doc = {
@@ -2391,6 +2571,7 @@ def format_json(
             for p in top_prompts
         ],
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
+        "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
         "historical_watchlist": historical_watch,
         "recommendations": recs,
@@ -2402,6 +2583,7 @@ def format_json(
         "semantic_tooling_autorun": semantic_autorun or {"available": False},
         "hint_diversity": hint_diversity_stats or {"available": False},
         "recent_hint_diversity": recent_hint_diversity_stats or {"available": False},
+        "historical_hint_watchlist": historical_hint_watch or {"available": False, "has_items": False},
         "structured_actions": structured_actions or [],
     }
     return json.dumps(doc, indent=2, default=str)
@@ -2513,11 +2695,18 @@ def main() -> None:
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats)
     historical_health_watch = historical_watchlist(tool_stats, recent_tool_stats)
+    rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, cache, gaps)
     hint_diversity_stats = hint_diversity(adoption)
     recent_hint_adoption = hint_adoption(recent_cutoff)
     recent_hint_adoption["window"] = "1h"
     recent_hint_diversity_stats = hint_diversity(recent_hint_adoption)
     recent_hint_diversity_stats["window"] = "1h"
+    historical_hint_watch = historical_hint_watchlist(
+        adoption,
+        recent_hint_adoption,
+        hint_diversity_stats,
+        recent_hint_diversity_stats,
+    )
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
         [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
@@ -2553,6 +2742,7 @@ def main() -> None:
         leaderboard,
         top_prompts,
         gaps,
+        rag_posture_summary,
         recent_health,
         historical_health_watch,
         recs,
@@ -2564,6 +2754,7 @@ def main() -> None:
         tooling_quality,
         hint_diversity_stats,
         recent_hint_diversity_stats,
+        historical_hint_watch,
     )
     if args.fmt == "md":
         output = format_md(*fmt_args)

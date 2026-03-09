@@ -84,6 +84,7 @@ Default batching rule:
 - Goal: stop background debt from looking like an active outage while keeping it visible
 
 ### Batch C — Hint Quality and Steering
+- Surface a historical hint watchlist when concentration is visible in 7d data but not active in the 1h window
 - Increase alternative high-signal hints so dominance reduction has better substitutes
 - Add context-sensitive hint reuse beyond raw frequency
 - Improve ignored/rejected hint feedback reporting
@@ -99,3 +100,9 @@ Default batching rule:
 - Add concise quick references for remaining NixOS module merge and systemd questions
 - Keep harness report, hints, and curated references aligned
 - Goal: reduce recurring operator knowledge gaps without broad imports
+
+### Batch F — Historical Debt Visibility
+- Keep historical memory-write failures visible without overstating them as active incidents
+- Keep historical hint concentration visible without promoting it to an active recommendation
+- Surface first alternate remediation candidates directly in the report and deploy summary
+- Goal: steer future loops from the live summary instead of digging through raw JSON
