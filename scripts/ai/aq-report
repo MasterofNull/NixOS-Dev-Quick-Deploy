@@ -1441,7 +1441,7 @@ def build_recommendations(
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("success_pct", 0.0) or 0.0) >= 90.0:
                 continue
         recs.append(
-            f"Tool `{tool}` success rate is low ({stats['success_pct']}% across {stats['calls']} calls). "
+            f"Tool `{tool}` backend success rate is low ({stats['success_pct']}% across {stats['calls']} valid calls). "
             f"Reliability context: {_tool_reliability_context(stats, fresh)}. "
             "Tighten retries/timeouts or fallback behavior only if the failures are still active."
         )
@@ -2373,6 +2373,12 @@ def format_json(
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         "window": since_label,
+        "tool_call_basis": {
+            "calls": "backend-valid",
+            "actionable_calls": "backend-valid",
+            "observed_calls": "backend-valid-plus-client-error",
+            "client_error_count": "invalid-client-requests",
+        },
         "tool_performance": tool_stats,
         "routing": route,
         "recent_routing": recent_route,
