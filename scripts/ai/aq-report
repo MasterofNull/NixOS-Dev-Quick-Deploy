@@ -1231,6 +1231,7 @@ def build_recommendations(
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
     gaps: List[dict],
+    rag_posture_summary: Optional[Dict[str, Any]] = None,
     adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
     security_auditor: Optional[Dict[str, Any]] = None,
@@ -1276,6 +1277,33 @@ def build_recommendations(
             "Cache metrics unavailable. "
             "Ensure `embedding_cache.py` emits Prometheus counters and Prometheus scrapes the service."
         )
+
+    if rag_posture_summary and rag_posture_summary.get("available"):
+        rag_status = str(rag_posture_summary.get("status", "unknown") or "unknown")
+        prewarm_candidates = rag_posture_summary.get("prewarm_candidates") or []
+        prewarm_label = ", ".join(
+            candidate.get("id", "")
+            for candidate in prewarm_candidates
+            if isinstance(candidate, dict) and str(candidate.get("id", "")).strip()
+        )
+        memory_share = rag_posture_summary.get("memory_recall_share_pct")
+        if rag_status == "low_sample":
+            suffix = f" Candidate prewarm prompts: {prewarm_label}." if prewarm_label else ""
+            recs.append(
+                "RAG cache is still in a low-sample warmup state. "
+                "Prefer bounded local prewarm on recent retrieval patterns before changing cache sizing."
+                + suffix
+            )
+        elif rag_status == "watch" and prewarm_label:
+            recs.append(
+                f"RAG retrieval is active but cache efficiency remains weak. "
+                f"Prewarm recent low-cost patterns first: {prewarm_label}."
+            )
+        if memory_share is not None and float(memory_share) <= 15.0:
+            recs.append(
+                f"Memory recall usage is low ({memory_share}% of recent retrieval calls). "
+                "For ongoing repo/system tasks, prefer memory recall before broad route_search when prior context exists."
+            )
 
     # Query gaps — check AIDB for existing docs before recommending import
     top_gaps = [
@@ -1682,11 +1710,44 @@ def _format_retrieval_mix(mix: Optional[Dict[str, Any]]) -> str:
     return ", ".join(parts) if parts else "none"
 
 
+def _rag_prewarm_candidates(
+    top_prompts: List[dict],
+    recent_mix: Dict[str, int],
+) -> List[Dict[str, str]]:
+    candidates: List[Dict[str, str]] = []
+    if not top_prompts:
+        return candidates
+    wanted: List[str] = []
+    if int(recent_mix.get("route_search", 0) or 0) > 0:
+        wanted.append("route_search")
+    if int(recent_mix.get("recall_agent_memory", 0) or 0) > 0:
+        wanted.append("memory_recall")
+    if int(recent_mix.get("tree_search", 0) or 0) > 0:
+        wanted.append("gap")
+    for family in wanted:
+        for prompt in top_prompts:
+            pid = str(prompt.get("id", "") or "").strip()
+            if not pid:
+                continue
+            if family == "route_search" and "route_search" not in pid:
+                continue
+            if family == "memory_recall" and "memory_recall" not in pid:
+                continue
+            if family == "gap" and "gap" not in pid:
+                continue
+            candidate = {"id": pid, "name": str(prompt.get("name", "") or "").strip()}
+            if candidate not in candidates:
+                candidates.append(candidate)
+            break
+    return candidates[:3]
+
+
 def rag_posture(
     tool_stats: Dict[str, dict],
     recent_tool_stats: Dict[str, dict],
     cache: Dict[str, Any],
     gaps: List[dict],
+    top_prompts: Optional[List[dict]] = None,
 ) -> Dict[str, Any]:
     """Summarize retrieval/RAG posture from live traffic, cache posture, and actionable gaps."""
     retrieval_tools = ("route_search", "tree_search", "recall_agent_memory")
@@ -1718,14 +1779,20 @@ def rag_posture(
     if cache.get("available"):
         total_cache = int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0)
         hit_pct = cache.get("hit_pct")
-        if status != "watch" and recent_calls > 0 and total_cache < 20:
+        if status != "watch" and recent_calls > 0 and total_cache < 50:
             status = "low_sample"
             reasons.append(f"cache sample still warming ({total_cache} samples)")
-        if total_cache >= 20 and hit_pct is not None and float(hit_pct) < 20.0:
+        if total_cache >= 50 and hit_pct is not None and float(hit_pct) < 20.0:
             status = "watch"
             reasons.append(f"cache hit rate {_na(hit_pct, '.1f', '%')}")
     dominant_recent = max(recent_mix.items(), key=lambda item: item[1])[0] if recent_calls > 0 else None
     dominant_total = max(total_mix.items(), key=lambda item: item[1])[0] if total_calls > 0 else None
+    route_recent = int(recent_mix.get("route_search", 0) or 0)
+    memory_recent = int(recent_mix.get("recall_agent_memory", 0) or 0)
+    tree_recent = int(recent_mix.get("tree_search", 0) or 0)
+    if route_recent >= 12 and memory_recent <= max(2, int(route_recent * 0.15)):
+        reasons.append("memory recall is lightly used relative to route_search")
+    prewarm_candidates = _rag_prewarm_candidates(top_prompts or [], recent_mix)
     return {
         "available": True,
         "status": status,
@@ -1740,6 +1807,9 @@ def rag_posture(
             "dominant_recent": dominant_recent,
             "dominant_total": dominant_total,
         },
+        "memory_recall_share_pct": round(100.0 * memory_recent / recent_calls, 1) if recent_calls else None,
+        "tree_search_share_pct": round(100.0 * tree_recent / recent_calls, 1) if recent_calls else None,
+        "prewarm_candidates": prewarm_candidates,
         "reasons": reasons,
     }
 
@@ -1984,11 +2054,23 @@ def format_md(
         recent_mix = ((rag_posture_summary.get("retrieval_mix") or {}).get("recent") or {})
         if recent_mix:
             lines.append(f"- Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
+        memory_share = rag_posture_summary.get("memory_recall_share_pct")
+        if memory_share is not None:
+            lines.append(f"- Memory recall share: **{_na(memory_share, '.1f', '%')}**")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"- Cache hit rate: **{_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}**")
         cache_context = rag_posture_summary.get("cache_context")
         if cache_context:
             lines.append(f"- Cache context: {cache_context}")
+        prewarm_candidates = rag_posture_summary.get("prewarm_candidates") or []
+        if prewarm_candidates:
+            labels = [
+                f"`{candidate.get('id')}`"
+                for candidate in prewarm_candidates
+                if isinstance(candidate, dict) and str(candidate.get("id", "")).strip()
+            ]
+            if labels:
+                lines.append(f"- Candidate prewarm prompts: {', '.join(labels)}")
         reasons = rag_posture_summary.get("reasons") or []
         if reasons:
             lines.append(f"- Notes: {', '.join(str(r) for r in reasons)}")
@@ -2354,11 +2436,23 @@ def format_text(
         recent_mix = ((rag_posture_summary.get("retrieval_mix") or {}).get("recent") or {})
         if recent_mix:
             lines.append(f"  Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
+        memory_share = rag_posture_summary.get("memory_recall_share_pct")
+        if memory_share is not None:
+            lines.append(f"  Memory recall share: {_na(memory_share, '.1f', '%')}")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"  Cache hit rate: {_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}")
         cache_context = rag_posture_summary.get("cache_context")
         if cache_context:
             lines.append(f"  Cache context: {cache_context}")
+        prewarm_candidates = rag_posture_summary.get("prewarm_candidates") or []
+        if prewarm_candidates:
+            labels = [
+                str(candidate.get("id", "")).strip()
+                for candidate in prewarm_candidates
+                if isinstance(candidate, dict) and str(candidate.get("id", "")).strip()
+            ]
+            if labels:
+                lines.append(f"  Candidate prewarm prompts: {', '.join(labels)}")
         reasons = rag_posture_summary.get("reasons") or []
         if reasons:
             lines.append(f"  Notes: {', '.join(str(r) for r in reasons)}")
@@ -2731,7 +2825,12 @@ def main() -> None:
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats)
     historical_health_watch = historical_watchlist(tool_stats, recent_tool_stats)
-    rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, cache, gaps)
+    leaderboard = strategy_leaderboard(eval_rows)
+    top_prompts = sorted(
+        [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
+        key=lambda x: -x["mean_score"],
+    )[:3]
+    rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, cache, gaps, top_prompts)
     hint_diversity_stats = hint_diversity(adoption)
     recent_hint_adoption = hint_adoption(recent_cutoff)
     recent_hint_adoption["window"] = "1h"
@@ -2743,17 +2842,13 @@ def main() -> None:
         hint_diversity_stats,
         recent_hint_diversity_stats,
     )
-    leaderboard = strategy_leaderboard(eval_rows)
-    top_prompts = sorted(
-        [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
-        key=lambda x: -x["mean_score"],
-    )[:3]
     recs = build_recommendations(
         tool_stats,
         route,
         cache,
         eval_trend,
         gaps,
+        rag_posture_summary,
         adoption,
         intent_compliance,
         security_auditor,

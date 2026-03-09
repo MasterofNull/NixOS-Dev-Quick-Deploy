@@ -94,6 +94,7 @@ Default batching rule:
 - Improve semantic-cache guidance beyond low-sample labeling
 - Add bounded prewarm heuristics for cheap recurring local queries
 - Tighten retrieval-first recommendations when remote spend is unnecessary
+- Surface memory-recall utilization so embedded memory is developed with retrieval, not separately
 - Goal: improve practical efficiency, not just reporting accuracy
 
 ### Batch E — Operator Guidance Tightening
