@@ -173,6 +173,23 @@ export class HarnessClient {
     });
   }
 
+  qaCheck(
+    phase = "0",
+    format: "json" | "text" = "json",
+    timeoutSeconds = 60,
+    includeSudo = false,
+  ): Promise<Json> {
+    return this.request("/qa/check", {
+      method: "POST",
+      body: JSON.stringify({
+        phase,
+        format,
+        timeout_seconds: timeoutSeconds,
+        include_sudo: includeSudo,
+      }),
+    });
+  }
+
   runStart(payload: RunStartRequest): Promise<Json> {
     const body: RunStartRequest = {
       ...payload,

@@ -115,6 +115,8 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "recall_agent_memory"
     if path == "/harness/eval" and method == "POST":
         return "run_harness_eval"
+    if path == "/qa/check" and method == "POST":
+        return "qa_check"
     if path == "/hints" and method in ("GET", "POST"):
         return "hints"
     if path == "/hints/feedback" and method == "POST":
@@ -1360,6 +1362,29 @@ async def run_http_mode(port: int) -> None:
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "harness_eval_failed", "detail": str(exc)}, status=500)
+
+    async def handle_qa_check(request):
+        try:
+            data = await request.json()
+            result = await mcp_handlers.run_qa_check_as_dict(data)
+            qa_result = result.get("qa_result") if isinstance(result, dict) else {}
+            request["audit_metadata"] = {
+                "phase": result.get("phase"),
+                "exit_code": result.get("exit_code"),
+                "qa_passed": (qa_result or {}).get("passed") if isinstance(qa_result, dict) else None,
+                "qa_failed": (qa_result or {}).get("failed") if isinstance(qa_result, dict) else None,
+                "qa_skipped": (qa_result or {}).get("skipped") if isinstance(qa_result, dict) else None,
+            }
+            status = 200 if result.get("status") == "ok" else 500
+            return web.json_response(result, status=status)
+        except ValueError as exc:
+            return web.json_response({"error": "qa_check_invalid", "detail": str(exc)}, status=400)
+        except TimeoutError as exc:
+            return web.json_response({"error": "qa_check_timeout", "detail": str(exc)}, status=504)
+        except FileNotFoundError as exc:
+            return web.json_response({"error": "qa_check_unavailable", "detail": str(exc)}, status=503)
+        except Exception as exc:
+            return web.json_response({"error": "qa_check_failed", "detail": str(exc)}, status=500)
 
     async def handle_harness_stats(_request):
         return web.json_response(_HARNESS_STATS)
@@ -3014,6 +3039,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/memory/store", handle_memory_store)
     http_app.router.add_post("/memory/recall", handle_memory_recall)
     http_app.router.add_post("/harness/eval", handle_harness_eval)
+    http_app.router.add_post("/qa/check", handle_qa_check)
     http_app.router.add_get("/harness/stats", handle_harness_stats)
     http_app.router.add_get("/harness/scorecard", handle_harness_scorecard)
     http_app.router.add_post("/feedback", handle_feedback)
