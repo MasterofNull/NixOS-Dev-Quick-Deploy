@@ -129,6 +129,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/tooling_manifest.py" 'run_qa_check' 'Tooling manifest surfaces QA tool for validation tasks'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'qa_check", "harness_eval", "health", "learning_stats"' 'Workflow plan validate phase surfaces QA tool'
 check_pattern "nix/modules/core/options.nix" 'localSystemPrompt = \{' 'Declarative local system prompt options exist'
 check_pattern "nix/modules/services/mcp-servers.nix" 'AI_LOCAL_SYSTEM_PROMPT=' 'Hybrid service injects local system prompt flag'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/config.py" 'build_local_system_prompt' 'Hybrid config builds local system prompt from declarative rules'
