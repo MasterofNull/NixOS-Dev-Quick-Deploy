@@ -40,18 +40,14 @@ scripts/data/generate-test-telemetry.sh
 scripts/data/import-collections.sh
 scripts/data/init-package-database.sh
 scripts/data/rotate-telemetry.sh
-scripts/data/sync-npm-ai-tools.sh
 scripts/deploy/fast-rebuild.sh
 scripts/deploy/install-git-hooks.sh
-scripts/deploy/install-lemonade-gui.sh
 scripts/deploy/launch-dashboard.sh
 scripts/deploy/local-registry.sh
 scripts/deploy/quick-deploy-fast-verify.sh
 scripts/deploy/recovery-iso-unlock-user.sh
 scripts/deploy/recovery-offline-fsck-guide.sh
 scripts/deploy/setup-dashboard.sh
-scripts/deploy/setup-dvc-remote.sh
-scripts/deploy/setup-hybrid-learning.sh
 scripts/deploy/setup-mcp-databases.sh
 scripts/deploy/start-ai-stack-and-dashboard.sh
 scripts/deploy/start-ai-stack.sh
@@ -61,7 +57,6 @@ scripts/deploy/enable-progressive-disclosure.sh
 scripts/evaluate-agent-policy.py
 scripts/health/fs-integrity-check.sh
 scripts/governance/analyze-clean-deploy-readiness.sh
-scripts/governance/analyze-test-results.sh
 scripts/governance/audit-deploy-feature-toggles.sh
 scripts/governance/audit-service-endpoints.sh
 scripts/governance/comprehensive-mcp-search.py
@@ -70,7 +65,6 @@ scripts/governance/discover-improvements.sh
 scripts/governance/discover-system-facts.sh
 scripts/governance/generate-repo-cleanup-inventory.sh
 scripts/governance/git-safe.sh
-scripts/governance/lint-skills-podman.sh
 scripts/governance/lint-template-placeholders.sh
 scripts/governance/lint-timeouts.sh
 scripts/governance/manage-cache.sh

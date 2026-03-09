@@ -204,18 +204,6 @@
     "rationale": "only low-signal references remain; remove after doc cleanup"
   },
   {
-    "path": "scripts/data/sync-npm-ai-tools.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 0,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
     "path": "scripts/deploy/fast-rebuild.sh",
     "active_references": 2,
     "code_references": 0,
@@ -228,54 +216,6 @@
     "rationale": "only low-signal references remain; remove after doc cleanup"
   },
   {
-    "path": "scripts/deploy/install-lemonade-gui.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 0,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/deploy/setup-dvc-remote.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 0,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/deploy/setup-hybrid-learning.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 2,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/governance/analyze-test-results.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
     "path": "scripts/governance/comprehensive-mcp-search.py",
     "active_references": 2,
     "code_references": 0,
@@ -284,18 +224,6 @@
     "nix_references": 0,
     "other_references": 2,
     "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/governance/lint-skills-podman.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 0,
     "recommendation": "archive_or_remove",
     "rationale": "only low-signal references remain; remove after doc cleanup"
   }
