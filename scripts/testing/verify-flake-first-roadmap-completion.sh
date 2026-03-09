@@ -254,6 +254,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'result\["prompt_coaching"\]|metadata\["prompt_coaching"\]' 'Query responses expose prompt coaching guidance'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_compact_prompt_coaching_metadata' 'Hybrid HTTP surfaces compact coaching metadata instead of duplicating full payloads'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_query_prompt_coaching_response' 'Query endpoint defaults top-level prompt coaching to compact progressive-disclosure output'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'provider-side prompt caching|free or provider-routed experimentation' 'Workflow token policy teaches bounded cloud/provider token usage'
 check_pattern "scripts/ai/aq-hints" 'Token plan:' 'aq-hints renders token-discipline coaching text'
 check_pattern "scripts/ai/aq-hints" 'Suggested prompt:' 'aq-hints renders compact prompt coaching text'
