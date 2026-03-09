@@ -575,14 +575,12 @@ verify_repo_backed_ai_service_capabilities_once() {
     die "python3 is required to verify repo-backed AI service capabilities."
   fi
 
-  if ! systemctl list-unit-files ai-hybrid-coordinator.service >/dev/null 2>&1; then
+  if ! systemd_unit_declared ai-hybrid-coordinator.service; then
     log "Skipping repo-backed AI capability verification: ai-hybrid-coordinator.service is not declared"
     return 0
   fi
 
-  if ! systemctl is-enabled --quiet ai-hybrid-coordinator.service 2>/dev/null && \
-     ! systemctl is-active --quiet ai-hybrid-coordinator.service 2>/dev/null && \
-     ! systemctl is-activating --quiet ai-hybrid-coordinator.service 2>/dev/null; then
+  if ! systemd_unit_enabled_or_running ai-hybrid-coordinator.service; then
     log "Skipping repo-backed AI capability verification: ai-hybrid-coordinator.service is not enabled for this host"
     return 0
   fi
@@ -705,6 +703,18 @@ resolve_configured_repo_path() {
   nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.mcpServers.repoPath" 2>/dev/null || true
 }
 
+systemd_unit_declared() {
+  local unit="$1"
+  systemctl list-unit-files "${unit}" >/dev/null 2>&1
+}
+
+systemd_unit_enabled_or_running() {
+  local unit="$1"
+  systemctl is-enabled --quiet "${unit}" 2>/dev/null || \
+    systemctl is-active --quiet "${unit}" 2>/dev/null || \
+    systemctl is-activating --quiet "${unit}" 2>/dev/null
+}
+
 should_manage_repo_backed_ai_services() {
   local action_label="${1:-repo-backed AI service action}"
   local configured_repo="" current_repo=""
@@ -749,12 +759,10 @@ restart_repo_backed_ai_services_if_needed() {
   local unit=""
 
   for unit in "${candidates[@]}"; do
-    if ! systemctl list-unit-files "${unit}" >/dev/null 2>&1; then
+    if ! systemd_unit_declared "${unit}"; then
       continue
     fi
-    if systemctl is-enabled --quiet "${unit}" 2>/dev/null || \
-       systemctl is-active --quiet "${unit}" 2>/dev/null || \
-       systemctl is-activating --quiet "${unit}" 2>/dev/null; then
+    if systemd_unit_enabled_or_running "${unit}"; then
       restart_units+=("${unit}")
     fi
   done

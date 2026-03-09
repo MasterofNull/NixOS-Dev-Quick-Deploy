@@ -241,6 +241,8 @@ check_pattern "scripts/data/import-agent-instructions.sh" 'dirname "\$0"\)/\.\./
 check_pattern "nixos-quick-deploy.sh" 'qa_script=.*aq-qa|"\$\{qa_script\}" 0 --json' 'Deploy completion runs aq-qa phase 0 summary'
 check_pattern "nixos-quick-deploy.sh" 'manage-secrets\.sh|manage_secrets_cmd.*bootstrap --host' 'Quick deploy delegates AI secrets bootstrap to the shared secrets manager'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services\(\)' 'Quick deploy centralizes repo-backed AI runtime gating'
+check_pattern "nixos-quick-deploy.sh" 'systemd_unit_declared\(\)' 'Quick deploy centralizes systemd unit declaration checks'
+check_pattern "nixos-quick-deploy.sh" 'systemd_unit_enabled_or_running\(\)' 'Quick deploy centralizes systemd unit state checks'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "service restart"' 'Quick deploy reuses repo-backed AI gating for service restarts'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "capability verification"' 'Quick deploy reuses repo-backed AI gating for capability verification'
 check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
