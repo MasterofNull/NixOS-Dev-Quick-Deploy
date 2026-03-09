@@ -178,53 +178,5 @@
     "archive_references": 4,
     "recommendation": "keep_as_shim",
     "rationale": "runtime references remain (1 code)"
-  },
-  {
-    "path": "scripts/automation/run-dashboard-collector-full.sh",
-    "active_references": 3,
-    "code_references": 0,
-    "docs_references": 1,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/automation/run-dashboard-collector-lite.sh",
-    "active_references": 3,
-    "code_references": 0,
-    "docs_references": 1,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 0,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/deploy/fast-rebuild.sh",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 2,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
-  },
-  {
-    "path": "scripts/governance/comprehensive-mcp-search.py",
-    "active_references": 2,
-    "code_references": 0,
-    "docs_references": 0,
-    "test_references": 0,
-    "nix_references": 0,
-    "other_references": 2,
-    "archive_references": 1,
-    "recommendation": "archive_or_remove",
-    "rationale": "only low-signal references remain; remove after doc cleanup"
   }
 ]
