@@ -39,9 +39,21 @@ export interface RunStartRequest {
   };
 }
 
+export interface QueryRequestOptions {
+  agentType?: string;
+  preferLocal?: boolean;
+  generateResponse?: boolean;
+  mode?: string;
+  context?: Json;
+  limit?: number;
+  keywordLimit?: number;
+  scoreThreshold?: number;
+}
+
 export declare class HarnessClient {
   constructor(opts?: HarnessClientOptions);
   plan(query: string): Promise<Json>;
+  query(query: string, opts?: QueryRequestOptions): Promise<Json>;
   toolingManifest(
     query: string,
     runtime?: "python" | "typescript",
@@ -57,6 +69,12 @@ export declare class HarnessClient {
   advanceSession(sessionId: string, action: "pass" | "fail" | "skip" | "note", note?: string): Promise<Json>;
   reviewAcceptance(payload: ReviewAcceptanceRequest): Promise<Json>;
   harnessEval(query: string, expectedKeywords?: string[], mode?: string): Promise<Json>;
+  qaCheck(
+    phase?: string,
+    format?: "json" | "text",
+    timeoutSeconds?: number,
+    includeSudo?: boolean,
+  ): Promise<Json>;
   runStart(payload: RunStartRequest): Promise<Json>;
   runGet(sessionId: string, replay?: boolean): Promise<Json>;
   runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm?: boolean): Promise<Json>;
