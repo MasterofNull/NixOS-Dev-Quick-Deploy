@@ -112,4 +112,5 @@ Default batching rule:
 - Distinguish healthy retrieval posture from low-sample cache posture
 - Surface recent retrieval mix across route search, tree search, and memory recall
 - Keep RAG, hint steering, and operator guidance aligned in the same report/deploy summary loop
+- Feed low-sample cache and memory-recall underuse back into hints, not only reports
 - Goal: treat embedded agent memory + retrieval as a first-class steering system, not a separate subsystem
