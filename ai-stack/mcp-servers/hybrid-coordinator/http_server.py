@@ -1609,6 +1609,20 @@ async def run_http_mode(port: int) -> None:
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
             request["audit_metadata"]["backend"] = str(result.get("backend", "unknown"))
+            synthesis_fallback = None
+            result_payload = result.get("results")
+            if isinstance(result_payload, dict):
+                synthesis_fallback = result_payload.get("synthesis_fallback")
+            if isinstance(synthesis_fallback, dict):
+                fallback_reason = str(synthesis_fallback.get("reason", "") or "").strip()
+                if fallback_reason:
+                    request["audit_metadata"]["fallback_reason"] = fallback_reason
+                fallback_status = synthesis_fallback.get("status_code")
+                if isinstance(fallback_status, int):
+                    request["audit_metadata"]["fallback_status_code"] = fallback_status
+                original_backend = str(synthesis_fallback.get("original_backend", "") or "").strip()
+                if original_backend:
+                    request["audit_metadata"]["fallback_original_backend"] = original_backend
             iid = result.get("interaction_id", "")
             if iid:
                 try:
