@@ -402,6 +402,27 @@ def doctor_next_steps(host: str, state: Dict[str, object], *, include_optional: 
     return next_steps
 
 
+def status_next_steps(host: str, missing_by_scope: Dict[str, List[str]], *, core_ready: bool) -> List[str]:
+    next_steps: List[str] = []
+    if missing_by_scope["core"]:
+        next_steps.append("./scripts/governance/manage-secrets.sh doctor --host " + host)
+        for name in missing_by_scope["core"]:
+            next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+        return next_steps
+
+    if missing_by_scope["optional"]:
+        for name in missing_by_scope["optional"]:
+            next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+    if missing_by_scope["remote"]:
+        next_steps.append("./scripts/governance/manage-secrets.sh doctor --host " + host + " --include-remote")
+        for name in missing_by_scope["remote"]:
+            next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+    if not next_steps and core_ready:
+        next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
+        next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
+    return next_steps
+
+
 def print_post_action_doctor_summary(
     host: str,
     paths: Dict[str, Path],
@@ -476,6 +497,7 @@ def command_status(args: argparse.Namespace) -> int:
     full_state = describe_secret_state(paths, include_optional=True, include_remote=True)
     payload = full_state["payload"]
     missing_by_scope = full_state["missing_by_scope"]
+    next_steps = status_next_steps(host, missing_by_scope, core_ready=core_state["is_ready"])
     if args.format == "json":
         print(
             json.dumps(
@@ -487,6 +509,7 @@ def command_status(args: argparse.Namespace) -> int:
                     "core_ready": core_state["is_ready"],
                     "all_managed_ready": full_state["is_ready"],
                     "missing_by_scope": missing_by_scope,
+                    "next_steps": next_steps,
                     "secrets": [
                         {
                             "name": spec["name"],
@@ -512,6 +535,10 @@ def command_status(args: argparse.Namespace) -> int:
         print(f"Optional missing: {', '.join(missing_by_scope['optional'])}")
     if missing_by_scope["remote"]:
         print(f"Remote routing missing: {', '.join(missing_by_scope['remote'])}")
+    if next_steps:
+        print("Next steps:")
+        for step in next_steps:
+            print(f"- {step}")
     print("")
     for spec in SECRET_SPECS:
         present = spec["name"] in payload and bool(payload[spec["name"]])
