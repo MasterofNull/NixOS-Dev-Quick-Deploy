@@ -676,21 +676,36 @@ def _build_workflow_plan(
         "token_policy": {
             "approach": "progressive-disclosure",
             "rules": [
-                "Start with concise hints/capability summaries.",
-                "Load deeper context only when a phase requires it.",
-                "Prefer retrieval over full-policy prompt stuffing.",
-                "Escalate to remote or cloud-hosted models only when task scope, context size, or prior failures justify the spend.",
-                "Use free or provider-routed experimentation for low-stakes probing, not as the default path for every request.",
-                "Keep reusable prompt prefixes compact and stable so provider-side prompt caching can reduce repeated token spend.",
+                "Start with concise hints/capability summaries and load deeper context only when a phase requires it.",
+                "Prefer retrieval over full-policy prompt stuffing; escalate to remote only when scope, context size, or prior failures justify the spend.",
+                "Use free or provider-routed experimentation for low-stakes probing, and keep reusable prefixes compact so provider-side prompt caching can reduce repeated token spend.",
             ],
         },
         "metadata": {
             "query_length": len(query),
             "capability_discovery_enabled": Config.AI_CAPABILITY_DISCOVERY_ENABLED,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
-            "prompt_coaching": prompt_coaching,
+            "prompt_coaching": _compact_prompt_coaching_metadata(prompt_coaching),
             "tool_security": tool_security,
             "created_epoch_s": int(time.time()),
+        },
+    }
+
+
+def _compact_prompt_coaching_metadata(prompt_coaching: Dict[str, Any]) -> Dict[str, Any]:
+    """Avoid repeating the full coaching payload inside metadata."""
+    if not isinstance(prompt_coaching, dict) or not prompt_coaching:
+        return {}
+    token_discipline = prompt_coaching.get("token_discipline", {})
+    if not isinstance(token_discipline, dict):
+        token_discipline = {}
+    return {
+        "score": float(prompt_coaching.get("score", 0.0) or 0.0),
+        "recommended_agent": str(prompt_coaching.get("recommended_agent", "codex") or "codex"),
+        "missing_fields": list(prompt_coaching.get("missing_fields", []) or []),
+        "token_plan": {
+            "spend_tier": str(token_discipline.get("spend_tier", "lean") or "lean"),
+            "recommended_input_budget": int(token_discipline.get("recommended_input_budget", 0) or 0),
         },
     }
 
@@ -1303,7 +1318,7 @@ async def run_http_mode(port: int) -> None:
                 if not isinstance(metadata, dict):
                     metadata = {}
                     result["metadata"] = metadata
-                metadata["prompt_coaching"] = prompt_coaching
+                metadata["prompt_coaching"] = _compact_prompt_coaching_metadata(prompt_coaching)
             request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))

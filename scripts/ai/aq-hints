@@ -297,9 +297,7 @@ def _format_text(result: Dict[str, Any], agent: str) -> str:
             lines.append(f"     Agent fit: {rationale}")
         suggested_prompt = str(coaching.get("suggested_prompt", "") or "")
         if suggested_prompt:
-            lines.append("     Suggested prompt skeleton:")
-            for row in suggested_prompt.splitlines()[:6]:
-                lines.append(f"       {row}")
+            lines.append(f"     Suggested prompt: {suggested_prompt[:140]}{'…' if len(suggested_prompt) > 140 else ''}")
         lines.append("")
 
     lines.append(_c(_ANSI_BOLD, sep))
