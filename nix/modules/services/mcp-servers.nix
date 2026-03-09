@@ -244,6 +244,16 @@ let
     redis
   ]));
 
+  knowledgeSyncPath = lib.makeBinPath [
+    pkgs.bash
+    pkgs.coreutils
+    pkgs.findutils
+    pkgs.gnugrep
+    pkgs.gnused
+    pkgs.systemd
+    aidbPython
+  ];
+
   # Phase 12.3.2 — audit sidecar uses only stdlib (asyncio/json/socket).
   auditSidecarPython = pkgs.python3;
 
@@ -1093,6 +1103,7 @@ in
             "${mcp.repoPath}/scripts/data/sync-knowledge-sources"
           ];
           Environment = [
+            "PATH=${knowledgeSyncPath}"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "XDG_CACHE_HOME=${dataDir}/hybrid/cache"
           ] ++ lib.optional sec.enable "AIDB_API_KEY_FILE=${secretPath aidbApiKeySecret}";

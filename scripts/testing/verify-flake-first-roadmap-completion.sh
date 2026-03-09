@@ -117,6 +117,8 @@ check_pattern "nix/modules/services/switchboard.nix" 'sec\.enable && remoteEnabl
 check_pattern "nix/modules/services/switchboard.nix" 'SWB_REMOTE_DAILY_TOKEN_CAP' 'Switchboard injects remote daily token cap env'
 check_pattern "nix/modules/services/switchboard.nix" 'remote-free|remote-coding|remote-reasoning' 'Switchboard exposes remote profile lanes'
 check_pattern "nix/modules/services/switchboard.nix" '_remote_budget_status|remote_budget_exhausted' 'Switchboard enforces remote budget guardrails'
+check_pattern "nix/modules/services/mcp-servers.nix" 'knowledgeSyncPath|ai-sync-knowledge-sources' 'Knowledge source sync service has dedicated runtime wiring'
+check_pattern "nix/modules/services/mcp-servers.nix" 'PATH=\$\{knowledgeSyncPath\}' 'Knowledge source sync service gets an explicit Python-capable PATH'
 check_pattern "nix/modules/services/switchboard.nix" 'unitConfig = \{' 'Switchboard declares systemd unit-level settings explicitly'
 check_pattern "nix/modules/services/switchboard.nix" 'StartLimitIntervalSec = "300";' 'Switchboard sets restart rate limiting on the unit'
 check_absent_pattern "scripts/governance/manage-secrets.py" 'This script is deprecated' 'Secrets manager entrypoint is active, not deprecated'
