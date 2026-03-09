@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# aq-rag-prewarm — bounded local RAG prewarm from aq-report candidates or explicit prompt ids.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${REPO_ROOT}/config/service-endpoints.sh"
+
+REPORT_PATH="${AQ_REPORT_PATH:-/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json}"
+HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+MAX_PROMPTS=2
+REPLAY_COUNT=1
+JSON_OUTPUT=false
+declare -a PROMPT_IDS=()
+declare -a SELECTED_PROMPT_IDS=()
+
+usage() {
+  cat <<'EOF'
+Usage:
+  aq-rag-prewarm [--from-report PATH] [--prompt-id ID] [--max-prompts N] [--replay N] [--json]
+
+Examples:
+  aq-rag-prewarm --from-report /var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json
+  aq-rag-prewarm --prompt-id route_search_synthesis --prompt-id memory_recall_contextualise
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --from-report) REPORT_PATH="$2"; shift 2 ;;
+    --prompt-id) PROMPT_IDS+=("$2"); shift 2 ;;
+    --max-prompts) MAX_PROMPTS="$2"; shift 2 ;;
+    --replay) REPLAY_COUNT="$2"; shift 2 ;;
+    --json) JSON_OUTPUT=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      printf 'aq-rag-prewarm: unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -r "$HYBRID_KEY_FILE" ]]; then
+  HYBRID_KEY="${HYBRID_API_KEY:-$(tr -d '[:space:]' < "$HYBRID_KEY_FILE")}"
+else
+  HYBRID_KEY="${HYBRID_API_KEY:-}"
+fi
+
+if [[ -z "${HYBRID_KEY}" ]]; then
+  printf 'aq-rag-prewarm: SKIP — no hybrid API key available\n' >&2
+  exit 0
+fi
+
+select_prompt_ids_from_report() {
+  [[ -r "${REPORT_PATH}" ]] || return 0
+  mapfile -t SELECTED_PROMPT_IDS < <(
+    jq -r --argjson limit "${MAX_PROMPTS}" '
+      (.rag_posture.prewarm_candidates // [])
+      | map(.id // empty)
+      | map(select(type == "string" and length > 0))
+      | .[:$limit]
+      | .[]
+    ' "${REPORT_PATH}" 2>/dev/null || true
+  )
+}
+
+append_unique_prompt_id() {
+  local id="$1"
+  [[ -n "${id}" ]] || return 0
+  local existing
+  for existing in "${SELECTED_PROMPT_IDS[@]:-}"; do
+    [[ "${existing}" == "${id}" ]] && return 0
+  done
+  SELECTED_PROMPT_IDS+=("${id}")
+}
+
+queries_for_prompt_id() {
+  local prompt_id="$1"
+  case "${prompt_id}" in
+    route_search_synthesis)
+      printf '%s\n' \
+        'Summarize NixOS service option patterns and explain mkIf mkDefault mkForce' \
+        'Compare NixOS module option precedence with practical service examples' \
+        'Explain how the hybrid coordinator routes grounded NixOS queries'
+      ;;
+    memory_recall_contextualise)
+      printf '%s\n' \
+        'Continue the previous AI stack improvement loop and recall prior context first' \
+        'Resume the last deployment debugging session using stored memory before search' \
+        'Pick up where the last agent left off and recall relevant system context'
+      ;;
+    gap_detection_score)
+      printf '%s\n' \
+        'nixos mkIf mkForce rate limiter options' \
+        'systemd service configuration in NixOS modules' \
+        'Summarize NixOS service option patterns'
+      ;;
+    query_expansion_nixos)
+      printf '%s\n' \
+        'NixOS flake build system' \
+        'configure NixOS services' \
+        'home-manager module option defaults'
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+send_query() {
+  local prompt_id="$1"
+  local query="$2"
+  local payload http_code
+  payload="$(
+    python3 - "$query" "$prompt_id" <<'PY'
+import json, sys
+query = sys.argv[1]
+prompt_id = sys.argv[2]
+print(json.dumps({
+    "query": query,
+    "mode": "auto",
+    "prefer_local": True,
+    "limit": 3,
+    "context": {
+        "skip_gap_tracking": True,
+        "source": "aq-rag-prewarm",
+        "prewarm_prompt_id": prompt_id,
+    },
+}))
+PY
+  )"
+  http_code="$(
+    curl -s -o /dev/null -w "%{http_code}" \
+      --max-time 30 --connect-timeout 5 \
+      -X POST "${HYBRID_URL%/}/query" \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: ${HYBRID_KEY}" \
+      -d "${payload}" 2>/dev/null || true
+  )"
+  [[ "${http_code}" =~ ^2 ]]
+}
+
+if (( ${#PROMPT_IDS[@]} > 0 )); then
+  for prompt_id in "${PROMPT_IDS[@]}"; do
+    append_unique_prompt_id "${prompt_id}"
+  done
+else
+  select_prompt_ids_from_report
+fi
+
+if (( ${#SELECTED_PROMPT_IDS[@]} == 0 )); then
+  if [[ "${JSON_OUTPUT}" == "true" ]]; then
+    printf '{"status":"skipped","reason":"no_prompt_ids"}\n'
+  else
+    printf 'aq-rag-prewarm: no prompt ids selected\n'
+  fi
+  exit 0
+fi
+
+PASS=0
+FAIL=0
+declare -a RESULTS=()
+for prompt_id in "${SELECTED_PROMPT_IDS[@]}"; do
+  mapfile -t QUERIES < <(queries_for_prompt_id "${prompt_id}")
+  [[ ${#QUERIES[@]} -gt 0 ]] || continue
+  for ((r=1; r<=REPLAY_COUNT; r++)); do
+    for query in "${QUERIES[@]}"; do
+      if send_query "${prompt_id}" "${query}"; then
+        ((PASS+=1))
+        RESULTS+=("${prompt_id}:ok:${query}")
+      else
+        ((FAIL+=1))
+        RESULTS+=("${prompt_id}:fail:${query}")
+      fi
+    done
+  done
+done
+
+if [[ "${JSON_OUTPUT}" == "true" ]]; then
+  python3 - "${PASS}" "${FAIL}" "${SELECTED_PROMPT_IDS[@]}" -- "${RESULTS[@]}" <<'PY'
+import json, sys
+args = sys.argv[1:]
+pass_count = int(args[0]); fail_count = int(args[1])
+sep = args.index("--")
+prompt_ids = args[2:sep]
+results = args[sep + 1:]
+print(json.dumps({
+    "status": "ok" if fail_count == 0 else "warn",
+    "prompt_ids": prompt_ids,
+    "passed": pass_count,
+    "failed": fail_count,
+    "results": results,
+}, indent=2))
+PY
+else
+  printf 'aq-rag-prewarm: prompts=%s pass=%d fail=%d\n' "$(IFS=,; echo "${SELECTED_PROMPT_IDS[*]}")" "${PASS}" "${FAIL}"
+fi

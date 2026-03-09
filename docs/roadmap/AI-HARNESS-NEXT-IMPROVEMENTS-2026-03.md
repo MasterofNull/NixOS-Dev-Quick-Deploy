@@ -120,3 +120,9 @@ Default batching rule:
 - Surface compact cross-agent lesson candidates in reports and deploy summaries
 - Feed promoted lessons back into hints with explicit agent/source attribution
 - Goal: let remote, coding, and local agents recursively improve one shared guidance system
+
+### Batch I — Targeted RAG Prewarm and Continuation Memory Steering
+- Use live `aq-report` prewarm candidates to run bounded local prewarm instead of generic seed traffic only
+- Refresh the live report after targeted prewarm so deploy summaries reflect the new retrieval posture
+- Prioritize `memory_recall` in workflow plans for resume/continue queries
+- Surface a stronger continuation-specific hint when broad retrieval is overused relative to memory recall
