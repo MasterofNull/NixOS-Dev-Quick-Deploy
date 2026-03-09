@@ -96,6 +96,7 @@ check_pattern "nix/modules/services/mcp-servers.nix" 'qdrantUrl = "http://127.0.
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlpEndpoint = "http://127.0.0.1:\$\{toString ports.otlpGrpc\}"' 'MCP services derive OTLP endpoint from port registry'
 check_pattern "nix/modules/core/options.nix" 'remoteModelAliases = \{' 'Switchboard exposes declarative remote model aliases'
 check_pattern "nix/modules/core/options.nix" 'remoteBudget = \{' 'Switchboard exposes declarative remote budget controls'
+check_pattern "nix/modules/core/options.nix" 'addCheck lib\.types\.int \(value: value >= 0\)' 'Switchboard remote token cap uses portable non-negative int type'
 check_pattern "nix/modules/core/options.nix" 'remoteLlmApiKey = lib.mkOption' 'Secrets options expose remote LLM API key name'
 check_pattern "nix/modules/core/secrets.nix" 'sec.names.remoteLlmApiKey' 'SOPS runtime secrets expose remote LLM API key'
 check_pattern "nix/modules/services/switchboard.nix" 'remoteLlmApiKey' 'Switchboard defaults to declarative remote LLM secret path'
