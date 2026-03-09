@@ -59,6 +59,7 @@ POST_FLIGHT_REBUILD_TIMEOUT_SECONDS="${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS:-900}
 POST_FLIGHT_REPORT_TIMEOUT_SECONDS="${POST_FLIGHT_REPORT_TIMEOUT_SECONDS:-60}"
 POST_FLIGHT_SEED_TIMEOUT_SECONDS="${POST_FLIGHT_SEED_TIMEOUT_SECONDS:-120}"
 POST_FLIGHT_CONVERGE_START_DELAY_SECONDS="${POST_FLIGHT_CONVERGE_START_DELAY_SECONDS:-2}"
+POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS="${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS:-90}"
 COMPLETION_PRINT_TEST_RESULTS="${COMPLETION_PRINT_TEST_RESULTS:-true}"
 COMPLETION_TEST_MODE="${COMPLETION_TEST_MODE:-summary}" # summary|full|off
 COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS="${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS:-45}"
@@ -191,6 +192,8 @@ Environment overrides:
                             both: trigger service and run inline fallbacks
   POST_FLIGHT_SEED_TIMEOUT_SECONDS=120
                             Timeout for inline routing seed task
+  POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS=90
+                            Timeout for mutable repo-backed AI service restarts
   POST_FLIGHT_REBUILD_TIMEOUT_SECONDS=900
                             Timeout for inline Qdrant rebuild task
   POST_FLIGHT_REPORT_TIMEOUT_SECONDS=60
@@ -521,6 +524,68 @@ load_service_endpoints() {
   if [[ -f "${endpoints_file}" ]]; then
     # shellcheck source=config/service-endpoints.sh
     source "${endpoints_file}"
+  fi
+}
+
+resolve_configured_repo_path() {
+  nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.mcpServers.repoPath" 2>/dev/null || true
+}
+
+restart_repo_backed_ai_services_if_needed() {
+  [[ "${MODE}" == "switch" ]] || return 0
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local configured_repo="" current_repo=""
+  configured_repo="$(resolve_configured_repo_path)"
+  current_repo="$(readlink -f "${REPO_ROOT}" 2>/dev/null || printf '%s\n' "${REPO_ROOT}")"
+
+  if [[ -z "${configured_repo}" ]]; then
+    log "Skipping mutable repo-backed AI service restart: unable to resolve configured repoPath"
+    return 0
+  fi
+
+  configured_repo="$(readlink -f "${configured_repo}" 2>/dev/null || printf '%s\n' "${configured_repo}")"
+  if [[ "${configured_repo}" != "${current_repo}" ]]; then
+    log "Skipping mutable repo-backed AI service restart: configured repoPath (${configured_repo}) does not match deploy repo (${current_repo})"
+    return 0
+  fi
+
+  local -a candidates=(
+    "ai-aidb.service"
+    "ai-hybrid-coordinator.service"
+    "ai-ralph-wiggum.service"
+    "ai-aider-wrapper.service"
+    "ai-nixos-docs.service"
+  )
+  local -a restart_units=()
+  local unit=""
+
+  for unit in "${candidates[@]}"; do
+    if ! systemctl list-unit-files "${unit}" >/dev/null 2>&1; then
+      continue
+    fi
+    if systemctl is-enabled --quiet "${unit}" 2>/dev/null || \
+       systemctl is-active --quiet "${unit}" 2>/dev/null || \
+       systemctl is-activating --quiet "${unit}" 2>/dev/null; then
+      restart_units+=("${unit}")
+    fi
+  done
+
+  if (( ${#restart_units[@]} == 0 )); then
+    log "No mutable repo-backed AI services required restart"
+    return 0
+  fi
+
+  log "Restarting mutable repo-backed AI services so live processes pick up checkout changes"
+  if run_with_timeout_if_available "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
+      run_privileged systemctl restart "${restart_units[@]}"; then
+    log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
+  else
+    log "WARNING: mutable repo-backed AI service restart reported issues: ${restart_units[*]}"
   fi
 }
 
@@ -2622,6 +2687,8 @@ if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${
   log "Home Manager generation link unchanged after switch (${HOME_GENERATION_AFTER}); this is expected when there are no Home Manager config changes."
 fi
 
+restart_repo_backed_ai_services_if_needed
+
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}' (system scope)"
   if "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
@@ -2691,6 +2758,10 @@ wait_for_ai_services() {
 
   if systemctl is-enabled --quiet ai-aidb.service 2>/dev/null; then
     _wait_http_health "ai-aidb.service" "${AIDB_URL%/}/health" || true
+  fi
+
+  if systemctl is-enabled --quiet ai-hybrid-coordinator.service 2>/dev/null; then
+    _wait_http_health "ai-hybrid-coordinator.service" "${HYBRID_URL%/}/health" || true
   fi
 
   if systemctl is-enabled --quiet llama-cpp.service 2>/dev/null; then
