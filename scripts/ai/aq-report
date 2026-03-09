@@ -605,7 +605,7 @@ def _cache_recommendation_actionable(cache: Dict[str, Any]) -> bool:
     if hit_pct is None or float(hit_pct) >= 50:
         return False
     total = int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0)
-    return total >= 50
+    return total >= 100
 
 
 def hint_adoption(since: datetime) -> Dict[str, Any]:
@@ -971,7 +971,7 @@ def _cache_sample_context(cache: Optional[Dict[str, Any]]) -> Optional[str]:
     total = hits + misses
     if total == 0:
         return "no cache samples collected in this window"
-    if total < 50:
+    if total < 100:
         return f"low sample ({hits}/{total} hits)"
     return None
 
