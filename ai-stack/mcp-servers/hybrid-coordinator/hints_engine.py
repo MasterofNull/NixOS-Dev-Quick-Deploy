@@ -346,6 +346,35 @@ def _longest_common_substring_len(a: str, b: str) -> int:
     return best
 
 
+_CURATED_STALE_GAP_PATTERNS = (
+    "lib mkforce",
+    "lib mkif",
+    "flake inputs follows",
+    "nixos module options",
+    "nixos systemd service options",
+    "configure nixos services",
+    "how do i configure a nixos systemd service",
+    "postgresql nixos module setup",
+    "tc3 feedback validation",
+    "tc3 final feedback loop validation",
+    "how does the hybrid coordinator route queries",
+    "what is nixos",
+    "nixos declarative runtime tool security policy pattern for hybrid coor",
+    "verify semantic tool calling and tool security metadata",
+)
+
+
+def _normalize_gap_text(query_text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (query_text or "").strip().lower()).strip()
+
+
+def _is_curated_stale_gap(query_text: str) -> bool:
+    normalized = _normalize_gap_text(query_text)
+    if not normalized:
+        return True
+    return any(pattern in normalized for pattern in _CURATED_STALE_GAP_PATTERNS)
+
+
 # ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
@@ -1610,7 +1639,7 @@ class HintsEngine:
             except json.JSONDecodeError:
                 continue
             gap_text = str(obj.get("query_text") or "").strip()
-            if gap_text:
+            if gap_text and not _is_curated_stale_gap(gap_text):
                 gap_counts[gap_text] = gap_counts.get(gap_text, 0) + 1
 
         hints: List[Hint] = []

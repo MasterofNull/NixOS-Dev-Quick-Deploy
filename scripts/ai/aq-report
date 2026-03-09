@@ -26,6 +26,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sqlite3
 import statistics
 import sys
@@ -511,6 +512,35 @@ def _is_synthetic_gap(query_text: str) -> bool:
     return text.startswith(synthetic_prefixes)
 
 
+_CURATED_STALE_GAP_PATTERNS = (
+    "lib mkforce",
+    "lib mkif",
+    "flake inputs follows",
+    "nixos module options",
+    "nixos systemd service options",
+    "configure nixos services",
+    "how do i configure a nixos systemd service",
+    "postgresql nixos module setup",
+    "tc3 feedback validation",
+    "tc3 final feedback loop validation",
+    "how does the hybrid coordinator route queries",
+    "what is nixos",
+    "nixos declarative runtime tool security policy pattern for hybrid coor",
+    "verify semantic tool calling and tool security metadata",
+)
+
+
+def _normalize_gap_text(query_text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (query_text or "").strip().lower()).strip()
+
+
+def _is_curated_stale_gap(query_text: str) -> bool:
+    normalized = _normalize_gap_text(query_text)
+    if not normalized:
+        return True
+    return any(pattern in normalized for pattern in _CURATED_STALE_GAP_PATTERNS)
+
+
 def _count_aidb_docs_for_topic(topic: str) -> int:
     """Return count of imported_documents whose title matches the topic keyword."""
     host, port, db, user, password = _pg_creds()
@@ -541,6 +571,16 @@ def _count_aidb_docs_for_topic(topic: str) -> int:
         return int(line) if line.isdigit() else 0
     except Exception:
         return 0
+
+
+def _cache_recommendation_actionable(cache: Dict[str, Any]) -> bool:
+    if not cache.get("available"):
+        return False
+    hit_pct = cache.get("hit_pct")
+    if hit_pct is None or float(hit_pct) >= 50:
+        return False
+    total = int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0)
+    return total >= 50
 
 
 def hint_adoption(since: datetime) -> Dict[str, Any]:
@@ -1057,7 +1097,7 @@ def build_recommendations(
 
     # Cache
     if cache["available"]:
-        if cache["hit_pct"] is not None and cache["hit_pct"] < 50:
+        if _cache_recommendation_actionable(cache):
             recs.append(
                 f"Embedding cache hit rate is low ({cache['hit_pct']}%). "
                 "Consider pre-warming the cache by running common queries, "
@@ -1072,7 +1112,9 @@ def build_recommendations(
     # Query gaps — check AIDB for existing docs before recommending import
     top_gaps = [
         g for g in gaps
-        if g.get("occurrences", 1) >= 3 and not _is_synthetic_gap(str(g.get("query_text", "")))
+        if g.get("occurrences", 1) >= 3
+        and not _is_synthetic_gap(str(g.get("query_text", "")))
+        and not _is_curated_stale_gap(str(g.get("query_text", "")))
     ]
     for g in top_gaps[:3]:
         topic = g["query_text"][:80].replace("\n", " ")
@@ -1337,7 +1379,7 @@ def build_structured_actions(
             "services": ["ai-hybrid-coordinator", "ai-switchboard"],
         })
 
-    if cache.get("available") and cache.get("hit_pct") is not None and float(cache["hit_pct"]) < 50:
+    if _cache_recommendation_actionable(cache):
         actions.append({
             "type": "maintenance",
             "action": "prewarm_cache",
@@ -1353,6 +1395,7 @@ def build_structured_actions(
         if g.get("collection") != "inference_timeout"
         and int(g.get("occurrences", 1)) >= 3
         and not _is_synthetic_gap(str(g.get("query_text", "")))
+        and not _is_curated_stale_gap(str(g.get("query_text", "")))
     ]
     for g in knowledge_gaps[:3]:
         actions.append({
@@ -2023,7 +2066,11 @@ def main() -> None:
     audit_entries = read_tool_audit(since_dt)
     eval_rows = read_eval_scores(since_dt)
     gaps = read_query_gaps(since_dt, limit=10)
-    gaps = [g for g in gaps if not _is_synthetic_gap(str(g.get("query_text", "")))]
+    gaps = [
+        g for g in gaps
+        if not _is_synthetic_gap(str(g.get("query_text", "")))
+        and not _is_curated_stale_gap(str(g.get("query_text", "")))
+    ]
     prompts = read_prompt_registry()
 
     # Analyse
