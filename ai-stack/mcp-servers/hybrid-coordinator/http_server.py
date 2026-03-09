@@ -711,13 +711,17 @@ def _compact_prompt_coaching_metadata(prompt_coaching: Dict[str, Any]) -> Dict[s
     """Avoid repeating the full coaching payload inside metadata."""
     if not isinstance(prompt_coaching, dict) or not prompt_coaching:
         return {}
+    missing_fields = [
+        str(item).strip() for item in (prompt_coaching.get("missing_fields", []) or []) if str(item).strip()
+    ]
     token_discipline = prompt_coaching.get("token_discipline", {})
     if not isinstance(token_discipline, dict):
         token_discipline = {}
     return {
         "score": float(prompt_coaching.get("score", 0.0) or 0.0),
         "recommended_agent": str(prompt_coaching.get("recommended_agent", "codex") or "codex"),
-        "missing_fields": list(prompt_coaching.get("missing_fields", []) or []),
+        "missing_fields": missing_fields[:3],
+        "missing_count": len(missing_fields),
         "token_plan": {
             "spend_tier": str(token_discipline.get("spend_tier", "lean") or "lean"),
             "recommended_input_budget": int(token_discipline.get("recommended_input_budget", 0) or 0),
@@ -754,10 +758,12 @@ def _compact_tooling_layer_response(
         tool_security = {}
     compact = {
         "enabled": bool(tooling_layer.get("enabled", False)),
-        "planned_tools": planned_tools,
+        "planned_tools": planned_tools[:3],
         "planned_count": len(planned_tools),
-        "executed": executed_tools,
+        "planned_more": max(0, len(planned_tools) - 3),
+        "executed": executed_tools[:3],
         "executed_count": len(executed_tools),
+        "executed_more": max(0, len(executed_tools) - 3),
         "hints_count": len(hints),
         "tool_security": {
             "blocked_count": len(tool_security.get("blocked", []) or []),
