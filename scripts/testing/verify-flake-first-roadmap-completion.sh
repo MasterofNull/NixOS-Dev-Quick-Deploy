@@ -129,6 +129,10 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/tooling_manifest.py" 'run_qa_check' 'Tooling manifest surfaces QA tool for validation tasks'
+check_pattern "nix/modules/core/options.nix" 'localSystemPrompt = \{' 'Declarative local system prompt options exist'
+check_pattern "nix/modules/services/mcp-servers.nix" 'AI_LOCAL_SYSTEM_PROMPT=' 'Hybrid service injects local system prompt flag'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/config.py" 'build_local_system_prompt' 'Hybrid config builds local system prompt from declarative rules'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py" '"role": "system"' 'Local route synthesis prepends a system prompt'
 check_pattern "scripts/ai/aq-hints" 'parent\.parent\.parent' 'aq-hints resolves repository root correctly for local engine imports'
 check_pattern "scripts/data/import-agent-instructions.sh" 'dirname "\$0"\)/\.\./\.\.' 'Agent instruction import resolves repository root correctly'
 
