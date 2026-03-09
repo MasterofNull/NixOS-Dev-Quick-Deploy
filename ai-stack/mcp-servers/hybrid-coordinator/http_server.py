@@ -710,6 +710,22 @@ def _compact_prompt_coaching_metadata(prompt_coaching: Dict[str, Any]) -> Dict[s
     }
 
 
+def _query_prompt_coaching_response(
+    prompt_coaching: Dict[str, Any],
+    include_debug_metadata: bool = False,
+) -> Dict[str, Any]:
+    """Return compact prompt coaching by default and preserve deep detail only on opt-in."""
+    compact = _compact_prompt_coaching_metadata(prompt_coaching)
+    if not include_debug_metadata:
+        suggested_prompt = str(prompt_coaching.get("suggested_prompt", "") or "").strip()
+        if suggested_prompt:
+            compact["suggested_prompt"] = suggested_prompt
+        return compact
+    enriched = dict(prompt_coaching)
+    enriched["summary"] = compact
+    return enriched
+
+
 def _session_lineage(sessions: Dict[str, Any], session_id: str) -> List[str]:
     """Return root->...->session lineage for a session id."""
     lineage: List[str] = []
@@ -1200,6 +1216,7 @@ async def run_http_mode(port: int) -> None:
             request_context = data.get("context")
             if not isinstance(request_context, dict):
                 request_context = {}
+            include_debug_metadata = bool(data.get("include_debug_metadata") or data.get("debug"))
             prompt_coaching: Dict[str, Any] = {}
             request["audit_metadata"] = {
                 "semantic_autorun_enabled": bool(semantic_tooling_autorun),
@@ -1313,7 +1330,10 @@ async def run_http_mode(port: int) -> None:
             if semantic_tooling_autorun:
                 result["tooling_layer"] = tooling_layer
             if prompt_coaching:
-                result["prompt_coaching"] = prompt_coaching
+                result["prompt_coaching"] = _query_prompt_coaching_response(
+                    prompt_coaching,
+                    include_debug_metadata=include_debug_metadata,
+                )
                 metadata = result.get("metadata")
                 if not isinstance(metadata, dict):
                     metadata = {}
