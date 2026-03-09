@@ -21,6 +21,8 @@ from typing import Dict, List
 
 
 SAFE_ALPHABET = string.ascii_letters + string.digits + "._~+=-"
+MANAGED_OVERRIDE_BEGIN = "  # BEGIN manage-secrets wiring"
+MANAGED_OVERRIDE_END = "  # END manage-secrets wiring"
 
 SECRET_SPECS = [
     {
@@ -222,15 +224,46 @@ def create_or_update_local_override(paths: Dict[str, Path], primary_user: str) -
     target.parent.mkdir(parents=True, exist_ok=True)
     secrets_file = str(paths["bundle"])
     age_key_file = str(paths["age_key_file"])
-    content = (
-        "{ lib, ... }:\n"
-        "{\n"
+    managed_block = (
+        f"{MANAGED_OVERRIDE_BEGIN}\n"
         "  mySystem.secrets.enable = lib.mkForce true;\n"
         f"  mySystem.secrets.sopsFile = lib.mkForce \"{secrets_file}\";\n"
         f"  mySystem.secrets.ageKeyFile = lib.mkForce \"{age_key_file}\";\n"
-        "}\n"
+        f"{MANAGED_OVERRIDE_END}"
     )
-    target.write_text(content, encoding="utf-8")
+
+    if not target.exists():
+        target.write_text("{ lib, ... }:\n{\n" + managed_block + "\n}\n", encoding="utf-8")
+        return
+
+    existing = target.read_text(encoding="utf-8")
+    if MANAGED_OVERRIDE_BEGIN in existing and MANAGED_OVERRIDE_END in existing:
+        prefix, remainder = existing.split(MANAGED_OVERRIDE_BEGIN, 1)
+        _, suffix = remainder.split(MANAGED_OVERRIDE_END, 1)
+        target.write_text(prefix + managed_block + suffix, encoding="utf-8")
+        return
+
+    cleaned_lines = []
+    for line in existing.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("mySystem.secrets.enable = lib.mkForce "):
+            continue
+        if stripped.startswith("mySystem.secrets.sopsFile = lib.mkForce "):
+            continue
+        if stripped.startswith("mySystem.secrets.ageKeyFile = lib.mkForce "):
+            continue
+        cleaned_lines.append(line)
+    cleaned = "\n".join(cleaned_lines).strip()
+    if cleaned == "{ lib, ... }:\n{":
+        cleaned = "{ lib, ... }:\n{"
+    if cleaned.endswith("}"):
+        insert_at = cleaned.rfind("}")
+        merged = cleaned[:insert_at].rstrip() + "\n" + managed_block + "\n" + cleaned[insert_at:]
+    else:
+        merged = "{ lib, ... }:\n{\n" + managed_block + "\n}\n"
+    if not merged.endswith("\n"):
+        merged += "\n"
+    target.write_text(merged, encoding="utf-8")
 
 
 def decrypt_bundle(paths: Dict[str, Path]) -> Dict[str, str]:
