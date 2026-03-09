@@ -1250,8 +1250,10 @@
             type = lib.types.addCheck lib.types.int (value: value >= 0);
             default = 0;
             description = ''
-              Approximate daily remote input-token cap enforced by switchboard.
-              Set to 0 to disable runtime budget enforcement.
+              Optional local token-discipline heuristic for remote routing.
+              This is not a provider or subscription hard limit.
+              Set to 0 to disable the local heuristic entirely and rely on
+              progressive disclosure plus upstream provider limits.
             '';
           };
 
