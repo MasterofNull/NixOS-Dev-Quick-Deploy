@@ -60,3 +60,42 @@
 3. Suppress synthetic gaps across all hint/report surfaces
 4. Curate remaining recurring operator knowledge
 5. Re-run deploy, QA, report, and live endpoint verification
+
+## Batch Execution Model
+
+Default batching rule:
+- bundle 3-5 repo-only slices before running `nixos-quick-deploy.sh`
+- validate locally after each slice, but delay activation until the batch boundary
+- deploy early only for runtime blockers, live-signal-dependent reprioritization, or service-contract activation checks
+
+## Next Batched Execution Queue
+
+### Batch A — Monitoring Summary Integrity
+- Surface report freshness in deploy summary
+- Surface recent health state in deploy summary
+- Surface cache-prewarm state in deploy summary
+- Surface historical watchlist state in deploy summary
+- Goal: make the deploy completion summary sufficient for first-pass operator triage
+
+### Batch B — Reliability Interpretation
+- Separate invalid caller input from backend write failure for `store_agent_memory`
+- Distinguish historical reliability debt from active incidents in recommendations
+- Add recent-vs-historical context for any remaining reliability watch items
+- Goal: stop background debt from looking like an active outage while keeping it visible
+
+### Batch C — Hint Quality and Steering
+- Increase alternative high-signal hints so dominance reduction has better substitutes
+- Add context-sensitive hint reuse beyond raw frequency
+- Improve ignored/rejected hint feedback reporting
+- Goal: reduce repeated token overhead while improving steering quality
+
+### Batch D — Cache and Retrieval Effectiveness
+- Improve semantic-cache guidance beyond low-sample labeling
+- Add bounded prewarm heuristics for cheap recurring local queries
+- Tighten retrieval-first recommendations when remote spend is unnecessary
+- Goal: improve practical efficiency, not just reporting accuracy
+
+### Batch E — Operator Guidance Tightening
+- Add concise quick references for remaining NixOS module merge and systemd questions
+- Keep harness report, hints, and curated references aligned
+- Goal: reduce recurring operator knowledge gaps without broad imports
