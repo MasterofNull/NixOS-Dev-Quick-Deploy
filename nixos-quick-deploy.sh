@@ -1291,81 +1291,6 @@ is_interactive_tty() {
   [[ -t 0 && -t 1 ]]
 }
 
-generate_secret_value() {
-  local kind="${1:-token}"
-  local target_len generated
-  case "${kind}" in
-    password) target_len=32 ;;
-    *) target_len=48 ;;
-  esac
-
-  # Prefer openssl when available, but fall back to python3 for minimal hosts.
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 48 | tr -d '\n' | tr -d '/+=' | cut -c1-"${target_len}"
-    return 0
-  fi
-
-  if command -v python3 >/dev/null 2>&1; then
-    generated="$(
-      python3 - <<'PY'
-import secrets
-print(secrets.token_urlsafe(64))
-PY
-    )"
-    printf '%s\n' "${generated}" | tr -d '\n' | cut -c1-"${target_len}"
-    return 0
-  fi
-
-  die "Unable to generate secrets automatically: neither 'openssl' nor 'python3' is available."
-}
-
-secret_value_is_safe_yaml_scalar() {
-  local value="${1:-}"
-  [[ -n "${value}" ]] || return 1
-  [[ "${value}" =~ ^[A-Za-z0-9._~+=-]+$ ]]
-}
-
-read_secret_value() {
-  local label="${1:?missing label}"
-  local value confirm
-  while true; do
-    read -r -s -p "${label}: " value
-    printf '\n'
-    [[ -n "${value}" ]] || { log "Value cannot be empty."; continue; }
-    if ! secret_value_is_safe_yaml_scalar "${value}"; then
-      log "Only characters [A-Za-z0-9._~+=-] are supported for interactive secrets."
-      continue
-    fi
-    read -r -s -p "Confirm ${label}: " confirm
-    printf '\n'
-    [[ "${value}" == "${confirm}" ]] || { log "Values did not match. Try again."; continue; }
-    printf '%s\n' "${value}"
-    return 0
-  done
-}
-
-create_or_update_host_deploy_options_local() {
-  local host_dir="${1:?missing host dir}"
-  local primary_user="${2:?missing primary user}"
-  local secrets_file="${3:?missing secrets file}"
-  local target="${host_dir}/deploy-options.local.nix"
-  local age_key_file="/home/${primary_user}/.config/sops/age/keys.txt"
-  local escaped_secrets_file escaped_age_key_file
-
-  escaped_secrets_file="$(nix_escape_string "${secrets_file}")"
-  escaped_age_key_file="$(nix_escape_string "${age_key_file}")"
-
-  cat > "${target}" <<EOF
-{ lib, ... }:
-{
-  mySystem.secrets.enable = lib.mkForce true;
-  mySystem.secrets.sopsFile = lib.mkForce "${escaped_secrets_file}";
-  mySystem.secrets.ageKeyFile = lib.mkForce "${escaped_age_key_file}";
-}
-EOF
-  log "Updated declarative secrets override: ${target}"
-}
-
 bootstrap_ai_stack_secrets_if_needed() {
   [[ "${RUN_AI_SECRETS_BOOTSTRAP}" == true ]] || return 0
   [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
@@ -1408,7 +1333,12 @@ bootstrap_ai_stack_secrets_if_needed() {
     AI_SECRETS_BOOTSTRAP_STATUS="skipped:ai-stack-disabled"
     return 0
   fi
+  local manage_secrets_cmd="${REPO_ROOT}/scripts/governance/manage-secrets.sh"
+
   if [[ "${secrets_enabled}" == "true" && "${FORCE_AI_SECRETS_BOOTSTRAP}" != "true" ]]; then
+    if [[ -x "${manage_secrets_cmd}" ]]; then
+      "${manage_secrets_cmd}" ensure-local-config --host "${HOST_NAME}" >/dev/null 2>&1 || true
+    fi
     log "AI stack secrets already enabled; skipping bootstrap prompt."
     AI_SECRETS_BOOTSTRAP_STATUS="skipped:already-enabled"
     return 0
@@ -1422,11 +1352,7 @@ bootstrap_ai_stack_secrets_if_needed() {
     return 0
   fi
 
-  local choice host_dir secrets_root secrets_file sops_cfg age_key_dir age_key_file public_key
-  local legacy_secrets_file legacy_sops_cfg
-  local aidb_key_name hybrid_key_name embeddings_key_name postgres_key_name redis_key_name aider_wrapper_key_name
-  local aidb_api_key hybrid_api_key embeddings_api_key postgres_password redis_password aider_wrapper_api_key
-  local plain_tmp summary_tmp
+  local choice paths_output bundle_path override_path
 
   printf '\n'
   printf '[clean-deploy] ── AI Stack Security Setup ──────────────────────────────────────────\n'
@@ -1453,206 +1379,22 @@ bootstrap_ai_stack_secrets_if_needed() {
     return 0
   fi
 
-  require_command sops
-  require_command age-keygen
+  [[ -x "${manage_secrets_cmd}" ]] || die "Missing secrets manager: ${manage_secrets_cmd}"
+  log "Bootstrapping AI stack secrets via manage-secrets.sh"
+  "${manage_secrets_cmd}" bootstrap --host "${HOST_NAME}" || die "AI stack secrets bootstrap failed."
 
-  host_dir="${REPO_ROOT}/nix/hosts/${HOST_NAME}"
-  secrets_root="/home/${PRIMARY_USER}/.local/share/nixos-quick-deploy/secrets/${HOST_NAME}"
-  secrets_file="${secrets_root}/secrets.sops.yaml"
-  sops_cfg="${secrets_root}/.sops.yaml"
-  legacy_secrets_file="${host_dir}/secrets.sops.yaml"
-  legacy_sops_cfg="${host_dir}/.sops.yaml"
-  age_key_dir="/home/${PRIMARY_USER}/.config/sops/age"
-  age_key_file="${age_key_dir}/keys.txt"
-
-  aidb_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.aidbApiKey" 2>/dev/null || echo "aidb_api_key")"
-  hybrid_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.hybridApiKey" 2>/dev/null || echo "hybrid_coordinator_api_key")"
-  embeddings_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.embeddingsApiKey" 2>/dev/null || echo "embeddings_api_key")"
-  postgres_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.postgresPassword" 2>/dev/null || echo "postgres_password")"
-  redis_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.redisPassword" 2>/dev/null || echo "redis_password")"
-  aider_wrapper_key_name="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secrets.names.aiderWrapperApiKey" 2>/dev/null || echo "aider_wrapper_api_key")"
-
-  install -d -m 0700 "${secrets_root}" 2>/dev/null || true
-  if [[ ! -d "${secrets_root}" ]]; then
-    run_privileged install -d -m 0700 "${secrets_root}"
-  fi
-  run_privileged chown "${PRIMARY_USER}:$(id -gn "${PRIMARY_USER}" 2>/dev/null || printf '%s\n' "${PRIMARY_USER}")" "${secrets_root}" 2>/dev/null || true
-
-  # Migrate old repo-local secrets to strict external storage (one-time).
-  if [[ ! -s "${secrets_file}" && -s "${legacy_secrets_file}" ]]; then
-    cp "${legacy_secrets_file}" "${secrets_file}"
-    chmod 0600 "${secrets_file}"
-    log "Migrated legacy repo-local secrets to ${secrets_file}"
-  fi
-  if [[ ! -f "${sops_cfg}" && -f "${legacy_sops_cfg}" ]]; then
-    cp "${legacy_sops_cfg}" "${sops_cfg}"
-    chmod 0600 "${sops_cfg}"
-  fi
-  # Enforce strict zero-secrets-in-repo behavior.
-  rm -f "${legacy_secrets_file}" "${legacy_sops_cfg}" >/dev/null 2>&1 || true
-
-  if [[ -f "${secrets_file}" ]] && SOPS_AGE_KEY_FILE="${age_key_file}" sops -d "${secrets_file}" >/dev/null 2>&1; then
-    create_or_update_host_deploy_options_local "${host_dir}" "${PRIMARY_USER}" "${secrets_file}"
-    log "Existing encrypted secrets file detected (${secrets_file}); bootstrap skipped."
-    AI_SECRETS_BOOTSTRAP_STATUS="skipped:existing-secrets-file"
-    return 0
-  fi
-
-  local primary_group
-  primary_group="$(id -gn "${PRIMARY_USER}" 2>/dev/null || printf '%s\n' "${PRIMARY_USER}")"
-
-  # Prefer a user-owned age key directory so interactive sops usage works.
-  install -d -m 0700 "${age_key_dir}" 2>/dev/null || true
-  if [[ ! -d "${age_key_dir}" ]]; then
-    run_privileged install -d -m 0700 "${age_key_dir}"
-  fi
-  if [[ ! -w "${age_key_dir}" || ! -x "${age_key_dir}" ]]; then
-    run_privileged chown "${PRIMARY_USER}:${primary_group}" "${age_key_dir}" 2>/dev/null || true
-    run_privileged chmod 0700 "${age_key_dir}" 2>/dev/null || true
-  fi
-
-  if run_privileged test -e "${age_key_file}"; then
-    if ! run_privileged test -f "${age_key_file}"; then
-      die "AGE key path exists but is not a regular file: ${age_key_file}"
-    fi
-    run_privileged chown "${PRIMARY_USER}:${primary_group}" "${age_key_file}" 2>/dev/null || true
-    run_privileged chmod 0600 "${age_key_file}" 2>/dev/null || true
-    log "Using existing age key for sops at ${age_key_file}"
-  else
-    log "Generating age key for sops at ${age_key_file}"
-    age-keygen -o "${age_key_file}" >/dev/null
-    run_privileged chown "${PRIMARY_USER}:${primary_group}" "${age_key_file}" 2>/dev/null || true
-    chmod 0600 "${age_key_file}" 2>/dev/null || run_privileged chmod 0600 "${age_key_file}"
-  fi
-
-  public_key="$(run_privileged awk '/^# public key:/ {print $4; exit}' "${age_key_file}" 2>/dev/null || true)"
-  [[ -n "${public_key}" ]] || die "Unable to read AGE public key from ${age_key_file}"
-
-  if [[ ! -f "${sops_cfg}" ]]; then
-    cat > "${sops_cfg}" <<EOF
-creation_rules:
-  - path_regex: .*secrets\\.sops\\.yaml$
-    age: >-
-      ${public_key}
-EOF
-    chmod 0600 "${sops_cfg}"
-    log "Created SOPS config: ${sops_cfg}"
-  fi
-
-  printf 'Select secrets input mode:\n'
-  printf '  1) Enter my own values\n'
-  printf '  2) Auto-generate secure values\n'
-  read -r -p "Choice [1/2, default 1]: " choice
-  choice="${choice:-1}"
-
-  case "${choice}" in
-    1)
-      local shared_choice shared_secret
-      read -r -p "Use one shared secret for all AI stack keys/passwords? [y/N]: " shared_choice
-      shared_choice="${shared_choice:-N}"
-      if [[ "${shared_choice}" =~ ^[Yy]$ ]]; then
-        shared_secret="$(read_secret_value "Shared AI stack secret")"
-        aidb_api_key="${shared_secret}"
-        hybrid_api_key="${shared_secret}"
-        embeddings_api_key="${shared_secret}"
-        postgres_password="${shared_secret}"
-        redis_password="${shared_secret}"
-        aider_wrapper_api_key="${shared_secret}"
-      else
-        aidb_api_key="$(read_secret_value "AIDB API key")"
-        hybrid_api_key="$(read_secret_value "Hybrid coordinator API key")"
-        embeddings_api_key="$(read_secret_value "Embeddings API key")"
-        postgres_password="$(read_secret_value "Postgres password")"
-        redis_password="$(read_secret_value "Redis password")"
-        aider_wrapper_api_key="$(read_secret_value "Aider-wrapper API key")"
-      fi
-      ;;
-    2)
-      aidb_api_key="$(generate_secret_value token)"
-      hybrid_api_key="$(generate_secret_value token)"
-      embeddings_api_key="$(generate_secret_value token)"
-      postgres_password="$(generate_secret_value password)"
-      redis_password="$(generate_secret_value password)"
-      aider_wrapper_api_key="$(generate_secret_value token)"
-      ;;
-    *)
-      die "Invalid secrets mode '${choice}'. Expected 1 or 2."
-      ;;
-  esac
-
-  plain_tmp="$(mktemp)"
-  summary_tmp="$(mktemp)"
-  chmod 0600 "${plain_tmp}" "${summary_tmp}"
-
-  AIDB_KEY_NAME="${aidb_key_name}" \
-  HYBRID_KEY_NAME="${hybrid_key_name}" \
-  EMBEDDINGS_KEY_NAME="${embeddings_key_name}" \
-  POSTGRES_KEY_NAME="${postgres_key_name}" \
-  REDIS_KEY_NAME="${redis_key_name}" \
-  AIDER_WRAPPER_KEY_NAME="${aider_wrapper_key_name}" \
-  AIDB_API_KEY="${aidb_api_key}" \
-  HYBRID_API_KEY="${hybrid_api_key}" \
-  EMBEDDINGS_API_KEY="${embeddings_api_key}" \
-  POSTGRES_PASSWORD="${postgres_password}" \
-  REDIS_PASSWORD="${redis_password}" \
-  AIDER_WRAPPER_API_KEY="${aider_wrapper_api_key}" \
-  python3 - <<'PY' > "${plain_tmp}"
-import json
-import os
-
-payload = {
-    os.environ["AIDB_KEY_NAME"]: os.environ["AIDB_API_KEY"],
-    os.environ["HYBRID_KEY_NAME"]: os.environ["HYBRID_API_KEY"],
-    os.environ["EMBEDDINGS_KEY_NAME"]: os.environ["EMBEDDINGS_API_KEY"],
-    os.environ["POSTGRES_KEY_NAME"]: os.environ["POSTGRES_PASSWORD"],
-    os.environ["REDIS_KEY_NAME"]: os.environ["REDIS_PASSWORD"],
-    os.environ["AIDER_WRAPPER_KEY_NAME"]: os.environ["AIDER_WRAPPER_API_KEY"],
-}
-print(json.dumps(payload, ensure_ascii=True))
-PY
-
-  # Encrypt temp file using the target filename for config/type matching.
-  SOPS_AGE_KEY_FILE="${age_key_file}" sops \
-    --encrypt \
-    --age "${public_key}" \
-    --input-type json \
-    --output-type yaml \
-    --filename-override "secrets.sops.yaml" \
-    "${plain_tmp}" > "${secrets_file}"
-  chmod 0600 "${secrets_file}"
-  rm -f "${plain_tmp}"
-
-  cat > "${summary_tmp}" <<EOF
-AI stack initial secrets for ${NIXOS_TARGET} (${HOST_NAME})
-Generated on: $(date -Is)
-
-${aidb_key_name}=${aidb_api_key}
-${hybrid_key_name}=${hybrid_api_key}
-${embeddings_key_name}=${embeddings_api_key}
-${postgres_key_name}=${postgres_password}
-${redis_key_name}=${redis_password}
-${aider_wrapper_key_name}=${aider_wrapper_api_key}
-EOF
-  run_privileged install -m 0600 "${summary_tmp}" "/root/ai-stack-initial-secrets-${HOST_NAME}.txt"
-  rm -f "${summary_tmp}"
-
-  create_or_update_host_deploy_options_local "${host_dir}" "${PRIMARY_USER}" "${secrets_file}"
-  rm -f "${legacy_secrets_file}" "${legacy_sops_cfg}" >/dev/null 2>&1 || true
+  paths_output="$("${manage_secrets_cmd}" paths --host "${HOST_NAME}" 2>/dev/null || true)"
+  bundle_path="$(printf '%s\n' "${paths_output}" | awk -F= '$1=="bundle"{print $2; exit}')"
+  override_path="$(printf '%s\n' "${paths_output}" | awk -F= '$1=="deploy_options_local"{print $2; exit}')"
 
   printf '\n[clean-deploy] Initial AI stack secrets have been configured.\n'
-  printf '[clean-deploy] Encrypted secrets file: %s\n' "${secrets_file}"
-  printf '[clean-deploy] One-time recovery copy (root-only): /root/ai-stack-initial-secrets-%s.txt\n' "${HOST_NAME}"
-  printf '[clean-deploy] Record these values now. They will not be printed again.\n'
-  if [[ "${choice}" == "2" ]]; then
-    printf '[clean-deploy] Auto-generated values:\n'
-    printf '  %s=%s\n' "${aidb_key_name}" "${aidb_api_key}"
-    printf '  %s=%s\n' "${hybrid_key_name}" "${hybrid_api_key}"
-    printf '  %s=%s\n' "${embeddings_key_name}" "${embeddings_api_key}"
-    printf '  %s=%s\n' "${postgres_key_name}" "${postgres_password}"
-    printf '  %s=%s\n' "${redis_key_name}" "${redis_password}"
-    printf '  %s=%s\n' "${aider_wrapper_key_name}" "${aider_wrapper_api_key}"
+  if [[ -n "${bundle_path}" ]]; then
+    printf '[clean-deploy] Encrypted secrets file: %s\n' "${bundle_path}"
   fi
-  read -r -p "Press Enter after you have securely recorded these secrets. " _
+  if [[ -n "${override_path}" ]]; then
+    printf '[clean-deploy] Local override ensured at: %s\n' "${override_path}"
+  fi
+  printf '[clean-deploy] Manage or rotate secrets later with: ./scripts/governance/manage-secrets.sh\n'
   AI_SECRETS_BOOTSTRAP_STATUS="configured"
 }
 

@@ -24,6 +24,12 @@ First-time setup:
 ./scripts/governance/manage-secrets.sh init --host nixos
 ```
 
+Equivalent interactive bootstrap, used by `nixos-quick-deploy.sh` when it prompts to enable AI stack secrets:
+
+```bash
+./scripts/governance/manage-secrets.sh bootstrap --host nixos
+```
+
 This will:
 - create an age key if one does not exist
 - create the external SOPS bundle path
