@@ -481,8 +481,8 @@ class HintsEngine:
             else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
         )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
-        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 60.0, min_value=10.0, max_value=100.0)
-        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 6, min_value=1)
+        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 45.0, min_value=10.0, max_value=100.0)
+        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 5, min_value=1)
         self._div_type_max = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MAX",
             default="runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1,prompt_coaching:2",
@@ -1718,6 +1718,52 @@ class HintsEngine:
                         )[:220],
                         reason="Derived from live aq-report rag posture showing low memory-recall share",
                         tags=["runtime", "rag", "memory", "retrieval"],
+                        agent_hints={},
+                    )
+                )
+
+        # Route search latency optimization hints
+        route_breadth = data.get("route_retrieval_breadth", {})
+        if isinstance(route_breadth, dict) and route_breadth.get("available"):
+            avg_collections = route_breadth.get("avg_collection_count")
+            if avg_collections is not None and float(avg_collections) > 4.5:
+                top_profiles = route_breadth.get("top_profiles") or []
+                profile_note = f" Dominant profile: {top_profiles[0][0]}." if top_profiles else ""
+                hints.append(
+                    Hint(
+                        id="runtime_retrieval_breadth_optimize",
+                        type="runtime_signal",
+                        title="Route search is scanning more collections than needed",
+                        score=0.72,
+                        snippet=(
+                            f"Avg {float(avg_collections):.1f} collections/call detected.{profile_note} "
+                            "Prefer bounded collection selection (3-4 max) based on query intent."
+                        )[:220],
+                        reason="Derived from live aq-report route_retrieval_breadth showing high collection count",
+                        tags=["runtime", "retrieval", "optimization", "latency"],
+                        agent_hints={},
+                    )
+                )
+
+        # Provider fallback recovery hints
+        provider_fallbacks = data.get("provider_fallback_recovery", {})
+        if isinstance(provider_fallbacks, dict) and provider_fallbacks.get("available"):
+            recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
+            if recovered_count >= 1:
+                status_counts = provider_fallbacks.get("status_counts") or []
+                status_text = ", ".join(f"{s[0]}={s[1]}" for s in status_counts[:2]) if status_counts else "unknown"
+                hints.append(
+                    Hint(
+                        id="runtime_provider_fallback_pressure",
+                        type="runtime_signal",
+                        title="Remote provider fallbacks detected — routing pressure, not local outage",
+                        score=0.68,
+                        snippet=(
+                            f"{recovered_count} recovered fallbacks observed (upstream {status_text}). "
+                            "Treat as provider-budget or remote-routing pressure. Prefer local-first routing."
+                        )[:220],
+                        reason="Derived from live aq-report provider_fallback_recovery showing remote fallback events",
+                        tags=["runtime", "routing", "provider", "fallback"],
                         agent_hints={},
                     )
                 )
