@@ -114,3 +114,9 @@ Default batching rule:
 - Keep RAG, hint steering, and operator guidance aligned in the same report/deploy summary loop
 - Feed low-sample cache and memory-recall underuse back into hints, not only reports
 - Goal: treat embedded agent memory + retrieval as a first-class steering system, not a separate subsystem
+
+### Batch H — Agent Lesson Promotion
+- Reuse hint feedback and reviewer outcomes as promotion input instead of building a separate training stack
+- Surface compact cross-agent lesson candidates in reports and deploy summaries
+- Feed promoted lessons back into hints with explicit agent/source attribution
+- Goal: let remote, coding, and local agents recursively improve one shared guidance system
