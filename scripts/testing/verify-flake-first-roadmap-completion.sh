@@ -251,6 +251,8 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_is_cur
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'AI_HINTS_INCLUDE_DEBUG_METADATA' 'Hints engine gates heavy hint metadata behind explicit debug opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '"debug_metadata"' 'Hints engine nests verbose diagnostics under debug_metadata'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'if include_debug_metadata and hint.reason' 'Hints engine only emits per-hint reasons on explicit debug opt-in'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'if include_debug_metadata and hint.tags' 'Hints engine only emits per-hint tags on explicit debug opt-in'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'if include_debug_metadata and hint.agent_hints' 'Hints engine only emits per-hint agent hints on explicit debug opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_compact_prompt_coaching_payload' 'Hints engine keeps default prompt coaching compact on hint surfaces'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata = .*debug' 'Hints HTTP endpoint exposes explicit debug metadata opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
