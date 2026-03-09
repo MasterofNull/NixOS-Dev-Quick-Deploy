@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional
 
 # Resolve symlinks so local-bin wrappers (e.g. ~/.local/bin/aq-hints -> repo script)
 # still compute the correct repository root.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _ENGINE_DIR = _REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator"
 
 if str(_ENGINE_DIR) not in sys.path and _ENGINE_DIR.exists():
@@ -217,6 +217,7 @@ _TYPE_ICONS = {
     "gap_topic":       "🔍",
     "workflow_rule":   "📌",
     "runtime_signal":  "🧭",
+    "prompt_coaching": "🧠",
     "tool_warning":    "⚠️ ",
 }
 
@@ -228,6 +229,7 @@ def _format_json(result: Dict[str, Any]) -> str:
 def _format_text(result: Dict[str, Any], agent: str) -> str:
     hints = result.get("hints", [])
     query = result.get("query", "")
+    coaching = result.get("prompt_coaching", {})
     sep = "─" * 54
 
     # aider gets a machine-readable prefix line first
@@ -266,6 +268,26 @@ def _format_text(result: Dict[str, Any], agent: str) -> str:
 
     if "inject_prefix" in result:
         lines.append(_c(_ANSI_DIM, f"  inject_prefix: {result['inject_prefix'][:80]}…"))
+        lines.append("")
+
+    if isinstance(coaching, dict) and coaching:
+        coaching_score = int(round(float(coaching.get("score", 0.0)) * 100))
+        lines.append(_c(_ANSI_BOLD, "  Prompt Coaching"))
+        lines.append(
+            f"     Score: {_c(_ANSI_BOLD, str(coaching_score) + '%')}"
+            f"   Recommended agent: {_c(_ANSI_GREEN, str(coaching.get('recommended_agent', 'codex')))}"
+        )
+        missing = coaching.get("missing_fields", [])
+        if isinstance(missing, list) and missing:
+            lines.append(f"     Missing: {', '.join(str(item) for item in missing)}")
+        rationale = str(coaching.get("recommended_agent_rationale", "") or "")
+        if rationale:
+            lines.append(f"     Agent fit: {rationale}")
+        suggested_prompt = str(coaching.get("suggested_prompt", "") or "")
+        if suggested_prompt:
+            lines.append("     Suggested prompt skeleton:")
+            for row in suggested_prompt.splitlines()[:5]:
+                lines.append(f"       {row}")
         lines.append("")
 
     lines.append(_c(_ANSI_BOLD, sep))

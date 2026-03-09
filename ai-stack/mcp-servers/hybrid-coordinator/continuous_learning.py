@@ -36,8 +36,12 @@ except ImportError:  # pragma: no cover - fallback for non-Nix test envs
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
 from shared.circuit_breaker import CircuitBreakerRegistry
 from shared.auth_http_client import create_embeddings_client
+from shared.telemetry_privacy import redact_secrets, scrub_telemetry_payload
 
 logger = structlog.get_logger()
+
+MAX_PATTERN_PROMPT_CHARS = 4000
+MAX_PATTERN_RESPONSE_CHARS = 12000
 
 
 def _read_secret(path: str) -> str:
@@ -383,6 +387,23 @@ class ContinuousLearningPipeline:
             if match:
                 return match.group(1)
         return None
+
+    def _sanitize_pattern_text(self, value: Any, *, field_name: str, max_chars: int) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        redacted, detected = redact_secrets(text)
+        if detected:
+            logger.warning("learning_secret_redacted", field=field_name, secret_types=detected)
+        return redacted[:max_chars]
+
+    def _sanitize_pattern_context(self, context: Any) -> Dict[str, Any]:
+        if isinstance(context, dict):
+            scrubbed = scrub_telemetry_payload(context)
+            return scrubbed if isinstance(scrubbed, dict) else {"value": scrubbed}
+        if context is None:
+            return {}
+        return {"value": scrub_telemetry_payload(context)}
 
     def _update_batch_insights(self, event: Dict[str, Any]) -> None:
         """Update analysis counters for the current batch."""
@@ -899,12 +920,22 @@ class ContinuousLearningPipeline:
 
             # Only learn from successful, efficient completions
             if iterations <= 5:  # Completed in few iterations
+                prompt = self._sanitize_pattern_text(
+                    task.get("prompt", ""),
+                    field_name="prompt",
+                    max_chars=MAX_PATTERN_PROMPT_CHARS,
+                )
+                response = self._sanitize_pattern_text(
+                    task.get("output", ""),
+                    field_name="response",
+                    max_chars=MAX_PATTERN_RESPONSE_CHARS,
+                )
                 return InteractionPattern(
                     pattern_id=f"task_{task.get('task_id', 'unknown')}",
                     interaction_type="task_completion",
-                    prompt=task.get("prompt", ""),
-                    response=task.get("output", ""),
-                    context=task.get("context", {}),
+                    prompt=prompt,
+                    response=response,
+                    context=self._sanitize_pattern_context(task.get("context", {})),
                     success_metrics={
                         "iterations": float(iterations),
                         "efficiency": 1.0 / max(iterations, 1),
@@ -921,9 +952,17 @@ class ContinuousLearningPipeline:
             return InteractionPattern(
                 pattern_id=f"error_{event.get('error_id', 'unknown')}",
                 interaction_type="error_resolution",
-                prompt=event.get("error_description", ""),
-                response=event.get("solution", ""),
-                context=event.get("context", {}),
+                prompt=self._sanitize_pattern_text(
+                    event.get("error_description", ""),
+                    field_name="error_description",
+                    max_chars=MAX_PATTERN_PROMPT_CHARS,
+                ),
+                response=self._sanitize_pattern_text(
+                    event.get("solution", ""),
+                    field_name="solution",
+                    max_chars=MAX_PATTERN_RESPONSE_CHARS,
+                ),
+                context=self._sanitize_pattern_context(event.get("context", {})),
                 success_metrics={"resolution_time": event.get("resolution_time", 0.0)},
                 iterations=1,
                 timestamp=datetime.fromisoformat(
@@ -1143,15 +1182,12 @@ class ContinuousLearningPipeline:
             if points:
                 qdrant_breaker = self.circuit_breakers.get("qdrant")
                 try:
-                    def _upsert():
-                        # Wrap async call in sync function for circuit breaker
-                        import asyncio
-                        loop = asyncio.get_event_loop()
-                        return loop.run_until_complete(self.qdrant.upsert(
+                    async def _upsert():
+                        return await self.qdrant.upsert(
                             collection_name="skills-patterns",
                             points=points,
                             wait=True,
-                        ))
+                        )
 
                     await qdrant_breaker.call(_upsert)
                     logger.info("patterns_indexed", count=len(points))
@@ -1182,10 +1218,8 @@ class ContinuousLearningPipeline:
         if self.postgres:
             postgres_breaker = self.circuit_breakers.get("postgresql")
             try:
-                def _insert():
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    return loop.run_until_complete(self.postgres.execute(
+                async def _insert():
+                    return await self.postgres.execute(
                         """
                         INSERT INTO performance_metrics
                         (metric_name, value, model_version, timestamp)
@@ -1195,7 +1229,7 @@ class ContinuousLearningPipeline:
                         value,
                         model_version,
                         metric.timestamp,
-                    ))
+                    )
 
                 await postgres_breaker.call(_insert)
             except Exception as e:

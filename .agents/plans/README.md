@@ -1,13 +1,18 @@
 # Plans Index
 
-Use this directory for progressive-disclosure implementation plans.
-
 Recommended files:
 - `phase-01-foundation.md`
-- `phase-02-core.md`
+- `phase-02-core-feature.md`
 - `brownfield-slice-001.md`
 
+Each plan should include:
+1. Objective
+2. Scope lock
+3. Steps
+4. Validation commands
+5. Rollback notes
+
 Rules:
-- Keep one logical change/slice per plan file.
-- Link to context docs instead of duplicating large policy text.
-- Record validation and rollback notes in each plan.
+- Keep one logical slice per plan file.
+- Link to source docs instead of duplicating long policy text.
+- Include explicit validation evidence and rollback notes in each plan.

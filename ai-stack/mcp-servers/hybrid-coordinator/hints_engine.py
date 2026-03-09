@@ -29,7 +29,7 @@ class Hint:
     """A ranked, actionable workflow hint surfaced to any agent or human."""
 
     id: str
-    type: str  # "prompt_template" | "gap_topic" | "workflow_rule" | "tool_warning" | "runtime_signal"
+    type: str  # "prompt_template" | "gap_topic" | "workflow_rule" | "tool_warning" | "runtime_signal" | "prompt_coaching"
     title: str
     score: float  # composite 0.0-1.0
     snippet: str  # actionable text: template excerpt, rule, etc.
@@ -283,6 +283,41 @@ _STATIC_RULES: List[dict] = [
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _COMMAND_RE = re.compile(r"`[^`]+`|scripts/[a-zA-Z0-9._/-]+|/[a-zA-Z0-9._/-]+")
 
+_AGENT_STRENGTHS: Dict[str, Dict[str, str]] = {
+    "codex": {
+        "best_for": "orchestration, integration quality, reviewer gates, final acceptance",
+        "prompt_shape": "State the objective, repo scope, hard constraints, acceptance checks, and required evidence.",
+    },
+    "qwen": {
+        "best_for": "concrete patch proposals, implementation slices, test scaffolding",
+        "prompt_shape": "Give the exact files, expected behavior change, and narrow implementation slice to patch.",
+    },
+    "claude": {
+        "best_for": "architecture reasoning, policy/risk analysis, long-form tradeoffs",
+        "prompt_shape": "Ask for system design, risk framing, and decision rationale with explicit constraints.",
+    },
+    "aider": {
+        "best_for": "small targeted edits in already-selected files",
+        "prompt_shape": "Keep the task to one logical change, name the files, and specify the exact edit outcome.",
+    },
+    "continue": {
+        "best_for": "inline context lookup, iterative coding assistance, editor-local retrieval",
+        "prompt_shape": "Ask for contextual help tied to the current file, symbol, or implementation step.",
+    },
+    "human": {
+        "best_for": "operator requests and multi-agent routing decisions",
+        "prompt_shape": "Lead with the goal, then constraints, relevant files, verification, and preferred agent split.",
+    },
+}
+
+_PROMPT_COACHING_FIELDS: List[Tuple[str, str, Tuple[str, ...]]] = [
+    ("objective", "Explicit objective", ("implement", "fix", "add", "create", "continue", "investigate", "optimize", "review", "debug", "build", "wire")),
+    ("constraints", "Constraints and guardrails", ("must", "should", "avoid", "don't", "do not", "only", "without", "preserve", "keep", "use", "never")),
+    ("context", "Concrete context or files", (".nix", ".py", ".sh", ".md", "/", "file", "path", "repo", "module", "service", "endpoint")),
+    ("validation", "Validation or acceptance checks", ("verify", "test", "validation", "acceptance", "done", "pass", "smoke", "evidence", "rollback")),
+    ("agent_routing", "Agent selection or delegation intent", ("codex", "qwen", "claude", "aider", "continue", "agent", "delegate", "reviewer", "orchestrator")),
+]
+
 
 def _tokenize(text: str) -> List[str]:
     """Lowercase and split on whitespace / punctuation."""
@@ -386,11 +421,11 @@ class HintsEngine:
         self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 6, min_value=1)
         self._div_type_max = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MAX",
-            default="runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1",
+            default="runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1,prompt_coaching:2",
         )
         self._div_type_min = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MIN",
-            default="runtime_signal:1,gap_topic:1,workflow_rule:1",
+            default="runtime_signal:1,gap_topic:1,workflow_rule:1,prompt_coaching:1",
         )
         self._feedback_db_enabled = (os.getenv("AI_HINT_FEEDBACK_DB_ENABLED", "true").strip().lower() != "false")
         self._feedback_db_ttl_seconds = self._parse_int_env("AI_HINT_FEEDBACK_DB_CACHE_TTL_SECONDS", 120, min_value=10)
@@ -485,11 +520,12 @@ class HintsEngine:
         source_b = self._hints_from_gaps(query, query_tokens)
         source_c = self._hints_from_static_rules(query_tokens)
         source_d = self._hints_from_runtime_signals(query, query_tokens)
+        source_e = self._hints_from_prompt_coaching(query, query_tokens, agent_type)
 
         feedback = self._load_hint_feedback_scores()
         db_feedback_profiles = self._load_db_feedback_profiles()
         preference_profile = self._load_agent_preference_profile(agent_type)
-        combined: List[Hint] = source_d + source_a + source_b + source_c
+        combined: List[Hint] = source_e + source_d + source_a + source_b + source_c
         combined = [self._apply_efficiency_adjustment(h) for h in combined]
         combined = [self._apply_feedback_adjustment(h, feedback, db_feedback_profiles, query_tokens) for h in combined]
         combined = [self._apply_agent_preference_adjustment(h, preference_profile) for h in combined]
@@ -1020,6 +1056,7 @@ class HintsEngine:
         usage_counts, usage_total = self._load_recent_hint_usage()
         overused_ids = sorted(self._compute_overused_hint_ids(usage_counts, usage_total))
         db_profiles = self._load_db_feedback_profiles()
+        prompt_coaching = self._build_prompt_coaching(query, agent_type)
         output_type_counts: Dict[str, int] = {}
         for h in hints:
             t = (h.type or "unknown").strip().lower() or "unknown"
@@ -1029,6 +1066,7 @@ class HintsEngine:
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
             "agent_type": agent_type,
+            "prompt_coaching": prompt_coaching,
             "diversity_policy": {
                 "repeat_window": self._div_repeat_window,
                 "repeat_cap_pct": self._div_repeat_cap_pct,
@@ -1128,6 +1166,10 @@ class HintsEngine:
             },
         }
 
+    def prompt_coaching_as_dict(self, query: str, agent_type: str = "unknown") -> Dict[str, object]:
+        """Return prompt-structure coaching without ranking full hint sources."""
+        return self._build_prompt_coaching(query, agent_type)
+
     # ------------------------------------------------------------------
     # Source A -- registry templates
     # ------------------------------------------------------------------
@@ -1221,6 +1263,114 @@ class HintsEngine:
         hints: List[Hint] = []
         hints.extend(self._hints_from_latest_report(query, query_tokens))
         hints.extend(self._hints_from_tool_audit_errors(query, query_tokens))
+        return hints
+
+    def _choose_recommended_agent(self, query_lower: str, agent_type: str) -> str:
+        if any(tok in query_lower for tok in ("architecture", "tradeoff", "policy", "risk", "design")):
+            return "claude"
+        if any(tok in query_lower for tok in ("patch", "implement", "edit", "refactor", "test scaffold", "wire")):
+            return "qwen"
+        if any(tok in query_lower for tok in ("review", "integrate", "verify", "gate", "acceptance", "commit")):
+            return "codex"
+        if any(tok in query_lower for tok in ("small edit", "rename", "one file", "targeted edit", "inline fix")):
+            return "aider"
+        agent = (agent_type or "").strip().lower()
+        return agent if agent in _AGENT_STRENGTHS else "codex"
+
+    def _build_prompt_coaching(self, query: str, agent_type: str) -> Dict[str, object]:
+        query_text = str(query or "").strip()
+        query_lower = query_text.lower()
+        present: Dict[str, bool] = {}
+        missing: List[str] = []
+        for key, label, tokens in _PROMPT_COACHING_FIELDS:
+            hit = any(token in query_lower for token in tokens)
+            if key == "objective" and len(_tokenize(query_text)) >= 6:
+                hit = hit or True
+            present[key] = hit
+            if not hit:
+                missing.append(label)
+
+        score = round(sum(1 for value in present.values() if value) / max(1, len(_PROMPT_COACHING_FIELDS)), 4)
+        recommended_agent = self._choose_recommended_agent(query_lower, agent_type)
+        strength = _AGENT_STRENGTHS.get(recommended_agent, _AGENT_STRENGTHS["codex"])
+        suggested_prompt_lines = [
+            f"Objective: {query_text or '<state the concrete outcome>'}",
+            "Constraints: list safety, style, or repo rules that must be preserved",
+            "Context: name the files, services, endpoints, or failing path",
+            "Validation: specify tests, smoke checks, or acceptance evidence",
+            f"Agent routing: use {recommended_agent} for {strength['best_for']}",
+        ]
+        return {
+            "score": score,
+            "present_fields": [label for key, label, _ in _PROMPT_COACHING_FIELDS if present.get(key)],
+            "missing_fields": missing,
+            "recommended_agent": recommended_agent,
+            "recommended_agent_rationale": strength["best_for"],
+            "agent_prompt_shape": strength["prompt_shape"],
+            "suggested_prompt": "\n".join(suggested_prompt_lines),
+            "teaching_points": [
+                "Lead with the outcome, not background history.",
+                "Name constraints explicitly so agents do not infer them.",
+                "Include validation expectations to prevent low-signal completions.",
+                "Route architecture questions to Claude, implementation slices to Qwen, and integration/review to Codex.",
+            ],
+        }
+
+    def _hints_from_prompt_coaching(
+        self,
+        query: str,
+        query_tokens: List[str],
+        agent_type: str,
+    ) -> List[Hint]:
+        coaching = self._build_prompt_coaching(query, agent_type)
+        missing = coaching.get("missing_fields", [])
+        if not isinstance(missing, list):
+            missing = []
+        score = float(coaching.get("score", 0.0) or 0.0)
+        recommended_agent = str(coaching.get("recommended_agent", "codex") or "codex")
+        agent_strength = _AGENT_STRENGTHS.get(recommended_agent, _AGENT_STRENGTHS["codex"])
+        hints: List[Hint] = []
+
+        if missing:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_structure",
+                    type="prompt_coaching",
+                    title="Strengthen the request structure before execution",
+                    score=min(0.98, 0.64 + (1.0 - score) * 0.28),
+                    snippet=(
+                        "Missing pieces: "
+                        + ", ".join(str(item) for item in missing[:3])
+                        + ". Use: Objective -> Constraints -> Context -> Validation -> Agent routing."
+                    ),
+                    reason="Prompt-shape coaching detected missing execution-critical fields",
+                    tags=["prompting", "coaching", "structure", "education"],
+                    agent_hints={
+                        "human": "Rewrite the request using the suggested prompt skeleton before dispatch.",
+                        "codex": "Surface missing fields back to the user before large execution branches.",
+                        "qwen": "Ask for files + expected behavior when implementation scope is underspecified.",
+                        "claude": "Use this to coach prompt writers toward clearer decision inputs.",
+                    },
+                )
+            )
+
+        if len(query_tokens) >= 3:
+            hints.append(
+                Hint(
+                    id=f"prompt_coaching_agent_{recommended_agent}",
+                    type="prompt_coaching",
+                    title=f"Route this work to {recommended_agent} for best leverage",
+                    score=0.66 if missing else 0.58,
+                    snippet=(
+                        f"{recommended_agent} is strongest for {agent_strength['best_for']}. "
+                        f"Prompt shape: {agent_strength['prompt_shape']}"
+                    ),
+                    reason="Agent-strength coaching based on the task shape and routing intent",
+                    tags=["prompting", "coaching", "agent-routing", recommended_agent],
+                    agent_hints={recommended_agent: "Use this task shape as the default routing profile."},
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:

@@ -369,6 +369,7 @@ print_completion_test_results() {
 
   local health_script="${REPO_ROOT}/scripts/testing/check-mcp-health.sh"
   local report_script="${REPO_ROOT}/scripts/ai/aq-report"
+  local qa_script="${REPO_ROOT}/scripts/ai/aq-qa"
   local output
 
   _print_report_summary_from_json() {
@@ -475,6 +476,21 @@ print_completion_test_results() {
         printf '%s\n' "${output}" \
           | awk '/^\[ 9\. Hint Adoption/, /^\[ 10\./ { if ($0 !~ /^\[ 10\./) print }'
       fi
+    fi
+  fi
+
+  if [[ -x "${qa_script}" ]]; then
+    output="$(
+      run_with_timeout_if_available "${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS}" \
+        "${qa_script}" 0 --json 2>/dev/null || true
+    )"
+    if [[ -n "${output}" ]] && command -v jq >/dev/null 2>&1 && printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1; then
+      log "AI stack QA phase 0:"
+      printf '  %-28s %s\n' "Pass" "$(printf '%s' "${output}" | jq -r '.pass // 0')"
+      printf '  %-28s %s\n' "Fail" "$(printf '%s' "${output}" | jq -r '.fail // 0')"
+      printf '  %-28s %s\n' "Skip" "$(printf '%s' "${output}" | jq -r '.skip // 0')"
+    else
+      log_warn "AI stack QA phase 0 summary unavailable."
     fi
   fi
 }
