@@ -8,6 +8,17 @@ else
   REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
 
+if [[ "${1:-}" == "--run-privileged-helper" ]]; then
+  shift
+  [[ "${1:-}" == "--" ]] && shift
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    echo "[clean-deploy] privileged helper requires root" >&2
+    exit 1
+  fi
+  [[ $# -gt 0 ]] || exit 0
+  exec "$@"
+fi
+
 HOST_NAME="${HOSTNAME_OVERRIDE:-$(hostname -s 2>/dev/null || hostname)}"
 PRIMARY_USER="${PRIMARY_USER_OVERRIDE:-${SUDO_USER:-${USER:-$(id -un)}}}"
 PROFILE="${PROFILE_OVERRIDE:-ai-dev}"
@@ -1513,6 +1524,8 @@ run_privileged() {
     require_command sudo
     if sudo_passwordless_ready && sudo_passwordless_command_allowed "${1:-}"; then
       sudo -n "$@"
+    elif sudo_passwordless_ready && sudo_passwordless_command_allowed "${BASH_SOURCE[0]}"; then
+      sudo -n "${BASH_SOURCE[0]}" --run-privileged-helper -- "$@"
     elif [[ ! -t 0 ]]; then
       return 1
     else
