@@ -94,7 +94,8 @@ check_pattern "nix/modules/core/options.nix" 'otlpHttp = lib.mkOption' 'Port reg
 check_pattern "nix/modules/core/options.nix" 'otelCollectorMetrics = lib.mkOption' 'Port registry includes OTEL collector metrics'
 check_pattern "nix/modules/services/mcp-servers.nix" 'qdrantUrl = "http://127.0.0.1:\$\{toString ports.qdrantHttp\}"' 'MCP services derive Qdrant URL from port registry'
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlpEndpoint = "http://127.0.0.1:\$\{toString ports.otlpGrpc\}"' 'MCP services derive OTLP endpoint from port registry'
-check_pattern "nix/modules/services/mcp-servers.nix" 'nop: \{\}' 'OTEL collector uses nop exporter to suppress debug trace dumps'
+# Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
+check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'debug:' 'No debug exporter configured in declarative OTEL collector'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/config.py" 'AI_STRICT_ENV", "true"' 'Hybrid coordinator defaults to strict env enforcement'
@@ -106,6 +107,35 @@ check_pattern "lib/logging.sh" 'append_log_line\(\)' 'Safe append logging helper
 check_pattern "lib/validation-input.sh" 'find_existing_parent\(\)' 'Existing-parent path resolver exists'
 check_pattern "lib/user-interaction.sh" 'AUTO_CONFIRM' 'Auto-confirm automation guard exists'
 check_pattern "scripts/testing/validate-deploy-doc-flags.sh" 'supported quick-deploy flags' 'Deploy docs flag validator exists'
+
+# Phase 21.2 — LLM performance metrics via llama.cpp --metrics
+check_pattern "nix/modules/roles/ai-stack.nix" '"--metrics"' 'llama-server exposes Prometheus metrics endpoint'
+check_pattern "nix/modules/services/monitoring.nix" 'job_name = "llama-cpp"' 'Prometheus scrapes llama-cpp inference metrics'
+check_pattern "nix/modules/services/monitoring.nix" 'llamacpp_tokens_predicted_total' 'Dashboard tracks LLM token generation rate'
+check_pattern "nix/modules/services/monitoring.nix" 'llamacpp_kv_cache_usage_ratio' 'Dashboard tracks KV cache utilization'
+check_pattern "nix/modules/services/monitoring.nix" 'llamacpp_request_processing_seconds_bucket' 'Dashboard tracks inference latency histogram'
+
+# Phase 21.3 — Cache intelligence with event-driven invalidation
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'EMBEDDING_CACHE_INVALIDATIONS' 'Cache invalidation counter metric defined'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'EMBEDDING_CACHE_SIZE' 'Cache size gauge metric defined'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/cache/invalidate' 'Cache invalidation endpoint registered'
+check_pattern "scripts/data/rebuild-qdrant-collections.sh" 'cache/invalidate' 'Rebuild script triggers cache invalidation'
+check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_size_keys' 'Dashboard tracks embedding cache size'
+check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_invalidations_total' 'Dashboard tracks cache invalidation rate'
+
+# Phase 4 — Parity scorecard completion (tracks implemented status)
+check_pattern "config/parity-scorecard.json" '"status": "implemented"' 'Parity scorecard has implemented tracks'
+check_pattern "config/parity-scorecard.json" '"id": "distributed_tracing"' 'Parity scorecard tracks distributed tracing'
+check_pattern "config/parity-scorecard.json" '"id": "llm_performance_metrics"' 'Parity scorecard tracks LLM metrics'
+check_pattern "config/parity-scorecard.json" '"id": "cache_intelligence"' 'Parity scorecard tracks cache intelligence'
+
+# Phase 5 — Model management enhancement
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_RELOADS' 'Model reload counter metric defined'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_RELOAD_DURATION' 'Model reload duration histogram defined'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_ACTIVE_INFO' 'Model active info gauge defined'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/model/status' 'Model status endpoint registered'
+check_pattern "nix/modules/services/monitoring.nix" 'model_reloads_total' 'Dashboard tracks model reloads'
+check_pattern "config/parity-scorecard.json" '"id": "model_management"' 'Parity scorecard tracks model management'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
 if (( fail_count > 0 )); then
