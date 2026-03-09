@@ -480,10 +480,13 @@ async def route_search(
                         max(0.0, time.perf_counter() - _llm_start)
                     )
                 except Exception as exc:  # noqa: BLE001
+                    response = getattr(exc, "response", None)
+                    status_code = getattr(response, "status_code", None)
                     if (
                         selected_backend == "remote"
                         and llama_cpp_client is not None
-                        and "400" in str(exc)
+                        and isinstance(status_code, int)
+                        and 400 <= status_code < 500
                     ):
                         try:
                             fallback_messages = []
@@ -518,11 +521,12 @@ async def route_search(
                                     "compressed_tokens": compressed_tokens,
                                 }
                             results["synthesis_fallback"] = {
-                                "reason": "remote_400_local_fallback",
+                                "reason": "remote_4xx_local_fallback",
+                                "status_code": status_code,
                                 "original_backend": "remote",
                             }
                             selected_backend = "local"
-                            backend_reason_class = "remote_400_local_fallback"
+                            backend_reason_class = "remote_4xx_local_fallback"
                             LLM_BACKEND_SELECTIONS.labels(
                                 backend=selected_backend,
                                 reason_class=backend_reason_class,
@@ -530,7 +534,7 @@ async def route_search(
                             LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
                                 max(0.0, time.perf_counter() - _llm_start)
                             )
-                            logger.info("route_search_remote_400_local_fallback")
+                            logger.info("route_search_remote_4xx_local_fallback status=%s", status_code)
                             exc = None
                         except Exception as fallback_exc:  # noqa: BLE001
                             exc = fallback_exc
