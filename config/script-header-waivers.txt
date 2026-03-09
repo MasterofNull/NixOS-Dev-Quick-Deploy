@@ -27,7 +27,6 @@ scripts/governance/count-packages-simple.sh
 scripts/automation/cron-templates.sh
 scripts/data/bootstrap-prsi-confidence-samples.sh
 scripts/data/download-embeddings-model.sh
-scripts/data/download-lemonade-models.sh
 scripts/data/download-llama-cpp-models.sh
 scripts/data/export-collections.sh
 scripts/data/generate-api-secrets.sh
@@ -40,7 +39,6 @@ scripts/data/generate-passwords.sh
 scripts/data/generate-test-telemetry.sh
 scripts/data/import-collections.sh
 scripts/data/init-package-database.sh
-scripts/data/initialize-qdrant-collections.sh
 scripts/data/populate-knowledge-base.py
 scripts/data/populate-knowledge-from-web.py
 scripts/data/populate-qdrant-collections.sh

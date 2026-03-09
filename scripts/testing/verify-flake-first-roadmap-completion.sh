@@ -134,6 +134,8 @@ check_path_absent "scripts/data/generate-nginx-certs.sh" 'Low-signal deprecated 
 check_path_absent "scripts/data/init-package-database.sh" 'Low-signal deprecated init-package-database shim has been removed'
 check_path_absent "scripts/data/generate-test-telemetry.sh" 'Low-signal deprecated generate-test-telemetry shim has been removed'
 check_path_absent "scripts/deploy/local-registry.sh" 'Low-signal deprecated local-registry shim has been removed'
+check_path_absent "scripts/data/download-lemonade-models.sh" 'Low-signal deprecated download-lemonade-models shim has been removed'
+check_path_absent "scripts/data/initialize-qdrant-collections.sh" 'Low-signal deprecated initialize-qdrant-collections shim has been removed'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh bootstrap --host' 'Secrets guide documents delegated quick-deploy bootstrap flow'
 check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'
