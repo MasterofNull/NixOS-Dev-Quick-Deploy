@@ -679,6 +679,9 @@ def _build_workflow_plan(
                 "Start with concise hints/capability summaries.",
                 "Load deeper context only when a phase requires it.",
                 "Prefer retrieval over full-policy prompt stuffing.",
+                "Escalate to remote or cloud-hosted models only when task scope, context size, or prior failures justify the spend.",
+                "Use free or provider-routed experimentation for low-stakes probing, not as the default path for every request.",
+                "Keep reusable prompt prefixes compact and stable so provider-side prompt caching can reduce repeated token spend.",
             ],
         },
         "metadata": {
