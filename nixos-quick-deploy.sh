@@ -1504,7 +1504,11 @@ run_privileged() {
     "$@"
   else
     require_command sudo
-    sudo "$@"
+    if sudo_passwordless_ready; then
+      sudo -n "$@"
+    else
+      sudo "$@"
+    fi
   fi
 }
 
