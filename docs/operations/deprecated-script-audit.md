@@ -10,7 +10,7 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 | Script | Active refs | Code | Docs | Tests | Nix | Archive | Rationale |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `scripts/automation/cron-templates.sh` | 15 | 1 | 13 | 0 | 0 | 0 | runtime references remain (1 code) |
-| `scripts/deploy/publish-local-registry.sh` | 14 | 1 | 12 | 0 | 0 | 0 | runtime references remain (1 code) |
+| `scripts/deploy/publish-local-registry.sh` | 15 | 1 | 13 | 0 | 0 | 0 | runtime references remain (1 code) |
 | `scripts/deploy/configure-podman-tcp.sh` | 12 | 1 | 10 | 0 | 0 | 0 | runtime references remain (1 code) |
 | `scripts/data/export-collections.sh` | 10 | 0 | 7 | 0 | 0 | 1 | widely referenced in active docs/workflows (7 doc, 3 other) |
 | `scripts/data/import-collections.sh` | 10 | 0 | 7 | 0 | 0 | 1 | widely referenced in active docs/workflows (7 doc, 3 other) |
@@ -25,7 +25,7 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 | Script | Active refs | Code | Docs | Tests | Nix | Archive | Rationale |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `scripts/automation/cron-templates.sh` | 15 | 1 | 13 | 0 | 0 | 0 | runtime references remain (1 code) |
-| `scripts/deploy/publish-local-registry.sh` | 14 | 1 | 12 | 0 | 0 | 0 | runtime references remain (1 code) |
+| `scripts/deploy/publish-local-registry.sh` | 15 | 1 | 13 | 0 | 0 | 0 | runtime references remain (1 code) |
 | `scripts/deploy/configure-podman-tcp.sh` | 12 | 1 | 10 | 0 | 0 | 0 | runtime references remain (1 code) |
 | `scripts/data/export-collections.sh` | 10 | 0 | 7 | 0 | 0 | 1 | widely referenced in active docs/workflows (7 doc, 3 other) |
 | `scripts/data/import-collections.sh` | 10 | 0 | 7 | 0 | 0 | 1 | widely referenced in active docs/workflows (7 doc, 3 other) |
@@ -44,11 +44,9 @@ Generated from active repo references under `scripts/`, `docs/`, `nix/`, and top
 
 | Script | Active refs | Code | Docs | Tests | Nix | Archive | Rationale |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `scripts/deploy/local-registry.sh` | 4 | 0 | 2 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-full.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/automation/run-dashboard-collector-lite.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/download-lemonade-models.sh` | 3 | 0 | 1 | 0 | 0 | 0 | only low-signal references remain; remove after doc cleanup |
-| `scripts/data/generate-test-telemetry.sh` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/initialize-qdrant-collections.sh` | 3 | 0 | 1 | 0 | 0 | 3 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/populate-knowledge-base.py` | 3 | 0 | 1 | 0 | 0 | 1 | only low-signal references remain; remove after doc cleanup |
 | `scripts/data/populate-knowledge-from-web.py` | 3 | 0 | 1 | 0 | 0 | 2 | only low-signal references remain; remove after doc cleanup |

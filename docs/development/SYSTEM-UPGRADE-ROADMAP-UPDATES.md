@@ -2059,7 +2059,7 @@ Last Updated: 2026-03-05
   - `scripts/security/`: `security-audit.sh`, `security-manager.sh`, `security-scan.sh`, `update-mcp-integrity-baseline.sh`
   - `scripts/data/`: `update-ai-research-now.sh`, `update-aidb-library-catalog-now.sh`
   - `scripts/governance/`: `update-readme-ai-stack.py`, `apply-project-root.sh`, `apply-readme-ai-stack-updates.py`, `git-safe.sh`, `new-improvement-proposal.sh`, `smart_config_gen.sh`, `list-issues.py`, `comprehensive-mcp-search.py`
-  - `scripts/deploy/`: `local-registry.sh`
+  - `scripts/deploy/`: registry publication handled via `publish-local-registry.sh`
   - `scripts/automation/`: `prsi-orchestrator.py`
 - [x] Migrated bootstrap/init/migrate/proxy wrappers:
   - `scripts/ai/`: `claude-api-proxy.py`, `claude-local-wrapper.py`, `complete-via-ralph.sh`
@@ -2090,7 +2090,7 @@ Last Updated: 2026-03-05
 - `bash -n scripts/data/generate-*.sh scripts/governance/discover-improvements.sh scripts/governance/discover-system-facts.sh scripts/governance/manage-secrets.sh` → PASS
 - `bash -n scripts/deploy/recovery-*.sh scripts/deploy/restore-drill.sh scripts/security/renew-tls-certificate.sh scripts/security/rotate-api-key.sh scripts/data/rebuild-qdrant-collections.sh scripts/data/rotate-telemetry.sh scripts/governance/record-claude-code-errors.sh` → PASS
 - `bash -n scripts/testing/smoke-*.sh scripts/testing/chaos-harness-smoke.sh scripts/testing/rag-smoke-test.sh scripts/testing/telemetry-smoke-test.sh scripts/testing/test_real_world_workflows.sh scripts/testing/test_services.sh scripts/health/system-health-check.sh` → PASS
-- `bash -n scripts/ai/ai-*.sh scripts/security/security-*.sh scripts/ai/mcp-* scripts/data/update-*.sh scripts/governance/{apply-project-root.sh,new-improvement-proposal.sh,smart_config_gen.sh,git-safe.sh} scripts/deploy/local-registry.sh` → PASS
+- `bash -n scripts/ai/ai-*.sh scripts/security/security-*.sh scripts/ai/mcp-* scripts/data/update-*.sh scripts/governance/{apply-project-root.sh,new-improvement-proposal.sh,smart_config_gen.sh,git-safe.sh} scripts/deploy/publish-local-registry.sh` → PASS
 - `bash -n scripts/ai/complete-via-ralph.sh scripts/deploy/{deploy-aidb-mcp-server.sh,quick-deploy-fast-verify.sh} scripts/data/{bootstrap-prsi-confidence-samples.sh,bootstrap_aidb_data.sh,initialize-qdrant-collections.sh,migrate-reports-to-database.sh} scripts/governance/preflight-auto-remediate.sh` → PASS
 - `python3 -m py_compile scripts/data/sync-hint-feedback-db.py scripts/testing/test-continuous-learning.py scripts/testing/test-discovery-system.py scripts/testing/test-rag-workflow.py scripts/testing/test-tool-security-auditor.py` → PASS
 - `python3 -m py_compile scripts/data/import-documents.py scripts/data/populate-knowledge-base.py scripts/data/populate-knowledge-from-web.py scripts/data/populate-qdrant-directly.py scripts/data/populate-qdrant-with-embeddings.py` → PASS
