@@ -60,6 +60,7 @@ Show current status without printing secret values:
 `status` now reports both:
 - core readiness for deploy-critical secrets
 - all-managed readiness including optional and remote-routing secrets
+- missing optional secrets separately from missing remote-routing secrets
 
 For scripts or agents that need the same status information in JSON:
 
@@ -84,6 +85,12 @@ For scripts or agents that need machine-readable readiness output:
 ```bash
 ./scripts/governance/manage-secrets.sh doctor --host nixos --format json
 ```
+
+Both `status --format json` and `doctor --format json` now include `missing_by_scope`
+so automation can distinguish:
+- core gaps
+- optional local service gaps
+- remote-routing gaps such as `remote_llm_api_key`
 
 Show filesystem paths used by the secrets flow:
 
