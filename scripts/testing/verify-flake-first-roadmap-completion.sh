@@ -110,6 +110,10 @@ check_absent_pattern "scripts/governance/manage-secrets.py" 'This script is depr
 check_pattern "scripts/governance/manage-secrets.py" 'Manage external SOPS secrets for the AI stack' 'Secrets manager exposes a real CLI parser'
 check_pattern "scripts/governance/manage-secrets.py" 'ensure-local-config' 'Secrets manager can refresh gitignored local host wiring'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
+check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'
+check_pattern "scripts/security/rotate-api-key.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API key rotation shim delegates to declarative secrets manager'
+check_pattern "scripts/data/generate-passwords.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'Password generator delegates to declarative secrets manager'
+check_pattern "scripts/data/generate-api-key.sh" 'service_to_secret' 'Single API key generator maps services into declarative secret names'
 # Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
