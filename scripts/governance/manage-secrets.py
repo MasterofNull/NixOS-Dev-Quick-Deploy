@@ -29,6 +29,8 @@ SECRET_SPECS = [
         "kind": "token",
         "scope": "core",
         "services": "aidb",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
         "name": "hybrid_coordinator_api_key",
@@ -36,6 +38,8 @@ SECRET_SPECS = [
         "kind": "token",
         "scope": "core",
         "services": "hybrid-coordinator, harness",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
         "name": "embeddings_api_key",
@@ -43,6 +47,8 @@ SECRET_SPECS = [
         "kind": "token",
         "scope": "core",
         "services": "embeddings",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
         "name": "postgres_password",
@@ -50,6 +56,8 @@ SECRET_SPECS = [
         "kind": "password",
         "scope": "core",
         "services": "postgres, aidb, hybrid-coordinator",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
         "name": "redis_password",
@@ -57,6 +65,8 @@ SECRET_SPECS = [
         "kind": "password",
         "scope": "core",
         "services": "redis",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
         "name": "aider_wrapper_api_key",
@@ -64,6 +74,8 @@ SECRET_SPECS = [
         "kind": "token",
         "scope": "core",
         "services": "aider-wrapper",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
         "name": "nixos_docs_api_key",
@@ -71,6 +83,8 @@ SECRET_SPECS = [
         "kind": "token",
         "scope": "optional",
         "services": "nixos-docs",
+        "source": "user-supplied external credential",
+        "obtain": "Only needed if you enable the docs service path that expects an API key. Obtain it from the upstream docs provider you choose, or leave it unset.",
     },
     {
         "name": "remote_llm_api_key",
@@ -78,6 +92,8 @@ SECRET_SPECS = [
         "kind": "token",
         "scope": "optional",
         "services": "switchboard remote routing",
+        "source": "user-supplied external credential",
+        "obtain": "Create an API key in OpenRouter or another OpenAI-compatible remote provider, then store it with manage-secrets.",
     },
 ]
 
@@ -389,6 +405,8 @@ def remote_onboarding_config_snippet() -> str:
         "{\n"
         "  # Example OpenRouter aliases current as of 2026-03-09.\n"
         "  # Re-check https://openrouter.ai/models and OpenRouter docs before pinning new defaults.\n"
+        "  # dailyTokenCap = 0 keeps token discipline policy-focused instead of using\n"
+        "  # a synthetic local hard limit. Subscription/provider limits remain upstream.\n"
         "  mySystem.aiStack.switchboard = {\n"
         "    enable = true;\n"
         "    remoteUrl = \"https://openrouter.ai/api\";\n"
@@ -400,7 +418,7 @@ def remote_onboarding_config_snippet() -> str:
         "    };\n"
         "\n"
         "    remoteBudget = {\n"
-        "      dailyTokenCap = 200000;\n"
+        "      dailyTokenCap = 0;\n"
         "      fallbackToLocal = true;\n"
         "    };\n"
         "  };\n"
@@ -443,6 +461,7 @@ def remote_onboarding_guide(host: str, paths: Dict[str, Path]) -> Dict[str, obje
             f"./scripts/governance/manage-secrets.sh doctor --host {host} --include-remote",
             f"./nixos-quick-deploy.sh --host {host} --profile ai-dev",
         ],
+        "token_policy_note": "Use progressive disclosure and compact prompts first. Provider or subscription limits are the real hard limits; dailyTokenCap can stay 0 unless you explicitly want a local heuristic guardrail.",
         "validation": [
             "Use x-ai-profile: remote-free for low-cost probing.",
             "Use x-ai-profile: remote-coding for code-heavy requests.",
@@ -450,6 +469,24 @@ def remote_onboarding_guide(host: str, paths: Dict[str, Path]) -> Dict[str, obje
         ],
         "config_snippet": remote_onboarding_config_snippet(),
     }
+
+
+def missing_secret_details(payload: Dict[str, str]) -> List[Dict[str, str]]:
+    details: List[Dict[str, str]] = []
+    for spec in SECRET_SPECS:
+        if payload.get(spec["name"]):
+            continue
+        details.append(
+            {
+                "name": spec["name"],
+                "label": spec["label"],
+                "scope": spec["scope"],
+                "services": spec["services"],
+                "source": spec["source"],
+                "obtain": spec["obtain"],
+            }
+        )
+    return details
 
 
 def doctor_next_steps(host: str, state: Dict[str, object], *, include_optional: bool, include_remote: bool) -> List[str]:
@@ -569,6 +606,7 @@ def command_status(args: argparse.Namespace) -> int:
     full_state = describe_secret_state(paths, include_optional=True, include_remote=True)
     payload = full_state["payload"]
     missing_by_scope = full_state["missing_by_scope"]
+    missing_details = missing_secret_details(payload)
     next_steps = status_next_steps(host, missing_by_scope, core_ready=core_state["is_ready"])
     if args.format == "json":
         print(
@@ -581,6 +619,7 @@ def command_status(args: argparse.Namespace) -> int:
                     "core_ready": core_state["is_ready"],
                     "all_managed_ready": full_state["is_ready"],
                     "missing_by_scope": missing_by_scope,
+                    "missing_details": missing_details,
                     "next_steps": next_steps,
                     "secrets": [
                         {
@@ -611,6 +650,10 @@ def command_status(args: argparse.Namespace) -> int:
         print("Next steps:")
         for step in next_steps:
             print(f"- {step}")
+    if missing_details:
+        print("Missing secret details:")
+        for item in missing_details:
+            print(f"- {item['name']}: {item['source']} for {item['services']}")
     print("")
     for spec in SECRET_SPECS:
         present = spec["name"] in payload and bool(payload[spec["name"]])
@@ -745,6 +788,7 @@ def command_doctor(args: argparse.Namespace) -> int:
         include_optional=args.include_optional,
         include_remote=args.include_remote,
     )
+    missing_details = missing_secret_details(state["payload"])
 
     if args.format == "json":
         print(
@@ -758,6 +802,7 @@ def command_doctor(args: argparse.Namespace) -> int:
                     "is_ready": state["is_ready"],
                     "missing_secrets": state["missing_secrets"],
                     "missing_by_scope": state["missing_by_scope"],
+                    "missing_details": missing_details,
                     "next_steps": next_steps,
                     "include_optional": args.include_optional,
                     "include_remote": args.include_remote,
@@ -778,12 +823,14 @@ def command_doctor(args: argparse.Namespace) -> int:
     if state["missing_by_scope"]["core"] or state["missing_by_scope"]["optional"] or state["missing_by_scope"]["remote"]:
         print("")
         print("Missing secrets:")
-        for name in state["missing_by_scope"]["core"]:
-            print(f"- {name}")
-        for name in state["missing_by_scope"]["optional"]:
-            print(f"- {name} (optional)")
-        for name in state["missing_by_scope"]["remote"]:
-            print(f"- {name} (remote)")
+        for item in missing_details:
+            if item["scope"] == "core":
+                suffix = ""
+            elif item["name"] == "remote_llm_api_key":
+                suffix = " (remote)"
+            else:
+                suffix = " (optional)"
+            print(f"- {item['name']}{suffix}: {item['obtain']}")
 
     print("")
     print("Next steps:")
