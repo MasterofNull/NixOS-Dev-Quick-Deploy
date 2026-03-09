@@ -24,6 +24,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import shutil
 import time as _time
 from typing import Any, Callable, Dict, List, Optional
 import asyncio
@@ -37,6 +38,19 @@ logger = logging.getLogger("hybrid-coordinator")
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _AQ_QA_SCRIPT = _REPO_ROOT / "scripts" / "ai" / "aq-qa"
 _QA_PHASE_ALIASES = {"phase0": "0", "phase1": "1", "phase2": "2", "phase3": "3", "all": "all"}
+
+
+def _resolve_bash_binary() -> str:
+    candidates = [
+        os.environ.get("BASH"),
+        shutil.which("bash"),
+        "/run/current-system/sw/bin/bash",
+        "/bin/bash",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return str(candidate)
+    raise FileNotFoundError("bash binary not found for aq-qa execution")
 
 
 def _normalize_qa_phase(value: Any) -> str:
@@ -60,7 +74,7 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
     if not _AQ_QA_SCRIPT.exists():
         raise FileNotFoundError(f"aq-qa script not found at {_AQ_QA_SCRIPT}")
 
-    cmd = [str(_AQ_QA_SCRIPT), phase]
+    cmd = [_resolve_bash_binary(), str(_AQ_QA_SCRIPT), phase]
     if output_format == "json":
         cmd.append("--json")
     if include_sudo:
