@@ -94,6 +94,11 @@ check_pattern "nix/modules/core/options.nix" 'otlpHttp = lib.mkOption' 'Port reg
 check_pattern "nix/modules/core/options.nix" 'otelCollectorMetrics = lib.mkOption' 'Port registry includes OTEL collector metrics'
 check_pattern "nix/modules/services/mcp-servers.nix" 'qdrantUrl = "http://127.0.0.1:\$\{toString ports.qdrantHttp\}"' 'MCP services derive Qdrant URL from port registry'
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlpEndpoint = "http://127.0.0.1:\$\{toString ports.otlpGrpc\}"' 'MCP services derive OTLP endpoint from port registry'
+check_pattern "nix/modules/core/options.nix" 'remoteModelAliases = \{' 'Switchboard exposes declarative remote model aliases'
+check_pattern "nix/modules/core/options.nix" 'remoteBudget = \{' 'Switchboard exposes declarative remote budget controls'
+check_pattern "nix/modules/services/switchboard.nix" 'SWB_REMOTE_DAILY_TOKEN_CAP' 'Switchboard injects remote daily token cap env'
+check_pattern "nix/modules/services/switchboard.nix" 'remote-free|remote-coding|remote-reasoning' 'Switchboard exposes remote profile lanes'
+check_pattern "nix/modules/services/switchboard.nix" '_remote_budget_status|remote_budget_exhausted' 'Switchboard enforces remote budget guardrails'
 # Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
