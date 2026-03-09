@@ -154,6 +154,15 @@ def _audit_http_request(request: web.Request, status: int, latency_ms: float) ->
         for key, value in extra.items():
             if isinstance(key, str):
                 metadata[key] = value
+    if int(status) >= 500:
+        outcome = "error"
+        error_message = f"http_status_{status}"
+    elif int(status) >= 400:
+        outcome = "client_error"
+        error_message = f"http_status_{status}"
+    else:
+        outcome = "success"
+        error_message = None
     _write_audit_entry(
         service="hybrid-coordinator-http",
         tool_name=tool_name,
@@ -164,8 +173,8 @@ def _audit_http_request(request: web.Request, status: int, latency_ms: float) ->
             "query": query_pairs,
         },
         risk_tier="low",
-        outcome="success" if int(status) < 500 else "error",
-        error_message=None if int(status) < 500 else f"http_status_{status}",
+        outcome=outcome,
+        error_message=error_message,
         latency_ms=latency_ms,
         metadata=metadata,
     )
