@@ -20,7 +20,10 @@ let
     then "http://${ai.llamaCpp.host}:${toString ai.embeddingServer.port}"
     else "";
   remoteUrl = if swb.remoteUrl != null then swb.remoteUrl else "";
-  remoteKeyFile = if swb.remoteApiKeyFile != null then swb.remoteApiKeyFile else "";
+  remoteKeyFile =
+    if swb.remoteApiKeyFile != null then swb.remoteApiKeyFile
+    else if sec.enable then "/run/secrets/${sec.names.remoteLlmApiKey}"
+    else "";
   hybridUrl = "http://127.0.0.1:${toString mcp.hybridPort}";
   hybridKeyFile = if sec.enable
     then "/run/secrets/${sec.names.hybridApiKey}"
