@@ -1078,6 +1078,7 @@ class HintsEngine:
         context: str = "",
         max_hints: int = 5,
         agent_type: str = "unknown",
+        include_debug_metadata: Optional[bool] = None,
     ) -> dict:
         """Return ranked hints as a JSON-serialisable dict."""
         hints = self.rank(query, context=context, max_hints=max_hints, agent_type=agent_type)
@@ -1090,57 +1091,56 @@ class HintsEngine:
         for h in hints:
             t = (h.type or "unknown").strip().lower() or "unknown"
             output_type_counts[t] = output_type_counts.get(t, 0) + 1
-        return {
+        if include_debug_metadata is None:
+            include_debug_metadata = os.getenv("AI_HINTS_INCLUDE_DEBUG_METADATA", "false").strip().lower() == "true"
+        result = {
             "hints": [self.to_dict(h) for h in hints],
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
             "agent_type": agent_type,
             "prompt_coaching": prompt_coaching,
-            "diversity_policy": {
-                "repeat_window": self._div_repeat_window,
-                "repeat_cap_pct": self._div_repeat_cap_pct,
-                "repeat_min_count": self._div_repeat_min_count,
-                "type_min": self._div_type_min,
-                "type_max": self._div_type_max,
-            },
-            "diversity_runtime": {
-                "recent_injections": usage_total,
-                "overused_hint_ids": overused_ids,
-                "output_type_counts": output_type_counts,
-            },
-            "feedback_db": {
-                "enabled": self._feedback_db_enabled,
-                "available": bool(db_profiles),
-                "profile_count": len(db_profiles),
-                "cache_ttl_seconds": self._feedback_db_ttl_seconds,
-            },
-            "bandit_policy": {
-                "enabled": self._bandit_enabled,
-                "min_events": self._bandit_min_events,
-                "prior_alpha": self._bandit_prior_alpha,
-                "prior_beta": self._bandit_prior_beta,
-                "exploration_weight": self._bandit_exploration_weight,
-                "max_adjust": self._bandit_max_adjust,
-                "confidence_floor": self._bandit_confidence_floor,
-            },
-            "agent_preference_profile": {
-                "preferred_tools": sorted(profile.get("preferred_tools", set())),
-                "preferred_data_sources": sorted(profile.get("preferred_data_sources", set())),
-                "preferred_hint_types": sorted(profile.get("preferred_hint_types", set())),
-                "preferred_tags": sorted(profile.get("preferred_tags", set())),
-            },
             "feedback_contract": {
                 "endpoint": "/hints/feedback",
                 "required_any_of": ["helpful", "score"],
                 "required": ["hint_id"],
-                "agent_preferences_fields": [
-                    "preferred_tools",
-                    "preferred_data_sources",
-                    "preferred_hint_types",
-                    "preferred_tags",
-                ],
             },
-            "feedback_guide": {
+        }
+        if include_debug_metadata:
+            result["debug_metadata"] = {
+                "diversity_policy": {
+                    "repeat_window": self._div_repeat_window,
+                    "repeat_cap_pct": self._div_repeat_cap_pct,
+                    "repeat_min_count": self._div_repeat_min_count,
+                    "type_min": self._div_type_min,
+                    "type_max": self._div_type_max,
+                },
+                "diversity_runtime": {
+                    "recent_injections": usage_total,
+                    "overused_hint_ids": overused_ids,
+                    "output_type_counts": output_type_counts,
+                },
+                "feedback_db": {
+                    "enabled": self._feedback_db_enabled,
+                    "available": bool(db_profiles),
+                    "profile_count": len(db_profiles),
+                    "cache_ttl_seconds": self._feedback_db_ttl_seconds,
+                },
+                "bandit_policy": {
+                    "enabled": self._bandit_enabled,
+                    "min_events": self._bandit_min_events,
+                    "prior_alpha": self._bandit_prior_alpha,
+                    "prior_beta": self._bandit_prior_beta,
+                    "exploration_weight": self._bandit_exploration_weight,
+                    "max_adjust": self._bandit_max_adjust,
+                    "confidence_floor": self._bandit_confidence_floor,
+                },
+                "agent_preference_profile": {
+                    "preferred_tools": sorted(profile.get("preferred_tools", set())),
+                    "preferred_data_sources": sorted(profile.get("preferred_data_sources", set())),
+                    "preferred_hint_types": sorted(profile.get("preferred_hint_types", set())),
+                    "preferred_tags": sorted(profile.get("preferred_tags", set())),
+                },
+                "feedback_guide": {
                 "purpose": "Improve future hint ranking by reporting what helped or wasted effort.",
                 "when_to_send": [
                     "after using an injected hint",
@@ -1161,39 +1161,40 @@ class HintsEngine:
                         "preferred_tags": ["efficiency", "diagnostics"],
                     },
                 },
-            },
-            "advocacy_ranking": {
-                "signals_used": [
-                    "hint_adoption_outcomes",
-                    "explicit_helpful_or_score_feedback",
-                    "agent_preferences_profile",
-                    "efficiency_bias",
-                ],
-                "effect": "useful hints trend up, unhelpful hints trend down, agent-preferred hint styles are prioritized",
-            },
-            "prsi_contract": {
-                "purpose": "Budget-aware pessimistic recursive self-improvement without always-on dual prompt execution.",
-                "policy_file": os.getenv("PRSI_POLICY_FILE", "config/runtime-prsi-policy.json"),
-                "state_file": os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"),
-                "loop": [
-                    "1) run normal single-path execution with hints",
-                    "2) send hint feedback + agent_preferences when useful/unhelpful",
-                    "3) run policy-gated PRSI cycle (sampled counterfactual only)",
-                    "4) apply low-risk actions under token cap; escalate only on degradation",
-                ],
-                "operator_commands": {
-                    "sync": "python scripts/automation/prsi-orchestrator.py sync --since=1d",
-                    "list": "python scripts/automation/prsi-orchestrator.py list",
-                    "cycle_dry_run": "python scripts/automation/prsi-orchestrator.py cycle --dry-run",
                 },
-                "budget_controls": [
-                    "remote_token_cap_daily",
-                    "counterfactual.sample_rate",
-                    "counterfactual.max_samples_per_day",
-                    "max_execute_per_cycle",
-                ],
-            },
-        }
+                "advocacy_ranking": {
+                    "signals_used": [
+                        "hint_adoption_outcomes",
+                        "explicit_helpful_or_score_feedback",
+                        "agent_preferences_profile",
+                        "efficiency_bias",
+                    ],
+                    "effect": "useful hints trend up, unhelpful hints trend down, agent-preferred hint styles are prioritized",
+                },
+                "prsi_contract": {
+                    "purpose": "Budget-aware pessimistic recursive self-improvement without always-on dual prompt execution.",
+                    "policy_file": os.getenv("PRSI_POLICY_FILE", "config/runtime-prsi-policy.json"),
+                    "state_file": os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"),
+                    "loop": [
+                        "1) run normal single-path execution with hints",
+                        "2) send hint feedback + agent_preferences when useful/unhelpful",
+                        "3) run policy-gated PRSI cycle (sampled counterfactual only)",
+                        "4) apply low-risk actions under token cap; escalate only on degradation",
+                    ],
+                    "operator_commands": {
+                        "sync": "python scripts/automation/prsi-orchestrator.py sync --since=1d",
+                        "list": "python scripts/automation/prsi-orchestrator.py list",
+                        "cycle_dry_run": "python scripts/automation/prsi-orchestrator.py cycle --dry-run",
+                    },
+                    "budget_controls": [
+                        "remote_token_cap_daily",
+                        "counterfactual.sample_rate",
+                        "counterfactual.max_samples_per_day",
+                        "max_execute_per_cycle",
+                    ],
+                },
+            }
+        return result
 
     def prompt_coaching_as_dict(self, query: str, agent_type: str = "unknown") -> Dict[str, object]:
         """Return prompt-structure coaching without ranking full hint sources."""

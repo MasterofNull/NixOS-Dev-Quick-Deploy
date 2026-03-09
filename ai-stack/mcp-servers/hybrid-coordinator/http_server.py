@@ -1846,12 +1846,14 @@ async def run_http_mode(port: int) -> None:
                 file_ext = ctx.get("file_ext", "") if isinstance(ctx, dict) else str(ctx)
                 max_hints = int(body.get("max_hints", 5))
                 agent_type = ctx.get("agent_type", "remote") if isinstance(ctx, dict) else "remote"
+                include_debug_metadata = bool(body.get("include_debug_metadata") or body.get("debug"))
             else:
                 is_continue = request.rel_url.query.get("format") == "continue"
                 query = request.rel_url.query.get("q", "")
                 file_ext = request.rel_url.query.get("context", "")
                 max_hints = int(request.rel_url.query.get("max", "5"))
                 agent_type = request.rel_url.query.get("agent", "remote")
+                include_debug_metadata = request.rel_url.query.get("debug", "0").strip().lower() in {"1", "true", "yes"}
 
             try:
                 import sys as _sys
@@ -1866,6 +1868,7 @@ async def run_http_mode(port: int) -> None:
                     context=file_ext,
                     max_hints=max_hints,
                     agent_type=agent_type,
+                    include_debug_metadata=include_debug_metadata,
                 )
             except Exception as exc:
                 logger.warning("hints_engine_unavailable error=%s", exc)
@@ -1899,20 +1902,8 @@ async def run_http_mode(port: int) -> None:
                 result["inject_prefix"] = top.get("snippet", "")[:150]
             result["feedback_contract"] = {
                 "endpoint": "/hints/feedback",
-                "fields": {
-                    "hint_id": "string (required)",
-                    "helpful": "boolean (optional if score present)",
-                    "score": "number -1..1 (optional if helpful present)",
-                    "comment": "string optional",
-                    "task_id": "string optional",
-                    "agent": "string optional",
-                    "agent_preferences": {
-                        "preferred_tools": ["string"],
-                        "preferred_data_sources": ["string"],
-                        "preferred_hint_types": ["string"],
-                        "preferred_tags": ["string"],
-                    },
-                },
+                "required_any_of": ["helpful", "score"],
+                "required": ["hint_id"],
             }
 
             return web.json_response(result)
