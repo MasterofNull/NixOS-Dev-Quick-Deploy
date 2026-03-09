@@ -13,6 +13,7 @@ Allow passwordless execution only for the narrow command set needed by the unatt
 - `nixos-rebuild`
 - `systemctl`
 - `journalctl`
+- `flatpak` (system-scope profile sync only)
 
 Do not allow:
 - `NOPASSWD: ALL`
@@ -51,6 +52,10 @@ Add this to the gitignored host-local override:
           command = "/run/current-system/sw/bin/journalctl";
           options = [ "NOPASSWD" ];
         }
+        {
+          command = "/run/current-system/sw/bin/flatpak";
+          options = [ "NOPASSWD" ];
+        }
       ];
     }
   ];
@@ -69,6 +74,7 @@ After that, unattended loops can validate with:
 sudo -n /run/current-system/sw/bin/systemctl --version
 sudo -n /run/current-system/sw/bin/journalctl --version
 sudo -n /run/current-system/sw/bin/nixos-rebuild --help >/dev/null
+sudo -n /run/current-system/sw/bin/flatpak --version
 ```
 
 ## Fallback Template

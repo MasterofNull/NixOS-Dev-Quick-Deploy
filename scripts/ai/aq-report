@@ -835,11 +835,16 @@ def aggregate_tool_audit(entries: List[dict]) -> Dict[str, dict]:
             continue
         name = e.get("tool_name", "unknown")
         if name not in per_tool:
-            per_tool[name] = {"latencies": [], "success": 0, "error": 0}
+            per_tool[name] = {"latencies": [], "success": 0, "error": 0, "client_error": 0}
         lat = e.get("latency_ms")
         if isinstance(lat, (int, float)):
             per_tool[name]["latencies"].append(float(lat))
         outcome = e.get("outcome", "")
+        metadata = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
+        http_status = metadata.get("http_status")
+        if isinstance(http_status, int) and 400 <= http_status < 500:
+            per_tool[name]["client_error"] += 1
+            continue
         if outcome == "success":
             per_tool[name]["success"] += 1
         else:
@@ -853,6 +858,7 @@ def aggregate_tool_audit(entries: List[dict]) -> Dict[str, dict]:
             "p50_ms": _percentile(lats, 50),
             "p95_ms": _percentile(lats, 95),
             "success_pct": round(100 * stats["success"] / total, 1) if total else 0.0,
+            "client_error_count": stats["client_error"],
         }
     return result
 
