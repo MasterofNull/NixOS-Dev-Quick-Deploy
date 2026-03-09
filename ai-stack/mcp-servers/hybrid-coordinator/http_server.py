@@ -660,7 +660,7 @@ def _build_workflow_plan(
             {
                 "id": "validate",
                 "goal": "Run smoke/eval checks and confirm expected behavior.",
-                "tools": [t for t in tools if t["name"] in {"harness_eval", "health", "learning_stats"}],
+                "tools": [t for t in tools if t["name"] in {"qa_check", "harness_eval", "health", "learning_stats"}],
                 "exit_criteria": "All mandatory checks pass or failures are documented.",
             },
             {
