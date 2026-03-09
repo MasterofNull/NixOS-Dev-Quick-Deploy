@@ -1905,11 +1905,13 @@ async def run_http_mode(port: int) -> None:
                 content_lines = [f"# AI Stack Hints\n\n"]
                 for i, h in enumerate(hints, 1):
                     score_pct = f"{h.get('score', 0):.0%}"
-                    content_lines.append(
+                    block = (
                         f"{i}. [{h.get('type', 'hint')}] {h.get('title', '')} ({score_pct})\n"
                         f"   {h.get('snippet', '')[:120]}\n"
-                        f"   Reason: {h.get('reason', '')}\n\n"
                     )
+                    if include_debug_metadata and h.get("reason"):
+                        block += f"   Reason: {h.get('reason', '')}\n"
+                    content_lines.append(block + "\n")
                 return web.json_response([{
                     "name": "aq-hints",
                     "description": f"AI Stack workflow hints" + (f" for: {query[:60]}" if query else ""),
