@@ -2,7 +2,7 @@ Status: Active
 Owner: AI Stack Maintainers
 Last Updated: 2026-03-09
 
-# Autonomous Sudoers Setup
+# Autonomous Sudo Setup
 
 Purpose: enable unattended deploy, restart, and verification loops without sharing a sudo password or granting destructive root authority.
 
@@ -20,7 +20,61 @@ Do not allow:
 - destructive git commands
 - arbitrary file deletion tools
 
-## Recommended Template
+## Recommended Path On NixOS
+
+Prefer the declarative NixOS rule path. This host already manages sudo via
+`security.sudo`, so `/etc/sudoers.d` drop-ins may parse cleanly but still never
+become active policy.
+
+Add this to the gitignored host-local override:
+
+```nix
+{ lib, ... }:
+{
+  security.sudo.extraRules = lib.mkAfter [
+    {
+      users = [ "hyperd" ];
+      commands = [
+        {
+          command = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh";
+          options = [ "NOPASSWD" ];
+        }
+        {
+          command = "/run/current-system/sw/bin/nixos-rebuild";
+          options = [ "NOPASSWD" ];
+        }
+        {
+          command = "/run/current-system/sw/bin/systemctl";
+          options = [ "NOPASSWD" ];
+        }
+        {
+          command = "/run/current-system/sw/bin/journalctl";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }
+  ];
+}
+```
+
+Then apply it with one user-run deploy:
+
+```bash
+./nixos-quick-deploy.sh --host nixos --profile ai-dev
+```
+
+After that, unattended loops can validate with:
+
+```bash
+sudo -n /run/current-system/sw/bin/systemctl --version
+sudo -n /run/current-system/sw/bin/journalctl --version
+sudo -n /run/current-system/sw/bin/nixos-rebuild --help >/dev/null
+```
+
+## Fallback Template
+
+Use the sudoers drop-in only on hosts where `/etc/sudoers` actually includes
+`/etc/sudoers.d`.
 
 Reference file:
 - `templates/agentic-workflow/autonomous-ops-sudoers.example`
@@ -34,7 +88,7 @@ sudo visudo -cf /etc/sudoers.d/nixos-quick-deploy-agent
 
 ## Expected Capability
 
-After installation, unattended loops can run:
+After installation or declarative activation, unattended loops can run:
 
 ```bash
 ./nixos-quick-deploy.sh --host nixos --profile ai-dev
@@ -69,7 +123,14 @@ sudo -n /run/current-system/sw/bin/nixos-rebuild dry-run --flake .#nixos
 
 ## Rollback
 
-Remove the sudoers drop-in:
+Declarative path:
+
+```bash
+# remove the security.sudo.extraRules block from deploy-options.local.nix
+./nixos-quick-deploy.sh --host nixos --profile ai-dev
+```
+
+Drop-in path:
 
 ```bash
 sudo rm /etc/sudoers.d/nixos-quick-deploy-agent
