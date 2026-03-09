@@ -56,6 +56,20 @@ HINT_AUDIT_PATH = Path(
 TASK_AUDIT_PATH = Path(
     os.getenv("TASK_AUDIT_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "aider-task-audit.jsonl"))
 )
+HINT_FEEDBACK_PATH = Path(
+    os.getenv("HINT_FEEDBACK_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "hint-feedback.jsonl"))
+)
+AGENT_LESSON_EXCLUDED_AGENTS = {
+    "seed-tool-audit",
+    "post-deploy-converge",
+    "seed-hint-feedback",
+    "system",
+    "unknown",
+}
+AGENT_LESSON_EXCLUDED_HINT_PREFIXES = (
+    "seed_",
+    "health_probe_",
+)
 _default_eval_scores_db = Path(
     os.getenv("EVAL_SCORES_DB", "~/.local/share/nixos-ai-stack/eval/results/scores.sqlite")
 ).expanduser()
@@ -684,6 +698,112 @@ def hint_adoption(since: datetime) -> Dict[str, Any]:
     }
 
 
+def agent_lesson_candidates(since: datetime) -> Dict[str, Any]:
+    """Promote repeated agent feedback into compact reusable lesson candidates."""
+    if not HINT_FEEDBACK_PATH.exists():
+        return {"available": True, "total_events": 0, "candidates": []}
+
+    grouped: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    total_events = 0
+    try:
+        with HINT_FEEDBACK_PATH.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_raw = obj.get("timestamp", "")
+                try:
+                    ts = datetime.fromisoformat(str(ts_raw).rstrip("Z")).replace(tzinfo=timezone.utc)
+                    if ts < since:
+                        continue
+                except (ValueError, TypeError, AttributeError):
+                    continue
+                hint_id = str(obj.get("hint_id", "") or "").strip()
+                agent = str(obj.get("agent", "") or "unknown").strip().lower() or "unknown"
+                if (
+                    not hint_id
+                    or agent in AGENT_LESSON_EXCLUDED_AGENTS
+                    or any(hint_id.lower().startswith(prefix) for prefix in AGENT_LESSON_EXCLUDED_HINT_PREFIXES)
+                ):
+                    continue
+                helpful_raw = obj.get("helpful")
+                helpful = helpful_raw if isinstance(helpful_raw, bool) else None
+                score_raw = obj.get("score")
+                score_val: Optional[float] = None
+                if score_raw is not None:
+                    try:
+                        score_val = float(score_raw)
+                    except (TypeError, ValueError):
+                        score_val = None
+                comment = str(obj.get("comment", "") or "").strip()
+                prefs = obj.get("agent_preferences", {})
+                if not isinstance(prefs, dict):
+                    prefs = {}
+                row = grouped.setdefault((agent, hint_id), {
+                    "agent": agent,
+                    "hint_id": hint_id,
+                    "positive": 0,
+                    "negative": 0,
+                    "comments": [],
+                    "preferred_tools": [],
+                    "preferred_tags": [],
+                })
+                total_events += 1
+                if helpful is True or (score_val is not None and score_val > 0):
+                    row["positive"] += 1
+                elif helpful is False or (score_val is not None and score_val < 0):
+                    row["negative"] += 1
+                if comment and len(row["comments"]) < 2:
+                    row["comments"].append(comment[:140])
+                for key in ("preferred_tools", "preferred_tags"):
+                    vals = prefs.get(key)
+                    if isinstance(vals, list):
+                        for item in vals:
+                            text = str(item or "").strip().lower()
+                            if text and text not in row[key]:
+                                row[key].append(text[:48])
+                                if len(row[key]) >= 3:
+                                    break
+        candidates: List[Dict[str, Any]] = []
+        for row in grouped.values():
+            positive = int(row["positive"])
+            negative = int(row["negative"])
+            total = positive + negative
+            if total < 2:
+                continue
+            net = positive - negative
+            if net >= 2:
+                direction = "promote"
+            elif net <= -2:
+                direction = "avoid"
+            else:
+                continue
+            confidence = round(abs(net) / total, 2)
+            candidates.append({
+                "agent": row["agent"],
+                "hint_id": row["hint_id"],
+                "direction": direction,
+                "net_signal": net,
+                "event_count": total,
+                "confidence": confidence,
+                "comments": row["comments"],
+                "preferred_tools": row["preferred_tools"],
+                "preferred_tags": row["preferred_tags"],
+            })
+        candidates.sort(key=lambda item: (-abs(int(item["net_signal"])), -int(item["event_count"]), item["hint_id"]))
+        return {
+            "available": True,
+            "total_events": total_events,
+            "candidates": candidates[:5],
+        }
+    except OSError:
+        return {"available": True, "total_events": 0, "candidates": []}
+
+
 def hint_diversity(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute concentration/diversity quality signals for injected hints."""
     if not adoption or not adoption.get("available"):
@@ -816,6 +936,16 @@ def historical_hint_watchlist(
         }
     )
     return watch
+
+
+def _format_agent_lesson_candidate(candidate: Dict[str, Any]) -> str:
+    tools = candidate.get("preferred_tools") or []
+    tool_suffix = f"; tools={','.join(str(t) for t in tools[:2])}" if tools else ""
+    return (
+        f"{candidate.get('agent')}:{candidate.get('direction')} {candidate.get('hint_id')} "
+        f"(events={candidate.get('event_count')}, confidence={candidate.get('confidence')})"
+        f"{tool_suffix}"
+    )
 
 
 def _routing_recent_context(recent_route: Optional[Dict[str, Any]]) -> str:
@@ -1915,6 +2045,7 @@ def format_md(
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     historical_hint_watch: Optional[Dict[str, Any]] = None,
+    agent_lessons: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -2269,6 +2400,18 @@ def format_md(
         lines.append("- Status: historical concentration only; diversify future high-signal hints before this becomes active again.")
     lines.append("")
 
+    lines += ["## 14c. Agent Lesson Promotion Candidates", ""]
+    lesson_candidates = (agent_lessons or {}).get("candidates") or []
+    if not lesson_candidates:
+        lines.append("*No cross-agent lesson candidates met the promotion threshold in this window.*")
+    else:
+        for item in lesson_candidates[:3]:
+            lines.append(f"- `{_format_agent_lesson_candidate(item)}`")
+            comments = item.get("comments") or []
+            if comments:
+                lines.append(f"  - Example feedback: {comments[0]}")
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -2296,6 +2439,7 @@ def format_text(
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     historical_hint_watch: Optional[Dict[str, Any]] = None,
+    agent_lessons: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -2650,6 +2794,18 @@ def format_text(
             if alt_text:
                 lines.append(f"  Candidate alternates: {alt_text}")
         lines.append("  Status: historical concentration only; diversify future high-signal hints before this becomes active again.")
+    lines.append("")
+
+    lines += ["[ 14c. Agent Lesson Promotion Candidates ]"]
+    lesson_candidates = (agent_lessons or {}).get("candidates") or []
+    if not lesson_candidates:
+        lines.append("  No cross-agent lesson candidates met the promotion threshold in this window.")
+    else:
+        for item in lesson_candidates[:3]:
+            lines.append(f"  {_format_agent_lesson_candidate(item)}")
+            comments = item.get("comments") or []
+            if comments:
+                lines.append(f"    Example feedback: {comments[0]}")
     lines += ["", sep]
     return "\n".join(lines)
 
@@ -2678,6 +2834,7 @@ def format_json(
     hint_diversity_stats: Optional[Dict[str, Any]] = None,
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     historical_hint_watch: Optional[Dict[str, Any]] = None,
+    agent_lessons: Optional[Dict[str, Any]] = None,
     structured_actions: Optional[List[dict]] = None,
 ) -> str:
     doc = {
@@ -2714,6 +2871,7 @@ def format_json(
         "hint_diversity": hint_diversity_stats or {"available": False},
         "recent_hint_diversity": recent_hint_diversity_stats or {"available": False},
         "historical_hint_watchlist": historical_hint_watch or {"available": False, "has_items": False},
+        "agent_lessons": agent_lessons or {"available": False, "candidates": []},
         "structured_actions": structured_actions or [],
     }
     return json.dumps(doc, indent=2, default=str)
@@ -2831,6 +2989,7 @@ def main() -> None:
         key=lambda x: -x["mean_score"],
     )[:3]
     rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, cache, gaps, top_prompts)
+    agent_lessons = agent_lesson_candidates(since_dt)
     hint_diversity_stats = hint_diversity(adoption)
     recent_hint_adoption = hint_adoption(recent_cutoff)
     recent_hint_adoption["window"] = "1h"
@@ -2886,6 +3045,7 @@ def main() -> None:
         hint_diversity_stats,
         recent_hint_diversity_stats,
         historical_hint_watch,
+        agent_lessons,
     )
     if args.fmt == "md":
         output = format_md(*fmt_args)
