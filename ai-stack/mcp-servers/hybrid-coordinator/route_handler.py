@@ -399,12 +399,18 @@ async def route_search(
                     backend_reason_class = "complexity_local_suitable"
                 else:
                     backend_reason_class = "default_local"
+                messages = []
+                if selected_backend == "local":
+                    local_system_prompt = Config.build_local_system_prompt()
+                    if local_system_prompt:
+                        messages.append({"role": "system", "content": local_system_prompt})
+                messages.append({"role": "user", "content": prompt})
                 _llm_start = time.perf_counter()
                 try:
                     llm_resp = await _inference_client.post(
                         _inference_path,
                         headers=_inference_headers,
-                        json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": 400},
+                        json={"messages": messages, "temperature": 0.2, "max_tokens": 400},
                         timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                     )
                     llm_resp.raise_for_status()

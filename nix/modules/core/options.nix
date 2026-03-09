@@ -1532,6 +1532,31 @@
             };
           };
 
+          localSystemPrompt = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Prepend a compact system prompt to local hybrid-coordinator
+                synthesis requests so the local LLM follows core repo rules
+                without depending only on retrieval context.
+              '';
+            };
+
+            rules = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [
+                "Prefer declarative Nix/module changes over imperative runtime fixes when both are viable."
+                "Never hardcode ports, URLs, API keys, passwords, or tokens; use typed options or injected env vars."
+                "Return validation evidence and rollback guidance instead of claiming completion from edits alone."
+              ];
+              description = ''
+                Short rule list injected into the local LLM system prompt.
+                Keep entries concise so the prompt remains lightweight.
+              '';
+            };
+          };
+
           semanticToolingAutorun = lib.mkOption {
             type = lib.types.bool;
             default = true;
