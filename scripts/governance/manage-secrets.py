@@ -342,15 +342,37 @@ def missing_secret_names(payload: Dict[str, str], *, include_optional: bool, inc
     return [name for name in selected_secret_names(include_optional, include_remote) if not payload.get(name)]
 
 
+def classify_missing_secrets(payload: Dict[str, str]) -> Dict[str, List[str]]:
+    core_missing: List[str] = []
+    optional_missing: List[str] = []
+    remote_missing: List[str] = []
+    for spec in SECRET_SPECS:
+        if payload.get(spec["name"]):
+            continue
+        if spec["name"] == "remote_llm_api_key":
+            remote_missing.append(spec["name"])
+        elif spec["scope"] == "optional":
+            optional_missing.append(spec["name"])
+        else:
+            core_missing.append(spec["name"])
+    return {
+        "core": core_missing,
+        "optional": optional_missing,
+        "remote": remote_missing,
+    }
+
+
 def describe_secret_state(paths: Dict[str, Path], *, include_optional: bool, include_remote: bool) -> Dict[str, object]:
     payload = current_secret_payload(paths)
     missing = missing_secret_names(payload, include_optional=include_optional, include_remote=include_remote)
+    missing_by_scope = classify_missing_secrets(payload)
     state = {
         "bundle_exists": paths["bundle"].exists(),
         "age_key_exists": paths["age_key_file"].exists(),
         "local_override_exists": paths["deploy_options_local"].exists(),
         "payload": payload,
         "missing_secrets": missing,
+        "missing_by_scope": missing_by_scope,
     }
     state["is_ready"] = (
         state["bundle_exists"]
@@ -395,8 +417,12 @@ def print_post_action_doctor_summary(
         include_remote=include_remote,
     )
     print(f"Requested secret set ready: {'yes' if state['is_ready'] else 'no'}")
-    if state["missing_secrets"]:
-        print("Missing secrets: " + ", ".join(state["missing_secrets"]))
+    if state["missing_by_scope"]["core"]:
+        print("Missing core secrets: " + ", ".join(state["missing_by_scope"]["core"]))
+    if state["missing_by_scope"]["optional"]:
+        print("Missing optional secrets: " + ", ".join(state["missing_by_scope"]["optional"]))
+    if state["missing_by_scope"]["remote"]:
+        print("Missing remote-routing secrets: " + ", ".join(state["missing_by_scope"]["remote"]))
     print("Next steps:")
     for step in next_steps:
         print(f"- {step}")
@@ -449,11 +475,7 @@ def command_status(args: argparse.Namespace) -> int:
     core_state = describe_secret_state(paths, include_optional=False, include_remote=False)
     full_state = describe_secret_state(paths, include_optional=True, include_remote=True)
     payload = full_state["payload"]
-    optional_missing = [
-        spec["name"]
-        for spec in SECRET_SPECS
-        if spec["scope"] == "optional" and not payload.get(spec["name"])
-    ]
+    missing_by_scope = full_state["missing_by_scope"]
     if args.format == "json":
         print(
             json.dumps(
@@ -464,7 +486,7 @@ def command_status(args: argparse.Namespace) -> int:
                     "local_override": str(paths["deploy_options_local"]),
                     "core_ready": core_state["is_ready"],
                     "all_managed_ready": full_state["is_ready"],
-                    "optional_missing": optional_missing,
+                    "missing_by_scope": missing_by_scope,
                     "secrets": [
                         {
                             "name": spec["name"],
@@ -486,8 +508,10 @@ def command_status(args: argparse.Namespace) -> int:
     print(f"Local override: {paths['deploy_options_local']}")
     print(f"Core ready: {'yes' if core_state['is_ready'] else 'no'}")
     print(f"All managed secrets ready: {'yes' if full_state['is_ready'] else 'no'}")
-    if optional_missing:
-        print(f"Optional/remote missing: {', '.join(optional_missing)}")
+    if missing_by_scope["optional"]:
+        print(f"Optional missing: {', '.join(missing_by_scope['optional'])}")
+    if missing_by_scope["remote"]:
+        print(f"Remote routing missing: {', '.join(missing_by_scope['remote'])}")
     print("")
     for spec in SECRET_SPECS:
         present = spec["name"] in payload and bool(payload[spec["name"]])
@@ -634,6 +658,7 @@ def command_doctor(args: argparse.Namespace) -> int:
                     "local_override_exists": state["local_override_exists"],
                     "is_ready": state["is_ready"],
                     "missing_secrets": state["missing_secrets"],
+                    "missing_by_scope": state["missing_by_scope"],
                     "next_steps": next_steps,
                     "include_optional": args.include_optional,
                     "include_remote": args.include_remote,
@@ -651,11 +676,15 @@ def command_doctor(args: argparse.Namespace) -> int:
     print(f"Local override: {'present' if state['local_override_exists'] else 'missing'}")
     print(f"Requested secret set ready: {'yes' if state['is_ready'] else 'no'}")
 
-    if state["missing_secrets"]:
+    if state["missing_by_scope"]["core"] or state["missing_by_scope"]["optional"] or state["missing_by_scope"]["remote"]:
         print("")
         print("Missing secrets:")
-        for name in state["missing_secrets"]:
+        for name in state["missing_by_scope"]["core"]:
             print(f"- {name}")
+        for name in state["missing_by_scope"]["optional"]:
+            print(f"- {name} (optional)")
+        for name in state["missing_by_scope"]["remote"]:
+            print(f"- {name} (remote)")
 
     print("")
     print("Next steps:")
