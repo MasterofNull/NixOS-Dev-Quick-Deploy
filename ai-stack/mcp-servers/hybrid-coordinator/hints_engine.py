@@ -1324,12 +1324,9 @@ class HintsEngine:
             "remote_warranted": remote_warranted,
             "rationale": rationale,
             "tactics": [
-                "Start with a brief prompt plus retrieval/hints instead of pasting full background.",
-                "Escalate token spend only after a concrete gap, failed lean pass, or proven high-context need.",
-                "Cloud/provider-routed models remove local RAM pressure, but they still need explicit budget discipline.",
-                "Use free/provider-routed models for experimentation or low-stakes retries, not as a default for every task.",
-                "Keep stable prompt prefixes and repeated instructions compact so provider-side prompt caching can work.",
-                f"Route high-judgment work to {recommended_agent}, but keep the request scoped before increasing budget.",
+                "Start lean with hints/retrieval before pasting broad background.",
+                "Escalate only after a concrete gap, failed lean pass, or proven high-context need.",
+                f"Keep reusable prefixes compact for provider-side prompt caching and route deep work to {recommended_agent} only when warranted.",
             ],
         }
 
@@ -1350,19 +1347,11 @@ class HintsEngine:
         recommended_agent = self._choose_recommended_agent(query_lower, agent_type)
         strength = _AGENT_STRENGTHS.get(recommended_agent, _AGENT_STRENGTHS["codex"])
         token_discipline = self._build_token_discipline(query_text, query_lower, missing, recommended_agent)
-        suggested_prompt_lines = [
-            f"Objective: {query_text or '<state the concrete outcome>'}",
-            "Constraints: list safety, style, or repo rules that must be preserved",
-            "Context: name the files, services, endpoints, or failing path",
-            "Validation: specify tests, smoke checks, or acceptance evidence",
-            f"Agent routing: use {recommended_agent} for {strength['best_for']}",
-            (
-                "Token plan: start "
-                f"{token_discipline['spend_tier']} "
-                f"(~{token_discipline['recommended_input_budget']} input tokens max) "
-                "and only escalate when the narrower pass leaves a concrete gap"
-            ),
-        ]
+        compact_template = (
+            "Objective | Constraints | Context | Validation"
+            f" | Route: {recommended_agent}"
+            f" | Token plan: {token_discipline['spend_tier']} first"
+        )
         return {
             "score": score,
             "present_fields": [label for key, label, _ in _PROMPT_COACHING_FIELDS if present.get(key)],
@@ -1371,13 +1360,11 @@ class HintsEngine:
             "recommended_agent_rationale": strength["best_for"],
             "agent_prompt_shape": strength["prompt_shape"],
             "token_discipline": token_discipline,
-            "suggested_prompt": "\n".join(suggested_prompt_lines),
+            "suggested_prompt": compact_template,
             "teaching_points": [
                 "Lead with the outcome, not background history.",
-                "Name constraints explicitly so agents do not infer them.",
-                "Include validation expectations to prevent low-signal completions.",
-                "Route architecture questions to Claude, implementation slices to Qwen, and integration/review to Codex.",
-                "Treat cloud or free-provider access as routing flexibility, not permission for unbounded token spend.",
+                "Name constraints and validation so agents do not infer them.",
+                "Use routing flexibility for fit, not as permission for unbounded token spend.",
             ],
         }
 
