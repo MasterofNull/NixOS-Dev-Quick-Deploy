@@ -25,6 +25,17 @@ AIDB_URL="${AIDB_URL}"
 DAYS=7
 LIMIT=10
 
+should_ignore_gap() {
+    local text="${1,,}"
+    [[ -z "$text" ]] && return 0
+    case "$text" in
+        test|nix|ping|health) return 0 ;;
+        analysis\ only\ task*|analysis\ only:*|analysis\ task*|analyze\ docs/*|please\ analyze\ and\ summarize\ docs/*|analyze\ and\ summarize\ docs/*|summarize\ docs/*|nixos-rag-test-probe-unique-sentinel*|fetch\ http://127.0.0.1*|fetch\ https://127.0.0.1*|fetch\ http://localhost*|curl\ http://127.0.0.1*|curl\ http://localhost*|get\ http://127.0.0.1*|get\ http://localhost*) return 0 ;;
+        *lib\ mkforce*|*lib\ mkif*|*flake\ inputs\ follows*|*nixos\ module\ options*|*nixos\ systemd\ service\ options*|*configure\ nixos\ services*|*how\ do\ i\ configure\ a\ nixos\ systemd\ service*|*postgresql\ nixos\ module\ setup*|*tc3\ feedback\ validation*|*how\ does\ the\ hybrid\ coordinator\ route\ queries*|*what\ is\ nixos*|*explain\ what\ nixos\ is*|*nixos\ flake*|*nixos\ flake\ build\ system*|*create\ a\ workflow\ plan\ for\ diagnosing\ continue\ chat\ hangs*|*verify\ switchboard\ response\ headers\ for\ profile\ routing*|*reduce\ token\ overhead\ through\ progressive\ disclosure\ defaults*|*intent\ contract\ fields\ for\ workflow\ start*|*show\ workflow\ run\ start\ intent\ contract\ requirements*|*how\ to\ configure\ qdrant\ and\ hybrid\ routing\ in\ this\ repo*) return 0 ;;
+    esac
+    return 1
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --days) DAYS="$2"; shift 2 ;;
@@ -54,7 +65,7 @@ fi
 echo "=== Knowledge Gap Queries (last ${PERIOD}, top ${LIMIT} repeated) ==="
 echo ""
 
-psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -A -F$'\t' <<SQL
+RAW_ROWS="$(psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -A -F$'\t' <<SQL
 SELECT
     COUNT(*)       AS occurrences,
     MIN(score)     AS min_score,
@@ -66,7 +77,7 @@ GROUP BY query_hash, query_text
 ORDER BY occurrences DESC, min_score ASC
 LIMIT ${LIMIT};
 SQL
-
+)"
 RESULT=$?
 
 if [[ $RESULT -ne 0 ]]; then
@@ -74,23 +85,33 @@ if [[ $RESULT -ne 0 ]]; then
     exit 1
 fi
 
+FILTERED_ROWS=()
+while IFS=$'\t' read -r count min_score max_score query_text; do
+    [[ -z "${query_text:-}" ]] && continue
+    if should_ignore_gap "$query_text"; then
+        continue
+    fi
+    FILTERED_ROWS+=("${count}"$'\t'"${min_score}"$'\t'"${max_score}"$'\t'"${query_text}")
+done <<< "$RAW_ROWS"
+
+if [[ ${#FILTERED_ROWS[@]} -eq 0 ]]; then
+    echo "No operator-actionable gaps after synthetic/curated filtering."
+    echo ""
+    echo "--- Suggested imports (run after reviewing) ---"
+    echo ""
+    exit 0
+fi
+
+for row in "${FILTERED_ROWS[@]}"; do
+    printf '%s\n' "$row"
+done
+
 echo ""
 echo "--- Suggested imports (run after reviewing) ---"
 echo ""
 
-# Re-run to generate suggestions
-psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -t -A -F$'\t' <<SQL | while IFS=$'\t' read -r count min_score max_score query_text; do
-SELECT
-    COUNT(*) AS occurrences,
-    MIN(score)::text,
-    MAX(score)::text,
-    query_text
-FROM query_gaps
-${WHERE}
-GROUP BY query_hash, query_text
-ORDER BY occurrences DESC, MIN(score) ASC
-LIMIT ${LIMIT};
-SQL
+for row in "${FILTERED_ROWS[@]}"; do
+    IFS=$'\t' read -r count min_score max_score query_text <<< "$row"
     echo "# [${count}x, best score=${max_score}] ${query_text}"
     echo "# Suggested: aidb import --collection nixos-docs --query \"${query_text}\""
     echo ""
