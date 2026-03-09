@@ -297,7 +297,12 @@ def _format_text(result: Dict[str, Any], agent: str, debug_meta: bool = False) -
                 lines.append(f"     Budget fit: {rationale}")
         missing = coaching.get("missing_fields", [])
         if isinstance(missing, list) and missing:
-            lines.append(f"     Missing: {', '.join(str(item) for item in missing)}")
+            missing_items = [str(item) for item in missing if str(item).strip()]
+            compact_missing = ", ".join(missing_items[:3])
+            extra_missing = len(missing_items) - 3
+            if extra_missing > 0:
+                compact_missing += f" (+{extra_missing} more)"
+            lines.append(f"     Missing: {compact_missing}")
         rationale = str(coaching.get("recommended_agent_rationale", "") or "")
         if rationale:
             lines.append(f"     Agent fit: {rationale}")
