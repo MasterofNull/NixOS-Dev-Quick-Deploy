@@ -132,6 +132,39 @@ def _context_requests_gap_skip(context: Optional[Dict[str, Any]]) -> bool:
     return False
 
 
+def _runtime_context_blocks(context: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(context, dict):
+        return []
+    blocks: List[str] = []
+
+    tool_hints = [
+        str(item).strip()
+        for item in (context.get("tool_hints") or [])
+        if str(item).strip()
+    ]
+    if tool_hints:
+        blocks.append("Workflow hints:\n" + "\n".join(f"- {item}" for item in tool_hints[:2]))
+
+    tool_discovery = context.get("tool_discovery") or {}
+    if isinstance(tool_discovery, dict):
+        summary = str(tool_discovery.get("summary", "") or "").strip()
+        capability_count = int(tool_discovery.get("capability_count", 0) or 0)
+        if summary:
+            blocks.append(
+                f"Capability summary ({capability_count}): {summary[:260]}"
+            )
+
+    memory_recall = [
+        str(item).strip()
+        for item in (context.get("memory_recall") or [])
+        if str(item).strip()
+    ]
+    if memory_recall:
+        blocks.append("Relevant prior memory:\n" + "\n".join(f"- {item}" for item in memory_recall[:3]))
+
+    return blocks
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -320,7 +353,10 @@ async def route_search(
         context_compressor = _context_compressor_ref()
         if generate_response and llama_cpp_client:
             discovery_context = capability_discovery.format_context(_cap_disc)
-            combined_context = f"{response_text}\n\n{discovery_context}".strip()
+            runtime_context = "\n\n".join(_runtime_context_blocks(context))
+            combined_context = "\n\n".join(
+                part for part in (response_text, runtime_context, discovery_context) if part
+            ).strip()
             compressed_context = combined_context
             compressed_tokens = 0
             if Config.AI_CONTEXT_COMPRESSION_ENABLED and context_compressor and combined_context:

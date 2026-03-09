@@ -634,6 +634,24 @@ async def _save_runtime_registry(data: Dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _is_continuation_query(query: str) -> bool:
+    query_lower = str(query or "").lower()
+    return any(
+        token in query_lower
+        for token in (
+            "resume",
+            "continue",
+            "follow-up",
+            "follow up",
+            "previous",
+            "prior context",
+            "pick up where",
+            "last agent",
+            "ongoing",
+        )
+    )
+
+
 def _build_workflow_plan(
     query: str,
     tools: Optional[List[Dict[str, str]]] = None,
@@ -649,21 +667,7 @@ def _build_workflow_plan(
     except Exception:
         prompt_coaching = {}
     tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
-    query_lower = str(query or "").lower()
-    continuation_query = any(
-        token in query_lower
-        for token in (
-            "resume",
-            "continue",
-            "follow-up",
-            "follow up",
-            "previous",
-            "prior context",
-            "pick up where",
-            "last agent",
-            "ongoing",
-        )
-    )
+    continuation_query = _is_continuation_query(query)
 
     def pick_tool_names(names: set[str]) -> List[str]:
         return [name for name in tool_catalog if name in names]
@@ -1431,6 +1435,31 @@ async def run_http_mode(port: int) -> None:
                     except Exception as exc:
                         logger.debug("semantic_tooling_discovery_skipped error=%s", exc)
 
+                if (
+                    _recall_memory is not None
+                    and _is_continuation_query(query)
+                    and any(p.get("name") == "memory_recall" for p in planned)
+                ):
+                    try:
+                        memory_result = await _recall_memory(
+                            query=query,
+                            memory_types=None,
+                            limit=3,
+                            retrieval_mode="hybrid",
+                        )
+                        memory_rows = memory_result.get("results", []) if isinstance(memory_result, dict) else []
+                        memory_summaries = [
+                            str(row.get("summary") or row.get("content") or "").strip()
+                            for row in memory_rows
+                            if isinstance(row, dict) and str(row.get("summary") or row.get("content") or "").strip()
+                        ]
+                        if memory_summaries:
+                            request_context["memory_recall"] = memory_summaries[:3]
+                            tooling_layer["memory_recall"] = memory_summaries[:2]
+                            tooling_layer["executed"].append("memory_recall")
+                    except Exception as exc:
+                        logger.debug("semantic_tooling_memory_recall_skipped error=%s", exc)
+
             prefer_local = bool(data.get("prefer_local", True))
             if prefer_local and _local_llm_loading_ref():
                 ready = await _wait_for_model(timeout=30.0)
@@ -1459,6 +1488,8 @@ async def run_http_mode(port: int) -> None:
                     tooling_layer,
                     include_debug_metadata=include_debug_metadata,
                 )
+            if request_context.get("memory_recall"):
+                result["memory_recall"] = request_context.get("memory_recall")
             if prompt_coaching:
                 result["prompt_coaching"] = _query_prompt_coaching_response(
                     prompt_coaching,
