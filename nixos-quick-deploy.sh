@@ -397,6 +397,7 @@ print_completion_test_results() {
     local routing_local routing_remote cache_hit hint_rate eval_latest eval_trend
     local intent_cov security_cache recommendations top_hint top_hint_count
     local semantic_route_calls hint_diversity_status hint_dominant_share hint_unique
+    local recent_hint_window recent_hint_total recent_hint_status recent_hint_dominant_share
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -411,6 +412,10 @@ print_completion_test_results() {
     hint_unique="$(printf '%s' "${json}" | jq -r '.hint_diversity.unique_hints // 0')"
     hint_dominant_share="$(printf '%s' "${json}" | jq -r '.hint_diversity.dominant_share_pct // "n/a"')"
     hint_diversity_status="$(printf '%s' "${json}" | jq -r '.hint_diversity.status // "unknown"')"
+    recent_hint_window="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.window // "1h"')"
+    recent_hint_total="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.total_injections // 0')"
+    recent_hint_status="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.status // "unknown"')"
+    recent_hint_dominant_share="$(printf '%s' "${json}" | jq -r '.recent_hint_diversity.dominant_share_pct // "n/a"')"
     top_hint="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][0] // "none"')"
     top_hint_count="$(printf '%s' "${json}" | jq -r '.hint_adoption.top_hints[0][1] // 0')"
     recommendations="$(printf '%s' "${json}" | jq -r '.recommendations[0:3][]?')"
@@ -420,11 +425,17 @@ print_completion_test_results() {
     printf '  %-28s %s%%\n' "Semantic cache hit rate" "${cache_hit}"
     printf '  %-28s %s%%\n' "Hint adoption success" "${hint_rate}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_status}" "${hint_unique}" "${hint_dominant_share}"
+    if [[ "${recent_hint_total}" == "0" ]]; then
+      printf '  %-28s %s\n' "Recent hint activity (${recent_hint_window})" "none"
+      printf '  %-28s %sx %s\n' "Top hint (historical)" "${top_hint_count}" "${top_hint}"
+    else
+      printf '  %-28s %s (dominant=%s%%)\n' "Recent hint activity (${recent_hint_window})" "${recent_hint_status}" "${recent_hint_dominant_share}"
+      printf '  %-28s %sx %s\n' "Top hint" "${top_hint_count}" "${top_hint}"
+    fi
     printf '  %-28s %s%% (%s)\n' "Eval latest" "${eval_latest}" "${eval_trend}"
     printf '  %-28s %s%%\n' "Intent-contract coverage" "${intent_cov}"
     printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
     printf '  %-28s %s\n' "Semantic autorun route calls" "${semantic_route_calls}"
-    printf '  %-28s %sx %s\n' "Top hint" "${top_hint_count}" "${top_hint}"
 
     if [[ -n "${recommendations}" ]]; then
       log "Top recommended next actions:"
