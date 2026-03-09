@@ -1830,6 +1830,35 @@
           description = "Full collector interval (seconds) for deeper stack metrics.";
         };
       };
+
+      # ── Distributed Tracing (Grafana Tempo) ──────────────────────────────────
+      # Phase 21.1 — Complete observability pipeline with trace storage.
+      # Replaces the nop exporter in OTEL collector with Tempo for trace persistence.
+      tracing = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable Grafana Tempo for distributed trace storage and querying.";
+        };
+
+        tempoPort = lib.mkOption {
+          type = lib.types.port;
+          default = 3200;
+          description = "Tempo HTTP API port (query endpoint).";
+        };
+
+        tempoOtlpGrpcPort = lib.mkOption {
+          type = lib.types.port;
+          default = 4320;
+          description = "Tempo OTLP gRPC receiver port (traces ingestion).";
+        };
+
+        retentionHours = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 168;
+          description = "Trace retention period in hours (default 7 days).";
+        };
+      };
     };
 
 

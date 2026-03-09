@@ -1,17 +1,15 @@
 # .agents
 
-Progressive-disclosure planning layer for this repository.
+Progressive-disclosure planning artifacts for TBD.
 
-## Purpose
-- Store phase and slice plans under `.agents/plans/`.
-- Keep plans small, explicit, and evidence-driven.
-- Keep this layer focused on planning artifacts only.
+- Keep plans in `.agents/plans/`.
+- Keep always-read files small and link to deep docs.
+- Prefer one slice per plan file.
 
 ## Structure Contract
-- Place all implementation plan files in `.agents/plans/`.
-- Do not store command specs here (`.claude/commands/` owns those).
-- Do not store PRD/global rules here (`.agent/` owns those).
-- Prefer one logical slice per plan file.
+- `.agents/` stores planning artifacts only.
+- `.claude/commands/` stores command specs (not plans).
+- `.agent/` stores PRD/global rules/workflow state (not plans).
 
 ## Layout
 ```text
@@ -20,9 +18,4 @@ Progressive-disclosure planning layer for this repository.
     ├── README.md
     ├── phase-template.md
     └── phase-XX-*.md
-```
-
-## Validation
-```bash
-scripts/governance/repo-structure-lint.sh --staged
 ```

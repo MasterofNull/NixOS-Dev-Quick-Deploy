@@ -122,6 +122,15 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/cache/i
 check_pattern "scripts/data/rebuild-qdrant-collections.sh" 'cache/invalidate' 'Rebuild script triggers cache invalidation'
 check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_size_keys' 'Dashboard tracks embedding cache size'
 check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_invalidations_total' 'Dashboard tracks cache invalidation rate'
+check_pattern "scripts/automation/post-deploy-converge.sh" '/learning/process' 'Post-deploy convergence triggers learning pattern extraction'
+check_pattern "scripts/automation/post-deploy-converge.sh" '/learning/export' 'Post-deploy convergence triggers fine-tuning dataset export'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching' 'Hints engine exposes prompt coaching guidance'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'
+check_pattern "scripts/ai/aq-hints" 'parent\.parent\.parent' 'aq-hints resolves repository root correctly for local engine imports'
+
+# Phase 21.5 — Post-deploy auto Phase 0 validation
+check_pattern "nixos-quick-deploy.sh" 'qa_script=.*aq-qa|"\$\{qa_script\}" 0 --json' 'Deploy completion runs aq-qa phase 0 summary'
+check_pattern "scripts/automation/post-deploy-converge.sh" 'aq-qa" 0 --json' 'Post-deploy convergence runs aq-qa phase 0'
 
 # Phase 4 — Parity scorecard completion (tracks implemented status)
 check_pattern "config/parity-scorecard.json" '"status": "implemented"' 'Parity scorecard has implemented tracks'

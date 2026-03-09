@@ -1,14 +1,14 @@
 ---
-description: Build a feature/slice plan with context references
+description: Build implementation plan for a feature/slice
 argument-hint: [feature-or-slice]
 ---
 
 # Plan Feature
 
-Create a plan under `.agents/plans/` including:
+Create a plan file in `.agents/plans/` with:
 - objective, problem, solution
-- context files to read first
-- implementation steps
+- context files/docs to read first
+- step-by-step tasks
 - validation commands
 - evidence requirements
 - rollback notes

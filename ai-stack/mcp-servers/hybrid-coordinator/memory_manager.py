@@ -20,6 +20,7 @@ Usage in server.py:
 """
 
 import logging
+import json
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
@@ -27,6 +28,7 @@ from uuid import uuid4
 from qdrant_client.models import PointStruct
 
 from config import Config
+from shared.telemetry_privacy import redact_secrets, scrub_telemetry_payload
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -44,6 +46,10 @@ _hybrid_search: Optional[Callable] = None
 _tree_search: Optional[Callable] = None
 _memory_collections: Dict[str, str] = {}
 
+MAX_MEMORY_SUMMARY_CHARS = 2000
+MAX_MEMORY_CONTENT_CHARS = 8000
+MAX_MEMORY_METADATA_JSON_CHARS = 12000
+
 
 def normalize_memory_type(memory_type: str) -> str:
     """Map legacy caller aliases onto canonical memory tiers."""
@@ -57,6 +63,32 @@ def coerce_memory_summary(summary: Optional[str], content: Optional[str]) -> str
     if summary_text:
         return summary_text
     return str(content or "").strip()
+
+
+def _sanitize_memory_text(value: Optional[str], *, field_name: str, max_chars: int) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    redacted, detected = redact_secrets(text)
+    if detected:
+        logger.warning("memory_secret_redacted field=%s secret_types=%s", field_name, ",".join(detected))
+    return redacted[:max_chars]
+
+
+def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not metadata:
+        return {}
+    scrubbed = scrub_telemetry_payload(metadata)
+    try:
+        encoded = json.dumps(scrubbed, sort_keys=True)
+    except TypeError:
+        encoded = json.dumps(scrub_telemetry_payload({"value": str(metadata)}), sort_keys=True)
+        scrubbed = json.loads(encoded)["value"]
+        return {"value": str(scrubbed)[:MAX_MEMORY_METADATA_JSON_CHARS]}
+    if len(encoded) > MAX_MEMORY_METADATA_JSON_CHARS:
+        logger.warning("memory_metadata_truncated size=%d", len(encoded))
+        return {"truncated_metadata": encoded[:MAX_MEMORY_METADATA_JSON_CHARS]}
+    return scrubbed
 
 
 def init(
@@ -89,23 +121,33 @@ async def store_agent_memory(
     if not Config.AI_MEMORY_ENABLED:
         return {"status": "disabled"}
     normalized_type = normalize_memory_type(memory_type)
-    normalized_summary = coerce_memory_summary(summary, content)
+    normalized_summary = _sanitize_memory_text(
+        coerce_memory_summary(summary, content),
+        field_name="summary",
+        max_chars=MAX_MEMORY_SUMMARY_CHARS,
+    )
     if not normalized_summary:
         raise ValueError("summary or content required")
     collection = _memory_collections.get(normalized_type)
     if not collection:
         raise ValueError("memory_type must be episodic|semantic|procedural")
+    sanitized_content = _sanitize_memory_text(
+        content or normalized_summary,
+        field_name="content",
+        max_chars=MAX_MEMORY_CONTENT_CHARS,
+    )
+    sanitized_metadata = _sanitize_metadata(metadata)
     memory_id = str(uuid4())
     payload = {
         "memory_id": memory_id,
         "memory_type": normalized_type,
         "summary": normalized_summary,
-        "content": content or normalized_summary,
+        "content": sanitized_content,
         "timestamp": int(datetime.now().timestamp()),
     }
-    if metadata:
-        payload.update(metadata)
-    embedding = await _embed(f"{normalized_type}\n{normalized_summary}\n{content or ''}")
+    if sanitized_metadata:
+        payload.update(sanitized_metadata)
+    embedding = await _embed(f"{normalized_type}\n{normalized_summary}\n{sanitized_content}")
     try:
         _qdrant.upsert(
             collection_name=collection,
@@ -152,10 +194,11 @@ async def recall_agent_memory(
 
     limit_value = max(1, int(limit or Config.AI_MEMORY_MAX_RECALL_ITEMS))
     use_tree = retrieval_mode == "tree" and Config.AI_TREE_SEARCH_ENABLED
+    sanitized_query = _sanitize_memory_text(query, field_name="query", max_chars=512)
 
     if use_tree:
         search_result = await _tree_search(
-            query=query,
+            query=sanitized_query,
             collections=collections,
             limit=limit_value,
             keyword_limit=limit_value,
@@ -163,7 +206,7 @@ async def recall_agent_memory(
         )
     else:
         search_result = await _hybrid_search(
-            query=query,
+            query=sanitized_query,
             collections=collections,
             limit=limit_value,
             keyword_limit=limit_value,
@@ -188,7 +231,7 @@ async def recall_agent_memory(
     _record_telemetry(
         "agent_memory_recall",
         {
-            "query": query[:200],
+            "query": sanitized_query[:200],
             "results": len(memory_rows),
             "mode": "tree" if use_tree else "hybrid",
             "memory_types": requested_types,
@@ -196,7 +239,7 @@ async def recall_agent_memory(
     )
     return {
         "status": "ok",
-        "query": query,
+        "query": sanitized_query,
         "mode": "tree" if use_tree else "hybrid",
         "results": memory_rows,
     }
