@@ -861,6 +861,48 @@ run_inline_postflight_script_if_present() {
   run_with_timeout_if_available "${timeout_seconds}" "${script_path}" "$@" 2>/dev/null || true
 }
 
+run_postflight_convergence() {
+  local run_inline_postflight=true
+
+  section "Post-flight Convergence"
+  if [[ "${POST_FLIGHT_MODE}" == "declarative" || "${POST_FLIGHT_MODE}" == "both" ]]; then
+    if run_declarative_postflight_converge; then
+      if [[ "${POST_FLIGHT_MODE}" == "declarative" ]]; then
+        run_inline_postflight=false
+      fi
+    fi
+  fi
+
+  if [[ "${run_inline_postflight}" != true ]]; then
+    return 0
+  fi
+
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" \
+    "Priming AI harness tooling defaults..." \
+    "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}"
+
+  # Sends a small batch of queries through hybrid-coordinator so routing split
+  # and semantic cache metrics are populated after each deploy.
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" \
+    "Seeding routing traffic (bootstrap §2/§3 metrics)..." \
+    "${POST_FLIGHT_SEED_TIMEOUT_SECONDS}" \
+    --count 4
+
+  # Re-indexes any documents that were imported but not yet embedded.
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" \
+    "Rebuilding Qdrant vector index from AIDB documents..." \
+    "${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS}"
+
+  run_inline_postflight_script_if_present \
+    "${REPO_ROOT}/scripts/ai/aq-report" \
+    "AI stack performance digest (last 7d):" \
+    "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
+    --since=7d --format=text
+}
+
 current_system_generation() {
   readlink -f /nix/var/nix/profiles/system 2>/dev/null || true
 }
@@ -2911,45 +2953,7 @@ if systemctl is-active prometheus.service &>/dev/null; then
   sudo systemctl restart prometheus.service 2>/dev/null || true
 fi
 
-section "Post-flight Convergence"
-run_inline_postflight=true
-if [[ "${POST_FLIGHT_MODE}" == "declarative" || "${POST_FLIGHT_MODE}" == "both" ]]; then
-  if run_declarative_postflight_converge; then
-    if [[ "${POST_FLIGHT_MODE}" == "declarative" ]]; then
-      run_inline_postflight=false
-    fi
-  fi
-fi
-
-if [[ "${run_inline_postflight}" == true ]]; then
-  run_inline_postflight_script_if_present \
-    "${REPO_ROOT}/scripts/automation/prime-ai-tooling-defaults.sh" \
-    "Priming AI harness tooling defaults..." \
-    "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}"
-
-  # ---- Routing traffic seed (non-blocking) ----------------------------------
-  # Sends a small batch of queries through hybrid-coordinator so that §2 routing
-  # split and §3 semantic cache metrics are populated after every deploy.
-  run_inline_postflight_script_if_present \
-    "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" \
-    "Seeding routing traffic (bootstrap §2/§3 metrics)..." \
-    "${POST_FLIGHT_SEED_TIMEOUT_SECONDS}" \
-    --count 4
-
-  # ---- Rebuild Qdrant vector index (non-blocking) ---------------------------
-  # Re-indexes any documents that were imported but not yet embedded.
-  run_inline_postflight_script_if_present \
-    "${REPO_ROOT}/scripts/data/rebuild-qdrant-collections.sh" \
-    "Rebuilding Qdrant vector index from AIDB documents..." \
-    "${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS}"
-
-  # ---- Phase 18.1.3: AI stack performance digest (non-blocking) -------------
-  run_inline_postflight_script_if_present \
-    "${REPO_ROOT}/scripts/ai/aq-report" \
-    "AI stack performance digest (last 7d):" \
-    "${POST_FLIGHT_REPORT_TIMEOUT_SECONDS}" \
-    --since=7d --format=text
-fi
+run_postflight_convergence
 
 print_completion_test_results
 section "Completion Summary"
