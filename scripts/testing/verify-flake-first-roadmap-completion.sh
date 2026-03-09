@@ -142,6 +142,10 @@ check_pattern "scripts/data/import-agent-instructions.sh" 'dirname "\$0"\)/\.\./
 
 # Phase 21.5 — Post-deploy auto Phase 0 validation
 check_pattern "nixos-quick-deploy.sh" 'qa_script=.*aq-qa|"\$\{qa_script\}" 0 --json' 'Deploy completion runs aq-qa phase 0 summary'
+check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
+check_pattern "nixos-quick-deploy.sh" '/workflow/plan' 'Deploy verification probes workflow plan capability activation'
+check_pattern "nixos-quick-deploy.sh" '/qa/check' 'Deploy verification probes hybrid QA endpoint activation'
+check_pattern "nixos-quick-deploy.sh" '/learning/export' 'Deploy verification probes learning export activation'
 check_pattern "scripts/automation/post-deploy-converge.sh" 'aq-qa" 0 --json' 'Post-deploy convergence runs aq-qa phase 0'
 
 # Phase 4 — Parity scorecard completion (tracks implemented status)
