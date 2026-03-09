@@ -114,15 +114,12 @@ This matches the GNOME Resources monitor's 1-second update rate while being effi
   - Wrapper that calls main script with `--lite-mode`
   - Only collects system and network metrics
 
-### Background Runner Scripts
+### Runtime Ownership
 
-- `${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh`
-  - Infinite loop running lite collector every 2 seconds
-  - Logs to `${TMPDIR:-/tmp}/collector-lite.log`
-
-- `${TMPDIR:-/tmp}/run-dashboard-collector-full.sh`
-  - Infinite loop running full collector every 60 seconds
-  - Logs to `${TMPDIR:-/tmp}/collector-full.log`
+- [scripts/governance/manage-dashboard-collectors.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/governance/manage-dashboard-collectors.sh)
+  - Supported operator interface for collector lifecycle and logs
+  - Owns any runtime loop scripts or temporary files it may create internally
+  - Temporary files under `${TMPDIR:-/tmp}` are implementation details, not stable operator entrypoints
 
 ### Management Script
 
@@ -179,9 +176,12 @@ bash scripts/governance/manage-dashboard-collectors.sh restart
 # Check collector logs
 bash scripts/governance/manage-dashboard-collectors.sh logs
 
-# If needed, increase sleep intervals:
-# Edit ${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh - change 'sleep 2' to 'sleep 5'
-# Edit ${TMPDIR:-/tmp}/run-dashboard-collector-full.sh - change 'sleep 60' to 'sleep 120'
+# If this persists, prefer changing the supported collector scripts or
+# declarative dashboard runtime rather than editing temporary files.
+# The first supported step is to review:
+# - scripts/data/generate-dashboard-data.sh
+# - scripts/data/generate-dashboard-data-lite.sh
+# - scripts/governance/manage-dashboard-collectors.sh
 ```
 
 ## System Resources
@@ -204,22 +204,15 @@ bash scripts/governance/manage-dashboard-collectors.sh logs
 
 ### Auto-start on Boot
 
-To auto-start collectors on system boot, add to your NixOS configuration:
+Prefer the declarative command center dashboard service over ad-hoc collector
+service wrappers. If you need boot-time dashboard behavior, enable or inspect:
 
-```nix
-systemd.user.services.dashboard-collectors = {
-  description = "NixOS System Dashboard Data Collectors";
-  wantedBy = [ "default.target" ];
-
-  serviceConfig = {
-    Type = "forking";
-    ExecStart = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/governance/manage-dashboard-collectors.sh start";
-    ExecStop = "${pkgs.bash}/bin/bash /path/to/NixOS-Dev-Quick-Deploy/scripts/governance/manage-dashboard-collectors.sh stop";
-    Restart = "on-failure";
-    RestartSec = 10;
-  };
-};
+```bash
+systemctl status command-center-dashboard-api.service
 ```
+
+Historical examples of custom user services around collector loops are legacy
+implementation context, not the recommended deployment model.
 
 ### Dashboard Runtime
 
