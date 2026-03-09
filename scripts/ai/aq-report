@@ -752,6 +752,21 @@ def _hint_diversity_recent_context(recent_hint_diversity: Optional[Dict[str, Any
     return f"recent {window} hint diversity is {status} (dominant share {float(dom):.1f}%)"
 
 
+def _hint_adoption_recent_context(recent_hint_adoption: Optional[Dict[str, Any]]) -> str:
+    if not recent_hint_adoption or not recent_hint_adoption.get("available"):
+        return "Recent context unavailable."
+    window = str(recent_hint_adoption.get("window", "1h") or "1h")
+    total = int(recent_hint_adoption.get("total", 0) or 0)
+    if total <= 0:
+        return f"no recent hint-injected tasks in the last {window}"
+    rate = recent_hint_adoption.get("adoption_pct")
+    accepted = int(recent_hint_adoption.get("accepted", 0) or 0)
+    return (
+        f"recent {window} hint adoption is {_na(rate, '.1f', '%')} "
+        f"across {accepted}/{total} hint-injected tasks"
+    )
+
+
 def _task_tooling_from_hint_adoption(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(adoption, dict):
         return {"available": True, "total": 0}
@@ -1613,6 +1628,7 @@ def format_md(
     recent_health: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
+    recent_hint_adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
     security_auditor: Optional[Dict[str, Any]] = None,
     semantic_autorun: Optional[Dict[str, Any]] = None,
@@ -1802,6 +1818,7 @@ def format_md(
                     f"- Tooling-plan injected: **{tooling_quality.get('plan_success', 0)}/{tooling_quality.get('plan_total', 0)}** ({_na(tooling_quality.get('plan_success_pct'), '.1f', '%')})",
                     f"- Non-injected baseline: **{tooling_quality.get('baseline_success', 0)}/{tooling_quality.get('baseline_total', 0)}** ({_na(tooling_quality.get('baseline_success_pct'), '.1f', '%')})",
                 ]
+            lines.append(f"- Recent context: {_hint_adoption_recent_context(recent_hint_adoption)}")
     else:
         lines.append("*Hint audit unavailable — ensure AI_HINTS_ENABLED=true in aider-wrapper.*")
     lines.append("")
@@ -1908,6 +1925,7 @@ def format_text(
     recent_health: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
+    recent_hint_adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
     security_auditor: Optional[Dict[str, Any]] = None,
     semantic_autorun: Optional[Dict[str, Any]] = None,
@@ -2102,6 +2120,7 @@ def format_text(
                     f"  Non-injected baseline: {tooling_quality.get('baseline_success', 0)}/{tooling_quality.get('baseline_total', 0)}"
                     f" ({_na(tooling_quality.get('baseline_success_pct'), '.1f', '%')})",
                 ]
+            lines.append(f"  Recent context: {_hint_adoption_recent_context(recent_hint_adoption)}")
     else:
         lines.append("  Hint audit unavailable (AI_HINTS_ENABLED=true required).")
     lines.append("")
@@ -2204,6 +2223,7 @@ def format_json(
     recent_health: Dict[str, Any],
     recs: List[str],
     adoption: Optional[Dict[str, Any]] = None,
+    recent_hint_adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
     security_auditor: Optional[Dict[str, Any]] = None,
     semantic_autorun: Optional[Dict[str, Any]] = None,
@@ -2229,6 +2249,7 @@ def format_json(
         "recent_health": recent_health,
         "recommendations": recs,
         "hint_adoption": adoption or {"available": False},
+        "recent_hint_adoption": recent_hint_adoption or {"available": False},
         "task_tooling_quality": tooling_quality or {"available": False},
         "intent_contract_compliance": intent_compliance or {"available": False},
         "tool_security_auditor": security_auditor or {"available": False},
@@ -2345,6 +2366,7 @@ def main() -> None:
     recent_health = recent_health_snapshot(recent_tool_stats)
     hint_diversity_stats = hint_diversity(adoption)
     recent_hint_adoption = hint_adoption(recent_cutoff)
+    recent_hint_adoption["window"] = "1h"
     recent_hint_diversity_stats = hint_diversity(recent_hint_adoption)
     recent_hint_diversity_stats["window"] = "1h"
     leaderboard = strategy_leaderboard(eval_rows)
@@ -2384,6 +2406,7 @@ def main() -> None:
         recent_health,
         recs,
         adoption,
+        recent_hint_adoption,
         intent_compliance,
         security_auditor,
         semantic_autorun,
