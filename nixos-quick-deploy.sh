@@ -616,11 +616,16 @@ with open(sys.argv[1], "r", encoding="utf-8") as handle:
 
 phases = payload.get("phases", [])
 validate_phase = next((phase for phase in phases if phase.get("id") == "validate"), {})
-tools = {
-    str(tool.get("name", "")).strip()
-    for tool in validate_phase.get("tools", [])
-    if isinstance(tool, dict)
-}
+tools = set()
+for tool in validate_phase.get("tools", []):
+    if isinstance(tool, str):
+        name = tool.strip()
+    elif isinstance(tool, dict):
+        name = str(tool.get("name", "")).strip()
+    else:
+        name = ""
+    if name:
+        tools.add(name)
 metadata = payload.get("metadata", {})
 prompt_coaching = metadata.get("prompt_coaching")
 
