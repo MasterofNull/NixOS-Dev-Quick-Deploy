@@ -87,6 +87,7 @@ check_pattern "docs/operations/procedures/AUTONOMOUS-SUDOERS-SETUP.md" 'template
 check_pattern "templates/agentic-workflow/autonomous-ops-sudoers.example" 'NOPASSWD: AIOPS_DEPLOY, AIOPS_REBUILD, AIOPS_SYSTEMCTL, AIOPS_JOURNALCTL' 'Autonomous sudoers template scopes passwordless access to deploy and verification commands'
 check_pattern "nixos-quick-deploy.sh" 'run_roadmap_completion_verification\(\)' 'Roadmap verification hook exists'
 check_pattern "nixos-quick-deploy.sh" 'run_readiness_analysis\(\)' 'Readiness analyzer hook exists'
+check_pattern "nixos-quick-deploy.sh" 'sudo_passwordless_ready\(\)' 'Quick deploy detects scoped passwordless sudo without requiring sudo -n true'
 check_pattern "nixos-quick-deploy.sh" 'Skipping imperative runtime orchestration in deploy-clean' 'Imperative runtime orchestration is explicitly skipped'
 check_pattern "scripts/deploy/deploy-clean.sh" 'is deprecated; use ./nixos-quick-deploy.sh' 'deploy-clean shim is deprecated and forwards to nixos-quick-deploy'
 
