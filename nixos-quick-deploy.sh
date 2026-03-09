@@ -426,6 +426,12 @@ print_completion_test_results() {
     recent_route_window="$(printf '%s' "${json}" | jq -r '.recent_routing.window // "1h"')"
     recent_route_local="$(printf '%s' "${json}" | jq -r '.recent_routing.local_n // 0')"
     recent_route_remote="$(printf '%s' "${json}" | jq -r '.recent_routing.remote_n // 0')"
+    recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
+    recent_health_healthy="$(printf '%s' "${json}" | jq -r '.recent_health.healthy // false')"
+    recent_health_slow_n="$(printf '%s' "${json}" | jq -r '(.recent_health.slow_tools // []) | length')"
+    recent_health_flaky_n="$(printf '%s' "${json}" | jq -r '(.recent_health.flaky_tools // []) | length')"
+    cache_prewarm_enabled_state="$(printf '%s' "${json}" | jq -r '.cache_prewarm.enabled_state // "unknown"')"
+    cache_prewarm_active_state="$(printf '%s' "${json}" | jq -r '.cache_prewarm.active_state // "unknown"')"
     historical_watch_has_items="$(printf '%s' "${json}" | jq -r '.historical_watchlist.has_items // false')"
     historical_watch_window="$(printf '%s' "${json}" | jq -r '.historical_watchlist.window // "7d"')"
     historical_watch_flaky_tool="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].tool // empty')"
@@ -461,10 +467,17 @@ print_completion_test_results() {
     else
       recent_route_label="recent ${recent_route_window}: local=${recent_route_local} remote=${recent_route_remote}"
     fi
+    if [[ "${recent_health_healthy}" == "true" ]]; then
+      recent_health_label="clean (${recent_health_window})"
+    else
+      recent_health_label="slow=${recent_health_slow_n} flaky=${recent_health_flaky_n} (${recent_health_window})"
+    fi
+    cache_prewarm_label="${cache_prewarm_enabled_state}/${cache_prewarm_active_state}"
 
     log "AI stack report (summary):"
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote} (${recent_route_label})"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
+    printf '  %-28s %s\n' "Cache prewarm" "${cache_prewarm_label}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_label}" "${hint_unique}" "${hint_dominant_share}"
     if [[ "${recent_hint_total}" == "0" ]]; then
@@ -477,6 +490,7 @@ print_completion_test_results() {
     printf '  %-28s %s%% (%s)\n' "Eval latest" "${eval_latest}" "${eval_trend}"
     printf '  %-28s %s%%\n' "Intent-contract coverage" "${intent_cov}"
     printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
+    printf '  %-28s %s\n' "Recent health" "${recent_health_label}"
     if [[ "${historical_watch_has_items}" == "true" ]]; then
       if [[ -n "${historical_watch_flaky_tool}" ]]; then
         printf '  %-28s %s OK %s%% (%s calls)\n' \
