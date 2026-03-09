@@ -278,7 +278,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_compact
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_phase_tool_names' 'Workflow consumers accept compact phase tool-name lists'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '"tool_catalog": \(|_compact_workflow_tool_catalog' 'Workflow plans keep detailed tool metadata in one catalog instead of repeating it per phase'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'request.rel_url.query.get\("debug", "0"\)' 'Workflow plan exposes explicit debug metadata opt-in'
-check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'provider-side prompt caching|free or provider-routed experimentation' 'Workflow token policy teaches bounded cloud/provider token usage'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'compact-first|retrieve-before-restating|cheap-probe-then-cache' 'Workflow token policy teaches bounded cloud/provider token usage'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata and h\.get\("reason"\)' 'Hints HTTP continue context only emits per-hint reasons on explicit debug opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'max_hints = int\(body.get\("max_hints", 4\)\)' 'Hints HTTP endpoint defaults to compact hint fan-out'
 check_pattern "scripts/ai/aq-hints" 'Token plan:' 'aq-hints renders token-discipline coaching text'
