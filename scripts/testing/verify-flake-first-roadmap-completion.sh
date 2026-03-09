@@ -103,6 +103,8 @@ check_pattern "nix/modules/services/switchboard.nix" 'remoteLlmApiKey' 'Switchbo
 check_pattern "nix/modules/services/switchboard.nix" 'SWB_REMOTE_DAILY_TOKEN_CAP' 'Switchboard injects remote daily token cap env'
 check_pattern "nix/modules/services/switchboard.nix" 'remote-free|remote-coding|remote-reasoning' 'Switchboard exposes remote profile lanes'
 check_pattern "nix/modules/services/switchboard.nix" '_remote_budget_status|remote_budget_exhausted' 'Switchboard enforces remote budget guardrails'
+check_pattern "nix/modules/services/switchboard.nix" 'unitConfig = \{' 'Switchboard declares systemd unit-level settings explicitly'
+check_pattern "nix/modules/services/switchboard.nix" 'StartLimitIntervalSec = "300";' 'Switchboard sets restart rate limiting on the unit'
 # Phase 21.1 — OTEL exports to Tempo for distributed tracing (replaced nop exporter)
 check_pattern "nix/modules/services/mcp-servers.nix" 'otlp/tempo:' 'OTEL collector exports traces to Tempo backend'
 check_absent_pattern "nix/modules/services/mcp-servers.nix" 'jaeger:4317' 'No hardcoded Jaeger endpoint in declarative MCP services'
