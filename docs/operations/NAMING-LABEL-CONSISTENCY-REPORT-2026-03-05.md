@@ -66,7 +66,6 @@ Generated: 2026-03-05 07:57 UTC
 - `scripts/automation/run-prsi-stop-condition-drill.sh`
 - `scripts/data/bootstrap-prsi-confidence-samples.sh`
 - `scripts/data/download-embeddings-model.sh`
-- `scripts/data/download-lemonade-models.sh`
 - `scripts/data/download-llama-cpp-models.sh`
 - `scripts/data/export-collections.sh`
 - `scripts/data/generate-api-secrets.sh`

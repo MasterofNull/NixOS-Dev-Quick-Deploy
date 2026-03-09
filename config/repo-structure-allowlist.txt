@@ -212,7 +212,6 @@ scripts/governance/discover-improvements.sh
 scripts/governance/discover-semantic-github-repos.py
 scripts/governance/discover-system-facts.sh
 scripts/data/download-embeddings-model.sh
-scripts/data/download-lemonade-models.sh
 scripts/data/download-llama-cpp-models.sh
 scripts/edge-model-registry-validate.sh
 scripts/enable-cosmic-power-profiles.sh
@@ -241,7 +240,6 @@ scripts/data/import-ai-behavior-snapshot.sh
 scripts/data/import-collections.sh
 scripts/data/import-documents.py
 scripts/data/import-project-knowledge.sh
-scripts/data/initialize-qdrant-collections.sh
 scripts/deploy/install-ai-research-sync-timer.sh
 scripts/deploy/install-backup-timers.sh
 scripts/deploy/install-git-hooks.sh
