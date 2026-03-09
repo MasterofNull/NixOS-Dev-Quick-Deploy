@@ -178,6 +178,7 @@ class Config:
         default=[
             "Prefer declarative Nix/module changes over imperative runtime fixes when both are viable.",
             "Never hardcode ports, URLs, API keys, passwords, or tokens; use typed options or injected env vars.",
+            "Respond concisely first and expand only when requested or when evidence requires detail.",
             "Return validation evidence and rollback guidance instead of claiming completion from edits alone.",
         ],
     )
