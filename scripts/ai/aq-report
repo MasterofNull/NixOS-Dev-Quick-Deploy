@@ -1363,13 +1363,14 @@ def build_recommendations(
         and t.lower() not in ignored_flaky_tools
     ]
     for tool, stats in sorted(flaky_tools, key=lambda x: x[1]["success_pct"])[:2]:
+        fresh = recent_tool_stats.get(tool) if recent_tool_stats and tool in recent_tool_stats else None
         if recent_tool_stats and tool in recent_tool_stats:
-            fresh = recent_tool_stats[tool]
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("success_pct", 0.0) or 0.0) >= 90.0:
                 continue
         recs.append(
             f"Tool `{tool}` success rate is low ({stats['success_pct']}% across {stats['calls']} calls). "
-            "Inspect recent failures and tighten retries/timeouts or fallback behavior."
+            f"Reliability context: {_tool_reliability_context(stats, fresh)}. "
+            "Tighten retries/timeouts or fallback behavior only if the failures are still active."
         )
 
     # Code-gen quality guidance (Phase 18 user goal: measure prompt efficiency for systems code gen)
@@ -1495,6 +1496,23 @@ def _na(val: Optional[float], fmt: str = ".1f", suffix: str = "") -> str:
     return f"{val:{fmt}}{suffix}"
 
 
+def _tool_reliability_context(stats: Dict[str, Any], fresh: Optional[Dict[str, Any]] = None) -> str:
+    parts: List[str] = []
+    server_errors = int(stats.get("error_count", 0) or 0)
+    client_errors = int(stats.get("client_error_count", 0) or 0)
+    if server_errors:
+        parts.append(f"{server_errors} server failures")
+    if client_errors:
+        parts.append(f"{client_errors} ignored client 4xx rows")
+    if fresh is None or int(fresh.get("calls", 0) or 0) == 0:
+        parts.append("no recent calls in the last hour")
+    else:
+        parts.append(
+            f"last hour OK%={_na(fresh.get('success_pct'), '.1f', '%')} across {int(fresh.get('calls', 0) or 0)} calls"
+        )
+    return "; ".join(parts)
+
+
 def format_md(
     since_label: str,
     tool_stats: Dict[str, dict],
@@ -1523,12 +1541,12 @@ def format_md(
     lines += ["## 1. Tool Call Performance", ""]
     if tool_stats:
         lines += [
-            "| Tool | Calls | P50 ms | P95 ms | Success % |",
-            "|------|------:|-------:|-------:|----------:|",
+            "| Tool | Calls | P50 ms | P95 ms | Success % | Err | 4xx |",
+            "|------|------:|-------:|-------:|----------:|----:|----:|",
         ]
         for tool, s in sorted(tool_stats.items(), key=lambda x: -x[1]["calls"]):
             lines.append(
-                f"| `{tool}` | {s['calls']} | {s['p50_ms']:.0f} | {s['p95_ms']:.0f} | {s['success_pct']} |"
+                f"| `{tool}` | {s['calls']} | {s['p50_ms']:.0f} | {s['p95_ms']:.0f} | {s['success_pct']} | {int(s.get('error_count', 0) or 0)} | {int(s.get('client_error_count', 0) or 0)} |"
             )
         total_client_errors = sum(int(s.get("client_error_count", 0) or 0) for s in tool_stats.values())
         total_unknown = sum(int(s.get("unknown_count", 0) or 0) for s in tool_stats.values())
@@ -1810,11 +1828,11 @@ def format_text(
             for tool, stats in sorted(tool_stats.items(), key=lambda x: -x[1]["calls"])
             if tool.lower() in ignored_flaky_tools
         ]
-        lines.append(f"  {'Tool':<30} {'Calls':>6} {'P50ms':>7} {'P95ms':>7} {'OK%':>6}")
-        lines.append(f"  {'─'*30} {'─'*6} {'─'*7} {'─'*7} {'─'*6}")
+        lines.append(f"  {'Tool':<30} {'Calls':>6} {'P50ms':>7} {'P95ms':>7} {'OK%':>6} {'Err':>5} {'4xx':>5}")
+        lines.append(f"  {'─'*30} {'─'*6} {'─'*7} {'─'*7} {'─'*6} {'─'*5} {'─'*5}")
         for tool, s in visible_tool_rows:
             lines.append(
-                f"  {tool:<30} {s['calls']:>6} {s['p50_ms']:>7.0f} {s['p95_ms']:>7.0f} {s['success_pct']:>5.1f}%"
+                f"  {tool:<30} {s['calls']:>6} {s['p50_ms']:>7.0f} {s['p95_ms']:>7.0f} {s['success_pct']:>5.1f}% {int(s.get('error_count', 0) or 0):>5} {int(s.get('client_error_count', 0) or 0):>5}"
             )
         if not visible_tool_rows:
             lines.append("  (all observed tools are currently in the flaky-ignore list)")
