@@ -1329,7 +1329,12 @@ def build_recommendations(
         total_injections = int(hint_diversity_stats.get("total_injections", 0) or 0)
         dominant_share_pct = hint_diversity_stats.get("dominant_share_pct")
         unique_hints = int(hint_diversity_stats.get("unique_hints", 0) or 0)
-        if total_injections >= 10 and (unique_hints <= 1 or (dominant_share_pct is not None and float(dominant_share_pct) >= 70)):
+        diversity_status = str(hint_diversity_stats.get("status", "")).strip().lower()
+        if total_injections >= 10 and (
+            diversity_status == "concentrated"
+            or unique_hints <= 1
+            or (dominant_share_pct is not None and float(dominant_share_pct) >= 70)
+        ):
             recs.append(
                 "Hint diversity is overly concentrated. Add at least one data/tool-error/system-state hint path, "
                 "and weight down over-repeated registry-only hints."
@@ -1342,6 +1347,8 @@ def build_recommendations(
     ]
     for tool, stats in sorted(slow_tools, key=lambda x: -x[1]["p95_ms"])[:2]:
         fresh = recent_tool_stats.get(tool) if recent_tool_stats and tool in recent_tool_stats else None
+        if fresh is None or int(fresh.get("calls", 0) or 0) == 0:
+            continue
         if recent_tool_stats and tool in recent_tool_stats:
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("p95_ms", 0.0) or 0.0) <= 5000.0:
                 continue
@@ -1366,6 +1373,8 @@ def build_recommendations(
     ]
     for tool, stats in sorted(flaky_tools, key=lambda x: x[1]["success_pct"])[:2]:
         fresh = recent_tool_stats.get(tool) if recent_tool_stats and tool in recent_tool_stats else None
+        if fresh is None or int(fresh.get("calls", 0) or 0) == 0:
+            continue
         if recent_tool_stats and tool in recent_tool_stats:
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("success_pct", 0.0) or 0.0) >= 90.0:
                 continue
