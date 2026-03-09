@@ -705,26 +705,36 @@ resolve_configured_repo_path() {
   nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.mcpServers.repoPath" 2>/dev/null || true
 }
 
-restart_repo_backed_ai_services_if_needed() {
-  [[ "${MODE}" == "switch" ]] || return 0
-  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
+should_manage_repo_backed_ai_services() {
+  local action_label="${1:-repo-backed AI service action}"
+  local configured_repo="" current_repo=""
+
+  [[ "${MODE}" == "switch" ]] || return 1
+  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 1
 
   if ! command -v systemctl >/dev/null 2>&1; then
-    return 0
+    return 1
   fi
 
-  local configured_repo="" current_repo=""
   configured_repo="$(resolve_configured_repo_path)"
   current_repo="$(readlink -f "${REPO_ROOT}" 2>/dev/null || printf '%s\n' "${REPO_ROOT}")"
 
   if [[ -z "${configured_repo}" ]]; then
-    log "Skipping mutable repo-backed AI service restart: unable to resolve configured repoPath"
-    return 0
+    log "Skipping mutable repo-backed AI ${action_label}: unable to resolve configured repoPath"
+    return 1
   fi
 
   configured_repo="$(readlink -f "${configured_repo}" 2>/dev/null || printf '%s\n' "${configured_repo}")"
   if [[ "${configured_repo}" != "${current_repo}" ]]; then
-    log "Skipping mutable repo-backed AI service restart: configured repoPath (${configured_repo}) does not match deploy repo (${current_repo})"
+    log "Skipping mutable repo-backed AI ${action_label}: configured repoPath (${configured_repo}) does not match deploy repo (${current_repo})"
+    return 1
+  fi
+
+  return 0
+}
+
+restart_repo_backed_ai_services_if_needed() {
+  if ! should_manage_repo_backed_ai_services "service restart"; then
     return 0
   fi
 
@@ -771,25 +781,8 @@ restart_repo_backed_ai_services_if_needed() {
 }
 
 verify_repo_backed_ai_services_are_live_if_needed() {
-  [[ "${MODE}" == "switch" ]] || return 0
-  [[ "${SKIP_SYSTEM_SWITCH}" == false ]] || return 0
-
-  if ! command -v systemctl >/dev/null 2>&1; then
-    return 0
-  fi
-
-  local configured_repo="" current_repo="" attempts attempt
-  configured_repo="$(resolve_configured_repo_path)"
-  current_repo="$(readlink -f "${REPO_ROOT}" 2>/dev/null || printf '%s\n' "${REPO_ROOT}")"
-
-  if [[ -z "${configured_repo}" ]]; then
-    log "Skipping mutable repo-backed AI capability verification: unable to resolve configured repoPath"
-    return 0
-  fi
-
-  configured_repo="$(readlink -f "${configured_repo}" 2>/dev/null || printf '%s\n' "${configured_repo}")"
-  if [[ "${configured_repo}" != "${current_repo}" ]]; then
-    log "Skipping mutable repo-backed AI capability verification: configured repoPath (${configured_repo}) does not match deploy repo (${current_repo})"
+  local attempts attempt
+  if ! should_manage_repo_backed_ai_services "capability verification"; then
     return 0
   fi
 
