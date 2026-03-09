@@ -47,6 +47,24 @@ export class HarnessClient {
     });
   }
 
+  query(query, opts = {}) {
+    const payload = {
+      query,
+      agent_type: opts.agentType ?? "human",
+      prefer_local: opts.preferLocal ?? true,
+      generate_response: opts.generateResponse ?? false,
+      mode: opts.mode ?? "auto",
+      limit: opts.limit ?? 5,
+      keyword_limit: opts.keywordLimit ?? 5,
+      score_threshold: opts.scoreThreshold ?? 0.7,
+    };
+    if (opts.context) payload.context = opts.context;
+    return this.request("/query", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   toolingManifest(query, runtime = "python", maxTools, maxResultChars) {
     const payload = { query, runtime };
     if (typeof maxTools === "number") payload.max_tools = maxTools;
