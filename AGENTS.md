@@ -121,6 +121,11 @@ curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
 - Include validation evidence in message/body or linked notes.
 - Do not push if mandatory gates fail.
 
+## Autonomous Ops Boundary
+- Default unattended scope: deploy, verify, restart, test, non-destructive edits, and non-destructive commits.
+- Approval-gated: repo/system deletions, destructive git, rollback execution, boot/disk changes, external account actions.
+- Operational reference: `docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md`
+
 ## Full Policy Reference
 For specialist profiles, skills index, MCP inventory, coding standards, and detailed workflows, use:
 - `docs/AGENTS.md` (full canonical policy)
