@@ -310,6 +310,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_is_cont
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'semantic_tooling_memory_recall_skipped|request_context\["memory_recall"\]' 'Hybrid query autorun executes memory recall for continuation-style requests'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'result\["memory_recall"\]' 'Hybrid query responses surface recalled memory summaries when used'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'def _audit_internal_tool_execution\(' 'Hybrid query autorun emits dedicated tool-audit rows for internal tool usage'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'risk_tier="low"' 'Hybrid internal tool autorun audit writes include an explicit risk tier'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '"recall_agent_memory"' 'Hybrid query autorun audits internal memory recall as its own tool event'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '_audit_internal_tool_execution\(' 'Hybrid query autorun audits internal hints execution as its own tool event'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'tooling_layer\["executed"\]\.append\("discovery"\)' 'Hybrid query autorun audits internal discovery execution as its own tool event'
