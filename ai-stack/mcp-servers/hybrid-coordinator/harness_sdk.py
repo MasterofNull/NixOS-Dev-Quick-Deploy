@@ -160,6 +160,24 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def qa_check(
+        self,
+        phase: str = "0",
+        output_format: str = "json",
+        timeout_seconds: int = 60,
+        include_sudo: bool = False,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "phase": phase,
+            "format": output_format,
+            "timeout_seconds": timeout_seconds,
+            "include_sudo": include_sudo,
+        }
+        with httpx.Client(timeout=max(self.timeout_s, float(timeout_seconds) + 5.0)) as client:
+            r = client.post(self._url("/qa/check"), headers=self._headers(), json=payload)
+            r.raise_for_status()
+            return r.json()
+
     def run_start(
         self,
         query: str,
