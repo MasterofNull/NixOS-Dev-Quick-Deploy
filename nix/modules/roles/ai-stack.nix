@@ -1124,6 +1124,45 @@ in {
         };
       };
 
+      # Phase 21.4: Daily automated gap remediation for self-improvement loops
+      systemd.services.ai-gap-auto-remediate = {
+        description = "AI gap auto-remediation (Phase 21.4 self-improvement)";
+        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" "postgresql.service"];
+        wants = ["network-online.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify";
+          StandardOutput = "journal";
+          StandardError  = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem   = "strict";
+          ProtectHome     = "read-only";
+          PrivateTmp      = true;
+          PrivateNetwork  = false;
+          MemoryMax       = "512M";
+          ReadWritePaths  = [
+            mutableLogDir
+            mutableOptimizerDir
+          ];
+          Environment = [
+            "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
+          ] ++ lib.optional cfg.secrets.enable
+              "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
+        };
+      };
+
+      systemd.timers.ai-gap-auto-remediate = {
+        description = "Daily AI gap auto-remediation timer (Phase 21.4)";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar          = "*-*-* 06:00:00";
+          Persistent          = true;
+          RandomizedDelaySec  = "15min";
+        };
+      };
+
       systemd.services.ai-optimizer = {
         description = "AI stack agentic optimizer (PRSI action loop)";
         after = [ "network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" ];
