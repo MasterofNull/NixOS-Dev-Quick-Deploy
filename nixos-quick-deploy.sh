@@ -403,6 +403,7 @@ print_completion_test_results() {
     local historical_hint_watch_has_items historical_hint_watch_window historical_hint_watch_id historical_hint_watch_share historical_hint_watch_alt
     local recent_route_window recent_route_local recent_route_remote recent_route_label
     local rag_posture_status rag_posture_recent rag_posture_gaps rag_posture_label
+    local rag_recent_route rag_recent_tree rag_recent_memory rag_mix_label
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -431,6 +432,9 @@ print_completion_test_results() {
     rag_posture_status="$(printf '%s' "${json}" | jq -r '.rag_posture.status // "unknown"')"
     rag_posture_recent="$(printf '%s' "${json}" | jq -r '.rag_posture.recent_retrieval_calls // 0')"
     rag_posture_gaps="$(printf '%s' "${json}" | jq -r '.rag_posture.actionable_gap_count // 0')"
+    rag_recent_route="$(printf '%s' "${json}" | jq -r '.rag_posture.retrieval_mix.recent.route_search // 0')"
+    rag_recent_tree="$(printf '%s' "${json}" | jq -r '.rag_posture.retrieval_mix.recent.tree_search // 0')"
+    rag_recent_memory="$(printf '%s' "${json}" | jq -r '.rag_posture.retrieval_mix.recent.recall_agent_memory // 0')"
     report_generated_at="$(printf '%s' "${json}" | jq -r '.generated_at // empty')"
     recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
     recent_health_healthy="$(printf '%s' "${json}" | jq -r '.recent_health.healthy // false')"
@@ -465,6 +469,7 @@ print_completion_test_results() {
       cache_summary="${cache_summary}; low sample"
     fi
     rag_posture_label="${rag_posture_status} (recent=${rag_posture_recent}, gaps=${rag_posture_gaps})"
+    rag_mix_label="route=${rag_recent_route} tree=${rag_recent_tree} memory=${rag_recent_memory}"
     if [[ "${recent_hint_adoption_total}" == "0" ]]; then
       hint_adoption_label="${hint_rate}% (historical)"
     else
@@ -515,6 +520,7 @@ PY
     printf '  %-28s %s\n' "Report freshness" "${report_freshness_label}"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s\n' "RAG posture" "${rag_posture_label}"
+    printf '  %-28s %s\n' "RAG mix (1h)" "${rag_mix_label}"
     printf '  %-28s %s\n' "Cache prewarm" "${cache_prewarm_label}"
     printf '  %-28s %s\n' "Hint adoption success" "${hint_adoption_label}"
     printf '  %-28s %s (unique=%s dominant=%s%%)\n' "Hint diversity" "${hint_diversity_label}" "${hint_unique}" "${hint_dominant_share}"
