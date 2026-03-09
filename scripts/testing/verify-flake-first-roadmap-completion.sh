@@ -109,7 +109,12 @@ check_pattern "nix/modules/services/switchboard.nix" 'StartLimitIntervalSec = "3
 check_absent_pattern "scripts/governance/manage-secrets.py" 'This script is deprecated' 'Secrets manager entrypoint is active, not deprecated'
 check_pattern "scripts/governance/manage-secrets.py" 'Manage external SOPS secrets for the AI stack' 'Secrets manager exposes a real CLI parser'
 check_pattern "scripts/governance/manage-secrets.py" 'ensure-local-config' 'Secrets manager can refresh gitignored local host wiring'
+check_pattern "scripts/governance/manage-secrets.py" 'subparsers\.add_parser\("bootstrap"' 'Secrets manager exposes delegated bootstrap flow'
+check_pattern "scripts/governance/audit-deprecated-script-usage.py" 'Rank deprecated scripts by active repo references and classify keep vs archive' 'Deprecated-script auditor exists for keep-vs-archive prioritization'
+check_pattern "docs/operations/deprecated-script-audit.md" '## Keep As Shim' 'Deprecated-script audit report records keep-as-shim classification'
+check_pattern "docs/operations/deprecated-script-audit.md" '## Archive Or Remove' 'Deprecated-script audit report records archive-or-remove classification'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" '~/.local/share/nixos-quick-deploy/secrets/<host>/secrets\.sops\.yaml' 'Secrets guide documents external bundle location'
+check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh bootstrap --host' 'Secrets guide documents delegated quick-deploy bootstrap flow'
 check_pattern "scripts/data/generate-api-secrets.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API secret generator delegates to declarative secrets manager'
 check_pattern "scripts/security/rotate-api-key.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'API key rotation shim delegates to declarative secrets manager'
 check_pattern "scripts/data/generate-passwords.sh" 'compatibility shim over scripts/governance/manage-secrets\.sh' 'Password generator delegates to declarative secrets manager'
@@ -197,6 +202,7 @@ check_pattern "scripts/data/import-agent-instructions.sh" 'dirname "\$0"\)/\.\./
 
 # Phase 21.5 — Post-deploy auto Phase 0 validation
 check_pattern "nixos-quick-deploy.sh" 'qa_script=.*aq-qa|"\$\{qa_script\}" 0 --json' 'Deploy completion runs aq-qa phase 0 summary'
+check_pattern "nixos-quick-deploy.sh" 'manage-secrets\.sh|manage_secrets_cmd.*bootstrap --host' 'Quick deploy delegates AI secrets bootstrap to the shared secrets manager'
 check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
 check_pattern "nixos-quick-deploy.sh" '/workflow/plan' 'Deploy verification probes workflow plan capability activation'
 check_pattern "nixos-quick-deploy.sh" '/qa/check' 'Deploy verification probes hybrid QA endpoint activation'

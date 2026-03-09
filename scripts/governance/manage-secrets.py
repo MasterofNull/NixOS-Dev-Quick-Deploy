@@ -316,6 +316,52 @@ def selected_specs(include_optional: bool, include_remote: bool) -> List[dict]:
     return chosen
 
 
+def selected_secret_names(include_optional: bool, include_remote: bool) -> List[str]:
+    return [spec["name"] for spec in selected_specs(include_optional, include_remote)]
+
+
+def bootstrap_mode(args: argparse.Namespace) -> str:
+    if args.mode in {"auto", "manual"}:
+        return args.mode
+    if not sys.stdin.isatty():
+        return "auto"
+    print("Select secrets input mode:")
+    print("  1. Enter my own values")
+    print("  2. Auto-generate secure values")
+    choice = input("Choice [1/2, default 2]: ").strip() or "2"
+    if choice == "1":
+        return "manual"
+    if choice == "2":
+        return "auto"
+    raise SystemExit(f"Invalid choice '{choice}'. Expected 1 or 2.")
+
+
+def bootstrap_payload(args: argparse.Namespace, existing: Dict[str, str]) -> Dict[str, str]:
+    payload = dict(existing)
+    specs = selected_specs(args.include_optional, args.include_remote)
+    mode = bootstrap_mode(args)
+
+    if mode == "manual":
+        use_shared = bool(args.shared_secret)
+        shared_value = args.shared_secret
+        if not use_shared and sys.stdin.isatty():
+            shared_choice = input("Use one shared secret for all selected services? [y/N]: ").strip() or "N"
+            use_shared = shared_choice.lower().startswith("y")
+        if use_shared and not shared_value:
+            shared_value = prompt_secret("Shared AI stack secret")
+        for spec in specs:
+            if spec["name"] in payload and payload[spec["name"]] and not args.force:
+                continue
+            payload[spec["name"]] = shared_value or prompt_secret(spec["label"])
+        return payload
+
+    for spec in specs:
+        if spec["name"] in payload and payload[spec["name"]] and not args.force:
+            continue
+        payload[spec["name"]] = random_secret(spec["kind"])
+    return payload
+
+
 def command_status(args: argparse.Namespace) -> int:
     root = repo_root()
     host = resolve_host(root, args.host)
@@ -415,6 +461,27 @@ def command_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_bootstrap(args: argparse.Namespace) -> int:
+    root = repo_root()
+    host = resolve_host(root, args.host)
+    primary_user = resolve_primary_user()
+    paths = host_paths(root, host, primary_user)
+    public_key = ensure_age_key(paths)
+    ensure_sops_config(paths, public_key)
+    create_or_update_local_override(paths, primary_user)
+    payload = decrypt_bundle(paths) if paths["bundle"].exists() else {}
+    names = selected_secret_names(args.include_optional, args.include_remote)
+    if not args.force and all(payload.get(name) for name in names):
+        print(f"Existing encrypted secrets already cover requested set in {paths['bundle']}")
+        print(f"Local override ensured at {paths['deploy_options_local']}")
+        return 0
+    updated = bootstrap_payload(args, payload)
+    encrypt_bundle(paths, updated, public_key)
+    print(f"Bootstrapped {len(names)} secret(s) in {paths['bundle']}")
+    print(f"Local override ensured at {paths['deploy_options_local']}")
+    return 0
+
+
 def command_list(_: argparse.Namespace) -> int:
     for spec in SECRET_SPECS:
         print(f"{spec['name']}\t{spec['scope']}\t{spec['services']}")
@@ -488,6 +555,13 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--include-optional", action="store_true", help="Also generate optional service secrets.")
     init_parser.add_argument("--include-remote", action="store_true", help="Also generate remote_llm_api_key.")
 
+    bootstrap_parser = subparsers.add_parser("bootstrap", help="Interactive or auto-generated first-time bootstrap flow.")
+    bootstrap_parser.add_argument("--force", action="store_true", help="Regenerate existing selected secrets.")
+    bootstrap_parser.add_argument("--include-optional", action="store_true", help="Also manage optional service secrets.")
+    bootstrap_parser.add_argument("--include-remote", action="store_true", help="Also manage remote_llm_api_key.")
+    bootstrap_parser.add_argument("--mode", choices=["auto", "manual"], help="Secret input mode.")
+    bootstrap_parser.add_argument("--shared-secret", help="Use one shared secret value for all selected items in manual mode.")
+
     set_parser = subparsers.add_parser("set", help="Set or rotate a single secret.")
     set_parser.add_argument("secret", help="Managed secret name.")
     set_group = set_parser.add_mutually_exclusive_group()
@@ -513,6 +587,7 @@ def main() -> int:
         "list": command_list,
         "ensure-local-config": command_ensure_local_config,
         "init": command_init,
+        "bootstrap": command_bootstrap,
         "set": command_set,
     }
     return commands[args.command](args)
