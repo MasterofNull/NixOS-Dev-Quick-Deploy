@@ -755,8 +755,15 @@ restart_repo_backed_ai_services_if_needed() {
   fi
 
   log "Restarting mutable repo-backed AI services so live processes pick up checkout changes"
-  if run_with_timeout_if_available "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
-      run_privileged systemctl restart "${restart_units[@]}"; then
+  if has_timeout_cmd && [[ "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] && \
+     (( POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS > 0 )); then
+    if run_privileged timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
+        systemctl restart "${restart_units[@]}"; then
+      log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
+    else
+      die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
+    fi
+  elif run_privileged systemctl restart "${restart_units[@]}"; then
     log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
   else
     die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
