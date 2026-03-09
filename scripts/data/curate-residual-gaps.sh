@@ -106,6 +106,21 @@ post_doc "What is NixOS quick reference" \
   "NixOS is a Linux distribution built on the Nix package manager with declarative system configuration. The whole system state is defined in reproducible configuration files, enabling atomic upgrades, rollbacks, and consistent environment rebuilds across machines."
 delete_gap "what is NixOS"
 
+post_doc "NixOS flake build system quick reference" \
+  "knowledge/nixos-flake-build-system-quick-reference.md" \
+  "The NixOS flake build system evaluates outputs from flake.nix, then builds a host configuration such as nixosConfigurations.<host>.config.system.build.toplevel. Use nix flake show to inspect outputs, nix build .#nixosConfigurations.<host>.config.system.build.toplevel for a pure build, and nixos-rebuild switch --flake .#<host> to activate. Keep host-specific overrides out of tracked defaults when they contain secrets or machine-local settings."
+delete_gap "NixOS flake build system"
+
+post_doc "Continue chat hang diagnosis workflow quick reference" \
+  "knowledge/continue-chat-hang-diagnosis-quick-reference.md" \
+  "Diagnose Continue chat hangs by checking the hybrid coordinator, switchboard, local model service, and routing endpoints in that order. Start with aq-qa 0, aq-qa 2, and aq-hints for the failing symptom, then inspect aq-report, hybrid /workflow/plan, and recent tool-audit logs. Narrow whether the hang is UI-side, routing-side, model-load-side, or remote-provider-side before changing prompts or model settings."
+delete_gap "create a workflow plan for diagnosing continue chat hangs"
+
+post_doc "Switchboard profile routing header verification quick reference" \
+  "knowledge/switchboard-profile-routing-header-verification-quick-reference.md" \
+  "Verify switchboard profile routing headers by sending explicit requests through the hybrid or switchboard HTTP path and checking response metadata plus logged backend/profile selection. Confirm that x-ai-profile or equivalent routing intent maps to the expected local, remote-free, remote-coding, or remote-reasoning lane, and validate with aq-report plus tool-audit metadata rather than assuming header parsing alone."
+delete_gap "verify switchboard response headers for profile routing"
+
 post_doc "Declarative runtime tool security policy quick reference" \
   "knowledge/declarative-runtime-tool-security-policy-quick-reference.md" \
   "Define runtime tool security policy declaratively in ai.aiHarness.runtime.toolSecurity.policy. Configure blocked tools, blocked endpoint patterns, blocked parameter keys, and max parameter string length from Nix options. Keep enforcement enabled and persist safe-audit cache to reduce repeat scanning."
