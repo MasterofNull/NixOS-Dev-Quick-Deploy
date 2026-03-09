@@ -2,6 +2,7 @@
 let
   cfg = config.mySystem;
   sec = cfg.secrets;
+  swb = cfg.aiStack.switchboard;
   secretsOwner = cfg.primaryUser;
   secretsGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
   # External string paths (for strict zero-secrets-in-repo) cannot be
@@ -12,6 +13,7 @@ let
     then builtins.pathExists sec.sopsFile
     else true;
   repoLocalSopsPath = builtins.match ".*/nix/hosts/[^/]+/secrets\\.sops\\.ya?ml$" sec.sopsFile != null;
+  needsRemoteLlmSecret = swb.enable && swb.remoteUrl != null && swb.remoteApiKeyFile == null;
 in
 {
   config = lib.mkIf sec.enable {
@@ -48,6 +50,7 @@ in
         "${sec.names.postgresPassword}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
         "${sec.names.redisPassword}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
         "${sec.names.aiderWrapperApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
+      } // lib.optionalAttrs needsRemoteLlmSecret {
         "${sec.names.remoteLlmApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
       };
     };
