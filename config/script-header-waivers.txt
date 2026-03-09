@@ -12,8 +12,6 @@ scripts/ai/llama-model-cli.sh
 scripts/ai/route-reasoning-mode.py
 scripts/security/apply-tls-certificates.sh
 scripts/automation/run-advanced-parity-suite.sh
-scripts/automation/run-dashboard-collector-full.sh
-scripts/automation/run-dashboard-collector-lite.sh
 scripts/automation/run-harness-regression-gate.sh
 scripts/automation/run-hint-adoption-remediation-bounded.sh
 scripts/automation/run-intent-remediation-bounded.sh
@@ -40,7 +38,6 @@ scripts/data/generate-test-telemetry.sh
 scripts/data/import-collections.sh
 scripts/data/init-package-database.sh
 scripts/data/rotate-telemetry.sh
-scripts/deploy/fast-rebuild.sh
 scripts/deploy/install-git-hooks.sh
 scripts/deploy/launch-dashboard.sh
 scripts/deploy/local-registry.sh
@@ -59,7 +56,6 @@ scripts/health/fs-integrity-check.sh
 scripts/governance/analyze-clean-deploy-readiness.sh
 scripts/governance/audit-deploy-feature-toggles.sh
 scripts/governance/audit-service-endpoints.sh
-scripts/governance/comprehensive-mcp-search.py
 scripts/governance/discover-focused-agent-repos.py
 scripts/governance/discover-improvements.sh
 scripts/governance/discover-system-facts.sh

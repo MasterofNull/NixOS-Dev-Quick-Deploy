@@ -2058,7 +2058,7 @@ Last Updated: 2026-03-05
   - `scripts/ai/`: `ai-*`, `mcp-*`, `harness-rpc.js`, `llama-model-cli.sh`, `ralph-orchestrator.sh`, `route-reasoning-mode.py`
   - `scripts/security/`: `security-audit.sh`, `security-manager.sh`, `security-scan.sh`, `update-mcp-integrity-baseline.sh`
   - `scripts/data/`: `update-ai-research-now.sh`, `update-aidb-library-catalog-now.sh`
-  - `scripts/governance/`: `update-readme-ai-stack.py`, `apply-project-root.sh`, `apply-readme-ai-stack-updates.py`, `git-safe.sh`, `new-improvement-proposal.sh`, `smart_config_gen.sh`, `list-issues.py`, `comprehensive-mcp-search.py`
+  - `scripts/governance/`: `update-readme-ai-stack.py`, `apply-project-root.sh`, `apply-readme-ai-stack-updates.py`, `git-safe.sh`, `new-improvement-proposal.sh`, `smart_config_gen.sh`, `list-issues.py`
   - `scripts/deploy/`: registry publication handled via `publish-local-registry.sh`
   - `scripts/automation/`: `prsi-orchestrator.py`
 - [x] Migrated bootstrap/init/migrate/proxy wrappers:
@@ -2070,7 +2070,7 @@ Last Updated: 2026-03-05
   - `scripts/testing/`: `smoke-*`, `chaos-harness-smoke.sh`, `rag-smoke-test.sh`, `telemetry-smoke-test.sh`, `test_real_world_workflows.sh`, `test_services.sh`
   - `scripts/health/`: `system-health-check.sh`
 - [x] Migrated root recovery/rotation scripts into target domains:
-  - `scripts/deploy/`: `fast-rebuild.sh`, `recovery-*`, `restore-drill.sh`
+  - `scripts/deploy/`: `recovery-*`, `restore-drill.sh`
   - `scripts/security/`: `renew-tls-certificate.sh`, `rotate-api-key.sh`
   - `scripts/data/`: `rebuild-qdrant-collections.sh`, `rotate-telemetry.sh`
   - `scripts/governance/`: `record-claude-code-errors.sh`, `record-issue.py`
@@ -2095,7 +2095,7 @@ Last Updated: 2026-03-05
 - `python3 -m py_compile scripts/data/sync-hint-feedback-db.py scripts/testing/test-continuous-learning.py scripts/testing/test-discovery-system.py scripts/testing/test-rag-workflow.py scripts/testing/test-tool-security-auditor.py` → PASS
 - `python3 -m py_compile scripts/data/import-documents.py scripts/data/populate-qdrant-directly.py` → PASS
 - `python3 -m py_compile scripts/governance/discover-focused-agent-repos.py scripts/governance/discover-improvements.py scripts/governance/discover-semantic-github-repos.py scripts/governance/manage-secrets.py scripts/governance/record-issue.py` → PASS
-- `python3 -m py_compile scripts/governance/{apply-readme-ai-stack-updates.py,update-readme-ai-stack.py,list-issues.py,comprehensive-mcp-search.py} scripts/ai/{mcp-bridge-hybrid.py,route-reasoning-mode.py} scripts/automation/prsi-orchestrator.py` → PASS
+- `python3 -m py_compile scripts/governance/{apply-readme-ai-stack-updates.py,update-readme-ai-stack.py,list-issues.py} scripts/ai/{mcp-bridge-hybrid.py,route-reasoning-mode.py} scripts/automation/prsi-orchestrator.py` → PASS
 - `python3 -m py_compile scripts/ai/claude-api-proxy.py scripts/ai/claude-local-wrapper.py` → PASS
 - `scripts/governance/quick-deploy-lint.sh --mode fast` → PASS
 

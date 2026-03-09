@@ -196,7 +196,6 @@ scripts/cleanup-migrated-reports.sh
 scripts/collect-ai-metrics.sh
 scripts/compare-installed-vs-intended.sh
 scripts/ai/complete-via-ralph.sh
-scripts/governance/comprehensive-mcp-search.py
 scripts/configure-podman-tcp.sh
 scripts/count-packages-accurately.sh
 scripts/count-packages-simple.sh
@@ -219,7 +218,6 @@ scripts/enhance-dashboard-with-controls.sh
 scripts/evaluate-agent-policy.py
 scripts/data/export-ai-behavior-snapshot.sh
 scripts/data/export-collections.sh
-scripts/deploy/fast-rebuild.sh
 scripts/firewall-audit.sh
 scripts/fix-mangohud-config.sh
 scripts/fix-secrets-encryption.sh
@@ -287,8 +285,6 @@ scripts/automation/run-acceptance-checks.sh
 scripts/automation/run-advanced-parity-suite.sh
 scripts/automation/run-ai-harness-phase-plan.sh
 scripts/automation/run-all-checks.sh
-scripts/automation/run-dashboard-collector-full.sh
-scripts/automation/run-dashboard-collector-lite.sh
 scripts/automation/run-eval.sh
 scripts/automation/run-gap-eval-pack.py
 scripts/automation/run-harness-improvement-pass.sh
