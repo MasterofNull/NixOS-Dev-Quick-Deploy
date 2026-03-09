@@ -61,6 +61,12 @@ Show current status without printing secret values:
 - core readiness for deploy-critical secrets
 - all-managed readiness including optional and remote-routing secrets
 
+For scripts or agents that need the same status information in JSON:
+
+```bash
+./scripts/governance/manage-secrets.sh status --host nixos --format json
+```
+
 Show readiness plus the exact next commands to run:
 
 ```bash
