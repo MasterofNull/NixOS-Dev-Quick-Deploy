@@ -1339,20 +1339,20 @@ def build_recommendations(
         if s["p95_ms"] > 5000 and s["calls"] >= 5
     ]
     for tool, stats in sorted(slow_tools, key=lambda x: -x[1]["p95_ms"])[:2]:
+        fresh = recent_tool_stats.get(tool) if recent_tool_stats and tool in recent_tool_stats else None
         if recent_tool_stats and tool in recent_tool_stats:
-            fresh = recent_tool_stats[tool]
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("p95_ms", 0.0) or 0.0) <= 5000.0:
                 continue
         if stats["p95_ms"] >= 300000:
             recs.append(
                 f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
                 "this looks like timeout/outlier behavior. Inspect raw tool-audit latency entries "
-                "and timeout settings before tuning caching/model size."
+                f"and timeout settings before tuning caching/model size. Latency context: {_tool_latency_context(stats, fresh)}."
             )
         else:
             recs.append(
                 f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
-                "consider caching, connection pooling, or model size reduction."
+                f"consider caching, connection pooling, or model size reduction. Latency context: {_tool_latency_context(stats, fresh)}."
             )
 
     # Tool reliability
@@ -1511,6 +1511,15 @@ def _tool_reliability_context(stats: Dict[str, Any], fresh: Optional[Dict[str, A
             f"last hour OK%={_na(fresh.get('success_pct'), '.1f', '%')} across {int(fresh.get('calls', 0) or 0)} calls"
         )
     return "; ".join(parts)
+
+
+def _tool_latency_context(stats: Dict[str, Any], fresh: Optional[Dict[str, Any]] = None) -> str:
+    if fresh is None or int(fresh.get("calls", 0) or 0) == 0:
+        return "no recent calls in the last hour"
+    return (
+        f"last hour p95={_na(fresh.get('p95_ms'), '.0f', 'ms')} across "
+        f"{int(fresh.get('calls', 0) or 0)} calls"
+    )
 
 
 def recent_health_snapshot(recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
