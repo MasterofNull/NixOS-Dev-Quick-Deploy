@@ -347,6 +347,47 @@ def describe_secret_state(paths: Dict[str, Path], *, include_optional: bool, inc
     return state
 
 
+def doctor_next_steps(host: str, state: Dict[str, object], *, include_optional: bool, include_remote: bool) -> List[str]:
+    next_steps: List[str] = []
+    if not state["age_key_exists"] or not state["bundle_exists"] or not state["local_override_exists"]:
+        bootstrap_cmd = "./scripts/governance/manage-secrets.sh bootstrap --host " + host
+        if include_optional:
+            bootstrap_cmd += " --include-optional"
+        if include_remote:
+            bootstrap_cmd += " --include-remote"
+        next_steps.append(bootstrap_cmd)
+    elif state["missing_secrets"]:
+        next_steps.append("./scripts/governance/manage-secrets.sh status --host " + host)
+        for name in state["missing_secrets"]:
+            next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+    else:
+        next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
+        next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
+    return next_steps
+
+
+def print_post_action_doctor_summary(
+    host: str,
+    paths: Dict[str, Path],
+    *,
+    include_optional: bool,
+    include_remote: bool,
+) -> None:
+    state = describe_secret_state(paths, include_optional=include_optional, include_remote=include_remote)
+    next_steps = doctor_next_steps(
+        host,
+        state,
+        include_optional=include_optional,
+        include_remote=include_remote,
+    )
+    print(f"Requested secret set ready: {'yes' if state['is_ready'] else 'no'}")
+    if state["missing_secrets"]:
+        print("Missing secrets: " + ", ".join(state["missing_secrets"]))
+    print("Next steps:")
+    for step in next_steps:
+        print(f"- {step}")
+
+
 def bootstrap_mode(args: argparse.Namespace) -> str:
     if args.mode in {"auto", "manual"}:
         return args.mode
@@ -459,10 +500,22 @@ def command_init(args: argparse.Namespace) -> int:
         updates += 1
     if updates == 0:
         print("No secrets needed changes.")
+        print_post_action_doctor_summary(
+            host,
+            paths,
+            include_optional=args.include_optional,
+            include_remote=args.include_remote,
+        )
         return 0
     encrypt_bundle(paths, payload, public_key)
     print(f"Initialized {updates} secret(s) in {paths['bundle']}")
     print(f"Local override ensured at {paths['deploy_options_local']}")
+    print_post_action_doctor_summary(
+        host,
+        paths,
+        include_optional=args.include_optional,
+        include_remote=args.include_remote,
+    )
     return 0
 
 
@@ -488,6 +541,13 @@ def command_set(args: argparse.Namespace) -> int:
     payload[args.secret] = value
     encrypt_bundle(paths, payload, public_key)
     print(f"Updated {args.secret} in {paths['bundle']}")
+    spec = specs[args.secret]
+    print_post_action_doctor_summary(
+        host,
+        paths,
+        include_optional=spec["scope"] == "optional",
+        include_remote=args.secret == "remote_llm_api_key",
+    )
     return 0
 
 
@@ -504,11 +564,23 @@ def command_bootstrap(args: argparse.Namespace) -> int:
     if not args.force and all(payload.get(name) for name in names):
         print(f"Existing encrypted secrets already cover requested set in {paths['bundle']}")
         print(f"Local override ensured at {paths['deploy_options_local']}")
+        print_post_action_doctor_summary(
+            host,
+            paths,
+            include_optional=args.include_optional,
+            include_remote=args.include_remote,
+        )
         return 0
     updated = bootstrap_payload(args, payload)
     encrypt_bundle(paths, updated, public_key)
     print(f"Bootstrapped {len(names)} secret(s) in {paths['bundle']}")
     print(f"Local override ensured at {paths['deploy_options_local']}")
+    print_post_action_doctor_summary(
+        host,
+        paths,
+        include_optional=args.include_optional,
+        include_remote=args.include_remote,
+    )
     return 0
 
 
@@ -522,22 +594,12 @@ def command_doctor(args: argparse.Namespace) -> int:
         include_optional=args.include_optional,
         include_remote=args.include_remote,
     )
-    next_steps: List[str] = []
-
-    if not state["age_key_exists"] or not state["bundle_exists"] or not state["local_override_exists"]:
-        bootstrap_cmd = "./scripts/governance/manage-secrets.sh bootstrap --host " + host
-        if args.include_optional:
-            bootstrap_cmd += " --include-optional"
-        if args.include_remote:
-            bootstrap_cmd += " --include-remote"
-        next_steps.append(bootstrap_cmd)
-    elif state["missing_secrets"]:
-        next_steps.append("./scripts/governance/manage-secrets.sh status --host " + host)
-        for name in state["missing_secrets"]:
-            next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
-    else:
-        next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
-        next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
+    next_steps = doctor_next_steps(
+        host,
+        state,
+        include_optional=args.include_optional,
+        include_remote=args.include_remote,
+    )
 
     if args.format == "json":
         print(
@@ -596,6 +658,7 @@ def command_ensure_local_config(args: argparse.Namespace) -> int:
     ensure_sops_config(paths, public_key)
     create_or_update_local_override(paths, primary_user)
     print(f"Ensured {paths['deploy_options_local']}")
+    print_post_action_doctor_summary(host, paths, include_optional=False, include_remote=False)
     return 0
 
 
