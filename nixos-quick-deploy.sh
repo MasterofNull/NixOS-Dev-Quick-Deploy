@@ -542,9 +542,9 @@ print_completion_test_results() {
     )"
     if [[ -n "${output}" ]] && command -v jq >/dev/null 2>&1 && printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1; then
       log "AI stack QA phase 0:"
-      printf '  %-28s %s\n' "Pass" "$(printf '%s' "${output}" | jq -r '.pass // 0')"
-      printf '  %-28s %s\n' "Fail" "$(printf '%s' "${output}" | jq -r '.fail // 0')"
-      printf '  %-28s %s\n' "Skip" "$(printf '%s' "${output}" | jq -r '.skip // 0')"
+      printf '  %-28s %s\n' "Pass" "$(printf '%s' "${output}" | jq -r '(.passed // .pass // 0)')"
+      printf '  %-28s %s\n' "Fail" "$(printf '%s' "${output}" | jq -r '(.failed // .fail // 0)')"
+      printf '  %-28s %s\n' "Skip" "$(printf '%s' "${output}" | jq -r '(.skipped // .skip // 0)')"
     else
       log_warn "AI stack QA phase 0 summary unavailable."
     fi

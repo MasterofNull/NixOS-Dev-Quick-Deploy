@@ -365,6 +365,7 @@ check_pattern "scripts/data/import-agent-instructions.sh" 'dirname "\$0"\)/\.\./
 
 # Phase 21.5 — Post-deploy auto Phase 0 validation
 check_pattern "nixos-quick-deploy.sh" 'qa_script=.*aq-qa|"\$\{qa_script\}" 0 --json' 'Deploy completion runs aq-qa phase 0 summary'
+check_pattern "nixos-quick-deploy.sh" '\(\.passed // \.pass // 0\)|\(\.failed // \.fail // 0\)|\(\.skipped // \.skip // 0\)' 'Deploy completion accepts both legacy and current aq-qa summary field names'
 check_pattern "nixos-quick-deploy.sh" 'manage-secrets\.sh|manage_secrets_cmd.*bootstrap --host' 'Quick deploy delegates AI secrets bootstrap to the shared secrets manager'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services\(\)' 'Quick deploy centralizes repo-backed AI runtime gating'
 check_pattern "nixos-quick-deploy.sh" 'systemd_unit_declared\(\)' 'Quick deploy centralizes systemd unit declaration checks'
