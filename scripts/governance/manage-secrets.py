@@ -383,6 +383,67 @@ def describe_secret_state(paths: Dict[str, Path], *, include_optional: bool, inc
     return state
 
 
+def remote_onboarding_config_snippet() -> str:
+    return (
+        "{ lib, ... }:\n"
+        "{\n"
+        "  mySystem.aiStack.switchboard = {\n"
+        "    enable = true;\n"
+        "    remoteUrl = \"https://openrouter.ai/api\";\n"
+        "\n"
+        "    remoteModelAliases = {\n"
+        "      free = \"<openrouter-free-model-id>\";\n"
+        "      coding = \"<coding-model-id>\";\n"
+        "      reasoning = \"<reasoning-model-id>\";\n"
+        "    };\n"
+        "\n"
+        "    remoteBudget = {\n"
+        "      dailyTokenCap = 200000;\n"
+        "      fallbackToLocal = true;\n"
+        "    };\n"
+        "  };\n"
+        "}\n"
+    )
+
+
+def remote_onboarding_guide(host: str, paths: Dict[str, Path]) -> Dict[str, object]:
+    return {
+        "host": host,
+        "local_override": str(paths["deploy_options_local"]),
+        "bundle": str(paths["bundle"]),
+        "secret_name": "remote_llm_api_key",
+        "safe_to_commit": [
+            "mySystem.aiStack.switchboard.remoteUrl",
+            "mySystem.aiStack.switchboard.remoteModelAliases.free",
+            "mySystem.aiStack.switchboard.remoteModelAliases.coding",
+            "mySystem.aiStack.switchboard.remoteModelAliases.reasoning",
+            "mySystem.aiStack.switchboard.remoteBudget.dailyTokenCap",
+            "mySystem.aiStack.switchboard.remoteBudget.fallbackToLocal",
+        ],
+        "never_commit": [
+            "remote_llm_api_key",
+            str(paths["bundle"]),
+            "API keys, billing identifiers, or account-specific notes",
+        ],
+        "profiles": [
+            "remote-free",
+            "remote-coding",
+            "remote-reasoning",
+        ],
+        "commands": [
+            f"./scripts/governance/manage-secrets.sh set remote_llm_api_key --host {host}",
+            f"./scripts/governance/manage-secrets.sh doctor --host {host} --include-remote",
+            f"./nixos-quick-deploy.sh --host {host} --profile ai-dev",
+        ],
+        "validation": [
+            "Use x-ai-profile: remote-free for low-cost probing.",
+            "Use x-ai-profile: remote-coding for code-heavy requests.",
+            "Use x-ai-profile: remote-reasoning for architecture and deep analysis.",
+        ],
+        "config_snippet": remote_onboarding_config_snippet(),
+    }
+
+
 def doctor_next_steps(host: str, state: Dict[str, object], *, include_optional: bool, include_remote: bool) -> List[str]:
     next_steps: List[str] = []
     if not state["age_key_exists"] or not state["bundle_exists"] or not state["local_override_exists"]:
@@ -396,6 +457,8 @@ def doctor_next_steps(host: str, state: Dict[str, object], *, include_optional: 
         next_steps.append("./scripts/governance/manage-secrets.sh status --host " + host)
         for name in state["missing_secrets"]:
             next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+        if include_remote and "remote_llm_api_key" in state["missing_secrets"]:
+            next_steps.append("./scripts/governance/manage-secrets.sh remote-guide --host " + host)
     else:
         next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
         next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
@@ -417,6 +480,7 @@ def status_next_steps(host: str, missing_by_scope: Dict[str, List[str]], *, core
         next_steps.append("./scripts/governance/manage-secrets.sh doctor --host " + host + " --include-remote")
         for name in missing_by_scope["remote"]:
             next_steps.append(f"./scripts/governance/manage-secrets.sh set {name} --host {host}")
+        next_steps.append("./scripts/governance/manage-secrets.sh remote-guide --host " + host)
     if not next_steps and core_ready:
         next_steps.append("./scripts/governance/manage-secrets.sh validate --host " + host)
         next_steps.append(f"./nixos-quick-deploy.sh --host {host} --profile ai-dev")
@@ -721,6 +785,36 @@ def command_doctor(args: argparse.Namespace) -> int:
     return 0 if state["is_ready"] else 1
 
 
+def command_remote_guide(args: argparse.Namespace) -> int:
+    _, host, _, paths = resolve_runtime_context(args)
+    guide = remote_onboarding_guide(host, paths)
+
+    if args.format == "json":
+        print(json.dumps(guide, indent=2, sort_keys=True))
+        return 0
+
+    print(f"Host: {guide['host']}")
+    print(f"Remote secret bundle: {guide['bundle']}")
+    print(f"Gitignored local override: {guide['local_override']}")
+    print("Safe to commit:")
+    for item in guide["safe_to_commit"]:
+        print(f"- {item}")
+    print("Never commit:")
+    for item in guide["never_commit"]:
+        print(f"- {item}")
+    print("Suggested local override snippet:")
+    print("")
+    print(guide["config_snippet"].rstrip())
+    print("")
+    print("Next commands:")
+    for step in guide["commands"]:
+        print(f"- {step}")
+    print("Profile usage:")
+    for item in guide["validation"]:
+        print(f"- {item}")
+    return 0
+
+
 def command_list(_: argparse.Namespace) -> int:
     for spec in SECRET_SPECS:
         print(f"{spec['name']}\t{spec['scope']}\t{spec['services']}")
@@ -787,6 +881,8 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--include-optional", action="store_true", help="Also check optional service secrets.")
     doctor_parser.add_argument("--include-remote", action="store_true", help="Also check remote_llm_api_key readiness.")
     doctor_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
+    remote_guide_parser = subparsers.add_parser("remote-guide", help="Show safe OpenRouter/remote-routing onboarding steps.")
+    remote_guide_parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format.")
     subparsers.add_parser("list", help="List supported managed secret names.")
     subparsers.add_parser("ensure-local-config", help="Create or refresh deploy-options.local.nix wiring.")
 
@@ -841,6 +937,7 @@ def main() -> int:
         "paths": command_paths,
         "validate": command_validate,
         "doctor": command_doctor,
+        "remote-guide": command_remote_guide,
         "list": command_list,
         "ensure-local-config": command_ensure_local_config,
         "init": command_init,

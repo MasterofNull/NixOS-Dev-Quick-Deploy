@@ -49,6 +49,13 @@ To also generate an OpenRouter or other remote provider key placeholder:
 ./scripts/governance/manage-secrets.sh init --host nixos --include-remote
 ```
 
+To print the safe remote/OpenRouter onboarding path, including a local override
+snippet and the exact secret/deploy commands:
+
+```bash
+./scripts/governance/manage-secrets.sh remote-guide --host nixos
+```
+
 ## Common Commands
 
 Show current status without printing secret values:
@@ -92,6 +99,9 @@ so automation can distinguish:
 - core gaps
 - optional local service gaps
 - remote-routing gaps such as `remote_llm_api_key`
+
+`remote-guide --format json` exposes the same onboarding plan in machine-readable
+form for agents or wrapper tools.
 
 Show filesystem paths used by the secrets flow:
 
@@ -156,6 +166,11 @@ Example safe committed config:
 ```
 
 The matching `remote_llm_api_key` belongs only in the external SOPS bundle, not in git.
+
+`remote-guide` prints a ready-to-copy remote-routing snippet that belongs in the
+gitignored host-local override when you want to keep model choices and budgets
+private during setup. If those values are non-sensitive for your team, you can
+instead commit them in the normal host config and keep only the API key in SOPS.
 
 ## UX Recommendation
 
