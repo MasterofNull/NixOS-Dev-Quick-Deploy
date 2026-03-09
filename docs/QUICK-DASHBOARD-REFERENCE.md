@@ -55,15 +55,12 @@ bash scripts/governance/manage-dashboard-collectors.sh restart
 ### Want different update rates?
 
 ```bash
-# Edit lite collector interval (currently 2s)
-nano ${TMPDIR:-/tmp}/run-dashboard-collector-lite.sh
-# Change: sleep 2
+# Supported paths to review or adjust:
+bash scripts/governance/manage-dashboard-collectors.sh logs
+sed -n '1,120p' scripts/data/generate-dashboard-data.sh
+sed -n '1,120p' scripts/data/generate-dashboard-data-lite.sh
 
-# Edit full collector interval (currently 60s)
-nano ${TMPDIR:-/tmp}/run-dashboard-collector-full.sh
-# Change: sleep 60
-
-# Restart
+# After changes, restart:
 bash scripts/governance/manage-dashboard-collectors.sh restart
 ```
 
