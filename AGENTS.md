@@ -15,9 +15,17 @@ Canonical full policy: `docs/AGENTS.md`
 3. Discovery: load minimum context first, run health/hints before deep edits.
 4. Plan by phases: one logical change per task with explicit verification.
 5. Execute with evidence: record key commands, failures, and decisions.
-6. Validate before commit: syntax, build/tests, smoke checks, security pass.
+6. **Validate before commit** — run `scripts/governance/tier0-validation-gate.sh --pre-commit`:
+   - Python syntax (`py_compile`)
+   - Bash syntax (`bash -n`)
+   - Nix syntax (`nix-instantiate --parse`)
+   - Repo structure lint
+   - Roadmap verification (414 checks)
+   - QA phase 0 (29 checks)
 7. Handoff: changes made, evidence, residual risk, deploy/verify/rollback commands.
 8. Halt triggers: boot/shutdown regressions, repeated hangs, safety uncertainty.
+
+**Pre-deploy gate:** Run `scripts/governance/tier0-validation-gate.sh --pre-deploy` before `nixos-quick-deploy.sh`.
 
 ## Default Execution Behavior (All Prompts)
 - Always run as `delegator + reviewer`: split work into small tasks, assign owner, and review with evidence gate.

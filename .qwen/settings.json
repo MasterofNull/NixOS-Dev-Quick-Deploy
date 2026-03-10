@@ -1,0 +1,49 @@
+{
+  "agent_role": "qwen",
+  "capabilities": [
+    "code_implementation",
+    "test_scaffolding",
+    "config_nix_changes",
+    "documentation"
+  ],
+  "limits": [
+    "no_re_scoping_beyond_assigned_slice",
+    "no_cross_agent_routing",
+    "no_final_acceptance_decisions",
+    "return_to_orchestrator_on_ambiguity"
+  ],
+  "workflow_contract": {
+    "tier_0_gates": {
+      "pre_edit": [
+        "aq-hints --query '<task>' --format=json --agent=qwen",
+        "read AGENTS.md Tier 0 Workflow Contract"
+      ],
+      "pre_commit": [
+        "python3 -m py_compile <changed.py>",
+        "bash -n <changed.sh>",
+        "nix-instantiate --parse <changed.nix>",
+        "scripts/governance/repo-structure-lint.sh --staged",
+        "bash scripts/testing/verify-flake-first-roadmap-completion.sh",
+        "scripts/ai/aq-qa 0"
+      ],
+      "pre_deploy": [
+        "3-5 repo-only slices per batch minimum",
+        "Deploy earlier only for runtime activation checks or blocker fixes"
+      ]
+    },
+    "evidence_required_per_task": [
+      "files_changed",
+      "commands_run",
+      "tests_run",
+      "evidence_output",
+      "rollback_note"
+    ]
+  },
+  "validation_first": true,
+  "commit_only_after_validation": true,
+  "delegate_when": [
+    "parallel_independent_slices_exist",
+    "research_and_implementation_can_run_concurrently",
+    "work_can_be_split_into_architecture_patch_review_tracks"
+  ]
+}
