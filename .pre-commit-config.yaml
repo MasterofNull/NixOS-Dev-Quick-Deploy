@@ -1,4 +1,13 @@
 repos:
+  - repo: local
+    hooks:
+      - id: tier0-validation
+        name: Tier 0 Validation Gate
+        entry: scripts/governance/tier0-validation-gate.sh --pre-commit
+        language: script
+        pass_filenames: false
+        stages: [commit]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
