@@ -108,8 +108,8 @@ let
     };
   };
 
-  # Continue CLI — installed via npm global (see NPM_CONFIG_PREFIX above)
-  # home.packages continuation: add (pkgs.nodePackages.continue-cli) when available
+  # Continue CLI — declarative npm packaging
+  continueCli = pkgs.callPackage ../pkgs/continue-cli.nix { };
 
   continueMutableVsix = pkgs.fetchurl {
     url = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
@@ -469,7 +469,9 @@ in
       gradio
     ]))
 
-    # Continue CLI — installed via npm global (see NPM_CONFIG_PREFIX)
+    # Continue CLI — AI-powered coding assistant for the terminal
+    continueCli
+
     # Lightweight fallback editor (override in per-host home.nix)
     micro
   ];
