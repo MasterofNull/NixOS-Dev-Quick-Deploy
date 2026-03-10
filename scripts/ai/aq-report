@@ -1510,6 +1510,32 @@ def build_recommendations(
                     "For ongoing repo/system tasks, prefer memory recall before broad route_search when prior context exists."
                 )
 
+    # Batch D — Cache and Retrieval Effectiveness
+    # Add bounded prewarm heuristics for cheap recurring local queries
+    if cache.get("available") and cache.get("hit_pct") is not None:
+        cache_hit = float(cache["hit_pct"])
+        if 40.0 <= cache_hit < 60.0:
+            # Cache is warming but not yet optimal — recommend targeted prewarm
+            prewarm_candidates = (rag_posture_summary or {}).get("prewarm_candidates") or []
+            top_prewarm = None
+            for c in prewarm_candidates:
+                if isinstance(c, dict) and c.get("id"):
+                    top_prewarm = c.get("id")
+                    break
+            if top_prewarm:
+                recs.append(
+                    f"Cache hit rate ({cache_hit:.1f}%) is approaching target. "
+                    f"Run bounded prewarm for '{top_prewarm}' to push over 60% without broad seeding."
+                )
+        elif cache_hit >= 60.0:
+            # Cache is healthy — recommend retrieval-first for local queries
+            route_local = route.get("local_pct") if route.get("available") else None
+            if route_local is not None and float(route_local) >= 80.0:
+                recs.append(
+                    f"Cache is healthy ({cache_hit:.1f}%) and local routing is strong ({float(route_local):.1f}%). "
+                    "Prefer local-first retrieval for recurring queries; remote spend is unnecessary for cached patterns."
+                )
+
     if recent_provider_fallbacks and recent_provider_fallbacks.get("available"):
         recovered_count = int(recent_provider_fallbacks.get("recovered_count", 0) or 0)
         if recovered_count > 0:
