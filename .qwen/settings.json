@@ -45,5 +45,6 @@
     "parallel_independent_slices_exist",
     "research_and_implementation_can_run_concurrently",
     "work_can_be_split_into_architecture_patch_review_tracks"
-  ]
+  ],
+  "$version": 3
 }
