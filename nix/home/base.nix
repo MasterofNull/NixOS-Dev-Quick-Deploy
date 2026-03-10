@@ -108,9 +108,8 @@ let
     };
   };
 
-  # Continue CLI — @continuedev/cli packaged from source
-  # Provides terminal-based AI coding assistance (cn command)
-  continueCli = pkgs.callPackage ../pkgs/continue-cli.nix { };
+  # Continue CLI — installed via npm global (see NPM_CONFIG_PREFIX above)
+  # home.packages continuation: add (pkgs.nodePackages.continue-cli) when available
 
   continueMutableVsix = pkgs.fetchurl {
     url = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
@@ -470,9 +469,7 @@ in
       gradio
     ]))
 
-    # Continue CLI — AI-powered coding assistant for the terminal
-    continueCli
-
+    # Continue CLI — installed via npm global (see NPM_CONFIG_PREFIX)
     # Lightweight fallback editor (override in per-host home.nix)
     micro
   ];
@@ -635,8 +632,9 @@ in
   };
 
   # ---- Continue CLI -------------------------------------------------------
-  # Continue CLI is provided by the continueCli package above.
-  # npm global prefix is configured via shell environment in .zshrc.
+  # Continue CLI is installed via npm global (see NPM_CONFIG_PREFIX above).
+  # Run: npm install -g @continuedev/cli
+  # Command: cn
 
   programs.vim = {
     enable = true;
