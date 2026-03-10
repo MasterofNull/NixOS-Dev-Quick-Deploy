@@ -634,15 +634,9 @@ in
     };
   };
 
-  # ---- npm: global packages configuration ---------------------------------
-  # NPM global packages are installed to ~/.npm-global to avoid conflicts
-  # with Nix-managed packages. Used by AI CLI tools like @continuedev/cli.
-  programs.npm = {
-    enable = true;
-    npmrc = ''
-      prefix=${config.home.homeDirectory}/.npm-global
-    '';
-  };
+  # ---- Continue CLI -------------------------------------------------------
+  # Continue CLI is provided by the continueCli package above.
+  # npm global prefix is configured via shell environment in .zshrc.
 
   programs.vim = {
     enable = true;
@@ -676,6 +670,8 @@ in
     VISUAL  = "micro";
     PAGER   = "less";
     LESS    = "-FRX";
+    # npm global prefix for AI CLI tools (Continue, pi, etc.)
+    NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.npm-global";
   };
 
   home.sessionPath = [
