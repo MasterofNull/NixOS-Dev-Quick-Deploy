@@ -172,29 +172,66 @@ def main() -> int:
                     "delegate_via_coordinator_only": True,
                 },
             },
+            "bugfix-session": {
+                "session_id": "bugfix-session",
+                "objective": "bugfix smoke",
+                "created_at": now_epoch,
+                "updated_at": now_epoch,
+                "intent_contract": {
+                    "user_intent": "bugfix smoke",
+                    "definition_of_done": "acceptance review stored",
+                    "depth_expectation": "standard",
+                    "spirit_constraints": ["stay bounded"],
+                    "no_early_exit_without": ["review state"],
+                },
+                "reviewer_gate": {
+                    "required": True,
+                    "status": "accepted",
+                    "history": [{"ts": now_epoch, "passed": True, "score": 1.0}],
+                    "last_review": {
+                        "ts": now_epoch,
+                        "passed": True,
+                        "score": 1.0,
+                        "reviewer": "codex",
+                        "review_type": "acceptance",
+                        "artifact_kind": "response",
+                        "task_class": "coding_bugfix",
+                        "reviewed_agent": "qwen",
+                        "reviewed_profile": "remote-coding",
+                    },
+                },
+                "blueprint_id": "coding-bugfix-safe",
+                "orchestration": {
+                    "requesting_agent": "continue",
+                    "requester_role": "orchestrator",
+                    "delegate_via_coordinator_only": True,
+                },
+            },
         }
         tmp_path.write_text(json.dumps(payload), encoding="utf-8")
         MODULE.WORKFLOW_SESSIONS_PATH = tmp_path
         summary = MODULE.read_workflow_sessions(now - timedelta(days=1))
-        assert_true(summary.get("reviewer_gate_required_runs") == 4, "expected four reviewer-gated runs")
-        assert_true(summary.get("sessions_with_reviews") == 3, "expected three reviewed sessions")
-        assert_true(summary.get("accepted_reviews") == 2, "expected two accepted reviews")
+        assert_true(summary.get("reviewer_gate_required_runs") == 5, "expected five reviewer-gated runs")
+        assert_true(summary.get("sessions_with_reviews") == 4, "expected four reviewed sessions")
+        assert_true(summary.get("accepted_reviews") == 3, "expected three accepted reviews")
         assert_true(summary.get("rejected_reviews") == 1, "expected one rejected review")
         assert_true(summary.get("pending_reviews") == 1, "expected one pending review")
-        assert_true(any(role == "orchestrator" and count == 3 for role, count in (summary.get("top_requester_roles") or [])), "expected requester role summary")
-        assert_true(any(role == "orchestrator" and count == 2 for role, count in (summary.get("accepted_by_requester_role") or [])), "expected accepted role summary")
-        assert_true(any(reviewer == "codex" and count == 4 for reviewer, count in (summary.get("top_reviewers") or [])), "expected reviewer summary")
+        assert_true(any(role == "orchestrator" and count == 4 for role, count in (summary.get("top_requester_roles") or [])), "expected requester role summary")
+        assert_true(any(role == "orchestrator" and count == 3 for role, count in (summary.get("accepted_by_requester_role") or [])), "expected accepted role summary")
+        assert_true(any(reviewer == "codex" and count == 5 for reviewer, count in (summary.get("top_reviewers") or [])), "expected reviewer summary")
         assert_true(any(review_type == "patch_review" and count == 2 for review_type, count in (summary.get("top_review_types") or [])), "expected review type summary")
         assert_true(any(bp == "repo-refactor-guarded" and count == 1 for bp, count in (summary.get("accepted_blueprints") or [])), "expected accepted blueprint summary")
         assert_true(any(bp == "deploy-rollback-safe-ops" and count == 1 for bp, count in (summary.get("accepted_blueprints") or [])), "expected deploy accepted blueprint summary")
+        assert_true(any(bp == "coding-bugfix-safe" and count == 1 for bp, count in (summary.get("accepted_blueprints") or [])), "expected bugfix accepted blueprint summary")
         assert_true(any(bp == "continue-editor-rescue" and count == 1 for bp, count in (summary.get("rejected_blueprints") or [])), "expected rejected blueprint summary")
         assert_true(summary.get("accepted_patch_reviews") == 1, "expected one accepted patch review")
         assert_true(summary.get("rejected_patch_reviews") == 1, "expected one rejected patch review")
         assert_true(any(agent == "qwen" and count == 2 for agent, count in (summary.get("patch_reviews_by_reviewed_agent") or [])), "expected patch-reviewed agent summary")
         assert_true(any(task_class == "repo_refactor" and count == 1 for task_class, count in (summary.get("accepted_task_classes") or [])), "expected accepted task class summary")
         assert_true(any(task_class == "deploy_safe_ops" and count == 1 for task_class, count in (summary.get("accepted_task_classes") or [])), "expected accepted deploy task class summary")
+        assert_true(any(task_class == "coding_bugfix" and count == 1 for task_class, count in (summary.get("accepted_task_classes") or [])), "expected accepted bugfix task class summary")
         assert_true(any(task_class == "editor_rescue" and count == 1 for task_class, count in (summary.get("rejected_task_classes") or [])), "expected rejected task class summary")
-        assert_true(any(profile == "remote-coding" and count == 1 for profile, count in (summary.get("accepted_by_reviewed_profile") or [])), "expected accepted reviewed-profile summary")
+        assert_true(any(profile == "remote-coding" and count == 2 for profile, count in (summary.get("accepted_by_reviewed_profile") or [])), "expected accepted reviewed-profile summary")
         assert_true(any(profile == "remote-free" and count == 1 for profile, count in (summary.get("accepted_by_reviewed_profile") or [])), "expected accepted remote-free reviewed-profile summary")
         assert_true(any(profile == "continue-local" and count == 1 for profile, count in (summary.get("rejected_by_reviewed_profile") or [])), "expected rejected reviewed-profile summary")
     finally:

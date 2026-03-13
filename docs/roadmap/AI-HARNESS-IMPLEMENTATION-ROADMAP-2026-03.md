@@ -544,7 +544,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, `/query` returns compact orchestration metadata while propagating requester-role fields into internal autorun audit rows, aq-report now summarizes reviewer state by requester role, review type, reviewed agent, reviewed profile, blueprint, and task class, and the live workflow review smoke now proves Continue/editor rescue acceptance, repo-refactor patch-review classification, remote-reasoning plan-review persistence, and deploy-safe-ops artifact-review persistence end to end; the next gap is broader query/editor acceptance coverage across still more task classes`
+Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, `/query` returns compact orchestration metadata while propagating requester-role fields into internal autorun audit rows, aq-report now summarizes reviewer state by requester role, review type, reviewed agent, reviewed profile, blueprint, and task class, and the live workflow review smoke now proves Continue/editor rescue acceptance, repo-refactor patch-review classification, remote-reasoning plan-review persistence, deploy-safe-ops artifact-review persistence, and coding-bugfix acceptance persistence end to end; the next gap is broader query/editor acceptance coverage across still more task classes`
 Next Validation:
 - live `/query` responses return normalized orchestration metadata for human and editor callers
 - internal autorun audit rows inherit requester-role metadata from the parent query request
@@ -552,7 +552,7 @@ Next Validation:
 - `python3 scripts/ai/aq-report --format json | jq '.intent_contract_compliance'`
 - `scripts/testing/smoke-workflow-review-contract.sh`
 Open Risks / Blockers:
-- top-level orchestrator identity is now explicit in workflow state, delegated responses, direct query responses, and workflow review summaries, and live acceptance now covers continue-editor rescue, repo-refactor, remote-reasoning, and deploy-safe-ops classes, but broader coverage across more query shapes is still unfinished
+- top-level orchestrator identity is now explicit in workflow state, delegated responses, direct query responses, and workflow review summaries, and live acceptance now covers continue-editor rescue, repo-refactor, remote-reasoning, deploy-safe-ops, and coding-bugfix classes, but broader coverage across more query shapes is still unfinished
 - the policy forbids nested sub-agent fan-out and both delegated plus direct-query caller telemetry now exist, but broader live acceptance evidence for more agent/task classes is still unfinished
 
 Tasks:
