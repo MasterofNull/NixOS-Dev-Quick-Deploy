@@ -46,6 +46,7 @@ from ai_coordinator import (
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 from web_research import fetch_web_research
+from delegation_feedback import classify_delegated_response, record_delegation_feedback
 import mcp_handlers
 
 logger = logging.getLogger("hybrid-coordinator")
@@ -3285,6 +3286,8 @@ async def run_http_mode(port: int) -> None:
             effective_runtime_id = selected_runtime_id
             fallback_applied = False
             response = await _post_delegate(effective_profile)
+            initial_response = response
+            initial_body = response.json()
             if (
                 response.status_code in {402, 429}
                 and selected_runtime_id in {"openrouter-coding", "openrouter-reasoning"}
@@ -3301,13 +3304,61 @@ async def run_http_mode(port: int) -> None:
                     remote_aliases,
                     remote_configured,
                 )
-
             body = response.json()
+
+            initial_classification = classify_delegated_response(
+                task=task,
+                messages=messages,
+                status_code=int(initial_response.status_code),
+                body=initial_body,
+                profile=selected_profile,
+                runtime_id=selected_runtime_id,
+                stage="initial",
+                fallback_applied=fallback_applied,
+            )
+            final_classification = classify_delegated_response(
+                task=task,
+                messages=messages,
+                status_code=int(response.status_code),
+                body=body,
+                profile=effective_profile,
+                runtime_id=effective_runtime_id,
+                stage="final",
+                fallback_applied=fallback_applied,
+            )
+            try:
+                record_delegation_feedback(
+                task=task,
+                requested_profile=requested_profile,
+                selected_profile=selected_profile,
+                selected_runtime_id=selected_runtime_id,
+                classification=initial_classification,
+                final_profile=effective_profile,
+                final_runtime_id=effective_runtime_id,
+                )
+            except OSError as exc:
+                logger.error("delegation_feedback_write_failed error=%s", exc)
+            if fallback_applied or final_classification.get("is_failure"):
+                try:
+                    record_delegation_feedback(
+                        task=task,
+                        requested_profile=requested_profile,
+                        selected_profile=selected_profile,
+                        selected_runtime_id=selected_runtime_id,
+                        classification=final_classification,
+                        final_profile=effective_profile,
+                        final_runtime_id=effective_runtime_id,
+                    )
+                except OSError as exc:
+                    logger.error("delegation_feedback_write_failed error=%s", exc)
             request["audit_metadata"] = {
                 "selected_runtime_id": effective_runtime_id,
                 "selected_profile": effective_profile,
                 "delegated_http_status": int(response.status_code),
                 "fallback_applied": fallback_applied,
+                "delegation_failure_class": final_classification.get("primary_failure_class", ""),
+                "delegation_failure_classes": final_classification.get("failure_classes", []),
+                "delegation_salvage_useful": bool((final_classification.get("salvage") or {}).get("has_useful_data")),
             }
 
             return web.json_response(
@@ -3330,6 +3381,10 @@ async def run_http_mode(port: int) -> None:
                         }
                         if fallback_applied else {"applied": False}
                     ),
+                    "delegation_feedback": {
+                        "initial": initial_classification,
+                        "final": final_classification,
+                    },
                     "response": body,
                 },
                 status=response.status_code,

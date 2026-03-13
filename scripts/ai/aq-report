@@ -87,6 +87,9 @@ AIDB_URL = os.getenv("AIDB_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1'
 WORKFLOW_SESSIONS_PATH = Path(
     os.getenv("WORKFLOW_SESSIONS_PATH", "/var/lib/ai-stack/hybrid/workflow-sessions.json")
 )
+DELEGATION_FEEDBACK_PATH = Path(
+    os.getenv("DELEGATION_FEEDBACK_LOG_PATH", "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
+)
 AQ_QA_SCRIPT = Path(__file__).with_name("aq-qa")
 
 # ---------------------------------------------------------------------------
@@ -257,6 +260,28 @@ def _task_audit_path() -> Optional[Path]:
     return None
 
 
+def _delegation_feedback_path() -> Optional[Path]:
+    env_path = os.getenv("DELEGATION_FEEDBACK_LOG_PATH")
+    if env_path:
+        p = Path(env_path)
+        try:
+            if p.exists():
+                return p
+        except PermissionError:
+            pass
+    candidates = [
+        DELEGATION_FEEDBACK_PATH,
+        Path("/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl"),
+    ]
+    for p in candidates:
+        try:
+            if p.exists():
+                return p
+        except PermissionError:
+            continue
+    return None
+
+
 def read_tool_audit(since: datetime) -> List[dict]:
     """Read tool_audit.jsonl entries newer than `since`."""
     path = _tool_audit_path()
@@ -283,6 +308,93 @@ def read_tool_audit(since: datetime) -> List[dict]:
     except OSError:
         pass
     return entries
+
+
+def read_delegation_feedback(since: datetime) -> Dict[str, Any]:
+    path = _delegation_feedback_path()
+    if not path:
+        return {"available": False, "source": str(DELEGATION_FEEDBACK_PATH)}
+    entries: List[Dict[str, Any]] = []
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = _entry_ts_utc(entry)
+                if ts is None or ts < since:
+                    continue
+                entries.append(entry)
+    except OSError:
+        return {"available": False, "source": str(path)}
+    return {"available": True, "source": str(path), "entries": entries}
+
+
+def aggregate_delegation_feedback(data: Dict[str, Any]) -> Dict[str, Any]:
+    if not data.get("available"):
+        return {"available": False, "source": data.get("source")}
+
+    entries = data.get("entries") if isinstance(data.get("entries"), list) else []
+    if not entries:
+        return {
+            "available": True,
+            "source": data.get("source"),
+            "total_failures": 0,
+            "recovered_failures": 0,
+            "salvageable_failures": 0,
+            "top_failure_classes": [],
+            "top_profiles": [],
+            "recent_examples": [],
+        }
+
+    failure_counts: Dict[str, int] = {}
+    profile_counts: Dict[str, int] = {}
+    recovered = 0
+    salvageable = 0
+    examples: List[Dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        primary = str(entry.get("failure_class", "") or "").strip()
+        if primary:
+            failure_counts[primary] = failure_counts.get(primary, 0) + 1
+        profile = str(entry.get("selected_profile", "") or "").strip()
+        if profile:
+            profile_counts[profile] = profile_counts.get(profile, 0) + 1
+        if bool(entry.get("fallback_applied")):
+            recovered += 1
+        salvage = entry.get("salvage") if isinstance(entry.get("salvage"), dict) else {}
+        if bool(salvage.get("has_useful_data")):
+            salvageable += 1
+        if len(examples) < 3:
+            examples.append(
+                {
+                    "timestamp": entry.get("timestamp"),
+                    "failure_class": primary,
+                    "selected_profile": profile,
+                    "failure_stage": entry.get("failure_stage"),
+                    "task_excerpt": str(entry.get("task_excerpt", "") or "")[:140],
+                    "response_preview": str(entry.get("response_preview", "") or "")[:180],
+                    "improvement_actions": entry.get("improvement_actions") or [],
+                    "salvage": salvage,
+                }
+            )
+
+    return {
+        "available": True,
+        "source": data.get("source"),
+        "total_failures": len(entries),
+        "recovered_failures": recovered,
+        "salvageable_failures": salvageable,
+        "salvageable_pct": round(100 * salvageable / len(entries), 1) if entries else None,
+        "top_failure_classes": sorted(failure_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_profiles": sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "recent_examples": examples,
+    }
 
 
 def _entry_ts_utc(entry: Dict[str, Any]) -> Optional[datetime]:
@@ -1497,6 +1609,7 @@ def build_recommendations(
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
     gaps: List[dict],
+    delegated_prompt_failures: Optional[Dict[str, Any]] = None,
     rag_posture_summary: Optional[Dict[str, Any]] = None,
     adoption: Optional[Dict[str, Any]] = None,
     intent_compliance: Optional[Dict[str, Any]] = None,
@@ -1856,6 +1969,22 @@ def build_recommendations(
                 "or a higher-tier model. See ai-stack/prompts/registry.yaml for vetted templates."
             )
 
+    if delegated_prompt_failures and delegated_prompt_failures.get("available"):
+        total_failures = int(delegated_prompt_failures.get("total_failures", 0) or 0)
+        if total_failures > 0:
+            top_failure_classes = delegated_prompt_failures.get("top_failure_classes") or []
+            top_text = ", ".join(f"{name}={count}" for name, count in top_failure_classes[:3]) or "unknown"
+            recs.append(
+                f"Delegated OpenRouter prompt failures recorded ({total_failures} in-window; {top_text}). "
+                "Treat these as local prompt-contract failures and tighten scope, output schema, and repo-grounding before retry."
+            )
+            salvageable_pct = delegated_prompt_failures.get("salvageable_pct")
+            if salvageable_pct is not None and float(salvageable_pct) > 0:
+                recs.append(
+                    f"Delegated failure salvage rate is {_na(salvageable_pct, '.1f', '%')}. "
+                    "Digest useful commands, paths, and excerpts from failed responses before spending more orchestration tokens."
+                )
+
     if not recs:
         recs.append("No critical issues detected. System is operating within normal parameters.")
 
@@ -1868,6 +1997,7 @@ def build_structured_actions(
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
     gaps: List[dict],
+    delegated_prompt_failures: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """Machine-readable optimization actions for aq-optimizer."""
     actions: List[dict] = []
@@ -1922,6 +2052,26 @@ def build_structured_actions(
             "script": "seed-routing-traffic.sh",
             "script_args": ["--count", "8"],
         })
+
+    if delegated_prompt_failures and delegated_prompt_failures.get("available"):
+        total_failures = int(delegated_prompt_failures.get("total_failures", 0) or 0)
+        top_failure_classes = delegated_prompt_failures.get("top_failure_classes") or []
+        if total_failures >= 2 and top_failure_classes:
+            reason = ",".join(f"{name}:{count}" for name, count in top_failure_classes[:3])
+            actions.append({
+                "type": "prompt",
+                "action": "tighten_openrouter_delegation_contract",
+                "reason": f"delegation_failures={reason}",
+                "safe": False,
+                "confidence": min(0.95, 0.45 + (total_failures / 10.0)),
+                "topic": "openrouter_delegation_prompt_contract",
+                "profiles": [name for name, _count in (delegated_prompt_failures.get("top_profiles") or [])[:3]],
+                "evidence": delegated_prompt_failures.get("recent_examples") or [],
+                "notes": [
+                    "Treat each delegated rejection or unusable reply as a local prompt-contract failure.",
+                    "Digest salvageable commands, file paths, and excerpts before retrying.",
+                ],
+            })
 
     knowledge_gaps = [
         g for g in gaps
@@ -2267,6 +2417,7 @@ def format_md(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    delegated_prompt_failures: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -2481,6 +2632,20 @@ def format_md(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"  - `{item.get('id')}` — {item.get('description')}")
+    lines.append("")
+
+    lines += ["## 8aa. Delegated Prompt Failures", ""]
+    if not delegated_prompt_failures.get("available"):
+        lines.append("*Delegated prompt failure telemetry unavailable.*")
+    elif int(delegated_prompt_failures.get("total_failures", 0) or 0) == 0:
+        lines.append("*No delegated prompt failures recorded in this window.*")
+    else:
+        lines.append(f"- Failures: **{delegated_prompt_failures.get('total_failures', 0)}**")
+        lines.append(f"- Salvageable: **{delegated_prompt_failures.get('salvageable_failures', 0)}** ({_na(delegated_prompt_failures.get('salvageable_pct'), '.1f', '%')})")
+        lines.append(f"- Recovered via fallback: **{delegated_prompt_failures.get('recovered_failures', 0)}**")
+        top_classes = delegated_prompt_failures.get("top_failure_classes") or []
+        if top_classes:
+            lines.append(f"- Top failure classes: {', '.join(f'`{name}` ({count})' for name, count in top_classes[:3])}")
     lines.append("")
 
     lines += [f"## 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
@@ -2710,6 +2875,7 @@ def format_text(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    delegated_prompt_failures: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -2925,6 +3091,23 @@ def format_text(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"    {item.get('id')}: {item.get('description')}")
+    lines.append("")
+
+    lines += ["[ 8aa. Delegated Prompt Failures ]"]
+    if not delegated_prompt_failures.get("available"):
+        lines.append("  Delegated prompt failure telemetry unavailable.")
+    elif int(delegated_prompt_failures.get("total_failures", 0) or 0) == 0:
+        lines.append("  No delegated prompt failures recorded in this window.")
+    else:
+        lines.append(f"  Failures: {delegated_prompt_failures.get('total_failures', 0)}")
+        lines.append(
+            f"  Salvageable: {delegated_prompt_failures.get('salvageable_failures', 0)}"
+            f" ({_na(delegated_prompt_failures.get('salvageable_pct'), '.1f', '%')})"
+        )
+        lines.append(f"  Recovered via fallback: {delegated_prompt_failures.get('recovered_failures', 0)}")
+        top_classes = delegated_prompt_failures.get("top_failure_classes") or []
+        if top_classes:
+            lines.append(f"  Top failure classes: {', '.join(f'{name}({count})' for name, count in top_classes[:3])}")
     lines.append("")
 
     lines += [f"[ 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]
@@ -3154,6 +3337,7 @@ def format_json(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    delegated_prompt_failures: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3194,6 +3378,7 @@ def format_json(
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
         "continue_editor": continue_editor,
+        "delegated_prompt_failures": delegated_prompt_failures,
         "route_retrieval_breadth": retrieval_breadth,
         "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
@@ -3288,6 +3473,7 @@ def main() -> None:
 
     # Collect data (independent sources — order doesn't matter)
     audit_entries = read_tool_audit(since_dt)
+    delegation_feedback = aggregate_delegation_feedback(read_delegation_feedback(since_dt))
     eval_rows = read_eval_scores(since_dt)
     gaps = read_query_gaps(since_dt, limit=10)
     gaps = [
@@ -3348,6 +3534,7 @@ def main() -> None:
         cache,
         eval_trend,
         gaps,
+        delegation_feedback,
         rag_posture_summary,
         adoption,
         intent_compliance,
@@ -3361,7 +3548,7 @@ def main() -> None:
         recent_provider_fallbacks,
         recent_retrieval_breadth,
     )
-    structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps)
+    structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps, delegation_feedback)
 
     # Render
     fmt_args = (
@@ -3378,6 +3565,7 @@ def main() -> None:
         rag_posture_summary,
         recent_health,
         continue_editor,
+        delegation_feedback,
         recent_retrieval_breadth,
         recent_provider_fallbacks,
         historical_health_watch,
