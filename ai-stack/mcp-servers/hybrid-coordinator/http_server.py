@@ -3309,6 +3309,9 @@ async def run_http_mode(port: int) -> None:
                 incoming_contract = selected_blueprint.get("intent_contract", {})
             validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
             orchestration = _coerce_orchestration_context(data)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             session_id = str(uuid4())
             plan = _build_workflow_plan(query)
             phases = []
@@ -3366,6 +3369,8 @@ async def run_http_mode(port: int) -> None:
                     }
                 ],
             }
+            if lesson_refs:
+                session["active_lesson_refs"] = lesson_refs
             async with _workflow_sessions_lock:
                 sessions = await _load_workflow_sessions()
                 sessions[session_id] = session
