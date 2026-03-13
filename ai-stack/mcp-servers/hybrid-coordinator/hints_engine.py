@@ -1619,6 +1619,56 @@ class HintsEngine:
                 )
             )
 
+        patch_review_focus = any(
+            token in query_lower
+            for token in ("patch review", "review diff", "code review", "pull request", "git diff", "review this patch")
+        )
+        if patch_review_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_patch_review",
+                    type="prompt_coaching",
+                    title="Frame patch review requests around risk, evidence, and acceptance",
+                    score=0.68,
+                    snippet=(
+                        "Ask for findings first with file/line evidence, expected regression risks, missing tests, and the acceptance bar. "
+                        "Keep implementation separate from review unless you explicitly want both."
+                    )[:220],
+                    reason="Compact review-specific coaching for code and patch acceptance tasks",
+                    tags=["prompting", "coaching", "review", "patch-review", "operator-guidance"],
+                    agent_hints={
+                        "human": "Name the diff target, the review goal, and whether follow-up fixes are also requested.",
+                        "codex": "Default to findings-first review output with severity ordering and explicit residual risk.",
+                        "qwen": "Return patch proposals only after review findings are grounded in the actual diff.",
+                    },
+                )
+            )
+
+        research_focus = any(
+            token in query_lower
+            for token in ("research", "scrape", "scraping", "web", "summarize", "rag", "retrieval", "source pack")
+        )
+        if research_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_research_workflow",
+                    type="prompt_coaching",
+                    title="Keep research requests source-bounded and fetch-policy aware",
+                    score=0.70,
+                    snippet=(
+                        "Name the subject, approved source or source pack, desired output schema, and stop condition. "
+                        "Prefer plain fetch first, escalate to browser fallback only when extraction or bot-gate signals require it."
+                    )[:220],
+                    reason="Compact operator guidance for bounded web research, retrieval, and summarization tasks",
+                    tags=["prompting", "coaching", "research", "rag", "operator-guidance"],
+                    agent_hints={
+                        "human": "Specify the source set, data fields to collect, and how much evidence you need back.",
+                        "codex": "Use curated workflows and polite fetch policy before broad scraping or remote delegation.",
+                        "continue": "Ask for the minimum useful extract and summary structure instead of open-ended browsing.",
+                    },
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:
