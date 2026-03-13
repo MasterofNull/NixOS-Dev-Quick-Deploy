@@ -68,7 +68,6 @@ Tracking fields to update after each slice:
 
 | Area | Status | Evidence | Next Action |
 | --- | --- | --- | --- |
-| Unattended sudo activation | validated_local | tracked `nix/hosts/nixos/deploy-options.nix` now evaluates with bounded `NOPASSWD` rules for `nixos-quick-deploy.sh`, `nixos-rebuild`, `systemctl`, `journalctl`, and `flatpak`, but the live host has not yet switched to that generation | run one switch on `nixos-ai-dev`, then verify `sudo -n` works in a fresh session |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging fixed; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | Continue/local web research lane | planned | Continue and local-model surfaces do not yet expose a validated, polite web research/scraping path for bounded fetch -> extract -> summarize workflows | define bounded fetch policy, route through harness/coordinator, and add validation before treating web research as supported |
 | Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
@@ -84,6 +83,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | agentskill.sh planning slice | validated_local | added a shared skill-registry track so approved third-party SKILL.md content can be exposed consistently across local and remote agents |
 | 2026-03-13 | unattended sudo flake-first fix | validated_local | moved bounded autonomous sudo rules into tracked `nix/hosts/nixos/deploy-options.nix` after confirming pure flake evaluation cannot see `deploy-options.local.nix` |
 | 2026-03-13 | ai-coordinator runtime-refresh corrective pass | validated_local | fixed stale default runtime records and local-lane alias handling in the new ai-coordinator delegation surface before live activation |
+| 2026-03-13 | scoped sudo + coordinator live validation | validated_live | confirmed `sudo -n` works for the bounded command set, `nixos-quick-deploy.sh --preflight-only` runs unattended, `/control/ai-coordinator/status` is live, and both `remote-free` and `continue-local` delegation succeed |
 
 ## High-Priority Tracks
 
@@ -91,7 +91,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI corrected; support matrix added; unattended sudo rules are now tracked in flake config so deploy/restart automation can activate reliably after one switch`
+Current Slice: `Continue CLI corrected; support matrix added; scoped unattended sudo is now live for bounded deploy/restart operations, while remaining CLI coverage still needs cleanup`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -99,7 +99,6 @@ Next Validation:
 Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
-- unattended sudo rules are not live until the next `nixos-ai-dev` switch completes
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
@@ -275,14 +274,14 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; ai-coordinator runtime lanes were corrected to refresh default records and accept local-lane aliases before live delegation validation`
+Current Slice: `remote profiles and fallback reporting exist; ai-coordinator status/delegate are live and validated for both local and OpenRouter free lanes`
 Next Validation:
 - targeted remote profile smokes
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
-- live validation still depends on switching to the generation that contains the tracked unattended sudo rules and coordinator changes
-- coordinator live checks still need one post-switch pass to prove remote lane status and delegated execution match switchboard health
+- remote coding/reasoning lanes still need live delegation smokes
+- coordinator output still includes stale smoke runtime records from prior runtime registry tests and needs cleanup/retention policy
 
 Goal:
 - fully exploit OpenRouter as the remote tool-calling and provider-routing layer behind the local harness
