@@ -86,7 +86,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | ai-coordinator runtime-refresh corrective pass | validated_local | fixed stale default runtime records and local-lane alias handling in the new ai-coordinator delegation surface before live activation |
 | 2026-03-13 | scoped sudo + coordinator live validation | validated_live | confirmed `sudo -n` works for the bounded command set, `nixos-quick-deploy.sh --preflight-only` runs unattended, `/control/ai-coordinator/status` is live, and both `remote-free` and `continue-local` delegation succeed |
 | 2026-03-13 | free-lane alias corrective pass | in_progress | `remote-coding` and `remote-reasoning` produced `402` under paid aliases, so host defaults are being moved to official free-capable models before re-validation |
-| 2026-03-13 | remote-free fallback hardening | in_progress | `remote-coding` free alias hit upstream `429`, so coordinator delegation is being updated to retry bounded coding/reasoning requests on `remote-free` before surfacing failure |
+| 2026-03-13 | remote-free fallback hardening | validated_live | `remote-coding` fallback now retries bounded coding requests on `remote-free` when `qwen/qwen3-coder:free` rate-limits; live delegation returned `MODEL_OK` with `fallback.applied = true` |
 | 2026-03-13 | continue-cli + home-manager activation corrective pass | validated_live | removed invalid disabled `home.file` stubs for legacy COSMIC units, fixed `nix/pkgs/continue-cli.nix` to use a valid `sha256` fetch source, and revalidated `home-manager switch` plus full quick-deploy system/home phases |
 | 2026-03-13 | delegated research bootstrap for next tracks | validated_live | exercised `/control/ai-coordinator/delegate` on `remote-free` for bounded BitNet/EvoSkill/coding-agent synthesis so next planning slices use the live remote lane instead of only local reasoning |
 | 2026-03-13 | continue/editor phase-0 observability pass | validated_live | added explicit `aq-qa 0` probes for `cn --help`, generated Continue config correctness, Continue extension presence, and a `continue-local` switchboard smoke so editor/runtime failures become first-class QA signals |
@@ -286,7 +286,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; planner/review aliases are active live on explicit free models that passed delegated and direct smokes, and the coordinator still needs stronger fallback handling when coding-specific free models rate-limit`
+Current Slice: `remote profiles and fallback reporting exist; planner/review aliases are active live on explicit free models, and coding-lane fallback to the free lane is now confirmed live under rate-limit pressure`
 Next Validation:
 - targeted remote profile smokes
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
@@ -294,7 +294,7 @@ Next Validation:
 - bounded delegated research/review calls recorded through `/control/ai-coordinator/delegate`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
-- `qwen/qwen3-coder:free` remains the strongest coding lane but can still hit provider-side `429` and needs bounded fallback to the free lane
+- `qwen/qwen3-coder:free` remains the strongest coding lane and can still hit provider-side `429`, so observability should keep tracking fallback frequency and latency impact
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
 - coordinator output still includes stale smoke runtime records from prior runtime registry tests and needs cleanup/retention policy
 
