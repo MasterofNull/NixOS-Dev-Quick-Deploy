@@ -501,6 +501,7 @@ check_pattern "nix/modules/services/mcp-servers.nix" 'WORKFLOW_BLUEPRINTS_FILE=\
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/start' 'Workflow review-contract smoke covers workflow run start'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/review/acceptance' 'Workflow review-contract smoke covers reviewer acceptance persistence'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/\$\{session_id\}' 'Workflow review-contract smoke covers persisted workflow run retrieval'
+check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class' 'Workflow review-contract smoke covers classified patch-review persistence'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Tracking Conventions' 'Detailed implementation roadmap defines tracking conventions'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track Status: `|Current Slice: `|Next Validation:' 'Detailed implementation roadmap includes live tracking fields'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Execution Ledger' 'Detailed implementation roadmap records an execution ledger section'

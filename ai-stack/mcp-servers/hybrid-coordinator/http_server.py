@@ -535,11 +535,11 @@ def _normalize_artifact_kind(value: Any, review_type: str) -> str:
 
 
 def _normalize_task_class(value: Any, session: Optional[Dict[str, Any]]) -> str:
-    text = str(value or "").strip().lower().replace(" ", "_")
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     if text:
         return text
     if isinstance(session, dict):
-        blueprint_id = str(session.get("blueprint_id", "") or "").strip().lower()
+        blueprint_id = str(session.get("blueprint_id", "") or "").strip().lower().replace("-", "_")
         if blueprint_id:
             return blueprint_id
     return "general"
