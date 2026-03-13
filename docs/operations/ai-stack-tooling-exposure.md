@@ -179,6 +179,10 @@ The browser-assisted fallback follows the same posture:
 The curated workflow layer sits above `/research/web/fetch`:
 - workflow packs are declared in [config/curated-web-research-sources.json](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/curated-web-research-sources.json)
 - each pack expands into a small approved set of explicit public URLs
+- each approved source can declare its own fetch policy:
+  - `http`
+  - `browser`
+  - `http` with `browser` fallback after empty extract or bot-gate detection
 - the primitive fetch/extract limits still apply after expansion
 - challenge or bot-gated pages are classified for compliant fallback instead of treated as successful extraction
 - fallback means allowed browser-assisted capture, official exports/APIs, archived public data, or user-provided artifacts, not anti-bot evasion
