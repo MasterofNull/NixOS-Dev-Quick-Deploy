@@ -70,7 +70,7 @@ Tracking fields to update after each slice:
 | --- | --- | --- | --- |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
-| Continue/local web research lane | in_progress | bounded `/research/web/fetch`, `/research/workflows/curated-fetch`, and `/research/web/browser-fetch` lanes are now live; the browser-assisted fallback successfully rendered a real Calflora page, while the first generic workflow pack still has one `empty_extract` source and broader source-pack coverage remains incomplete | tune the first pack, add more approved source packs, and keep challenge/captcha handling in compliant fallback lanes without implementing anti-bot evasion |
+| Continue/local web research lane | in_progress | bounded `/research/web/fetch`, `/research/workflows/curated-fetch`, and `/research/web/browser-fetch` lanes are now live; the browser-assisted fallback successfully rendered a real Calflora page, and the curated manifest now includes a California-native pack, while the first generic U.S. pack still has one `empty_extract` source and broader source-pack coverage remains incomplete | tune the U.S. pack, expand the California pack beyond Calflora, and keep challenge/captcha handling in compliant fallback lanes without implementing anti-bot evasion |
 | Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, a pinned `agentskill.sh` source (`learn`) is imported through the same governed manifest path, and the coordinator now exposes the approved catalog directly; broader remote-agent export/install surfaces remain incomplete | extend governed manifest coverage and broader remote-agent export/install surfaces |
 
 ## Execution Ledger
@@ -110,6 +110,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | coordinator shared-skill visibility surface | validated_live | added `/control/ai-coordinator/skills`, exposed shared skill summary in coordinator status, wired SDK/RPC/tooling-manifest support, and live-verified the coordinator returns the approved 24-skill catalog including `learn` |
 | 2026-03-13 | curated research workflow layer | validated_live | added a manifest-backed `/research/workflows/curated-fetch` layer with SDK/RPC/tooling-manifest exposure, live-validated the first approved source pack, and classified empty-extract/bot-gated pages into explicit fallback signals instead of treating them as successful scraping |
 | 2026-03-13 | browser-assisted research fallback lane | validated_live | added a bounded `/research/web/browser-fetch` lane with declarative runtime controls and live-validated rendered extraction against a real Calflora page; Chromium now runs inside the hardened service with a temporary profile and `--no-sandbox` because the systemd namespace sandbox already provides the outer containment |
+| 2026-03-13 | california-native source pack bootstrap | validated_live | extended the curated research manifest with a `native-plants-california` pack centered on Calflora so California-native lookup is now a first-class approved workflow input instead of an ad hoc URL |
 
 ## High-Priority Tracks
 
@@ -117,7 +118,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, and the browser-assisted fallback lane are live; the next gap is expanding approved source packs`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, the browser-assisted fallback lane, and the California-native source pack are live; the next gap is expanding approved source packs further`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`

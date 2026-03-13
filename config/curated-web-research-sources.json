@@ -41,6 +41,48 @@
           "purpose": "Native plant database landing and search page."
         }
       ]
+    },
+    {
+      "slug": "native-plants-california",
+      "description": "Bounded California-native plant research pack with approved public sources.",
+      "max_urls": 2,
+      "default_max_text_chars": 900,
+      "inputs": [
+        {
+          "name": "county",
+          "required": false,
+          "description": "Optional California county recorded with the workflow request."
+        },
+        {
+          "name": "query",
+          "required": false,
+          "description": "Optional California-native plant query recorded with the workflow request."
+        }
+      ],
+      "sources": [
+        {
+          "name": "calflora-home",
+          "url": "https://www.calflora.org/",
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
+          "purpose": "California-native plant database landing page."
+        },
+        {
+          "name": "calflora-what-grows-here",
+          "url": "https://www.calflora.org/entry/wgh.html#srch=t&taxon=Eschscholzia+californica",
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
+          "purpose": "Calflora What Grows Here entry point for locality-oriented plant lookup."
+        }
+      ]
     }
   ]
 }
