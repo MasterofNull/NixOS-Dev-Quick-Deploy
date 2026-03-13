@@ -9,7 +9,7 @@ callers to hand-roll x-ai-profile usage.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from config import Config
 
@@ -253,6 +253,28 @@ def default_runtime_id_for_profile(profile: str) -> str:
     return mapping.get(str(profile or "").strip().lower(), "openrouter-free")
 
 
+def coerce_orchestration_context(incoming: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    payload = incoming if isinstance(incoming, dict) else {}
+    requested_by = str(
+        payload.get("requesting_agent")
+        or payload.get("requested_by")
+        or payload.get("agent")
+        or payload.get("agent_type")
+        or "human"
+    ).strip() or "human"
+    requester_role = str(payload.get("requester_role") or payload.get("role") or "orchestrator").strip().lower()
+    if requester_role not in {"orchestrator", "sub-agent"}:
+        requester_role = "orchestrator"
+    return {
+        "requested_by": requested_by,
+        "requester_role": requester_role,
+        "top_level_orchestrator": requester_role == "orchestrator",
+        "subagents_may_spawn_subagents": False,
+        "delegate_via_coordinator_only": True,
+        "coordinator_delegate_path": "/control/ai-coordinator/delegate",
+    }
+
+
 def _delegation_system_prompt(profile: str) -> str:
     role = {
         "remote-coding": "implementation sub-agent",
@@ -265,6 +287,8 @@ def _delegation_system_prompt(profile: str) -> str:
     return (
         f"You are a {role} inside the NixOS-Dev-Quick-Deploy harness.\n"
         "You are not the orchestrator.\n"
+        "Do not spawn, invoke, or route additional sub-agents.\n"
+        "If more delegation is needed, return a coordinator_handoff note for the orchestrator to submit through /control/ai-coordinator/delegate.\n"
         "Execute only the assigned slice.\n"
         "Respond concisely.\n"
         "Do not invent files, commands, or validation you did not actually derive from the provided task/context.\n"
@@ -351,6 +375,7 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
         "- evidence",
         "- risks",
         "- rollback_or_next_step",
+        "- coordinator_handoff (only if more delegation is required)",
         "Completion rules:",
     ]
     lines.extend(_profile_completion_rules(profile))
