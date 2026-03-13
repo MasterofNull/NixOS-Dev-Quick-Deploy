@@ -89,6 +89,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | remote-free fallback hardening | in_progress | `remote-coding` free alias hit upstream `429`, so coordinator delegation is being updated to retry bounded coding/reasoning requests on `remote-free` before surfacing failure |
 | 2026-03-13 | continue-cli + home-manager activation corrective pass | validated_live | removed invalid disabled `home.file` stubs for legacy COSMIC units, fixed `nix/pkgs/continue-cli.nix` to use a valid `sha256` fetch source, and revalidated `home-manager switch` plus full quick-deploy system/home phases |
 | 2026-03-13 | delegated research bootstrap for next tracks | validated_live | exercised `/control/ai-coordinator/delegate` on `remote-free` for bounded BitNet/EvoSkill/coding-agent synthesis so next planning slices use the live remote lane instead of only local reasoning |
+| 2026-03-13 | continue/editor phase-0 observability pass | validated_live | added explicit `aq-qa 0` probes for `cn --help`, generated Continue config correctness, Continue extension presence, and a `continue-local` switchboard smoke so editor/runtime failures become first-class QA signals |
 
 ## High-Priority Tracks
 
@@ -157,12 +158,12 @@ Acceptance:
 
 Track Status: `planned`
 Last Updated: `2026-03-13`
-Current Slice: `roadmap and required foundation now exist, but continue/editor runtime still lacks dedicated smoke and report visibility`
+Current Slice: `continue/editor runtime now has dedicated phase-0 smoke coverage; next gap is report/deploy-summary visibility and bounded web-research support`
 Next Validation:
-- `scripts/ai/aq-qa 0 --json`
-- continue/editor smoke once added
+- `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
+- deploy post-flight summary checks once wired
 Open Risks / Blockers:
-- current Continue/editor failures are not isolated in `aq-report`
+- Continue/editor failures are now isolated in `aq-qa`, but not yet surfaced separately in `aq-report` or deploy summaries
 - CLI/package coverage is still mixed across agent surfaces
 
 Goal:
