@@ -201,6 +201,194 @@
           "exit_criteria": "Next action queued as proceed, targeted-eval, or quarantine/escalate."
         }
       ]
+    },
+    {
+      "id": "repo-refactor-guarded",
+      "title": "Repository Refactor (Guarded)",
+      "description": "Structured refactor flow with explicit invariants, reviewer gate, and regression evidence.",
+      "default_safety_mode": "plan-readonly",
+      "intent_contract": {
+        "user_intent": "Refactor repository structure or code organization without changing intended behavior unless explicitly requested.",
+        "definition_of_done": "Refactor landed with preserved behavior, validation evidence captured, and rollback guidance documented.",
+        "depth_expectation": "deep",
+        "spirit_constraints": [
+          "Preserve user-visible behavior unless the change request explicitly includes behavior changes.",
+          "Keep edits scoped and justify any broadened blast radius with concrete evidence."
+        ],
+        "no_early_exit_without": [
+          "invariant list",
+          "validation evidence",
+          "rollback command"
+        ],
+        "anti_goals": [
+          "cosmetic churn without measurable benefit",
+          "declaring success before regression checks"
+        ]
+      },
+      "phases": [
+        {
+          "id": "discover",
+          "tools": ["hints", "route_search", "memory_recall"],
+          "exit_criteria": "Current invariants, coupling points, and affected paths are identified."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan"],
+          "exit_criteria": "Refactor steps, invariants, and validation matrix are explicit."
+        },
+        {
+          "id": "execute",
+          "tools": ["route_search", "feedback"],
+          "requires_approval": true,
+          "exit_criteria": "Minimal reversible refactor slices are applied."
+        },
+        {
+          "id": "validate",
+          "tools": ["qa_check", "harness_eval", "health"],
+          "exit_criteria": "Regression checks and acceptance evidence pass."
+        }
+      ]
+    },
+    {
+      "id": "deploy-rollback-safe-ops",
+      "title": "Deploy / Rollback Safe Ops",
+      "description": "Deployment-oriented workflow with explicit rollback readiness and live verification.",
+      "default_safety_mode": "execute-mutating",
+      "intent_contract": {
+        "user_intent": "Apply deployment-related changes or runtime actions while preserving a clear rollback path and live health verification.",
+        "definition_of_done": "Deploy or rollback completed, runtime health verified, and rollback notes updated with exact commands.",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "Prefer declarative activation paths over ad hoc restarts when both are viable.",
+          "Treat live health verification as mandatory, not optional follow-up."
+        ],
+        "no_early_exit_without": [
+          "deploy command",
+          "live verification evidence",
+          "rollback command"
+        ],
+        "anti_goals": [
+          "runtime drift hidden behind imperative fixes",
+          "claiming deploy success before service readiness checks"
+        ]
+      },
+      "phases": [
+        {
+          "id": "discover",
+          "tools": ["hints", "health", "route_search"],
+          "exit_criteria": "Target services, activation path, and rollback markers are explicit."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan"],
+          "exit_criteria": "Deploy, verify, and rollback steps are listed."
+        },
+        {
+          "id": "execute",
+          "tools": ["feedback", "health"],
+          "requires_approval": true,
+          "exit_criteria": "Deploy or rollback command sequence is completed."
+        },
+        {
+          "id": "validate",
+          "tools": ["qa_check", "health", "harness_eval"],
+          "exit_criteria": "Live health, capability, and acceptance checks pass."
+        }
+      ]
+    },
+    {
+      "id": "continue-editor-rescue",
+      "title": "Continue / Editor Rescue",
+      "description": "Recover Continue or editor-agent failures through bounded diagnostics and handoff verification.",
+      "default_safety_mode": "plan-readonly",
+      "intent_contract": {
+        "user_intent": "Diagnose and recover Continue/editor-agent failures with explicit runtime evidence and safe handoff points.",
+        "definition_of_done": "Failure mode categorized, bounded recovery applied or blocked with evidence, and editor path re-smoked.",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "Diagnose the failing layer before changing prompts, model aliases, or editor settings.",
+          "Keep editor rescue bounded to reproducible runtime checks and explicit configuration diffs."
+        ],
+        "no_early_exit_without": [
+          "failure classification",
+          "editor/runtime smoke evidence",
+          "next step or rollback note"
+        ],
+        "anti_goals": [
+          "random editor setting churn",
+          "declaring fixed without re-smoking the editor path"
+        ]
+      },
+      "phases": [
+        {
+          "id": "discover",
+          "tools": ["hints", "health", "route_search"],
+          "exit_criteria": "Failure layer and affected surfaces are classified."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan"],
+          "exit_criteria": "Recovery steps and verification smokes are explicit."
+        },
+        {
+          "id": "execute",
+          "tools": ["feedback", "route_search", "memory_recall"],
+          "requires_approval": true,
+          "exit_criteria": "Bounded recovery steps are applied."
+        },
+        {
+          "id": "validate",
+          "tools": ["qa_check", "health", "harness_eval"],
+          "exit_criteria": "Continue/editor path is re-smoked and categorized."
+        }
+      ]
+    },
+    {
+      "id": "remote-reasoning-escalation",
+      "title": "Remote Reasoning Escalation",
+      "description": "Escalate to remote reasoning only after local context capture, explicit constraints, and reviewer-visible output shape.",
+      "default_safety_mode": "plan-readonly",
+      "intent_contract": {
+        "user_intent": "Use remote reasoning only when the task benefits from deeper synthesis and the local harness already captured the necessary context and constraints.",
+        "definition_of_done": "Escalation justification, bounded remote result, local review notes, and follow-up validation path are documented.",
+        "depth_expectation": "deep",
+        "spirit_constraints": [
+          "Prefer local retrieval, hints, and memory before paying remote reasoning cost.",
+          "Require explicit artifact shape and salvage any useful partial output before retry."
+        ],
+        "no_early_exit_without": [
+          "escalation rationale",
+          "remote result or failure digest",
+          "local review note"
+        ],
+        "anti_goals": [
+          "remote escalation without local context capture",
+          "treating provider rejection as final analysis"
+        ]
+      },
+      "phases": [
+        {
+          "id": "discover",
+          "tools": ["hints", "route_search", "memory_recall"],
+          "exit_criteria": "Local context, constraints, and escalation rationale are explicit."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan", "ai_coordinator_delegate"],
+          "exit_criteria": "Remote task envelope and expected artifact are defined."
+        },
+        {
+          "id": "execute",
+          "tools": ["ai_coordinator_delegate", "feedback"],
+          "requires_approval": true,
+          "exit_criteria": "Bounded remote reasoning call completed or classified."
+        },
+        {
+          "id": "validate",
+          "tools": ["harness_eval", "feedback"],
+          "exit_criteria": "Remote output is locally reviewed and next action is chosen."
+        }
+      ]
     }
   ]
 }

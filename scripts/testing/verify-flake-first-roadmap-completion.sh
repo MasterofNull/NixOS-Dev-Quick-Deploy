@@ -458,6 +458,7 @@ check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track F — BitNet Feasibility and Optional Runtime Integration' 'Detailed implementation roadmap covers BitNet integration planning'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track A — Continue and Editor-Agent Runtime Stabilization' 'Detailed implementation roadmap treats Continue/editor support as a first-class track'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Required Foundation — Declarative Agent CLI and IDE Surface' 'Detailed implementation roadmap treats declarative agent tooling as a required foundation'
+check_pattern "nix/modules/services/mcp-servers.nix" 'WORKFLOW_BLUEPRINTS_FILE=\$\{mcp\.repoPath\}/config/workflow-blueprints\.json' 'Hybrid coordinator reads workflow blueprints from the repo-backed path'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Tracking Conventions' 'Detailed implementation roadmap defines tracking conventions'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track Status: `|Current Slice: `|Next Validation:' 'Detailed implementation roadmap includes live tracking fields'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Execution Ledger' 'Detailed implementation roadmap records an execution ledger section'
