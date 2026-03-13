@@ -1119,6 +1119,8 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
     patch_reviewed_agent_counts: Dict[str, int] = {}
     accepted_task_class_counts: Dict[str, int] = {}
     rejected_task_class_counts: Dict[str, int] = {}
+    accepted_by_reviewed_profile: Dict[str, int] = {}
+    rejected_by_reviewed_profile: Dict[str, int] = {}
     for sess in sessions:
         contract = sess.get("intent_contract")
         has_contract = (
@@ -1161,6 +1163,7 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
             artifact_kind = ""
             task_class = bp.lower().replace("-", "_") if bp else ""
             reviewed_agent = ""
+            reviewed_profile = ""
             if isinstance(last_review, dict):
                 reviewer = str(last_review.get("reviewer", "") or "").strip().lower()
                 if reviewer:
@@ -1171,6 +1174,7 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
                 artifact_kind = str(last_review.get("artifact_kind", "") or "").strip().lower()
                 task_class = str(last_review.get("task_class", "") or task_class).strip().lower()
                 reviewed_agent = str(last_review.get("reviewed_agent", "") or "").strip().lower()
+                reviewed_profile = str(last_review.get("reviewed_profile", "") or "").strip().lower()
             if status == "accepted":
                 accepted_reviews += 1
                 if requester_role:
@@ -1179,6 +1183,8 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
                     accepted_blueprint_counts[bp] = accepted_blueprint_counts.get(bp, 0) + 1
                 if task_class:
                     accepted_task_class_counts[task_class] = accepted_task_class_counts.get(task_class, 0) + 1
+                if reviewed_profile:
+                    accepted_by_reviewed_profile[reviewed_profile] = accepted_by_reviewed_profile.get(reviewed_profile, 0) + 1
                 if review_type == "patch_review" or artifact_kind == "patch":
                     accepted_patch_reviews += 1
                     if reviewed_agent:
@@ -1191,6 +1197,8 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
                     rejected_blueprint_counts[bp] = rejected_blueprint_counts.get(bp, 0) + 1
                 if task_class:
                     rejected_task_class_counts[task_class] = rejected_task_class_counts.get(task_class, 0) + 1
+                if reviewed_profile:
+                    rejected_by_reviewed_profile[reviewed_profile] = rejected_by_reviewed_profile.get(reviewed_profile, 0) + 1
                 if review_type == "patch_review" or artifact_kind == "patch":
                     rejected_patch_reviews += 1
                     if reviewed_agent:
@@ -1226,6 +1234,8 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         "patch_reviews_by_reviewed_agent": sorted(patch_reviewed_agent_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
         "accepted_task_classes": sorted(accepted_task_class_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
         "rejected_task_classes": sorted(rejected_task_class_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "accepted_by_reviewed_profile": sorted(accepted_by_reviewed_profile.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "rejected_by_reviewed_profile": sorted(rejected_by_reviewed_profile.items(), key=lambda x: (-x[1], x[0]))[:5],
     }
 
 
@@ -3792,6 +3802,9 @@ def format_md(
             accepted_task_classes = intent_compliance.get("accepted_task_classes", [])
             if accepted_task_classes:
                 lines.append(f"- Accepted task classes: {', '.join(f'`{task_class}` ({count})' for task_class, count in accepted_task_classes[:3])}")
+            accepted_profiles = intent_compliance.get("accepted_by_reviewed_profile", [])
+            if accepted_profiles:
+                lines.append(f"- Accepted by reviewed profile: {', '.join(f'`{profile}` ({count})' for profile, count in accepted_profiles[:3])}")
     else:
         lines.append("*Workflow session store unavailable.*")
     lines.append("")
@@ -4459,6 +4472,9 @@ def format_text(
             accepted_task_classes = intent_compliance.get("accepted_task_classes", [])
             if accepted_task_classes:
                 lines.append(f"  Accepted task classes: {', '.join(f'{task_class}({count})' for task_class, count in accepted_task_classes[:3])}")
+            accepted_profiles = intent_compliance.get("accepted_by_reviewed_profile", [])
+            if accepted_profiles:
+                lines.append(f"  Accepted by reviewed profile: {', '.join(f'{profile}({count})' for profile, count in accepted_profiles[:3])}")
     else:
         lines.append("  Workflow session store unavailable.")
     lines.append("")
