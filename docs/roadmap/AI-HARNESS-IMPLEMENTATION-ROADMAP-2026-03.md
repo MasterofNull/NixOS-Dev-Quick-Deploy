@@ -135,6 +135,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | deploy summary remote trend visibility | validated_local | `nixos-quick-deploy.sh` now surfaces 24h/7d remote-profile trend snapshots plus route_search p95/top-class latency context so Track H’s new report sections are visible in normal deploy loops |
 | 2026-03-13 | retrieval breadth history and deploy summary | validated_local | `aq-report` now materializes route_search retrieval-breadth as 1h/24h/7d windows and `nixos-quick-deploy.sh` surfaces the 24h/7d breadth trend so Track H no longer depends on a recent-only breadth snapshot |
 | 2026-03-13 | routing history and deploy summary | validated_local | `aq-report` now materializes routing history as 1h/24h/7d windows from route_search backend audit data and `nixos-quick-deploy.sh` surfaces the same routing trend in deploy summaries |
+| 2026-03-13 | continue/editor history and deploy summary | validated_local | `aq-report` now persists bounded Continue/editor health snapshots and materializes 1h/24h/7d health windows, and `nixos-quick-deploy.sh` surfaces a compact Continue trend line in deploy summaries |
 
 ## High-Priority Tracks
 
@@ -563,30 +564,33 @@ Validation:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `aq-report now exposes remote-profile, routing, and retrieval-breadth history as 1h/24h/7d windows, route latency decomposition is report-visible, and nixos-quick-deploy surfaces compact remote/routing/breadth trend lines; the next gap is extending the same multi-window treatment to Continue/editor health and broader operator-facing consumers`
+Current Slice: `aq-report now exposes remote-profile, routing, retrieval-breadth, and Continue/editor history as 1h/24h/7d windows, route latency decomposition is report-visible, and nixos-quick-deploy surfaces compact trend lines for each; the next gap is broader consumer parity and remaining non-monitoring roadmap tracks`
 Next Validation:
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization'`
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
 - `python3 scripts/ai/aq-report --format json | jq '.route_retrieval_breadth_windows'`
 - `python3 scripts/ai/aq-report --format json | jq '.routing_windows'`
+- `python3 scripts/ai/aq-report --format json | jq '.continue_editor_windows'`
 - `python3 scripts/testing/test-remote-profile-utilization.py`
 - `python3 scripts/testing/test-retrieval-breadth-history.py`
 - `python3 scripts/testing/test-routing-history.py`
+- `python3 scripts/testing/test-continue-editor-history.py`
 - deploy summary output
 Open Risks / Blockers:
-- multi-window trend coverage now exists for remote profiles, routing, route latency, and retrieval breadth, but Continue/editor health still lacks the same operator-facing time-window treatment
+- Track H multi-window operator history is now in place for the main monitored AI surfaces; the next gaps are broader consumer parity and remaining unfinished tracks outside monitoring
 
 Tasks:
-1. broader 24h/7d monitoring views for continue/editor health
-2. remote profile utilization summary parity across all operator-facing consumers
-3. retrieval-breadth summary parity across all operator-facing consumers
-4. routing summary parity across all operator-facing consumers
+1. remote profile utilization summary parity across all operator-facing consumers
+2. retrieval-breadth summary parity across all operator-facing consumers
+3. routing summary parity across all operator-facing consumers
+4. Continue/editor summary parity across all operator-facing consumers
 
 Validation:
 - `scripts/ai/aq-report --format json`
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
 - `python3 scripts/ai/aq-report --format json | jq '.route_retrieval_breadth_windows'`
 - `python3 scripts/ai/aq-report --format json | jq '.routing_windows'`
+- `python3 scripts/ai/aq-report --format json | jq '.continue_editor_windows'`
 - deploy summary output
 
 ### Track I — Operator and Prompt-Writing Guidance

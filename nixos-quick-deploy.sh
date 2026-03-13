@@ -478,6 +478,8 @@ print_completion_test_results() {
     continue_editor_failed="$(printf '%s' "${json}" | jq -r '.continue_editor.failed_n // 0')"
     continue_editor_total="$(printf '%s' "${json}" | jq -r '.continue_editor.total_checks // 0')"
     continue_editor_first_fail="$(printf '%s' "${json}" | jq -r '(.continue_editor.checks // [] | map(select(.status == "FAIL")) | .[0] // empty) | if .id then "\(.id) \(.description)" else empty end')"
+    continue_editor_24h="$(printf '%s' "${json}" | jq -r '.continue_editor_windows.windows["24h"] | if .available then "\(.healthy_pct)%/\(.samples)" else "none" end')"
+    continue_editor_7d="$(printf '%s' "${json}" | jq -r '.continue_editor_windows.windows["7d"] | if .available then "\(.healthy_pct)%/\(.samples)" else "none" end')"
     agent_lesson_label="$(printf '%s' "${json}" | jq -r '
       if .agent_lessons.registry.active_lessons[0].hint_id then
         (.agent_lessons.registry.active_lessons[0] | "\(.agent):\(.state) \(.hint_id)")
@@ -634,6 +636,7 @@ PY
         continue_editor_label="${continue_editor_label}; ${continue_editor_first_fail}"
       fi
     fi
+    continue_editor_trend_label="24h=${continue_editor_24h}  7d=${continue_editor_7d}"
     cache_prewarm_label="${cache_prewarm_enabled_state}/${cache_prewarm_active_state}"
 
     log "AI stack report (summary):"
@@ -670,6 +673,7 @@ PY
     printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
     printf '  %-28s %s\n' "Recent health" "${recent_health_label}"
     printf '  %-28s %s\n' "Continue/editor" "${continue_editor_label}"
+    printf '  %-28s %s\n' "Continue trend" "${continue_editor_trend_label}"
     if [[ "${historical_watch_has_items}" == "true" ]]; then
       if [[ -n "${historical_watch_flaky_tool}" ]]; then
         historical_watch_label="${historical_watch_flaky_tool} backend OK ${historical_watch_flaky_ok}% (${historical_watch_flaky_calls} valid calls)"
