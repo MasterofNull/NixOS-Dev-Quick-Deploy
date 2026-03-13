@@ -99,6 +99,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | runtime registry retention and stale-smoke cleanup | validated_live | ai-coordinator now prunes transient smoke/test runtime registrations on load with retention policy; live registry collapsed from 56 entries with 54 smoke artifacts to 6 real lanes after status reload |
 | 2026-03-13 | delegated envelope tightening pass | validated_live | ai-coordinator now emits explicit sub-agent/evidence/anti-goal contracts for remote delegation; live `remote-free` smoke returned structured `result/evidence` output instead of an unconstrained generic reply |
 | 2026-03-13 | deploy summary delegated-failure visibility | validated_local | `nixos-quick-deploy.sh` now surfaces delegated prompt-failure counts/class/profile in the AI stack report summary so remote prompt-contract drift is visible during normal deploy/preflight loops |
+| 2026-03-13 | remote + local tool-calling lane wiring | validated_live | added first-class `remote-tool-calling` and preparatory `local-tool-calling` profiles across switchboard and ai-coordinator, activated them live, confirmed remote lane returns provider tool calls through OpenRouter, and confirmed local lane accepts bounded `tools` payloads while staying explicitly degraded until local backends prove native tool support |
 
 ## High-Priority Tracks
 
@@ -295,14 +296,15 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles, fallback reporting, delegated prompt-failure telemetry, runtime-registry cleanup, and tighter delegation envelopes are now live; next gap is broader remote tool-calling flows and using the failure ledger to revise prompt templates`
+Current Slice: `remote-tool-calling and local-tool-calling prep lanes are now declarative, live, and validated through ai-coordinator; the next gap is tuning the remote tool-calling prompt/model contract so free-lane tool calls produce usable final artifacts instead of empty-content tool-call finishes`
 Next Validation:
-- targeted remote profile smokes
+- targeted remote tool-calling smokes with `tools` and `tool_choice`
+- targeted local tool-calling prep smokes with bounded fallback expectations
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .delegated_prompt_failures, .routing'`
 - bounded delegated research/review calls recorded through `/control/ai-coordinator/delegate`
 Open Risks / Blockers:
-- advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
+- the free remote tool-calling alias currently returns valid `tool_calls` but can still produce empty assistant content, so prompt/model selection must tighten around usable final artifacts
 - `qwen/qwen3-coder:free` remains the strongest coding lane and can still hit provider-side `429`, so observability should keep tracking fallback frequency and latency impact
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
 - delegated prompt-contract failures are now recorded, but the highest-value next step is to feed repeated classes back into actual prompt template revisions and not just reporting
@@ -343,6 +345,10 @@ Tasks:
    - small discrete task contracts
    - explicit expected artifact/evidence fields
    - resumable slices with reviewer acceptance/rejection
+12. Add explicit local tool-calling prep surfaces so local agents can target tool-capable local backends as they become viable:
+   - `local-tool-calling` profile exposed in switchboard and ai-coordinator
+   - preparatory lane passes OpenAI-compatible `tools` and `tool_choice` payloads through to local backends
+   - readiness remains degraded until current local runtimes prove tool support
    - tool use bounded by harness-approved capabilities only
 
 Validation:

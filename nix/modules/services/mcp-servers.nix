@@ -856,6 +856,7 @@ in
             "SWITCHBOARD_REMOTE_ALIAS_FREE=${if ai.switchboard.remoteModelAliases.free != null then ai.switchboard.remoteModelAliases.free else ""}"
             "SWITCHBOARD_REMOTE_ALIAS_CODING=${if ai.switchboard.remoteModelAliases.coding != null then ai.switchboard.remoteModelAliases.coding else ""}"
             "SWITCHBOARD_REMOTE_ALIAS_REASONING=${if ai.switchboard.remoteModelAliases.reasoning != null then ai.switchboard.remoteModelAliases.reasoning else ""}"
+            "SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING=${if ai.switchboard.remoteModelAliases.toolCalling != null then ai.switchboard.remoteModelAliases.toolCalling else ""}"
             "RALPH_WIGGUM_URL=http://127.0.0.1:${toString mcp.ralphPort}"
             "AI_TASK_CLASSIFICATION_ENABLED=true"
             "LOCAL_MAX_INPUT_TOKENS=600"
