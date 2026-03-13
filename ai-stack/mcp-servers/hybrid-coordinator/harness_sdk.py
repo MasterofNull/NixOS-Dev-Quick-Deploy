@@ -442,6 +442,15 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def ai_coordinator_skills(self, limit: int = 25) -> Dict[str, Any]:
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.get(
+                self._url(f"/control/ai-coordinator/skills?limit={max(1, min(100, int(limit)))}"),
+                headers=self._headers(),
+            )
+            r.raise_for_status()
+            return r.json()
+
     def ai_coordinator_delegate(
         self,
         task: str,

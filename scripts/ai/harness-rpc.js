@@ -227,6 +227,8 @@ async function main() {
       });
     case "coordinator-status":
       return call("/control/ai-coordinator/status", "GET");
+    case "coordinator-skills":
+      return call(`/control/ai-coordinator/skills?limit=${args.limit || 25}`, "GET");
     case "coordinator-delegate":
       return call("/control/ai-coordinator/delegate", "POST", {
         task: args.task || args.query || args.q || "",
