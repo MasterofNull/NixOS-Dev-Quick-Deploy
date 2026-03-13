@@ -1159,7 +1159,7 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
             last_review = reviewer_gate.get("last_review")
             review_type = "acceptance"
             artifact_kind = ""
-            task_class = bp.lower() if bp else ""
+            task_class = bp.lower().replace("-", "_") if bp else ""
             reviewed_agent = ""
             if isinstance(last_review, dict):
                 reviewer = str(last_review.get("reviewer", "") or "").strip().lower()
