@@ -1,0 +1,15 @@
+{
+  "skills": [
+    {
+      "slug": "learn",
+      "name": "learn",
+      "managed_by": "agentskill-sh",
+      "provider": "agentskill.sh",
+      "source_url": "https://raw.githubusercontent.com/agentskill-sh/learn/4f415d34e1c1be9b31bd6498d73948a16676fbc9/SKILL.md",
+      "page_url": "https://agentskill.sh/install",
+      "source_path": "external/agentskill.sh/agentskill-sh/learn/SKILL.md",
+      "approval": "approved",
+      "enabled": true
+    }
+  ]
+}

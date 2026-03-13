@@ -95,6 +95,9 @@ AQ_QA_SCRIPT = Path(__file__).with_name("aq-qa")
 LOCAL_SHARED_SKILLS_DIR = Path(
     os.getenv("AQ_SHARED_SKILLS_DIR", str(Path(__file__).resolve().parents[2] / ".agent" / "skills"))
 )
+EXTERNAL_SHARED_SKILLS_MANIFEST = Path(
+    os.getenv("AQ_SHARED_SKILL_MANIFEST", str(Path(__file__).resolve().parents[2] / "config" / "approved-skill-sources.json"))
+)
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -219,7 +222,7 @@ def continue_editor_health() -> Dict[str, Any]:
 
 def shared_skill_registry_health() -> Dict[str, Any]:
     local_paths = sorted(LOCAL_SHARED_SKILLS_DIR.glob("*/SKILL.md")) if LOCAL_SHARED_SKILLS_DIR.is_dir() else []
-    local_records = [
+    expected_records = [
         {
             "slug": path.parent.name,
             "source_path": str(path.relative_to(Path(__file__).resolve().parents[2])),
@@ -227,7 +230,19 @@ def shared_skill_registry_health() -> Dict[str, Any]:
         for path in local_paths
         if path.parent.name.strip()
     ]
-    local_slugs = sorted(item["slug"] for item in local_records)
+    if EXTERNAL_SHARED_SKILLS_MANIFEST.is_file():
+        try:
+            payload = json.loads(EXTERNAL_SHARED_SKILLS_MANIFEST.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        for item in payload.get("skills") or []:
+            if not isinstance(item, dict) or item.get("enabled", True) is False:
+                continue
+            source_path = str(item.get("source_path", "") or "").strip()
+            slug = str(item.get("slug", "") or "").strip()
+            if source_path and slug:
+                expected_records.append({"slug": slug, "source_path": source_path})
+    local_slugs = sorted(item["slug"] for item in expected_records)
     try:
         request = urllib.request.Request(
             f"{AIDB_URL.rstrip('/')}/skills?{urllib.parse.urlencode({'include_pending': 'true', '_': str(time.time_ns())})}",
@@ -239,7 +254,8 @@ def shared_skill_registry_health() -> Dict[str, Any]:
         return {
             "available": False,
             "source": f"{AIDB_URL.rstrip('/')}/skills",
-            "local_skill_count": len(local_slugs),
+            "local_skill_count": len(local_paths),
+            "expected_skill_count": len(expected_records),
             "local_slugs": local_slugs,
             "error": str(exc),
         }
@@ -264,7 +280,7 @@ def shared_skill_registry_health() -> Dict[str, Any]:
         if isinstance(item, dict) and str(item.get("slug", "")).strip()
     }
     path_mismatches = []
-    for item in local_records:
+    for item in expected_records:
         slug = item["slug"]
         remote = approved_map.get(slug)
         if not remote:
@@ -280,8 +296,8 @@ def shared_skill_registry_health() -> Dict[str, Any]:
                 }
             )
 
-    local_paths_set = {item["source_path"] for item in local_records}
-    missing_in_aidb = [item["slug"] for item in local_records if item["source_path"] not in approved_map_by_path]
+    local_paths_set = {item["source_path"] for item in expected_records}
+    missing_in_aidb = [item["slug"] for item in expected_records if item["source_path"] not in approved_map_by_path]
     extra_in_aidb = [
         str(item.get("slug", "")).strip()
         for item in approved
@@ -290,7 +306,8 @@ def shared_skill_registry_health() -> Dict[str, Any]:
     return {
         "available": True,
         "source": f"{AIDB_URL.rstrip('/')}/skills",
-        "local_skill_count": len(local_slugs),
+        "local_skill_count": len(local_paths),
+        "expected_skill_count": len(expected_records),
         "approved_skill_count": len(approved_slugs),
         "missing_in_aidb": missing_in_aidb,
         "extra_in_aidb": extra_in_aidb[:10],
