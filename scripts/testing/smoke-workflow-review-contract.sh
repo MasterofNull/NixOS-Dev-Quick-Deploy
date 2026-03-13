@@ -157,4 +157,70 @@ jq -e '.reviewer_gate.last_review.task_class == "repo_refactor"' "${TMP_DIR}/pat
 jq -e '.reviewer_gate.last_review.reviewed_agent == "qwen"' "${TMP_DIR}/patch-run.json" >/dev/null
 jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-coding"' "${TMP_DIR}/patch-run.json" >/dev/null
 
+cat > "${TMP_DIR}/reasoning-start.json.payload" <<'EOF'
+{
+  "query": "Validate remote reasoning review persistence",
+  "blueprint_id": "remote-reasoning-escalation",
+  "intent_contract": {
+    "user_intent": "Validate remote reasoning review persistence",
+    "definition_of_done": [
+      "plan review classification persists",
+      "reviewed profile is recorded"
+    ],
+    "depth_expectation": "standard",
+    "spirit_constraints": [
+      "bounded smoke only"
+    ],
+    "no_early_exit_without": [
+      "live session retrieval"
+    ]
+  }
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data @"${TMP_DIR}/reasoning-start.json.payload" > "${TMP_DIR}/reasoning-start.json"
+reasoning_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/reasoning-start.json")"
+[[ -n "${reasoning_session_id}" ]] || {
+  echo "ERROR: remote reasoning workflow/run/start did not return session_id" >&2
+  exit 1
+}
+jq -e '.blueprint_id == "remote-reasoning-escalation"' "${TMP_DIR}/reasoning-start.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "pending_review"' "${TMP_DIR}/reasoning-start.json" >/dev/null
+
+cat > "${TMP_DIR}/reasoning-review.json.payload" <<EOF
+{
+  "session_id": "${reasoning_session_id}",
+  "response": "Plan review confirms remote reasoning escalation preserves bounded evidence and explicit next-step validation.",
+  "criteria": [
+    "bounded evidence",
+    "next-step validation"
+  ],
+  "expected_keywords": [
+    "plan review",
+    "remote reasoning"
+  ],
+  "min_criteria_ratio": 1.0,
+  "min_keyword_ratio": 1.0,
+  "reviewer": "codex",
+  "review_type": "plan_review",
+  "artifact_kind": "plan",
+  "task_class": "remote_reasoning",
+  "reviewed_agent": "claude",
+  "reviewed_profile": "remote-reasoning"
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/review/acceptance" \
+  --data @"${TMP_DIR}/reasoning-review.json.payload" > "${TMP_DIR}/reasoning-review.json"
+jq -e '.passed == true' "${TMP_DIR}/reasoning-review.json" >/dev/null
+jq -e --arg sid "${reasoning_session_id}" '.session_id == $sid' "${TMP_DIR}/reasoning-review.json" >/dev/null
+
+curl -fsS "${hdr[@]}" "${HYBRID_URL}/workflow/run/${reasoning_session_id}" > "${TMP_DIR}/reasoning-run.json"
+jq -e '.blueprint_title == "Remote Reasoning Escalation"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "accepted"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.review_type == "plan_review"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.artifact_kind == "plan"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.task_class == "remote_reasoning"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_agent == "claude"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-reasoning"' "${TMP_DIR}/reasoning-run.json" >/dev/null
+
 printf 'PASS: workflow review contract smoke\n'
