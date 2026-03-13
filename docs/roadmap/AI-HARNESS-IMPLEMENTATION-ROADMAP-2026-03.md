@@ -125,6 +125,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | browser-assisted research fallback lane | validated_live | added a bounded `/research/web/browser-fetch` lane with declarative runtime controls and live-validated rendered extraction against a real Calflora page; Chromium now runs inside the hardened service with a temporary profile and `--no-sandbox` because the systemd namespace sandbox already provides the outer containment |
 | 2026-03-13 | california-native source pack bootstrap | validated_live | extended the curated research manifest with a `native-plants-california` pack centered on Calflora so California-native lookup is now a first-class approved workflow input instead of an ad hoc URL |
 | 2026-03-13 | source-level fetch policy and browser fallback | validated_live | curated workflows now support per-source fetch policy plus browser fallback after empty extracts or bot-gate detection; live `native-plants-us` validation showed USDA escalated to browser automatically while the already-good Wildflower path stayed on the plain HTTP lane |
+| 2026-03-13 | continue-local dense-context trimming fix | validated_live | fixed switchboard input estimation so dense no-whitespace prompts no longer evade `continue-local` trimming, added single-message truncation when dropping old turns is insufficient, and live validation confirmed the original 24k-character reproduction now returns `200` with `X-AI-Input-Trimmed=1` instead of `502 upstream_transport_error` |
 
 ## High-Priority Tracks
 
@@ -195,15 +196,16 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, browser-assisted fallback, and a regenerated Continue config that matches the local llama.cpp context window instead of a stale 4k cap; next gap is validating real agent/planning-mode recovery after the context-limit fix`
+Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, and a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors; next gap is validating real agent/planning-mode recovery inside the Continue extension`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
 - `python3 scripts/testing/test-web-research-lane.py`
+- `scripts/testing/test-switchboard-continue-context-window.sh`
 - live `POST /research/web/fetch` smoke after deploy
 Open Risks / Blockers:
 - some approved public sources still need selector tuning or source substitution even though the browser-assisted fallback lane is now available
 - CLI/package coverage is still mixed across agent surfaces
-- Continue agent/planning mode still needs explicit live confirmation after the config-side context-window fix, because the previous generated config advertised only a 4k limit while llama.cpp was serving 16k
+- Continue agent/planning mode still needs explicit live confirmation inside the extension after the transport-side trimming fix, even though the stale 4k generated config and the dense-prompt switchboard failure are both now fixed
 
 Goal:
 - make Continue/editor-driven agent flows a validated and observable first-class path
