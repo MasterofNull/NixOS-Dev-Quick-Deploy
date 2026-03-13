@@ -2626,7 +2626,16 @@ async def run_http_mode(port: int) -> None:
                 include_debug_metadata = request.rel_url.query.get("debug", "0").strip().lower() in {"1", "true", "yes"}
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
-            return web.json_response(_build_workflow_plan(query, include_debug_metadata=include_debug_metadata))
+            result = _build_workflow_plan(query, include_debug_metadata=include_debug_metadata)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                result["active_lesson_refs"] = lesson_refs
+                metadata = result.get("metadata")
+                if isinstance(metadata, dict):
+                    metadata["active_lesson_refs"] = lesson_refs
+            return web.json_response(result)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
