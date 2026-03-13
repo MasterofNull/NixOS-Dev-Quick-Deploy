@@ -90,6 +90,8 @@ Tracking fields to update after each slice:
 | 2026-03-13 | continue-cli + home-manager activation corrective pass | validated_live | removed invalid disabled `home.file` stubs for legacy COSMIC units, fixed `nix/pkgs/continue-cli.nix` to use a valid `sha256` fetch source, and revalidated `home-manager switch` plus full quick-deploy system/home phases |
 | 2026-03-13 | delegated research bootstrap for next tracks | validated_live | exercised `/control/ai-coordinator/delegate` on `remote-free` for bounded BitNet/EvoSkill/coding-agent synthesis so next planning slices use the live remote lane instead of only local reasoning |
 | 2026-03-13 | continue/editor phase-0 observability pass | validated_live | added explicit `aq-qa 0` probes for `cn --help`, generated Continue config correctness, Continue extension presence, and a `continue-local` switchboard smoke so editor/runtime failures become first-class QA signals |
+| 2026-03-13 | delegated free-model lane tuning pass | validated_live | reviewed a bounded `remote-free` comparison task, verified current OpenRouter free model availability, removed the gitignored host-local alias shadow so tracked defaults win, and activated planner/review aliases to `arcee-ai/trinity-large-preview:free` and `nvidia/nemotron-3-super-120b-a12b:free` after live smokes showed StepFun returned reasoning-only output and several other candidates failed under current provider/privacy constraints |
+| 2026-03-13 | repo-backed QA capability corrective pass | validated_live | hardened `aq-qa` so the service-backed `/qa/check` path resolves Continue CLI outside interactive shells and retries port probes briefly after restarts; post-flight quick-deploy capability verification now passes again with `33` phase-0 checks green |
 
 ## High-Priority Tracks
 
@@ -281,14 +283,16 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; coding/reasoning lanes use free aliases and the coordinator is being hardened to retry on remote-free when a specific free model returns 402/429`
+Current Slice: `remote profiles and fallback reporting exist; planner/review aliases are active live on explicit free models that passed delegated and direct smokes, and the coordinator still needs stronger fallback handling when coding-specific free models rate-limit`
 Next Validation:
 - targeted remote profile smokes
+- explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
 - bounded delegated research/review calls recorded through `/control/ai-coordinator/delegate`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
-- remote coding/reasoning lanes can still hit provider-side free-model rate limits and need bounded fallback to the free lane
+- `qwen/qwen3-coder:free` remains the strongest coding lane but can still hit provider-side `429` and needs bounded fallback to the free lane
+- some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
 - coordinator output still includes stale smoke runtime records from prior runtime registry tests and needs cleanup/retention policy
 
 Goal:

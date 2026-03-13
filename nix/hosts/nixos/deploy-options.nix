@@ -86,9 +86,9 @@
         # Remote URL/model preferences are non-secret and need to be tracked so
         # flake-based deploys do not silently drop remote routing.
         remoteUrl = lib.mkDefault "https://openrouter.ai/api";
-        remoteModelAliases.free = lib.mkDefault "openrouter/free";
+        remoteModelAliases.free = lib.mkDefault "arcee-ai/trinity-large-preview:free";
         remoteModelAliases.coding = lib.mkDefault "qwen/qwen3-coder:free";
-        remoteModelAliases.reasoning = lib.mkDefault "stepfun/step-3.5-flash:free";
+        remoteModelAliases.reasoning = lib.mkDefault "nvidia/nemotron-3-super-120b-a12b:free";
         remoteBudget.dailyTokenCap = lib.mkDefault 0;
         remoteBudget.fallbackToLocal = lib.mkDefault true;
       };
