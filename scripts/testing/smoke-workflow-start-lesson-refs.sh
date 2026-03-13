@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verify /workflow/run/start surfaces accepted lesson references for direct run starts.
+
 HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
 HYBRID_API_KEY="${HYBRID_API_KEY:-}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"

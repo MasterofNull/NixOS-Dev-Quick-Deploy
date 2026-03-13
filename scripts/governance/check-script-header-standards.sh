@@ -14,7 +14,7 @@ WAIVER_FILE="${ROOT_DIR}/config/script-header-waivers.txt"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/governance/check-script-header-standards.sh [--all] [--added] [--base <sha>] [--head <sha>]
+Usage: scripts/governance/check-script-header-standards.sh [--all|--added|--changed] [--base <sha>] [--head <sha>]
 EOF
 }
 
@@ -22,6 +22,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --all)
       MODE="all"
+      shift
+      ;;
+    --added)
+      MODE="added"
+      shift
+      ;;
+    --changed)
+      MODE="changed"
       shift
       ;;
     --base)

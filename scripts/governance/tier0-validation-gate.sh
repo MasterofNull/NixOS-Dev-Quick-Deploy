@@ -119,7 +119,18 @@ gate_repo_structure() {
   fi
 }
 
-# Gate 5: Roadmap verification
+# Gate 5: Script header standards
+gate_script_headers() {
+  log "Checking script header standards..."
+  if bash "${SCRIPT_DIR}/check-script-header-standards.sh" --all >/dev/null 2>&1; then
+    pass "Script header standards valid"
+  else
+    fail "Script header standards failed"
+    return 1
+  fi
+}
+
+# Gate 6: Roadmap verification
 gate_roadmap_verification() {
   log "Running roadmap verification..."
   local output
@@ -135,7 +146,7 @@ gate_roadmap_verification() {
   fi
 }
 
-# Gate 6: QA phase 0
+# Gate 7: QA phase 0
 gate_qa_phase0() {
   log "Running QA phase 0..."
   local output
@@ -174,6 +185,7 @@ gate_python_syntax || true
 gate_bash_syntax || true
 gate_nix_syntax || true
 gate_repo_structure || true
+gate_script_headers || true
 gate_roadmap_verification || true
 gate_qa_phase0 || true
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verify /query surfaces accepted lesson references for direct query consumers.
+
 HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
 HYBRID_API_KEY="${HYBRID_API_KEY:-}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
