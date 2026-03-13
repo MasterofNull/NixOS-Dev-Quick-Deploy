@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Regression-test Continue-local request trimming and switchboard response limits.
+
 SWB_URL="${SWB_URL:-http://127.0.0.1:8085}"
 TMP_DIR="$(mktemp -d /tmp/switchboard-continue-context-XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
