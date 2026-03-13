@@ -369,6 +369,8 @@ check_pattern "scripts/ai/aq-report" 'Batch D.*Cache and Retrieval Effectiveness
 check_pattern "scripts/ai/aq-report" 'bounded prewarm heuristics for cheap recurring local queries' 'aq-report implements bounded prewarm heuristics'
 check_pattern "scripts/ai/aq-report" 'Prefer local-first retrieval for recurring queries; remote spend is unnecessary' 'aq-report recommends retrieval-first when remote spend is unnecessary'
 check_pattern "scripts/ai/aq-report" 'Retrieval Breadth' 'aq-report surfaces retrieval-breadth state in human-readable outputs'
+check_pattern "scripts/ai/aq-qa" '_aq_report_snapshot' 'aq-qa can reuse aq-report JSON for retrieval acceptance checks'
+check_pattern "scripts/ai/aq-qa" 'aq-report exposes retrieval acceptance metrics' 'aq-qa surfaces retrieval acceptance metrics from aq-report'
 check_pattern "scripts/ai/aq-report" '"provider_fallback_recovery": provider_fallbacks' 'aq-report JSON output includes recovered provider fallback state'
 check_pattern "scripts/ai/aq-report" 'Provider Fallback Recovery' 'aq-report surfaces recovered provider fallback state in human-readable outputs'
 check_pattern "scripts/ai/aq-report" 'Treat this as provider-budget or remote-routing pressure, not a local backend outage' 'aq-report recommendations distinguish recovered provider fallback pressure from local backend outages'
