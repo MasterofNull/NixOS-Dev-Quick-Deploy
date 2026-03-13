@@ -421,7 +421,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, and direct /hints response metadata from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
+Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, and persisted /workflow/run/{session_id} retrieval from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
@@ -433,9 +433,10 @@ Next Validation:
 - `scripts/testing/smoke-workflow-plan-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-tooling-lesson-refs.sh`
 - `scripts/testing/smoke-hints-lesson-refs.sh`
+- `scripts/testing/smoke-workflow-run-lesson-refs.sh`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, and direct /hints metadata, but broader direct routing/reference materialization remains incomplete beyond those first consumers
+- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, and persisted workflow-run retrieval, but broader direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
