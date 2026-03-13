@@ -2466,6 +2466,9 @@ async def run_http_mode(port: int) -> None:
         (Continue.dev HTTP context provider), returns [{"name","description","content"}].
         """
         try:
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             if request.method == "POST":
                 try:
                     body = await request.json()
@@ -2528,12 +2531,14 @@ async def run_http_mode(port: int) -> None:
                     "name": "aq-hints",
                     "description": f"AI Stack workflow hints" + (f" for: {query[:60]}" if query else ""),
                     "content": "".join(content_lines) or "No hints available — run aq-prompt-eval to score registry prompts.",
+                    "active_lesson_refs": lesson_refs,
                 }])
 
             # Agent-type-specific augmentation
             if result.get("hints") and agent_type in ("claude", "codex", "qwen", "aider"):
                 top = result["hints"][0]
                 result["inject_prefix"] = top.get("snippet", "")[:150]
+            result["active_lesson_refs"] = lesson_refs
             result["feedback_contract"] = {
                 "endpoint": "/hints/feedback",
                 "required_any_of": ["helpful", "score"],
