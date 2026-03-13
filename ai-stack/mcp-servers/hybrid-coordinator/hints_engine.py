@@ -1795,7 +1795,45 @@ class HintsEngine:
                 )
 
         agent_lessons = data.get("agent_lessons", {})
+        lesson_registry = agent_lessons.get("registry", {}) if isinstance(agent_lessons, dict) else {}
+        active_lessons = lesson_registry.get("active_lessons") if isinstance(lesson_registry, dict) else []
         lesson_candidates = agent_lessons.get("candidates") if isinstance(agent_lessons, dict) else []
+        if isinstance(active_lessons, list):
+            lesson_focus = any(
+                token in query_lower
+                for token in ("improv", "hint", "agent", "rag", "retriev", "memory", "review", "training")
+            )
+            for item in active_lessons[:2]:
+                if not isinstance(item, dict) or not lesson_focus:
+                    continue
+                hint_id = str(item.get("hint_id", "") or "").strip()
+                state = str(item.get("state", "") or "").strip().lower()
+                agent = str(item.get("agent", "") or "").strip().lower()
+                materialization = str(item.get("materialization", "") or "").strip().lower()
+                if not hint_id or state not in {"promoted", "avoided"}:
+                    continue
+                title = (
+                    f"Apply promoted {agent} lesson {hint_id}"
+                    if state == "promoted"
+                    else f"Keep {hint_id} down-scoped for {agent} tasks"
+                )
+                snippet = (
+                    f"Accepted lesson state is `{state}` for `{hint_id}`"
+                    + (f" via {materialization}" if materialization else "")
+                    + ". Reuse it before inventing a new approach."
+                )
+                hints.append(
+                    Hint(
+                        id=f"runtime_agent_lesson_active_{agent}_{state}_{re.sub(r'[^a-z0-9]+', '_', hint_id.lower())}",
+                        type="runtime_signal",
+                        title=title[:96],
+                        score=0.79,
+                        snippet=snippet[:220],
+                        reason="Derived from the persisted agent lesson registry in the live aq-report",
+                        tags=["runtime", "agent-learning", "accepted-lesson", state, agent],
+                        agent_hints={},
+                    )
+                )
         if isinstance(lesson_candidates, list):
             lesson_focus = any(
                 token in query_lower
@@ -1807,7 +1845,13 @@ class HintsEngine:
                 hint_id = str(item.get("hint_id", "") or "").strip()
                 direction = str(item.get("direction", "") or "").strip().lower()
                 agent = str(item.get("agent", "") or "").strip().lower()
-                if not hint_id or direction not in {"promote", "avoid"} or not lesson_focus:
+                registry_state = str(item.get("registry_state", "") or "").strip().lower()
+                if (
+                    not hint_id
+                    or direction not in {"promote", "avoid"}
+                    or not lesson_focus
+                    or registry_state in {"promoted", "avoided"}
+                ):
                     continue
                 comments = item.get("comments") or []
                 example = str(comments[0] or "").strip() if comments else ""

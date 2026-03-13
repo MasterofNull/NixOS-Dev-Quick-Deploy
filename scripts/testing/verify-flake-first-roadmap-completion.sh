@@ -422,7 +422,7 @@ check_pattern "nixos-quick-deploy.sh" 'route_retrieval_breadth.avg_collection_co
 check_pattern "nixos-quick-deploy.sh" 'Retrieval breadth \(1h\)' 'quick deploy summary surfaces retrieval-breadth context'
 check_pattern "nixos-quick-deploy.sh" 'Provider fallback \(\$\{provider_fallback_window\}\)' 'quick deploy summary surfaces provider fallback recovery context'
 check_pattern "nixos-quick-deploy.sh" 'rag_posture.prewarm_candidates\[0\].id // empty' 'quick deploy summary reads a bounded prewarm candidate from aq-report JSON'
-check_pattern "nixos-quick-deploy.sh" 'agent_lessons.candidates\[0\]' 'quick deploy summary reads promoted agent lessons from aq-report JSON'
+check_pattern "nixos-quick-deploy.sh" 'agent_lessons.registry.active_lessons\[0\]' 'quick deploy summary reads active agent lessons from aq-report JSON'
 check_pattern "nixos-quick-deploy.sh" 'Memory recall share' 'quick deploy summary surfaces memory recall utilization'
 check_pattern "nixos-quick-deploy.sh" 'Prewarm candidate' 'quick deploy summary surfaces bounded prewarm guidance'
 check_pattern "nixos-quick-deploy.sh" 'Agent lesson' 'quick deploy summary surfaces the top promoted agent lesson'
