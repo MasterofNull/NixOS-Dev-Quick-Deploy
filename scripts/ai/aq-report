@@ -87,6 +87,7 @@ AIDB_URL = os.getenv("AIDB_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1'
 WORKFLOW_SESSIONS_PATH = Path(
     os.getenv("WORKFLOW_SESSIONS_PATH", "/var/lib/ai-stack/hybrid/workflow-sessions.json")
 )
+AQ_QA_SCRIPT = Path(__file__).with_name("aq-qa")
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -138,6 +139,75 @@ def _tool_audit_path() -> Optional[Path]:
     if _exists(AUDIT_FALLBACK_PATH):
         return AUDIT_FALLBACK_PATH
     return None
+
+
+def continue_editor_health() -> Dict[str, Any]:
+    """Summarise Continue/editor health from aq-qa Phase 0 checks 0.5.*."""
+    if not AQ_QA_SCRIPT.exists():
+        return {"available": False, "source": str(AQ_QA_SCRIPT)}
+    try:
+        result = subprocess.run(
+            [str(AQ_QA_SCRIPT), "0", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except Exception as exc:
+        return {"available": False, "source": str(AQ_QA_SCRIPT), "error": str(exc)}
+
+    raw = (result.stdout or "").strip()
+    if not raw:
+        return {
+            "available": False,
+            "source": str(AQ_QA_SCRIPT),
+            "error": (result.stderr or "").strip() or f"aq-qa exited {result.returncode}",
+        }
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return {"available": False, "source": str(AQ_QA_SCRIPT), "error": f"invalid json: {exc}"}
+
+    labels = {
+        "0.5.1": "Continue CLI help works",
+        "0.5.2": "Continue config targets continue-local via switchboard",
+        "0.5.3": "VSCodium has Continue extension installed",
+        "0.5.4": "continue-local switchboard smoke",
+    }
+    checks: List[Dict[str, Any]] = []
+    for item in data.get("tests") or []:
+        check_id = str(item.get("id", "") or "").strip()
+        if not check_id.startswith("0.5."):
+            continue
+        status = str(item.get("status", "UNKNOWN") or "UNKNOWN").upper()
+        checks.append(
+            {
+                "id": check_id,
+                "description": str(item.get("description") or item.get("name") or labels.get(check_id, check_id)),
+                "status": status,
+            }
+        )
+    if not checks:
+        return {
+            "available": False,
+            "source": str(AQ_QA_SCRIPT),
+            "error": "continue/editor phase-0 checks not found",
+        }
+
+    passed_n = sum(1 for item in checks if item.get("status") == "PASS")
+    failed = [item for item in checks if item.get("status") == "FAIL"]
+    skipped_n = sum(1 for item in checks if item.get("status") == "SKIP")
+    return {
+        "available": True,
+        "source": str(AQ_QA_SCRIPT),
+        "healthy": len(failed) == 0,
+        "total_checks": len(checks),
+        "passed_n": passed_n,
+        "failed_n": len(failed),
+        "skipped_n": skipped_n,
+        "checks": checks,
+    }
 
 
 def _hint_audit_path() -> Optional[Path]:
@@ -2196,6 +2266,7 @@ def format_md(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    continue_editor: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -2396,7 +2467,23 @@ def format_md(
                 )
     lines.append("")
 
-    lines += [f"## 8a. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
+    lines += ["## 8a. Continue/Editor Health", ""]
+    if not continue_editor.get("available"):
+        lines.append("*Continue/editor health unavailable.*")
+    elif continue_editor.get("healthy"):
+        lines.append(
+            f"- Healthy: **yes** ({continue_editor.get('passed_n', 0)}/{continue_editor.get('total_checks', 0)} checks passed)"
+        )
+    else:
+        lines.append(
+            f"- Healthy: **no** ({continue_editor.get('failed_n', 0)} failing check(s) out of {continue_editor.get('total_checks', 0)})"
+        )
+        for item in (continue_editor.get("checks") or []):
+            if item.get("status") == "FAIL":
+                lines.append(f"  - `{item.get('id')}` — {item.get('description')}")
+    lines.append("")
+
+    lines += [f"## 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
     avg_collection_count = retrieval_breadth.get("avg_collection_count")
     if avg_collection_count is None:
         lines.append("*No route_search retrieval-breadth metadata in this window.*")
@@ -2408,7 +2495,7 @@ def format_md(
             lines.append(f"- Active profiles: {labels}")
     lines.append("")
 
-    lines += [f"## 8b. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')})", ""]
+    lines += [f"## 8c. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')})", ""]
     recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
     if recovered_count <= 0:
         lines.append("*No recovered remote-provider fallback events in this window.*")
@@ -2424,7 +2511,7 @@ def format_md(
     lines.append("")
 
     # 8c. Historical watchlist
-    lines += [f"## 8c. Historical Watchlist ({historical_watch.get('window', '7d')})", ""]
+    lines += [f"## 8d. Historical Watchlist ({historical_watch.get('window', '7d')})", ""]
     if not historical_watch.get("has_items"):
         lines.append("*No background watchlist items outside the recent window.*")
     else:
@@ -2622,6 +2709,7 @@ def format_text(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    continue_editor: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -2823,7 +2911,23 @@ def format_text(
                 )
     lines.append("")
 
-    lines += [f"[ 8a. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]
+    lines += ["[ 8a. Continue/Editor Health ]"]
+    if not continue_editor.get("available"):
+        lines.append("  Continue/editor health unavailable.")
+    elif continue_editor.get("healthy"):
+        lines.append(
+            f"  Healthy: yes ({continue_editor.get('passed_n', 0)}/{continue_editor.get('total_checks', 0)} checks passed)"
+        )
+    else:
+        lines.append(
+            f"  Healthy: no ({continue_editor.get('failed_n', 0)} failing check(s) out of {continue_editor.get('total_checks', 0)})"
+        )
+        for item in (continue_editor.get("checks") or []):
+            if item.get("status") == "FAIL":
+                lines.append(f"    {item.get('id')}: {item.get('description')}")
+    lines.append("")
+
+    lines += [f"[ 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]
     avg_collection_count = retrieval_breadth.get("avg_collection_count")
     if avg_collection_count is None:
         lines.append("  No route_search retrieval-breadth metadata in this window.")
@@ -2835,7 +2939,7 @@ def format_text(
             lines.append(f"  Active profiles: {labels}")
     lines.append("")
 
-    lines += [f"[ 8b. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')}) ]"]
+    lines += [f"[ 8c. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')}) ]"]
     recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
     if recovered_count <= 0:
         lines.append("  No recovered remote-provider fallback events in this window.")
@@ -2850,7 +2954,7 @@ def format_text(
         lines.append("  These are tracked separately from backend failures because the request recovered locally.")
     lines.append("")
 
-    lines += [f"[ 8c. Historical Watchlist ({historical_watch.get('window', '7d')}) ]"]
+    lines += [f"[ 8d. Historical Watchlist ({historical_watch.get('window', '7d')}) ]"]
     if not historical_watch.get("has_items"):
         lines.append("  No background watchlist items outside the recent window.")
     else:
@@ -3049,6 +3153,7 @@ def format_json(
     gaps: List[dict],
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
+    continue_editor: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3088,6 +3193,7 @@ def format_json(
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
+        "continue_editor": continue_editor,
         "route_retrieval_breadth": retrieval_breadth,
         "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
@@ -3216,6 +3322,7 @@ def main() -> None:
     semantic_autorun = semantic_autorun_health(audit_entries)
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats, recent_provider_fallbacks)
+    continue_editor = continue_editor_health()
     historical_health_watch = historical_watchlist(tool_stats, recent_tool_stats)
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
@@ -3270,6 +3377,7 @@ def main() -> None:
         gaps,
         rag_posture_summary,
         recent_health,
+        continue_editor,
         recent_retrieval_breadth,
         recent_provider_fallbacks,
         historical_health_watch,
