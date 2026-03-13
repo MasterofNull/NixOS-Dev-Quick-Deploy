@@ -139,9 +139,11 @@ gate_roadmap_verification() {
 gate_qa_phase0() {
   log "Running QA phase 0..."
   local output
+  local passes
   output=$("${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1)
   if echo "$output" | grep -qE "[0-9]+ passed.*0 failed"; then
-    pass "QA phase 0 (29 checks)"
+    passes=$(echo "$output" | grep -oE '[0-9]+ passed' | head -1 | awk '{print $1}')
+    pass "QA phase 0 (${passes:-unknown} checks)"
   else
     log "Debug output: $(echo "$output" | tail -3)"
     fail "QA phase 0 failed"
