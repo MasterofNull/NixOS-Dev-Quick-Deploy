@@ -56,6 +56,31 @@
     aiStack = {
       backend            = "llamacpp";
       acceleration       = "auto";
+      # Ready-to-toggle llama.cpp chat model stanzas for this host:
+      #
+      # Candidate A — current production baseline
+      # llamaCpp.model           = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+      # llamaCpp.huggingFaceRepo = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+      # llamaCpp.huggingFaceFile = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+      # llamaCpp.sha256          = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597";
+      #
+      # Candidate B — same-size quality-per-byte upgrade target
+      # llamaCpp.model           = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-IQ4_NL.gguf";
+      # llamaCpp.huggingFaceRepo = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+      # llamaCpp.huggingFaceFile = "Qwen3-4B-Instruct-2507-IQ4_NL.gguf";
+      # llamaCpp.sha256          = null; # fill after first verified download / benchmark pass
+      #
+      # Candidate C — same-size quality-first upgrade target
+      # llamaCpp.model           = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q5_K_M.gguf";
+      # llamaCpp.huggingFaceRepo = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+      # llamaCpp.huggingFaceFile = "Qwen3-4B-Instruct-2507-Q5_K_M.gguf";
+      # llamaCpp.sha256          = null; # fill after first verified download / benchmark pass
+      #
+      # Toggle procedure:
+      # 1. Replace the active llamaCpp.* lines below with one candidate block.
+      # 2. Deploy.
+      # 3. Run `aq-llama-benchmark.py --run-live ... --save-run` for the matching run_id.
+      # 4. Backfill sha256 once the downloaded GGUF is accepted.
       llamaCpp.model           = "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
       llamaCpp.huggingFaceRepo = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
       llamaCpp.huggingFaceFile = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
