@@ -215,6 +215,8 @@ class HarnessClient:
         token_limit: int = 8000,
         tool_call_limit: int = 40,
         intent_contract: Optional[Dict[str, Any]] = None,
+        requesting_agent: str = "human",
+        requester_role: str = "orchestrator",
     ) -> Dict[str, Any]:
         contract = intent_contract or {
             "user_intent": query,
@@ -235,6 +237,8 @@ class HarnessClient:
             "token_limit": token_limit,
             "tool_call_limit": tool_call_limit,
             "intent_contract": contract,
+            "requesting_agent": requesting_agent,
+            "requester_role": requester_role,
         }
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(self._url("/workflow/run/start"), headers=self._headers(), json=payload)

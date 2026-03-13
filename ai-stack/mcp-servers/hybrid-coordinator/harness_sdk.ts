@@ -28,6 +28,8 @@ export interface RunStartRequest {
   safety_mode?: "plan-readonly" | "execute-mutating";
   token_limit?: number;
   tool_call_limit?: number;
+  requesting_agent?: string;
+  requester_role?: "orchestrator" | "sub-agent";
   intent_contract?: {
     user_intent: string;
     definition_of_done: string;

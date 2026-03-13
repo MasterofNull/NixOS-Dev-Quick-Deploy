@@ -39,6 +39,7 @@ from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 from ai_coordinator import (
     build_messages as _ai_coordinator_build_messages,
+    coerce_orchestration_context as _ai_coordinator_coerce_orchestration_context,
     build_reasoning_finalization_messages as _ai_coordinator_build_reasoning_finalization_messages,
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
@@ -630,6 +631,16 @@ def _coerce_intent_contract(query: str, incoming: Any) -> Dict[str, Any]:
     if anti_goals:
         base["anti_goals"] = anti_goals
     return base
+
+
+def _coerce_orchestration_context(incoming: Any) -> Dict[str, Any]:
+    data = incoming if isinstance(incoming, dict) else {}
+    normalized = dict(data)
+    if "requesting_agent" not in normalized:
+        normalized["requesting_agent"] = data.get("agent") or data.get("agent_type") or "human"
+    if "requester_role" not in normalized:
+        normalized["requester_role"] = data.get("role") or "orchestrator"
+    return _ai_coordinator_coerce_orchestration_context(normalized)
 
 
 def _load_and_validate_workflow_blueprints() -> Dict[str, Any]:
@@ -3198,6 +3209,7 @@ async def run_http_mode(port: int) -> None:
             if incoming_contract is None and selected_blueprint:
                 incoming_contract = selected_blueprint.get("intent_contract", {})
             validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
+            orchestration = _coerce_orchestration_context(data)
             session_id = str(uuid4())
             plan = _build_workflow_plan(query)
             phases = []
@@ -3227,6 +3239,7 @@ async def run_http_mode(port: int) -> None:
                     else ""
                 ) or None,
                 "intent_contract": validation["normalized"],
+                "orchestration": orchestration,
                 "reviewer_gate": {
                     "required": _blueprint_requires_reviewer_gate(selected_blueprint),
                     "last_review": None,
@@ -3247,6 +3260,9 @@ async def run_http_mode(port: int) -> None:
                         "phase_id": "discover",
                         "detail": "workflow run started",
                         "intent_contract_present": True,
+                        "requester_role": orchestration["requester_role"],
+                        "requested_by": orchestration["requested_by"],
+                        "delegate_via_coordinator_only": True,
                         "reviewer_gate_required": _blueprint_requires_reviewer_gate(selected_blueprint),
                     }
                 ],

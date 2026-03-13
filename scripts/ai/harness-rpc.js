@@ -145,6 +145,8 @@ async function main() {
           safety_mode: args["safety-mode"] || "plan-readonly",
           token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
           tool_call_limit: args["tool-call-limit"] ? Number(args["tool-call-limit"]) : 40,
+          requesting_agent: args.agent || "human",
+          requester_role: args["requester-role"] || "orchestrator",
           intent_contract: intentContract,
         });
       }
