@@ -96,6 +96,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | bounded web research lane implementation pass | validated_live | added a declarative-limits-backed `/research/web/fetch` coordinator endpoint plus tooling-manifest, SDK, and RPC exposure; unit validation confirms robots-aware blocking, same-host pacing, and bounded extraction behavior, and live smokes confirmed successful HTTPS extraction plus redirect-to-HTTP policy enforcement |
 | 2026-03-13 | BitNet feasibility probe scaffolding | validated_local | added a repo-native `aq-bitnet-feasibility` probe plus targeted test so this host now has measured prerequisites, supported-model heuristics, and bounded next actions before any runtime role is attempted |
 | 2026-03-13 | delegated prompt-failure feedback loop | validated_live | OpenRouter/coordinator delegation now records prompt-contract failures plus salvageable commands/paths/excerpts, live provider-side `400` rejection was captured in `/control/ai-coordinator/delegate`, `aq-report` surfaces the recurring failure class, and PRSI can queue prompt-tightening actions instead of repeating the same waste |
+| 2026-03-13 | runtime registry retention and stale-smoke cleanup | validated_live | ai-coordinator now prunes transient smoke/test runtime registrations on load with retention policy; live registry collapsed from 56 entries with 54 smoke artifacts to 6 real lanes after status reload |
 
 ## High-Priority Tracks
 
@@ -292,7 +293,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles, fallback reporting, and delegated prompt-failure telemetry now exist; next gap is using the new failure ledger to tighten delegation envelopes and broader remote tool-calling flows`
+Current Slice: `remote profiles, fallback reporting, delegated prompt-failure telemetry, and runtime-registry cleanup are now live; next gap is using the failure ledger to tighten delegation envelopes and broader remote tool-calling flows`
 Next Validation:
 - targeted remote profile smokes
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
@@ -302,7 +303,6 @@ Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
 - `qwen/qwen3-coder:free` remains the strongest coding lane and can still hit provider-side `429`, so observability should keep tracking fallback frequency and latency impact
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
-- coordinator output still includes stale smoke runtime records from prior runtime registry tests and needs cleanup/retention policy
 - delegated prompt-contract failures are now recorded, but the highest-value next step is to feed repeated classes back into actual prompt template revisions and not just reporting
 
 Goal:
