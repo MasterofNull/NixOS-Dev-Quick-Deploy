@@ -1769,6 +1769,66 @@ class HintsEngine:
                 )
             )
 
+        skill_focus = any(
+            token in query_lower
+            for token in ("skill", "skills", "agentskill", "learn", "skill registry", "shared skill", "aidb")
+        )
+        if skill_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_skill_registry",
+                    type="prompt_coaching",
+                    title="Keep skill-registry asks approved, scoped, and export-aware",
+                    score=0.73,
+                    snippet=(
+                        "Name the skill source, approval or trust boundary, the target catalog or agent surfaces, "
+                        "and the validation you expect. Prefer governed import/sync over per-agent ad hoc installs."
+                    )[:220],
+                    reason="Compact operator guidance for shared-skill ingestion, approval, and export tasks",
+                    tags=["prompting", "coaching", "skills", "registry", "operator-guidance"],
+                    agent_hints={
+                        "human": "State the skill source, the target agents, and whether you want import, sync, export, or review.",
+                        "codex": "Use governed manifests and registry sync paths before direct per-agent skill edits.",
+                        "continue": "Keep local skill asks focused on one source and one validation target at a time.",
+                    },
+                )
+            )
+
+        delegation_focus = any(
+            token in query_lower
+            for token in (
+                "delegate",
+                "delegation",
+                "sub-agent",
+                "sub agent",
+                "coordinator",
+                "orchestrator",
+                "handoff",
+                "tool-calling",
+                "tool calling",
+            )
+        )
+        if delegation_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_delegation_contract",
+                    type="prompt_coaching",
+                    title="Keep delegation asks explicit about role boundaries and final artifact",
+                    score=0.78,
+                    snippet=(
+                        "Name the orchestrator, the delegated sub-task, the expected artifact, the evidence required back, "
+                        "and the no-nested-delegation rule. Route further fan-out through the coordinator, not the sub-agent."
+                    )[:220],
+                    reason="Compact operator guidance for coordinator handoff and bounded delegation contracts",
+                    tags=["prompting", "coaching", "delegation", "orchestration", "operator-guidance"],
+                    agent_hints={
+                        "human": "State which agent is orchestrating, what the sub-agent may do, and what must come back for review.",
+                        "codex": "Keep delegation contracts artifact-first and preserve the coordinator-only fan-out rule.",
+                        "qwen": "Return only the assigned slice plus evidence and rollback notes; do not re-delegate.",
+                    },
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:
