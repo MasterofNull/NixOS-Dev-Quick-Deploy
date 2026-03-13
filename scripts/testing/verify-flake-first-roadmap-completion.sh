@@ -529,6 +529,7 @@ check_pattern "scripts/testing/smoke-workflow-tooling-lesson-refs.sh" 'active_le
 check_pattern "scripts/testing/smoke-hints-lesson-refs.sh" 'active_lesson_refs' 'Hints lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-workflow-start-lesson-refs.sh" 'active_lesson_refs' 'Workflow run start lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-workflow-run-lesson-refs.sh" 'active_lesson_refs' 'Workflow run lesson smoke covers direct lesson ref surfacing'
+check_pattern "scripts/testing/smoke-review-acceptance-lesson-refs.sh" 'active_lesson_refs|reviewer_gate\.status' 'Review acceptance lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-status-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator status lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-lessons-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator lessons lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-lessons-review-refs.sh" 'active_lesson_refs|reviewed_lesson' 'AI coordinator lessons review smoke covers direct lesson ref surfacing'
