@@ -6,7 +6,7 @@ pkgs.stdenvNoCC.mkDerivation rec {
 
   src = pkgs.fetchurl {
     url = "https://registry.npmjs.org/@continuedev/cli/-/cli-${version}.tgz";
-    hash = "sha256-0wp33iakvn960y6572h62rildjlb43v5224xvg3fr1r33r5n8z4i=";
+    sha256 = "0wp33iakvn960y6572h62rildjlb43v5224xvg3fr1r33r5n8z4i";
   };
 
   nativeBuildInputs = [ pkgs.makeWrapper ];

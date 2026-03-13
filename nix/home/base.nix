@@ -1037,11 +1037,8 @@ PYEOF
     (../../templates + "/ChatGPT Image Feb 21, 2026, 02_05_57 PM.png");
 
   # Retire legacy COSMIC font enforcement units/scripts from earlier generations.
-  home.file.".local/bin/enforce-cosmic-term-font".enable = false;
-  home.file.".config/systemd/user/enforce-cosmic-term-font.service".enable = false;
-  home.file.".config/systemd/user/enforce-cosmic-term-font.path".enable = false;
-  home.file.".config/systemd/user/default.target.wants/enforce-cosmic-term-font.service".enable = false;
-  home.file.".config/systemd/user/default.target.wants/enforce-cosmic-term-font.path".enable = false;
+  # Cleanup happens in activation below; defining disabled home.file entries
+  # without source/text trips HM evaluation on newer releases.
   home.file.".config/playwright/cli.config.json".text = builtins.toJSON {
     browser = {
       launchOptions = {
