@@ -48,7 +48,16 @@ def main() -> int:
                     "required": True,
                     "status": "accepted",
                     "history": [{"ts": now_epoch, "passed": True, "score": 1.0}],
-                    "last_review": {"ts": now_epoch, "passed": True, "score": 1.0, "reviewer": "codex"},
+                    "last_review": {
+                        "ts": now_epoch,
+                        "passed": True,
+                        "score": 1.0,
+                        "reviewer": "codex",
+                        "review_type": "patch_review",
+                        "artifact_kind": "patch",
+                        "task_class": "repo_refactor",
+                        "reviewed_agent": "qwen",
+                    },
                 },
                 "blueprint_id": "repo-refactor-guarded",
                 "orchestration": {
@@ -97,7 +106,16 @@ def main() -> int:
                     "required": True,
                     "status": "rejected",
                     "history": [{"ts": now_epoch, "passed": False, "score": 0.2}],
-                    "last_review": {"ts": now_epoch, "passed": False, "score": 0.2, "reviewer": "codex"},
+                    "last_review": {
+                        "ts": now_epoch,
+                        "passed": False,
+                        "score": 0.2,
+                        "reviewer": "codex",
+                        "review_type": "patch_review",
+                        "artifact_kind": "patch",
+                        "task_class": "editor_rescue",
+                        "reviewed_agent": "qwen",
+                    },
                 },
                 "blueprint_id": "continue-editor-rescue",
                 "orchestration": {
@@ -118,8 +136,14 @@ def main() -> int:
         assert_true(any(role == "orchestrator" and count == 2 for role, count in (summary.get("top_requester_roles") or [])), "expected requester role summary")
         assert_true(any(role == "orchestrator" and count == 1 for role, count in (summary.get("accepted_by_requester_role") or [])), "expected accepted role summary")
         assert_true(any(reviewer == "codex" and count == 2 for reviewer, count in (summary.get("top_reviewers") or [])), "expected reviewer summary")
+        assert_true(any(review_type == "patch_review" and count == 2 for review_type, count in (summary.get("top_review_types") or [])), "expected review type summary")
         assert_true(any(bp == "repo-refactor-guarded" and count == 1 for bp, count in (summary.get("accepted_blueprints") or [])), "expected accepted blueprint summary")
         assert_true(any(bp == "continue-editor-rescue" and count == 1 for bp, count in (summary.get("rejected_blueprints") or [])), "expected rejected blueprint summary")
+        assert_true(summary.get("accepted_patch_reviews") == 1, "expected one accepted patch review")
+        assert_true(summary.get("rejected_patch_reviews") == 1, "expected one rejected patch review")
+        assert_true(any(agent == "qwen" and count == 2 for agent, count in (summary.get("patch_reviews_by_reviewed_agent") or [])), "expected patch-reviewed agent summary")
+        assert_true(any(task_class == "repo_refactor" and count == 1 for task_class, count in (summary.get("accepted_task_classes") or [])), "expected accepted task class summary")
+        assert_true(any(task_class == "editor_rescue" and count == 1 for task_class, count in (summary.get("rejected_task_classes") or [])), "expected rejected task class summary")
     finally:
         MODULE.WORKFLOW_SESSIONS_PATH = original_path
         if tmp_path.exists():

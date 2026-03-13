@@ -1113,6 +1113,12 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
     reviewer_counts: Dict[str, int] = {}
     accepted_blueprint_counts: Dict[str, int] = {}
     rejected_blueprint_counts: Dict[str, int] = {}
+    review_type_counts: Dict[str, int] = {}
+    accepted_patch_reviews = 0
+    rejected_patch_reviews = 0
+    patch_reviewed_agent_counts: Dict[str, int] = {}
+    accepted_task_class_counts: Dict[str, int] = {}
+    rejected_task_class_counts: Dict[str, int] = {}
     for sess in sessions:
         contract = sess.get("intent_contract")
         has_contract = (
@@ -1151,22 +1157,44 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
             if isinstance(history, list) and history:
                 sessions_with_reviews += 1
             last_review = reviewer_gate.get("last_review")
+            review_type = "acceptance"
+            artifact_kind = ""
+            task_class = bp.lower() if bp else ""
+            reviewed_agent = ""
             if isinstance(last_review, dict):
                 reviewer = str(last_review.get("reviewer", "") or "").strip().lower()
                 if reviewer:
                     reviewer_counts[reviewer] = reviewer_counts.get(reviewer, 0) + 1
+                review_type = str(last_review.get("review_type", "") or "acceptance").strip().lower()
+                if review_type:
+                    review_type_counts[review_type] = review_type_counts.get(review_type, 0) + 1
+                artifact_kind = str(last_review.get("artifact_kind", "") or "").strip().lower()
+                task_class = str(last_review.get("task_class", "") or task_class).strip().lower()
+                reviewed_agent = str(last_review.get("reviewed_agent", "") or "").strip().lower()
             if status == "accepted":
                 accepted_reviews += 1
                 if requester_role:
                     accepted_by_requester_role[requester_role] = accepted_by_requester_role.get(requester_role, 0) + 1
                 if bp:
                     accepted_blueprint_counts[bp] = accepted_blueprint_counts.get(bp, 0) + 1
+                if task_class:
+                    accepted_task_class_counts[task_class] = accepted_task_class_counts.get(task_class, 0) + 1
+                if review_type == "patch_review" or artifact_kind == "patch":
+                    accepted_patch_reviews += 1
+                    if reviewed_agent:
+                        patch_reviewed_agent_counts[reviewed_agent] = patch_reviewed_agent_counts.get(reviewed_agent, 0) + 1
             elif status == "rejected":
                 rejected_reviews += 1
                 if requester_role:
                     rejected_by_requester_role[requester_role] = rejected_by_requester_role.get(requester_role, 0) + 1
                 if bp:
                     rejected_blueprint_counts[bp] = rejected_blueprint_counts.get(bp, 0) + 1
+                if task_class:
+                    rejected_task_class_counts[task_class] = rejected_task_class_counts.get(task_class, 0) + 1
+                if review_type == "patch_review" or artifact_kind == "patch":
+                    rejected_patch_reviews += 1
+                    if reviewed_agent:
+                        patch_reviewed_agent_counts[reviewed_agent] = patch_reviewed_agent_counts.get(reviewed_agent, 0) + 1
             elif status == "pending_review":
                 pending_reviews += 1
 
@@ -1190,8 +1218,14 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         "accepted_by_requester_role": sorted(accepted_by_requester_role.items(), key=lambda x: (-x[1], x[0]))[:5],
         "rejected_by_requester_role": sorted(rejected_by_requester_role.items(), key=lambda x: (-x[1], x[0]))[:5],
         "top_reviewers": sorted(reviewer_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "top_review_types": sorted(review_type_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
         "accepted_blueprints": sorted(accepted_blueprint_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
         "rejected_blueprints": sorted(rejected_blueprint_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "accepted_patch_reviews": accepted_patch_reviews,
+        "rejected_patch_reviews": rejected_patch_reviews,
+        "patch_reviews_by_reviewed_agent": sorted(patch_reviewed_agent_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "accepted_task_classes": sorted(accepted_task_class_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "rejected_task_classes": sorted(rejected_task_class_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
     }
 
 
@@ -3742,9 +3776,22 @@ def format_md(
             reviewers = intent_compliance.get("top_reviewers", [])
             if reviewers:
                 lines.append(f"- Reviewers: {', '.join(f'`{reviewer}` ({count})' for reviewer, count in reviewers[:3])}")
+            review_types = intent_compliance.get("top_review_types", [])
+            if review_types:
+                lines.append(f"- Review types: {', '.join(f'`{review_type}` ({count})' for review_type, count in review_types[:3])}")
             accepted_blueprints = intent_compliance.get("accepted_blueprints", [])
             if accepted_blueprints:
                 lines.append(f"- Accepted blueprints: {', '.join(f'`{bp}` ({count})' for bp, count in accepted_blueprints[:3])}")
+            patch_accepted = int(intent_compliance.get("accepted_patch_reviews", 0) or 0)
+            patch_rejected = int(intent_compliance.get("rejected_patch_reviews", 0) or 0)
+            if patch_accepted or patch_rejected:
+                lines.append(f"- Patch reviews: accepted={patch_accepted} rejected={patch_rejected}")
+            patch_agents = intent_compliance.get("patch_reviews_by_reviewed_agent", [])
+            if patch_agents:
+                lines.append(f"- Patch-reviewed agents: {', '.join(f'`{agent}` ({count})' for agent, count in patch_agents[:3])}")
+            accepted_task_classes = intent_compliance.get("accepted_task_classes", [])
+            if accepted_task_classes:
+                lines.append(f"- Accepted task classes: {', '.join(f'`{task_class}` ({count})' for task_class, count in accepted_task_classes[:3])}")
     else:
         lines.append("*Workflow session store unavailable.*")
     lines.append("")
@@ -4396,9 +4443,22 @@ def format_text(
             reviewers = intent_compliance.get("top_reviewers", [])
             if reviewers:
                 lines.append(f"  Reviewers: {', '.join(f'{reviewer}({count})' for reviewer, count in reviewers[:3])}")
+            review_types = intent_compliance.get("top_review_types", [])
+            if review_types:
+                lines.append(f"  Review types: {', '.join(f'{review_type}({count})' for review_type, count in review_types[:3])}")
             accepted_blueprints = intent_compliance.get("accepted_blueprints", [])
             if accepted_blueprints:
                 lines.append(f"  Accepted blueprints: {', '.join(f'{bp}({count})' for bp, count in accepted_blueprints[:3])}")
+            patch_accepted = int(intent_compliance.get("accepted_patch_reviews", 0) or 0)
+            patch_rejected = int(intent_compliance.get("rejected_patch_reviews", 0) or 0)
+            if patch_accepted or patch_rejected:
+                lines.append(f"  Patch reviews: accepted={patch_accepted} rejected={patch_rejected}")
+            patch_agents = intent_compliance.get("patch_reviews_by_reviewed_agent", [])
+            if patch_agents:
+                lines.append(f"  Patch-reviewed agents: {', '.join(f'{agent}({count})' for agent, count in patch_agents[:3])}")
+            accepted_task_classes = intent_compliance.get("accepted_task_classes", [])
+            if accepted_task_classes:
+                lines.append(f"  Accepted task classes: {', '.join(f'{task_class}({count})' for task_class, count in accepted_task_classes[:3])}")
     else:
         lines.append("  Workflow session store unavailable.")
     lines.append("")
