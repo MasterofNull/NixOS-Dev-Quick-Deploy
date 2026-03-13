@@ -71,7 +71,7 @@ Tracking fields to update after each slice:
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
 | Continue/local web research lane | validated_live | a bounded `/research/web/fetch` lane is live with robots-aware pacing, selector limits, response caps, and tooling/SDK exposure; live smokes confirmed one allowed HTTPS fetch and one redirect-to-HTTP policy block | wire the lane into a real native-plant lookup workflow with curated source lists and request budgets |
-| Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, and a pinned `agentskill.sh` source (`learn`) is now imported through the same governed manifest path; remote-agent export remains incomplete | extend governed manifest coverage and expose approved external skills through remote-agent export surfaces |
+| Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, a pinned `agentskill.sh` source (`learn`) is imported through the same governed manifest path, and the coordinator now exposes the approved catalog directly; broader remote-agent export/install surfaces remain incomplete | extend governed manifest coverage and broader remote-agent export/install surfaces |
 
 ## Execution Ledger
 
@@ -107,6 +107,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | BitNet benchmark harness + baseline comparison pass | validated_local | added a repo-native `aq-bitnet-benchmark` path with pinned Python 3.12/devShell/toolchain/runtime-lib fixes plus direct local-llama baseline comparison via `aq-bitnet-compare`; host now builds BitNet and materializes a dummy GGUF, while direct BitNet benchmark execution still ends in `SIGSEGV` and remains a measured blocker rather than an assumed viable runtime |
 | 2026-03-13 | shared skill registry sync bridge | validated_live | added a repo-native `aq-sync-shared-skills.py` path that imports local `.agent/skills` entries into AIDB and promotes them to approved visibility, added cache-busting drift reporting in `aq-report`, and live-verified `23/23` approved shared skills |
 | 2026-03-13 | governed external skill import bootstrap | validated_live | added a pinned external skill-source manifest, locked `agentskill-sh/learn` by commit, imported it through the same AIDB approval path, and live-verified `24/24` expected approved shared skills in `aq-report` |
+| 2026-03-13 | coordinator shared-skill visibility surface | validated_live | added `/control/ai-coordinator/skills`, exposed shared skill summary in coordinator status, wired SDK/RPC/tooling-manifest support, and live-verified the coordinator returns the approved 24-skill catalog including `learn` |
 
 ## High-Priority Tracks
 
@@ -114,7 +115,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, and the first governed agentskill.sh import are live; remaining work is broader CLI coverage consistency, a real native-plant research workflow, and remote-agent export for approved shared skills`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, and coordinator shared-skill visibility are live; remaining work is broader CLI coverage consistency, a real native-plant research workflow, and broader remote-agent export/install surfaces`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`

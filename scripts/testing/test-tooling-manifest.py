@@ -53,6 +53,20 @@ def main() -> int:
         "execute phase does not expose web_research_fetch",
     )
 
+    skill_query = "find a shared skill from agentskill and show the approved catalog"
+    skill_tools = workflow_tool_catalog(skill_query)
+    skill_tool_names = [tool["name"] for tool in skill_tools]
+    assert_true("shared_skill_registry" in skill_tool_names, "skill query missing shared_skill_registry")
+    skill_manifest = build_tooling_manifest(skill_query, skill_tools)
+    assert_true(
+        any(tool["name"] == "shared_skill_registry" for tool in skill_manifest["tools"]),
+        "manifest omits shared_skill_registry",
+    )
+    assert_true(
+        any(phase["id"] == "discover" and "shared_skill_registry" in phase["tools"] for phase in skill_manifest["phases"]),
+        "discover phase does not expose shared_skill_registry",
+    )
+
     print("PASS: tooling manifest exposes Ralph loop orchestration only when agentic workflow intent is present")
     return 0
 
