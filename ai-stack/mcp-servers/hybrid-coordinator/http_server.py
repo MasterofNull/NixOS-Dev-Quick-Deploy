@@ -3386,6 +3386,11 @@ async def run_http_mode(port: int) -> None:
                 return web.json_response({"error": "session not found"}, status=404)
             _ensure_session_runtime_fields(session)
             payload = dict(session)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
             if not include_replay:
                 payload["trajectory_count"] = len(session.get("trajectory", []))
                 payload.pop("trajectory", None)
