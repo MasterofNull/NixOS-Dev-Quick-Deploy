@@ -13,6 +13,18 @@ MODE="${1:---pre-commit}"
 pass_count=0
 fail_count=0
 
+collect_changed_files() {
+  if [[ "$MODE" == "--pre-commit" ]]; then
+    git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true
+    return 0
+  fi
+
+  {
+    git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null || true
+    git diff --name-only --diff-filter=ACM 2>/dev/null || true
+  } | awk 'NF && !seen[$0]++'
+}
+
 log() {
   printf '[tier0] %s\n' "$*"
 }
@@ -33,10 +45,10 @@ gate_python_syntax() {
   local files=()
   while IFS= read -r f; do
     [[ "$f" == *.py ]] && files+=("$f")
-  done < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || git diff --name-only --diff-filter=ACM 2>/dev/null || true)
+  done < <(collect_changed_files)
   
   if [[ ${#files[@]} -eq 0 ]]; then
-    pass "No Python changes staged"
+    pass "No Python changes detected"
     return 0
   fi
   
@@ -54,10 +66,10 @@ gate_bash_syntax() {
   local files=()
   while IFS= read -r f; do
     [[ "$f" == *.sh ]] && files+=("$f")
-  done < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || git diff --name-only --diff-filter=ACM 2>/dev/null || true)
+  done < <(collect_changed_files)
   
   if [[ ${#files[@]} -eq 0 ]]; then
-    pass "No Bash changes staged"
+    pass "No Bash changes detected"
     return 0
   fi
   
@@ -81,10 +93,10 @@ gate_nix_syntax() {
   local files=()
   while IFS= read -r f; do
     [[ "$f" == *.nix ]] && files+=("$f")
-  done < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || git diff --name-only --diff-filter=ACM 2>/dev/null || true)
+  done < <(collect_changed_files)
   
   if [[ ${#files[@]} -eq 0 ]]; then
-    pass "No Nix changes staged"
+    pass "No Nix changes detected"
     return 0
   fi
   

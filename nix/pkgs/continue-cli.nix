@@ -1,38 +1,44 @@
-# Continue CLI — declarative Nix packaging
-# Source: https://github.com/continuedev/continue
-#
-# The Continue CLI provides AI-powered coding assistance from the terminal.
-# Packaged from npm registry for reliability.
-#
-# HOW TO COMPUTE HASHES after updating version:
-#   src.hash:      nix-prefetch-url <tarball-url>
-#   npmDepsHash:   nix-shell -p prefetch-npm-deps --run \
-#                    "prefetch-npm-deps <source-path>/package-lock.json"
-#
-# Until hashes are known, lib.fakeHash causes a build-time error that
-# prints the correct hash — replace lib.fakeHash with the printed hash.
 { lib, pkgs }:
 
-pkgs.buildNpmPackage {
-  pname   = "continue-cli";
+pkgs.stdenvNoCC.mkDerivation rec {
+  pname = "continue-cli";
   version = "1.5.45";
 
   src = pkgs.fetchurl {
-    url = "https://registry.npmjs.org/@continuedev/cli/-/cli-1.5.45.tgz";
-    hash  = "sha256-0wp33iakvn960y6572h62rildjlb43v5224xvg3fr1r33r5n8z4i=";
+    url = "https://registry.npmjs.org/@continuedev/cli/-/cli-${version}.tgz";
+    hash = "sha256-0wp33iakvn960y6572h62rildjlb43v5224xvg3fr1r33r5n8z4i=";
   };
 
-  npmDepsHash = null;  # Pre-built npm package, no deps to hash
+  nativeBuildInputs = [ pkgs.makeWrapper ];
 
-  sourceRoot = "package";
+  unpackPhase = ''
+    runHook preUnpack
+    tar -xzf "$src"
+    runHook postUnpack
+  '';
 
-  makeCacheWritable = true;
+  installPhase = ''
+    runHook preInstall
 
-  meta = {
-    description  = "Continue CLI — AI-powered coding assistant for the terminal";
-    homepage     = "https://continue.dev";
-    license      = lib.licenses.asl20;
-    mainProgram  = "cn";
-    maintainers  = [ ];
+    install -d "$out/bin" "$out/lib/continue-cli"
+    cp -R package/dist "$out/lib/continue-cli/"
+    cp package/package.json "$out/lib/continue-cli/"
+    if [ -d package/media ]; then
+      cp -R package/media "$out/lib/continue-cli/"
+    fi
+
+    makeWrapper ${pkgs.nodejs}/bin/node "$out/bin/cn" \
+      --add-flags "$out/lib/continue-cli/dist/cn.js"
+
+    runHook postInstall
+  '';
+
+  meta = with lib; {
+    description = "Continue CLI for terminal coding assistance";
+    homepage = "https://continue.dev";
+    license = licenses.asl20;
+    mainProgram = "cn";
+    platforms = platforms.linux;
+    maintainers = [ ];
   };
 }
