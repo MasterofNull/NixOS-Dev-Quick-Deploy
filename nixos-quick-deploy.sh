@@ -407,6 +407,7 @@ print_completion_test_results() {
     local rag_memory_share rag_prewarm_prompt rag_prewarm_label
     local retrieval_breadth_avg retrieval_breadth_profile retrieval_breadth_label
     local provider_fallback_window provider_fallback_count provider_fallback_pct provider_fallback_status provider_fallback_label
+    local continue_editor_available continue_editor_healthy continue_editor_failed continue_editor_total continue_editor_first_fail continue_editor_label
     local agent_lesson_label
     local i=0
 
@@ -447,6 +448,11 @@ print_completion_test_results() {
     provider_fallback_count="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_count // 0')"
     provider_fallback_pct="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_pct // "n/a"')"
     provider_fallback_status="$(printf '%s' "${json}" | jq -r '(.provider_fallback_recovery.status_counts[0] // empty) | if length == 2 then "\(.[0])=\(.[1])" else empty end')"
+    continue_editor_available="$(printf '%s' "${json}" | jq -r '.continue_editor.available // false')"
+    continue_editor_healthy="$(printf '%s' "${json}" | jq -r '.continue_editor.healthy // false')"
+    continue_editor_failed="$(printf '%s' "${json}" | jq -r '.continue_editor.failed_n // 0')"
+    continue_editor_total="$(printf '%s' "${json}" | jq -r '.continue_editor.total_checks // 0')"
+    continue_editor_first_fail="$(printf '%s' "${json}" | jq -r '(.continue_editor.checks // [] | map(select(.status == "FAIL")) | .[0] // empty) | if .id then "\(.id) \(.description)" else empty end')"
     agent_lesson_label="$(printf '%s' "${json}" | jq -r '.agent_lessons.candidates[0] | if .hint_id then "\(.agent):\(.direction) \(.hint_id)" else empty end')"
     report_generated_at="$(printf '%s' "${json}" | jq -r '.generated_at // empty')"
     recent_health_window="$(printf '%s' "${json}" | jq -r '.recent_health.window // "1h"')"
@@ -543,6 +549,16 @@ PY
     else
       recent_health_label="slow=${recent_health_slow_n} flaky=${recent_health_flaky_n} (${recent_health_window})"
     fi
+    if [[ "${continue_editor_available}" != "true" ]]; then
+      continue_editor_label="unavailable"
+    elif [[ "${continue_editor_healthy}" == "true" ]]; then
+      continue_editor_label="clean (${continue_editor_total}/${continue_editor_total})"
+    else
+      continue_editor_label="fail=${continue_editor_failed}/${continue_editor_total}"
+      if [[ -n "${continue_editor_first_fail}" ]]; then
+        continue_editor_label="${continue_editor_label}; ${continue_editor_first_fail}"
+      fi
+    fi
     cache_prewarm_label="${cache_prewarm_enabled_state}/${cache_prewarm_active_state}"
 
     log "AI stack report (summary):"
@@ -572,6 +588,7 @@ PY
     printf '  %-28s %s%%\n' "Intent-contract coverage" "${intent_cov}"
     printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
     printf '  %-28s %s\n' "Recent health" "${recent_health_label}"
+    printf '  %-28s %s\n' "Continue/editor" "${continue_editor_label}"
     if [[ "${historical_watch_has_items}" == "true" ]]; then
       if [[ -n "${historical_watch_flaky_tool}" ]]; then
         historical_watch_label="${historical_watch_flaky_tool} backend OK ${historical_watch_flaky_ok}% (${historical_watch_flaky_calls} valid calls)"

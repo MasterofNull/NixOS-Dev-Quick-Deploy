@@ -92,6 +92,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | continue/editor phase-0 observability pass | validated_live | added explicit `aq-qa 0` probes for `cn --help`, generated Continue config correctness, Continue extension presence, and a `continue-local` switchboard smoke so editor/runtime failures become first-class QA signals |
 | 2026-03-13 | delegated free-model lane tuning pass | validated_live | reviewed a bounded `remote-free` comparison task, verified current OpenRouter free model availability, removed the gitignored host-local alias shadow so tracked defaults win, and activated planner/review aliases to `arcee-ai/trinity-large-preview:free` and `nvidia/nemotron-3-super-120b-a12b:free` after live smokes showed StepFun returned reasoning-only output and several other candidates failed under current provider/privacy constraints |
 | 2026-03-13 | repo-backed QA capability corrective pass | validated_live | hardened `aq-qa` so the service-backed `/qa/check` path resolves Continue CLI outside interactive shells and retries port probes briefly after restarts; post-flight quick-deploy capability verification now passes again with `33` phase-0 checks green |
+| 2026-03-13 | continue/editor reporting visibility pass | validated_local | `aq-report` now reuses the `0.5.*` Continue/editor phase-0 checks and exposes one derived health block in JSON plus text, and `nixos-quick-deploy.sh` now surfaces that status in its completion summary |
 
 ## High-Priority Tracks
 
@@ -99,15 +100,17 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation and Home Manager activation are fixed again; remaining CLI coverage cleanup is now back to Codex/Qwen/Gemini/Claude surface consistency`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, and report visibility are fixed again; remaining work is broader CLI coverage consistency plus bounded web research support`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
 - per-surface `--help` smoke where available
+- `scripts/ai/aq-report --since=7d --format=json | jq '.continue_editor'`
 Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
 - Home Manager is no longer blocked on Continue CLI, but future CLI package additions still need isolated `outPath`/activation validation before they are treated as safe for unattended deploys
+- Continue/editor health now reaches `aq-report` and deploy summaries, but bounded web research/scraping support for local Continue workflows is still unimplemented
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
