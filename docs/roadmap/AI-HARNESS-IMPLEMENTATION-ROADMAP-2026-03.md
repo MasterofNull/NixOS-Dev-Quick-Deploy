@@ -92,6 +92,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | remote tool-call finalization corrective pass | validated_live | `remote-tool-calling` now forbids tool-call-only output in its contract and performs a bounded post-tool finalization pass; live delegation returned a final artifact with `finalization.applied=true` and no remaining failure classes |
 | 2026-03-13 | ai-gap-auto-remediate writable-state fix | validated_live | moved gap-remediation logging off the hardened service’s read-only `${HOME}` path and into the declarative optimizer state directory, then revalidated full quick-deploy with `aq-qa 0` back to `33 pass, 0 fail` |
 | 2026-03-13 | delegated lesson reference runtime pass | validated_live | active promoted lessons are now surfaced as compact `active_lesson_refs` on delegated coordinator responses, and a live `remote-free` smoke returned the current promoted lesson key on `/control/ai-coordinator/delegate` |
+| 2026-03-13 | remote profile utilization reporting pass | validated_local | `aq-report` now summarizes delegated remote profile usage from live tool-audit metadata and `nixos-quick-deploy.sh` surfaces the top recent remote lane, so Track H now has explicit remote-profile utilization visibility instead of only routing/failure side signals |
 | 2026-03-13 | delegated research bootstrap for next tracks | validated_live | exercised `/control/ai-coordinator/delegate` on `remote-free` for bounded BitNet/EvoSkill/coding-agent synthesis so next planning slices use the live remote lane instead of only local reasoning |
 | 2026-03-13 | continue/editor phase-0 observability pass | validated_live | added explicit `aq-qa 0` probes for `cn --help`, generated Continue config correctness, Continue extension presence, and a `continue-local` switchboard smoke so editor/runtime failures become first-class QA signals |
 | 2026-03-13 | delegated free-model lane tuning pass | validated_live | reviewed a bounded `remote-free` comparison task, verified current OpenRouter free model availability, removed the gitignored host-local alias shadow so tracked defaults win, and activated planner/review aliases to `arcee-ai/trinity-large-preview:free` and `nvidia/nemotron-3-super-120b-a12b:free` after live smokes showed StepFun returned reasoning-only output and several other candidates failed under current provider/privacy constraints |
@@ -528,6 +529,16 @@ Validation:
 - workflow run evidence payloads
 
 ### Track H — Monitoring and Reporting Expansion
+
+Track Status: `in_progress`
+Last Updated: `2026-03-13`
+Current Slice: `recent delegated remote-profile utilization is now surfaced in aq-report JSON/text and deploy summaries; the next gap is deeper multi-window trend materialization such as 24h vs 7d comparisons and route-search latency decomposition`
+Next Validation:
+- `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization'`
+- `python3 scripts/testing/test-remote-profile-utilization.py`
+- deploy summary output
+Open Risks / Blockers:
+- route-search latency decomposition and broader 24h/7d trend comparisons are still not materialized as dedicated report sections
 
 Tasks:
 1. trend views for 1h vs 24h vs 7d
