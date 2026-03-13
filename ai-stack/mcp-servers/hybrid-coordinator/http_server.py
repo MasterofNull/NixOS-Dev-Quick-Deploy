@@ -42,6 +42,7 @@ from ai_coordinator import (
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
     infer_profile as _ai_coordinator_infer_profile,
     merge_runtime_defaults as _ai_coordinator_merge_runtime_defaults,
+    prune_runtime_registry as _ai_coordinator_prune_runtime_registry,
 )
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
@@ -712,15 +713,18 @@ def _runtime_schedule_score(
 async def _load_runtime_registry() -> Dict[str, Any]:
     path = _runtime_registry_path()
     if not path.exists():
-        return _ai_coordinator_merge_runtime_defaults({"runtimes": {}})
+        return _ai_coordinator_prune_runtime_registry({"runtimes": {}})
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
         if isinstance(data, dict) and isinstance(data.get("runtimes"), dict):
-            return _ai_coordinator_merge_runtime_defaults(data)
+            pruned = _ai_coordinator_prune_runtime_registry(data)
+            if pruned != data:
+                await _save_runtime_registry(pruned)
+            return pruned
     except Exception:
         pass
-    return _ai_coordinator_merge_runtime_defaults({"runtimes": {}})
+    return _ai_coordinator_prune_runtime_registry({"runtimes": {}})
 
 
 async def _save_runtime_registry(data: Dict[str, Any]) -> None:
@@ -3410,6 +3414,8 @@ async def run_http_mode(port: int) -> None:
                 "endpoint_env_var": str(data.get("endpoint_env_var", "")),
                 "tags": data.get("tags", []) if isinstance(data.get("tags", []), list) else [],
                 "updated_at": now,
+                "source": str(data.get("source", "runtime-register") or "runtime-register"),
+                "persistent": bool(data.get("persistent", False)),
             }
             async with _runtime_registry_lock:
                 registry = await _load_runtime_registry()

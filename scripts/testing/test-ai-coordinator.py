@@ -10,7 +10,12 @@ os.environ.setdefault("AI_STRICT_ENV", "false")
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
 
-from ai_coordinator import default_runtime_id_for_profile, infer_profile, merge_runtime_defaults  # noqa: E402
+from ai_coordinator import (  # noqa: E402
+    default_runtime_id_for_profile,
+    infer_profile,
+    merge_runtime_defaults,
+    prune_runtime_registry,
+)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -51,6 +56,36 @@ def main() -> int:
     assert_true(default_runtime_id_for_profile("remote-coding") == "openrouter-coding", "coding runtime mapping failed")
     assert_true(default_runtime_id_for_profile("remote-reasoning") == "openrouter-reasoning", "reasoning runtime mapping failed")
     assert_true(default_runtime_id_for_profile("continue-local") == "local-hybrid", "continue-local runtime mapping failed")
+
+    pruned = prune_runtime_registry(
+        {
+            "runtimes": {
+                "smoke-1": {
+                    "runtime_id": "smoke-1",
+                    "name": "smoke-runtime",
+                    "runtime_class": "sandboxed",
+                    "tags": ["smoke"],
+                    "updated_at": 1,
+                },
+                "gemini": {
+                    "runtime_id": "gemini",
+                    "name": "gemini",
+                    "runtime_class": "remote-llm",
+                    "tags": ["delegation", "remote", "gemini"],
+                    "updated_at": 1,
+                    "source": "runtime-register",
+                    "persistent": True,
+                },
+            }
+        },
+        now=60 * 60 * 24,
+    )
+    pruned_ids = set((pruned.get("meta", {}) or {}).get("pruned_runtime_ids", []) or [])
+    pruned_runtimes = set((pruned.get("runtimes", {}) or {}).keys())
+    assert_true("smoke-1" in pruned_ids, "stale transient smoke runtime should be pruned")
+    assert_true("smoke-1" not in pruned_runtimes, "pruned smoke runtime should not remain")
+    assert_true("gemini" in pruned_runtimes, "persistent runtime registration should remain")
+    assert_true("local-hybrid" in pruned_runtimes, "default runtime should be restored during prune merge")
 
     print("PASS: ai-coordinator exposes default local/OpenRouter runtime lanes and profile inference")
     return 0

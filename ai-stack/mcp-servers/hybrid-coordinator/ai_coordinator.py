@@ -125,6 +125,70 @@ def merge_runtime_defaults(registry: Dict[str, Any], now: int | None = None) -> 
     return merged
 
 
+def runtime_registry_retention_seconds() -> int:
+    raw = str(getattr(Config, "AI_COORDINATOR_RUNTIME_RETENTION_SECONDS", "") or "").strip()
+    if raw:
+        try:
+            return max(300, int(raw))
+        except (TypeError, ValueError):
+            pass
+    return 12 * 60 * 60
+
+
+def is_transient_runtime_record(record: Dict[str, Any]) -> bool:
+    if not isinstance(record, dict):
+        return False
+    if bool(record.get("persistent")):
+        return False
+    source = str(record.get("source", "") or "").strip().lower()
+    if source in {"ai-coordinator-default", "user-managed", "declarative"}:
+        return False
+    tags = {str(tag or "").strip().lower() for tag in record.get("tags", []) if str(tag or "").strip()}
+    name = str(record.get("name", "") or "").strip().lower()
+    runtime_id = str(record.get("runtime_id", "") or "").strip().lower()
+    runtime_class = str(record.get("runtime_class", "") or "").strip().lower()
+    if source in {"runtime-register", "smoke", "test", "smoke-test"}:
+        return True
+    if "smoke" in tags or "test" in tags:
+        return True
+    if name == "smoke-runtime":
+        return True
+    if runtime_class == "sandboxed":
+        return True
+    if runtime_id.startswith("smoke-"):
+        return True
+    return False
+
+
+def prune_runtime_registry(registry: Dict[str, Any], now: int | None = None) -> Dict[str, Any]:
+    current = int(now if now is not None else time.time())
+    retention = runtime_registry_retention_seconds()
+    merged = merge_runtime_defaults(registry, now=current)
+    runtimes = dict((merged.get("runtimes", {}) or {}))
+    kept: Dict[str, Dict[str, Any]] = {}
+    pruned_ids: List[str] = []
+    for runtime_id, record in runtimes.items():
+        if not isinstance(record, dict):
+            continue
+        if not is_transient_runtime_record(record):
+            kept[runtime_id] = record
+            continue
+        updated_at = int(record.get("updated_at") or record.get("created_at") or 0)
+        age_s = max(0, current - updated_at) if updated_at > 0 else retention + 1
+        if age_s > retention:
+            pruned_ids.append(runtime_id)
+            continue
+        kept[runtime_id] = record
+    return {
+        "runtimes": kept,
+        "meta": {
+            "retention_seconds": retention,
+            "last_pruned_at": current,
+            "pruned_runtime_ids": pruned_ids,
+        },
+    }
+
+
 def infer_profile(task: str, requested_profile: str = "") -> str:
     profile = str(requested_profile or "").strip().lower()
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
