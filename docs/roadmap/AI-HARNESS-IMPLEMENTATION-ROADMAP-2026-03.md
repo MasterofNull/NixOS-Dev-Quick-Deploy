@@ -104,6 +104,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | governed lesson schema + promotion action pass | validated_local | `aq-report` now emits governed lesson candidate fields including state, scope, evidence count, materialization class, validation link, and traceability targets, and can surface a machine-readable `promote_agent_lesson` action when candidates meet the threshold |
 | 2026-03-13 | delegated artifact recovery salvage pass | validated_live | `/control/ai-coordinator/delegate` now returns bounded `artifact_recovery` output for tool-call-only, reasoning-only, and partial-text delegated failures, preserving useful tool arguments and reasoning excerpts so failed remote calls still yield actionable local summaries |
 | 2026-03-13 | BitNet declarative sidecar scaffold pass | validated_local | added a disabled-by-default `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` scaffold plus shared endpoint wiring so benchmark-only BitNet experiments now have a tracked host-local config surface without touching switchboard or replacing llama.cpp |
+| 2026-03-13 | BitNet benchmark harness + baseline comparison pass | validated_local | added a repo-native `aq-bitnet-benchmark` path with pinned Python 3.12/devShell/toolchain/runtime-lib fixes plus direct local-llama baseline comparison via `aq-bitnet-compare`; host now builds BitNet and materializes a dummy GGUF, while direct BitNet benchmark execution still ends in `SIGSEGV` and remains a measured blocker rather than an assumed viable runtime |
 
 ## High-Priority Tracks
 
@@ -433,15 +434,18 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `host-fit feasibility probe now includes a declarative sidecar scaffold with explicit option, port, and endpoint surfaces; the next gap is a real benchmark shell/build path and then an isolated sidecar runtime proof`
+Current Slice: `host-fit feasibility now includes a real benchmark shell/build path, direct dummy-GGUF materialization, and a local llama.cpp baseline comparison probe; the remaining gap is eliminating the current direct BitNet benchmark `SIGSEGV` before any sidecar runtime proof`
 Next Validation:
 - `python3 scripts/ai/aq-bitnet-feasibility.py --format json`
 - `python3 scripts/testing/test-bitnet-feasibility.py`
+- `python3 scripts/ai/aq-bitnet-compare.py`
+- `python3 scripts/testing/test-bitnet-benchmark.py`
+- `python3 scripts/testing/test-bitnet-compare.py`
 - nix parse for the new `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` surfaces
 Open Risks / Blockers:
-- no current BitNet packaging/runtime evidence on this host class
+- direct BitNet benchmark execution against the locally produced dummy GGUF currently dies with `SIGSEGV` inside upstream `llama-bench`
 - must not destabilize existing llama.cpp service health
-- declarative scaffold exists, but no executable bitnet.cpp sidecar package or service has been introduced yet
+- declarative scaffold exists, but no executable bitnet.cpp sidecar service has been introduced yet because runtime parity is not proven
 
 Goal:
 - determine where BitNet can improve local inference economics without destabilizing the stack
@@ -472,6 +476,7 @@ Tasks:
 
 Validation:
 - benchmark script outputs under `scripts/ai/`
+- `python3 scripts/ai/aq-bitnet-compare.py`
 - declarative service checks in Nix modules
 - side-by-side `/query` latency and health comparisons
 - `scripts/ai/aq-qa 0 --json`
