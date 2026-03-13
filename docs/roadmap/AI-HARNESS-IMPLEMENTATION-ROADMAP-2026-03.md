@@ -323,7 +323,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `tool-call-only and reasoning-heavy delegated failures now return bounded local recovery artifacts through ai-coordinator, and remote-tool-calling now performs a bounded post-tool finalization pass so tool-call-only replies become final artifacts instead of staying recovery-only; the next gap is extending the same prompt-shaping discipline to broader free-lane prompt classes and reducing prompt footprint`
+Current Slice: `all remote delegation lanes now use profile-specific compact completion rules, remote-tool-calling keeps the bounded post-tool finalization pass, and remote-reasoning now has a bounded reasoning-finalization pass for reasoning-only empty replies; the next gap is measuring whether the leaner envelopes materially reduce repeated failure classes and prompt footprint over time`
 Next Validation:
 - targeted remote tool-calling smokes with `tools` and `tool_choice`
 - live finalization smoke where `/control/ai-coordinator/delegate` returns `finalization.applied=true` and `failure_classes=[]`
@@ -339,6 +339,8 @@ Open Risks / Blockers:
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
 - delegated prompt-contract failures are now recorded, but the highest-value next step is to feed repeated classes back into actual prompt template revisions and not just reporting
 - the tighter envelope improves shape control, but prompt token footprint should still be tuned so small delegated tasks do not overpay for boilerplate
+- the new compact lane rules tighten profile fit, but they still need time-window reporting to prove they lowered repeated delegated failure classes instead of only changing prompt text
+- remote-reasoning can still depend on the coordinator-side finalization pass when the provider emits reasoning without final text, so that behavior must stay visible as remediation rather than true provider compliance
 
 Goal:
 - fully exploit OpenRouter as the remote tool-calling and provider-routing layer behind the local harness

@@ -285,6 +285,44 @@ def _normalize_list(value: Any) -> List[str]:
     return [text] if text else []
 
 
+def _profile_completion_rules(profile: str) -> List[str]:
+    normalized = str(profile or "").strip().lower()
+    if normalized == "remote-coding":
+        return [
+            "- keep the result tied to existing repo paths and current runtime behavior",
+            "- prefer a minimal patch sketch, validation note, and concrete risk over broad redesign",
+            "- do not propose extra files or tests unless the task/context justifies them",
+        ]
+    if normalized == "remote-reasoning":
+        return [
+            "- return a recommended direction first, then the top risks and tradeoffs",
+            "- keep architecture/review notes concrete and bounded to the stated task",
+            "- do not drift into patch design unless the task explicitly asks for it",
+        ]
+    if normalized == "remote-free":
+        return [
+            "- keep synthesis short: main finding, evidence, and one next step",
+            "- avoid generic background paragraphs or repeated task restatement",
+            "- prefer directly reusable findings over speculation",
+        ]
+    if normalized == "local-tool-calling":
+        return [
+            "- prepare an OpenAI-compatible tool contract and explicit fallback path",
+            "- assume the local backend may reject tools and state that fallback clearly",
+            "- keep the contract bounded to approved harness capabilities",
+        ]
+    if normalized == "remote-tool-calling":
+        return [
+            "- return a final artifact even if the provider starts with tool-call planning",
+            "- keep tool arguments strict and bounded to the stated task",
+            "- do not claim any tool was executed unless execution evidence is present in the prompt",
+        ]
+    return [
+        "- keep the artifact bounded to the assigned slice",
+        "- prefer concise result and evidence over narrative explanation",
+    ]
+
+
 def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] | None) -> str:
     ctx = context if isinstance(context, dict) else {}
     repo_paths = _normalize_list(ctx.get("repo_paths"))
@@ -313,7 +351,9 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
         "- evidence",
         "- risks",
         "- rollback_or_next_step",
+        "Completion rules:",
     ]
+    lines.extend(_profile_completion_rules(profile))
     if output_format:
         lines.append(f"Output format constraint: {output_format}")
     if repo_paths:
@@ -339,7 +379,6 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
         lines.append("Tool-calling completion rules:")
         lines.append("- tool-call-only output is insufficient")
         lines.append("- if you propose tool calls, still return a final artifact from the information currently available")
-        lines.append("- do not claim any tool was executed unless execution evidence is present in the prompt")
         lines.append("- if no tool execution occurred, summarize the proposed tool actions and the exact next step")
     return "\n".join(lines)
 
@@ -386,6 +425,43 @@ def build_tool_call_finalization_messages(
                     "- do not claim any tool actually ran",
                     "- summarize only the proposed actions and what should happen next",
                     "- keep the artifact concise and concrete",
+                ]
+            ),
+        },
+    ]
+
+
+def build_reasoning_finalization_messages(
+    task: str,
+    reasoning_excerpt: str,
+    profile: str = "remote-reasoning",
+) -> List[Dict[str, str]]:
+    excerpt = str(reasoning_excerpt or "").strip()[:800] or "no reasoning excerpt available"
+    return [
+        {
+            "role": "system",
+            "content": _delegation_system_prompt(profile)
+            + "\nYou are performing a bounded finalization pass after a reasoning-only reply."
+            + "\nTurn the reasoning draft into a concrete final artifact."
+            + "\nDo not emit hidden chain-of-thought or restate internal planning.",
+        },
+        {
+            "role": "user",
+            "content": "\n".join(
+                [
+                    f"Original task: {str(task or '').strip()}",
+                    "The prior delegated reply returned reasoning notes but no final assistant content.",
+                    "Recovered reasoning draft:",
+                    excerpt,
+                    "Required output sections:",
+                    "- result",
+                    "- evidence",
+                    "- risks",
+                    "- rollback_or_next_step",
+                    "Constraints:",
+                    "- convert the reasoning into a direct final artifact",
+                    "- keep only the top recommendation, evidence, and tradeoff",
+                    "- do not mention hidden reasoning or internal draft process",
                 ]
             ),
         },
