@@ -8,6 +8,9 @@ cd "${ROOT_DIR}"
 MODE="fast"
 FLAKE_REF="."
 NIXOS_TARGET="nixos-ai-dev"
+SCRIPT_HEADER_SCOPE="all"
+SCRIPT_HEADER_BASE_REF=""
+SCRIPT_HEADER_HEAD_REF=""
 
 if [[ -t 1 ]]; then
   C_RESET='\033[0m'
@@ -36,6 +39,10 @@ Options:
                             full: includes dry builds and preflight-only loop
   --flake-ref <ref>         flake ref (default: .)
   --nixos-target <name>     nixos target (default: nixos-ai-dev)
+  --script-header-scope <all|changed>
+                            scope script header check to all scripts or only changed refs
+  --base-ref <sha>          base ref for changed-scope script header checks
+  --head-ref <sha>          head ref for changed-scope script header checks
   -h, --help                show this help
 USAGE
 }
@@ -54,6 +61,18 @@ while [[ $# -gt 0 ]]; do
       NIXOS_TARGET="${2:?missing value for --nixos-target}"
       shift 2
       ;;
+    --script-header-scope)
+      SCRIPT_HEADER_SCOPE="${2:?missing value for --script-header-scope}"
+      shift 2
+      ;;
+    --base-ref)
+      SCRIPT_HEADER_BASE_REF="${2:?missing value for --base-ref}"
+      shift 2
+      ;;
+    --head-ref)
+      SCRIPT_HEADER_HEAD_REF="${2:?missing value for --head-ref}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -68,6 +87,10 @@ done
 
 [[ "${MODE}" == "fast" || "${MODE}" == "full" ]] || {
   echo "Invalid --mode: ${MODE} (expected fast|full)" >&2
+  exit 2
+}
+[[ "${SCRIPT_HEADER_SCOPE}" == "all" || "${SCRIPT_HEADER_SCOPE}" == "changed" ]] || {
+  echo "Invalid --script-header-scope: ${SCRIPT_HEADER_SCOPE} (expected all|changed)" >&2
   exit 2
 }
 
@@ -135,8 +158,15 @@ run_step "Doc metadata standards" \
 run_step "Doc script-path migration" \
   bash scripts/governance/check-doc-script-path-migration.sh
 
+script_header_cmd=(bash scripts/governance/check-script-header-standards.sh --all)
+if [[ "${SCRIPT_HEADER_SCOPE}" == "changed" ]]; then
+  script_header_cmd=(bash scripts/governance/check-script-header-standards.sh --changed)
+  [[ -n "${SCRIPT_HEADER_BASE_REF}" ]] && script_header_cmd+=(--base "${SCRIPT_HEADER_BASE_REF}")
+  [[ -n "${SCRIPT_HEADER_HEAD_REF}" ]] && script_header_cmd+=(--head "${SCRIPT_HEADER_HEAD_REF}")
+fi
+
 run_step "Script header standards" \
-  bash scripts/governance/check-script-header-standards.sh --all
+  "${script_header_cmd[@]}"
 
 run_step "Naming/label consistency audit" \
   bash scripts/governance/check-naming-label-consistency.sh
