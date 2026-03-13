@@ -423,7 +423,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, direct /workflow/run/start response metadata, persisted /workflow/run/{session_id} retrieval, and direct /control/ai-coordinator/status plus /control/ai-coordinator/lessons plus /control/ai-coordinator/skills response metadata from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
+Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, direct /workflow/run/start response metadata, persisted /workflow/run/{session_id} retrieval, direct /control/ai-coordinator/status plus /control/ai-coordinator/lessons plus /control/ai-coordinator/skills response metadata, and now have dedicated live smoke coverage on delegate plus lessons-review responses from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
@@ -431,6 +431,7 @@ Next Validation:
 - `python3 scripts/testing/test-hints-agent-lessons.py`
 - `curl -sS ... /control/ai-coordinator/lessons`
 - live `/control/ai-coordinator/delegate` smoke with `active_lesson_refs`
+- `scripts/testing/smoke-delegate-lesson-refs.sh`
 - `scripts/testing/smoke-query-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-plan-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-tooling-lesson-refs.sh`
@@ -439,10 +440,11 @@ Next Validation:
 - `scripts/testing/smoke-workflow-run-lesson-refs.sh`
 - `scripts/testing/smoke-status-lesson-refs.sh`
 - `scripts/testing/smoke-lessons-lesson-refs.sh`
+- `scripts/testing/smoke-lessons-review-refs.sh`
 - `scripts/testing/smoke-skills-lesson-refs.sh`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, direct workflow-run start metadata, persisted workflow-run retrieval, and direct ai-coordinator status plus lessons plus skills metadata, but broader direct routing/reference materialization remains incomplete beyond those first consumers
+- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, direct workflow-run start metadata, persisted workflow-run retrieval, direct ai-coordinator status plus lessons plus skills metadata, and now have dedicated live smoke coverage on delegate plus lessons-review responses, but broader direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
