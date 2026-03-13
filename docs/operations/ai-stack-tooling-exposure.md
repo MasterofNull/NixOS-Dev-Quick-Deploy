@@ -106,6 +106,8 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/workflow/plan` | POST | Create execution plan |
 | `/qa/check` | POST | Run bounded `aq-qa` validation via hybrid coordinator |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
+| `/control/ai-coordinator/status` | GET | List coordinator runtime lanes and remote readiness |
+| `/control/ai-coordinator/delegate` | POST | Delegate a bounded task through the ai-coordinator |
 | `/health` | GET | Check service health |
 
 ```bash
@@ -116,6 +118,12 @@ curl -sf http://127.0.0.1:8003/hints?query=nixos+services
 curl -s http://127.0.0.1:8003/workflow/orchestrate \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"orchestrate a multi-agent repo remediation workflow"}'
+
+# Inspect coordinator runtime lanes and delegate a bounded remote task
+curl -s http://127.0.0.1:8003/control/ai-coordinator/status
+curl -s http://127.0.0.1:8003/control/ai-coordinator/delegate \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"summarize the tradeoffs for this NixOS routing change","profile":"remote-free"}'
 ```
 
 ### Harness SDKs
@@ -126,6 +134,22 @@ The hybrid coordinator SDKs now expose both planning and the coached query path:
 - TypeScript/JavaScript: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qaCheck(...)`
 
 That means SDK consumers receive the same `prompt_coaching` and token-discipline guidance that raw `POST /query` returns.
+
+## Planned Shared Skill Registry
+
+Planned next-step surface:
+- normalize third-party `SKILL.md` ecosystems, starting with `agentskill.sh`, through one harness-managed registry instead of per-agent manual installs
+- store searchable skill metadata in AIDB
+- expose approved skill visibility through the hybrid coordinator so local agents and delegated remote agents see the same catalog
+- keep discovery separate from installation:
+  - discovery/import metadata
+  - local approval/risk gate
+  - synchronized install/export into supported skill directories only after approval
+
+Design constraints:
+- upstream skill discovery or security scores are advisory, not sufficient trust on their own
+- no agent should self-install unapproved third-party skills outside the harness approval path
+- the approved shared-skill catalog should be consistent across Codex, Claude, Gemini, Continue-facing workflows, and remote delegation lanes
 
 ## Agent-Specific Integration
 
