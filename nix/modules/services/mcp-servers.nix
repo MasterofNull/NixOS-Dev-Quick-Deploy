@@ -780,6 +780,7 @@ in
             "OTEL_EXPORTER_OTLP_ENDPOINT=${otlpEndpoint}"
             "OTEL_SAMPLE_RATE=1.0"
             "DATA_DIR=${dataDir}/aidb"
+            "AIDB_SHARED_SKILLS_DIR=${dataDir}/aidb/shared-skills"
             "XDG_STATE_HOME=${dataDir}/aidb/state"
             "AIDB_VSCODE_TELEMETRY_DIR=${dataDir}/aidb/telemetry"
             "POSTGRES_HOST=127.0.0.1"

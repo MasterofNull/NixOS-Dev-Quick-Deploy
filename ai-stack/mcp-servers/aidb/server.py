@@ -2044,6 +2044,12 @@ class MCPServer:
         self._catalog = CatalogBootstrapper(settings, self._engine)
         self._skills = OpenSkillsRepository(self._engine)
         self._repo_root = Path(__file__).resolve().parents[1]
+        self._shared_skills_dir = Path(
+            os.environ.get(
+                "AIDB_SHARED_SKILLS_DIR",
+                os.path.join(os.environ.get("DATA_DIR", str(Path.home() / ".local" / "share" / "nixos-ai-stack" / "aidb")), "shared-skills"),
+            )
+        )
         self._server_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
         self._vector_store = VectorStore(settings, self._engine)
@@ -3156,11 +3162,12 @@ class MCPServer:
 
     async def _persist_skill(self, skill: ParsedSkill) -> SkillRecord:
         def _write_and_insert() -> None:
-            path = write_skill_file(skill, self._repo_root)
-            try:
-                skill.source_path = str(path.relative_to(self._repo_root))
-            except ValueError:
-                skill.source_path = str(path)
+            storage_root = self._shared_skills_dir
+            storage_root.mkdir(parents=True, exist_ok=True)
+            path = write_skill_file(skill, storage_root)
+            registry_copy_path = str(path)
+            metadata = dict(skill.metadata or {})
+            metadata["registry_copy_path"] = registry_copy_path
             payload = {
                 "slug": skill.slug,
                 "name": skill.name,
@@ -3168,7 +3175,7 @@ class MCPServer:
                 "version": skill.version,
                 "tags": skill.tags,
                 "content": skill.content,
-                "metadata": skill.metadata,
+                "metadata": metadata,
                 "source_path": skill.source_path,
                 "source_url": skill.source_url,
                 "managed_by": skill.managed_by,
