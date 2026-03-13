@@ -435,6 +435,10 @@ print_completion_test_results() {
     recent_route_window="$(printf '%s' "${json}" | jq -r '.recent_routing.window // "1h"')"
     recent_route_local="$(printf '%s' "${json}" | jq -r '.recent_routing.local_n // 0')"
     recent_route_remote="$(printf '%s' "${json}" | jq -r '.recent_routing.remote_n // 0')"
+    routing_24h_local="$(printf '%s' "${json}" | jq -r '.routing_windows.windows["24h"].local_n // 0')"
+    routing_24h_remote="$(printf '%s' "${json}" | jq -r '.routing_windows.windows["24h"].remote_n // 0')"
+    routing_7d_local="$(printf '%s' "${json}" | jq -r '.routing_windows.windows["7d"].local_n // 0')"
+    routing_7d_remote="$(printf '%s' "${json}" | jq -r '.routing_windows.windows["7d"].remote_n // 0')"
     rag_posture_status="$(printf '%s' "${json}" | jq -r '.rag_posture.status // "unknown"')"
     rag_posture_recent="$(printf '%s' "${json}" | jq -r '.rag_posture.recent_retrieval_calls // 0')"
     rag_posture_gaps="$(printf '%s' "${json}" | jq -r '.rag_posture.actionable_gap_count // 0')"
@@ -591,6 +595,7 @@ print_completion_test_results() {
     else
       recent_route_label="recent ${recent_route_window}: local=${recent_route_local} remote=${recent_route_remote}"
     fi
+    routing_trend_label="24h: local=${routing_24h_local} remote=${routing_24h_remote}  7d: local=${routing_7d_local} remote=${routing_7d_remote}"
     if [[ -n "${report_generated_at}" ]]; then
       report_freshness_label="$(
         python3 - "${report_generated_at}" <<'PY'
@@ -633,6 +638,7 @@ PY
 
     log "AI stack report (summary):"
     printf '  %-28s %s\n' "Routing" "local=${routing_local} remote=${routing_remote} (${recent_route_label})"
+    printf '  %-28s %s\n' "Routing trend" "${routing_trend_label}"
     printf '  %-28s %s\n' "Report freshness" "${report_freshness_label}"
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s\n' "RAG posture" "${rag_posture_label}"
