@@ -244,13 +244,25 @@ def create_or_update_local_override(paths: Dict[str, Path], primary_user: str) -
         return
 
     cleaned_lines = []
+    skip_switchboard_block = False
     for line in existing.splitlines():
         stripped = line.strip()
+        if skip_switchboard_block:
+            if stripped == "};":
+                skip_switchboard_block = False
+            continue
         if stripped.startswith("mySystem.secrets.enable = lib.mkForce "):
             continue
         if stripped.startswith("mySystem.secrets.sopsFile = lib.mkForce "):
             continue
         if stripped.startswith("mySystem.secrets.ageKeyFile = lib.mkForce "):
+            continue
+        if stripped.startswith("mySystem.aiStack.switchboard = {"):
+            skip_switchboard_block = True
+            continue
+        if stripped.startswith("mySystem.aiStack.switchboard.remoteModelAliases."):
+            continue
+        if stripped.startswith("mySystem.aiStack.switchboard.remoteBudget."):
             continue
         cleaned_lines.append(line)
     cleaned = "\n".join(cleaned_lines).strip()
@@ -436,7 +448,7 @@ def remote_onboarding_config_snippet() -> str:
     return (
         "{ lib, ... }:\n"
         "{\n"
-        "  # Example OpenRouter aliases current as of 2026-03-09.\n"
+        "  # Example OpenRouter aliases current as of 2026-03-13.\n"
         "  # Re-check https://openrouter.ai/models and OpenRouter docs before pinning new defaults.\n"
         "  # dailyTokenCap = 0 keeps token discipline policy-focused instead of using\n"
         "  # a synthetic local hard limit. Subscription/provider limits remain upstream.\n"
@@ -445,9 +457,9 @@ def remote_onboarding_config_snippet() -> str:
         "    remoteUrl = \"https://openrouter.ai/api\";\n"
         "\n"
         "    remoteModelAliases = {\n"
-        "      free = \"openrouter/free\";\n"
-        "      coding = \"qwen/qwen3-coder-next\";\n"
-        "      reasoning = \"anthropic/claude-sonnet-4.5\";\n"
+        "      free = \"arcee-ai/trinity-large-preview:free\";\n"
+        "      coding = \"qwen/qwen3-coder:free\";\n"
+        "      reasoning = \"nvidia/nemotron-3-super-120b-a12b:free\";\n"
         "    };\n"
         "\n"
         "    remoteBudget = {\n"
@@ -483,11 +495,11 @@ def remote_onboarding_guide(host: str, paths: Dict[str, Path]) -> Dict[str, obje
             "remote-coding",
             "remote-reasoning",
         ],
-        "example_aliases_current_as_of": "2026-03-09",
+        "example_aliases_current_as_of": "2026-03-13",
         "example_aliases": {
-            "free": "openrouter/free",
-            "coding": "qwen/qwen3-coder-next",
-            "reasoning": "anthropic/claude-sonnet-4.5",
+            "free": "arcee-ai/trinity-large-preview:free",
+            "coding": "qwen/qwen3-coder:free",
+            "reasoning": "nvidia/nemotron-3-super-120b-a12b:free",
         },
         "commands": [
             f"./scripts/governance/manage-secrets.sh set remote_llm_api_key --host {host}",
