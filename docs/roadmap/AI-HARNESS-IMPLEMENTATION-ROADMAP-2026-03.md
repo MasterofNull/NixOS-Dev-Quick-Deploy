@@ -194,7 +194,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, and browser-assisted fallback live; next gap is broader approved source-pack coverage`
+Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, browser-assisted fallback, and a regenerated Continue config that matches the local llama.cpp context window instead of a stale 4k cap; next gap is validating real agent/planning-mode recovery after the context-limit fix`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
 - `python3 scripts/testing/test-web-research-lane.py`
@@ -202,6 +202,7 @@ Next Validation:
 Open Risks / Blockers:
 - some approved public sources still need selector tuning or source substitution even though the browser-assisted fallback lane is now available
 - CLI/package coverage is still mixed across agent surfaces
+- Continue agent/planning mode still needs explicit live confirmation after the config-side context-window fix, because the previous generated config advertised only a 4k limit while llama.cpp was serving 16k
 
 Goal:
 - make Continue/editor-driven agent flows a validated and observable first-class path

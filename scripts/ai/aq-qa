@@ -144,7 +144,7 @@ cfg_path = sys.argv[1]
 with open(cfg_path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-if data.get("__configVersion") != "19.9":
+if data.get("__configVersion") != "20.0":
     raise SystemExit(1)
 
 models = data.get("models") or []
@@ -152,6 +152,8 @@ if not any(
     isinstance(model, dict)
     and model.get("apiBase") == "http://127.0.0.1:8085/v1"
     and ((model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") == "continue-local"
+    and int(model.get("contextLength") or 0) >= 12000
+    and int(model.get("maxTokens") or 0) >= 512
     for model in models
 ):
     raise SystemExit(1)
