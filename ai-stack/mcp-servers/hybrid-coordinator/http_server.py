@@ -2652,24 +2652,31 @@ async def run_http_mode(port: int) -> None:
                 return web.json_response({"error": "query required"}, status=400)
             tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
             plan = _build_workflow_plan(query, tools=tools, tool_security=tool_security)
-            return web.json_response(
-                build_tooling_manifest(
-                    query,
-                    tools,
-                    runtime=str(data.get("runtime") or request.rel_url.query.get("runtime") or "python"),
-                    max_tools=data.get("max_tools"),
-                    max_result_chars=data.get("max_result_chars"),
-                    phases=[
-                        {
-                            "id": str(phase.get("id", "")).strip(),
-                            "tools": _phase_tool_names(phase),
-                        }
-                        for phase in plan.get("phases", [])
-                        if isinstance(phase, dict)
-                    ],
-                    tool_security=tool_security,
-                )
+            result = build_tooling_manifest(
+                query,
+                tools,
+                runtime=str(data.get("runtime") or request.rel_url.query.get("runtime") or "python"),
+                max_tools=data.get("max_tools"),
+                max_result_chars=data.get("max_result_chars"),
+                phases=[
+                    {
+                        "id": str(phase.get("id", "")).strip(),
+                        "tools": _phase_tool_names(phase),
+                    }
+                    for phase in plan.get("phases", [])
+                    if isinstance(phase, dict)
+                ],
+                tool_security=tool_security,
             )
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                result["active_lesson_refs"] = lesson_refs
+                metadata = result.get("metadata")
+                if isinstance(metadata, dict):
+                    metadata["active_lesson_refs"] = lesson_refs
+            return web.json_response(result)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
