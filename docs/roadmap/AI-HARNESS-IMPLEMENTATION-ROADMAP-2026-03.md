@@ -553,6 +553,14 @@ Validation:
 
 ### Track I — Operator and Prompt-Writing Guidance
 
+Track Status: in_progress
+Last Updated: 2026-03-13
+Current Slice: `compact prompt-coaching hints now teach route selection across local, remote-free, remote-coding, remote-tool-calling, and Continue/editor rescue lanes; the next gap is adding the same compact guidance to more task classes without inflating default hint payloads`
+Next Validation: `scripts/ai/aq-hints "route local vs remote coding lane" --format json` and live `/hints?q=continue+editor+rescue`
+Open Risks / Blockers:
+- route-selection guidance is now explicit in hints, but broader task-class quick references still need the same compact treatment
+- keep new operator coaching below the default hint noise floor so runtime signals still dominate when they are more urgent
+
 Tasks:
 1. teach progressive-disclosure prompt shapes by task class
 2. add route-selection guidance for local vs remote vs coding agents
