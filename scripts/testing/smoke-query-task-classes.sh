@@ -87,4 +87,48 @@ jq -e '.prompt_coaching.score > 0' "${TMP_DIR}/prsi.json" >/dev/null
 jq -e '.prompt_coaching.suggested_prompt | length > 0' "${TMP_DIR}/prsi.json" >/dev/null
 jq -e '.active_lesson_refs | length >= 1' "${TMP_DIR}/prsi.json" >/dev/null
 
+cat > "${TMP_DIR}/continue.json.payload" <<'EOF'
+{
+  "query": "continue editor rescue: codium extension is failing and continue-local may be broken",
+  "prefer_local": true,
+  "generate_response": false,
+  "agent_type": "continue",
+  "requesting_agent": "continue",
+  "requester_role": "orchestrator"
+}
+EOF
+
+curl -fsS \
+  -H "X-API-Key: ${HYBRID_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/query" \
+  --data @"${TMP_DIR}/continue.json.payload" > "${TMP_DIR}/continue.json"
+
+jq -e '.metadata.orchestration.requester_role == "orchestrator"' "${TMP_DIR}/continue.json" >/dev/null
+jq -e '.prompt_coaching.score > 0' "${TMP_DIR}/continue.json" >/dev/null
+jq -e '.prompt_coaching.suggested_prompt | length > 0' "${TMP_DIR}/continue.json" >/dev/null
+jq -e '.active_lesson_refs | length >= 1' "${TMP_DIR}/continue.json" >/dev/null
+
+cat > "${TMP_DIR}/deploy.json.payload" <<'EOF'
+{
+  "query": "deploy this nixos service safely and include rollback plus live verification",
+  "prefer_local": true,
+  "generate_response": false,
+  "agent_type": "codex",
+  "requesting_agent": "codex",
+  "requester_role": "orchestrator"
+}
+EOF
+
+curl -fsS \
+  -H "X-API-Key: ${HYBRID_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/query" \
+  --data @"${TMP_DIR}/deploy.json.payload" > "${TMP_DIR}/deploy.json"
+
+jq -e '.metadata.orchestration.requester_role == "orchestrator"' "${TMP_DIR}/deploy.json" >/dev/null
+jq -e '.prompt_coaching.score > 0' "${TMP_DIR}/deploy.json" >/dev/null
+jq -e '.prompt_coaching.suggested_prompt | length > 0' "${TMP_DIR}/deploy.json" >/dev/null
+jq -e '.active_lesson_refs | length >= 1' "${TMP_DIR}/deploy.json" >/dev/null
+
 printf 'PASS: query task-class smoke\n'
