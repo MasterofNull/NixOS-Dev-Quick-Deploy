@@ -506,6 +506,49 @@ def aggregate_delegation_feedback(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict[str, Any]:
+    """Summarize delegated remote profile usage from tool-audit metadata."""
+    profile_counts: Dict[str, int] = {}
+    runtime_counts: Dict[str, int] = {}
+    fallback_applied = 0
+    finalization_applied = 0
+    success_count = 0
+    total = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("tool_name", "") or "").strip().lower() != "ai_coordinator_delegate":
+            continue
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        profile = str(metadata.get("selected_profile", "") or "").strip()
+        if not profile or not profile.startswith("remote-"):
+            continue
+        total += 1
+        profile_counts[profile] = profile_counts.get(profile, 0) + 1
+        runtime_id = str(metadata.get("selected_runtime_id", "") or "").strip()
+        if runtime_id:
+            runtime_counts[runtime_id] = runtime_counts.get(runtime_id, 0) + 1
+        if bool(metadata.get("fallback_applied")):
+            fallback_applied += 1
+        if bool(metadata.get("delegation_finalization_applied")):
+            finalization_applied += 1
+        if str(entry.get("outcome", "") or "").strip().lower() == "ok":
+            success_count += 1
+    if total <= 0:
+        return {"available": False, "window": window}
+    return {
+        "available": True,
+        "window": window,
+        "total_calls": total,
+        "success_count": success_count,
+        "success_pct": round(100 * success_count / total, 1) if total else None,
+        "fallback_applied": fallback_applied,
+        "finalization_applied": finalization_applied,
+        "top_profiles": sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_runtime_ids": sorted(runtime_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+    }
+
+
 def _entry_ts_utc(entry: Dict[str, Any]) -> Optional[datetime]:
     raw = str(entry.get("timestamp", "") or "").strip()
     if not raw:
@@ -2861,6 +2904,7 @@ def format_md(
     continue_editor: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
+    remote_profile_summary: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3140,6 +3184,19 @@ def format_md(
             lines.append(f"- Top failure classes: {', '.join(f'`{name}` ({count})' for name, count in top_classes[:3])}")
     lines.append("")
 
+    lines += [f"## 8aaa. Remote Profile Utilization ({remote_profile_summary.get('window', since_label)})", ""]
+    if not remote_profile_summary.get("available"):
+        lines.append("*No delegated remote profile usage recorded in this window.*")
+    else:
+        lines.append(f"- Calls: **{remote_profile_summary.get('total_calls', 0)}**")
+        lines.append(f"- Success: **{_na(remote_profile_summary.get('success_pct'), '.1f', '%')}**")
+        lines.append(f"- Fallback applied: **{remote_profile_summary.get('fallback_applied', 0)}**")
+        lines.append(f"- Finalization applied: **{remote_profile_summary.get('finalization_applied', 0)}**")
+        top_profiles = remote_profile_summary.get("top_profiles") or []
+        if top_profiles:
+            lines.append(f"- Top profiles: {', '.join(f'`{name}` ({count})' for name, count in top_profiles[:3])}")
+    lines.append("")
+
     lines += [f"## 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
     avg_collection_count = retrieval_breadth.get("avg_collection_count")
     if avg_collection_count is None:
@@ -3383,6 +3440,7 @@ def format_text(
     continue_editor: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
+    remote_profile_summary: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3665,6 +3723,19 @@ def format_text(
             lines.append(f"  Top failure classes: {', '.join(f'{name}({count})' for name, count in top_classes[:3])}")
     lines.append("")
 
+    lines += [f"[ 8aaa. Remote Profile Utilization ({remote_profile_summary.get('window', since_label)}) ]"]
+    if not remote_profile_summary.get("available"):
+        lines.append("  No delegated remote profile usage recorded in this window.")
+    else:
+        lines.append(f"  Calls: {remote_profile_summary.get('total_calls', 0)}")
+        lines.append(f"  Success: {_na(remote_profile_summary.get('success_pct'), '.1f', '%')}")
+        lines.append(f"  Fallback applied: {remote_profile_summary.get('fallback_applied', 0)}")
+        lines.append(f"  Finalization applied: {remote_profile_summary.get('finalization_applied', 0)}")
+        top_profiles = remote_profile_summary.get("top_profiles") or []
+        if top_profiles:
+            lines.append(f"  Top profiles: {', '.join(f'{name}({count})' for name, count in top_profiles[:3])}")
+    lines.append("")
+
     lines += [f"[ 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]
     avg_collection_count = retrieval_breadth.get("avg_collection_count")
     if avg_collection_count is None:
@@ -3912,6 +3983,7 @@ def format_json(
     continue_editor: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
+    remote_profile_summary: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3954,6 +4026,7 @@ def format_json(
         "continue_editor": continue_editor,
         "shared_skill_registry": shared_skill_registry,
         "delegated_prompt_failures": delegated_prompt_failures,
+        "remote_profile_utilization": remote_profile_summary,
         "route_retrieval_breadth": retrieval_breadth,
         "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
@@ -4073,6 +4146,7 @@ def main() -> None:
     recent_retrieval_breadth["window"] = "1h"
     recent_provider_fallbacks = route_provider_fallback_health(recent_audit_entries)
     recent_provider_fallbacks["window"] = "1h"
+    recent_remote_profile_summary = remote_profile_utilization(recent_audit_entries, window="1h")
     cache = cache_hit_rate()
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
@@ -4145,6 +4219,7 @@ def main() -> None:
         continue_editor,
         shared_skill_registry,
         delegation_feedback,
+        recent_remote_profile_summary,
         recent_retrieval_breadth,
         recent_provider_fallbacks,
         historical_health_watch,

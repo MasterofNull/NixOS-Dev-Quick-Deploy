@@ -407,6 +407,7 @@ print_completion_test_results() {
     local rag_memory_share rag_prewarm_prompt rag_prewarm_label
     local retrieval_breadth_avg retrieval_breadth_profile retrieval_breadth_label
     local provider_fallback_window provider_fallback_count provider_fallback_pct provider_fallback_status provider_fallback_label
+    local remote_profile_window remote_profile_top remote_profile_calls remote_profile_success remote_profile_label
     local continue_editor_available continue_editor_healthy continue_editor_failed continue_editor_total continue_editor_first_fail continue_editor_label
     local agent_lesson_label
     local i=0
@@ -448,6 +449,10 @@ print_completion_test_results() {
     provider_fallback_count="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_count // 0')"
     provider_fallback_pct="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_pct // "n/a"')"
     provider_fallback_status="$(printf '%s' "${json}" | jq -r '(.provider_fallback_recovery.status_counts[0] // empty) | if length == 2 then "\(.[0])=\(.[1])" else empty end')"
+    remote_profile_window="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.window // "1h"')"
+    remote_profile_top="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    remote_profile_calls="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.total_calls // 0')"
+    remote_profile_success="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.success_pct // "n/a"')"
     delegated_failure_total="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.total_failures // 0')"
     delegated_failure_salvageable="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.salvageable_failures // 0')"
     delegated_failure_class="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_failure_classes[0][0] // empty')"
@@ -515,6 +520,11 @@ print_completion_test_results() {
         provider_fallback_label="${provider_fallback_label}; upstream ${provider_fallback_status}"
       fi
       provider_fallback_label="${provider_fallback_label})"
+    fi
+    if [[ "${remote_profile_calls}" == "0" || -z "${remote_profile_top}" ]]; then
+      remote_profile_label="none (${remote_profile_window})"
+    else
+      remote_profile_label="${remote_profile_top}; success=${remote_profile_success}%"
     fi
     if [[ "${delegated_failure_total}" == "0" ]]; then
       delegated_failure_label="none"
@@ -595,6 +605,7 @@ PY
     printf '  %-28s %s\n' "Retrieval breadth (1h)" "${retrieval_breadth_label}"
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
     printf '  %-28s %s\n' "Provider fallback (${provider_fallback_window})" "${provider_fallback_label}"
+    printf '  %-28s %s\n' "Remote profile use (${remote_profile_window})" "${remote_profile_label}"
     printf '  %-28s %s\n' "Delegated prompt failures" "${delegated_failure_label}"
     printf '  %-28s %s\n' "Prewarm candidate" "${rag_prewarm_label}"
     if [[ -n "${agent_lesson_label}" ]]; then
