@@ -44,9 +44,52 @@ Applied architecture conclusions:
 6. BitNet is not yet evaluated as a deployable local backend option.
 7. Several recent agent surfaces are only partially integrated into the local harness and must be reviewed against the shared runtime contract before they are treated as complete.
 
+## Tracking Conventions
+
+Status values:
+- `planned` — defined but not started
+- `in_progress` — active implementation or validation work
+- `validated_local` — repo changes validated locally, not yet confirmed live
+- `validated_live` — deployed and confirmed through runtime checks
+- `blocked` — waiting on upstream support, runtime fix, or explicit user input
+
+Tracking fields to update after each slice:
+- `Track Status`
+- `Last Updated`
+- `Current Slice`
+- `Next Validation`
+- `Open Risks / Blockers`
+
+## Active Blockers
+
+| Area | Status | Evidence | Next Action |
+| --- | --- | --- | --- |
+| QA phase 0 service health | blocked | `aq-qa 0` is `28 passed, 1 failed` because `ai-gap-auto-remediate.service` and `ai-prompt-eval.service` are in failed state | inspect and repair both services before treating the current system as fully green |
+| Flagship agent CLI coverage | in_progress | Continue CLI packaging fixed; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
+
+## Execution Ledger
+
+| Date | Slice / Commit | Status | Notes |
+| --- | --- | --- | --- |
+| 2026-03-13 | `d9f3e06` agent-review corrective pass | validated_local | fixed broken Continue CLI packaging, fixed Tier 0 pre-deploy file detection, added required implementation roadmap and agent surface matrix |
+| 2026-03-13 | route-search retrieval breadth batch | validated_live | bounded route-search collection selection and retrieval-breadth reporting are live |
+| 2026-03-13 | provider fallback health batch | validated_live | recovered provider fallbacks are reported separately from local backend failures |
+| 2026-03-13 | continuation memory and prewarm batches | validated_live | continuation queries use memory recall more explicitly and report recall misses |
+
 ## High-Priority Tracks
 
 ### Required Foundation — Declarative Agent CLI and IDE Surface
+
+Track Status: `in_progress`
+Last Updated: `2026-03-13`
+Current Slice: `Continue CLI corrected; support matrix added; remaining flagship CLIs still need declarative packaging or explicit external classification`
+Next Validation:
+- `nix-build` for each packaged agent CLI
+- `scripts/testing/verify-flake-first-roadmap-completion.sh`
+- per-surface `--help` smoke where available
+Open Risks / Blockers:
+- Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
+- `pi` remains scaffolded, not validated as a real declarative package
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
@@ -93,6 +136,16 @@ Acceptance:
 
 ### Track A — Continue and Editor-Agent Runtime Stabilization
 
+Track Status: `planned`
+Last Updated: `2026-03-13`
+Current Slice: `roadmap and required foundation now exist, but continue/editor runtime still lacks dedicated smoke and report visibility`
+Next Validation:
+- `scripts/ai/aq-qa 0 --json`
+- continue/editor smoke once added
+Open Risks / Blockers:
+- current Continue/editor failures are not isolated in `aq-report`
+- CLI/package coverage is still mixed across agent surfaces
+
 Goal:
 - make Continue/editor-driven agent flows a validated and observable first-class path
 
@@ -116,6 +169,15 @@ Acceptance:
 - if upstream/editor limits remain, diagnostics, smoke coverage, and harness handoff points still remain deploy-ready
 
 ### Track B — Hybrid-Coordinator Harness Completion
+
+Track Status: `in_progress`
+Last Updated: `2026-03-13`
+Current Slice: `workflow plan, query, hints, qa, and learning surfaces exist; shared runtime blueprint and reviewer-gate reporting still need completion`
+Next Validation:
+- `scripts/testing/check-runtime-plan-catalog.sh`
+- live `/workflow/plan`, `/query`, `/hints` contract checks
+Open Risks / Blockers:
+- some newer agent surfaces were added before being fully normalized to the shared runtime contract
 
 Goal:
 - finish the separation between scaffolding and runtime harness behavior
@@ -148,6 +210,17 @@ Acceptance:
 
 ### Track C — Retrieval, Embedded Memory, and RAG Utilization
 
+Track Status: `in_progress`
+Last Updated: `2026-03-13`
+Current Slice: `retrieval breadth, continuation memory recall, and report visibility are live; qa/reliability acceptance still needs tightening`
+Next Validation:
+- `scripts/ai/aq-report --format text`
+- `scripts/ai/aq-report --format json | jq '.rag_posture, .route_retrieval_breadth'`
+- `scripts/ai/aq-qa 0 --json`
+Open Risks / Blockers:
+- `route_search` is still the main active recent reliability issue
+- memory recall quality is improving, but miss-rate remediation is not complete
+
 Goal:
 - make retrieval selection intentional, cheap, and visible
 
@@ -172,6 +245,15 @@ Acceptance:
 - memory recall share is healthy for continuation-class queries
 
 ### Track D — OpenRouter Agent API and Remote Delegation Utilization
+
+Track Status: `planned`
+Last Updated: `2026-03-13`
+Current Slice: `remote profiles and fallback reporting exist; explicit agent-api/tool-calling lanes and compatibility validation are still pending`
+Next Validation:
+- targeted remote profile smokes
+- `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
+Open Risks / Blockers:
+- advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
 
 Goal:
 - fully exploit OpenRouter as the remote tool-calling and provider-routing layer behind the local harness
@@ -206,6 +288,15 @@ Acceptance:
 
 ### Track E — Agent Lesson Promotion and EvoSkill-Inspired Skill Evolution
 
+Track Status: `planned`
+Last Updated: `2026-03-13`
+Current Slice: `roadmap and reporting intent exist, but the explicit lesson schema and promotion gate are not implemented`
+Next Validation:
+- `scripts/ai/aq-report --format json | jq '.agent_lessons'`
+- hint/report traceability checks once schema lands
+Open Risks / Blockers:
+- lesson promotion is still implicit and not yet governed by one declared schema
+
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
 
@@ -239,6 +330,16 @@ Acceptance:
 - if automated promotion remains partially blocked, the lesson schema, reviewer gate, and report visibility still remain deploy-ready
 
 ### Track F — BitNet Feasibility and Optional Runtime Integration
+
+Track Status: `planned`
+Last Updated: `2026-03-13`
+Current Slice: `research and architecture track only; no local benchmark or Nix service role exists yet`
+Next Validation:
+- benchmark harness output
+- declarative service checks once a feature-flagged role exists
+Open Risks / Blockers:
+- no current BitNet packaging/runtime evidence on this host class
+- must not destabilize existing llama.cpp service health
 
 Goal:
 - determine where BitNet can improve local inference economics without destabilizing the stack
