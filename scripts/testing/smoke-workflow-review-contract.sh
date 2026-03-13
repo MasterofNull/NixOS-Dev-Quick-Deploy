@@ -356,4 +356,71 @@ jq -e '.reviewer_gate.last_review.task_class == "coding_bugfix"' "${TMP_DIR}/bug
 jq -e '.reviewer_gate.last_review.reviewed_agent == "qwen"' "${TMP_DIR}/bugfix-run.json" >/dev/null
 jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-coding"' "${TMP_DIR}/bugfix-run.json" >/dev/null
 
+cat > "${TMP_DIR}/hardening-start.json.payload" <<'EOF'
+{
+  "query": "Validate nixos service hardening review persistence",
+  "blueprint_id": "nixos-service-hardening",
+  "intent_contract": {
+    "user_intent": "Validate nixos service hardening review persistence",
+    "definition_of_done": [
+      "service hardening review classification persists",
+      "reviewed reasoning profile is recorded"
+    ],
+    "depth_expectation": "standard",
+    "spirit_constraints": [
+      "bounded smoke only"
+    ],
+    "no_early_exit_without": [
+      "live session retrieval"
+    ]
+  }
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data @"${TMP_DIR}/hardening-start.json.payload" > "${TMP_DIR}/hardening-start.json"
+hardening_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/hardening-start.json")"
+[[ -n "${hardening_session_id}" ]] || {
+  echo "ERROR: nixos service hardening workflow/run/start did not return session_id" >&2
+  exit 1
+}
+jq -e '.blueprint_id == "nixos-service-hardening"' "${TMP_DIR}/hardening-start.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "pending_review"' "${TMP_DIR}/hardening-start.json" >/dev/null
+
+cat > "${TMP_DIR}/hardening-review.json.payload" <<EOF
+{
+  "session_id": "${hardening_session_id}",
+  "response": "Artifact review confirms service hardening notes preserve declarative policy ownership, health verification, and rollback guidance.",
+  "criteria": [
+    "declarative policy ownership",
+    "health verification",
+    "rollback guidance"
+  ],
+  "expected_keywords": [
+    "service hardening",
+    "artifact review"
+  ],
+  "min_criteria_ratio": 1.0,
+  "min_keyword_ratio": 1.0,
+  "reviewer": "codex",
+  "review_type": "artifact_review",
+  "artifact_kind": "runbook",
+  "task_class": "nixos_service_hardening",
+  "reviewed_agent": "claude",
+  "reviewed_profile": "remote-reasoning"
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/review/acceptance" \
+  --data @"${TMP_DIR}/hardening-review.json.payload" > "${TMP_DIR}/hardening-review.json"
+jq -e '.passed == true' "${TMP_DIR}/hardening-review.json" >/dev/null
+jq -e --arg sid "${hardening_session_id}" '.session_id == $sid' "${TMP_DIR}/hardening-review.json" >/dev/null
+
+curl -fsS "${hdr[@]}" "${HYBRID_URL}/workflow/run/${hardening_session_id}" > "${TMP_DIR}/hardening-run.json"
+jq -e '.blueprint_title == "NixOS Service Hardening"' "${TMP_DIR}/hardening-run.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "accepted"' "${TMP_DIR}/hardening-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.review_type == "artifact_review"' "${TMP_DIR}/hardening-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.artifact_kind == "runbook"' "${TMP_DIR}/hardening-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.task_class == "nixos_service_hardening"' "${TMP_DIR}/hardening-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_agent == "claude"' "${TMP_DIR}/hardening-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-reasoning"' "${TMP_DIR}/hardening-run.json" >/dev/null
+
 printf 'PASS: workflow review contract smoke\n'
