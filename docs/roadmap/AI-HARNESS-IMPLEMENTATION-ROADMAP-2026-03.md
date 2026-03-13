@@ -68,7 +68,7 @@ Tracking fields to update after each slice:
 
 | Area | Status | Evidence | Next Action |
 | --- | --- | --- | --- |
-| Flagship agent CLI coverage | in_progress | Continue CLI packaging fixed; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
+| Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
 | Continue/local web research lane | planned | Continue and local-model surfaces do not yet expose a validated, polite web research/scraping path for bounded fetch -> extract -> summarize workflows | define bounded fetch policy, route through harness/coordinator, and add validation before treating web research as supported |
 | Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
@@ -87,6 +87,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | scoped sudo + coordinator live validation | validated_live | confirmed `sudo -n` works for the bounded command set, `nixos-quick-deploy.sh --preflight-only` runs unattended, `/control/ai-coordinator/status` is live, and both `remote-free` and `continue-local` delegation succeed |
 | 2026-03-13 | free-lane alias corrective pass | in_progress | `remote-coding` and `remote-reasoning` produced `402` under paid aliases, so host defaults are being moved to official free-capable models before re-validation |
 | 2026-03-13 | remote-free fallback hardening | in_progress | `remote-coding` free alias hit upstream `429`, so coordinator delegation is being updated to retry bounded coding/reasoning requests on `remote-free` before surfacing failure |
+| 2026-03-13 | continue-cli + home-manager activation corrective pass | validated_live | removed invalid disabled `home.file` stubs for legacy COSMIC units, fixed `nix/pkgs/continue-cli.nix` to use a valid `sha256` fetch source, and revalidated `home-manager switch` plus full quick-deploy system/home phases |
 
 ## High-Priority Tracks
 
@@ -94,7 +95,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI corrected; support matrix added; scoped unattended sudo is now live for bounded deploy/restart operations, while remaining CLI coverage still needs cleanup`
+Current Slice: `Continue CLI derivation and Home Manager activation are fixed again; remaining CLI coverage cleanup is now back to Codex/Qwen/Gemini/Claude surface consistency`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -102,6 +103,7 @@ Next Validation:
 Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
+- Home Manager is no longer blocked on Continue CLI, but future CLI package additions still need isolated `outPath`/activation validation before they are treated as safe for unattended deploys
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
