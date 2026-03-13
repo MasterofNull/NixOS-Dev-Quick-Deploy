@@ -166,7 +166,7 @@ def continue_editor_health() -> Dict[str, Any]:
             [str(AQ_QA_SCRIPT), "0", "--json"],
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=35,
             check=False,
         )
     except Exception as exc:

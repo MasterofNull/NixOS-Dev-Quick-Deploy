@@ -126,6 +126,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | california-native source pack bootstrap | validated_live | extended the curated research manifest with a `native-plants-california` pack centered on Calflora so California-native lookup is now a first-class approved workflow input instead of an ad hoc URL |
 | 2026-03-13 | source-level fetch policy and browser fallback | validated_live | curated workflows now support per-source fetch policy plus browser fallback after empty extracts or bot-gate detection; live `native-plants-us` validation showed USDA escalated to browser automatically while the already-good Wildflower path stayed on the plain HTTP lane |
 | 2026-03-13 | continue-local dense-context trimming fix | validated_live | fixed switchboard input estimation so dense no-whitespace prompts no longer evade `continue-local` trimming, added single-message truncation when dropping old turns is insufficient, and live validation confirmed the original 24k-character reproduction now returns `200` with `X-AI-Input-Trimmed=1` instead of `502 upstream_transport_error` |
+| 2026-03-13 | continue/editor oversized-input QA coverage | validated_local | added a new `aq-qa 0.5.5` check for `continue-local` dense oversized prompt trimming, increased `aq-report` timeout so the heavier Continue/editor phase-0 batch still completes, and revalidated `aq-report` plus the five-check Continue/editor health block |
 
 ## High-Priority Tracks
 
@@ -196,11 +197,12 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, and a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors; next gap is validating real agent/planning-mode recovery inside the Continue extension`
+Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors, and normal Phase 0 QA coverage for that trimmed-input path; next gap is validating real agent/planning-mode recovery inside the Continue extension`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
 - `python3 scripts/testing/test-web-research-lane.py`
 - `scripts/testing/test-switchboard-continue-context-window.sh`
+- `python3 scripts/ai/aq-report --format json | jq '.continue_editor'`
 - live `POST /research/web/fetch` smoke after deploy
 Open Risks / Blockers:
 - some approved public sources still need selector tuning or source substitution even though the browser-assisted fallback lane is now available
