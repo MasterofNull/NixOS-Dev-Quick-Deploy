@@ -47,6 +47,22 @@ let
   dataDir = "/var/lib/llama-cpp";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
+  promptEvalPython = pkgs.python3.withPackages (ps: with ps; [
+    pyyaml
+  ]);
+  gapAutoRemediatePath = lib.makeBinPath [
+    pkgs.bash
+    pkgs.bc
+    pkgs.coreutils
+    pkgs.curl
+    pkgs.findutils
+    pkgs.gawk
+    pkgs.gnugrep
+    pkgs.gnused
+    pkgs.jq
+    pkgs.postgresql
+    pkgs.systemd
+  ];
 
   hasOpenWebui = lib.versionAtLeast lib.version "24.11";
   hasQdrant = lib.versionAtLeast lib.version "24.11";
@@ -1026,11 +1042,12 @@ in {
         description = "AI stack prompt registry evaluation and leaderboard update";
         after = ["network-online.target" "ai-stack.target"];
         wants = ["network-online.target"];
+        path = [ promptEvalPython ];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval";
+          ExecStart = "${promptEvalPython}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -1038,6 +1055,9 @@ in {
           ProtectHome     = "read-only";
           PrivateTmp      = true;
           MemoryMax       = "256M";
+          ReadWritePaths  = [
+            "${cfg.mcpServers.repoPath}/ai-stack/prompts"
+          ];
         };
       };
 
@@ -1129,11 +1149,12 @@ in {
         description = "AI gap auto-remediation (Phase 21.4 self-improvement)";
         after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" "postgresql.service"];
         wants = ["network-online.target"];
+        path = [ pkgs.bash pkgs.bc pkgs.coreutils pkgs.curl pkgs.findutils pkgs.gawk pkgs.gnugrep pkgs.gnused pkgs.jq pkgs.postgresql pkgs.systemd ];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
@@ -1147,6 +1168,7 @@ in {
             mutableOptimizerDir
           ];
           Environment = [
+            "PATH=${gapAutoRemediatePath}"
             "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
           ] ++ lib.optional cfg.secrets.enable
               "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";

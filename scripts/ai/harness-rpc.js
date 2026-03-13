@@ -225,6 +225,15 @@ async function main() {
           tags: csv(args.tags),
         },
       });
+    case "coordinator-status":
+      return call("/control/ai-coordinator/status", "GET");
+    case "coordinator-delegate":
+      return call("/control/ai-coordinator/delegate", "POST", {
+        task: args.task || args.query || args.q || "",
+        profile: args.profile || "",
+        max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
+        temperature: args.temperature ? Number(args.temperature) : undefined,
+      });
     default:
       console.error(`Unknown command: ${cmd}`);
       process.exit(2);

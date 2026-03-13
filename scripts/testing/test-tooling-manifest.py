@@ -19,12 +19,16 @@ def main() -> int:
     agentic_query = "orchestrate a long-running multi-agent workflow to implement and verify a repo change"
     agentic_tools = workflow_tool_catalog(agentic_query)
     agentic_tool_names = [tool["name"] for tool in agentic_tools]
+    assert_true("ai_coordinator_delegate" in agentic_tool_names, "ai_coordinator_delegate missing for agentic query")
     assert_true("loop_orchestrate" in agentic_tool_names, "loop_orchestrate missing for agentic query")
     assert_true("loop_status" in agentic_tool_names, "loop_status missing for agentic query")
 
     manifest = build_tooling_manifest(agentic_query, agentic_tools)
     manifest_tool_names = [tool["name"] for tool in manifest["tools"]]
+    assert_true("ai_coordinator_delegate" in manifest_tool_names, "manifest omits ai_coordinator_delegate")
     assert_true("loop_orchestrate" in manifest_tool_names, "manifest omits loop_orchestrate")
+    assert_true(any(phase["id"] == "execute" and "ai_coordinator_delegate" in phase["tools"] for phase in manifest["phases"]),
+                "execute phase does not expose ai_coordinator_delegate")
     assert_true(any(phase["id"] == "execute" and "loop_orchestrate" in phase["tools"] for phase in manifest["phases"]),
                 "execute phase does not expose loop_orchestrate")
     assert_true(any(phase["id"] == "validate" and "loop_status" in phase["tools"] for phase in manifest["phases"]),
