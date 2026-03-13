@@ -97,6 +97,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | BitNet feasibility probe scaffolding | validated_local | added a repo-native `aq-bitnet-feasibility` probe plus targeted test so this host now has measured prerequisites, supported-model heuristics, and bounded next actions before any runtime role is attempted |
 | 2026-03-13 | delegated prompt-failure feedback loop | validated_live | OpenRouter/coordinator delegation now records prompt-contract failures plus salvageable commands/paths/excerpts, live provider-side `400` rejection was captured in `/control/ai-coordinator/delegate`, `aq-report` surfaces the recurring failure class, and PRSI can queue prompt-tightening actions instead of repeating the same waste |
 | 2026-03-13 | runtime registry retention and stale-smoke cleanup | validated_live | ai-coordinator now prunes transient smoke/test runtime registrations on load with retention policy; live registry collapsed from 56 entries with 54 smoke artifacts to 6 real lanes after status reload |
+| 2026-03-13 | delegated envelope tightening pass | validated_live | ai-coordinator now emits explicit sub-agent/evidence/anti-goal contracts for remote delegation; live `remote-free` smoke returned structured `result/evidence` output instead of an unconstrained generic reply |
 
 ## High-Priority Tracks
 
@@ -293,7 +294,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles, fallback reporting, delegated prompt-failure telemetry, and runtime-registry cleanup are now live; next gap is using the failure ledger to tighten delegation envelopes and broader remote tool-calling flows`
+Current Slice: `remote profiles, fallback reporting, delegated prompt-failure telemetry, runtime-registry cleanup, and tighter delegation envelopes are now live; next gap is broader remote tool-calling flows and using the failure ledger to revise prompt templates`
 Next Validation:
 - targeted remote profile smokes
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
@@ -304,6 +305,7 @@ Open Risks / Blockers:
 - `qwen/qwen3-coder:free` remains the strongest coding lane and can still hit provider-side `429`, so observability should keep tracking fallback frequency and latency impact
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
 - delegated prompt-contract failures are now recorded, but the highest-value next step is to feed repeated classes back into actual prompt template revisions and not just reporting
+- the tighter envelope improves shape control, but prompt token footprint should still be tuned so small delegated tasks do not overpay for boilerplate
 
 Goal:
 - fully exploit OpenRouter as the remote tool-calling and provider-routing layer behind the local harness

@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
 
 from ai_coordinator import (  # noqa: E402
+    build_messages,
     default_runtime_id_for_profile,
     infer_profile,
     merge_runtime_defaults,
@@ -86,6 +87,22 @@ def main() -> int:
     assert_true("smoke-1" not in pruned_runtimes, "pruned smoke runtime should not remain")
     assert_true("gemini" in pruned_runtimes, "persistent runtime registration should remain")
     assert_true("local-hybrid" in pruned_runtimes, "default runtime should be restored during prune merge")
+
+    messages = build_messages(
+        "Implement the bounded runtime cleanup slice.",
+        context={
+            "repo_paths": ["ai-stack/mcp-servers/hybrid-coordinator/http_server.py"],
+            "constraints": ["do not invent extra files"],
+            "evidence_requirements": ["cite concrete file paths"],
+            "anti_goals": ["do not claim validation you did not run"],
+        },
+        profile="remote-coding",
+    )
+    assert_true(len(messages) == 2, "delegation envelope should produce system and user messages")
+    assert_true("not the orchestrator" in messages[0]["content"].lower(), "system prompt should enforce sub-agent role")
+    assert_true("Expected artifact:" in messages[1]["content"], "user message should include artifact contract")
+    assert_true("Allowed repo paths:" in messages[1]["content"], "user message should include repo path allowlist")
+    assert_true("Anti-goals:" in messages[1]["content"], "user message should include anti-goals when provided")
 
     print("PASS: ai-coordinator exposes default local/OpenRouter runtime lanes and profile inference")
     return 0

@@ -3253,7 +3253,12 @@ async def run_http_mode(port: int) -> None:
             if not isinstance(messages, list) or not messages:
                 system_prompt = str(data.get("system_prompt") or "").strip()
                 context = data.get("context") if isinstance(data.get("context"), dict) else None
-                messages = _ai_coordinator_build_messages(task, system_prompt=system_prompt, context=context)
+                messages = _ai_coordinator_build_messages(
+                    task,
+                    system_prompt=system_prompt,
+                    context=context,
+                    profile=selected_profile,
+                )
 
             payload: Dict[str, Any] = {
                 "messages": messages,
