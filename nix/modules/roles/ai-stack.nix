@@ -1170,6 +1170,7 @@ in {
           Environment = [
             "PATH=${gapAutoRemediatePath}"
             "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
+            "GAP_REMEDIATION_LOG_DIR=${mutableOptimizerDir}/gap-remediation"
           ] ++ lib.optional cfg.secrets.enable
               "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
         };

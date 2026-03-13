@@ -30,7 +30,7 @@ DRY_RUN=false
 VERIFY=false
 DAYS=7
 MIN_OCCURRENCES=2
-LOG_DIR="${HOME}/.local/state/nixos-ai-stack/gap-remediation"
+LOG_DIR="${GAP_REMEDIATION_LOG_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/nixos-ai-stack/gap-remediation}"
 LOG_FILE="${LOG_DIR}/remediation-$(date -u +%Y%m%d).jsonl"
 
 # Database config
