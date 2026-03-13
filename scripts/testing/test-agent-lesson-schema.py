@@ -26,7 +26,9 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> int:
     original_path = MODULE.HINT_FEEDBACK_PATH
+    original_registry_path = MODULE.AGENT_LESSON_REGISTRY_PATH
     tmp_path = ROOT / ".tmp-agent-lesson-schema.jsonl"
+    tmp_registry_path = ROOT / ".tmp-agent-lessons-registry.json"
     try:
         tmp_path.write_text(
             "\n".join(
@@ -40,8 +42,11 @@ def main() -> int:
             encoding="utf-8",
         )
         MODULE.HINT_FEEDBACK_PATH = tmp_path
+        MODULE.AGENT_LESSON_REGISTRY_PATH = tmp_registry_path
         since = datetime.now(tz=timezone.utc) - timedelta(days=7)
         lessons = MODULE.agent_lesson_candidates(since)
+        registry = MODULE.sync_agent_lesson_registry(lessons)
+        lessons["registry"] = registry
         candidates = lessons.get("candidates") or []
         assert_true(bool(candidates), "expected at least one lesson candidate")
         top = candidates[0]
@@ -52,13 +57,19 @@ def main() -> int:
         traceability = top.get("traceability") or {}
         assert_true(traceability.get("source_type") == "hint_feedback", "expected hint feedback traceability")
         assert_true("reference" in (traceability.get("targets") or []), "expected reference target")
+        assert_true(top.get("registry_state") == "pending_review", "expected pending review registry state")
+        counts = registry.get("counts") or {}
+        assert_true(counts.get("pending_review") == 1, "expected one pending review lesson")
 
         actions = MODULE.build_structured_actions({}, {"available": False}, {"available": False}, {"available": False}, [], None, lessons)
-        assert_true(any(item.get("action") == "promote_agent_lesson" for item in actions if isinstance(item, dict)), "expected promote_agent_lesson structured action")
+        assert_true(any(item.get("action") == "review_agent_lesson" for item in actions if isinstance(item, dict)), "expected review_agent_lesson structured action")
     finally:
         MODULE.HINT_FEEDBACK_PATH = original_path
+        MODULE.AGENT_LESSON_REGISTRY_PATH = original_registry_path
         if tmp_path.exists():
             tmp_path.unlink()
+        if tmp_registry_path.exists():
+            tmp_registry_path.unlink()
 
     print("PASS: aq-report emits governed lesson schema and structured promotion actions")
     return 0
