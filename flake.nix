@@ -264,6 +264,23 @@
               alejandra
             ];
           };
+          bitnet-benchmark = pkgs'.mkShell {
+            packages = with pkgs'; [
+              python312
+              cmake
+              clang
+              git
+              gnumake
+              pkg-config
+              zlib
+            ];
+            shellHook = ''
+              export BITNET_BENCHMARK_SHELL=1
+              export BITNET_PYTHON_BIN="${pkgs'.python312}/bin/python3.12"
+              export LD_LIBRARY_PATH="${pkgs'.lib.makeLibraryPath [ pkgs'.zlib pkgs'.stdenv.cc.cc.lib ]}:''${LD_LIBRARY_PATH:-}"
+              echo "BitNet benchmark shell ready: python3.12, cmake, clang, git, make, pkg-config, zlib"
+            '';
+          };
         });
     };
 }
