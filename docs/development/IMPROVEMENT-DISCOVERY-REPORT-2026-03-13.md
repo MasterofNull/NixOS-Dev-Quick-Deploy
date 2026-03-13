@@ -3,6 +3,8 @@
 **Status:** active
 **Owner:** codex
 **Last Updated:** 2026-03-13
+**Note:** GitHub rate limit exceeded; set `GITHUB_TOKEN` or `GH_TOKEN` and rerun.
+
 
 ## Candidate Summary (Scored)
 
@@ -11,7 +13,7 @@
 - **Score:** 64.0
 - **Latest release:** b8323
 - **Release URL:** https://github.com/ggml-org/llama.cpp/releases/tag/b8323
-- **Stars:** 97827
+- **Stars:** 97828
 
 ### https://github.com/qdrant/qdrant/releases
 - **Repo:** qdrant/qdrant
@@ -41,16 +43,9 @@
 - **Release URL:** https://github.com/numman-ali/openskills/releases/tag/v1.5.0
 - **Stars:** 9001
 
-### https://github.com/utensils/mcp-nixos/releases
-- **Repo:** utensils/mcp-nixos
-- **Score:** 31.66
-- **Latest release:** v2.3.0: HTTP Transport & Modular Architecture
-- **Release URL:** https://github.com/utensils/mcp-nixos/releases/tag/v2.3.0
-- **Stars:** 473
-
 ## Signals (Low-Trust)
 
-- None
+- https://github.com/utensils/mcp-nixos/releases (error: 'NoneType' object has no attribute 'get')
 
 ## Skipped (Not Due)
 
@@ -94,7 +89,7 @@
 - **Tag:** b8323
 - **Release URL:** https://github.com/ggml-org/llama.cpp/releases/tag/b8323
 - **Published:** 2026-03-13T19:50:30Z
-- **Stars:** 97827
+- **Stars:** 97828
 
 ### https://github.com/open-webui/open-webui/releases
 - **Type:** github_release
@@ -126,10 +121,7 @@
 ### https://github.com/utensils/mcp-nixos/releases
 - **Type:** github_release
 - **Weight:** 0.5
-- **Latest release:** v2.3.0: HTTP Transport & Modular Architecture
-- **Tag:** v2.3.0
-- **Release URL:** https://github.com/utensils/mcp-nixos/releases/tag/v2.3.0
-- **Published:** 2026-03-06T03:35:57Z
+- **Error:** HTTP Error 403: rate limit exceeded
 - **Stars:** 473
 
 ### https://paperswithcode.com/
