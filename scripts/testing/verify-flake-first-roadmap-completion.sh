@@ -500,6 +500,8 @@ check_pattern "nix/pkgs/continue-cli.nix" 'makeWrapper .*node.*/bin/node' 'Conti
 check_absent_pattern "nix/pkgs/continue-cli.nix" 'npmDepsHash = null' 'Continue CLI derivation no longer uses a broken null npmDepsHash'
 check_pattern "nix/home/base.nix" '"contextLength": 16384' 'Continue config matches the local llama.cpp context window instead of a stale 4k cap'
 check_pattern "scripts/ai/aq-qa" 'contextLength\"\) or 0\) >= 12000' 'aq-qa enforces a Continue context-window floor for agent mode'
+check_pattern "scripts/ai/aq-qa" '0\.5\.5' 'aq-qa includes a continue-local oversized-input trimming check'
+check_pattern "scripts/ai/aq-report" 'timeout=35' 'aq-report allows the heavier Continue/editor QA batch to complete'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_bash_binary' 'Hybrid QA tool resolves an explicit bash binary for systemd-safe execution'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_python3_binary|_build_qa_exec_env' 'Hybrid QA tool resolves python3 and PATH for systemd-safe execution'

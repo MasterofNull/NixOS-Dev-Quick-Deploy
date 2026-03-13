@@ -175,6 +175,10 @@ _continue_local_smoke() {
     python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); print(content); raise SystemExit(0 if content else 1)'
 }
 
+_continue_local_large_context_smoke() {
+  bash "${REPO_ROOT}/scripts/testing/test-switchboard-continue-context-window.sh"
+}
+
 _aq_report_snapshot() {
   if [[ -n "${AQ_QA_AQ_REPORT_JSON:-}" ]]; then
     printf '%s' "${AQ_QA_AQ_REPORT_JSON}"
@@ -278,6 +282,7 @@ run_phase_0() {
   _check "0.5.2" "Continue config targets continue-local via switchboard" _continue_config_ok
   _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' bash -lc 'codium --list-extensions 2>/dev/null | tr "[:upper:]" "[:lower:]"'
   _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
+  _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
 }
 
 # ---------------------------------------------------------------------------
