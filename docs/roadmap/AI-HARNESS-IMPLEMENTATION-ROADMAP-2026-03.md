@@ -69,6 +69,7 @@ Tracking fields to update after each slice:
 | Area | Status | Evidence | Next Action |
 | --- | --- | --- | --- |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging fixed; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
+| OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
 | Continue/local web research lane | planned | Continue and local-model surfaces do not yet expose a validated, polite web research/scraping path for bounded fetch -> extract -> summarize workflows | define bounded fetch policy, route through harness/coordinator, and add validation before treating web research as supported |
 | Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
 
@@ -84,6 +85,8 @@ Tracking fields to update after each slice:
 | 2026-03-13 | unattended sudo flake-first fix | validated_local | moved bounded autonomous sudo rules into tracked `nix/hosts/nixos/deploy-options.nix` after confirming pure flake evaluation cannot see `deploy-options.local.nix` |
 | 2026-03-13 | ai-coordinator runtime-refresh corrective pass | validated_local | fixed stale default runtime records and local-lane alias handling in the new ai-coordinator delegation surface before live activation |
 | 2026-03-13 | scoped sudo + coordinator live validation | validated_live | confirmed `sudo -n` works for the bounded command set, `nixos-quick-deploy.sh --preflight-only` runs unattended, `/control/ai-coordinator/status` is live, and both `remote-free` and `continue-local` delegation succeed |
+| 2026-03-13 | free-lane alias corrective pass | in_progress | `remote-coding` and `remote-reasoning` produced `402` under paid aliases, so host defaults are being moved to official free-capable models before re-validation |
+| 2026-03-13 | remote-free fallback hardening | in_progress | `remote-coding` free alias hit upstream `429`, so coordinator delegation is being updated to retry bounded coding/reasoning requests on `remote-free` before surfacing failure |
 
 ## High-Priority Tracks
 
@@ -274,13 +277,13 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; ai-coordinator status/delegate are live and validated for both local and OpenRouter free lanes`
+Current Slice: `remote profiles and fallback reporting exist; coding/reasoning lanes use free aliases and the coordinator is being hardened to retry on remote-free when a specific free model returns 402/429`
 Next Validation:
 - targeted remote profile smokes
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
-- remote coding/reasoning lanes still need live delegation smokes
+- remote coding/reasoning lanes can still hit provider-side free-model rate limits and need bounded fallback to the free lane
 - coordinator output still includes stale smoke runtime records from prior runtime registry tests and needs cleanup/retention policy
 
 Goal:

@@ -174,6 +174,24 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     return state
 
 
+def _apply_remote_runtime_status(
+    runtime: Dict[str, Any],
+    runtime_id: str,
+    remote_aliases: Dict[str, Any],
+    remote_configured: bool,
+) -> Dict[str, Any]:
+    if runtime_id == "openrouter-free":
+        runtime["status"] = "ready" if remote_configured and remote_aliases.get("free") else "offline"
+        runtime["model_alias"] = remote_aliases.get("free") or ""
+    elif runtime_id == "openrouter-coding":
+        runtime["status"] = "ready" if remote_configured and remote_aliases.get("coding") else "offline"
+        runtime["model_alias"] = remote_aliases.get("coding") or ""
+    elif runtime_id == "openrouter-reasoning":
+        runtime["status"] = "ready" if remote_configured and remote_aliases.get("reasoning") else "offline"
+        runtime["model_alias"] = remote_aliases.get("reasoning") or ""
+    return runtime
+
+
 def _audit_http_request(request: web.Request, status: int, latency_ms: float) -> None:
     """Emit tool-audit rows for HTTP endpoint usage (non-MCP transport)."""
     tool_name = _http_path_to_tool_name(request.path, request.method)
@@ -3135,15 +3153,7 @@ async def run_http_mode(port: int) -> None:
             remote_configured = bool(swb_state.get("remote_configured", False))
             for runtime in runtimes:
                 runtime_id = str(runtime.get("runtime_id", "")).strip()
-                if runtime_id == "openrouter-free":
-                    runtime["status"] = "ready" if remote_configured and remote_aliases.get("free") else "offline"
-                    runtime["model_alias"] = remote_aliases.get("free") or ""
-                elif runtime_id == "openrouter-coding":
-                    runtime["status"] = "ready" if remote_configured and remote_aliases.get("coding") else "offline"
-                    runtime["model_alias"] = remote_aliases.get("coding") or ""
-                elif runtime_id == "openrouter-reasoning":
-                    runtime["status"] = "ready" if remote_configured and remote_aliases.get("reasoning") else "offline"
-                    runtime["model_alias"] = remote_aliases.get("reasoning") or ""
+                runtime = _apply_remote_runtime_status(runtime, runtime_id, remote_aliases, remote_configured)
             runtimes.sort(key=lambda item: str(item.get("runtime_id", "")))
             return web.json_response(
                 {
@@ -3180,15 +3190,7 @@ async def run_http_mode(port: int) -> None:
             swb_state = await _switchboard_ai_coordinator_state()
             remote_aliases = swb_state.get("remote_aliases", {})
             remote_configured = bool(swb_state.get("remote_configured", False))
-            if selected_runtime_id == "openrouter-free":
-                runtime["status"] = "ready" if remote_configured and remote_aliases.get("free") else "offline"
-                runtime["model_alias"] = remote_aliases.get("free") or ""
-            elif selected_runtime_id == "openrouter-coding":
-                runtime["status"] = "ready" if remote_configured and remote_aliases.get("coding") else "offline"
-                runtime["model_alias"] = remote_aliases.get("coding") or ""
-            elif selected_runtime_id == "openrouter-reasoning":
-                runtime["status"] = "ready" if remote_configured and remote_aliases.get("reasoning") else "offline"
-                runtime["model_alias"] = remote_aliases.get("reasoning") or ""
+            runtime = _apply_remote_runtime_status(runtime, selected_runtime_id, remote_aliases, remote_configured)
 
             status = str(runtime.get("status", "unknown")).strip().lower()
             if status not in {"ready", "degraded"}:
@@ -3222,26 +3224,49 @@ async def run_http_mode(port: int) -> None:
             if "temperature" in data:
                 payload["temperature"] = float(data.get("temperature"))
 
-            headers = {
-                "Content-Type": "application/json",
-                "X-AI-Profile": selected_profile if selected_profile != "default" else "continue-local",
-            }
-            if selected_profile != "default":
-                headers["X-AI-Route"] = "remote"
-
             timeout_s = float(data.get("timeout_s") or 60.0)
-            async with httpx.AsyncClient(timeout=timeout_s) as client:
-                response = await client.post(
-                    f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
+
+            async def _post_delegate(profile_name: str) -> httpx.Response:
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-AI-Profile": profile_name if profile_name != "default" else "continue-local",
+                }
+                if profile_name != "default":
+                    headers["X-AI-Route"] = "remote"
+                async with httpx.AsyncClient(timeout=timeout_s) as client:
+                    return await client.post(
+                        f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+
+            effective_profile = selected_profile
+            effective_runtime_id = selected_runtime_id
+            fallback_applied = False
+            response = await _post_delegate(effective_profile)
+            if (
+                response.status_code in {402, 429}
+                and selected_runtime_id in {"openrouter-coding", "openrouter-reasoning"}
+                and remote_configured
+                and remote_aliases.get("free")
+            ):
+                effective_profile = "remote-free"
+                effective_runtime_id = "openrouter-free"
+                fallback_applied = True
+                response = await _post_delegate(effective_profile)
+                runtime = _apply_remote_runtime_status(
+                    dict((registry.get("runtimes", {}) or {}).get(effective_runtime_id) or {}),
+                    effective_runtime_id,
+                    remote_aliases,
+                    remote_configured,
                 )
 
             body = response.json()
             request["audit_metadata"] = {
-                "selected_runtime_id": selected_runtime_id,
-                "selected_profile": selected_profile,
+                "selected_runtime_id": effective_runtime_id,
+                "selected_profile": effective_profile,
                 "delegated_http_status": int(response.status_code),
+                "fallback_applied": fallback_applied,
             }
 
             return web.json_response(
@@ -3249,12 +3274,21 @@ async def run_http_mode(port: int) -> None:
                     "status": "ok" if response.status_code < 400 else "error",
                     "task": task,
                     "selected_runtime": {
-                        "runtime_id": selected_runtime_id,
-                        "name": runtime.get("name", selected_runtime_id),
-                        "profile": runtime.get("profile", selected_profile),
+                        "runtime_id": effective_runtime_id,
+                        "name": runtime.get("name", effective_runtime_id),
+                        "profile": runtime.get("profile", effective_profile),
                         "model_alias": runtime.get("model_alias", ""),
                         "status": runtime.get("status", status),
                     },
+                    "fallback": (
+                        {
+                            "applied": True,
+                            "from_profile": selected_profile,
+                            "to_profile": effective_profile,
+                            "reason": "remote profile returned 402/429; retried on remote-free",
+                        }
+                        if fallback_applied else {"applied": False}
+                    ),
                     "response": body,
                 },
                 status=response.status_code,
