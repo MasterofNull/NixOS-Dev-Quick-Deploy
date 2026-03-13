@@ -352,7 +352,7 @@ class ContinuousLearningPipeline:
     def _record_proposal(self, proposal: OptimizationProposal, proposal_hash: str) -> None:
         """Persist proposal to telemetry log."""
         try:
-            payload = proposal.model_dump()
+            payload = proposal.model_dump(mode="json")
             payload["proposal_hash"] = proposal_hash
             with open(self.proposals_path, "a") as handle:
                 handle.write(json.dumps(payload) + "\n")
