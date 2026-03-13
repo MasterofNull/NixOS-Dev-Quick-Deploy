@@ -26,10 +26,11 @@ fi
 
 HYBRID_API_KEY="${HYBRID_API_KEY:-}"
 if [[ -z "$HYBRID_API_KEY" ]]; then
-  HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_api_key}"
-  if [[ -r "$HYBRID_API_KEY_FILE" ]]; then
-    HYBRID_API_KEY="$(<"$HYBRID_API_KEY_FILE")"
-  fi
+  for candidate in "${HYBRID_API_KEY_FILE:-}" /run/secrets/hybrid_coordinator_api_key /run/secrets/hybrid_api_key; do
+    [[ -n "$candidate" && -r "$candidate" ]] || continue
+    HYBRID_API_KEY="$(tr -d '[:space:]' < "$candidate")"
+    break
+  done
 fi
 
 hybrid_query() {

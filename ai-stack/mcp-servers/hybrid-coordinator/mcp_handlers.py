@@ -24,6 +24,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import pwd
 import shutil
 import time as _time
 from typing import Any, Callable, Dict, List, Optional
@@ -37,6 +38,7 @@ from memory_manager import coerce_memory_summary, normalize_memory_type
 logger = logging.getLogger("hybrid-coordinator")
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _AQ_QA_SCRIPT = _REPO_ROOT / "scripts" / "ai" / "aq-qa"
+_FLAGSHIP_CLI_SMOKE_SCRIPT = _REPO_ROOT / "scripts" / "testing" / "smoke-flagship-cli-surfaces.sh"
 _QA_PHASE_ALIASES = {"phase0": "0", "phase1": "1", "phase2": "2", "phase3": "3", "all": "all"}
 
 
@@ -70,13 +72,21 @@ def _resolve_python3_binary() -> str:
 def _build_qa_exec_env() -> Dict[str, str]:
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
-    env.setdefault("HOME", str(_REPO_ROOT))
+    try:
+        operator_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except KeyError:
+        operator_home = Path(env.get("HOME") or _REPO_ROOT)
+    env.setdefault("HOME", str(operator_home))
 
     bash_bin = _resolve_bash_binary()
     python3_bin = _resolve_python3_binary()
     path_entries = [
         str(Path(bash_bin).parent),
         str(Path(python3_bin).parent),
+        str(operator_home / ".nix-profile" / "bin"),
+        str(operator_home / ".npm-global" / "bin"),
+        str(operator_home / ".local" / "bin"),
+        str(operator_home / ".cargo" / "bin"),
         "/run/current-system/sw/bin",
         "/usr/bin",
         "/bin",
@@ -101,6 +111,7 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
     phase = _normalize_qa_phase(arguments.get("phase", "0"))
     output_format = str(arguments.get("format", "json")).strip().lower()
     include_sudo = bool(arguments.get("include_sudo", False))
+    capability_only = bool(arguments.get("capability_only", False))
     timeout_seconds = int(arguments.get("timeout_seconds", 60) or 60)
     if timeout_seconds < 5:
         timeout_seconds = 5
@@ -108,8 +119,60 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("format must be 'json' or 'text'")
     if phase not in {"0", "1", "2", "3", "all"}:
         raise ValueError("phase must be one of 0, 1, 2, 3, all")
+    if capability_only and phase != "0":
+        raise ValueError("capability_only mode is only supported for phase 0")
     if not _AQ_QA_SCRIPT.exists():
         raise FileNotFoundError(f"aq-qa script not found at {_AQ_QA_SCRIPT}")
+
+    env = _build_qa_exec_env()
+    if capability_only:
+        if not _FLAGSHIP_CLI_SMOKE_SCRIPT.exists():
+            raise FileNotFoundError(f"flagship CLI smoke script not found at {_FLAGSHIP_CLI_SMOKE_SCRIPT}")
+        cmd = [_resolve_bash_binary(), str(_FLAGSHIP_CLI_SMOKE_SCRIPT)]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(_REPO_ROOT),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=min(timeout_seconds, 30))
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            raise TimeoutError("capability-only QA smoke timed out")
+        stdout_text = stdout.decode("utf-8", errors="replace").strip()
+        stderr_text = stderr.decode("utf-8", errors="replace").strip()
+        passed = 1 if proc.returncode == 0 else 0
+        failed = 0 if proc.returncode == 0 else 1
+        result: Dict[str, Any] = {
+            "status": "ok" if proc.returncode == 0 else "failed",
+            "phase": phase,
+            "format": output_format,
+            "exit_code": int(proc.returncode),
+            "command": cmd,
+            "stdout": stdout_text if output_format == "text" else None,
+            "stderr": stderr_text or None,
+            "qa_result": {
+                "phase": phase,
+                "scope": "capability_only",
+                "passed": passed,
+                "failed": failed,
+                "skipped": 0,
+                "duration_s": 0,
+                "tests": [
+                    {
+                        "id": "0.6.1",
+                        "status": "PASS" if proc.returncode == 0 else "FAIL",
+                        "description": "flagship agent CLI help smokes",
+                    }
+                ],
+            },
+        }
+        if output_format == "text":
+            result["stdout"] = stdout_text
+        return result
 
     cmd = [_resolve_bash_binary(), str(_AQ_QA_SCRIPT), phase]
     if output_format == "json":
@@ -117,7 +180,6 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
     if include_sudo:
         cmd.append("--sudo")
 
-    env = _build_qa_exec_env()
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=str(_REPO_ROOT),
