@@ -540,6 +540,7 @@ check_pattern "scripts/testing/smoke-workflow-tree-lesson-refs.sh" 'active_lesso
 check_pattern "scripts/testing/smoke-status-runtime-lesson-refs.sh" 'active_lesson_refs|/status|/stats|control/runtimes/register|control/runtimes/schedule/select' 'Status and runtime-control lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-workflow-orchestrate-lesson-refs.sh" 'active_lesson_refs|workflow/orchestrate|workflow/orchestrate/' 'Workflow orchestrate lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-health-memory-learning-lesson-refs.sh" 'active_lesson_refs|/health|/search/tree|/memory/store|/learning/export|/model/status' 'Health, memory, learning, and model lesson smoke covers direct lesson ref surfacing'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/continuous_learning.py" 'model_dump\(mode="json"\)' 'Continuous learning proposal persistence serializes datetimes before JSONL writes'
 check_pattern "scripts/testing/smoke-review-acceptance-lesson-refs.sh" 'active_lesson_refs|reviewer_gate\.status' 'Review acceptance lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-status-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator status lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-lessons-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator lessons lesson smoke covers direct lesson ref surfacing'
