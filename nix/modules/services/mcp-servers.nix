@@ -918,7 +918,7 @@ in
             "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
             "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
             "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
-            "WORKFLOW_BLUEPRINTS_FILE=${workflowBlueprintsJson}"
+            "WORKFLOW_BLUEPRINTS_FILE=${mcp.repoPath}/config/workflow-blueprints.json"
             "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
             "PARITY_SCORECARD_FILE=${parityScorecardJson}"
             "AI_TOOL_SECURITY_AUDIT_ENABLED=${if ai.aiHarness.runtime.toolSecurity.enable then "true" else "false"}"

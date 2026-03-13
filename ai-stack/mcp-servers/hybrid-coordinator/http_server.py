@@ -1191,6 +1191,24 @@ def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
             "network_policy": "",
         },
     )
+    session.setdefault(
+        "reviewer_gate",
+        {
+            "required": False,
+            "last_review": None,
+            "history": [],
+            "status": "not_required",
+        },
+    )
+
+
+def _blueprint_requires_reviewer_gate(blueprint: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(blueprint, dict):
+        return False
+    phases = blueprint.get("phases", [])
+    if not isinstance(phases, list):
+        return False
+    return any(bool(item.get("requires_approval")) for item in phases if isinstance(item, dict))
 
 
 def _budget_exceeded(session: Dict[str, Any]) -> Optional[str]:
@@ -3064,8 +3082,7 @@ async def run_http_mode(port: int) -> None:
             passed = criteria_ratio >= min_criteria_ratio and keyword_ratio >= min_keyword_ratio
             if isinstance(harness_eval, dict) and harness_eval.get("passed") is False:
                 passed = False
-
-            return web.json_response({
+            response_payload = {
                 "passed": passed,
                 "score": round((criteria_ratio + keyword_ratio) / 2.0, 4),
                 "criteria": {
@@ -3083,7 +3100,60 @@ async def run_http_mode(port: int) -> None:
                     "threshold": min_keyword_ratio,
                 },
                 "harness_eval": harness_eval,
-            })
+            }
+
+            session_id = str(data.get("session_id", "") or "").strip()
+            if session_id:
+                now = int(time.time())
+                review_snapshot = {
+                    "ts": now,
+                    "passed": passed,
+                    "score": response_payload["score"],
+                    "reviewer": str(data.get("reviewer", "") or "codex").strip()[:64] or "codex",
+                    "criteria_ratio": round(criteria_ratio, 4),
+                    "keyword_ratio": round(keyword_ratio, 4),
+                    "criteria_threshold": min_criteria_ratio,
+                    "keyword_threshold": min_keyword_ratio,
+                    "criteria_total": criteria_total,
+                    "keyword_total": keyword_total,
+                }
+                async with _workflow_sessions_lock:
+                    sessions = await _load_workflow_sessions()
+                    session = sessions.get(session_id)
+                    if session:
+                        _ensure_session_runtime_fields(session)
+                        gate = session.get("reviewer_gate", {})
+                        if not isinstance(gate, dict):
+                            gate = {}
+                        history = gate.get("history", [])
+                        if not isinstance(history, list):
+                            history = []
+                        history.append(review_snapshot)
+                        gate["required"] = bool(gate.get("required", False))
+                        gate["last_review"] = review_snapshot
+                        gate["history"] = history[-10:]
+                        gate["status"] = "accepted" if passed else "rejected"
+                        session["reviewer_gate"] = gate
+                        session["updated_at"] = now
+                        session.setdefault("trajectory", [])
+                        session["trajectory"].append(
+                            {
+                                "ts": now,
+                                "event_type": "review_acceptance",
+                                "phase_id": f"phase-{int(session.get('current_phase_index', 0))}",
+                                "detail": f"review gate -> {'accepted' if passed else 'rejected'}",
+                                "score": response_payload["score"],
+                            }
+                        )
+                        sessions[session_id] = session
+                        await _save_workflow_sessions(sessions)
+                        response_payload["session_id"] = session_id
+                        response_payload["reviewer_gate"] = gate
+                    else:
+                        response_payload["session_id"] = session_id
+                        response_payload["reviewer_gate_error"] = "session_not_found"
+
+            return web.json_response(response_payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -3128,7 +3198,18 @@ async def run_http_mode(port: int) -> None:
                 "budget": _default_budget(data),
                 "usage": _default_usage(),
                 "blueprint_id": blueprint_id or None,
+                "blueprint_title": (
+                    str(selected_blueprint.get("title", "")).strip()
+                    if isinstance(selected_blueprint, dict)
+                    else ""
+                ) or None,
                 "intent_contract": validation["normalized"],
+                "reviewer_gate": {
+                    "required": _blueprint_requires_reviewer_gate(selected_blueprint),
+                    "last_review": None,
+                    "history": [],
+                    "status": "pending_review" if _blueprint_requires_reviewer_gate(selected_blueprint) else "not_required",
+                },
                 "isolation": {
                     "profile": str(data.get("isolation_profile", "")).strip(),
                     "workspace_root": str(data.get("workspace_root", "")).strip(),
@@ -3143,6 +3224,7 @@ async def run_http_mode(port: int) -> None:
                         "phase_id": "discover",
                         "detail": "workflow run started",
                         "intent_contract_present": True,
+                        "reviewer_gate_required": _blueprint_requires_reviewer_gate(selected_blueprint),
                     }
                 ],
             }
