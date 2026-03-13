@@ -76,6 +76,15 @@
       # llamaCpp.huggingFaceFile = "Qwen3-4B-Instruct-2507-Q5_K_M.gguf";
       # llamaCpp.sha256          = null; # fill after first verified download / benchmark pass
       #
+      # Candidate D — exact public 8B instruct source pinned for larger-model comparison
+      # llamaCpp.model           = "/var/lib/llama-cpp/models/Qwen3-8B-Q4_K_M.gguf";
+      # llamaCpp.huggingFaceRepo = "lm-kit/qwen-3-8b-instruct-gguf";
+      # llamaCpp.huggingFaceFile = "Qwen3-8B-Q4_K_M.gguf";
+      # llamaCpp.sha256          = null; # fill after staged download / verified benchmark pass
+      #
+      # 8B IQ4_NL remains intentionally unpinned here until a public instruct-labelled
+      # GGUF source is resolved cleanly. Do not substitute a base-model GGUF silently.
+      #
       # Toggle procedure:
       # 1. Replace the active llamaCpp.* lines below with one candidate block.
       # 2. Deploy.
