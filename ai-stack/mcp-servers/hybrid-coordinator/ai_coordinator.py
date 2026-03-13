@@ -266,6 +266,7 @@ def coerce_orchestration_context(incoming: Optional[Dict[str, Any]]) -> Dict[str
     if requester_role not in {"orchestrator", "sub-agent"}:
         requester_role = "orchestrator"
     return {
+        "requesting_agent": requested_by,
         "requested_by": requested_by,
         "requester_role": requester_role,
         "top_level_orchestrator": requester_role == "orchestrator",
