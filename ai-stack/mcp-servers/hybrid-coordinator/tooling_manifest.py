@@ -68,6 +68,13 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
             "List harness-approved shared skills for local and delegated agents.",
         )
 
+    if any(k in q for k in ("lesson", "lessons", "evoskill", "promotion", "promote", "review lesson")):
+        add(
+            "agent_lessons_registry",
+            "/control/ai-coordinator/lessons",
+            "Inspect persisted agent lessons and pending review candidates.",
+        )
+
     if any(
         k in q
         for k in (
@@ -216,6 +223,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "mcp_tool": "",
         "args": ["limit"],
         "output_focus": "Approved skill slugs, descriptions, source paths, and manager tags only.",
+    },
+    "agent_lessons_registry": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": [],
+        "output_focus": "Pending review counts, promoted lessons, and compact traceability only.",
     },
     "workflow_plan": {
         "method": "POST",

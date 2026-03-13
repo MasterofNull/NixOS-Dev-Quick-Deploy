@@ -81,6 +81,16 @@ def main() -> int:
         "discover phase does not expose shared_skill_registry",
     )
 
+    lesson_query = "review lesson promotion candidates and inspect the evoskill registry"
+    lesson_tools = workflow_tool_catalog(lesson_query)
+    lesson_tool_names = [tool["name"] for tool in lesson_tools]
+    assert_true("agent_lessons_registry" in lesson_tool_names, "lesson query missing agent_lessons_registry")
+    lesson_manifest = build_tooling_manifest(lesson_query, lesson_tools)
+    assert_true(
+        any(tool["name"] == "agent_lessons_registry" for tool in lesson_manifest["tools"]),
+        "manifest omits agent_lessons_registry",
+    )
+
     print("PASS: tooling manifest exposes Ralph loop orchestration only when agentic workflow intent is present")
     return 0
 
