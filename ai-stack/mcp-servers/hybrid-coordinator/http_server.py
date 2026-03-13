@@ -1565,7 +1565,7 @@ async def run_http_mode(port: int) -> None:
             logger.debug("Circuit breaker state unavailable: %s", exc)
             breakers = {}
 
-        return web.json_response({
+        payload = {
             "status": "healthy",
             "service": "hybrid-coordinator",
             "collections": list(_COLLECTIONS.keys()),
@@ -1586,7 +1586,13 @@ async def run_http_mode(port: int) -> None:
             },
             "capability_discovery": _HYBRID_STATS.get("capability_discovery", {}),
             "circuit_breakers": breakers or (_CIRCUIT_BREAKERS.get_all_stats() if _CIRCUIT_BREAKERS else {}),
-        })
+        }
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_health_detailed(request):
         """Detailed health endpoint with dependency probes and performance indicators."""
@@ -1655,17 +1661,20 @@ async def run_http_mode(port: int) -> None:
         }
         dependency_unhealthy = any(d.get("status") != "ok" for d in deps.values())
         service_status = "degraded" if dependency_unhealthy else "healthy"
-        return web.json_response(
-            {
-                "status": service_status,
-                "service": "hybrid-coordinator",
-                "dependencies": deps,
-                "performance": perf,
-                "circuit_breakers": _CIRCUIT_BREAKERS.get_all_stats() if _CIRCUIT_BREAKERS else {},
-                "capability_discovery": _HYBRID_STATS.get("capability_discovery", {}),
-            },
-            status=200 if service_status in ("healthy", "degraded") else 503,
-        )
+        payload = {
+            "status": service_status,
+            "service": "hybrid-coordinator",
+            "dependencies": deps,
+            "performance": perf,
+            "circuit_breakers": _CIRCUIT_BREAKERS.get_all_stats() if _CIRCUIT_BREAKERS else {},
+            "capability_discovery": _HYBRID_STATS.get("capability_discovery", {}),
+        }
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload, status=200 if service_status in ("healthy", "degraded") else 503)
 
     async def handle_stats(request):
         payload = {
@@ -1993,6 +2002,11 @@ async def run_http_mode(port: int) -> None:
                 keyword_limit=int(data.get("keyword_limit", 5)),
                 score_threshold=float(data.get("score_threshold", 0.7)),
             )
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "tree_search_failed", "detail": str(exc)}, status=500)
@@ -2008,6 +2022,11 @@ async def run_http_mode(port: int) -> None:
                 content=data.get("content"),
                 metadata=data.get("metadata"),
             )
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except ValueError as exc:
             return web.json_response({"error": "memory_store_invalid", "detail": str(exc)}, status=400)
@@ -2026,6 +2045,11 @@ async def run_http_mode(port: int) -> None:
                 limit=data.get("limit"),
                 retrieval_mode=data.get("retrieval_mode", "hybrid"),
             )
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "memory_recall_failed", "detail": str(exc)}, status=500)
@@ -2049,6 +2073,11 @@ async def run_http_mode(port: int) -> None:
                 "harness_overall_score": metrics.get("overall_score") if isinstance(metrics, dict) else None,
                 "harness_failure_category": result.get("failure_category") if isinstance(result, dict) else None,
             }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "harness_eval_failed", "detail": str(exc)}, status=500)
@@ -2077,10 +2106,22 @@ async def run_http_mode(port: int) -> None:
             return web.json_response({"error": "qa_check_failed", "detail": str(exc)}, status=500)
 
     async def handle_harness_stats(_request):
-        return web.json_response(_HARNESS_STATS)
+        payload = dict(_HARNESS_STATS)
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_harness_scorecard(_request):
-        return web.json_response(_build_scorecard())
+        payload = _build_scorecard()
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs and isinstance(payload, dict):
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_multi_turn_context(request):
         try:
@@ -2335,6 +2376,11 @@ async def run_http_mode(port: int) -> None:
             stats = cache.get_stats()
             size = await cache.get_cache_size()
             stats["current_size"] = size
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                stats["active_lesson_refs"] = lesson_refs
             return web.json_response(stats)
 
         except Exception as exc:
@@ -2358,18 +2404,35 @@ async def run_http_mode(port: int) -> None:
             if stats_path.exists():
                 import json
                 with open(stats_path, "r") as f:
-                    return web.json_response(json.load(f))
+                    payload = json.load(f)
+                    async with _agent_lessons_lock:
+                        lesson_registry = await _load_agent_lessons_registry()
+                    lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+                    if lesson_refs and isinstance(payload, dict):
+                        payload["active_lesson_refs"] = lesson_refs
+                    return web.json_response(payload)
             if _learning_pipeline:
                 stats = await _learning_pipeline.get_statistics()
+                async with _agent_lessons_lock:
+                    lesson_registry = await _load_agent_lessons_registry()
+                lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+                if lesson_refs and isinstance(stats, dict):
+                    stats["active_lesson_refs"] = lesson_refs
                 return web.json_response(stats)
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
-        return web.json_response({
+        payload = {
             "checkpoints": {"total": 0, "last_checkpoint": None},
             "backpressure": {"unprocessed_mb": 0, "paused": False},
             "backpressure_threshold_mb": 100,
             "deduplication": {"total_patterns": 0, "duplicates_found": 0, "unique_patterns": 0},
-        })
+        }
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_learning_process(_request):
         if not _learning_pipeline:
@@ -2399,7 +2462,13 @@ async def run_http_mode(port: int) -> None:
             if dataset_path_str and Path(dataset_path_str).exists():
                 with open(dataset_path_str, "r") as f:
                     count = sum(1 for _ in f)
-            return web.json_response({"status": "ok", "dataset_path": dataset_path_str, "examples": count})
+            payload = {"status": "ok", "dataset_path": dataset_path_str, "examples": count}
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response({"status": "error", "detail": str(exc)}, status=500)
 
@@ -2510,7 +2579,13 @@ async def run_http_mode(port: int) -> None:
                 "status": status,
                 "model_path": model_path,
             }
-        return web.json_response({"services": results})
+        payload = {"services": results}
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     # ------------------------------------------------------------------
     # Phase 19.2.1/19.2.2 — /hints endpoint (agent-agnostic hint API)
