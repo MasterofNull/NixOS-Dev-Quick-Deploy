@@ -217,12 +217,99 @@ def default_runtime_id_for_profile(profile: str) -> str:
     return mapping.get(str(profile or "").strip().lower(), "openrouter-free")
 
 
-def build_messages(task: str, system_prompt: str = "", context: Dict[str, Any] | None = None) -> List[Dict[str, str]]:
+def _delegation_system_prompt(profile: str) -> str:
+    role = {
+        "remote-coding": "implementation sub-agent",
+        "remote-reasoning": "architecture/review sub-agent",
+        "remote-free": "bounded research/planning sub-agent",
+        "default": "local delegated sub-agent",
+    }.get(str(profile or "").strip().lower(), "delegated sub-agent")
+    return (
+        f"You are a {role} inside the NixOS-Dev-Quick-Deploy harness.\n"
+        "You are not the orchestrator.\n"
+        "Execute only the assigned slice.\n"
+        "Respond concisely.\n"
+        "Do not invent files, commands, or validation you did not actually derive from the provided task/context.\n"
+        "Return evidence-first output with concrete paths, commands, and risks when available.\n"
+        "If the task cannot be completed from the provided inputs, say what is missing instead of improvising."
+    )
+
+
+def _normalize_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        out: List[str] = []
+        for item in value:
+            text = str(item or "").strip()
+            if text:
+                out.append(text)
+        return out
+    text = str(value or "").strip()
+    return [text] if text else []
+
+
+def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] | None) -> str:
+    ctx = context if isinstance(context, dict) else {}
+    repo_paths = _normalize_list(ctx.get("repo_paths"))
+    constraints = _normalize_list(ctx.get("constraints"))
+    evidence = _normalize_list(ctx.get("evidence_requirements"))
+    anti_goals = _normalize_list(ctx.get("anti_goals"))
+    artifact = str(ctx.get("expected_artifact") or "").strip()
+    output_format = str(ctx.get("output_format") or "").strip()
+
+    default_artifact = {
+        "remote-coding": "small patch plan or implementation sketch tied to existing repo paths",
+        "remote-reasoning": "design/review notes with concrete risks and recommended direction",
+        "remote-free": "bounded synthesis with actionable findings",
+        "default": "bounded task result with evidence",
+    }.get(str(profile or "").strip().lower(), "bounded task result with evidence")
+    if not artifact:
+        artifact = default_artifact
+
+    lines = [
+        f"Task: {task.strip()}",
+        f"Expected artifact: {artifact}",
+        "Required output sections:",
+        "- result",
+        "- evidence",
+        "- risks",
+        "- rollback_or_next_step",
+    ]
+    if output_format:
+        lines.append(f"Output format constraint: {output_format}")
+    if repo_paths:
+        lines.append("Allowed repo paths:")
+        lines.extend(f"- {item}" for item in repo_paths[:8])
+    if constraints:
+        lines.append("Constraints:")
+        lines.extend(f"- {item}" for item in constraints[:8])
+    else:
+        lines.append("Constraints:")
+        lines.append("- stay within the assigned slice")
+        lines.append("- do not invent repo paths or validation")
+    if evidence:
+        lines.append("Evidence requirements:")
+        lines.extend(f"- {item}" for item in evidence[:8])
+    else:
+        lines.append("Evidence requirements:")
+        lines.append("- cite concrete files, commands, or runtime facts when available")
+    if anti_goals:
+        lines.append("Anti-goals:")
+        lines.extend(f"- {item}" for item in anti_goals[:8])
+    return "\n".join(lines)
+
+
+def build_messages(
+    task: str,
+    system_prompt: str = "",
+    context: Dict[str, Any] | None = None,
+    profile: str = "remote-free",
+) -> List[Dict[str, str]]:
     messages: List[Dict[str, str]] = []
-    if system_prompt.strip():
-        messages.append({"role": "system", "content": system_prompt.strip()})
-    body = str(task or "").strip()
-    if context:
-        body += "\n\nContext:\n" + str(context)
+    sys_prompt = system_prompt.strip() if system_prompt.strip() else _delegation_system_prompt(profile)
+    messages.append({"role": "system", "content": sys_prompt})
+    body = _delegation_contract_block(str(task or ""), profile, context)
+    extra_context = context.get("extra_context") if isinstance(context, dict) else None
+    if extra_context:
+        body += "\n\nAdditional context:\n" + str(extra_context).strip()
     messages.append({"role": "user", "content": body.strip()})
     return messages
