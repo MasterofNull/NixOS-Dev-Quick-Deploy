@@ -453,6 +453,13 @@ print_completion_test_results() {
     remote_profile_top="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
     remote_profile_calls="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.total_calls // 0')"
     remote_profile_success="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization.success_pct // "n/a"')"
+    remote_profile_24h_top="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization_windows.windows["24h"].top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    remote_profile_24h_success="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization_windows.windows["24h"].success_pct // "n/a"')"
+    remote_profile_7d_top="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization_windows.windows["7d"].top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    remote_profile_7d_success="$(printf '%s' "${json}" | jq -r '.remote_profile_utilization_windows.windows["7d"].success_pct // "n/a"')"
+    route_latency_window="$(printf '%s' "${json}" | jq -r '.route_search_latency_decomposition.window // "7d"')"
+    route_latency_p95="$(printf '%s' "${json}" | jq -r '.route_search_latency_decomposition.overall_p95_ms // "n/a"')"
+    route_latency_top="$(printf '%s' "${json}" | jq -r '.route_search_latency_decomposition.breakdown[0] | if . then "\(.label) p95=\(.p95_ms|floor)ms" else empty end')"
     delegated_failure_total="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.total_failures // 0')"
     delegated_failure_salvageable="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.salvageable_failures // 0')"
     delegated_failure_class="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_failure_classes[0][0] // empty')"
@@ -525,6 +532,22 @@ print_completion_test_results() {
       remote_profile_label="none (${remote_profile_window})"
     else
       remote_profile_label="${remote_profile_top}; success=${remote_profile_success}%"
+    fi
+    remote_profile_trend_label="24h="
+    if [[ -n "${remote_profile_24h_top}" ]]; then
+      remote_profile_trend_label="${remote_profile_trend_label}${remote_profile_24h_top}/${remote_profile_24h_success}%"
+    else
+      remote_profile_trend_label="${remote_profile_trend_label}none"
+    fi
+    remote_profile_trend_label="${remote_profile_trend_label}  7d="
+    if [[ -n "${remote_profile_7d_top}" ]]; then
+      remote_profile_trend_label="${remote_profile_trend_label}${remote_profile_7d_top}/${remote_profile_7d_success}%"
+    else
+      remote_profile_trend_label="${remote_profile_trend_label}none"
+    fi
+    route_latency_label="p95=${route_latency_p95}ms"
+    if [[ -n "${route_latency_top}" ]]; then
+      route_latency_label="${route_latency_label}; top=${route_latency_top}"
     fi
     if [[ "${delegated_failure_total}" == "0" ]]; then
       delegated_failure_label="none"
@@ -606,6 +629,8 @@ PY
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
     printf '  %-28s %s\n' "Provider fallback (${provider_fallback_window})" "${provider_fallback_label}"
     printf '  %-28s %s\n' "Remote profile use (${remote_profile_window})" "${remote_profile_label}"
+    printf '  %-28s %s\n' "Remote profile trend" "${remote_profile_trend_label}"
+    printf '  %-28s %s\n' "Route latency (${route_latency_window})" "${route_latency_label}"
     printf '  %-28s %s\n' "Delegated prompt failures" "${delegated_failure_label}"
     printf '  %-28s %s\n' "Prewarm candidate" "${rag_prewarm_label}"
     if [[ -n "${agent_lesson_label}" ]]; then
