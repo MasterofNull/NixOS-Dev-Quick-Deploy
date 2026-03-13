@@ -344,6 +344,53 @@
       ]
     },
     {
+      "id": "bounded-research-review",
+      "title": "Bounded Research / Retrieval Review",
+      "description": "Gather bounded source-backed research through approved workflows and require reviewer-visible evidence plus stop conditions.",
+      "default_safety_mode": "plan-readonly",
+      "intent_contract": {
+        "user_intent": "Collect, summarize, or compare source-bounded research without drifting into open-ended scraping or unreviewed synthesis.",
+        "definition_of_done": "Approved sources queried, evidence captured, output schema filled, and stop conditions or follow-up gaps documented.",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "Prefer approved source packs, retrieval, and browser fallback policy before ad hoc browsing.",
+          "Keep outputs evidence-backed and stop when the requested schema is filled."
+        ],
+        "no_early_exit_without": [
+          "approved source list",
+          "evidence excerpt or citation",
+          "stop condition or follow-up note"
+        ],
+        "anti_goals": [
+          "open-ended browsing without schema or stop condition",
+          "treating weak extraction as good enough without fallback classification"
+        ]
+      },
+      "phases": [
+        {
+          "id": "discover",
+          "tools": ["hints", "route_search", "memory_recall"],
+          "exit_criteria": "Subject, source bounds, and output schema are explicit."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan", "shared_skill_registry"],
+          "exit_criteria": "Research steps, source pack, and stop condition are listed."
+        },
+        {
+          "id": "execute",
+          "tools": ["route_search", "feedback"],
+          "requires_approval": true,
+          "exit_criteria": "Bounded retrieval or research collection is completed or classified."
+        },
+        {
+          "id": "validate",
+          "tools": ["harness_eval", "feedback"],
+          "exit_criteria": "Evidence and summary are reviewed against the requested schema."
+        }
+      ]
+    },
+    {
       "id": "remote-reasoning-escalation",
       "title": "Remote Reasoning Escalation",
       "description": "Escalate to remote reasoning only after local context capture, explicit constraints, and reviewer-visible output shape.",

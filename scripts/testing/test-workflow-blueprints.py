@@ -24,6 +24,7 @@ def main() -> int:
         "repo-refactor-guarded",
         "deploy-rollback-safe-ops",
         "continue-editor-rescue",
+        "bounded-research-review",
         "remote-reasoning-escalation",
         "prsi-pessimistic-recursive-improvement",
     }
