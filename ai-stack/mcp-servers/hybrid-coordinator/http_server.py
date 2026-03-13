@@ -39,6 +39,7 @@ from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 from ai_coordinator import (
     build_messages as _ai_coordinator_build_messages,
+    build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
     infer_profile as _ai_coordinator_infer_profile,
     merge_runtime_defaults as _ai_coordinator_merge_runtime_defaults,
@@ -3681,6 +3682,8 @@ async def run_http_mode(port: int) -> None:
                 payload["temperature"] = float(data.get("temperature"))
 
             timeout_s = float(data.get("timeout_s") or 60.0)
+            finalization_applied = False
+            finalization_status_code = None
 
             async def _post_delegate(profile_name: str) -> httpx.Response:
                 local_profiles = {"default", "local-tool-calling"}
@@ -3743,7 +3746,59 @@ async def run_http_mode(port: int) -> None:
                 stage="final",
                 fallback_applied=fallback_applied,
             )
-            recovered_artifact = build_recovered_artifact(task, final_classification)
+            if (
+                "tool_call_without_final_text" in (final_classification.get("failure_classes") or [])
+                and effective_profile == "remote-tool-calling"
+                and response.status_code < 400
+            ):
+                salvage = final_classification.get("salvage") if isinstance(final_classification.get("salvage"), dict) else {}
+                tool_calls = salvage.get("tool_calls") if isinstance(salvage.get("tool_calls"), list) else []
+                if tool_calls:
+                    finalization_messages = _ai_coordinator_build_tool_call_finalization_messages(
+                        task,
+                        tool_calls,
+                        profile=effective_profile,
+                    )
+                    finalization_payload: Dict[str, Any] = {
+                        "messages": finalization_messages,
+                        "stream": False,
+                        "max_tokens": min(int(data.get("max_tokens") or 300) or 300, 300),
+                        "temperature": 0,
+                    }
+                    if "model" in payload:
+                        finalization_payload["model"] = payload["model"]
+                    async with httpx.AsyncClient(timeout=timeout_s) as client:
+                        finalization_response = await client.post(
+                            f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
+                            headers={
+                                "Content-Type": "application/json",
+                                "X-AI-Profile": effective_profile,
+                                "X-AI-Route": "remote",
+                            },
+                            json=finalization_payload,
+                        )
+                    finalization_body = finalization_response.json()
+                    finalization_classification = classify_delegated_response(
+                        task=task,
+                        messages=finalization_messages,
+                        status_code=int(finalization_response.status_code),
+                        body=finalization_body,
+                        profile=effective_profile,
+                        runtime_id=effective_runtime_id,
+                        stage="post_tool_finalization",
+                        fallback_applied=fallback_applied,
+                    )
+                    if finalization_response.status_code < 400 and not finalization_classification.get("is_failure"):
+                        response = finalization_response
+                        body = finalization_body
+                        final_classification = finalization_classification
+                        finalization_applied = True
+                        finalization_status_code = int(finalization_response.status_code)
+            recovered_artifact = (
+                {"available": False}
+                if not final_classification.get("is_failure")
+                else build_recovered_artifact(task, final_classification)
+            )
             try:
                 record_delegation_feedback(
                 task=task,
@@ -3778,6 +3833,7 @@ async def run_http_mode(port: int) -> None:
                 "delegation_failure_classes": final_classification.get("failure_classes", []),
                 "delegation_salvage_useful": bool((final_classification.get("salvage") or {}).get("has_useful_data")),
                 "delegation_recovery_class": recovered_artifact.get("recovery_class", "") if recovered_artifact.get("available") else "",
+                "delegation_finalization_applied": finalization_applied,
             }
 
             return web.json_response(
@@ -3800,6 +3856,11 @@ async def run_http_mode(port: int) -> None:
                         }
                         if fallback_applied else {"applied": False}
                     ),
+                    "finalization": {
+                        "applied": finalization_applied,
+                        "status_code": finalization_status_code,
+                        "reason": "tool_call_without_final_text remediation" if finalization_applied else "",
+                    },
                     "delegation_feedback": {
                         "initial": initial_classification,
                         "final": final_classification,

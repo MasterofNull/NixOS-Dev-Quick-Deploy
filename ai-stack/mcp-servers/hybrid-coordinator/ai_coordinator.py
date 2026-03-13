@@ -335,7 +335,61 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
     if anti_goals:
         lines.append("Anti-goals:")
         lines.extend(f"- {item}" for item in anti_goals[:8])
+    if str(profile or "").strip().lower() == "remote-tool-calling":
+        lines.append("Tool-calling completion rules:")
+        lines.append("- tool-call-only output is insufficient")
+        lines.append("- if you propose tool calls, still return a final artifact from the information currently available")
+        lines.append("- do not claim any tool was executed unless execution evidence is present in the prompt")
+        lines.append("- if no tool execution occurred, summarize the proposed tool actions and the exact next step")
     return "\n".join(lines)
+
+
+def build_tool_call_finalization_messages(
+    task: str,
+    tool_calls: List[Dict[str, Any]] | None,
+    profile: str = "remote-tool-calling",
+) -> List[Dict[str, str]]:
+    compact_calls: List[str] = []
+    for item in tool_calls or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip() or "unknown_tool"
+        arguments = str(item.get("arguments") or "").strip()
+        if arguments:
+            compact_calls.append(f"- {name}: {arguments}")
+        else:
+            compact_calls.append(f"- {name}")
+    if not compact_calls:
+        compact_calls.append("- no tool call details available")
+    return [
+        {
+            "role": "system",
+            "content": _delegation_system_prompt(profile)
+            + "\nYou are performing a bounded finalization pass after a tool-call-only reply."
+            + "\nDo not invent tool execution results."
+            + "\nReturn the final artifact now using only the task and proposed tool-call plan.",
+        },
+        {
+            "role": "user",
+            "content": "\n".join(
+                [
+                    f"Original task: {str(task or '').strip()}",
+                    "The prior delegated reply proposed tool calls but returned no final assistant text.",
+                    "Proposed tool-call plan:",
+                    *compact_calls[:6],
+                    "Required output sections:",
+                    "- result",
+                    "- evidence",
+                    "- risks",
+                    "- rollback_or_next_step",
+                    "Constraints:",
+                    "- do not claim any tool actually ran",
+                    "- summarize only the proposed actions and what should happen next",
+                    "- keep the artifact concise and concrete",
+                ]
+            ),
+        },
+    ]
 
 
 def build_messages(

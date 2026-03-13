@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator")
 
 from ai_coordinator import (  # noqa: E402
     build_messages,
+    build_tool_call_finalization_messages,
     default_runtime_id_for_profile,
     infer_profile,
     merge_runtime_defaults,
@@ -117,6 +118,23 @@ def main() -> int:
     )
     assert_true("local tool-calling prep sub-agent" in local_messages[0]["content"].lower(), "local tool-calling system prompt missing")
     assert_true("fallback" in local_messages[1]["content"].lower(), "local tool-calling artifact contract should mention fallback")
+
+    remote_tool_messages = build_messages(
+        "Produce a bounded tool-calling artifact.",
+        context={"constraints": ["do not claim tool execution without evidence"]},
+        profile="remote-tool-calling",
+    )
+    assert_true("tool-call-only output is insufficient" in remote_tool_messages[1]["content"].lower(), "remote tool-calling contract should forbid tool-call-only output")
+    assert_true("do not claim any tool was executed" in remote_tool_messages[1]["content"].lower(), "remote tool-calling contract should forbid invented execution")
+
+    finalization_messages = build_tool_call_finalization_messages(
+        "Summarize the next step after tool planning.",
+        [{"name": "noop_status", "arguments": "{\"status\":\"TOOL_READY\"}"}],
+        profile="remote-tool-calling",
+    )
+    assert_true(len(finalization_messages) == 2, "tool-call finalization should produce system and user messages")
+    assert_true("bounded finalization pass" in finalization_messages[0]["content"].lower(), "finalization system prompt should explain remediation mode")
+    assert_true("proposed tool-call plan" in finalization_messages[1]["content"].lower(), "finalization user prompt should summarize tool calls")
 
     print("PASS: ai-coordinator exposes default local/OpenRouter runtime lanes and profile inference")
     return 0
