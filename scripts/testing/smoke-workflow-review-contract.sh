@@ -423,4 +423,72 @@ jq -e '.reviewer_gate.last_review.task_class == "nixos_service_hardening"' "${TM
 jq -e '.reviewer_gate.last_review.reviewed_agent == "claude"' "${TMP_DIR}/hardening-run.json" >/dev/null
 jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-reasoning"' "${TMP_DIR}/hardening-run.json" >/dev/null
 
+cat > "${TMP_DIR}/prsi-start.json.payload" <<'EOF'
+{
+  "query": "Validate PRSI improvement review persistence",
+  "blueprint_id": "prsi-pessimistic-recursive-improvement",
+  "intent_contract": {
+    "user_intent": "Validate PRSI improvement review persistence",
+    "definition_of_done": [
+      "PRSI review classification persists",
+      "cycle report review metadata is stored"
+    ],
+    "depth_expectation": "deep",
+    "spirit_constraints": [
+      "bounded smoke only"
+    ],
+    "no_early_exit_without": [
+      "live session retrieval"
+    ]
+  }
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data @"${TMP_DIR}/prsi-start.json.payload" > "${TMP_DIR}/prsi-start.json"
+prsi_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/prsi-start.json")"
+[[ -n "${prsi_session_id}" ]] || {
+  echo "ERROR: PRSI workflow/run/start did not return session_id" >&2
+  exit 1
+}
+jq -e '.blueprint_id == "prsi-pessimistic-recursive-improvement"' "${TMP_DIR}/prsi-start.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "pending_review"' "${TMP_DIR}/prsi-start.json" >/dev/null
+
+cat > "${TMP_DIR}/prsi-review.json.payload" <<EOF
+{
+  "session_id": "${prsi_session_id}",
+  "response": "Cycle report review confirms one reversible change, pessimistic validation, explicit rollback notes, and the next decision state are preserved.",
+  "criteria": [
+    "one reversible change",
+    "pessimistic validation",
+    "rollback notes",
+    "decision state"
+  ],
+  "expected_keywords": [
+    "cycle report",
+    "pessimistic"
+  ],
+  "min_criteria_ratio": 1.0,
+  "min_keyword_ratio": 1.0,
+  "reviewer": "codex",
+  "review_type": "artifact_review",
+  "artifact_kind": "cycle_report",
+  "task_class": "self_improvement",
+  "reviewed_agent": "claude",
+  "reviewed_profile": "remote-reasoning"
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/review/acceptance" \
+  --data @"${TMP_DIR}/prsi-review.json.payload" > "${TMP_DIR}/prsi-review.json"
+jq -e '.passed == true' "${TMP_DIR}/prsi-review.json" >/dev/null
+jq -e --arg sid "${prsi_session_id}" '.session_id == $sid' "${TMP_DIR}/prsi-review.json" >/dev/null
+
+curl -fsS "${hdr[@]}" "${HYBRID_URL}/workflow/run/${prsi_session_id}" > "${TMP_DIR}/prsi-run.json"
+jq -e '.blueprint_title == "PRSI Pessimistic Recursive Improvement"' "${TMP_DIR}/prsi-run.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "accepted"' "${TMP_DIR}/prsi-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.review_type == "artifact_review"' "${TMP_DIR}/prsi-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.artifact_kind == "cycle_report"' "${TMP_DIR}/prsi-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.task_class == "self_improvement"' "${TMP_DIR}/prsi-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_agent == "claude"' "${TMP_DIR}/prsi-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-reasoning"' "${TMP_DIR}/prsi-run.json" >/dev/null
+
 printf 'PASS: workflow review contract smoke\n'
