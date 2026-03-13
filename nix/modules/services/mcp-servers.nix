@@ -224,6 +224,7 @@ let
   hybridPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; [
     redis
     sqlalchemy
+    beautifulsoup4
   ]));
 
   ralphPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; [
@@ -926,6 +927,16 @@ in
             "AI_CODE_EXEC_MAX_TOOLS=${toString ai.aiHarness.runtime.codeExecution.maxManifestTools}"
             "AI_CODE_EXEC_MAX_RESULT_CHARS=${toString ai.aiHarness.runtime.codeExecution.maxResultChars}"
             "AI_CODE_EXEC_MAX_REASON_CHARS=${toString ai.aiHarness.runtime.codeExecution.maxReasonChars}"
+            "AI_WEB_RESEARCH_ENABLED=${if ai.aiHarness.runtime.webResearch.enable then "true" else "false"}"
+            "AI_WEB_RESEARCH_MAX_URLS=${toString ai.aiHarness.runtime.webResearch.maxUrls}"
+            "AI_WEB_RESEARCH_MAX_SELECTORS=${toString ai.aiHarness.runtime.webResearch.maxSelectors}"
+            "AI_WEB_RESEARCH_TIMEOUT_SECONDS=${toString ai.aiHarness.runtime.webResearch.timeoutSeconds}"
+            "AI_WEB_RESEARCH_PER_HOST_DELAY_SECONDS=${toString ai.aiHarness.runtime.webResearch.perHostDelaySeconds}"
+            "AI_WEB_RESEARCH_MAX_RESPONSE_BYTES=${toString ai.aiHarness.runtime.webResearch.maxResponseBytes}"
+            "AI_WEB_RESEARCH_MAX_TEXT_CHARS=${toString ai.aiHarness.runtime.webResearch.maxTextChars}"
+            "AI_WEB_RESEARCH_MAX_LINKS=${toString ai.aiHarness.runtime.webResearch.maxLinks}"
+            "AI_WEB_RESEARCH_MAX_REDIRECTS=${toString ai.aiHarness.runtime.webResearch.maxRedirects}"
+            "AI_WEB_RESEARCH_USER_AGENT=${ai.aiHarness.runtime.webResearch.userAgent}"
             "AI_LOCAL_SYSTEM_PROMPT=${if ai.aiHarness.runtime.localSystemPrompt.enable then "true" else "false"}"
             "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.rules}"
             "PYTHONPATH=${repoMcp}:${repoMcp}/hybrid-coordinator"

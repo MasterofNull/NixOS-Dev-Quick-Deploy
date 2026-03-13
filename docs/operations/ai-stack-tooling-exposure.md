@@ -105,6 +105,7 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/query` | POST | Hybrid routing query |
 | `/workflow/plan` | POST | Create execution plan |
 | `/qa/check` | POST | Run bounded `aq-qa` validation via hybrid coordinator |
+| `/research/web/fetch` | POST | Bounded polite public-web fetch -> extract lane for explicit URLs |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/control/ai-coordinator/status` | GET | List coordinator runtime lanes and remote readiness |
 | `/control/ai-coordinator/delegate` | POST | Delegate a bounded task through the ai-coordinator |
@@ -113,6 +114,11 @@ Any agent with HTTP capabilities can call these endpoints directly:
 ```bash
 # Works from any agent that can run curl
 curl -sf http://127.0.0.1:8003/hints?query=nixos+services
+
+# Fetch explicit public pages through the bounded web-research lane
+curl -s http://127.0.0.1:8003/research/web/fetch \
+  -H 'Content-Type: application/json' \
+  -d '{"urls":["https://example.com"],"selectors":["h1"],"max_text_chars":300}'
 
 # Queue long-running agentic work through the harness layer
 curl -s http://127.0.0.1:8003/workflow/orchestrate \
@@ -132,8 +138,20 @@ The hybrid coordinator SDKs now expose both planning and the coached query path:
 
 - Python: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qa_check(...)`
 - TypeScript/JavaScript: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qaCheck(...)`
+- Python: `HarnessClient.web_research_fetch(...)` for bounded public-web extraction
 
 That means SDK consumers receive the same `prompt_coaching` and token-discipline guidance that raw `POST /query` returns.
+
+## Bounded Web Research Lane
+
+The web research surface is intentionally narrow:
+- explicit URL lists only, no recursive crawling
+- SSRF-safe public egress checks
+- robots-aware blocking when `robots.txt` is present
+- same-host pacing, response-byte caps, text caps, and selector caps
+- raw fetch/extract stays separate from model summarization
+
+This keeps Continue/local-model research tasks usable without turning the harness into an unconstrained scraper.
 
 ## Planned Shared Skill Registry
 

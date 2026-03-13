@@ -176,6 +176,19 @@ class Config:
         "AI_PROMPT_CACHE_STATIC_PREFIX",
         "You are the NixOS AI stack coordinator. Prefer local-first secure execution.",
     )
+    AI_WEB_RESEARCH_ENABLED = os.getenv("AI_WEB_RESEARCH_ENABLED", "true").lower() == "true"
+    AI_WEB_RESEARCH_MAX_URLS = int(os.getenv("AI_WEB_RESEARCH_MAX_URLS", "3"))
+    AI_WEB_RESEARCH_MAX_SELECTORS = int(os.getenv("AI_WEB_RESEARCH_MAX_SELECTORS", "4"))
+    AI_WEB_RESEARCH_TIMEOUT_SECONDS = float(os.getenv("AI_WEB_RESEARCH_TIMEOUT_SECONDS", "12.0"))
+    AI_WEB_RESEARCH_PER_HOST_DELAY_SECONDS = float(os.getenv("AI_WEB_RESEARCH_PER_HOST_DELAY_SECONDS", "1.5"))
+    AI_WEB_RESEARCH_MAX_RESPONSE_BYTES = int(os.getenv("AI_WEB_RESEARCH_MAX_RESPONSE_BYTES", "400000"))
+    AI_WEB_RESEARCH_MAX_TEXT_CHARS = int(os.getenv("AI_WEB_RESEARCH_MAX_TEXT_CHARS", "6000"))
+    AI_WEB_RESEARCH_MAX_LINKS = int(os.getenv("AI_WEB_RESEARCH_MAX_LINKS", "12"))
+    AI_WEB_RESEARCH_MAX_REDIRECTS = int(os.getenv("AI_WEB_RESEARCH_MAX_REDIRECTS", "2"))
+    AI_WEB_RESEARCH_USER_AGENT = os.getenv(
+        "AI_WEB_RESEARCH_USER_AGENT",
+        "nixos-dev-quick-deploy-web-research/1.0 (+respectful bounded fetch)",
+    )
     AI_LOCAL_SYSTEM_PROMPT = os.getenv("AI_LOCAL_SYSTEM_PROMPT", "true").lower() == "true"
     AI_LOCAL_SYSTEM_PROMPT_RULES = _json_str_list_env(
         "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON",
