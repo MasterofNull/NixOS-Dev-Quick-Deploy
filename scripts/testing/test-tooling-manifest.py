@@ -62,6 +62,11 @@ def main() -> int:
         "execute phase does not expose curated_research_fetch",
     )
 
+    browser_query = "use a browser-assisted fallback for a challenge page with javascript rendering"
+    browser_tools = workflow_tool_catalog(browser_query)
+    browser_tool_names = [tool["name"] for tool in browser_tools]
+    assert_true("browser_research_fetch" in browser_tool_names, "browser query missing browser_research_fetch")
+
     skill_query = "find a shared skill from agentskill and show the approved catalog"
     skill_tools = workflow_tool_catalog(skill_query)
     skill_tool_names = [tool["name"] for tool in skill_tools]

@@ -70,7 +70,7 @@ Tracking fields to update after each slice:
 | --- | --- | --- | --- |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
-| Continue/local web research lane | in_progress | a bounded `/research/web/fetch` lane is live, and a generic manifest-backed curated workflow layer now runs live through `/research/workflows/curated-fetch`; the first pack validates the path, but one source currently lands in `empty_extract` and bot-gated pages still need compliant fallback expansion | tune the first pack, add more approved source packs, and expand browser-assisted/manual fallback handling for bot-gated public sites without implementing anti-bot evasion |
+| Continue/local web research lane | in_progress | bounded `/research/web/fetch`, `/research/workflows/curated-fetch`, and `/research/web/browser-fetch` lanes are now live; the browser-assisted fallback successfully rendered a real Calflora page, while the first generic workflow pack still has one `empty_extract` source and broader source-pack coverage remains incomplete | tune the first pack, add more approved source packs, and keep challenge/captcha handling in compliant fallback lanes without implementing anti-bot evasion |
 | Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, a pinned `agentskill.sh` source (`learn`) is imported through the same governed manifest path, and the coordinator now exposes the approved catalog directly; broader remote-agent export/install surfaces remain incomplete | extend governed manifest coverage and broader remote-agent export/install surfaces |
 
 ## Execution Ledger
@@ -109,6 +109,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | governed external skill import bootstrap | validated_live | added a pinned external skill-source manifest, locked `agentskill-sh/learn` by commit, imported it through the same AIDB approval path, and live-verified `24/24` expected approved shared skills in `aq-report` |
 | 2026-03-13 | coordinator shared-skill visibility surface | validated_live | added `/control/ai-coordinator/skills`, exposed shared skill summary in coordinator status, wired SDK/RPC/tooling-manifest support, and live-verified the coordinator returns the approved 24-skill catalog including `learn` |
 | 2026-03-13 | curated research workflow layer | validated_live | added a manifest-backed `/research/workflows/curated-fetch` layer with SDK/RPC/tooling-manifest exposure, live-validated the first approved source pack, and classified empty-extract/bot-gated pages into explicit fallback signals instead of treating them as successful scraping |
+| 2026-03-13 | browser-assisted research fallback lane | validated_live | added a bounded `/research/web/browser-fetch` lane with declarative runtime controls and live-validated rendered extraction against a real Calflora page; Chromium now runs inside the hardened service with a temporary profile and `--no-sandbox` because the systemd namespace sandbox already provides the outer containment |
 
 ## High-Priority Tracks
 
@@ -116,7 +117,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, and the generic curated research workflow layer are live; the next gap is expanding approved source packs and compliant fallback handling for bot-gated public sites`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, and the browser-assisted fallback lane are live; the next gap is expanding approved source packs`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -126,7 +127,7 @@ Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
 - Home Manager is no longer blocked on Continue CLI, but future CLI package additions still need isolated `outPath`/activation validation before they are treated as safe for unattended deploys
-- Continue/editor health now reaches `aq-report` and deploy summaries, and the generic curated-workflow layer is now live, but broader approved source-pack coverage and browser-assisted/manual fallback handling still need expansion for bot-gated sites such as some native-plant databases
+- Continue/editor health now reaches `aq-report` and deploy summaries, and both generic curated workflows plus browser-assisted fallback are live, but broader approved source-pack coverage still needs expansion for databases such as California-native plant sources
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
@@ -179,13 +180,13 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility, a bounded web-research lane, and a generic curated-workflow layer live; next gap is broader approved source-pack coverage plus compliant fallback handling for bot-gated public sites`
+Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, and browser-assisted fallback live; next gap is broader approved source-pack coverage`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
 - `python3 scripts/testing/test-web-research-lane.py`
 - live `POST /research/web/fetch` smoke after deploy
 Open Risks / Blockers:
-- some approved public sources may still need selector tuning, source substitution, or browser-assisted/manual fallback when they present bot gates or unstable markup
+- some approved public sources still need selector tuning or source substitution even though the browser-assisted fallback lane is now available
 - CLI/package coverage is still mixed across agent surfaces
 
 Goal:

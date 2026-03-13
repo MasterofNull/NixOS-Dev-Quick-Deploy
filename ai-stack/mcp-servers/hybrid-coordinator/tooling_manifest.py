@@ -91,6 +91,24 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
     if any(
         k in q
         for k in (
+            "javascript page",
+            "rendered page",
+            "browser fetch",
+            "browser-assisted",
+            "cloudflare",
+            "challenge page",
+            "bot gate",
+            "js-heavy",
+        )
+    ):
+        add(
+            "browser_research_fetch",
+            "/research/web/browser-fetch",
+            "Bounded headless-browser fetch -> extract for explicit public URLs when normal fetch lacks rendered content.",
+        )
+    if any(
+        k in q
+        for k in (
             "organize web data",
             "summarize website data",
             "curated research",
@@ -235,6 +253,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["urls", "selectors", "max_text_chars"],
         "output_focus": "Per-page title, extracted text excerpt, links, and policy/skip metadata only.",
     },
+    "browser_research_fetch": {
+        "method": "POST",
+        "mcp_tool": "",
+        "args": ["urls", "selectors", "max_text_chars"],
+        "output_focus": "Rendered-page title, extracted text excerpt, links, and policy/skip metadata only.",
+    },
     "curated_research_fetch": {
         "method": "POST",
         "mcp_tool": "",
@@ -290,6 +314,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                     "route_search",
                     "memory_recall",
                     "web_research_fetch",
+                    "browser_research_fetch",
                     "curated_research_fetch",
                     "workflow_run_start",
                     "ai_coordinator_delegate",
