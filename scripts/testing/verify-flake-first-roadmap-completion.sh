@@ -382,7 +382,7 @@ check_pattern "scripts/ai/aq-report" 'def agent_lesson_candidates\(' 'aq-report 
 check_pattern "scripts/ai/aq-report" '"agent_lessons": agent_lessons or \{"available": False, "candidates": \[\]\}' 'aq-report JSON output includes agent lesson candidates'
 check_pattern "scripts/ai/aq-report" 'Agent Lesson Promotion Candidates' 'aq-report surfaces compact agent lesson candidates in text and markdown outputs'
 check_pattern "scripts/ai/aq-report" 'def historical_watchlist\(tool_stats: Dict\[str, dict\], recent_tool_stats: Dict\[str, dict\]\)' 'aq-report computes a historical watchlist for non-recent issues'
-check_pattern "scripts/ai/aq-report" '\[ 8c?\. Historical Watchlist \(\{historical_watch\.get\('"'"'window'"'"', '"'"'7d'"'"'\)\}\) \]' 'aq-report text output exposes a historical watchlist section'
+check_pattern "scripts/ai/aq-report" '\[ 8[c-d]?\. Historical Watchlist \(\{historical_watch\.get\('"'"'window'"'"', '"'"'7d'"'"'\)\}\) \]' 'aq-report text output exposes a historical watchlist section'
 check_pattern "scripts/ai/aq-report" '"historical_watchlist": historical_watch' 'aq-report JSON output includes historical watchlist state'
 check_pattern "scripts/ai/aq-report" '"tool_call_basis": \{' 'aq-report JSON output documents tool call counting semantics'
 check_pattern "scripts/ai/aq-report" 'outcome == "client_error"' 'aq-report counts explicit client_error audit outcomes separately from backend failures'
