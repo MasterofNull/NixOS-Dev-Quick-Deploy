@@ -1592,6 +1592,71 @@
             };
           };
 
+          webResearch = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Expose a bounded polite web research lane for explicit URL fetch ->
+                extract workflows. This is for targeted retrieval only, not broad crawling.
+              '';
+            };
+
+            maxUrls = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 3;
+              description = "Maximum explicit URLs allowed per web research request.";
+            };
+
+            maxSelectors = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 4;
+              description = "Maximum CSS selectors accepted per web research request.";
+            };
+
+            timeoutSeconds = lib.mkOption {
+              type = lib.types.numbers.positive;
+              default = 12.0;
+              description = "Per-request timeout for bounded web research fetches.";
+            };
+
+            perHostDelaySeconds = lib.mkOption {
+              type = lib.types.addCheck lib.types.number (value: value >= 0);
+              default = 1.5;
+              description = "Minimum delay between sequential requests to the same host in one research call.";
+            };
+
+            maxResponseBytes = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 400000;
+              description = "Maximum response bytes read for each fetched page.";
+            };
+
+            maxTextChars = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 6000;
+              description = "Maximum extracted text characters returned per page.";
+            };
+
+            maxLinks = lib.mkOption {
+              type = lib.types.addCheck lib.types.int (value: value >= 0);
+              default = 12;
+              description = "Maximum discovered links returned per fetched page.";
+            };
+
+            maxRedirects = lib.mkOption {
+              type = lib.types.addCheck lib.types.int (value: value >= 0);
+              default = 2;
+              description = "Maximum validated redirects followed per fetched page.";
+            };
+
+            userAgent = lib.mkOption {
+              type = lib.types.str;
+              default = "nixos-dev-quick-deploy-web-research/1.0 (+respectful bounded fetch)";
+              description = "User-Agent string used for bounded web research fetches.";
+            };
+          };
+
           localSystemPrompt = {
             enable = lib.mkOption {
               type = lib.types.bool;

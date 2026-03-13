@@ -234,6 +234,12 @@ async function main() {
         max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
         temperature: args.temperature ? Number(args.temperature) : undefined,
       });
+    case "web-research":
+      return call("/research/web/fetch", "POST", {
+        urls: csv(args.urls),
+        selectors: csv(args.selectors),
+        max_text_chars: args["max-text-chars"] ? Number(args["max-text-chars"]) : undefined,
+      });
     default:
       console.error(`Unknown command: ${cmd}`);
       process.exit(2);

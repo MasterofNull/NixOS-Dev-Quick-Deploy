@@ -39,6 +39,20 @@ def main() -> int:
     simple_tool_names = [tool["name"] for tool in simple_tools]
     assert_true("loop_orchestrate" not in simple_tool_names, "simple query should not default to loop_orchestrate")
 
+    research_query = "scrape a public native plant database page and extract the relevant sections"
+    research_tools = workflow_tool_catalog(research_query)
+    research_tool_names = [tool["name"] for tool in research_tools]
+    assert_true("web_research_fetch" in research_tool_names, "web research query missing web_research_fetch")
+    research_manifest = build_tooling_manifest(research_query, research_tools)
+    assert_true(
+        any(tool["name"] == "web_research_fetch" for tool in research_manifest["tools"]),
+        "manifest omits web_research_fetch",
+    )
+    assert_true(
+        any(phase["id"] == "execute" and "web_research_fetch" in phase["tools"] for phase in research_manifest["phases"]),
+        "execute phase does not expose web_research_fetch",
+    )
+
     print("PASS: tooling manifest exposes Ralph loop orchestration only when agentic workflow intent is present")
     return 0
 

@@ -45,6 +45,7 @@ from ai_coordinator import (
 )
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
+from web_research import fetch_web_research
 import mcp_handlers
 
 logger = logging.getLogger("hybrid-coordinator")
@@ -144,6 +145,8 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "ai_coordinator_status"
     if path == "/control/ai-coordinator/delegate" and method == "POST":
         return "ai_coordinator_delegate"
+    if path == "/research/web/fetch" and method == "POST":
+        return "web_research_fetch"
     return None
 
 
@@ -793,7 +796,7 @@ def _build_workflow_plan(
             {
                 "id": "execute",
                 "goal": "Apply small reversible changes.",
-                "tools": pick_tool_names({"route_search", "memory_recall", "feedback"}),
+                "tools": pick_tool_names({"route_search", "memory_recall", "web_research_fetch", "feedback"}),
                 "exit_criteria": "Primary objective implemented.",
             },
             {
@@ -2395,6 +2398,44 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_web_research_fetch(request: web.Request) -> web.Response:
+        """Bounded polite web fetch -> extract for explicit public URLs."""
+        try:
+            if not Config.AI_WEB_RESEARCH_ENABLED:
+                return web.json_response({"error": "web_research_disabled"}, status=503)
+
+            data = await request.json()
+            urls = data.get("urls")
+            if not isinstance(urls, list) or not urls:
+                return web.json_response({"error": "urls list required"}, status=400)
+
+            selectors = data.get("selectors")
+            if selectors is not None and not isinstance(selectors, list):
+                return web.json_response({"error": "selectors must be a list"}, status=400)
+
+            max_text_chars = data.get("max_text_chars")
+            if max_text_chars is not None:
+                max_text_chars = int(max_text_chars or 0)
+
+            result = await fetch_web_research(
+                urls=urls,
+                selectors=selectors if isinstance(selectors, list) else None,
+                max_text_chars=max_text_chars,
+            )
+            request["audit_metadata"] = {
+                "accepted_urls": int((result.get("metrics") or {}).get("accepted_urls", 0) or 0),
+                "page_requests": int((result.get("metrics") or {}).get("page_requests", 0) or 0),
+                "robots_requests": int((result.get("metrics") or {}).get("robots_requests", 0) or 0),
+                "skipped_count": len(result.get("skipped", []) or []),
+            }
+            return web.json_response(result)
+        except ValueError as exc:
+            return web.json_response({"error": "invalid_request", "detail": str(exc)}, status=400)
+        except PermissionError as exc:
+            return web.json_response({"error": "policy_blocked", "detail": str(exc)}, status=403)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_workflow_orchestrate(request: web.Request) -> web.Response:
         """Submit work to the Ralph loop through the harness layer."""
         try:
@@ -3625,6 +3666,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
     http_app.router.add_post("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
     http_app.router.add_get("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
+    http_app.router.add_post("/research/web/fetch", handle_web_research_fetch)
     http_app.router.add_post("/workflow/orchestrate", handle_workflow_orchestrate)
     http_app.router.add_get("/workflow/orchestrate/{task_id}", handle_workflow_orchestrate_status)
     http_app.router.add_post("/workflow/session/start", handle_workflow_session_start)
