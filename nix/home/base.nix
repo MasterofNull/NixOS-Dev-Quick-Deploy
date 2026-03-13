@@ -634,8 +634,7 @@ in
   };
 
   # ---- Continue CLI -------------------------------------------------------
-  # Continue CLI is installed via npm global (see NPM_CONFIG_PREFIX above).
-  # Run: npm install -g @continuedev/cli
+  # Continue CLI is installed declaratively via nix/pkgs/continue-cli.nix.
   # Command: cn
 
   programs.vim = {

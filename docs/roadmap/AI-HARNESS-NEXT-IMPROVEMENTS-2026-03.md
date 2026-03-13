@@ -1,5 +1,8 @@
 # AI Harness Next Improvements — 2026-03
 
+Implementation detail and required-track sequencing live in:
+- `docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md`
+
 ## High Priority
 
 1. Tool reliability accounting normalization
