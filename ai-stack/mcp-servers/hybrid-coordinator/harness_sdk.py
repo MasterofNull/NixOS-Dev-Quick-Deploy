@@ -499,3 +499,20 @@ class HarnessClient:
             r = client.post(self._url("/research/web/fetch"), headers=self._headers(), json=payload)
             r.raise_for_status()
             return r.json()
+
+    def curated_research_fetch(
+        self,
+        workflow: str,
+        *,
+        inputs: Optional[Dict[str, Any]] = None,
+        max_text_chars: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"workflow": workflow}
+        if inputs is not None:
+            payload["inputs"] = inputs
+        if max_text_chars is not None:
+            payload["max_text_chars"] = max_text_chars
+        with httpx.Client(timeout=max(self.timeout_s, 60.0)) as client:
+            r = client.post(self._url("/research/workflows/curated-fetch"), headers=self._headers(), json=payload)
+            r.raise_for_status()
+            return r.json()
