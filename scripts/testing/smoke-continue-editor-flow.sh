@@ -32,6 +32,34 @@ if [[ -n "$HYBRID_API_KEY" ]]; then
   curl_args+=(-H "X-API-Key: ${HYBRID_API_KEY}")
 fi
 
+post_json_with_retry() {
+  local url="$1"
+  local payload_file="$2"
+  local output_file="$3"
+  local attempt=1
+  local max_attempts=6
+  local http_code
+  local retry_after
+
+  while (( attempt <= max_attempts )); do
+    http_code="$(
+      curl "${curl_args[@]}" -o "${output_file}" -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        "${url}" --data @"${payload_file}"
+    )"
+    if [[ "${http_code}" == "429" ]]; then
+      retry_after="$(jq -r '.retry_after_seconds // 2' "${output_file}" 2>/dev/null || printf '2')"
+      sleep "${retry_after}"
+      attempt=$((attempt + 1))
+      continue
+    fi
+    [[ "${http_code}" == "200" ]] || fail "request to ${url} failed with HTTP ${http_code}"
+    return 0
+  done
+
+  fail "request to ${url} remained rate-limited after ${max_attempts} attempts"
+}
+
 if ! curl -fsS --connect-timeout 5 --max-time 10 "${HYB_URL}/health" >/dev/null 2>&1; then
   warn "hybrid coordinator unavailable; Continue editor smoke skipped"
   exit 0
@@ -48,8 +76,7 @@ cat >"${TMP_DIR}/hints.json" <<'EOF'
   "max_hints": 3
 }
 EOF
-curl "${curl_args[@]}" -H 'Content-Type: application/json' \
-  "${HYB_URL}/hints" --data @"${TMP_DIR}/hints.json" >"${TMP_DIR}/hints-resp.json"
+post_json_with_retry "${HYB_URL}/hints" "${TMP_DIR}/hints.json" "${TMP_DIR}/hints-resp.json"
 jq -e 'type == "array" and length >= 1 and .[0].name == "aq-hints" and (.[0].content | test("AI Stack Hints"))' \
   "${TMP_DIR}/hints-resp.json" >/dev/null || fail "continue hints response invalid"
 pass "Continue HTTP context provider hints"
@@ -73,8 +100,7 @@ cat >"${TMP_DIR}/query.json" <<'EOF'
   }
 }
 EOF
-curl "${curl_args[@]}" -H 'Content-Type: application/json' \
-  "${HYB_URL}/query" --data @"${TMP_DIR}/query.json" >"${TMP_DIR}/query-resp.json"
+post_json_with_retry "${HYB_URL}/query" "${TMP_DIR}/query.json" "${TMP_DIR}/query-resp.json"
 jq -e '.orchestration.requesting_agent == "continue" and .metadata.orchestration.requester_role == "orchestrator"' \
   "${TMP_DIR}/query-resp.json" >/dev/null || fail "query orchestration metadata missing"
 pass "query path preserves Continue caller identity"
@@ -86,8 +112,7 @@ cat >"${TMP_DIR}/feedback.json" <<'EOF'
   "original_response": "smoke validation output"
 }
 EOF
-curl "${curl_args[@]}" -H 'Content-Type: application/json' \
-  "${HYB_URL}/feedback" --data @"${TMP_DIR}/feedback.json" >"${TMP_DIR}/feedback-resp.json"
+post_json_with_retry "${HYB_URL}/feedback" "${TMP_DIR}/feedback.json" "${TMP_DIR}/feedback-resp.json"
 jq -e '.status == "recorded" and (.feedback_id | tostring | length > 0)' \
   "${TMP_DIR}/feedback-resp.json" >/dev/null || fail "feedback recording failed"
 pass "feedback path records Continue editor smoke outcome"
