@@ -52,6 +52,41 @@ def main() -> int:
     commands = salvage.get("commands") or []
     assert_true(any("systemctl status ai-hybrid-coordinator.service" in item for item in commands), "expected command salvage")
 
+    tool_call_only = classify_delegated_response(
+        task="Return TOOL_READY only.",
+        messages=[{"role": "user", "content": "Return TOOL_READY only."}],
+        status_code=200,
+        body={
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "type": "function",
+                                "id": "call_1",
+                                "function": {
+                                    "name": "noop_status",
+                                    "arguments": "{\"status\":\"TOOL_READY\"}",
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        },
+        profile="remote-tool-calling",
+        runtime_id="openrouter-tool-calling",
+        stage="final",
+        fallback_applied=False,
+    )
+    tool_failures = set(tool_call_only.get("failure_classes") or [])
+    assert_true("tool_call_without_final_text" in tool_failures, "expected tool_call_without_final_text")
+    assert_true("empty_content" not in tool_failures, "tool-call-only output should not be tagged as empty_content")
+    tool_salvage = tool_call_only.get("salvage") if isinstance(tool_call_only.get("salvage"), dict) else {}
+    tool_calls = tool_salvage.get("tool_calls") or []
+    assert_true(any(item.get("name") == "noop_status" for item in tool_calls if isinstance(item, dict)), "expected tool call salvage")
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         delegation_log = tmp / "delegation-feedback.jsonl"
