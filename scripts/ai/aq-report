@@ -548,7 +548,7 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
             handoff_requested += 1
             if requester_role:
                 handoff_by_role[requester_role] = handoff_by_role.get(requester_role, 0) + 1
-        if str(entry.get("outcome", "") or "").strip().lower() == "ok":
+        if str(entry.get("outcome", "") or "").strip().lower() in {"ok", "success"}:
             success_count += 1
     if total <= 0:
         return {"available": False, "window": window}
@@ -567,6 +567,115 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
         "top_requester_roles": sorted(requester_role_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "top_requesting_agents": sorted(requesting_agent_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "handoff_by_requester_role": sorted(handoff_by_role.items(), key=lambda item: (-item[1], item[0]))[:5],
+    }
+
+
+def remote_profile_utilization_windows(
+    entries: List[dict],
+    *,
+    now: datetime,
+    report_since: datetime,
+) -> Dict[str, Any]:
+    """Materialize comparable delegated remote-profile utilization windows."""
+    windows = [
+        ("1h", timedelta(hours=1)),
+        ("24h", timedelta(hours=24)),
+        ("7d", timedelta(days=7)),
+    ]
+    summaries: Dict[str, Any] = {}
+    for label, delta in windows:
+        cutoff = now - delta
+        summaries[label] = remote_profile_utilization(
+            [
+                entry for entry in entries
+                if (_entry_ts_utc(entry) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
+            ],
+            window=label,
+        )
+        summaries[label]["partial_window"] = report_since > cutoff
+    return {
+        "available": any(
+            isinstance(summary, dict) and summary.get("available")
+            for summary in summaries.values()
+        ),
+        "windows": summaries,
+    }
+
+
+def route_search_latency_decomposition(entries: List[dict], *, window: str = "") -> Dict[str, Any]:
+    """Break route_search latency into backend and recovery classes."""
+    route_events: List[Dict[str, Any]] = []
+    for entry in entries:
+        if str(entry.get("tool_name", "")).strip().lower() != "route_search":
+            continue
+        if str(entry.get("service", "")).strip().lower() == "hybrid-coordinator-tool-security":
+            continue
+        route_events.append(entry)
+    if not route_events:
+        return {"available": False, "window": window}
+
+    groups: Dict[str, Dict[str, Any]] = {}
+
+    def _bucket(name: str) -> Dict[str, Any]:
+        bucket = groups.get(name)
+        if bucket is None:
+            bucket = {"calls": 0, "latencies": [], "success": 0, "errors": 0}
+            groups[name] = bucket
+        return bucket
+
+    overall_latencies: List[float] = []
+    for entry in route_events:
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        latency = entry.get("latency_ms")
+        latency_value = float(latency or 0.0)
+        overall_latencies.append(latency_value)
+        outcome = str(entry.get("outcome", "") or "").strip().lower()
+        backend = str(metadata.get("backend", "") or "unknown").strip().lower() or "unknown"
+        fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
+        status_code = metadata.get("http_status")
+        classes = [f"backend:{backend}"]
+        if fallback_reason == "remote_4xx_local_fallback":
+            classes.append("fallback:remote_4xx_local_fallback")
+        if isinstance(status_code, int):
+            if 400 <= status_code < 500:
+                classes.append("status:4xx")
+            elif status_code >= 500:
+                classes.append("status:5xx")
+        if outcome in {"ok", "success"}:
+            classes.append("outcome:success")
+        elif outcome:
+            classes.append("outcome:error")
+        for label in classes:
+            bucket = _bucket(label)
+            bucket["calls"] += 1
+            bucket["latencies"].append(latency_value)
+            if outcome in {"ok", "success"}:
+                bucket["success"] += 1
+            else:
+                bucket["errors"] += 1
+
+    breakdown = []
+    for label, bucket in groups.items():
+        latencies = bucket.pop("latencies")
+        calls = int(bucket.get("calls", 0) or 0)
+        breakdown.append(
+            {
+                "label": label,
+                "calls": calls,
+                "p50_ms": _percentile(latencies, 50),
+                "p95_ms": _percentile(latencies, 95),
+                "success_pct": round(100 * int(bucket.get("success", 0) or 0) / calls, 1) if calls else None,
+                "error_count": int(bucket.get("errors", 0) or 0),
+            }
+        )
+    breakdown.sort(key=lambda item: (-int(item.get("calls", 0) or 0), str(item.get("label", ""))))
+    return {
+        "available": True,
+        "window": window,
+        "total_calls": len(route_events),
+        "overall_p50_ms": _percentile(overall_latencies, 50),
+        "overall_p95_ms": _percentile(overall_latencies, 95),
+        "breakdown": breakdown[:8],
     }
 
 
@@ -2957,6 +3066,8 @@ def format_md(
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
+    remote_profile_windows: Dict[str, Any],
+    route_latency_decomposition: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3259,6 +3370,46 @@ def format_md(
             lines.append(f"- Handoff by requester role: {', '.join(f'`{name}` ({count})' for name, count in handoff_roles[:3])}")
     lines.append("")
 
+    lines += ["## 8aaab. Remote Profile Trends", ""]
+    profile_windows = remote_profile_windows.get("windows") if isinstance(remote_profile_windows, dict) else {}
+    if not profile_windows:
+        lines.append("*No multi-window delegated remote-profile data available.*")
+    else:
+        for label in ("1h", "24h", "7d"):
+            summary = profile_windows.get(label) if isinstance(profile_windows, dict) else None
+            if not isinstance(summary, dict) or not summary.get("available"):
+                lines.append(f"- {label}: no delegated remote profile usage recorded")
+                continue
+            top_profiles = summary.get("top_profiles") or []
+            top_profile = top_profiles[0][0] if top_profiles else "n/a"
+            partial = " (partial)" if summary.get("partial_window") else ""
+            lines.append(
+                f"- {label}{partial}: **{summary.get('total_calls', 0)}** calls,"
+                f" success **{_na(summary.get('success_pct'), '.1f', '%')}**,"
+                f" top profile `{top_profile}`"
+            )
+    lines.append("")
+
+    lines += [f"## 8aaac. Route Search Latency Decomposition ({route_latency_decomposition.get('window', since_label)})", ""]
+    if not route_latency_decomposition.get("available"):
+        lines.append("*No route_search latency decomposition data available in this window.*")
+    else:
+        lines.append(
+            f"- Overall p50/p95: **{_na(route_latency_decomposition.get('overall_p50_ms'), '.0f', 'ms')}** / "
+            f"**{_na(route_latency_decomposition.get('overall_p95_ms'), '.0f', 'ms')}**"
+        )
+        breakdown = route_latency_decomposition.get("breakdown") or []
+        if breakdown:
+            lines.append("- Breakdown:")
+            for item in breakdown[:5]:
+                lines.append(
+                    f"  - `{item['label']}` — calls {item['calls']},"
+                    f" p50 {_na(item.get('p50_ms'), '.0f', 'ms')},"
+                    f" p95 {_na(item.get('p95_ms'), '.0f', 'ms')},"
+                    f" success {_na(item.get('success_pct'), '.1f', '%')}"
+                )
+    lines.append("")
+
     lines += [f"## 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
     avg_collection_count = retrieval_breadth.get("avg_collection_count")
     if avg_collection_count is None:
@@ -3515,6 +3666,8 @@ def format_text(
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
+    remote_profile_windows: Dict[str, Any],
+    route_latency_decomposition: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -3820,6 +3973,44 @@ def format_text(
             lines.append(f"  Handoff by requester role: {', '.join(f'{name}({count})' for name, count in handoff_roles[:3])}")
     lines.append("")
 
+    lines += ["[ 8aaab. Remote Profile Trends ]"]
+    profile_windows = remote_profile_windows.get("windows") if isinstance(remote_profile_windows, dict) else {}
+    if not profile_windows:
+        lines.append("  No multi-window delegated remote profile data available.")
+    else:
+        for label in ("1h", "24h", "7d"):
+            summary = profile_windows.get(label) if isinstance(profile_windows, dict) else None
+            if not isinstance(summary, dict) or not summary.get("available"):
+                lines.append(f"  {label}: no delegated remote profile usage recorded")
+                continue
+            top_profiles = summary.get("top_profiles") or []
+            top_profile = top_profiles[0][0] if top_profiles else "n/a"
+            partial = " (partial)" if summary.get("partial_window") else ""
+            lines.append(
+                f"  {label}{partial}: calls {summary.get('total_calls', 0)},"
+                f" success {_na(summary.get('success_pct'), '.1f', '%')},"
+                f" top profile {top_profile}"
+            )
+    lines.append("")
+
+    lines += [f"[ 8aaac. Route Search Latency Decomposition ({route_latency_decomposition.get('window', since_label)}) ]"]
+    if not route_latency_decomposition.get("available"):
+        lines.append("  No route_search latency decomposition data available in this window.")
+    else:
+        lines.append(
+            f"  Overall p50/p95: {_na(route_latency_decomposition.get('overall_p50_ms'), '.0f', 'ms')} / "
+            f"{_na(route_latency_decomposition.get('overall_p95_ms'), '.0f', 'ms')}"
+        )
+        breakdown = route_latency_decomposition.get("breakdown") or []
+        for item in breakdown[:5]:
+            lines.append(
+                f"    {item['label']}: calls {item['calls']},"
+                f" p50 {_na(item.get('p50_ms'), '.0f', 'ms')},"
+                f" p95 {_na(item.get('p95_ms'), '.0f', 'ms')},"
+                f" success {_na(item.get('success_pct'), '.1f', '%')}"
+            )
+    lines.append("")
+
     lines += [f"[ 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]
     avg_collection_count = retrieval_breadth.get("avg_collection_count")
     if avg_collection_count is None:
@@ -4080,6 +4271,8 @@ def format_json(
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
+    remote_profile_windows: Dict[str, Any],
+    route_latency_decomposition: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
@@ -4123,6 +4316,8 @@ def format_json(
         "shared_skill_registry": shared_skill_registry,
         "delegated_prompt_failures": delegated_prompt_failures,
         "remote_profile_utilization": remote_profile_summary,
+        "remote_profile_utilization_windows": remote_profile_windows,
+        "route_search_latency_decomposition": route_latency_decomposition,
         "route_retrieval_breadth": retrieval_breadth,
         "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
@@ -4212,7 +4407,8 @@ def aidb_import(content: str, week_label: str) -> bool:
 def main() -> None:
     args = parse_args()
     window = _parse_since(args.since)
-    since_dt = datetime.now(tz=timezone.utc) - window
+    now = datetime.now(tz=timezone.utc)
+    since_dt = now - window
     since_label = args.since
 
     # Collect data (independent sources — order doesn't matter)
@@ -4229,7 +4425,7 @@ def main() -> None:
 
     # Analyse
     tool_stats = aggregate_tool_audit(audit_entries)
-    recent_cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+    recent_cutoff = now - timedelta(hours=1)
     recent_audit_entries = [
         e for e in audit_entries
         if (_entry_ts_utc(e) or datetime.min.replace(tzinfo=timezone.utc)) >= recent_cutoff
@@ -4243,6 +4439,8 @@ def main() -> None:
     recent_provider_fallbacks = route_provider_fallback_health(recent_audit_entries)
     recent_provider_fallbacks["window"] = "1h"
     recent_remote_profile_summary = remote_profile_utilization(recent_audit_entries, window="1h")
+    remote_profile_windows = remote_profile_utilization_windows(audit_entries, now=now, report_since=since_dt)
+    route_latency_decomposition = route_search_latency_decomposition(audit_entries, window=since_label)
     cache = cache_hit_rate()
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
@@ -4316,6 +4514,8 @@ def main() -> None:
         shared_skill_registry,
         delegation_feedback,
         recent_remote_profile_summary,
+        remote_profile_windows,
+        route_latency_decomposition,
         recent_retrieval_breadth,
         recent_provider_fallbacks,
         historical_health_watch,

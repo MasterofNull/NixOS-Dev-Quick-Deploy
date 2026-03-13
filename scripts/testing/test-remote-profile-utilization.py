@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Targeted checks for delegated remote profile utilization reporting."""
+"""Targeted checks for delegated remote profile reporting and latency decomposition."""
 
 from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from importlib.machinery import SourceFileLoader
 
@@ -20,8 +21,10 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> int:
+    now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
     entries = [
         {
+            "timestamp": (now - timedelta(minutes=20)).isoformat().replace("+00:00", "Z"),
             "tool_name": "ai_coordinator_delegate",
             "outcome": "ok",
             "metadata": {
@@ -32,6 +35,7 @@ def main() -> int:
             },
         },
         {
+            "timestamp": (now - timedelta(hours=3)).isoformat().replace("+00:00", "Z"),
             "tool_name": "ai_coordinator_delegate",
             "outcome": "ok",
             "metadata": {
@@ -42,6 +46,7 @@ def main() -> int:
             },
         },
         {
+            "timestamp": (now - timedelta(days=2)).isoformat().replace("+00:00", "Z"),
             "tool_name": "ai_coordinator_delegate",
             "outcome": "error",
             "metadata": {
@@ -52,9 +57,25 @@ def main() -> int:
             },
         },
         {
+            "timestamp": (now - timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),
             "tool_name": "route_search",
-            "outcome": "ok",
-            "metadata": {"selected_profile": "remote-free"},
+            "service": "hybrid-coordinator-http",
+            "outcome": "success",
+            "latency_ms": 900.0,
+            "metadata": {"backend": "local", "route_strategy": "hybrid"},
+        },
+        {
+            "timestamp": (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
+            "tool_name": "route_search",
+            "service": "hybrid-coordinator-http",
+            "outcome": "error",
+            "latency_ms": 1900.0,
+            "metadata": {
+                "backend": "local",
+                "route_strategy": "hybrid",
+                "fallback_reason": "remote_4xx_local_fallback",
+                "http_status": 502,
+            },
         },
     ]
 
@@ -69,10 +90,30 @@ def main() -> int:
     top_runtime_ids = summary.get("top_runtime_ids") or []
     assert_true(any(name == "openrouter-tool-calling" for name, _count in top_runtime_ids), "expected tool-calling runtime in summary")
 
+    windows = aq_report.remote_profile_utilization_windows(
+        entries,
+        now=now,
+        report_since=now - timedelta(days=7),
+    )
+    assert_true(windows.get("available") is True, "expected remote profile windows availability")
+    assert_true((windows.get("windows") or {}).get("1h", {}).get("total_calls") == 1, "expected one delegated call in 1h window")
+    assert_true((windows.get("windows") or {}).get("24h", {}).get("total_calls") == 2, "expected two delegated calls in 24h window")
+    assert_true((windows.get("windows") or {}).get("7d", {}).get("total_calls") == 3, "expected three delegated calls in 7d window")
+
+    route_latency = aq_report.route_search_latency_decomposition(entries, window="7d")
+    assert_true(route_latency.get("available") is True, "expected route latency decomposition availability")
+    assert_true(route_latency.get("total_calls") == 2, "expected two route_search calls in latency decomposition")
+    breakdown = route_latency.get("breakdown") or []
+    assert_true(any(item.get("label") == "backend:local" for item in breakdown), "expected backend:local breakdown")
+    assert_true(
+        any(item.get("label") == "fallback:remote_4xx_local_fallback" for item in breakdown),
+        "expected fallback latency breakdown",
+    )
+
     empty = aq_report.remote_profile_utilization([], window="1h")
     assert_true(empty.get("available") is False, "empty entries should report unavailable")
 
-    print("PASS: delegated remote profile utilization reporting works")
+    print("PASS: delegated remote profile reporting and latency decomposition work")
     return 0
 
 

@@ -131,6 +131,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | direct query caller identity propagation | validated_live | `/query` now normalizes caller identity at request entry, carries orchestration metadata into query responses and compact metadata blocks, and propagates requester-role fields into internal autorun audit rows so editor/human query traffic is not invisible until remote delegation happens |
 | 2026-03-13 | continue editor path smoke + aq-hints restore | validated_live | restored the generated Continue `aq-hints` HTTP context provider, added a bounded `prompt -> hints -> workflow plan -> query -> feedback` Continue-facing smoke, and promoted that smoke into `aq-qa 0.5.6` so editor-path regressions become deploy-visible instead of anecdotal |
 | 2026-03-13 | workflow reviewer acceptance telemetry | validated_local | `aq-report` now summarizes workflow requester-role mix, accepted/rejected review state by requester role, top reviewers, and accepted/rejected blueprints so reviewer-gated workflow health is measurable without reading raw session JSON |
+| 2026-03-13 | remote profile trend and route latency reporting | validated_local | `aq-report` now materializes delegated remote-profile utilization as comparable 1h/24h/7d windows and adds a route_search latency decomposition block by backend, fallback, and status class so Track H has trend depth instead of a single recent summary |
 
 ## High-Priority Tracks
 
@@ -559,23 +560,25 @@ Validation:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `recent delegated remote-profile utilization is now surfaced in aq-report JSON/text and deploy summaries; the next gap is deeper multi-window trend materialization such as 24h vs 7d comparisons and route-search latency decomposition`
+Current Slice: `aq-report now exposes delegated remote-profile utilization as 1h/24h/7d windows and adds a route_search latency decomposition block by backend, fallback, and status class; the next gap is wiring the highest-signal pieces into deploy summaries and broader trend consumers instead of leaving them report-only`
 Next Validation:
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization'`
+- `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
 - `python3 scripts/testing/test-remote-profile-utilization.py`
 - deploy summary output
 Open Risks / Blockers:
-- route-search latency decomposition and broader 24h/7d trend comparisons are still not materialized as dedicated report sections
+- the new trend and route-latency sections are report-visible, but deploy summaries and other runtime consumers still only surface the compact recent summary
 
 Tasks:
-1. trend views for 1h vs 24h vs 7d
-2. route-search latency decomposition
+1. wire multi-window trend views into the highest-signal deploy/runtime summaries
+2. expand route-search latency decomposition into more operator-facing consumers
 3. retrieval-breadth history
 4. continue/editor-specific health summary
 5. remote profile utilization summary
 
 Validation:
 - `scripts/ai/aq-report --format json`
+- `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
 - deploy summary output
 
 ### Track I — Operator and Prompt-Writing Guidance
