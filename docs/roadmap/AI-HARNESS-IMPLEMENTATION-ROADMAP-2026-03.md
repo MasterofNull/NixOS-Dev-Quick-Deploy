@@ -344,10 +344,11 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `all remote delegation lanes now use profile-specific compact completion rules, remote-tool-calling keeps the bounded post-tool finalization pass, remote-reasoning now has a bounded reasoning-finalization pass for reasoning-only empty replies, delegated prompt-failure history is now materialized across 1h/24h/7d windows in aq-report and deploy summaries, and the delegation contract now adds task-shape-specific rules for bugfix, deploy-safe, review, and research asks; the next gap is validating whether those tighter task-shape rules reduce repeated failure classes over time`
+Current Slice: `all remote delegation lanes now use profile-specific compact completion rules, remote-tool-calling keeps the bounded post-tool finalization pass, remote-reasoning now has a bounded reasoning-finalization pass for reasoning-only empty replies, delegated prompt-failure history is now materialized across 1h/24h/7d windows in aq-report and deploy summaries, the delegation contract now adds task-shape-specific rules for bugfix, deploy-safe, review, and research asks, and a dedicated multi-lane live smoke now proves bounded remote-free, remote-coding, and remote-reasoning delegation either succeed directly or settle into explicit remote-free fallback with a final non-failure contract; the next gap is validating whether those tighter task-shape rules reduce repeated failure classes over time`
 Next Validation:
 - targeted remote tool-calling smokes with `tools` and `tool_choice`
 - live finalization smoke where `/control/ai-coordinator/delegate` returns `finalization.applied=true` and `failure_classes=[]`
+- `scripts/testing/smoke-remote-delegation-lanes.sh`
 - targeted local tool-calling prep smokes with bounded fallback expectations
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .delegated_prompt_failures, .delegated_prompt_failure_windows, .routing'`
@@ -359,7 +360,7 @@ Open Risks / Blockers:
 - recovery artifacts reduce wasted retries, but they are still coordinator-side fallbacks and must not be mistaken for provider-fulfilled contracts
 - `qwen/qwen3-coder:free` remains the strongest coding lane and can still hit provider-side `429`, so observability should keep tracking fallback frequency and latency impact
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
-- delegated prompt-contract failures are now recorded, and task-shape-specific prompt rules now exist for several common delegated asks, but the next step is still to prove those revisions actually reduce repeated failure classes over time
+- delegated prompt-contract failures are now recorded, task-shape-specific prompt rules now exist for several common delegated asks, and live multi-lane bounded delegation now has explicit success-or-fallback smoke coverage, but the next step is still to prove those revisions actually reduce repeated failure classes over time
 - the tighter envelope improves shape control, but prompt token footprint should still be tuned so small delegated tasks do not overpay for boilerplate
 - the new compact lane rules tighten profile fit, but they still need time-window reporting to prove they lowered repeated delegated failure classes instead of only changing prompt text
 - remote-reasoning can still depend on the coordinator-side finalization pass when the provider emits reasoning without final text, so that behavior must stay visible as remediation rather than true provider compliance
