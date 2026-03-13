@@ -1697,6 +1697,11 @@ async def run_http_mode(port: int) -> None:
         try:
             data = await request.json()
             result = await _augment_query(data.get("query", ""), data.get("agent_type", "remote"))
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "augment_query_failed", "detail": str(exc)}, status=500)
@@ -2786,7 +2791,13 @@ async def run_http_mode(port: int) -> None:
             logger.error("hint_feedback_write_failed error=%s", exc)
             return web.json_response({"error": "feedback_write_failed"}, status=500)
 
-        return web.json_response({"status": "recorded", "hint_id": hint_id})
+        payload = {"status": "recorded", "hint_id": hint_id}
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_workflow_plan(request: web.Request) -> web.Response:
         """Build a structured phase plan with explicit tool assignments."""
@@ -2885,6 +2896,11 @@ async def run_http_mode(port: int) -> None:
                 "robots_requests": int((result.get("metrics") or {}).get("robots_requests", 0) or 0),
                 "skipped_count": len(result.get("skipped", []) or []),
             }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except ValueError as exc:
             return web.json_response({"error": "invalid_request", "detail": str(exc)}, status=400)
@@ -2923,6 +2939,11 @@ async def run_http_mode(port: int) -> None:
                 "robots_requests": int((result.get("metrics") or {}).get("robots_requests", 0) or 0),
                 "skipped_count": len(result.get("skipped", []) or []),
             }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except ValueError as exc:
             return web.json_response({"error": "invalid_request", "detail": str(exc)}, status=400)
@@ -2961,6 +2982,11 @@ async def run_http_mode(port: int) -> None:
                 "page_requests": int((((result.get("fetch") or {}).get("metrics") or {}).get("page_requests", 0) or 0)),
                 "needs_fallback": len([item for item in (result.get("results") or []) if item.get("status") != "ok"]),
             }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(result, dict):
+                result["active_lesson_refs"] = lesson_refs
             return web.json_response(result)
         except KeyError as exc:
             return web.json_response({"error": "unknown_workflow", "detail": str(exc)}, status=404)
