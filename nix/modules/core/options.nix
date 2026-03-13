@@ -1108,6 +1108,50 @@
         '';
       };
 
+      bitnet = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Enable the declarative BitNet sidecar scaffold.
+            This is a benchmark-only experimental lane and must not replace llama.cpp.
+          '';
+        };
+
+        host = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1";
+          description = "Bind address reserved for a future BitNet sidecar runtime.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8086;
+          description = "TCP port reserved for a future BitNet sidecar runtime.";
+        };
+
+        model = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/bitnet/models/model.gguf";
+          description = "Placeholder model path for future BitNet sidecar experiments.";
+        };
+
+        benchmarkOnly = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Keep BitNet limited to sidecar benchmarking and feasibility work.
+            Production routing integration must remain disabled while this is true.
+          '';
+        };
+
+        extraArgs = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Reserved extra arguments for a future BitNet sidecar command.";
+        };
+      };
+
       vectorDb = {
         enable = lib.mkOption {
           type = lib.types.bool;
@@ -2098,6 +2142,12 @@
         type = lib.types.port;
         default = 8085;
         description = "AI switchboard proxy port.";
+      };
+
+      bitnet = lib.mkOption {
+        type = lib.types.port;
+        default = 8086;
+        description = "Reserved BitNet sidecar HTTP port.";
       };
 
       prometheus = lib.mkOption {

@@ -188,6 +188,20 @@ def build_report(facts: Dict[str, Any], *, command_overrides: Optional[Dict[str,
             "python utils/generate-dummy-bitnet-model.py models/bitnet_b1_58-large --outfile models/dummy-bitnet-125m.tl1.gguf --outtype tl1 --model-size 125M",
         ],
     }
+    declarative_sidecar_scaffold = {
+        "option_path": "mySystem.aiStack.bitnet",
+        "port_option": "mySystem.ports.bitnet",
+        "endpoint_env": "BITNET_URL",
+        "default_host": "127.0.0.1",
+        "default_port": 8086,
+        "enabled_by_default": False,
+        "benchmark_only_default": True,
+        "switchboard_integration": "disabled",
+    }
+    if sidecar_viable:
+        next_actions.append(
+            "Keep routing on llama.cpp, but use the declarative BitNet sidecar scaffold for host-local benchmark-only experiments."
+        )
 
     return {
         "status": "ok",
@@ -211,6 +225,7 @@ def build_report(facts: Dict[str, Any], *, command_overrides: Optional[Dict[str,
         "preferred_models": preferred_models[:3],
         "blockers": blockers,
         "sidecar_viable": sidecar_viable,
+        "declarative_sidecar_scaffold": declarative_sidecar_scaffold,
         "benchmark_plan": benchmark_plan,
         "next_actions": next_actions,
     }
@@ -245,6 +260,14 @@ def _format_text(report: Dict[str, Any]) -> str:
         lines.append("Next actions:")
         for action in report["next_actions"]:
             lines.append(f"- {action}")
+    scaffold = report.get("declarative_sidecar_scaffold") or {}
+    if scaffold:
+        lines.append("")
+        lines.append("Declarative scaffold:")
+        lines.append(
+            f"- {scaffold.get('option_path')} via {scaffold.get('endpoint_env')} "
+            f"({scaffold.get('default_host')}:{scaffold.get('default_port')})"
+        )
     return "\n".join(lines)
 
 

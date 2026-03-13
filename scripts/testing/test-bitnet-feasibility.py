@@ -39,6 +39,10 @@ def main() -> int:
         viable_report["preferred_models"][0]["name"] == "BitNet-b1.58-2B-4T",
         "expected official 2B model to be the leading preferred candidate",
     )
+    scaffold = viable_report.get("declarative_sidecar_scaffold") or {}
+    assert_true(scaffold.get("option_path") == "mySystem.aiStack.bitnet", "missing bitnet option path scaffold")
+    assert_true(scaffold.get("port_option") == "mySystem.ports.bitnet", "missing bitnet port scaffold")
+    assert_true(scaffold.get("switchboard_integration") == "disabled", "bitnet scaffold should remain out of switchboard")
 
     blocked_report = MODULE.build_report(
         {
