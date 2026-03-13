@@ -159,6 +159,7 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
             "free": Config.SWITCHBOARD_REMOTE_ALIAS_FREE or None,
             "coding": Config.SWITCHBOARD_REMOTE_ALIAS_CODING or None,
             "reasoning": Config.SWITCHBOARD_REMOTE_ALIAS_REASONING or None,
+            "tool_calling": Config.SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING or None,
         },
     }
     try:
@@ -173,6 +174,7 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
             "free": ((profiles.get("remote-free") or {}).get("model_alias")) or state["remote_aliases"]["free"],
             "coding": ((profiles.get("remote-coding") or {}).get("model_alias")) or state["remote_aliases"]["coding"],
             "reasoning": ((profiles.get("remote-reasoning") or {}).get("model_alias")) or state["remote_aliases"]["reasoning"],
+            "tool_calling": ((profiles.get("remote-tool-calling") or {}).get("model_alias")) or state["remote_aliases"]["tool_calling"],
         }
     except Exception:
         return state
@@ -194,6 +196,11 @@ def _apply_remote_runtime_status(
     elif runtime_id == "openrouter-reasoning":
         runtime["status"] = "ready" if remote_configured and remote_aliases.get("reasoning") else "offline"
         runtime["model_alias"] = remote_aliases.get("reasoning") or ""
+    elif runtime_id == "openrouter-tool-calling":
+        runtime["status"] = "ready" if remote_configured and remote_aliases.get("tool_calling") else "offline"
+        runtime["model_alias"] = remote_aliases.get("tool_calling") or ""
+    elif runtime_id == "local-tool-calling":
+        runtime["status"] = "degraded"
     return runtime
 
 
@@ -3278,11 +3285,14 @@ async def run_http_mode(port: int) -> None:
             timeout_s = float(data.get("timeout_s") or 60.0)
 
             async def _post_delegate(profile_name: str) -> httpx.Response:
+                local_profiles = {"default", "local-tool-calling"}
                 headers = {
                     "Content-Type": "application/json",
-                    "X-AI-Profile": profile_name if profile_name != "default" else "continue-local",
+                    "X-AI-Profile": "continue-local" if profile_name == "default" else profile_name,
                 }
-                if profile_name != "default":
+                if profile_name in local_profiles:
+                    headers["X-AI-Route"] = "local"
+                else:
                     headers["X-AI-Route"] = "remote"
                 async with httpx.AsyncClient(timeout=timeout_s) as client:
                     return await client.post(
@@ -3299,7 +3309,7 @@ async def run_http_mode(port: int) -> None:
             initial_body = response.json()
             if (
                 response.status_code in {402, 429}
-                and selected_runtime_id in {"openrouter-coding", "openrouter-reasoning"}
+                and selected_runtime_id in {"openrouter-coding", "openrouter-reasoning", "openrouter-tool-calling"}
                 and remote_configured
                 and remote_aliases.get("free")
             ):

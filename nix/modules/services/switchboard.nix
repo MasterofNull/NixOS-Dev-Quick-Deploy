@@ -58,6 +58,16 @@ let
     Use the configured higher-judgment remote model for architecture, policy, and tradeoff work.
     Spend tokens intentionally and only after scoping the decision clearly.
   '';
+  remoteToolCallingCard = ''
+    [profile-card:remote-tool-calling]
+    Use the configured remote tool-calling lane for bounded tool use with strict arguments.
+    Prefer minimal tool schemas, explicit constraints, and concise final output.
+  '';
+  localToolCallingCard = ''
+    [profile-card:local-tool-calling]
+    Use the local tool-calling prep lane for future local tool-enabled models.
+    Preserve strict tool schemas and fall back explicitly if the local backend does not support tools yet.
+  '';
   embeddingLocalCard = ''
     [profile-card:embedding-local]
     Embeddings profile: retrieval/ranking only, not chat reasoning.
@@ -134,11 +144,14 @@ let
     CARD_REMOTE_FREE = ${builtins.toJSON remoteFreeCard}
     CARD_REMOTE_CODING = ${builtins.toJSON remoteCodingCard}
     CARD_REMOTE_REASONING = ${builtins.toJSON remoteReasoningCard}
+    CARD_REMOTE_TOOL_CALLING = ${builtins.toJSON remoteToolCallingCard}
+    CARD_LOCAL_TOOL_CALLING = ${builtins.toJSON localToolCallingCard}
     CARD_EMBEDDING_LOCAL = ${builtins.toJSON embeddingLocalCard}
     REMOTE_MODEL_ALIASES_ENABLED = os.environ.get("SWB_REMOTE_MODEL_ALIASES_ENABLED", "1").strip() not in ("0", "false", "no")
     REMOTE_MODEL_ALIAS_FREE = os.environ.get("SWB_REMOTE_MODEL_ALIAS_FREE", "").strip()
     REMOTE_MODEL_ALIAS_CODING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_CODING", "").strip()
     REMOTE_MODEL_ALIAS_REASONING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_REASONING", "").strip()
+    REMOTE_MODEL_ALIAS_TOOL_CALLING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_TOOL_CALLING", "").strip()
     REMOTE_DAILY_TOKEN_CAP = max(0, int(os.environ.get("SWB_REMOTE_DAILY_TOKEN_CAP", "0")))
     REMOTE_BUDGET_FALLBACK_LOCAL = os.environ.get("SWB_REMOTE_BUDGET_FALLBACK_LOCAL", "1").strip() not in ("0", "false", "no")
     REMOTE_BUDGET_STATE_PATH = os.environ.get("SWB_REMOTE_BUDGET_STATE_PATH", "").strip()
@@ -202,6 +215,8 @@ let
                 "remote-free": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_FREE or None},
                 "remote-coding": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_CODING or None},
                 "remote-reasoning": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_REASONING or None},
+                "remote-tool-calling": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_TOOL_CALLING or None},
+                "local-tool-calling": {"force_provider": "local", "inject_hints": False, "tool_calling_preparatory": True},
                 "embedding-local": {"force_provider": "local", "inject_hints": False, "embeddings_only": True},
                 "embedded-assist": {"force_provider": "local", "inject_hints": False, "embeddings_only": False},
             },
@@ -228,8 +243,10 @@ let
     def _route_target(request: Request, payload: dict | None, profile: str) -> str:
         if profile == "continue-local":
             return "local"
-        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning"):
+        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"):
             return "remote" if REMOTE_URL else "local"
+        if profile == "local-tool-calling":
+            return "local"
         if profile == "embedding-local":
             return "local"
         if profile == "embedded-assist":
@@ -266,6 +283,8 @@ let
             return REMOTE_MODEL_ALIAS_CODING
         if lowered in ("reasoning", "architecture", "thinking"):
             return REMOTE_MODEL_ALIAS_REASONING
+        if lowered in ("tool", "tools", "tool-calling", "tool_calling", "function", "function-calling"):
+            return REMOTE_MODEL_ALIAS_TOOL_CALLING
         return ""
 
     def _rewrite_model(payload: dict, profile: str) -> dict:
@@ -280,6 +299,8 @@ let
                 alias_model = REMOTE_MODEL_ALIAS_CODING
             elif profile == "remote-reasoning":
                 alias_model = REMOTE_MODEL_ALIAS_REASONING
+            elif profile == "remote-tool-calling":
+                alias_model = REMOTE_MODEL_ALIAS_TOOL_CALLING
         for prefix in REMOTE_MODEL_PREFIXES:
             if model.lower().startswith(prefix):
                 suffix = model[len(prefix):] or "default"
@@ -296,7 +317,7 @@ let
         profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
         if not profile:
             profile = request.query_params.get("ai_profile", "").strip().lower()
-        allowed = ("continue-local", "remote-default", "remote-free", "remote-coding", "remote-reasoning", "embedding-local", "embedded-assist", "default")
+        allowed = ("continue-local", "local-tool-calling", "remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling", "embedding-local", "embedded-assist", "default")
         return profile if profile in allowed else "default"
 
     def _budget_state_current() -> dict:
@@ -640,6 +661,10 @@ let
             return CARD_REMOTE_CODING.strip()
         if profile == "remote-reasoning":
             return CARD_REMOTE_REASONING.strip()
+        if profile == "remote-tool-calling":
+            return CARD_REMOTE_TOOL_CALLING.strip()
+        if profile == "local-tool-calling":
+            return CARD_LOCAL_TOOL_CALLING.strip()
         if profile == "embedding-local":
             return CARD_EMBEDDING_LOCAL.strip()
         if profile == "embedded-assist":
@@ -712,7 +737,7 @@ let
         profile = _effective_profile(request)
         target_type = _route_target(request, payload, profile)
         target = REMOTE_URL if target_type == "remote" and REMOTE_URL else LLAMA_URL
-        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning") and not REMOTE_URL:
+        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
             return JSONResponse(
                 status_code=503,
                 content={
@@ -779,7 +804,7 @@ let
         remote_budget = None
         payload_model = str(payload.get("model", "")).strip().lower() if isinstance(payload, dict) else ""
         explicit_remote = (
-            profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning")
+            profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling")
             or request.headers.get(ROUTE_HINT_HEADER, "").strip().lower() == "remote"
             or request.headers.get(PROVIDER_HINT_HEADER, "").strip().lower() == "remote"
             or any(payload_model.startswith(prefix) for prefix in REMOTE_MODEL_PREFIXES)
@@ -972,6 +997,7 @@ in
           "SWB_REMOTE_MODEL_ALIAS_FREE=${if swb.remoteModelAliases.free != null then swb.remoteModelAliases.free else ""}"
           "SWB_REMOTE_MODEL_ALIAS_CODING=${if swb.remoteModelAliases.coding != null then swb.remoteModelAliases.coding else ""}"
           "SWB_REMOTE_MODEL_ALIAS_REASONING=${if swb.remoteModelAliases.reasoning != null then swb.remoteModelAliases.reasoning else ""}"
+          "SWB_REMOTE_MODEL_ALIAS_TOOL_CALLING=${if swb.remoteModelAliases.toolCalling != null then swb.remoteModelAliases.toolCalling else ""}"
           "SWB_REMOTE_DAILY_TOKEN_CAP=${toString swb.remoteBudget.dailyTokenCap}"
           "SWB_REMOTE_BUDGET_FALLBACK_LOCAL=${if swb.remoteBudget.fallbackToLocal then "1" else "0"}"
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
