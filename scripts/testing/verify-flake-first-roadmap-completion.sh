@@ -598,7 +598,8 @@ check_pattern "scripts/ai/aq-report" 'top_requester_roles' 'aq-report summarizes
 check_pattern "scripts/ai/aq-report" 'accepted_by_requester_role' 'aq-report summarizes accepted workflow reviews by requester role'
 check_pattern "scripts/ai/aq-report" 'top_reviewers' 'aq-report summarizes workflow reviewer activity'
 check_pattern "scripts/ai/aq-report" 'accepted_blueprints|rejected_blueprints' 'aq-report summarizes accepted and rejected workflow blueprints'
-check_pattern "scripts/testing/test-workflow-review-gate.py" 'top_reviewers|accepted_blueprints|rejected_blueprints' 'Workflow review-gate test covers reviewer and blueprint aggregates'
+check_pattern "scripts/ai/aq-report" 'top_review_types|accepted_patch_reviews|patch_reviews_by_reviewed_agent|accepted_task_classes' 'aq-report summarizes patch-review and task-class workflow telemetry'
+check_pattern "scripts/testing/test-workflow-review-gate.py" 'top_reviewers|accepted_blueprints|rejected_blueprints|accepted_patch_reviews|patch_reviews_by_reviewed_agent' 'Workflow review-gate test covers reviewer, blueprint, and patch-review aggregates'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
 if (( fail_count > 0 )); then
