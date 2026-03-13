@@ -69,7 +69,7 @@ Tracking fields to update after each slice:
 | Area | Status | Evidence | Next Action |
 | --- | --- | --- | --- |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
-| OpenRouter prompt-contract tuning | in_progress | free-capable aliases are live across remote lanes, and `remote-tool-calling` now has a bounded post-tool finalization pass; broader delegated prompt classes still need the same tightening so repeated empty/generic replies do not keep landing in the failure ledger | extend prompt-contract revision beyond tool-calling into free/reasoning/coding micro-task templates and keep validating with live delegated smokes |
+| OpenRouter prompt-contract tuning | in_progress | free-capable aliases are live across remote lanes, `remote-tool-calling` now has a bounded post-tool finalization pass, and delegated prompt-failure history is now materialized across 1h/24h/7d windows so envelope changes can be measured over time; broader delegated prompt classes still need the same tightening so repeated empty/generic replies do not keep landing in the failure ledger | extend prompt-contract revision beyond tool-calling into free/reasoning/coding micro-task templates and keep validating with live delegated smokes plus failure-trend deltas |
 | Continue/local web research lane | in_progress | bounded `/research/web/fetch`, `/research/workflows/curated-fetch`, and `/research/web/browser-fetch` lanes are now live; the browser-assisted fallback successfully rendered a real Calflora page, the curated manifest includes a California-native pack, and source-level fetch policy now lets approved workflows escalate only the weak sources to browser fallback, while broader source-pack coverage remains incomplete | expand approved source packs beyond the current U.S./California seeds and keep challenge/captcha handling in compliant fallback lanes without implementing anti-bot evasion |
 | Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, a pinned `agentskill.sh` source (`learn`) is imported through the same governed manifest path, and the coordinator now exposes the approved catalog directly; broader remote-agent export/install surfaces remain incomplete | extend governed manifest coverage and broader remote-agent export/install surfaces |
 
@@ -77,6 +77,7 @@ Tracking fields to update after each slice:
 
 | Date | Slice / Commit | Status | Notes |
 | --- | --- | --- | --- |
+| 2026-03-13 | delegated prompt-failure history windows | validated_local | `aq-report` now materializes 1h/24h/7d delegated prompt-failure windows and `nixos-quick-deploy.sh` surfaces the trend so prompt-envelope tuning can be measured over time instead of inferred from one aggregate bucket |
 | 2026-03-13 | `d9f3e06` agent-review corrective pass | validated_local | fixed broken Continue CLI packaging, fixed Tier 0 pre-deploy file detection, added required implementation roadmap and agent surface matrix |
 | 2026-03-13 | route-search retrieval breadth batch | validated_live | bounded route-search collection selection and retrieval-breadth reporting are live |
 | 2026-03-13 | provider fallback health batch | validated_live | recovered provider fallbacks are reported separately from local backend failures |
@@ -339,13 +340,14 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `all remote delegation lanes now use profile-specific compact completion rules, remote-tool-calling keeps the bounded post-tool finalization pass, and remote-reasoning now has a bounded reasoning-finalization pass for reasoning-only empty replies; the next gap is measuring whether the leaner envelopes materially reduce repeated failure classes and prompt footprint over time`
+Current Slice: `all remote delegation lanes now use profile-specific compact completion rules, remote-tool-calling keeps the bounded post-tool finalization pass, remote-reasoning now has a bounded reasoning-finalization pass for reasoning-only empty replies, and delegated prompt-failure history is now materialized across 1h/24h/7d windows in aq-report and deploy summaries; the next gap is using those windows to drive further prompt-template tightening across more delegated task classes`
 Next Validation:
 - targeted remote tool-calling smokes with `tools` and `tool_choice`
 - live finalization smoke where `/control/ai-coordinator/delegate` returns `finalization.applied=true` and `failure_classes=[]`
 - targeted local tool-calling prep smokes with bounded fallback expectations
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
-- `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .delegated_prompt_failures, .routing'`
+- `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .delegated_prompt_failures, .delegated_prompt_failure_windows, .routing'`
+- `python3 scripts/testing/test-delegated-prompt-failure-history.py`
 - bounded delegated research/review calls recorded through `/control/ai-coordinator/delegate`
 - live `artifact_recovery` checks for tool-call-only and reasoning-heavy delegated replies
 Open Risks / Blockers:
