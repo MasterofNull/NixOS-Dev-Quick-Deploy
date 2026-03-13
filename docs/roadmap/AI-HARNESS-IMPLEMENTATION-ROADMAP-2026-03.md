@@ -101,6 +101,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | deploy summary delegated-failure visibility | validated_local | `nixos-quick-deploy.sh` now surfaces delegated prompt-failure counts/class/profile in the AI stack report summary so remote prompt-contract drift is visible during normal deploy/preflight loops |
 | 2026-03-13 | remote + local tool-calling lane wiring | validated_live | added first-class `remote-tool-calling` and preparatory `local-tool-calling` profiles across switchboard and ai-coordinator, activated them live, confirmed remote lane returns provider tool calls through OpenRouter, and confirmed local lane accepts bounded `tools` payloads while staying explicitly degraded until local backends prove native tool support |
 | 2026-03-13 | tool-call-only failure classification refinement | validated_live | refined delegated failure capture so remote tool-call-only completions are recorded as `tool_call_without_final_text` with salvaged tool arguments instead of opaque `empty_content`, then revalidated the same live OpenRouter tool-calling smoke after coordinator restart |
+| 2026-03-13 | governed lesson schema + promotion action pass | validated_local | `aq-report` now emits governed lesson candidate fields including state, scope, evidence count, materialization class, validation link, and traceability targets, and can surface a machine-readable `promote_agent_lesson` action when candidates meet the threshold |
 
 ## High-Priority Tracks
 
@@ -368,14 +369,15 @@ Acceptance:
 
 ### Track E — Agent Lesson Promotion and EvoSkill-Inspired Skill Evolution
 
-Track Status: `planned`
+Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `roadmap and reporting intent exist, but the explicit lesson schema and promotion gate are not implemented`
+Current Slice: `aq-report now emits a governed lesson schema and a bounded promotion action for qualifying candidates; the next gap is wiring explicit reviewer acceptance and persistent promotion state beyond report-time candidacy`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
+- `python3 scripts/testing/test-agent-lesson-schema.py`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- lesson promotion is still implicit and not yet governed by one declared schema
+- reviewer acceptance and persistent promote/avoid/reject state are still report-derived, not yet stored in one durable lesson registry
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
