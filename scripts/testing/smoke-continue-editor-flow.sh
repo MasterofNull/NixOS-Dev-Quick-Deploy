@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Smoke-test the Continue editor rescue workflow against the hybrid coordinator.
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
