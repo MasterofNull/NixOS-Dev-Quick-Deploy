@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SKILLS_DIR = REPO_ROOT / ".agent" / "skills"
+DEFAULT_EXTERNAL_MANIFEST = REPO_ROOT / "config" / "approved-skill-sources.json"
 DEFAULT_AIDB_URL = os.getenv(
     "AIDB_URL",
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('AIDB_PORT', '8002')}",
@@ -27,6 +28,7 @@ def parse_args() -> argparse.Namespace:
         description="Sync shared local SKILL.md entries into the approved AIDB registry."
     )
     parser.add_argument("--skills-dir", default=str(DEFAULT_SKILLS_DIR))
+    parser.add_argument("--external-manifest", default=str(DEFAULT_EXTERNAL_MANIFEST))
     parser.add_argument("--aidb-url", default=DEFAULT_AIDB_URL)
     parser.add_argument("--api-key-file", default=os.getenv("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key"))
     parser.add_argument("--managed-by", default="shared-skill-sync")
@@ -76,6 +78,55 @@ def list_local_skills(skills_dir: Path) -> List[Dict[str, str]]:
             }
         )
     return skills
+
+
+def load_external_skill_records(manifest_path: Path) -> List[Dict[str, str]]:
+    if not manifest_path.is_file():
+        return []
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    records: List[Dict[str, str]] = []
+    for item in payload.get("skills") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("enabled", True) is False:
+            continue
+        source_url = str(item.get("source_url", "") or "").strip()
+        source_path = str(item.get("source_path", "") or "").strip()
+        slug = str(item.get("slug", "") or "").strip()
+        if not source_url or not source_path or not slug:
+            continue
+        records.append(
+            {
+                "slug": slug,
+                "source_path": source_path,
+                "content": "",
+                "content_url": source_url,
+                "managed_by": str(item.get("managed_by", "") or "external-skill-sync").strip() or "external-skill-sync",
+            }
+        )
+    return records
+
+
+def fetch_remote_text(url: str) -> str:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "text/markdown,text/plain;q=0.9,*/*;q=0.1",
+            "User-Agent": "nixos-ai-stack-shared-skill-sync/1.0",
+        },
+    )
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < 4:
+                time.sleep(min(4.0, 0.5 * (2**attempt)))
+                continue
+            raise
 
 
 def _json_request(
@@ -146,14 +197,17 @@ def sync_skills(
     for skill in local_skills:
         if skill["source_path"] in approved_paths:
             continue
+        content = skill.get("content", "")
+        if not content and skill.get("content_url"):
+            content = fetch_remote_text(skill["content_url"])
         record = _json_request(
             base_url,
             "/skills/import",
             payload={
                 "slug": skill["slug"],
-                "content": skill["content"],
+                "content": content,
                 "source_path": skill["source_path"],
-                "managed_by": managed_by,
+                "managed_by": skill.get("managed_by") or managed_by,
             },
             api_key=api_key,
         )
@@ -245,13 +299,15 @@ def main() -> int:
     api_key = read_api_key(args.api_key_file)
     skills_dir = Path(args.skills_dir).expanduser()
     local_skills = list_local_skills(skills_dir)
+    external_skills = load_external_skill_records(Path(args.external_manifest).expanduser())
+    expected_skills = local_skills + external_skills
     report: Dict[str, Any]
     try:
         approved_skills = fetch_approved_skills(args.aidb_url, api_key=api_key)
         if not args.check:
             sync_result = sync_skills(
                 args.aidb_url,
-                local_skills,
+                expected_skills,
                 api_key=api_key,
                 managed_by=args.managed_by,
                 approved_skills=approved_skills,
@@ -259,9 +315,10 @@ def main() -> int:
         else:
             sync_result = {"imported": [], "approved": []}
         approved_skills = fetch_approved_skills(args.aidb_url, api_key=api_key)
-        report = compare_registry(local_skills, approved_skills) | sync_result
+        report = compare_registry(expected_skills, approved_skills) | sync_result
         report["mode"] = "check" if args.check else "sync"
         report["skills_dir"] = str(skills_dir)
+        report["external_manifest"] = str(Path(args.external_manifest).expanduser())
         report["aidb_url"] = args.aidb_url
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")

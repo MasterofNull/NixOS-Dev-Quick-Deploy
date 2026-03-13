@@ -24,6 +24,17 @@ Purpose: keep external skill documentation references deterministic. Skills must
 - `AQD_CLI_CONVERTER_SCOPE`
   `skill validate/init/package + mcp scaffold/validate/test/evaluate/logs/deploy-aidb`
 
+## Shared Skill Source Lock
+
+- `AGENTSKILL_LEARN_REPO`
+  `https://github.com/agentskill-sh/learn`
+
+- `AGENTSKILL_LEARN_COMMIT`
+  `4f415d34e1c1be9b31bd6498d73948a16676fbc9`
+
+- `AGENTSKILL_LEARN_SKILL_URL`
+  `https://raw.githubusercontent.com/agentskill-sh/learn/4f415d34e1c1be9b31bd6498d73948a16676fbc9/SKILL.md`
+
 ## Update Procedure
 
 1. Resolve and validate the target SDK revision.
