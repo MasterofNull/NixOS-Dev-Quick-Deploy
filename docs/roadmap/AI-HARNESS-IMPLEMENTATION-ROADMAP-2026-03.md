@@ -424,7 +424,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, direct /feedback plus /feedback/evaluate response metadata, direct session info/clear response metadata, direct /workflow/run/start response metadata, persisted /workflow/run/{session_id} retrieval, direct workflow mode/event/replay plus workflow isolation response metadata, direct /workflow/session/start plus workflow session get/list plus /workflow/blueprints response metadata, direct /review/acceptance response metadata, direct /control/ai-coordinator/status plus /control/ai-coordinator/lessons plus /control/ai-coordinator/skills response metadata, and now have dedicated live smoke coverage across those workflow/runtime helper consumers from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
+Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, direct /feedback plus /feedback/evaluate response metadata, direct session info/clear response metadata, direct discovery capability/token-budget response metadata, direct /workflow/run/start response metadata, persisted /workflow/run/{session_id} retrieval, direct workflow mode/event/replay plus workflow isolation response metadata, direct /workflow/session/start plus workflow session get/list plus workflow tree/fork/advance plus /workflow/blueprints response metadata, direct /review/acceptance response metadata, direct /control/ai-coordinator/status plus /control/ai-coordinator/lessons plus /control/ai-coordinator/skills response metadata, and now have dedicated live smoke coverage across those workflow/runtime helper consumers from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
@@ -439,10 +439,12 @@ Next Validation:
 - `scripts/testing/smoke-hints-lesson-refs.sh`
 - `scripts/testing/smoke-feedback-lesson-refs.sh`
 - `scripts/testing/smoke-session-lesson-refs.sh`
+- `scripts/testing/smoke-discovery-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-start-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-run-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-isolation-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-runtime-lesson-refs.sh`
+- `scripts/testing/smoke-workflow-tree-lesson-refs.sh`
 - `scripts/testing/smoke-review-acceptance-lesson-refs.sh`
 - `scripts/testing/smoke-status-lesson-refs.sh`
 - `scripts/testing/smoke-lessons-lesson-refs.sh`
@@ -450,7 +452,7 @@ Next Validation:
 - `scripts/testing/smoke-skills-lesson-refs.sh`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, direct /feedback plus /feedback/evaluate metadata, direct session info/clear metadata, direct workflow-run start metadata, persisted workflow-run retrieval, direct workflow mode/event/replay plus workflow isolation metadata, direct workflow session start/get/list plus workflow blueprints metadata, direct /review/acceptance metadata, direct ai-coordinator status plus lessons plus skills metadata, and now have dedicated live smoke coverage across those workflow/runtime helper consumers, but broader direct routing/reference materialization remains incomplete beyond those first consumers
+- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, direct /feedback plus /feedback/evaluate metadata, direct session info/clear metadata, direct discovery capability/token-budget metadata, direct workflow-run start metadata, persisted workflow-run retrieval, direct workflow mode/event/replay plus workflow isolation metadata, direct workflow session start/get/list plus workflow tree/fork/advance plus workflow blueprints metadata, direct /review/acceptance metadata, direct ai-coordinator status plus lessons plus skills metadata, and now have dedicated live smoke coverage across those workflow/runtime helper consumers, but broader direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
