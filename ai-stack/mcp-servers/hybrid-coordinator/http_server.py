@@ -145,6 +145,8 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "workflow_run_start"
     if path == "/control/ai-coordinator/status" and method == "GET":
         return "ai_coordinator_status"
+    if path == "/control/ai-coordinator/skills" and method == "GET":
+        return "ai_coordinator_skills"
     if path == "/control/ai-coordinator/delegate" and method == "POST":
         return "ai_coordinator_delegate"
     if path == "/research/web/fetch" and method == "POST":
@@ -179,6 +181,46 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     except Exception:
         return state
     return state
+
+
+async def _aidb_shared_skills_catalog(limit: int = 25) -> Dict[str, Any]:
+    aidb_url = Config.AIDB_URL.rstrip("/")
+    if not aidb_url:
+        return {"available": False, "source": "", "skills": []}
+    cache_bust = str(time.time_ns())
+    url = f"{aidb_url}/skills?include_pending=true&_={cache_bust}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        return {"available": False, "source": url, "skills": [], "error": str(exc)[:180]}
+
+    skills = []
+    for item in payload if isinstance(payload, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status", "")).strip().lower() != "approved":
+            continue
+        skills.append(
+            {
+                "slug": str(item.get("slug", "")).strip(),
+                "name": str(item.get("name", "")).strip(),
+                "description": str(item.get("description", "")).strip(),
+                "managed_by": str(item.get("managed_by", "")).strip(),
+                "source_path": str(item.get("source_path", "")).strip(),
+            }
+        )
+    skills = [item for item in skills if item["slug"]]
+    skills.sort(key=lambda item: item["slug"])
+    return {
+        "available": True,
+        "source": url,
+        "skills": skills[:limit],
+        "total": len(skills),
+        "truncated": len(skills) > limit,
+    }
 
 
 def _apply_remote_runtime_status(
@@ -3204,6 +3246,7 @@ async def run_http_mode(port: int) -> None:
             swb_state = await _switchboard_ai_coordinator_state()
             remote_aliases = swb_state.get("remote_aliases", {})
             remote_configured = bool(swb_state.get("remote_configured", False))
+            shared_skills = await _aidb_shared_skills_catalog(limit=10)
             for runtime in runtimes:
                 runtime_id = str(runtime.get("runtime_id", "")).strip()
                 runtime = _apply_remote_runtime_status(runtime, runtime_id, remote_aliases, remote_configured)
@@ -3215,8 +3258,33 @@ async def run_http_mode(port: int) -> None:
                     "switchboard_url": Config.SWITCHBOARD_URL,
                     "remote_configured": remote_configured,
                     "remote_aliases": remote_aliases,
+                    "shared_skill_registry": {
+                        "available": shared_skills.get("available", False),
+                        "total": int(shared_skills.get("total", 0) or 0),
+                        "skills": shared_skills.get("skills", []),
+                        "truncated": bool(shared_skills.get("truncated", False)),
+                    },
                     "runtimes": runtimes,
                     "count": len(runtimes),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_ai_coordinator_skills(request: web.Request) -> web.Response:
+        """Expose the approved shared skill catalog for local and delegated runtimes."""
+        try:
+            limit_raw = request.query.get("limit", "25")
+            try:
+                limit = max(1, min(100, int(limit_raw)))
+            except ValueError:
+                limit = 25
+            payload = await _aidb_shared_skills_catalog(limit=limit)
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "service": "ai-coordinator",
+                    "shared_skill_registry": payload,
                 }
             )
         except Exception as exc:
@@ -3765,6 +3833,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
     http_app.router.add_get("/parity/scorecard", handle_parity_scorecard)
     http_app.router.add_get("/control/ai-coordinator/status", handle_ai_coordinator_status)
+    http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)

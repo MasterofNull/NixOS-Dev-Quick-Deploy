@@ -108,6 +108,7 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/research/web/fetch` | POST | Bounded polite public-web fetch -> extract lane for explicit URLs |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/control/ai-coordinator/status` | GET | List coordinator runtime lanes and remote readiness |
+| `/control/ai-coordinator/skills` | GET | List harness-approved shared skill catalog for local and delegated agents |
 | `/control/ai-coordinator/delegate` | POST | Delegate a bounded task through the ai-coordinator |
 | `/health` | GET | Check service health |
 

@@ -61,6 +61,13 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
         add("route_search", "/query", "Hybrid retrieval path for context and grounded answers.")
         add("memory_recall", "/memory/recall", "Recall prior procedural or semantic memory for similar tasks.")
 
+    if any(k in q for k in ("skill", "skills", "agentskill", "/learn", "learn skill", "shared skill")):
+        add(
+            "shared_skill_registry",
+            "/control/ai-coordinator/skills",
+            "List harness-approved shared skills for local and delegated agents.",
+        )
+
     if any(
         k in q
         for k in (
@@ -169,6 +176,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["query", "agent_id", "limit"],
         "output_focus": "Short memory summaries relevant to the task.",
     },
+    "shared_skill_registry": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": ["limit"],
+        "output_focus": "Approved skill slugs, descriptions, source paths, and manager tags only.",
+    },
     "workflow_plan": {
         "method": "POST",
         "mcp_tool": "workflow_plan",
@@ -245,7 +258,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         return [name for name in names if name in tool_names]
 
     phases = [
-        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search"])},
+        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry"])},
         {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery"])},
         {
             "id": "execute",
