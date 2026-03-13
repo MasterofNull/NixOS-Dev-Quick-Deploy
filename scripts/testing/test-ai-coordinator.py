@@ -103,7 +103,7 @@ def main() -> int:
     assert_true("local-hybrid" in pruned_runtimes, "default runtime should be restored during prune merge")
 
     messages = build_messages(
-        "Implement the bounded runtime cleanup slice.",
+        "Fix the bounded runtime cleanup regression in the coordinator slice.",
         context={
             "repo_paths": ["ai-stack/mcp-servers/hybrid-coordinator/http_server.py"],
             "constraints": ["do not invent extra files"],
@@ -121,6 +121,8 @@ def main() -> int:
     assert_true("Anti-goals:" in messages[1]["content"], "user message should include anti-goals when provided")
     assert_true("Completion rules:" in messages[1]["content"], "user message should include completion rules")
     assert_true("minimal patch sketch" in messages[1]["content"].lower(), "remote coding contract should stay patch-oriented")
+    assert_true("root cause" in messages[1]["content"].lower(), "bugfix contract should request root-cause framing")
+    assert_true("validation step" in messages[1]["content"].lower(), "bugfix contract should require concrete validation")
 
     reasoning_messages = build_messages(
         "Review the architecture risks in this coordinator slice.",
@@ -129,6 +131,7 @@ def main() -> int:
     )
     assert_true("recommended direction first" in reasoning_messages[1]["content"].lower(), "remote reasoning contract should lead with decision guidance")
     assert_true("do not drift into patch design" in reasoning_messages[1]["content"].lower(), "remote reasoning contract should suppress patch drift")
+    assert_true("residual risk" in reasoning_messages[1]["content"].lower(), "review contract should call out residual risk")
 
     free_messages = build_messages(
         "Summarize the most useful delegated findings.",
@@ -136,6 +139,14 @@ def main() -> int:
         profile="remote-free",
     )
     assert_true("main finding, evidence, and one next step" in free_messages[1]["content"].lower(), "remote free contract should stay compact")
+
+    deploy_messages = build_messages(
+        "Deploy this service safely and include rollback plus live verification.",
+        context={"constraints": ["keep the deploy bounded to one service"]},
+        profile="remote-free",
+    )
+    assert_true("live verification signal" in deploy_messages[1]["content"].lower(), "deploy contract should require live verification")
+    assert_true("rollback path" in deploy_messages[1]["content"].lower(), "deploy contract should require rollback path")
 
     local_messages = build_messages(
         "Prepare a local tool-calling fallback contract.",
@@ -153,6 +164,14 @@ def main() -> int:
     )
     assert_true("tool-call-only output is insufficient" in remote_tool_messages[1]["content"].lower(), "remote tool-calling contract should forbid tool-call-only output")
     assert_true("do not claim any tool was executed" in remote_tool_messages[1]["content"].lower(), "remote tool-calling contract should forbid invented execution")
+
+    research_messages = build_messages(
+        "Research and summarize a bounded source dataset for native plants.",
+        context={"constraints": ["keep it source-bounded"]},
+        profile="remote-free",
+    )
+    assert_true("explicit sources" in research_messages[1]["content"].lower(), "research contract should require explicit sources")
+    assert_true("extracted evidence" in research_messages[1]["content"].lower(), "research contract should separate evidence from summary")
 
     finalization_messages = build_tool_call_finalization_messages(
         "Summarize the next step after tool planning.",
