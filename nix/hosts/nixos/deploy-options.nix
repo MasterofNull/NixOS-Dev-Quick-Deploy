@@ -5,6 +5,35 @@
     mySystem.roles.virtualization.enable = lib.mkDefault true;
     mySystem.monitoring.enable           = lib.mkDefault true;
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
+    # Keep unattended deploy/restart loops in tracked flake config. The
+    # gitignored deploy-options.local.nix is not visible to pure flake evals.
+    security.sudo.extraRules = lib.mkAfter [
+      {
+        users = [ config.mySystem.primaryUser ];
+        commands = [
+          {
+            command = "/home/${config.mySystem.primaryUser}/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh";
+            options = [ "NOPASSWD" ];
+          }
+          {
+            command = "/run/current-system/sw/bin/nixos-rebuild";
+            options = [ "NOPASSWD" ];
+          }
+          {
+            command = "/run/current-system/sw/bin/systemctl";
+            options = [ "NOPASSWD" ];
+          }
+          {
+            command = "/run/current-system/sw/bin/journalctl";
+            options = [ "NOPASSWD" ];
+          }
+          {
+            command = "/run/current-system/sw/bin/flatpak";
+            options = [ "NOPASSWD" ];
+          }
+        ];
+      }
+    ];
     # Keep ai-dev self-contained for flake evaluations done outside
     # nixos-quick-deploy. deploy-options.local.nix is gitignored, so direct
     # `nixos-rebuild --flake` must not rely on it for enabling secrets.
@@ -54,16 +83,14 @@
         enable = lib.mkDefault true;
         routingMode = lib.mkDefault "auto";
         defaultProvider = lib.mkDefault "local";
-        # Host-local remote routing examples belong in deploy-options.local.nix
-        # when you do not want model preferences committed. Example aliases
-        # current as of 2026-03-09:
-        # remoteUrl = "https://openrouter.ai/api";
-        # remoteModelAliases = {
-        #   free = "openrouter/free";
-        #   coding = "qwen/qwen3-coder-next";
-        #   reasoning = "anthropic/claude-sonnet-4.5";
-        # };
-        # remoteBudget.dailyTokenCap = 200000;
+        # Remote URL/model preferences are non-secret and need to be tracked so
+        # flake-based deploys do not silently drop remote routing.
+        remoteUrl = lib.mkDefault "https://openrouter.ai/api";
+        remoteModelAliases.free = lib.mkDefault "openrouter/free";
+        remoteModelAliases.coding = lib.mkDefault "qwen/qwen3-coder-next";
+        remoteModelAliases.reasoning = lib.mkDefault "anthropic/claude-sonnet-4.5";
+        remoteBudget.dailyTokenCap = lib.mkDefault 0;
+        remoteBudget.fallbackToLocal = lib.mkDefault true;
       };
 
       # Expose inference server and Open WebUI on LAN (default: loopback only).
