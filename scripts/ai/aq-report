@@ -31,6 +31,7 @@ import sqlite3
 import statistics
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -91,6 +92,9 @@ DELEGATION_FEEDBACK_PATH = Path(
     os.getenv("DELEGATION_FEEDBACK_LOG_PATH", "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
 )
 AQ_QA_SCRIPT = Path(__file__).with_name("aq-qa")
+LOCAL_SHARED_SKILLS_DIR = Path(
+    os.getenv("AQ_SHARED_SKILLS_DIR", str(Path(__file__).resolve().parents[2] / ".agent" / "skills"))
+)
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -210,6 +214,88 @@ def continue_editor_health() -> Dict[str, Any]:
         "failed_n": len(failed),
         "skipped_n": skipped_n,
         "checks": checks,
+    }
+
+
+def shared_skill_registry_health() -> Dict[str, Any]:
+    local_paths = sorted(LOCAL_SHARED_SKILLS_DIR.glob("*/SKILL.md")) if LOCAL_SHARED_SKILLS_DIR.is_dir() else []
+    local_records = [
+        {
+            "slug": path.parent.name,
+            "source_path": str(path.relative_to(Path(__file__).resolve().parents[2])),
+        }
+        for path in local_paths
+        if path.parent.name.strip()
+    ]
+    local_slugs = sorted(item["slug"] for item in local_records)
+    try:
+        request = urllib.request.Request(
+            f"{AIDB_URL.rstrip('/')}/skills?{urllib.parse.urlencode({'include_pending': 'true', '_': str(time.time_ns())})}",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        return {
+            "available": False,
+            "source": f"{AIDB_URL.rstrip('/')}/skills",
+            "local_skill_count": len(local_slugs),
+            "local_slugs": local_slugs,
+            "error": str(exc),
+        }
+
+    approved = [
+        item for item in (payload if isinstance(payload, list) else [])
+        if isinstance(item, dict) and str(item.get("status", "")).strip().lower() == "approved"
+    ]
+    approved_map_by_path = {
+        str(item.get("source_path", "")).strip(): item
+        for item in approved
+        if isinstance(item, dict) and str(item.get("source_path", "")).strip()
+    }
+    approved_slugs = sorted(
+        str(item.get("slug", "")).strip()
+        for item in approved
+        if isinstance(item, dict) and str(item.get("slug", "")).strip()
+    )
+    approved_map = {
+        str(item.get("slug", "")).strip(): item
+        for item in approved
+        if isinstance(item, dict) and str(item.get("slug", "")).strip()
+    }
+    path_mismatches = []
+    for item in local_records:
+        slug = item["slug"]
+        remote = approved_map.get(slug)
+        if not remote:
+            continue
+        remote_path = str(remote.get("source_path", "") or "").strip()
+        rel_path = item["source_path"]
+        if remote_path and remote_path != rel_path and remote_path in approved_map_by_path:
+            path_mismatches.append(
+                {
+                    "slug": slug,
+                    "local_source_path": rel_path,
+                    "aidb_source_path": remote_path,
+                }
+            )
+
+    local_paths_set = {item["source_path"] for item in local_records}
+    missing_in_aidb = [item["slug"] for item in local_records if item["source_path"] not in approved_map_by_path]
+    extra_in_aidb = [
+        str(item.get("slug", "")).strip()
+        for item in approved
+        if isinstance(item, dict) and str(item.get("source_path", "")).strip() not in local_paths_set
+    ]
+    return {
+        "available": True,
+        "source": f"{AIDB_URL.rstrip('/')}/skills",
+        "local_skill_count": len(local_slugs),
+        "approved_skill_count": len(approved_slugs),
+        "missing_in_aidb": missing_in_aidb,
+        "extra_in_aidb": extra_in_aidb[:10],
+        "path_mismatches": path_mismatches[:10],
+        "healthy": len(missing_in_aidb) == 0 and len(path_mismatches) == 0,
     }
 
 
@@ -2479,6 +2565,7 @@ def format_md(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
@@ -2694,6 +2781,25 @@ def format_md(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"  - `{item.get('id')}` — {item.get('description')}")
+    lines.append("")
+
+    lines += ["## 8ab. Shared Skill Registry", ""]
+    if not shared_skill_registry.get("available"):
+        lines.append("*Shared skill registry unavailable.*")
+    elif shared_skill_registry.get("healthy"):
+        lines.append(
+            f"- Healthy: **yes** ({shared_skill_registry.get('approved_skill_count', 0)}/{shared_skill_registry.get('local_skill_count', 0)} shared skills visible in AIDB)"
+        )
+    else:
+        lines.append(
+            f"- Healthy: **no** ({len(shared_skill_registry.get('missing_in_aidb') or [])} missing, {len(shared_skill_registry.get('path_mismatches') or [])} mismatched)"
+        )
+        missing = shared_skill_registry.get("missing_in_aidb") or []
+        if missing:
+            lines.append(f"- Missing in AIDB: {', '.join(f'`{slug}`' for slug in missing[:8])}")
+        mismatches = shared_skill_registry.get("path_mismatches") or []
+        for item in mismatches[:3]:
+            lines.append(f"  - `{item.get('slug')}` path drift: `{item.get('aidb_source_path')}`")
     lines.append("")
 
     lines += ["## 8aa. Delegated Prompt Failures", ""]
@@ -2937,6 +3043,7 @@ def format_text(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
@@ -3153,6 +3260,24 @@ def format_text(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"    {item.get('id')}: {item.get('description')}")
+    lines.append("")
+
+    lines += ["[ 8ab. Shared Skill Registry ]"]
+    if not shared_skill_registry.get("available"):
+        lines.append("  Shared skill registry unavailable.")
+    elif shared_skill_registry.get("healthy"):
+        lines.append(
+            f"  Healthy: yes ({shared_skill_registry.get('approved_skill_count', 0)}/{shared_skill_registry.get('local_skill_count', 0)} shared skills visible in AIDB)"
+        )
+    else:
+        lines.append(
+            f"  Healthy: no ({len(shared_skill_registry.get('missing_in_aidb') or [])} missing, {len(shared_skill_registry.get('path_mismatches') or [])} mismatched)"
+        )
+        missing = shared_skill_registry.get("missing_in_aidb") or []
+        if missing:
+            lines.append(f"  Missing in AIDB: {', '.join(missing[:8])}")
+        for item in (shared_skill_registry.get("path_mismatches") or [])[:3]:
+            lines.append(f"    {item.get('slug')}: path drift -> {item.get('aidb_source_path')}")
     lines.append("")
 
     lines += ["[ 8aa. Delegated Prompt Failures ]"]
@@ -3399,6 +3524,7 @@ def format_json(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
@@ -3440,6 +3566,7 @@ def format_json(
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
         "continue_editor": continue_editor,
+        "shared_skill_registry": shared_skill_registry,
         "delegated_prompt_failures": delegated_prompt_failures,
         "route_retrieval_breadth": retrieval_breadth,
         "provider_fallback_recovery": provider_fallbacks,
@@ -3571,6 +3698,7 @@ def main() -> None:
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats, recent_provider_fallbacks)
     continue_editor = continue_editor_health()
+    shared_skill_registry = shared_skill_registry_health()
     historical_health_watch = historical_watchlist(tool_stats, recent_tool_stats)
     leaderboard = strategy_leaderboard(eval_rows)
     top_prompts = sorted(
@@ -3627,6 +3755,7 @@ def main() -> None:
         rag_posture_summary,
         recent_health,
         continue_editor,
+        shared_skill_registry,
         delegation_feedback,
         recent_retrieval_breadth,
         recent_provider_fallbacks,

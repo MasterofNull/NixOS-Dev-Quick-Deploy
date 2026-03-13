@@ -71,7 +71,7 @@ Tracking fields to update after each slice:
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
 | Continue/local web research lane | validated_live | a bounded `/research/web/fetch` lane is live with robots-aware pacing, selector limits, response caps, and tooling/SDK exposure; live smokes confirmed one allowed HTTPS fetch and one redirect-to-HTTP policy block | wire the lane into a real native-plant lookup workflow with curated source lists and request budgets |
-| Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
+| Shared skill ingestion and registry | validated_live | local shared skills now sync into approved AIDB registry entries through a repo-native path and report drift live; external `agentskill.sh` source normalization and remote-agent export remain incomplete | finish external importer policy gates and remote-agent visibility/export |
 
 ## Execution Ledger
 
@@ -105,6 +105,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | delegated artifact recovery salvage pass | validated_live | `/control/ai-coordinator/delegate` now returns bounded `artifact_recovery` output for tool-call-only, reasoning-only, and partial-text delegated failures, preserving useful tool arguments and reasoning excerpts so failed remote calls still yield actionable local summaries |
 | 2026-03-13 | BitNet declarative sidecar scaffold pass | validated_local | added a disabled-by-default `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` scaffold plus shared endpoint wiring so benchmark-only BitNet experiments now have a tracked host-local config surface without touching switchboard or replacing llama.cpp |
 | 2026-03-13 | BitNet benchmark harness + baseline comparison pass | validated_local | added a repo-native `aq-bitnet-benchmark` path with pinned Python 3.12/devShell/toolchain/runtime-lib fixes plus direct local-llama baseline comparison via `aq-bitnet-compare`; host now builds BitNet and materializes a dummy GGUF, while direct BitNet benchmark execution still ends in `SIGSEGV` and remains a measured blocker rather than an assumed viable runtime |
+| 2026-03-13 | shared skill registry sync bridge | validated_live | added a repo-native `aq-sync-shared-skills.py` path that imports local `.agent/skills` entries into AIDB and promotes them to approved visibility, added cache-busting drift reporting in `aq-report`, and live-verified `23/23` approved shared skills |
 
 ## High-Priority Tracks
 
@@ -112,7 +113,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, and bounded web research surface are all live; remaining work is broader CLI coverage consistency and a real native-plant research workflow`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, and shared skill registry sync bridge are live; remaining work is broader CLI coverage consistency, a real native-plant research workflow, and external shared-skill ingestion/export`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
