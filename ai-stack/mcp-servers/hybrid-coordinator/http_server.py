@@ -37,6 +37,12 @@ from metrics import PROCESS_MEMORY_BYTES, REQUEST_COUNT, REQUEST_ERRORS, REQUEST
 from shared.tool_security_auditor import ToolSecurityAuditor
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
+from ai_coordinator import (
+    build_messages as _ai_coordinator_build_messages,
+    default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
+    infer_profile as _ai_coordinator_infer_profile,
+    merge_runtime_defaults as _ai_coordinator_merge_runtime_defaults,
+)
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 import mcp_handlers
@@ -134,7 +140,38 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "loop_status"
     if path == "/workflow/run/start" and method == "POST":
         return "workflow_run_start"
+    if path == "/control/ai-coordinator/status" and method == "GET":
+        return "ai_coordinator_status"
+    if path == "/control/ai-coordinator/delegate" and method == "POST":
+        return "ai_coordinator_delegate"
     return None
+
+
+async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
+    state: Dict[str, Any] = {
+        "remote_configured": bool(Config.SWITCHBOARD_REMOTE_URL),
+        "remote_aliases": {
+            "free": Config.SWITCHBOARD_REMOTE_ALIAS_FREE or None,
+            "coding": Config.SWITCHBOARD_REMOTE_ALIAS_CODING or None,
+            "reasoning": Config.SWITCHBOARD_REMOTE_ALIAS_REASONING or None,
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            response = await client.get(f"{Config.SWITCHBOARD_URL.rstrip('/')}/health")
+        if response.status_code != 200:
+            return state
+        payload = response.json()
+        profiles = payload.get("profiles", {}) if isinstance(payload, dict) else {}
+        state["remote_configured"] = bool(payload.get("remote_configured", state["remote_configured"]))
+        state["remote_aliases"] = {
+            "free": ((profiles.get("remote-free") or {}).get("model_alias")) or state["remote_aliases"]["free"],
+            "coding": ((profiles.get("remote-coding") or {}).get("model_alias")) or state["remote_aliases"]["coding"],
+            "reasoning": ((profiles.get("remote-reasoning") or {}).get("model_alias")) or state["remote_aliases"]["reasoning"],
+        }
+    except Exception:
+        return state
+    return state
 
 
 def _audit_http_request(request: web.Request, status: int, latency_ms: float) -> None:
@@ -653,15 +690,15 @@ def _runtime_schedule_score(
 async def _load_runtime_registry() -> Dict[str, Any]:
     path = _runtime_registry_path()
     if not path.exists():
-        return {"runtimes": {}}
+        return _ai_coordinator_merge_runtime_defaults({"runtimes": {}})
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
         if isinstance(data, dict) and isinstance(data.get("runtimes"), dict):
-            return data
+            return _ai_coordinator_merge_runtime_defaults(data)
     except Exception:
         pass
-    return {"runtimes": {}}
+    return _ai_coordinator_merge_runtime_defaults({"runtimes": {}})
 
 
 async def _save_runtime_registry(data: Dict[str, Any]) -> None:
@@ -3087,6 +3124,146 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_ai_coordinator_status(_request: web.Request) -> web.Response:
+        """Expose declarative coordinator runtime lanes and switchboard-backed readiness."""
+        try:
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+            runtimes = list((registry.get("runtimes", {}) or {}).values())
+            swb_state = await _switchboard_ai_coordinator_state()
+            remote_aliases = swb_state.get("remote_aliases", {})
+            remote_configured = bool(swb_state.get("remote_configured", False))
+            for runtime in runtimes:
+                runtime_id = str(runtime.get("runtime_id", "")).strip()
+                if runtime_id == "openrouter-free":
+                    runtime["status"] = "ready" if remote_configured and remote_aliases.get("free") else "offline"
+                    runtime["model_alias"] = remote_aliases.get("free") or ""
+                elif runtime_id == "openrouter-coding":
+                    runtime["status"] = "ready" if remote_configured and remote_aliases.get("coding") else "offline"
+                    runtime["model_alias"] = remote_aliases.get("coding") or ""
+                elif runtime_id == "openrouter-reasoning":
+                    runtime["status"] = "ready" if remote_configured and remote_aliases.get("reasoning") else "offline"
+                    runtime["model_alias"] = remote_aliases.get("reasoning") or ""
+            runtimes.sort(key=lambda item: str(item.get("runtime_id", "")))
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "service": "ai-coordinator",
+                    "switchboard_url": Config.SWITCHBOARD_URL,
+                    "remote_configured": remote_configured,
+                    "remote_aliases": remote_aliases,
+                    "runtimes": runtimes,
+                    "count": len(runtimes),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
+        """Run a bounded delegated task through the selected ai-coordinator lane."""
+        try:
+            data = await request.json()
+            task = str(data.get("task") or data.get("query") or "").strip()
+            if not task:
+                return web.json_response({"error": "task required"}, status=400)
+
+            requested_profile = str(data.get("profile") or "").strip().lower()
+            selected_profile = _ai_coordinator_infer_profile(task, requested_profile)
+            selected_runtime_id = _ai_coordinator_default_runtime_id_for_profile(selected_profile)
+
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtime = (registry.get("runtimes", {}) or {}).get(selected_runtime_id)
+            if not isinstance(runtime, dict):
+                return web.json_response({"error": "runtime not found"}, status=404)
+
+            swb_state = await _switchboard_ai_coordinator_state()
+            remote_aliases = swb_state.get("remote_aliases", {})
+            remote_configured = bool(swb_state.get("remote_configured", False))
+            if selected_runtime_id == "openrouter-free":
+                runtime["status"] = "ready" if remote_configured and remote_aliases.get("free") else "offline"
+                runtime["model_alias"] = remote_aliases.get("free") or ""
+            elif selected_runtime_id == "openrouter-coding":
+                runtime["status"] = "ready" if remote_configured and remote_aliases.get("coding") else "offline"
+                runtime["model_alias"] = remote_aliases.get("coding") or ""
+            elif selected_runtime_id == "openrouter-reasoning":
+                runtime["status"] = "ready" if remote_configured and remote_aliases.get("reasoning") else "offline"
+                runtime["model_alias"] = remote_aliases.get("reasoning") or ""
+
+            status = str(runtime.get("status", "unknown")).strip().lower()
+            if status not in {"ready", "degraded"}:
+                return web.json_response(
+                    {
+                        "error": "runtime_unavailable",
+                        "runtime_id": selected_runtime_id,
+                        "status": status,
+                    },
+                    status=503,
+                )
+
+            messages = data.get("messages")
+            if not isinstance(messages, list) or not messages:
+                system_prompt = str(data.get("system_prompt") or "").strip()
+                context = data.get("context") if isinstance(data.get("context"), dict) else None
+                messages = _ai_coordinator_build_messages(task, system_prompt=system_prompt, context=context)
+
+            payload: Dict[str, Any] = {
+                "messages": messages,
+                "stream": False,
+            }
+            if "model" in data:
+                payload["model"] = str(data.get("model") or "").strip()
+            if "tools" in data and isinstance(data.get("tools"), list):
+                payload["tools"] = data.get("tools")
+            if "tool_choice" in data:
+                payload["tool_choice"] = data.get("tool_choice")
+            if "max_tokens" in data:
+                payload["max_tokens"] = int(data.get("max_tokens") or 0)
+            if "temperature" in data:
+                payload["temperature"] = float(data.get("temperature"))
+
+            headers = {
+                "Content-Type": "application/json",
+                "X-AI-Profile": selected_profile if selected_profile != "default" else "continue-local",
+            }
+            if selected_profile != "default":
+                headers["X-AI-Route"] = "remote"
+
+            timeout_s = float(data.get("timeout_s") or 60.0)
+            async with httpx.AsyncClient(timeout=timeout_s) as client:
+                response = await client.post(
+                    f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+
+            body = response.json()
+            request["audit_metadata"] = {
+                "selected_runtime_id": selected_runtime_id,
+                "selected_profile": selected_profile,
+                "delegated_http_status": int(response.status_code),
+            }
+
+            return web.json_response(
+                {
+                    "status": "ok" if response.status_code < 400 else "error",
+                    "task": task,
+                    "selected_runtime": {
+                        "runtime_id": selected_runtime_id,
+                        "name": runtime.get("name", selected_runtime_id),
+                        "profile": runtime.get("profile", selected_profile),
+                        "model_alias": runtime.get("model_alias", ""),
+                        "status": runtime.get("status", status),
+                    },
+                    "response": body,
+                },
+                status=response.status_code,
+            )
+        except httpx.HTTPError as exc:
+            return web.json_response(_error_payload("switchboard_unavailable", exc), status=502)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_runtime_register(request: web.Request) -> web.Response:
         """Register or update an agent runtime in local control-plane state."""
         try:
@@ -3432,6 +3609,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/workflow/run/{session_id}/replay", handle_workflow_run_replay)
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
     http_app.router.add_get("/parity/scorecard", handle_parity_scorecard)
+    http_app.router.add_get("/control/ai-coordinator/status", handle_ai_coordinator_status)
+    http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)
     http_app.router.add_get("/control/runtimes/{runtime_id}", handle_runtime_get)

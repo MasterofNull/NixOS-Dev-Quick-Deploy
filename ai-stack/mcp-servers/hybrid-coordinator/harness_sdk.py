@@ -435,3 +435,41 @@ class HarnessClient:
             r = client.post(self._url("/control/runtimes/schedule/select"), headers=self._headers(), json=payload)
             r.raise_for_status()
             return r.json()
+
+    def ai_coordinator_status(self) -> Dict[str, Any]:
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.get(self._url("/control/ai-coordinator/status"), headers=self._headers())
+            r.raise_for_status()
+            return r.json()
+
+    def ai_coordinator_delegate(
+        self,
+        task: str,
+        *,
+        profile: str = "",
+        messages: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Dict[str, Any] | str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"task": task}
+        if profile:
+            payload["profile"] = profile
+        if messages is not None:
+            payload["messages"] = messages
+        if context is not None:
+            payload["context"] = context
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        if temperature is not None:
+            payload["temperature"] = temperature
+        with httpx.Client(timeout=max(self.timeout_s, 60.0)) as client:
+            r = client.post(self._url("/control/ai-coordinator/delegate"), headers=self._headers(), json=payload)
+            r.raise_for_status()
+            return r.json()

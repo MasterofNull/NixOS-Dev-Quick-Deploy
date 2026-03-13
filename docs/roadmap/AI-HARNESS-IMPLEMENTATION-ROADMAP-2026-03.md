@@ -83,6 +83,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | continuation memory and prewarm batches | validated_live | continuation queries use memory recall more explicitly and report recall misses |
 | 2026-03-13 | agentskill.sh planning slice | validated_local | added a shared skill-registry track so approved third-party SKILL.md content can be exposed consistently across local and remote agents |
 | 2026-03-13 | unattended sudo flake-first fix | validated_local | moved bounded autonomous sudo rules into tracked `nix/hosts/nixos/deploy-options.nix` after confirming pure flake evaluation cannot see `deploy-options.local.nix` |
+| 2026-03-13 | ai-coordinator runtime-refresh corrective pass | validated_local | fixed stale default runtime records and local-lane alias handling in the new ai-coordinator delegation surface before live activation |
 
 ## High-Priority Tracks
 
@@ -274,13 +275,14 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; ai-coordinator runtime lanes are implemented in-repo, and unattended sudo activation is the remaining gate before live delegation validation`
+Current Slice: `remote profiles and fallback reporting exist; ai-coordinator runtime lanes were corrected to refresh default records and accept local-lane aliases before live delegation validation`
 Next Validation:
 - targeted remote profile smokes
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
 - live validation still depends on switching to the generation that contains the tracked unattended sudo rules and coordinator changes
+- coordinator live checks still need one post-switch pass to prove remote lane status and delegated execution match switchboard health
 
 Goal:
 - fully exploit OpenRouter as the remote tool-calling and provider-routing layer behind the local harness
