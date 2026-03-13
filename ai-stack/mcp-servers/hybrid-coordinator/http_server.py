@@ -1902,6 +1902,11 @@ async def run_http_mode(port: int) -> None:
                 metadata["memory_recall_miss"] = bool(request_context.get("memory_recall_miss"))
             if request_context.get("memory_recall"):
                 result["memory_recall"] = request_context.get("memory_recall")
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                result["active_lesson_refs"] = lesson_refs
             if prompt_coaching:
                 result["prompt_coaching"] = _query_prompt_coaching_response(
                     prompt_coaching,
@@ -1921,6 +1926,8 @@ async def run_http_mode(port: int) -> None:
                 "requester_role": orchestration["requester_role"],
                 "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
             }
+            if lesson_refs:
+                metadata["active_lesson_refs"] = lesson_refs
             result["orchestration"] = orchestration
             request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
