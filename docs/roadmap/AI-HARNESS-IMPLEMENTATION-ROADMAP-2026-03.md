@@ -98,6 +98,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | delegated prompt-failure feedback loop | validated_live | OpenRouter/coordinator delegation now records prompt-contract failures plus salvageable commands/paths/excerpts, live provider-side `400` rejection was captured in `/control/ai-coordinator/delegate`, `aq-report` surfaces the recurring failure class, and PRSI can queue prompt-tightening actions instead of repeating the same waste |
 | 2026-03-13 | runtime registry retention and stale-smoke cleanup | validated_live | ai-coordinator now prunes transient smoke/test runtime registrations on load with retention policy; live registry collapsed from 56 entries with 54 smoke artifacts to 6 real lanes after status reload |
 | 2026-03-13 | delegated envelope tightening pass | validated_live | ai-coordinator now emits explicit sub-agent/evidence/anti-goal contracts for remote delegation; live `remote-free` smoke returned structured `result/evidence` output instead of an unconstrained generic reply |
+| 2026-03-13 | deploy summary delegated-failure visibility | validated_local | `nixos-quick-deploy.sh` now surfaces delegated prompt-failure counts/class/profile in the AI stack report summary so remote prompt-contract drift is visible during normal deploy/preflight loops |
 
 ## High-Priority Tracks
 

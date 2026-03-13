@@ -448,6 +448,11 @@ print_completion_test_results() {
     provider_fallback_count="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_count // 0')"
     provider_fallback_pct="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_pct // "n/a"')"
     provider_fallback_status="$(printf '%s' "${json}" | jq -r '(.provider_fallback_recovery.status_counts[0] // empty) | if length == 2 then "\(.[0])=\(.[1])" else empty end')"
+    delegated_failure_total="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.total_failures // 0')"
+    delegated_failure_salvageable="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.salvageable_failures // 0')"
+    delegated_failure_class="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_failure_classes[0][0] // empty')"
+    delegated_failure_class_count="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_failure_classes[0][1] // 0')"
+    delegated_failure_profile="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_profiles[0][0] // empty')"
     continue_editor_available="$(printf '%s' "${json}" | jq -r '.continue_editor.available // false')"
     continue_editor_healthy="$(printf '%s' "${json}" | jq -r '.continue_editor.healthy // false')"
     continue_editor_failed="$(printf '%s' "${json}" | jq -r '.continue_editor.failed_n // 0')"
@@ -502,6 +507,18 @@ print_completion_test_results() {
         provider_fallback_label="${provider_fallback_label}; upstream ${provider_fallback_status}"
       fi
       provider_fallback_label="${provider_fallback_label})"
+    fi
+    if [[ "${delegated_failure_total}" == "0" ]]; then
+      delegated_failure_label="none"
+    else
+      delegated_failure_label="${delegated_failure_total} failure(s)"
+      if [[ -n "${delegated_failure_class}" ]]; then
+        delegated_failure_label="${delegated_failure_label}; top=${delegated_failure_class}(${delegated_failure_class_count})"
+      fi
+      if [[ -n "${delegated_failure_profile}" ]]; then
+        delegated_failure_label="${delegated_failure_label}; profile=${delegated_failure_profile}"
+      fi
+      delegated_failure_label="${delegated_failure_label}; salvageable=${delegated_failure_salvageable}"
     fi
     if [[ "${rag_memory_share}" != "n/a" ]]; then
       rag_memory_share="${rag_memory_share}%"
@@ -570,6 +587,7 @@ PY
     printf '  %-28s %s\n' "Retrieval breadth (1h)" "${retrieval_breadth_label}"
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
     printf '  %-28s %s\n' "Provider fallback (${provider_fallback_window})" "${provider_fallback_label}"
+    printf '  %-28s %s\n' "Delegated prompt failures" "${delegated_failure_label}"
     printf '  %-28s %s\n' "Prewarm candidate" "${rag_prewarm_label}"
     if [[ -n "${agent_lesson_label}" ]]; then
       printf '  %-28s %s\n' "Agent lesson" "${agent_lesson_label}"
