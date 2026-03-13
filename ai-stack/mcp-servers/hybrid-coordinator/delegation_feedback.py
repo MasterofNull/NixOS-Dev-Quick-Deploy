@@ -114,6 +114,36 @@ def extract_tool_call_summary(body: Any) -> List[Dict[str, str]]:
     return tool_calls[:5]
 
 
+def extract_reasoning_excerpt(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    choices = body.get("choices")
+    if not isinstance(choices, list):
+        return ""
+    parts: List[str] = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if isinstance(message, dict):
+            reasoning = str(message.get("reasoning") or "").strip()
+            if reasoning:
+                parts.append(reasoning)
+            details = message.get("reasoning_details")
+            if isinstance(details, list):
+                for item in details:
+                    if not isinstance(item, dict):
+                        continue
+                    text = str(item.get("text") or "").strip()
+                    if text:
+                        parts.append(text)
+        reasoning_top = str(choice.get("reasoning") or "").strip()
+        if reasoning_top:
+            parts.append(reasoning_top)
+    joined = "\n".join(part for part in parts if part).strip()
+    return joined[:800]
+
+
 def extract_repo_path_summary(text: str) -> Dict[str, Any]:
     observed: List[str] = []
     existing: List[str] = []
@@ -185,6 +215,7 @@ def classify_delegated_response(
     text = extract_delegated_text(body)
     text_lower = text.lower()
     tool_calls = extract_tool_call_summary(body)
+    reasoning_excerpt = extract_reasoning_excerpt(body)
     path_summary = extract_repo_path_summary(text)
     commands = extract_command_snippets(text)
     contract = delegation_prompt_contract_signals(task, messages)
@@ -249,11 +280,12 @@ def classify_delegated_response(
 
     salvage = {
         "text_excerpt": text[:400],
+        "reasoning_excerpt": reasoning_excerpt[:400],
         "existing_paths": path_summary["existing"],
         "missing_paths": path_summary["missing"],
         "commands": commands,
         "tool_calls": tool_calls,
-        "has_useful_data": bool(text[:120] or path_summary["existing"] or commands or tool_calls),
+        "has_useful_data": bool(text[:120] or reasoning_excerpt[:120] or path_summary["existing"] or commands or tool_calls),
     }
     return {
         "is_failure": bool(ordered_failure_classes),
@@ -261,13 +293,65 @@ def classify_delegated_response(
         "failure_classes": ordered_failure_classes,
         "improvement_actions": improvement_actions[:4],
         "salvage": salvage,
-        "response_preview": text[:400],
+        "response_preview": (text[:400] or reasoning_excerpt[:400]),
         "profile": profile,
         "runtime_id": runtime_id,
         "stage": stage,
         "http_status": int(status_code),
         "fallback_applied": bool(fallback_applied),
     }
+
+
+def build_recovered_artifact(task: str, classification: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(classification, dict):
+        return {"available": False}
+    salvage = classification.get("salvage") if isinstance(classification.get("salvage"), dict) else {}
+    tool_calls = salvage.get("tool_calls") if isinstance(salvage.get("tool_calls"), list) else []
+    reasoning_excerpt = str(salvage.get("reasoning_excerpt") or "").strip()
+    text_excerpt = str(salvage.get("text_excerpt") or "").strip()
+    failure_classes = {str(item or "").strip() for item in classification.get("failure_classes") or []}
+    if "tool_call_without_final_text" in failure_classes and tool_calls:
+        tool_names = [str(item.get("name") or "").strip() for item in tool_calls if isinstance(item, dict)]
+        compact_names = ", ".join(name for name in tool_names if name) or "unknown tool"
+        return {
+            "available": True,
+            "recovery_class": "tool_call_plan_only",
+            "result": f"Recovered a tool-call plan for {compact_names}, but the remote lane did not emit a final artifact.",
+            "evidence": {
+                "tool_calls": tool_calls[:3],
+                "task_excerpt": str(task or "").strip()[:200],
+            },
+            "risks": [
+                "tool calls were proposed but not executed inside the coordinator",
+                "provider returned no final assistant content",
+            ],
+            "rollback_or_next_step": "Tighten the tool-calling prompt contract or run an explicit post-tool finalization pass before acceptance.",
+        }
+    if "empty_content" in failure_classes and reasoning_excerpt:
+        return {
+            "available": True,
+            "recovery_class": "reasoning_only_draft",
+            "result": "Recovered provider reasoning notes, but the remote lane did not emit a final deliverable.",
+            "evidence": {
+                "reasoning_excerpt": reasoning_excerpt[:400],
+                "task_excerpt": str(task or "").strip()[:200],
+            },
+            "risks": [
+                "reasoning text is not a validated final answer",
+                "provider returned null assistant content",
+            ],
+            "rollback_or_next_step": "Use the recovered reasoning as prompt-tuning input, not as an accepted deliverable.",
+        }
+    if text_excerpt:
+        return {
+            "available": True,
+            "recovery_class": "partial_text_excerpt",
+            "result": "Recovered a partial delegated output excerpt.",
+            "evidence": {"text_excerpt": text_excerpt[:400]},
+            "risks": ["partial excerpt may not satisfy the delegated contract"],
+            "rollback_or_next_step": "Tighten the delegated contract before accepting similar outputs.",
+        }
+    return {"available": False}
 
 
 def record_delegation_feedback(

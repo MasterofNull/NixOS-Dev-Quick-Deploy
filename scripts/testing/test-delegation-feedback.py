@@ -15,7 +15,7 @@ os.environ.setdefault("AI_STRICT_ENV", "false")
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
 
-from delegation_feedback import classify_delegated_response  # noqa: E402
+from delegation_feedback import build_recovered_artifact, classify_delegated_response  # noqa: E402
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -86,6 +86,34 @@ def main() -> int:
     tool_salvage = tool_call_only.get("salvage") if isinstance(tool_call_only.get("salvage"), dict) else {}
     tool_calls = tool_salvage.get("tool_calls") or []
     assert_true(any(item.get("name") == "noop_status" for item in tool_calls if isinstance(item, dict)), "expected tool call salvage")
+    tool_recovery = build_recovered_artifact("Return TOOL_READY only.", tool_call_only)
+    assert_true(tool_recovery.get("available") is True, "expected tool-call recovery artifact")
+    assert_true(tool_recovery.get("recovery_class") == "tool_call_plan_only", "expected tool-call recovery class")
+
+    reasoning_only = classify_delegated_response(
+        task="Review lane behavior and return compact sections only.",
+        messages=[{"role": "user", "content": "Return compact sections only."}],
+        status_code=200,
+        body={
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "reasoning": "The likely touchpoint is http_server.py where delegated responses are returned without a recovery artifact.",
+                    }
+                }
+            ]
+        },
+        profile="remote-reasoning",
+        runtime_id="openrouter-reasoning",
+        stage="final",
+        fallback_applied=False,
+    )
+    reasoning_salvage = reasoning_only.get("salvage") if isinstance(reasoning_only.get("salvage"), dict) else {}
+    assert_true("reasoning_excerpt" in reasoning_salvage, "expected reasoning excerpt salvage")
+    assert_true(bool(reasoning_salvage.get("reasoning_excerpt")), "expected non-empty reasoning excerpt")
+    reasoning_recovery = build_recovered_artifact("Review lane behavior.", reasoning_only)
+    assert_true(reasoning_recovery.get("recovery_class") == "reasoning_only_draft", "expected reasoning recovery class")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
