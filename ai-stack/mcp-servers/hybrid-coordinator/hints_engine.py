@@ -1694,6 +1694,56 @@ class HintsEngine:
                 )
             )
 
+        bugfix_focus = any(
+            token in query_lower
+            for token in ("bugfix", "fix this bug", "regression", "debug", "failing test", "broken", "failure")
+        )
+        if bugfix_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_bugfix_safe",
+                    type="prompt_coaching",
+                    title="Frame bugfix tasks around repro, expected behavior, and validation",
+                    score=0.74,
+                    snippet=(
+                        "Name the failing behavior, the expected behavior, the smallest repro or failing check, "
+                        "and the exact validation that closes the bug. Keep patching and review criteria explicit."
+                    )[:220],
+                    reason="Compact operator guidance for bounded debug, regression, and bugfix tasks",
+                    tags=["prompting", "coaching", "bugfix", "debug", "operator-guidance"],
+                    agent_hints={
+                        "human": "Give one failing symptom, one expected outcome, and one verification target before asking for a fix.",
+                        "codex": "Use the bugfix path only after the repro and acceptance bar are explicit enough to validate.",
+                        "qwen": "Return the minimal patch plus the test or command that proves the regression is fixed.",
+                    },
+                )
+            )
+
+        hardening_focus = any(
+            token in query_lower
+            for token in ("hardening", "harden", "sandbox", "protectsystem", "nonewprivileges", "service policy")
+        )
+        if hardening_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_service_hardening",
+                    type="prompt_coaching",
+                    title="Keep service-hardening requests declarative and rollback-aware",
+                    score=0.75,
+                    snippet=(
+                        "Name the target service, the hardening controls or policy gaps to address, "
+                        "the health checks that must stay green, and the rollback path. Prefer declarative unit changes over ad hoc overrides."
+                    )[:220],
+                    reason="Compact operator guidance for NixOS service hardening and policy-review tasks",
+                    tags=["prompting", "coaching", "hardening", "nixos", "operator-guidance"],
+                    agent_hints={
+                        "human": "State the service, the policy goal, and the health checks that cannot regress.",
+                        "codex": "Keep hardening work tied to declarative ownership, verification, and rollback evidence.",
+                        "claude": "Use this lane for policy tradeoffs and risk review, not ad hoc runtime tweaking.",
+                    },
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:

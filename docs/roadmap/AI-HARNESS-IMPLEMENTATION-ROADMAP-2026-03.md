@@ -609,10 +609,10 @@ Validation:
 
 Track Status: in_progress
 Last Updated: 2026-03-13
-Current Slice: `compact prompt-coaching hints now teach route selection across local, remote-free, remote-coding, remote-tool-calling, and Continue/editor rescue lanes, and now also cover patch-review, bounded research/RAG workflows, and deploy-safe ops; the next gap is extending the same compact guidance to still more task classes without inflating default hint payloads`
-Next Validation: `scripts/ai/aq-hints "route local vs remote coding lane" --format json`, `scripts/ai/aq-hints "review this patch safely" --format json`, `scripts/ai/aq-hints "deploy this service safely with rollback" --format json`, and live `/hints?q=continue+editor+rescue`
+Current Slice: `compact prompt-coaching hints now teach route selection across local, remote-free, remote-coding, remote-tool-calling, and Continue/editor rescue lanes, and now also cover patch-review, bounded research/RAG workflows, deploy-safe ops, bugfix/debug asks, and NixOS service-hardening asks; the next gap is extending the same compact guidance to still more task classes without inflating default hint payloads`
+Next Validation: `scripts/ai/aq-hints "route local vs remote coding lane" --format json`, `scripts/ai/aq-hints "review this patch safely" --format json`, `scripts/ai/aq-hints "deploy this service safely with rollback" --format json`, `scripts/ai/aq-hints "debug this failing regression safely" --format json`, `scripts/ai/aq-hints "harden this nixos service declaratively" --format json`, and live `/hints?q=continue+editor+rescue`
 Open Risks / Blockers:
-- route-selection, patch-review, research, and deploy-safe guidance are now explicit in hints, but broader task-class quick references still need the same compact treatment
+- route-selection, patch-review, research, deploy-safe, bugfix, and service-hardening guidance are now explicit in hints, but broader task-class quick references still need the same compact treatment
 - keep new operator coaching below the default hint noise floor so runtime signals still dominate when they are more urgent
 
 Tasks:
