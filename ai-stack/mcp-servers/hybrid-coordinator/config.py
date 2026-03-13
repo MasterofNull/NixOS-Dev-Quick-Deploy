@@ -190,6 +190,22 @@ class Config:
         "AI_WEB_RESEARCH_USER_AGENT",
         "nixos-dev-quick-deploy-web-research/1.0 (+respectful bounded fetch)",
     )
+    AI_BROWSER_RESEARCH_ENABLED = os.getenv("AI_BROWSER_RESEARCH_ENABLED", "true").lower() == "true"
+    AI_BROWSER_RESEARCH_MAX_URLS = int(os.getenv("AI_BROWSER_RESEARCH_MAX_URLS", "1"))
+    AI_BROWSER_RESEARCH_MAX_SELECTORS = int(os.getenv("AI_BROWSER_RESEARCH_MAX_SELECTORS", "4"))
+    AI_BROWSER_RESEARCH_TIMEOUT_SECONDS = float(os.getenv("AI_BROWSER_RESEARCH_TIMEOUT_SECONDS", "18.0"))
+    AI_BROWSER_RESEARCH_PER_HOST_DELAY_SECONDS = float(os.getenv("AI_BROWSER_RESEARCH_PER_HOST_DELAY_SECONDS", "2.0"))
+    AI_BROWSER_RESEARCH_MAX_TEXT_CHARS = int(os.getenv("AI_BROWSER_RESEARCH_MAX_TEXT_CHARS", "6000"))
+    AI_BROWSER_RESEARCH_MAX_LINKS = int(os.getenv("AI_BROWSER_RESEARCH_MAX_LINKS", "12"))
+    AI_BROWSER_RESEARCH_MAX_REDIRECTS = int(os.getenv("AI_BROWSER_RESEARCH_MAX_REDIRECTS", "2"))
+    AI_BROWSER_RESEARCH_USER_AGENT = os.getenv(
+        "AI_BROWSER_RESEARCH_USER_AGENT",
+        "nixos-dev-quick-deploy-browser-research/1.0 (+respectful bounded browser fetch)",
+    )
+    AI_BROWSER_RESEARCH_CHROMIUM_BIN = os.getenv("AI_BROWSER_RESEARCH_CHROMIUM_BIN", "chromium")
+    AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS = int(
+        os.getenv("AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS", "8000")
+    )
     AI_LOCAL_SYSTEM_PROMPT = os.getenv("AI_LOCAL_SYSTEM_PROMPT", "true").lower() == "true"
     AI_LOCAL_SYSTEM_PROMPT_RULES = _json_str_list_env(
         "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON",

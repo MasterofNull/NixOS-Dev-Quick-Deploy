@@ -106,6 +106,7 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/workflow/plan` | POST | Create execution plan |
 | `/qa/check` | POST | Run bounded `aq-qa` validation via hybrid coordinator |
 | `/research/web/fetch` | POST | Bounded polite public-web fetch -> extract lane for explicit URLs |
+| `/research/web/browser-fetch` | POST | Bounded browser-assisted fetch -> extract lane for JS-heavy public pages |
 | `/research/workflows/curated-fetch` | POST | Manifest-backed bounded research workflow expanded into approved explicit URLs |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/control/ai-coordinator/status` | GET | List coordinator runtime lanes and remote readiness |
@@ -121,6 +122,11 @@ curl -sf http://127.0.0.1:8003/hints?query=nixos+services
 curl -s http://127.0.0.1:8003/research/web/fetch \
   -H 'Content-Type: application/json' \
   -d '{"urls":["https://example.com"],"selectors":["h1"],"max_text_chars":300}'
+
+# Use the browser-assisted fallback lane for JS-heavy public pages
+curl -s http://127.0.0.1:8003/research/web/browser-fetch \
+  -H 'Content-Type: application/json' \
+  -d '{"urls":["https://www.calflora.org/entry/wgh.html#srch=t&taxon=Eschscholzia+californica"],"selectors":["main"],"max_text_chars":500}'
 
 # Run a curated workflow pack that expands into approved explicit URLs
 curl -s http://127.0.0.1:8003/research/workflows/curated-fetch \
@@ -146,6 +152,7 @@ The hybrid coordinator SDKs now expose both planning and the coached query path:
 - Python: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qa_check(...)`
 - TypeScript/JavaScript: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qaCheck(...)`
 - Python: `HarnessClient.web_research_fetch(...)` for bounded public-web extraction
+- Python: `HarnessClient.browser_research_fetch(...)` for bounded rendered-page extraction
 - Python: `HarnessClient.curated_research_fetch(...)` for manifest-backed bounded research packs
 
 That means SDK consumers receive the same `prompt_coaching` and token-discipline guidance that raw `POST /query` returns.
@@ -160,6 +167,12 @@ The web research surface is intentionally narrow:
 - raw fetch/extract stays separate from model summarization
 
 This keeps Continue/local-model research tasks usable without turning the harness into an unconstrained scraper.
+
+The browser-assisted fallback follows the same posture:
+- explicit URL lists only
+- robots-aware precheck before local Chromium rendering
+- temporary browser profile per request
+- no anti-bot evasion; if a page still presents a challenge/captcha, that remains a fallback signal rather than a bypass target
 
 ## Curated Research Workflows
 

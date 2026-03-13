@@ -1711,6 +1711,77 @@
             };
           };
 
+          browserResearch = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Expose a bounded browser-assisted research lane for JS-heavy public
+                pages. This is a fallback path, not a broad crawling surface.
+              '';
+            };
+
+            maxUrls = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 1;
+              description = "Maximum explicit URLs allowed per browser-assisted research request.";
+            };
+
+            maxSelectors = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 4;
+              description = "Maximum CSS selectors accepted per browser-assisted research request.";
+            };
+
+            timeoutSeconds = lib.mkOption {
+              type = lib.types.numbers.positive;
+              default = 18.0;
+              description = "Per-request timeout for bounded browser-assisted research fetches.";
+            };
+
+            perHostDelaySeconds = lib.mkOption {
+              type = lib.types.addCheck lib.types.number (value: value >= 0);
+              default = 2.0;
+              description = "Minimum delay between sequential browser-assisted requests to the same host in one call.";
+            };
+
+            maxTextChars = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 6000;
+              description = "Maximum extracted text characters returned per browser-fetched page.";
+            };
+
+            maxLinks = lib.mkOption {
+              type = lib.types.addCheck lib.types.int (value: value >= 0);
+              default = 12;
+              description = "Maximum discovered links returned per browser-fetched page.";
+            };
+
+            maxRedirects = lib.mkOption {
+              type = lib.types.addCheck lib.types.int (value: value >= 0);
+              default = 2;
+              description = "Maximum redirects considered during browser research robots prechecks.";
+            };
+
+            userAgent = lib.mkOption {
+              type = lib.types.str;
+              default = "nixos-dev-quick-deploy-browser-research/1.0 (+respectful bounded browser fetch)";
+              description = "User-Agent string used for browser research robots prechecks.";
+            };
+
+            chromiumBinary = lib.mkOption {
+              type = lib.types.str;
+              default = "chromium";
+              description = "Chromium-compatible binary used for bounded browser research DOM capture.";
+            };
+
+            virtualTimeBudgetMs = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 8000;
+              description = "Chromium virtual-time budget used before dumping the rendered DOM.";
+            };
+          };
+
           localSystemPrompt = {
             enable = lib.mkOption {
               type = lib.types.bool;

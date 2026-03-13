@@ -242,6 +242,12 @@ async function main() {
         selectors: csv(args.selectors),
         max_text_chars: args["max-text-chars"] ? Number(args["max-text-chars"]) : undefined,
       });
+    case "browser-research":
+      return call("/research/web/browser-fetch", "POST", {
+        urls: csv(args.urls),
+        selectors: csv(args.selectors),
+        max_text_chars: args["max-text-chars"] ? Number(args["max-text-chars"]) : undefined,
+      });
     case "curated-research":
       return call("/research/workflows/curated-fetch", "POST", {
         workflow: args.workflow || args.pack || "",

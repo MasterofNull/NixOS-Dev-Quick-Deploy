@@ -183,7 +183,7 @@ def _classify_result(page: Optional[Dict[str, Any]], skipped_reason: str) -> Dic
             return {
                 "status": "needs_fallback",
                 "issue_class": "bot_gate_detected",
-                "fallback_hint": "Switch to an allowed browser-assisted capture, official export, or manually supplied page artifact.",
+                "fallback_hint": "Switch to the allowed browser-assisted fetch lane, an official export/API, or a manually supplied page artifact.",
             }
         if not excerpt:
             return {
