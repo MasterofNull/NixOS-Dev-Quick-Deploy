@@ -3212,6 +3212,11 @@ async def run_http_mode(port: int) -> None:
                 },
                 "harness_eval": harness_eval,
             }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                response_payload["active_lesson_refs"] = lesson_refs
 
             session_id = str(data.get("session_id", "") or "").strip()
             if session_id:
