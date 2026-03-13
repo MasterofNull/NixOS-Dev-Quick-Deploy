@@ -102,6 +102,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | remote + local tool-calling lane wiring | validated_live | added first-class `remote-tool-calling` and preparatory `local-tool-calling` profiles across switchboard and ai-coordinator, activated them live, confirmed remote lane returns provider tool calls through OpenRouter, and confirmed local lane accepts bounded `tools` payloads while staying explicitly degraded until local backends prove native tool support |
 | 2026-03-13 | tool-call-only failure classification refinement | validated_live | refined delegated failure capture so remote tool-call-only completions are recorded as `tool_call_without_final_text` with salvaged tool arguments instead of opaque `empty_content`, then revalidated the same live OpenRouter tool-calling smoke after coordinator restart |
 | 2026-03-13 | governed lesson schema + promotion action pass | validated_local | `aq-report` now emits governed lesson candidate fields including state, scope, evidence count, materialization class, validation link, and traceability targets, and can surface a machine-readable `promote_agent_lesson` action when candidates meet the threshold |
+| 2026-03-13 | delegated artifact recovery salvage pass | validated_live | `/control/ai-coordinator/delegate` now returns bounded `artifact_recovery` output for tool-call-only, reasoning-only, and partial-text delegated failures, preserving useful tool arguments and reasoning excerpts so failed remote calls still yield actionable local summaries |
 
 ## High-Priority Tracks
 
@@ -298,15 +299,17 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote-tool-calling and local-tool-calling prep lanes are now declarative, live, and validated through ai-coordinator; tool-call-only OpenRouter completions are now classified precisely with salvaged arguments, and the next gap is tuning the remote tool-calling prompt/model contract so free-lane tool calls also produce usable final artifacts`
+Current Slice: `tool-call-only and reasoning-heavy delegated failures now return bounded local recovery artifacts through ai-coordinator; the next gap is tightening the remote prompt/model contract so the free tool-calling lane emits usable native final artifacts instead of depending on recovery`
 Next Validation:
 - targeted remote tool-calling smokes with `tools` and `tool_choice`
 - targeted local tool-calling prep smokes with bounded fallback expectations
 - explicit alias smokes for `arcee-ai/trinity-large-preview:free`, `qwen/qwen3-coder:free`, and `nvidia/nemotron-3-super-120b-a12b:free`
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .delegated_prompt_failures, .routing'`
 - bounded delegated research/review calls recorded through `/control/ai-coordinator/delegate`
+- live `artifact_recovery` checks for tool-call-only and reasoning-heavy delegated replies
 Open Risks / Blockers:
 - the free remote tool-calling alias currently returns valid `tool_calls` but no final assistant text, so prompt/model selection must tighten around usable post-tool artifacts
+- recovery artifacts reduce wasted retries, but they are still coordinator-side fallbacks and must not be mistaken for provider-fulfilled contracts
 - `qwen/qwen3-coder:free` remains the strongest coding lane and can still hit provider-side `429`, so observability should keep tracking fallback frequency and latency impact
 - some high-ranking free models are not safe defaults here because they either fail under current provider/privacy constraints or return reasoning-only output without a final answer
 - delegated prompt-contract failures are now recorded, but the highest-value next step is to feed repeated classes back into actual prompt template revisions and not just reporting
