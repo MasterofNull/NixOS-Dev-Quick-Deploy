@@ -95,6 +95,9 @@ DELEGATION_FEEDBACK_PATH = Path(
     os.getenv("DELEGATION_FEEDBACK_LOG_PATH", "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
 )
 AQ_QA_SCRIPT = Path(__file__).with_name("aq-qa")
+CONTINUE_EDITOR_HISTORY_PATH = Path(
+    os.getenv("CONTINUE_EDITOR_HISTORY_PATH", "/var/lib/ai-stack/hybrid/telemetry/continue-editor-history.jsonl")
+)
 LOCAL_SHARED_SKILLS_DIR = Path(
     os.getenv("AQ_SHARED_SKILLS_DIR", str(Path(__file__).resolve().parents[2] / ".agent" / "skills"))
 )
@@ -226,6 +229,92 @@ def continue_editor_health() -> Dict[str, Any]:
         "skipped_n": skipped_n,
         "checks": checks,
     }
+
+
+def append_continue_editor_snapshot(snapshot: Dict[str, Any], *, timestamp: datetime) -> None:
+    if not snapshot.get("available"):
+        return
+    record = {
+        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+        "healthy": bool(snapshot.get("healthy")),
+        "total_checks": int(snapshot.get("total_checks", 0) or 0),
+        "passed_n": int(snapshot.get("passed_n", 0) or 0),
+        "failed_n": int(snapshot.get("failed_n", 0) or 0),
+        "skipped_n": int(snapshot.get("skipped_n", 0) or 0),
+    }
+    try:
+        last_record = None
+        if CONTINUE_EDITOR_HISTORY_PATH.exists():
+            with CONTINUE_EDITOR_HISTORY_PATH.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        last_record = line
+        if last_record:
+            try:
+                if json.loads(last_record) == record:
+                    return
+            except json.JSONDecodeError:
+                pass
+        CONTINUE_EDITOR_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with CONTINUE_EDITOR_HISTORY_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+    except OSError:
+        return
+
+
+def continue_editor_windows(*, now: datetime, report_since: datetime) -> Dict[str, Any]:
+    windows = [
+        ("1h", timedelta(hours=1)),
+        ("24h", timedelta(hours=24)),
+        ("7d", timedelta(days=7)),
+    ]
+    if not CONTINUE_EDITOR_HISTORY_PATH.exists():
+        return {"available": False, "source": str(CONTINUE_EDITOR_HISTORY_PATH), "windows": {}}
+    records: List[Dict[str, Any]] = []
+    try:
+        with CONTINUE_EDITOR_HISTORY_PATH.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = _entry_ts_utc(item)
+                if ts is None:
+                    continue
+                item["_ts"] = ts
+                records.append(item)
+    except OSError:
+        return {"available": False, "source": str(CONTINUE_EDITOR_HISTORY_PATH), "windows": {}}
+
+    summaries: Dict[str, Any] = {}
+    for label, delta in windows:
+        cutoff = now - delta
+        sample = [item for item in records if item["_ts"] >= cutoff]
+        if not sample:
+            summaries[label] = {
+                "available": False,
+                "window": label,
+                "partial_window": report_since > cutoff,
+                "samples": 0,
+            }
+            continue
+        latest = max(sample, key=lambda item: item["_ts"])
+        healthy_n = sum(1 for item in sample if bool(item.get("healthy")))
+        summaries[label] = {
+            "available": True,
+            "window": label,
+            "partial_window": report_since > cutoff,
+            "samples": len(sample),
+            "healthy_samples": healthy_n,
+            "healthy_pct": round(100 * healthy_n / len(sample), 1),
+            "latest_healthy": bool(latest.get("healthy")),
+            "latest_failed_n": int(latest.get("failed_n", 0) or 0),
+            "latest_total_checks": int(latest.get("total_checks", 0) or 0),
+        }
+    return {"available": True, "source": str(CONTINUE_EDITOR_HISTORY_PATH), "windows": summaries}
 
 
 def shared_skill_registry_health() -> Dict[str, Any]:
@@ -3127,6 +3216,7 @@ def format_md(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    continue_editor_windows: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
@@ -3363,6 +3453,19 @@ def format_md(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"  - `{item.get('id')}` — {item.get('description')}")
+    window_map = continue_editor_windows.get("windows") if isinstance(continue_editor_windows, dict) else {}
+    if window_map:
+        for label in ("1h", "24h", "7d"):
+            summary = window_map.get(label)
+            if not isinstance(summary, dict) or not summary.get("available"):
+                lines.append(f"- {label}: no Continue/editor history recorded")
+                continue
+            partial = " (partial)" if summary.get("partial_window") else ""
+            lines.append(
+                f"- {label}{partial}: healthy **{_na(summary.get('healthy_pct'), '.1f', '%')}**"
+                f" across {summary.get('samples', 0)} snapshot(s); latest failures "
+                f"{summary.get('latest_failed_n', 0)}/{summary.get('latest_total_checks', 0)}"
+            )
     lines.append("")
 
     lines += ["## 8ab. Shared Skill Registry", ""]
@@ -3764,6 +3867,7 @@ def format_text(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    continue_editor_windows: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
@@ -4001,6 +4105,19 @@ def format_text(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"    {item.get('id')}: {item.get('description')}")
+    window_map = continue_editor_windows.get("windows") if isinstance(continue_editor_windows, dict) else {}
+    if window_map:
+        for label in ("1h", "24h", "7d"):
+            summary = window_map.get(label)
+            if not isinstance(summary, dict) or not summary.get("available"):
+                lines.append(f"  {label}: no Continue/editor history recorded")
+                continue
+            partial = " (partial)" if summary.get("partial_window") else ""
+            lines.append(
+                f"  {label}{partial}: healthy {_na(summary.get('healthy_pct'), '.1f', '%')}"
+                f" across {summary.get('samples', 0)} snapshot(s); latest failures "
+                f"{summary.get('latest_failed_n', 0)}/{summary.get('latest_total_checks', 0)}"
+            )
     lines.append("")
 
     lines += ["[ 8ab. Shared Skill Registry ]"]
@@ -4405,6 +4522,7 @@ def format_json(
     rag_posture_summary: Dict[str, Any],
     recent_health: Dict[str, Any],
     continue_editor: Dict[str, Any],
+    continue_editor_windows: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
@@ -4452,6 +4570,7 @@ def format_json(
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
         "continue_editor": continue_editor,
+        "continue_editor_windows": continue_editor_windows,
         "shared_skill_registry": shared_skill_registry,
         "delegated_prompt_failures": delegated_prompt_failures,
         "remote_profile_utilization": remote_profile_summary,
@@ -4594,6 +4713,8 @@ def main() -> None:
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats, recent_provider_fallbacks)
     continue_editor = continue_editor_health()
+    append_continue_editor_snapshot(continue_editor, timestamp=now)
+    continue_editor_window_summary = continue_editor_windows(now=now, report_since=since_dt)
     shared_skill_registry = shared_skill_registry_health()
     historical_health_watch = historical_watchlist(tool_stats, recent_tool_stats)
     leaderboard = strategy_leaderboard(eval_rows)
@@ -4654,6 +4775,7 @@ def main() -> None:
         rag_posture_summary,
         recent_health,
         continue_editor,
+        continue_editor_window_summary,
         shared_skill_registry,
         delegation_feedback,
         recent_remote_profile_summary,
