@@ -68,7 +68,7 @@ Tracking fields to update after each slice:
 
 | Area | Status | Evidence | Next Action |
 | --- | --- | --- | --- |
-| QA phase 0 service health | blocked | `aq-qa 0` is `28 passed, 1 failed` because `ai-gap-auto-remediate.service` and `ai-prompt-eval.service` are in failed state | inspect and repair both services before treating the current system as fully green |
+| Unattended sudo activation | validated_local | tracked `nix/hosts/nixos/deploy-options.nix` now evaluates with bounded `NOPASSWD` rules for `nixos-quick-deploy.sh`, `nixos-rebuild`, `systemctl`, `journalctl`, and `flatpak`, but the live host has not yet switched to that generation | run one switch on `nixos-ai-dev`, then verify `sudo -n` works in a fresh session |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging fixed; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | Continue/local web research lane | planned | Continue and local-model surfaces do not yet expose a validated, polite web research/scraping path for bounded fetch -> extract -> summarize workflows | define bounded fetch policy, route through harness/coordinator, and add validation before treating web research as supported |
 | Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
@@ -82,6 +82,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | provider fallback health batch | validated_live | recovered provider fallbacks are reported separately from local backend failures |
 | 2026-03-13 | continuation memory and prewarm batches | validated_live | continuation queries use memory recall more explicitly and report recall misses |
 | 2026-03-13 | agentskill.sh planning slice | validated_local | added a shared skill-registry track so approved third-party SKILL.md content can be exposed consistently across local and remote agents |
+| 2026-03-13 | unattended sudo flake-first fix | validated_local | moved bounded autonomous sudo rules into tracked `nix/hosts/nixos/deploy-options.nix` after confirming pure flake evaluation cannot see `deploy-options.local.nix` |
 
 ## High-Priority Tracks
 
@@ -89,7 +90,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI corrected; support matrix added; remaining flagship CLIs still need declarative packaging or explicit external classification`
+Current Slice: `Continue CLI corrected; support matrix added; unattended sudo rules are now tracked in flake config so deploy/restart automation can activate reliably after one switch`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -97,6 +98,7 @@ Next Validation:
 Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
+- unattended sudo rules are not live until the next `nixos-ai-dev` switch completes
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
@@ -272,12 +274,13 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; ai-coordinator runtime lanes and delegated execution surface are being added to make OpenRouter-backed delegation explicit`
+Current Slice: `remote profiles and fallback reporting exist; ai-coordinator runtime lanes are implemented in-repo, and unattended sudo activation is the remaining gate before live delegation validation`
 Next Validation:
 - targeted remote profile smokes
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
+- live validation still depends on switching to the generation that contains the tracked unattended sudo rules and coordinator changes
 
 Goal:
 - fully exploit OpenRouter as the remote tool-calling and provider-routing layer behind the local harness
