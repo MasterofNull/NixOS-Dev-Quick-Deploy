@@ -94,6 +94,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | repo-backed QA capability corrective pass | validated_live | hardened `aq-qa` so the service-backed `/qa/check` path resolves Continue CLI outside interactive shells and retries port probes briefly after restarts; post-flight quick-deploy capability verification now passes again with `33` phase-0 checks green |
 | 2026-03-13 | continue/editor reporting visibility pass | validated_local | `aq-report` now reuses the `0.5.*` Continue/editor phase-0 checks and exposes one derived health block in JSON plus text, and `nixos-quick-deploy.sh` now surfaces that status in its completion summary |
 | 2026-03-13 | bounded web research lane implementation pass | validated_live | added a declarative-limits-backed `/research/web/fetch` coordinator endpoint plus tooling-manifest, SDK, and RPC exposure; unit validation confirms robots-aware blocking, same-host pacing, and bounded extraction behavior, and live smokes confirmed successful HTTPS extraction plus redirect-to-HTTP policy enforcement |
+| 2026-03-13 | BitNet feasibility probe scaffolding | validated_local | added a repo-native `aq-bitnet-feasibility` probe plus targeted test so this host now has measured prerequisites, supported-model heuristics, and bounded next actions before any runtime role is attempted |
 
 ## High-Priority Tracks
 
@@ -412,11 +413,12 @@ Acceptance:
 
 ### Track F — BitNet Feasibility and Optional Runtime Integration
 
-Track Status: `planned`
+Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `research and architecture track only; no local benchmark or Nix service role exists yet`
+Current Slice: `host-fit feasibility probe and benchmark plan now exist locally; no runtime role or sidecar benchmark execution has happened yet`
 Next Validation:
-- benchmark harness output
+- `python3 scripts/ai/aq-bitnet-feasibility.py --format json`
+- `python3 scripts/testing/test-bitnet-feasibility.py`
 - declarative service checks once a feature-flagged role exists
 Open Risks / Blockers:
 - no current BitNet packaging/runtime evidence on this host class
