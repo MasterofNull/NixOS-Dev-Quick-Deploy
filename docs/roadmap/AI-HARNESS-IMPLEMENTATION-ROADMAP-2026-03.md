@@ -70,7 +70,7 @@ Tracking fields to update after each slice:
 | --- | --- | --- | --- |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
-| Continue/local web research lane | planned | Continue and local-model surfaces do not yet expose a validated, polite web research/scraping path for bounded fetch -> extract -> summarize workflows | define bounded fetch policy, route through harness/coordinator, and add validation before treating web research as supported |
+| Continue/local web research lane | validated_live | a bounded `/research/web/fetch` lane is live with robots-aware pacing, selector limits, response caps, and tooling/SDK exposure; live smokes confirmed one allowed HTTPS fetch and one redirect-to-HTTP policy block | wire the lane into a real native-plant lookup workflow with curated source lists and request budgets |
 | Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
 
 ## Execution Ledger
@@ -93,6 +93,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | delegated free-model lane tuning pass | validated_live | reviewed a bounded `remote-free` comparison task, verified current OpenRouter free model availability, removed the gitignored host-local alias shadow so tracked defaults win, and activated planner/review aliases to `arcee-ai/trinity-large-preview:free` and `nvidia/nemotron-3-super-120b-a12b:free` after live smokes showed StepFun returned reasoning-only output and several other candidates failed under current provider/privacy constraints |
 | 2026-03-13 | repo-backed QA capability corrective pass | validated_live | hardened `aq-qa` so the service-backed `/qa/check` path resolves Continue CLI outside interactive shells and retries port probes briefly after restarts; post-flight quick-deploy capability verification now passes again with `33` phase-0 checks green |
 | 2026-03-13 | continue/editor reporting visibility pass | validated_local | `aq-report` now reuses the `0.5.*` Continue/editor phase-0 checks and exposes one derived health block in JSON plus text, and `nixos-quick-deploy.sh` now surfaces that status in its completion summary |
+| 2026-03-13 | bounded web research lane implementation pass | validated_live | added a declarative-limits-backed `/research/web/fetch` coordinator endpoint plus tooling-manifest, SDK, and RPC exposure; unit validation confirms robots-aware blocking, same-host pacing, and bounded extraction behavior, and live smokes confirmed successful HTTPS extraction plus redirect-to-HTTP policy enforcement |
 
 ## High-Priority Tracks
 
@@ -100,7 +101,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, and report visibility are fixed again; remaining work is broader CLI coverage consistency plus bounded web research support`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, and bounded web research surface are all live; remaining work is broader CLI coverage consistency and a real native-plant research workflow`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -110,7 +111,7 @@ Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
 - Home Manager is no longer blocked on Continue CLI, but future CLI package additions still need isolated `outPath`/activation validation before they are treated as safe for unattended deploys
-- Continue/editor health now reaches `aq-report` and deploy summaries, but bounded web research/scraping support for local Continue workflows is still unimplemented
+- Continue/editor health now reaches `aq-report` and deploy summaries, and bounded web research is live, but the first real workflow task still needs a curated native-plant lookup implementation
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
@@ -161,14 +162,16 @@ Acceptance:
 
 ### Track A — Continue and Editor-Agent Runtime Stabilization
 
-Track Status: `planned`
+Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has dedicated phase-0 smoke coverage; next gap is report/deploy-summary visibility and bounded web-research support`
+Current Slice: `continue/editor runtime now has reporting visibility and a bounded web-research lane locally; next gap is live deployment validation plus a real native-plant lookup workflow`
+Current Slice: `continue/editor runtime now has reporting visibility and a bounded web-research lane live; next gap is a real native-plant lookup workflow and any task-specific extraction tuning it reveals`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
-- deploy post-flight summary checks once wired
+- `python3 scripts/testing/test-web-research-lane.py`
+- live `POST /research/web/fetch` smoke after deploy
 Open Risks / Blockers:
-- Continue/editor failures are now isolated in `aq-qa`, but not yet surfaced separately in `aq-report` or deploy summaries
+- the first real native-plant workflow may require curated selectors or a small source allowlist policy if target databases redirect unexpectedly
 - CLI/package coverage is still mixed across agent surfaces
 
 Goal:
@@ -194,7 +197,8 @@ Validation:
 - `scripts/testing/check-runtime-plan-catalog.sh`
 - `curl -sS http://127.0.0.1:8003/workflow/plan ...`
 - `journalctl -u ai-hybrid-coordinator.service --since '15 minutes ago' --no-pager`
-- planned: continue/local web research smoke with request-count, delay, and extraction assertions
+- `python3 scripts/testing/test-web-research-lane.py`
+- live `curl -sS ... /research/web/fetch`
 
 Acceptance:
 - Continue/editor failures appear as explicit, categorized runtime signals

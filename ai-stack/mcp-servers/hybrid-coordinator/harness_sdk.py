@@ -473,3 +473,20 @@ class HarnessClient:
             r = client.post(self._url("/control/ai-coordinator/delegate"), headers=self._headers(), json=payload)
             r.raise_for_status()
             return r.json()
+
+    def web_research_fetch(
+        self,
+        urls: List[str],
+        *,
+        selectors: Optional[List[str]] = None,
+        max_text_chars: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"urls": urls}
+        if selectors is not None:
+            payload["selectors"] = selectors
+        if max_text_chars is not None:
+            payload["max_text_chars"] = max_text_chars
+        with httpx.Client(timeout=max(self.timeout_s, 60.0)) as client:
+            r = client.post(self._url("/research/web/fetch"), headers=self._headers(), json=payload)
+            r.raise_for_status()
+            return r.json()
