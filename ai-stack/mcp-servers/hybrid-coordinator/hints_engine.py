@@ -1898,6 +1898,12 @@ class HintsEngine:
             prewarm_candidates = rag_posture.get("prewarm_candidates") or []
             memory_share = rag_posture.get("memory_recall_share_pct")
             memory_miss_pct = rag_posture.get("memory_recall_miss_pct")
+            memory_diagnosis = str(rag_posture.get("memory_recall_diagnosis", "") or "").strip().lower()
+            memory_actions = [
+                str(action).strip()
+                for action in (rag_posture.get("memory_recall_actions") or [])
+                if str(action).strip()
+            ]
             query_focus = any(
                 token in query_lower
                 for token in (
@@ -1943,10 +1949,14 @@ class HintsEngine:
                 )
             if (
                 continuation_focus
-                and memory_miss_pct is not None
-                and float(memory_miss_pct) >= 50.0
+                and memory_diagnosis == "weak"
                 and recent_calls >= 8
             ):
+                remediation_text = (
+                    memory_actions[0][:1].upper() + memory_actions[0][1:]
+                    if memory_actions
+                    else "Persist clearer milestone summaries or recent task checkpoints"
+                )
                 hints.append(
                     Hint(
                         id="runtime_resume_memory_refresh",
@@ -1955,14 +1965,19 @@ class HintsEngine:
                         score=0.84,
                         snippet=(
                             f"This looks like continuation work, and memory recall misses {float(memory_miss_pct):.1f}% "
-                            "of recent attempts. Persist clearer milestone summaries or recent task checkpoints before broad route_search."
+                            f"of recent attempts. {remediation_text} before broad route_search."
                         )[:220],
                         reason="Derived from live aq-report memory-recall miss rate and a continuation-style query",
                         tags=["runtime", "rag", "memory", "continuation"],
                         agent_hints={},
                     )
                 )
-            elif continuation_focus and memory_share is not None and float(memory_share) <= 20.0 and recent_calls >= 8:
+            elif continuation_focus and memory_diagnosis == "unused" and recent_calls >= 8:
+                remediation_text = (
+                    memory_actions[0][:1].upper() + memory_actions[0][1:]
+                    if memory_actions
+                    else "Recall prior context before broad route_search"
+                )
                 hints.append(
                     Hint(
                         id="runtime_resume_memory_first",
@@ -1971,14 +1986,19 @@ class HintsEngine:
                         score=0.83,
                         snippet=(
                             f"This looks like continuation work, but memory recall is only {float(memory_share):.1f}% "
-                            "of recent retrieval calls. Recall prior context before route_search to cut token overhead."
+                            f"of recent retrieval calls. {remediation_text} to cut token overhead."
                         )[:220],
                         reason="Derived from live aq-report rag posture and a continuation-style query",
                         tags=["runtime", "rag", "memory", "continuation"],
                         agent_hints={},
                     )
                 )
-            elif query_focus and memory_share is not None and float(memory_share) <= 15.0 and recent_calls >= 12:
+            elif query_focus and memory_diagnosis == "unused" and recent_calls >= 12:
+                remediation_text = (
+                    memory_actions[0][:1].upper() + memory_actions[0][1:]
+                    if memory_actions
+                    else "Recall prior context before broad route_search"
+                )
                 hints.append(
                     Hint(
                         id="runtime_memory_recall_underused",
@@ -1987,7 +2007,7 @@ class HintsEngine:
                         score=0.77,
                         snippet=(
                             f"Memory recall is only {float(memory_share):.1f}% of recent retrieval calls. "
-                            "For continuing repo/system work, recall prior context before broad route_search."
+                            f"For continuing repo/system work, {remediation_text.lower()}."
                         )[:220],
                         reason="Derived from live aq-report rag posture showing low memory-recall share",
                         tags=["runtime", "rag", "memory", "retrieval"],

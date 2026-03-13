@@ -309,15 +309,16 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `retrieval breadth, continuation memory recall, report visibility, and a report-backed aq-qa acceptance check are live; the next gap is tightening reliability/remediation loops around recent route_search pressure rather than visibility alone`
+Current Slice: `retrieval breadth, continuation memory recall, report visibility, and a report-backed aq-qa acceptance check are live, and aq-report plus hints now classify memory recall explicitly as weak vs unused with structured remediation actions instead of only free-text notes; the next gap is tightening route_search reliability/remediation loops around recent pressure rather than visibility alone`
 Next Validation:
 - `scripts/ai/aq-report --format text`
 - `scripts/ai/aq-report --format json | jq '.rag_posture, .route_retrieval_breadth'`
+- `python3 scripts/testing/test-rag-posture-diagnosis.py`
 - `scripts/ai/aq-qa 1 --json | jq '.tests[] | select(.id == "1.5.3")'`
 - `scripts/ai/aq-qa 0 --json`
 Open Risks / Blockers:
 - `route_search` is still the main active recent reliability issue
-- memory recall quality is improving, but miss-rate remediation is not complete
+- memory recall diagnosis is now explicit, but route_search pressure remediation is still not complete
 
 Goal:
 - make retrieval selection intentional, cheap, and visible
