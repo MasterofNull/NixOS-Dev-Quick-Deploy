@@ -597,6 +597,42 @@ def aggregate_delegation_feedback(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def delegated_prompt_failure_windows(
+    data: Dict[str, Any],
+    *,
+    now: datetime,
+    report_since: datetime,
+) -> Dict[str, Any]:
+    """Materialize comparable delegated prompt-failure windows."""
+    entries = data.get("entries") if isinstance(data.get("entries"), list) else []
+    windows = [
+        ("1h", timedelta(hours=1)),
+        ("24h", timedelta(hours=24)),
+        ("7d", timedelta(days=7)),
+    ]
+    summaries: Dict[str, Any] = {}
+    for label, delta in windows:
+        cutoff = now - delta
+        summaries[label] = aggregate_delegation_feedback(
+            {
+                "available": data.get("available", False),
+                "source": data.get("source"),
+                "entries": [
+                    entry for entry in entries
+                    if (_entry_ts_utc(entry) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
+                ],
+            }
+        )
+        summaries[label]["partial_window"] = report_since > cutoff
+    return {
+        "available": any(
+            isinstance(summary, dict) and summary.get("available")
+            for summary in summaries.values()
+        ),
+        "windows": summaries,
+    }
+
+
 def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict[str, Any]:
     """Summarize delegated remote profile usage from tool-audit metadata."""
     profile_counts: Dict[str, int] = {}
@@ -3263,6 +3299,7 @@ def format_md(
     continue_editor_windows: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
+    delegated_prompt_failure_windows: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
     remote_profile_windows: Dict[str, Any],
     route_latency_decomposition: Dict[str, Any],
@@ -3572,6 +3609,18 @@ def format_md(
         top_classes = delegated_prompt_failures.get("top_failure_classes") or []
         if top_classes:
             lines.append(f"- Top failure classes: {', '.join(f'`{name}` ({count})' for name, count in top_classes[:3])}")
+    failure_windows = delegated_prompt_failure_windows.get("windows") if isinstance(delegated_prompt_failure_windows, dict) else {}
+    if isinstance(failure_windows, dict):
+        twenty_four = failure_windows.get("24h") if isinstance(failure_windows.get("24h"), dict) else {}
+        seven_day = failure_windows.get("7d") if isinstance(failure_windows.get("7d"), dict) else {}
+        if twenty_four.get("available") or seven_day.get("available"):
+            lines.append(
+                "- Failure trend: "
+                f"24h={int(twenty_four.get('total_failures', 0) or 0)}"
+                f" ({_na(twenty_four.get('salvageable_pct'), '.1f', '%')} salvageable), "
+                f"7d={int(seven_day.get('total_failures', 0) or 0)}"
+                f" ({_na(seven_day.get('salvageable_pct'), '.1f', '%')} salvageable)"
+            )
     lines.append("")
 
     lines += [f"## 8aaa. Remote Profile Utilization ({remote_profile_summary.get('window', since_label)})", ""]
@@ -3930,6 +3979,7 @@ def format_text(
     continue_editor_windows: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
+    delegated_prompt_failure_windows: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
     remote_profile_windows: Dict[str, Any],
     route_latency_decomposition: Dict[str, Any],
@@ -4242,6 +4292,18 @@ def format_text(
         top_classes = delegated_prompt_failures.get("top_failure_classes") or []
         if top_classes:
             lines.append(f"  Top failure classes: {', '.join(f'{name}({count})' for name, count in top_classes[:3])}")
+    failure_windows = delegated_prompt_failure_windows.get("windows") if isinstance(delegated_prompt_failure_windows, dict) else {}
+    if isinstance(failure_windows, dict):
+        twenty_four = failure_windows.get("24h") if isinstance(failure_windows.get("24h"), dict) else {}
+        seven_day = failure_windows.get("7d") if isinstance(failure_windows.get("7d"), dict) else {}
+        if twenty_four.get("available") or seven_day.get("available"):
+            lines.append(
+                "  Failure trend: "
+                f"24h={int(twenty_four.get('total_failures', 0) or 0)}"
+                f" ({_na(twenty_four.get('salvageable_pct'), '.1f', '%')} salvageable)"
+                f"  7d={int(seven_day.get('total_failures', 0) or 0)}"
+                f" ({_na(seven_day.get('salvageable_pct'), '.1f', '%')} salvageable)"
+            )
     lines.append("")
 
     lines += [f"[ 8aaa. Remote Profile Utilization ({remote_profile_summary.get('window', since_label)}) ]"]
@@ -4601,6 +4663,7 @@ def format_json(
     continue_editor_windows: Dict[str, Any],
     shared_skill_registry: Dict[str, Any],
     delegated_prompt_failures: Dict[str, Any],
+    delegated_prompt_failure_windows: Dict[str, Any],
     remote_profile_summary: Dict[str, Any],
     remote_profile_windows: Dict[str, Any],
     route_latency_decomposition: Dict[str, Any],
@@ -4649,6 +4712,7 @@ def format_json(
         "continue_editor_windows": continue_editor_windows,
         "shared_skill_registry": shared_skill_registry,
         "delegated_prompt_failures": delegated_prompt_failures,
+        "delegated_prompt_failure_windows": delegated_prompt_failure_windows,
         "remote_profile_utilization": remote_profile_summary,
         "remote_profile_utilization_windows": remote_profile_windows,
         "route_search_latency_decomposition": route_latency_decomposition,
@@ -4748,7 +4812,8 @@ def main() -> None:
 
     # Collect data (independent sources — order doesn't matter)
     audit_entries = read_tool_audit(since_dt)
-    delegation_feedback = aggregate_delegation_feedback(read_delegation_feedback(since_dt))
+    delegation_feedback_raw = read_delegation_feedback(since_dt)
+    delegation_feedback = aggregate_delegation_feedback(delegation_feedback_raw)
     eval_rows = read_eval_scores(since_dt)
     gaps = read_query_gaps(since_dt, limit=10)
     gaps = [
@@ -4777,6 +4842,11 @@ def main() -> None:
     recent_provider_fallbacks["window"] = "1h"
     recent_remote_profile_summary = remote_profile_utilization(recent_audit_entries, window="1h")
     remote_profile_windows = remote_profile_utilization_windows(audit_entries, now=now, report_since=since_dt)
+    delegated_failure_windows = delegated_prompt_failure_windows(
+        delegation_feedback_raw,
+        now=now,
+        report_since=since_dt,
+    )
     route_latency_decomposition = route_search_latency_decomposition(audit_entries, window=since_label)
     cache = cache_hit_rate()
     cache_prewarm = cache_prewarm_status()
@@ -4854,6 +4924,7 @@ def main() -> None:
         continue_editor_window_summary,
         shared_skill_registry,
         delegation_feedback,
+        delegated_failure_windows,
         recent_remote_profile_summary,
         remote_profile_windows,
         route_latency_decomposition,
