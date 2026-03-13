@@ -1754,7 +1754,7 @@ class HintsEngine:
                     id="prompt_coaching_prsi_loop",
                     type="prompt_coaching",
                     title="Keep PRSI asks scoped to one reversible improvement cycle",
-                    score=0.83,
+                    score=0.91,
                     snippet=(
                         "Name one target bottleneck, one reversible change, the exact pessimistic gates, "
                         "and the rollback note. Treat failure evidence as learning input, not a reason to broaden the slice."
