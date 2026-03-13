@@ -129,6 +129,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | continue/editor oversized-input QA coverage | validated_local | added a new `aq-qa 0.5.5` check for `continue-local` dense oversized prompt trimming, increased `aq-report` timeout so the heavier Continue/editor phase-0 batch still completes, and revalidated `aq-report` plus the five-check Continue/editor health block |
 | 2026-03-13 | delegation caller identity and handoff telemetry | validated_live | delegated runtime responses now return normalized `orchestration` metadata, delegated failure telemetry records `requesting_agent`, `requester_role`, and `handoff_requested`, and `aq-report` now summarizes requester-role plus coordinator-handoff frequency for delegated remote traffic |
 | 2026-03-13 | direct query caller identity propagation | validated_live | `/query` now normalizes caller identity at request entry, carries orchestration metadata into query responses and compact metadata blocks, and propagates requester-role fields into internal autorun audit rows so editor/human query traffic is not invisible until remote delegation happens |
+| 2026-03-13 | continue editor path smoke + aq-hints restore | validated_live | restored the generated Continue `aq-hints` HTTP context provider, added a bounded `prompt -> hints -> workflow plan -> query -> feedback` Continue-facing smoke, and promoted that smoke into `aq-qa 0.5.6` so editor-path regressions become deploy-visible instead of anecdotal |
 
 ## High-Priority Tracks
 
@@ -199,9 +200,10 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors, and normal Phase 0 QA coverage for that trimmed-input path; next gap is validating real agent/planning-mode recovery inside the Continue extension`
+Current Slice: `continue/editor runtime now has reporting visibility, restored generated aq-hints provider wiring, a bounded Continue-facing prompt -> hints -> workflow -> query -> feedback smoke in Phase 0, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, and a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors; the next gap is broader real agent/planning-mode acceptance inside the extension, not missing harness wiring`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
+- `scripts/testing/smoke-continue-editor-flow.sh`
 - `python3 scripts/testing/test-web-research-lane.py`
 - `scripts/testing/test-switchboard-continue-context-window.sh`
 - `python3 scripts/ai/aq-report --format json | jq '.continue_editor'`
@@ -209,7 +211,7 @@ Next Validation:
 Open Risks / Blockers:
 - some approved public sources still need selector tuning or source substitution even though the browser-assisted fallback lane is now available
 - CLI/package coverage is still mixed across agent surfaces
-- Continue agent/planning mode still needs explicit live confirmation inside the extension after the transport-side trimming fix, even though the stale 4k generated config and the dense-prompt switchboard failure are both now fixed
+- Continue agent/planning mode still needs explicit live confirmation inside the extension after the transport-side trimming fix, even though the stale 4k generated config, missing aq-hints provider wiring, and dense-prompt switchboard failure are now fixed and covered by deploy-time smoke
 
 Goal:
 - make Continue/editor-driven agent flows a validated and observable first-class path
