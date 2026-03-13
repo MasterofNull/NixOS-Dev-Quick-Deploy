@@ -506,7 +506,7 @@ check_pattern "nix/modules/services/mcp-servers.nix" 'WORKFLOW_BLUEPRINTS_FILE=\
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/start' 'Workflow review-contract smoke covers workflow run start'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/review/acceptance' 'Workflow review-contract smoke covers reviewer acceptance persistence'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/\$\{session_id\}' 'Workflow review-contract smoke covers persisted workflow run retrieval'
-check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class|remote-reasoning-escalation|deploy-rollback-safe-ops|deploy_safe_ops|artifact_review' 'Workflow review-contract smoke covers classified multi-task review persistence'
+check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class|remote-reasoning-escalation|deploy-rollback-safe-ops|deploy_safe_ops|artifact_review|coding-bugfix-safe|coding_bugfix' 'Workflow review-contract smoke covers classified multi-task review persistence'
 check_pattern "scripts/testing/smoke-query-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Query lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-workflow-plan-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Workflow plan lesson smoke covers direct lesson ref surfacing'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Tracking Conventions' 'Detailed implementation roadmap defines tracking conventions'

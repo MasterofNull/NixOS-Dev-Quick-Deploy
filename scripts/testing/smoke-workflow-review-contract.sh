@@ -289,4 +289,71 @@ jq -e '.reviewer_gate.last_review.task_class == "deploy_safe_ops"' "${TMP_DIR}/d
 jq -e '.reviewer_gate.last_review.reviewed_agent == "gemini"' "${TMP_DIR}/deploy-run.json" >/dev/null
 jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-free"' "${TMP_DIR}/deploy-run.json" >/dev/null
 
+cat > "${TMP_DIR}/bugfix-start.json.payload" <<'EOF'
+{
+  "query": "Validate coding bugfix review persistence",
+  "blueprint_id": "coding-bugfix-safe",
+  "intent_contract": {
+    "user_intent": "Validate coding bugfix review persistence",
+    "definition_of_done": [
+      "bugfix acceptance classification persists",
+      "reviewed coding profile is recorded"
+    ],
+    "depth_expectation": "standard",
+    "spirit_constraints": [
+      "bounded smoke only"
+    ],
+    "no_early_exit_without": [
+      "live session retrieval"
+    ]
+  }
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data @"${TMP_DIR}/bugfix-start.json.payload" > "${TMP_DIR}/bugfix-start.json"
+bugfix_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/bugfix-start.json")"
+[[ -n "${bugfix_session_id}" ]] || {
+  echo "ERROR: coding bugfix workflow/run/start did not return session_id" >&2
+  exit 1
+}
+jq -e '.blueprint_id == "coding-bugfix-safe"' "${TMP_DIR}/bugfix-start.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "pending_review"' "${TMP_DIR}/bugfix-start.json" >/dev/null
+
+cat > "${TMP_DIR}/bugfix-review.json.payload" <<EOF
+{
+  "session_id": "${bugfix_session_id}",
+  "response": "Acceptance review confirms coding bugfix steps preserve root-cause focus, validation evidence, and rollback notes.",
+  "criteria": [
+    "root-cause focus",
+    "validation evidence",
+    "rollback notes"
+  ],
+  "expected_keywords": [
+    "coding bugfix",
+    "acceptance review"
+  ],
+  "min_criteria_ratio": 1.0,
+  "min_keyword_ratio": 1.0,
+  "reviewer": "codex",
+  "review_type": "acceptance",
+  "artifact_kind": "response",
+  "task_class": "coding_bugfix",
+  "reviewed_agent": "qwen",
+  "reviewed_profile": "remote-coding"
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/review/acceptance" \
+  --data @"${TMP_DIR}/bugfix-review.json.payload" > "${TMP_DIR}/bugfix-review.json"
+jq -e '.passed == true' "${TMP_DIR}/bugfix-review.json" >/dev/null
+jq -e --arg sid "${bugfix_session_id}" '.session_id == $sid' "${TMP_DIR}/bugfix-review.json" >/dev/null
+
+curl -fsS "${hdr[@]}" "${HYBRID_URL}/workflow/run/${bugfix_session_id}" > "${TMP_DIR}/bugfix-run.json"
+jq -e '.blueprint_title == "Coding Bugfix (Safe First)"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "accepted"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.review_type == "acceptance"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.artifact_kind == "response"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.task_class == "coding_bugfix"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_agent == "qwen"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-coding"' "${TMP_DIR}/bugfix-run.json" >/dev/null
+
 printf 'PASS: workflow review contract smoke\n'
