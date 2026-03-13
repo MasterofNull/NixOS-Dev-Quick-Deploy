@@ -99,6 +99,17 @@ def main() -> int:
         "expected service-hardening coaching hint",
     )
 
+    prsi_hints = engine.rank(
+        "run one pessimistic self-improvement PRSI cycle with rollback and validation gates",
+        max_hints=6,
+        agent_type="codex",
+    )
+    prsi_ids = [item.id for item in prsi_hints]
+    assert_true(
+        "prompt_coaching_prsi_loop" in prsi_ids,
+        "expected PRSI coaching hint",
+    )
+
     print("PASS: hints engine surfaces compact task-class coaching")
     return 0
 

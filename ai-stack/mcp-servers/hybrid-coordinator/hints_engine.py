@@ -1744,6 +1744,31 @@ class HintsEngine:
                 )
             )
 
+        prsi_focus = any(
+            token in query_lower
+            for token in ("prsi", "self-improvement", "self improvement", "pessimistic", "improvement pass", "recursive improvement")
+        )
+        if prsi_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_prsi_loop",
+                    type="prompt_coaching",
+                    title="Keep PRSI asks scoped to one reversible improvement cycle",
+                    score=0.83,
+                    snippet=(
+                        "Name one target bottleneck, one reversible change, the exact pessimistic gates, "
+                        "and the rollback note. Treat failure evidence as learning input, not a reason to broaden the slice."
+                    )[:220],
+                    reason="Compact operator guidance for PRSI and pessimistic self-improvement requests",
+                    tags=["prompting", "coaching", "prsi", "self-improvement", "operator-guidance"],
+                    agent_hints={
+                        "human": "State the bottleneck, the one change you want attempted, and the gates that must pass.",
+                        "codex": "Keep PRSI cycles single-change, evidence-heavy, and rollback-explicit before moving to the next pass.",
+                        "claude": "Use this lane for pessimistic risk framing and decision-quality review, not multi-change bundling.",
+                    },
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:

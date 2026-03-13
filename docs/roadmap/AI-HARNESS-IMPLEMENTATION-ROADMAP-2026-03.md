@@ -421,7 +421,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, direct /workflow/run/start response metadata, and persisted /workflow/run/{session_id} retrieval from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
+Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, direct workflow-plan response metadata, direct workflow-tooling-manifest response metadata, direct /hints response metadata, direct /workflow/run/start response metadata, persisted /workflow/run/{session_id} retrieval, and direct /control/ai-coordinator/status response metadata from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
@@ -435,9 +435,10 @@ Next Validation:
 - `scripts/testing/smoke-hints-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-start-lesson-refs.sh`
 - `scripts/testing/smoke-workflow-run-lesson-refs.sh`
+- `scripts/testing/smoke-status-lesson-refs.sh`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, direct workflow-run start metadata, and persisted workflow-run retrieval, but broader direct routing/reference materialization remains incomplete beyond those first consumers
+- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, direct workflow-plan metadata, direct workflow-tooling-manifest metadata, direct /hints metadata, direct workflow-run start metadata, persisted workflow-run retrieval, and direct ai-coordinator status metadata, but broader direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
@@ -611,10 +612,10 @@ Validation:
 
 Track Status: in_progress
 Last Updated: 2026-03-13
-Current Slice: `compact prompt-coaching hints now teach route selection across local, remote-free, remote-coding, remote-tool-calling, and Continue/editor rescue lanes, and now also cover patch-review, bounded research/RAG workflows, deploy-safe ops, bugfix/debug asks, and NixOS service-hardening asks; the next gap is extending the same compact guidance to still more task classes without inflating default hint payloads`
-Next Validation: `scripts/ai/aq-hints "route local vs remote coding lane" --format json`, `scripts/ai/aq-hints "review this patch safely" --format json`, `scripts/ai/aq-hints "deploy this service safely with rollback" --format json`, `scripts/ai/aq-hints "debug this failing regression safely" --format json`, `scripts/ai/aq-hints "harden this nixos service declaratively" --format json`, and live `/hints?q=continue+editor+rescue`
+Current Slice: `compact prompt-coaching hints now teach route selection across local, remote-free, remote-coding, remote-tool-calling, and Continue/editor rescue lanes, and now also cover patch-review, bounded research/RAG workflows, deploy-safe ops, bugfix/debug asks, NixOS service-hardening asks, and PRSI/self-improvement asks; the next gap is extending the same compact guidance to still more task classes without inflating default hint payloads`
+Next Validation: `scripts/ai/aq-hints "route local vs remote coding lane" --format json`, `scripts/ai/aq-hints "review this patch safely" --format json`, `scripts/ai/aq-hints "deploy this service safely with rollback" --format json`, `scripts/ai/aq-hints "debug this failing regression safely" --format json`, `scripts/ai/aq-hints "harden this nixos service declaratively" --format json`, `scripts/ai/aq-hints "run one pessimistic self-improvement cycle" --format json`, and live `/hints?q=continue+editor+rescue`
 Open Risks / Blockers:
-- route-selection, patch-review, research, deploy-safe, bugfix, and service-hardening guidance are now explicit in hints, but broader task-class quick references still need the same compact treatment
+- route-selection, patch-review, research, deploy-safe, bugfix, service-hardening, and PRSI/self-improvement guidance are now explicit in hints, but broader task-class quick references still need the same compact treatment
 - keep new operator coaching below the default hint noise floor so runtime signals still dominate when they are more urgent
 
 Tasks:

@@ -3661,6 +3661,7 @@ async def run_http_mode(port: int) -> None:
             remote_aliases = swb_state.get("remote_aliases", {})
             remote_configured = bool(swb_state.get("remote_configured", False))
             shared_skills = await _aidb_shared_skills_catalog(limit=10)
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             for runtime in runtimes:
                 runtime_id = str(runtime.get("runtime_id", "")).strip()
                 runtime = _apply_remote_runtime_status(runtime, runtime_id, remote_aliases, remote_configured)
@@ -3683,6 +3684,7 @@ async def run_http_mode(port: int) -> None:
                         "counts": lesson_registry.get("counts", {}),
                         "active_lessons": lesson_registry.get("active_lessons", []),
                     },
+                    "active_lesson_refs": lesson_refs,
                     "runtimes": runtimes,
                     "count": len(runtimes),
                 }
