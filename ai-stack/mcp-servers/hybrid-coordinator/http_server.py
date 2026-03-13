@@ -3666,6 +3666,7 @@ async def run_http_mode(port: int) -> None:
             task = str(data.get("task") or data.get("query") or "").strip()
             if not task:
                 return web.json_response({"error": "task required"}, status=400)
+            orchestration = _coerce_orchestration_context(data)
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -3890,13 +3891,15 @@ async def run_http_mode(port: int) -> None:
             )
             try:
                 record_delegation_feedback(
-                task=task,
-                requested_profile=requested_profile,
-                selected_profile=selected_profile,
-                selected_runtime_id=selected_runtime_id,
-                classification=initial_classification,
-                final_profile=effective_profile,
-                final_runtime_id=effective_runtime_id,
+                    task=task,
+                    requested_profile=requested_profile,
+                    selected_profile=selected_profile,
+                    selected_runtime_id=selected_runtime_id,
+                    classification=initial_classification,
+                    final_profile=effective_profile,
+                    final_runtime_id=effective_runtime_id,
+                    requesting_agent=orchestration["requesting_agent"],
+                    requester_role=orchestration["requester_role"],
                 )
             except OSError as exc:
                 logger.error("delegation_feedback_write_failed error=%s", exc)
@@ -3910,12 +3913,17 @@ async def run_http_mode(port: int) -> None:
                         classification=final_classification,
                         final_profile=effective_profile,
                         final_runtime_id=effective_runtime_id,
+                        requesting_agent=orchestration["requesting_agent"],
+                        requester_role=orchestration["requester_role"],
                     )
                 except OSError as exc:
                     logger.error("delegation_feedback_write_failed error=%s", exc)
             request["audit_metadata"] = {
                 "selected_runtime_id": effective_runtime_id,
                 "selected_profile": effective_profile,
+                "requesting_agent": orchestration["requesting_agent"],
+                "requester_role": orchestration["requester_role"],
+                "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
                 "delegated_http_status": int(response.status_code),
                 "fallback_applied": fallback_applied,
                 "delegation_failure_class": final_classification.get("primary_failure_class", ""),
@@ -3923,12 +3931,14 @@ async def run_http_mode(port: int) -> None:
                 "delegation_salvage_useful": bool((final_classification.get("salvage") or {}).get("has_useful_data")),
                 "delegation_recovery_class": recovered_artifact.get("recovery_class", "") if recovered_artifact.get("available") else "",
                 "delegation_finalization_applied": finalization_applied,
+                "delegation_handoff_requested": bool(final_classification.get("handoff_requested")),
             }
 
             return web.json_response(
                 {
                     "status": "ok" if response.status_code < 400 else "error",
                     "task": task,
+                    "orchestration": orchestration,
                     "selected_runtime": {
                         "runtime_id": effective_runtime_id,
                         "name": runtime.get("name", effective_runtime_id),

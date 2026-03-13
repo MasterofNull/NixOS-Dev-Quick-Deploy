@@ -510,8 +510,12 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
     """Summarize delegated remote profile usage from tool-audit metadata."""
     profile_counts: Dict[str, int] = {}
     runtime_counts: Dict[str, int] = {}
+    requester_role_counts: Dict[str, int] = {}
+    requesting_agent_counts: Dict[str, int] = {}
+    handoff_by_role: Dict[str, int] = {}
     fallback_applied = 0
     finalization_applied = 0
+    handoff_requested = 0
     success_count = 0
     total = 0
     for entry in entries:
@@ -528,10 +532,20 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
         runtime_id = str(metadata.get("selected_runtime_id", "") or "").strip()
         if runtime_id:
             runtime_counts[runtime_id] = runtime_counts.get(runtime_id, 0) + 1
+        requester_role = str(metadata.get("requester_role", "") or "orchestrator").strip().lower()
+        if requester_role:
+            requester_role_counts[requester_role] = requester_role_counts.get(requester_role, 0) + 1
+        requesting_agent = str(metadata.get("requesting_agent", "") or "").strip().lower()
+        if requesting_agent:
+            requesting_agent_counts[requesting_agent] = requesting_agent_counts.get(requesting_agent, 0) + 1
         if bool(metadata.get("fallback_applied")):
             fallback_applied += 1
         if bool(metadata.get("delegation_finalization_applied")):
             finalization_applied += 1
+        if bool(metadata.get("delegation_handoff_requested")):
+            handoff_requested += 1
+            if requester_role:
+                handoff_by_role[requester_role] = handoff_by_role.get(requester_role, 0) + 1
         if str(entry.get("outcome", "") or "").strip().lower() == "ok":
             success_count += 1
     if total <= 0:
@@ -544,8 +558,13 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
         "success_pct": round(100 * success_count / total, 1) if total else None,
         "fallback_applied": fallback_applied,
         "finalization_applied": finalization_applied,
+        "handoff_requested": handoff_requested,
+        "handoff_pct": round(100 * handoff_requested / total, 1) if total else None,
         "top_profiles": sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "top_runtime_ids": sorted(runtime_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_requester_roles": sorted(requester_role_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_requesting_agents": sorted(requesting_agent_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "handoff_by_requester_role": sorted(handoff_by_role.items(), key=lambda item: (-item[1], item[0]))[:5],
     }
 
 
@@ -3192,9 +3211,19 @@ def format_md(
         lines.append(f"- Success: **{_na(remote_profile_summary.get('success_pct'), '.1f', '%')}**")
         lines.append(f"- Fallback applied: **{remote_profile_summary.get('fallback_applied', 0)}**")
         lines.append(f"- Finalization applied: **{remote_profile_summary.get('finalization_applied', 0)}**")
+        lines.append(
+            f"- Coordinator handoff requested: **{remote_profile_summary.get('handoff_requested', 0)}**"
+            f" ({_na(remote_profile_summary.get('handoff_pct'), '.1f', '%')})"
+        )
         top_profiles = remote_profile_summary.get("top_profiles") or []
         if top_profiles:
             lines.append(f"- Top profiles: {', '.join(f'`{name}` ({count})' for name, count in top_profiles[:3])}")
+        top_roles = remote_profile_summary.get("top_requester_roles") or []
+        if top_roles:
+            lines.append(f"- Requester roles: {', '.join(f'`{name}` ({count})' for name, count in top_roles[:3])}")
+        handoff_roles = remote_profile_summary.get("handoff_by_requester_role") or []
+        if handoff_roles:
+            lines.append(f"- Handoff by requester role: {', '.join(f'`{name}` ({count})' for name, count in handoff_roles[:3])}")
     lines.append("")
 
     lines += [f"## 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')})", ""]
@@ -3731,9 +3760,19 @@ def format_text(
         lines.append(f"  Success: {_na(remote_profile_summary.get('success_pct'), '.1f', '%')}")
         lines.append(f"  Fallback applied: {remote_profile_summary.get('fallback_applied', 0)}")
         lines.append(f"  Finalization applied: {remote_profile_summary.get('finalization_applied', 0)}")
+        lines.append(
+            f"  Coordinator handoff requested: {remote_profile_summary.get('handoff_requested', 0)}"
+            f" ({_na(remote_profile_summary.get('handoff_pct'), '.1f', '%')})"
+        )
         top_profiles = remote_profile_summary.get("top_profiles") or []
         if top_profiles:
             lines.append(f"  Top profiles: {', '.join(f'{name}({count})' for name, count in top_profiles[:3])}")
+        top_roles = remote_profile_summary.get("top_requester_roles") or []
+        if top_roles:
+            lines.append(f"  Requester roles: {', '.join(f'{name}({count})' for name, count in top_roles[:3])}")
+        handoff_roles = remote_profile_summary.get("handoff_by_requester_role") or []
+        if handoff_roles:
+            lines.append(f"  Handoff by requester role: {', '.join(f'{name}({count})' for name, count in handoff_roles[:3])}")
     lines.append("")
 
     lines += [f"[ 8b. Retrieval Breadth ({retrieval_breadth.get('window', '1h')}) ]"]

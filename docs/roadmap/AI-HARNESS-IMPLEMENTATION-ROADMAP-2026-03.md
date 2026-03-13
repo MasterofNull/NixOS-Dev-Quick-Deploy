@@ -127,6 +127,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | source-level fetch policy and browser fallback | validated_live | curated workflows now support per-source fetch policy plus browser fallback after empty extracts or bot-gate detection; live `native-plants-us` validation showed USDA escalated to browser automatically while the already-good Wildflower path stayed on the plain HTTP lane |
 | 2026-03-13 | continue-local dense-context trimming fix | validated_live | fixed switchboard input estimation so dense no-whitespace prompts no longer evade `continue-local` trimming, added single-message truncation when dropping old turns is insufficient, and live validation confirmed the original 24k-character reproduction now returns `200` with `X-AI-Input-Trimmed=1` instead of `502 upstream_transport_error` |
 | 2026-03-13 | continue/editor oversized-input QA coverage | validated_local | added a new `aq-qa 0.5.5` check for `continue-local` dense oversized prompt trimming, increased `aq-report` timeout so the heavier Continue/editor phase-0 batch still completes, and revalidated `aq-report` plus the five-check Continue/editor health block |
+| 2026-03-13 | delegation caller identity and handoff telemetry | validated_live | delegated runtime responses now return normalized `orchestration` metadata, delegated failure telemetry records `requesting_agent`, `requester_role`, and `handoff_requested`, and `aq-report` now summarizes requester-role plus coordinator-handoff frequency for delegated remote traffic |
 
 ## High-Priority Tracks
 
@@ -528,13 +529,13 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated sub-agent contracts forbid nested fan-out, and further delegation is redirected into coordinator handoff instead of sub-agent self-spawn`
+Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses now surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, and aq-report summarizes coordinator-handoff frequency by requester role; the next gap is pushing the same richer caller identity through broader direct query/editor traffic beyond delegated remote calls`
 Next Validation:
-- live query/editor caller surfaces propagate richer agent identity into workflow and delegation paths
-- coordinator telemetry reports coordinator-handoff frequency by requester role
+- live delegated responses return normalized orchestration metadata for human and editor callers
+- aq-report remote-profile utilization surfaces requester-role and coordinator-handoff summaries
 Open Risks / Blockers:
-- top-level orchestrator identity is now explicit in workflow state and live `/workflow/run/start` responses, but query-time and editor-time caller surfaces still need to pass richer agent identity consistently
-- the policy forbids nested sub-agent fan-out, but broader telemetry around coordinator handoff frequency is still missing
+- top-level orchestrator identity is now explicit in workflow state and delegated responses, but broader direct `/query` and editor-originated traffic still needs the same richer caller metadata end-to-end
+- the policy forbids nested sub-agent fan-out and delegated handoff telemetry now exists, but wider patch-review and acceptance telemetry for more agent/task classes is still unfinished
 
 Tasks:
 1. tighten delegator/reviewer evidence contracts
