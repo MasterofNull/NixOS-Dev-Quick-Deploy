@@ -326,6 +326,11 @@ def _audit_internal_tool_execution(
         "http_status": 200 if outcome == "success" else 500,
         "transport": "http-autorun",
     }
+    parent_metadata = request.get("audit_metadata")
+    if isinstance(parent_metadata, dict):
+        for key in ("requesting_agent", "requester_role", "delegate_via_coordinator_only"):
+            if key in parent_metadata:
+                audit_metadata[key] = parent_metadata[key]
     if isinstance(metadata, dict):
         audit_metadata.update(metadata)
     _write_audit_entry(
@@ -1657,6 +1662,8 @@ async def run_http_mode(port: int) -> None:
             request_context = data.get("context")
             if not isinstance(request_context, dict):
                 request_context = {}
+            orchestration = _coerce_orchestration_context(data)
+            request_context["orchestration"] = orchestration
             include_debug_metadata = bool(data.get("include_debug_metadata") or data.get("debug"))
             prompt_coaching: Dict[str, Any] = {}
             request["audit_metadata"] = {
@@ -1668,6 +1675,9 @@ async def run_http_mode(port: int) -> None:
                 "tool_security_first_seen": 0,
                 "prompt_coaching_score": 0.0,
                 "prompt_coaching_missing_fields": 0,
+                "requesting_agent": orchestration["requesting_agent"],
+                "requester_role": orchestration["requester_role"],
+                "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
             }
             tooling_layer = {
                 "enabled": semantic_tooling_autorun,
@@ -1873,6 +1883,16 @@ async def run_http_mode(port: int) -> None:
                     metadata = {}
                     result["metadata"] = metadata
                 metadata["prompt_coaching"] = _compact_prompt_coaching_metadata(prompt_coaching)
+            metadata = result.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                result["metadata"] = metadata
+            metadata["orchestration"] = {
+                "requesting_agent": orchestration["requesting_agent"],
+                "requester_role": orchestration["requester_role"],
+                "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
+            }
+            result["orchestration"] = orchestration
             request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
