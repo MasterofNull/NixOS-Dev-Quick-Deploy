@@ -2193,7 +2193,10 @@ assert_targets_exist() {
   fi
 
   eval_err="$(mktemp)"
-  if ! nix_eval_raw_safe "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage.drvPath" >/dev/null 2>"${eval_err}"; then
+  if ! run_nix_eval_with_timeout \
+    nix eval --json \
+    "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage.type" \
+    >/dev/null 2>"${eval_err}"; then
     reason="$(tr '\n' ' ' < "${eval_err}" 2>/dev/null | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
     rm -f "${eval_err}" >/dev/null 2>&1 || true
     die "Home target '${hm_target}' exists but failed to evaluate. ${reason:-Check Home Manager module syntax/import errors.}"
@@ -2217,23 +2220,9 @@ assert_safe_switch_context() {
 
 home_build() {
   local hm_target="$1"
-  if command -v home-manager >/dev/null 2>&1; then
-    home-manager build --flake "${FLAKE_REF}#${hm_target}"
-    return
-  fi
-
-  if [[ "${REQUIRE_HOME_MANAGER_CLI}" == "true" ]]; then
-    die "home-manager CLI is required but not found in PATH. Install it or re-run without --require-home-manager-cli."
-  fi
-
-  if [[ "${PREFER_NIX_RUN_HOME_MANAGER}" == "true" ]] && command -v nix >/dev/null 2>&1; then
-    if nix run --accept-flake-config "${HOME_MANAGER_NIX_RUN_REF}" -- build --flake "${FLAKE_REF}#${hm_target}"; then
-      return
-    fi
-    log "nix run Home Manager build fallback failed (${HOME_MANAGER_NIX_RUN_REF}); using activationPackage build path."
-  fi
-
-  nix build "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage"
+  nix --extra-experimental-features 'nix-command flakes' eval --json \
+    "${FLAKE_REF}#homeConfigurations.\"${hm_target}\".activationPackage.type" \
+    >/dev/null
 }
 
 verify_home_manager_cli_post_switch() {

@@ -19,6 +19,9 @@ Primary references used for this roadmap:
 - BitNet repository: https://github.com/microsoft/BitNet
 - EvoSkill paper: https://arxiv.org/html/2603.02766v1
 - Building AI Coding Agents for the Terminal: https://arxiv.org/html/2603.05344v1
+- Agent Skills / agentskill.sh:
+  - install and `/learn`: https://agentskill.sh/install
+  - Codex usage guide: https://agentskill.sh/codex
 - OpenRouter docs:
   - quickstart: https://openrouter.ai/docs/quickstart
   - provider routing: https://openrouter.ai/docs/provider-routing
@@ -43,6 +46,7 @@ Applied architecture conclusions:
 5. Cross-agent lessons are visible in reports, but not yet promoted through a formal skill/lesson lifecycle.
 6. BitNet is not yet evaluated as a deployable local backend option.
 7. Several recent agent surfaces are only partially integrated into the local harness and must be reviewed against the shared runtime contract before they are treated as complete.
+8. Shared third-party skill ingestion is not normalized; there is no single approved path to expose `agentskill.sh` and other SKILL.md ecosystem content across AIDB, the harness, Continue, and delegated remote agents.
 
 ## Tracking Conventions
 
@@ -66,6 +70,8 @@ Tracking fields to update after each slice:
 | --- | --- | --- | --- |
 | QA phase 0 service health | blocked | `aq-qa 0` is `28 passed, 1 failed` because `ai-gap-auto-remediate.service` and `ai-prompt-eval.service` are in failed state | inspect and repair both services before treating the current system as fully green |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging fixed; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
+| Continue/local web research lane | planned | Continue and local-model surfaces do not yet expose a validated, polite web research/scraping path for bounded fetch -> extract -> summarize workflows | define bounded fetch policy, route through harness/coordinator, and add validation before treating web research as supported |
+| Shared skill ingestion and registry | planned | `agentskill.sh` and the wider SKILL.md ecosystem are not yet available through one harness-managed discovery, approval, and sync path | add an AIDB/harness skill registry with policy gates before broad third-party skill use |
 
 ## Execution Ledger
 
@@ -75,6 +81,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | route-search retrieval breadth batch | validated_live | bounded route-search collection selection and retrieval-breadth reporting are live |
 | 2026-03-13 | provider fallback health batch | validated_live | recovered provider fallbacks are reported separately from local backend failures |
 | 2026-03-13 | continuation memory and prewarm batches | validated_live | continuation queries use memory recall more explicitly and report recall misses |
+| 2026-03-13 | agentskill.sh planning slice | validated_local | added a shared skill-registry track so approved third-party SKILL.md content can be exposed consistently across local and remote agents |
 
 ## High-Priority Tracks
 
@@ -116,6 +123,10 @@ Tasks:
    - hybrid-coordinator
    - local MCP config
 5. Add validation so a broken declarative package never silently ships again.
+6. Add a shared third-party skill import surface for supported SKILL.md ecosystems:
+   - first target `agentskill.sh`
+   - discovery via harness/AIDB, not per-agent ad hoc cloning
+   - explicit approval state before install/sync
 
 Validation:
 - targeted `nix-build` or `nix eval` checks for each packaged CLI
@@ -155,6 +166,13 @@ Tasks:
 3. Audit current Continue config generation and MCP bridge assumptions for stale endpoint/model settings.
 4. Surface continue/editor failure reasons separately in `aq-report` and deploy summary.
 5. Add one bounded smoke script for prompt -> hints -> workflow plan -> query -> feedback via editor path.
+6. Add a Continue-visible web research task lane for local-model workflows that need fetch -> extract -> organize -> summarize behavior.
+7. Keep web research bounded and polite:
+   - obey robots and site terms where applicable
+   - enforce concurrency, rate, timeout, and retry-with-backoff limits
+   - prefer targeted fetches over broad crawling
+   - keep raw fetch/tooling separate from model summarization
+8. Add one validation target based on a real bounded public-data task such as native plant lookup for the user’s area, using a curated source list and explicit request limits rather than unconstrained site crawling.
 
 Validation:
 - `scripts/ai/aq-qa 0 --json`
@@ -162,10 +180,12 @@ Validation:
 - `scripts/testing/check-runtime-plan-catalog.sh`
 - `curl -sS http://127.0.0.1:8003/workflow/plan ...`
 - `journalctl -u ai-hybrid-coordinator.service --since '15 minutes ago' --no-pager`
+- planned: continue/local web research smoke with request-count, delay, and extraction assertions
 
 Acceptance:
 - Continue/editor failures appear as explicit, categorized runtime signals
 - one stable smoke path is green after deploy
+- polite web research is validated as a bounded capability rather than an open-ended scraper
 - if upstream/editor limits remain, diagnostics, smoke coverage, and harness handoff points still remain deploy-ready
 
 ### Track B — Hybrid-Coordinator Harness Completion
@@ -197,6 +217,10 @@ Tasks:
    - task run start
    - hint retrieval
    - validation evidence capture
+6. Add a shared skill-registry abstraction in AIDB/harness:
+   - searchable skill metadata in AIDB
+   - coordinator visibility into approved installed skills
+   - one sync/export path for agent skill directories
 
 Validation:
 - `scripts/testing/check-runtime-plan-catalog.sh`
@@ -246,9 +270,9 @@ Acceptance:
 
 ### Track D — OpenRouter Agent API and Remote Delegation Utilization
 
-Track Status: `planned`
+Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `remote profiles and fallback reporting exist; explicit agent-api/tool-calling lanes and compatibility validation are still pending`
+Current Slice: `remote profiles and fallback reporting exist; ai-coordinator runtime lanes and delegated execution surface are being added to make OpenRouter-backed delegation explicit`
 Next Validation:
 - targeted remote profile smokes
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
@@ -264,19 +288,29 @@ Tasks:
    - remote-coding
    - remote-reasoning
    - remote-tool-calling
-2. Add Responses API compatibility planning for tool-calling and multi-step workflows.
-3. Add provider-routing policy templates:
+2. Add an ai-coordinator control surface that:
+   - exposes available runtime lanes and readiness
+   - selects a remote lane deliberately instead of relying on ad hoc headers
+   - delegates bounded tasks through switchboard/OpenRouter with tool-calling payload support
+3. Add Responses API compatibility planning for tool-calling and multi-step workflows.
+4. Add provider-routing policy templates:
    - cheapest acceptable
    - lowest latency acceptable
    - tool-calling strict
    - coding high-throughput
-4. Evaluate Auto Exacto for tool-using remote calls routed through switchboard.
-5. Add report visibility for remote profile choice, fallback rate, and provider status mix.
-6. Add validation for remote tool-calling parameter compatibility and fallback behavior.
+5. Evaluate Auto Exacto for tool-using remote calls routed through switchboard.
+6. Add report visibility for remote profile choice, fallback rate, and provider status mix.
+7. Add validation for remote tool-calling parameter compatibility and fallback behavior.
+8. Prefer stable OpenAI-compatible chat/tool-calling transport first; keep Responses API support classified as beta/scaffold until compatibility is proven in the harness.
+9. Ensure remote delegation can consume the same approved skill catalog as local agents:
+   - remote agents see harness-approved skill metadata
+   - remote agents do not self-install unapproved third-party skills
 
 Validation:
 - `curl -sS ... /workflow/plan`
 - `curl -sS ... /query`
+- `curl -sS ... /control/ai-coordinator/status`
+- `curl -sS ... /control/ai-coordinator/delegate`
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
 - targeted switchboard smoke requests with profile headers
 
@@ -318,6 +352,9 @@ Tasks:
    - reject/noise
 4. Add explicit “promoted lesson -> hint/routing/reference” traceability in reports.
 5. Do not auto-promote raw chat content; require evidence and validation.
+6. Separate internally promoted lessons from imported third-party skills:
+   - imported skills require source metadata, approval state, and risk notes
+   - first external source to normalize: `agentskill.sh`
 
 Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
@@ -439,6 +476,12 @@ Validation:
 - skill-draft candidate flow
 - report traceability
 
+### Batch O — Shared Skill Registry and agentskill.sh
+- AIDB skill metadata schema
+- `agentskill.sh` importer and approval workflow
+- sync/export into local agent skill directories
+- remote-agent visibility through harness/coordinator
+
 ### Batch N — BitNet Feasibility
 - benchmark harness
 - optional Nix service role
@@ -468,11 +511,13 @@ Run next in this order:
 2. Batch K — Route-Search Breadth and Latency
 3. Batch L — OpenRouter Agent API Utilization
 4. Batch M — Lesson Promotion and EvoSkill Loop
-5. Batch N — BitNet Feasibility
+5. Batch O — Shared Skill Registry and agentskill.sh
+6. Batch N — BitNet Feasibility
 
 Why:
 - Continue/editor failures are directly user-facing.
 - Route-search latency is the current active live issue.
 - OpenRouter orchestration can only be used effectively once the local harness/runtime path is stable.
+- Shared third-party skill ingestion needs to be centralized before local and remote agents diverge in capability.
 - EvoSkill-style lesson promotion should extend the existing pipeline after those runtime paths are reliable.
 - BitNet should be integrated from a measured feasibility track, not as an assumption.
