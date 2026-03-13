@@ -516,6 +516,7 @@ check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/review/accep
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/\$\{session_id\}' 'Workflow review-contract smoke covers persisted workflow run retrieval'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class|remote-reasoning-escalation|deploy-rollback-safe-ops|deploy_safe_ops|artifact_review|coding-bugfix-safe|coding_bugfix|nixos-service-hardening|nixos_service_hardening|prsi-pessimistic-recursive-improvement|self_improvement|cycle_report' 'Workflow review-contract smoke covers classified multi-task review persistence'
 check_pattern "scripts/testing/smoke-query-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Query lesson smoke covers direct lesson ref surfacing'
+check_pattern "scripts/testing/smoke-query-task-classes.sh" 'prompt_coaching|metadata\.orchestration|active_lesson_refs' 'Query task-class smoke covers orchestration, coaching, and lesson refs'
 check_pattern "scripts/testing/smoke-workflow-plan-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Workflow plan lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-workflow-tooling-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Workflow tooling lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-hints-lesson-refs.sh" 'active_lesson_refs' 'Hints lesson smoke covers direct lesson ref surfacing'
@@ -593,7 +594,7 @@ check_pattern "nixos-quick-deploy.sh" 'run_postflight_convergence\(' 'Quick depl
 check_pattern "nixos-quick-deploy.sh" 'run_dashboard_runtime_postflight\(' 'Quick deploy centralizes dashboard and Prometheus post-flight handling'
 check_pattern "nixos-quick-deploy.sh" 'verify_repo_backed_ai_services_are_live_if_needed\(\)' 'Deploy entrypoint verifies repo-backed AI services after restart'
 check_pattern "nixos-quick-deploy.sh" '/workflow/plan' 'Deploy verification probes workflow plan capability activation'
-check_pattern "nixos-quick-deploy.sh" '/qa/check' 'Deploy verification probes hybrid QA endpoint activation'
+check_pattern "nixos-quick-deploy.sh" 'aq-qa" 0 --json|workflow plan, qa_check, learning export' 'Deploy verification probes repo-backed QA activation'
 check_pattern "nixos-quick-deploy.sh" '/learning/export' 'Deploy verification probes learning export activation'
 check_pattern "scripts/automation/post-deploy-converge.sh" 'aq-qa" 0 --json' 'Post-deploy convergence runs aq-qa phase 0'
 
