@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verify the flake-first roadmap implementation still matches required runtime and governance evidence.
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -518,6 +520,7 @@ check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/review/accep
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/\$\{session_id\}' 'Workflow review-contract smoke covers persisted workflow run retrieval'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class|remote-reasoning-escalation|deploy-rollback-safe-ops|deploy_safe_ops|artifact_review|coding-bugfix-safe|coding_bugfix|nixos-service-hardening|nixos_service_hardening|prsi-pessimistic-recursive-improvement|self_improvement|cycle_report' 'Workflow review-contract smoke covers classified multi-task review persistence'
 check_pattern "scripts/testing/smoke-query-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Query lesson smoke covers direct lesson ref surfacing'
+check_pattern "scripts/testing/smoke-delegate-lesson-refs.sh" 'active_lesson_refs|orchestration\.requester_role' 'Delegate lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-query-task-classes.sh" 'prompt_coaching|metadata\.orchestration|active_lesson_refs' 'Query task-class smoke covers orchestration, coaching, and lesson refs'
 check_pattern "scripts/testing/smoke-workflow-plan-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Workflow plan lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-workflow-tooling-lesson-refs.sh" 'active_lesson_refs|metadata\.active_lesson_refs' 'Workflow tooling lesson smoke covers direct lesson ref surfacing'
@@ -526,6 +529,7 @@ check_pattern "scripts/testing/smoke-workflow-start-lesson-refs.sh" 'active_less
 check_pattern "scripts/testing/smoke-workflow-run-lesson-refs.sh" 'active_lesson_refs' 'Workflow run lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-status-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator status lesson smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-lessons-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator lessons lesson smoke covers direct lesson ref surfacing'
+check_pattern "scripts/testing/smoke-lessons-review-refs.sh" 'active_lesson_refs|reviewed_lesson' 'AI coordinator lessons review smoke covers direct lesson ref surfacing'
 check_pattern "scripts/testing/smoke-skills-lesson-refs.sh" 'active_lesson_refs' 'AI coordinator skills lesson smoke covers direct lesson ref surfacing'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Tracking Conventions' 'Detailed implementation roadmap defines tracking conventions'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track Status: `|Current Slice: `|Next Validation:' 'Detailed implementation roadmap includes live tracking fields'
