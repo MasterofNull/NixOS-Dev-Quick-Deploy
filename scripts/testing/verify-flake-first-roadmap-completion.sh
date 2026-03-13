@@ -515,6 +515,8 @@ check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '\| .*
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Continue/local web research lane|Shared skill ingestion and registry|Flagship agent CLI coverage' 'Detailed implementation roadmap records current concrete blocker evidence'
 check_pattern "docs/operations/AI-AGENT-SURFACE-MATRIX.md" 'Continue CLI \(`cn`\)|Codex CLI \(`codex`\)|Qwen CLI \(`qwen`\)|Gemini CLI \(`gemini`\)|OpenRouter remote profiles' 'Agent surface matrix tracks flagship agent CLI and remote-provider surfaces'
 check_pattern "docs/operations/AI-AGENT-SURFACE-MATRIX.md" 'declarative package|external binary on PATH|Declarative Nix config \+ SOPS secret' 'Agent surface matrix distinguishes declarative, external, and remote-config delivery modes'
+check_pattern "scripts/testing/smoke-flagship-cli-surfaces.sh" 'commands=\(cn codex qwen gemini pi\)|--help' 'Flagship CLI smoke covers declared agent CLI surfaces'
+check_pattern "scripts/ai/aq-qa" '0\.6\.1.*flagship agent CLI help smokes' 'aq-qa includes flagship agent CLI smoke coverage'
 check_pattern "scripts/ai/aq-gaps" 'No operator-actionable gaps after synthetic/curated filtering' 'aq-gaps suppresses synthetic and curated gap noise'
 check_pattern "scripts/data/sync-knowledge-sources" 'SCRIPT_DIR/../\.\.' 'Knowledge source sync resolves repository root correctly'
 check_pattern "scripts/governance/tier0-validation-gate.sh" 'collect_changed_files\(\)' 'Tier 0 validation gate centralizes changed-file detection'
