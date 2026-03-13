@@ -1120,6 +1120,22 @@ class ContinuousLearningPipeline:
         except Exception as e:
             logger.error("stats_snapshot_failed", error=str(e))
 
+    @staticmethod
+    def _parse_embedding_batch_response(payload: Any, expected_count: int) -> List[List[float]]:
+        """Accept both legacy list responses and OpenAI-compatible /v1/embeddings payloads."""
+        if isinstance(payload, list):
+            embeddings = payload
+        elif isinstance(payload, dict):
+            data = payload.get("data")
+            if not isinstance(data, list):
+                raise ValueError("Embeddings response must contain a data list")
+            embeddings = [item.get("embedding", []) for item in data if isinstance(item, dict)]
+        else:
+            raise ValueError("Embeddings response must be a list or object")
+        if len(embeddings) != expected_count:
+            raise ValueError("Embeddings response length mismatch")
+        return embeddings
+
     async def _fetch_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Fetch embeddings from the embeddings service."""
         if not texts:
@@ -1127,16 +1143,12 @@ class ContinuousLearningPipeline:
 
         try:
             response = await self.embeddings_client.post(
-                f"{self.embedding_service_url}/embed",
-                json={"inputs": texts},
+                f"{self.embedding_service_url}/v1/embeddings",
+                json={"model": os.getenv("EMBEDDING_MODEL", "nomic-embed-text"), "input": texts},
                 timeout=30.0,
             )
             response.raise_for_status()
-            embeddings = response.json()
-            if not isinstance(embeddings, list):
-                raise ValueError("Embeddings response must be a list")
-            if len(embeddings) != len(texts):
-                raise ValueError("Embeddings response length mismatch")
+            embeddings = self._parse_embedding_batch_response(response.json(), len(texts))
             return embeddings
         except Exception as e:
             logger.warning("embeddings_fetch_failed", error=str(e), count=len(texts))
