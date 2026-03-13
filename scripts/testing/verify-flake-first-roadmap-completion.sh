@@ -132,6 +132,8 @@ check_pattern "nix/modules/services/switchboard.nix" 'sec\.enable && remoteEnabl
 check_pattern "nix/modules/services/switchboard.nix" 'SWB_REMOTE_DAILY_TOKEN_CAP' 'Switchboard injects remote daily token cap env'
 check_pattern "nix/modules/services/switchboard.nix" 'remote-free|remote-coding|remote-reasoning' 'Switchboard exposes remote profile lanes'
 check_pattern "nix/modules/services/switchboard.nix" '_remote_budget_status|remote_budget_exhausted' 'Switchboard enforces remote budget guardrails'
+check_pattern "nix/modules/services/switchboard.nix" 'char_estimate = int\(\(len\(text\) \+ 3\) / 4\)' 'Switchboard token estimation keeps a character-based floor for dense prompts'
+check_pattern "nix/modules/services/switchboard.nix" '_truncate_message_to_token_budget' 'Switchboard can truncate one oversized message instead of only dropping whole turns'
 check_pattern "nix/modules/services/mcp-servers.nix" 'knowledgeSyncPath|ai-sync-knowledge-sources' 'Knowledge source sync service has dedicated runtime wiring'
 check_pattern "nix/modules/services/mcp-servers.nix" 'PATH=\$\{knowledgeSyncPath\}' 'Knowledge source sync service gets an explicit Python-capable PATH'
 check_pattern "nix/modules/services/switchboard.nix" 'unitConfig = \{' 'Switchboard declares systemd unit-level settings explicitly'
@@ -557,6 +559,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_ACTIVE
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/model/status' 'Model status endpoint registered'
 check_pattern "nix/modules/services/monitoring.nix" 'model_reloads_total' 'Dashboard tracks model reloads'
 check_pattern "config/parity-scorecard.json" '"id": "model_management"' 'Parity scorecard tracks model management'
+check_pattern "scripts/testing/test-switchboard-continue-context-window.sh" 'X-AI-Profile: continue-local' 'Continue-local oversized-input regression smoke exists'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
 if (( fail_count > 0 )); then
