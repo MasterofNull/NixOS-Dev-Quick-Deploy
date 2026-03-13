@@ -91,6 +91,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | retrieval QA acceptance pass | validated_local | `aq-qa` now reuses `aq-report` JSON to assert recent retrieval posture, retrieval breadth metadata, and memory-recall share directly in Phase 1 instead of leaving retrieval acceptance purely report-visible |
 | 2026-03-13 | remote tool-call finalization corrective pass | validated_live | `remote-tool-calling` now forbids tool-call-only output in its contract and performs a bounded post-tool finalization pass; live delegation returned a final artifact with `finalization.applied=true` and no remaining failure classes |
 | 2026-03-13 | ai-gap-auto-remediate writable-state fix | validated_live | moved gap-remediation logging off the hardened service’s read-only `${HOME}` path and into the declarative optimizer state directory, then revalidated full quick-deploy with `aq-qa 0` back to `33 pass, 0 fail` |
+| 2026-03-13 | delegated lesson reference runtime pass | validated_live | active promoted lessons are now surfaced as compact `active_lesson_refs` on delegated coordinator responses, and a live `remote-free` smoke returned the current promoted lesson key on `/control/ai-coordinator/delegate` |
 | 2026-03-13 | delegated research bootstrap for next tracks | validated_live | exercised `/control/ai-coordinator/delegate` on `remote-free` for bounded BitNet/EvoSkill/coding-agent synthesis so next planning slices use the live remote lane instead of only local reasoning |
 | 2026-03-13 | continue/editor phase-0 observability pass | validated_live | added explicit `aq-qa 0` probes for `cn --help`, generated Continue config correctness, Continue extension presence, and a `continue-local` switchboard smoke so editor/runtime failures become first-class QA signals |
 | 2026-03-13 | delegated free-model lane tuning pass | validated_live | reviewed a bounded `remote-free` comparison task, verified current OpenRouter free model availability, removed the gitignored host-local alias shadow so tracked defaults win, and activated planner/review aliases to `arcee-ai/trinity-large-preview:free` and `nvidia/nemotron-3-super-120b-a12b:free` after live smokes showed StepFun returned reasoning-only output and several other candidates failed under current provider/privacy constraints |
@@ -397,16 +398,17 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `accepted lessons now feed back into the hint engine and deploy summary from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
+Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, and delegated response metadata from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
 - `python3 scripts/testing/test-agent-lesson-registry.py`
 - `python3 scripts/testing/test-hints-agent-lessons.py`
 - `curl -sS ... /control/ai-coordinator/lessons`
+- live `/control/ai-coordinator/delegate` smoke with `active_lesson_refs`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons now affect hints and deploy/operator summaries, but direct routing/reference materialization remains incomplete beyond those first consumers
+- accepted lessons now affect hints, deploy/operator summaries, and delegated response metadata, but direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
