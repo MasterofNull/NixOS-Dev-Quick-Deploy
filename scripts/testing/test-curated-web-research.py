@@ -54,12 +54,15 @@ async def main() -> int:
                                 {
                                     "name": "example-home",
                                     "url": "https://example.com/home",
+                                    "fetch_mode": "http",
                                     "selectors": ["main"],
                                     "purpose": "Static source",
                                 },
                                 {
                                     "name": "example-search",
                                     "url_template": "https://example.com/topics/{topic}",
+                                    "fetch_mode": "http",
+                                    "fallback_fetch_mode": "browser",
                                     "selectors": ["main", "article"],
                                     "purpose": "Templated source",
                                 }
@@ -101,6 +104,15 @@ async def main() -> int:
                 )
             return httpx.Response(404, text="not found", headers={"content-type": "text/plain"})
 
+        async def browser_runner(**kwargs):
+            if kwargs["url"] == "https://example.com/topics/challenge":
+                return (
+                    0,
+                    "<html><head><title>Recovered Challenge</title></head><body><article>browser fallback data</article></body></html>",
+                    "",
+                )
+            return (1, "", "failed")
+
         result = await run_curated_research_workflow(
             workflow_slug="generic-example",
             inputs={"topic": "native-plants"},
@@ -111,7 +123,7 @@ async def main() -> int:
         assert_true(result["workflow"]["slug"] == "generic-example", "workflow slug mismatch")
         assert_true(len(result["selected_sources"]) == 2, "source limit mismatch")
         assert_true(result["result_count"] == 2, "expected two fetched results")
-        assert_true(result["fetch"]["metrics"]["robots_requests"] == 1, "expected one robots request")
+        assert_true(result["fetch"]["metrics"]["robots_requests"] == 2, "expected one robots request per source call")
         assert_true(
             any(item["requested_url"] == "https://example.com/topics/native-plants" for item in result["fetch"]["results"]),
             "templated source url not expanded",
@@ -127,12 +139,14 @@ async def main() -> int:
             inputs={"topic": "challenge"},
             transport=httpx.MockTransport(handler),
             sleep_fn=lambda _seconds: asyncio.sleep(0),
+            browser_runner=browser_runner,
         )
         challenge_entry = next(
             item for item in challenge_result["results"] if item["source_name"] == "example-search"
         )
-        assert_true(challenge_entry["status"] == "needs_fallback", "bot gate should require fallback")
-        assert_true(challenge_entry["issue_class"] == "bot_gate_detected", "bot gate classification mismatch")
+        assert_true(challenge_entry["fallback_used"] is True, "browser fallback should be used")
+        assert_true(challenge_entry["status"] == "ok", "browser fallback should recover the source")
+        assert_true(challenge_entry["result"]["title"] == "Recovered Challenge", "browser fallback result mismatch")
 
         try:
             await run_curated_research_workflow(

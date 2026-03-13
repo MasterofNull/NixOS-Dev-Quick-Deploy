@@ -20,6 +20,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 
+from browser_research import fetch_browser_research
 from web_research import fetch_web_research, load_web_research_policy
 
 
@@ -169,6 +170,8 @@ def _compile_sources(workflow: CuratedResearchWorkflow, inputs: Dict[str, str]) 
                 "url": url,
                 "selectors": [str(selector).strip() for selector in selectors if str(selector or "").strip()],
                 "purpose": str(item.get("purpose") or "").strip(),
+                "fetch_mode": str(item.get("fetch_mode") or "http").strip().lower() or "http",
+                "fallback_fetch_mode": str(item.get("fallback_fetch_mode") or "").strip().lower(),
             }
         )
     return compiled
@@ -219,6 +222,7 @@ async def run_curated_research_workflow(
     max_text_chars: Optional[int] = None,
     transport: Optional[httpx.AsyncBaseTransport] = None,
     sleep_fn: Optional[Callable[[float], Awaitable[None]]] = None,
+    browser_runner: Optional[Callable[..., Awaitable[tuple[int, str, str]]]] = None,
 ) -> Dict[str, Any]:
     workflow = get_curated_research_workflow(workflow_slug)
     normalized_inputs = _normalize_input_map(inputs)
@@ -234,41 +238,119 @@ async def run_curated_research_workflow(
     policy = load_web_research_policy()
     source_limit = min(workflow.max_urls, policy.max_urls, len(compiled_sources))
     selected_sources = compiled_sources[:source_limit]
-    selector_pool: List[str] = []
-    for source in selected_sources:
-        for selector in source.get("selectors", []):
-            if selector not in selector_pool:
-                selector_pool.append(selector)
     effective_max_text_chars = min(max_text_chars or workflow.default_max_text_chars, policy.max_text_chars)
-    fetch_result = await fetch_web_research(
-        urls=[source["url"] for source in selected_sources],
-        selectors=selector_pool,
-        max_text_chars=effective_max_text_chars,
-        transport=transport,
-        sleep_fn=sleep_fn,
-    )
-
-    by_url = {
-        str(item.get("requested_url") or ""): item
-        for item in fetch_result.get("results", [])
-        if isinstance(item, dict)
-    }
-    skipped_by_url = {
-        str(item.get("url") or ""): str(item.get("reason") or "")
-        for item in fetch_result.get("skipped", [])
-        if isinstance(item, dict)
+    aggregate_fetch = {
+        "status": "ok",
+        "request": {"max_text_chars": effective_max_text_chars},
+        "metrics": {
+            "submitted_urls": 0,
+            "accepted_urls": 0,
+            "page_requests": 0,
+            "browser_requests": 0,
+            "robots_requests": 0,
+            "delays_applied": 0,
+            "delay_seconds_total": 0.0,
+        },
+        "results": [],
+        "skipped": [],
     }
     organized_results: List[Dict[str, Any]] = []
     for source in selected_sources:
-        page = by_url.get(source["url"])
-        skipped_reason = skipped_by_url.get(source["url"], "")
+        fetch_mode = source.get("fetch_mode") or "http"
+        per_source_result: Dict[str, Any]
+        if fetch_mode == "browser":
+            per_source_result = await fetch_browser_research(
+                urls=[source["url"]],
+                selectors=source.get("selectors", []),
+                max_text_chars=effective_max_text_chars,
+                transport=transport,
+                sleep_fn=sleep_fn,
+                browser_runner=browser_runner,
+            )
+        else:
+            per_source_result = await fetch_web_research(
+                urls=[source["url"]],
+                selectors=source.get("selectors", []),
+                max_text_chars=effective_max_text_chars,
+                transport=transport,
+                sleep_fn=sleep_fn,
+            )
+
+        for key, value in (per_source_result.get("metrics") or {}).items():
+            if isinstance(value, (int, float)):
+                aggregate_fetch["metrics"][key] = aggregate_fetch["metrics"].get(key, 0) + value
+        aggregate_fetch["metrics"]["submitted_urls"] += 0
+        aggregate_fetch["results"].extend(per_source_result.get("results", []) or [])
+        aggregate_fetch["skipped"].extend(per_source_result.get("skipped", []) or [])
+
+        page = next(
+            (
+                item
+                for item in (per_source_result.get("results") or [])
+                if isinstance(item, dict) and str(item.get("requested_url") or "") == source["url"]
+            ),
+            None,
+        )
+        skipped_reason = next(
+            (
+                str(item.get("reason") or "")
+                for item in (per_source_result.get("skipped") or [])
+                if isinstance(item, dict) and str(item.get("url") or "") == source["url"]
+            ),
+            "",
+        )
         classification = _classify_result(page, skipped_reason)
+        fallback_used = False
+        fallback_mode = source.get("fallback_fetch_mode") or ""
+        if (
+            fallback_mode == "browser"
+            and classification["status"] in {"needs_review", "needs_fallback"}
+            and classification["issue_class"] in {"empty_extract", "transport_blocked", "missing_result", "bot_gate_detected"}
+        ):
+            browser_result = await fetch_browser_research(
+                urls=[source["url"]],
+                selectors=source.get("selectors", []),
+                max_text_chars=effective_max_text_chars,
+                transport=transport,
+                sleep_fn=sleep_fn,
+                browser_runner=browser_runner,
+            )
+            for key, value in (browser_result.get("metrics") or {}).items():
+                if isinstance(value, (int, float)):
+                    aggregate_fetch["metrics"][key] = aggregate_fetch["metrics"].get(key, 0) + value
+            aggregate_fetch["results"].extend(browser_result.get("results", []) or [])
+            aggregate_fetch["skipped"].extend(browser_result.get("skipped", []) or [])
+            browser_page = next(
+                (
+                    item
+                    for item in (browser_result.get("results") or [])
+                    if isinstance(item, dict) and str(item.get("requested_url") or "") == source["url"]
+                ),
+                None,
+            )
+            browser_skipped_reason = next(
+                (
+                    str(item.get("reason") or "")
+                    for item in (browser_result.get("skipped") or [])
+                    if isinstance(item, dict) and str(item.get("url") or "") == source["url"]
+                ),
+                "",
+            )
+            browser_classification = _classify_result(browser_page, browser_skipped_reason)
+            if browser_page is not None or browser_skipped_reason:
+                page = browser_page
+                skipped_reason = browser_skipped_reason
+                classification = browser_classification
+                fallback_used = True
         organized_results.append(
             {
                 "source_name": source["name"],
                 "purpose": source["purpose"],
                 "requested_url": source["url"],
                 "selectors": source["selectors"],
+                "fetch_mode": fetch_mode,
+                "fallback_fetch_mode": fallback_mode,
+                "fallback_used": fallback_used,
                 "result": page,
                 "status": classification["status"],
                 "issue_class": classification["issue_class"],
@@ -286,7 +368,7 @@ async def run_curated_research_workflow(
             "required_inputs": required,
         },
         "selected_sources": selected_sources,
-        "result_count": len(fetch_result.get("results", []) or []),
+        "result_count": len(aggregate_fetch.get("results", []) or []),
         "results": organized_results,
-        "fetch": fetch_result,
+        "fetch": aggregate_fetch,
     }

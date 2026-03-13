@@ -22,6 +22,8 @@
         {
           "name": "usda-plants-home",
           "url": "https://plants.usda.gov/home",
+          "fetch_mode": "http",
+          "fallback_fetch_mode": "browser",
           "selectors": [
             "main",
             "article",
@@ -32,6 +34,7 @@
         {
           "name": "lady-bird-johnson-plants",
           "url": "https://www.wildflower.org/plants/",
+          "fetch_mode": "http",
           "selectors": [
             "main",
             "article",
@@ -63,6 +66,7 @@
         {
           "name": "calflora-home",
           "url": "https://www.calflora.org/",
+          "fetch_mode": "http",
           "selectors": [
             "main",
             "article",
@@ -74,6 +78,8 @@
         {
           "name": "calflora-what-grows-here",
           "url": "https://www.calflora.org/entry/wgh.html#srch=t&taxon=Eschscholzia+californica",
+          "fetch_mode": "http",
+          "fallback_fetch_mode": "browser",
           "selectors": [
             "main",
             "article",
