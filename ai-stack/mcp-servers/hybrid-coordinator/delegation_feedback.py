@@ -79,6 +79,41 @@ def extract_delegated_text(body: Any) -> str:
     return str(body.get("message") or "").strip()
 
 
+def extract_tool_call_summary(body: Any) -> List[Dict[str, str]]:
+    if not isinstance(body, dict):
+        return []
+    choices = body.get("choices")
+    if not isinstance(choices, list):
+        return []
+    tool_calls: List[Dict[str, str]] = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        calls = message.get("tool_calls")
+        if not isinstance(calls, list):
+            continue
+        for call in calls:
+            if not isinstance(call, dict):
+                continue
+            function = call.get("function")
+            if not isinstance(function, dict):
+                continue
+            name = str(function.get("name") or "").strip()
+            arguments = str(function.get("arguments") or "").strip()
+            if not name:
+                continue
+            tool_calls.append(
+                {
+                    "name": name,
+                    "arguments": arguments[:400],
+                }
+            )
+    return tool_calls[:5]
+
+
 def extract_repo_path_summary(text: str) -> Dict[str, Any]:
     observed: List[str] = []
     existing: List[str] = []
@@ -149,6 +184,7 @@ def classify_delegated_response(
 ) -> Dict[str, Any]:
     text = extract_delegated_text(body)
     text_lower = text.lower()
+    tool_calls = extract_tool_call_summary(body)
     path_summary = extract_repo_path_summary(text)
     commands = extract_command_snippets(text)
     contract = delegation_prompt_contract_signals(task, messages)
@@ -165,7 +201,9 @@ def classify_delegated_response(
 
     if any(token in text_lower for token in _REFUSAL_TOKENS):
         failure_classes.append("policy_refusal")
-    if status_code < 400 and not text:
+    if status_code < 400 and not text and tool_calls:
+        failure_classes.append("tool_call_without_final_text")
+    elif status_code < 400 and not text:
         failure_classes.append("empty_content")
     if contract["expects_json"] and text:
         try:
@@ -200,6 +238,8 @@ def classify_delegated_response(
         improvement_actions.append("bind delegated prompts to repo-grounded existing paths and reject invented file references")
     if "empty_content" in ordered_failure_classes:
         improvement_actions.append("require non-empty deliverable fields and treat blank completions as prompt failure")
+    if "tool_call_without_final_text" in ordered_failure_classes:
+        improvement_actions.append("either require a final post-tool deliverable or explicitly accept tool-call-only completions for this lane")
     if "low_signal_generic" in ordered_failure_classes:
         improvement_actions.append("ask for terse evidence-first output with concrete files, commands, or validation")
     if "policy_refusal" in ordered_failure_classes:
@@ -212,7 +252,8 @@ def classify_delegated_response(
         "existing_paths": path_summary["existing"],
         "missing_paths": path_summary["missing"],
         "commands": commands,
-        "has_useful_data": bool(text[:120] or path_summary["existing"] or commands),
+        "tool_calls": tool_calls,
+        "has_useful_data": bool(text[:120] or path_summary["existing"] or commands or tool_calls),
     }
     return {
         "is_failure": bool(ordered_failure_classes),
