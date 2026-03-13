@@ -294,6 +294,8 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'runtime
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'runtime_agent_lesson_' 'Hints engine surfaces promoted cross-agent lesson guidance from the live report'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'runtime_retrieval_breadth_optimize' 'Hints engine surfaces retrieval-breadth optimization guidance from live report'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'runtime_provider_fallback_pressure' 'Hints engine surfaces provider fallback pressure guidance from live report'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_route_selection' 'Hints engine surfaces compact route-selection guidance for local vs remote lanes'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_continue_rescue' 'Hints engine surfaces compact Continue/editor troubleshooting guidance'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_div_repeat_cap_pct = self._parse_float_env\("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 45.0' 'Hints engine tightens hint diversity repeat cap to 45%'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata = .*debug' 'Hints HTTP endpoint exposes explicit debug metadata opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'

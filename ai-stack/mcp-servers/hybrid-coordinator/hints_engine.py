@@ -1556,6 +1556,69 @@ class HintsEngine:
                 )
             )
 
+        query_lower = str(query or "").lower()
+        route_focus = any(
+            token in query_lower
+            for token in (
+                "route",
+                "routing",
+                "local",
+                "remote",
+                "openrouter",
+                "coding",
+                "tool-calling",
+                "tool calling",
+                "continue",
+                "editor",
+            )
+        )
+        if route_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_route_selection",
+                    type="prompt_coaching",
+                    title="Choose the narrowest lane that matches the task shape",
+                    score=0.62,
+                    snippet=(
+                        "Use local for bounded repo/runtime checks, remote-free for cheap bounded synthesis, "
+                        "remote-coding for patch/test scaffolds, remote-tool-calling only when strict tool args are required, "
+                        "and Continue/editor lanes for local interactive rescue."
+                    )[:220],
+                    reason="Compact operator coaching for local vs remote vs coding/tool-calling route selection",
+                    tags=["prompting", "coaching", "routing", "operator-guidance"],
+                    agent_hints={
+                        "codex": "Prefer the cheapest lane that can still produce reviewable evidence.",
+                        "qwen": "Return concrete patches/tests; do not take architecture-only lanes for implementation slices.",
+                        "continue": "Use Continue/editor rescue only when the interactive editor surface is the problem to diagnose.",
+                    },
+                )
+            )
+
+        continue_focus = any(
+            token in query_lower
+            for token in ("continue", "editor", "codium", "extension", "mcp", "config", "cn ")
+        )
+        if continue_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_continue_rescue",
+                    type="prompt_coaching",
+                    title="Keep Continue/editor troubleshooting compact and evidence-first",
+                    score=0.70,
+                    snippet=(
+                        "Check `cn --help`, generated Continue config, VSCodium extension presence, and `continue-local` lane health "
+                        "before broader edits. Include the failing surface, expected behavior, and one concrete validation."
+                    )[:220],
+                    reason="Compact troubleshooting reference for Continue/editor recovery tasks",
+                    tags=["prompting", "coaching", "continue", "editor", "troubleshooting"],
+                    agent_hints={
+                        "human": "State whether the failure is CLI, generated config, extension loading, or lane routing.",
+                        "codex": "Use the continue/editor rescue blueprint and validate each surface separately before changing config.",
+                        "continue": "Collect one failing symptom and one validation target instead of broad environment narration.",
+                    },
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:
