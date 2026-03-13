@@ -223,4 +223,70 @@ jq -e '.reviewer_gate.last_review.task_class == "remote_reasoning"' "${TMP_DIR}/
 jq -e '.reviewer_gate.last_review.reviewed_agent == "claude"' "${TMP_DIR}/reasoning-run.json" >/dev/null
 jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-reasoning"' "${TMP_DIR}/reasoning-run.json" >/dev/null
 
+cat > "${TMP_DIR}/deploy-start.json.payload" <<'EOF'
+{
+  "query": "Validate deploy-safe ops review persistence",
+  "blueprint_id": "deploy-rollback-safe-ops",
+  "intent_contract": {
+    "user_intent": "Validate deploy-safe ops review persistence",
+    "definition_of_done": [
+      "artifact review classification persists",
+      "reviewed profile is recorded"
+    ],
+    "depth_expectation": "standard",
+    "spirit_constraints": [
+      "bounded smoke only"
+    ],
+    "no_early_exit_without": [
+      "live session retrieval"
+    ]
+  }
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data @"${TMP_DIR}/deploy-start.json.payload" > "${TMP_DIR}/deploy-start.json"
+deploy_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/deploy-start.json")"
+[[ -n "${deploy_session_id}" ]] || {
+  echo "ERROR: deploy safe ops workflow/run/start did not return session_id" >&2
+  exit 1
+}
+jq -e '.blueprint_id == "deploy-rollback-safe-ops"' "${TMP_DIR}/deploy-start.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "pending_review"' "${TMP_DIR}/deploy-start.json" >/dev/null
+
+cat > "${TMP_DIR}/deploy-review.json.payload" <<EOF
+{
+  "session_id": "${deploy_session_id}",
+  "response": "Artifact review confirms deploy safe ops runbook preserves live verification, rollback commands, and bounded service activation.",
+  "criteria": [
+    "live verification",
+    "rollback commands"
+  ],
+  "expected_keywords": [
+    "artifact review",
+    "deploy safe ops"
+  ],
+  "min_criteria_ratio": 1.0,
+  "min_keyword_ratio": 1.0,
+  "reviewer": "codex",
+  "review_type": "artifact_review",
+  "artifact_kind": "runbook",
+  "task_class": "deploy_safe_ops",
+  "reviewed_agent": "gemini",
+  "reviewed_profile": "remote-free"
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/review/acceptance" \
+  --data @"${TMP_DIR}/deploy-review.json.payload" > "${TMP_DIR}/deploy-review.json"
+jq -e '.passed == true' "${TMP_DIR}/deploy-review.json" >/dev/null
+jq -e --arg sid "${deploy_session_id}" '.session_id == $sid' "${TMP_DIR}/deploy-review.json" >/dev/null
+
+curl -fsS "${hdr[@]}" "${HYBRID_URL}/workflow/run/${deploy_session_id}" > "${TMP_DIR}/deploy-run.json"
+jq -e '.blueprint_title == "Deploy / Rollback Safe Ops"' "${TMP_DIR}/deploy-run.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "accepted"' "${TMP_DIR}/deploy-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.review_type == "artifact_review"' "${TMP_DIR}/deploy-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.artifact_kind == "runbook"' "${TMP_DIR}/deploy-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.task_class == "deploy_safe_ops"' "${TMP_DIR}/deploy-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_agent == "gemini"' "${TMP_DIR}/deploy-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-free"' "${TMP_DIR}/deploy-run.json" >/dev/null
+
 printf 'PASS: workflow review contract smoke\n'
