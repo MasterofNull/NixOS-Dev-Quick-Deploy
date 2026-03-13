@@ -1530,7 +1530,7 @@ async def run_http_mode(port: int) -> None:
             logger.debug("handle_status llama.cpp probe failed: %s", exc)
 
         threshold = await routing_config.get_threshold()
-        return web.json_response({
+        payload = {
             "service": "hybrid-coordinator",
             "local_llm": {
                 "url": Config.LLAMA_CPP_URL,
@@ -1545,7 +1545,13 @@ async def run_http_mode(port: int) -> None:
                 "threshold": threshold,
                 "local_supports_json": os.getenv("LOCAL_MODEL_SUPPORTS_JSON", "false").lower() == "true",
             },
-        })
+        }
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_health(request):
         """Health check endpoint with circuit breakers."""
@@ -1662,7 +1668,7 @@ async def run_http_mode(port: int) -> None:
         )
 
     async def handle_stats(request):
-        return web.json_response({
+        payload = {
             "status": "ok",
             "service": "hybrid-coordinator",
             "stats": _snapshot_stats(),
@@ -1670,7 +1676,13 @@ async def run_http_mode(port: int) -> None:
             "harness_stats": _HARNESS_STATS,
             "capability_discovery": _HYBRID_STATS.get("capability_discovery", {}),
             "circuit_breakers": _CIRCUIT_BREAKERS.get_all_stats() if _CIRCUIT_BREAKERS else {},
-        })
+        }
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
 
     async def handle_augment_query(request):
         try:
@@ -2863,7 +2875,13 @@ async def run_http_mode(port: int) -> None:
                     headers=_ralph_request_headers(),
                     json=payload,
                 )
-            return web.json_response(response.json(), status=response.status_code)
+            response_payload = response.json()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(response_payload, dict):
+                response_payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(response_payload, status=response.status_code)
         except httpx.HTTPError as exc:
             return web.json_response(_error_payload("ralph_unavailable", exc), status=502)
         except Exception as exc:
@@ -2885,7 +2903,13 @@ async def run_http_mode(port: int) -> None:
                     f"{Config.RALPH_WIGGUM_URL.rstrip('/')}/tasks/{task_id}{upstream_path}",
                     headers=_ralph_request_headers(),
                 )
-            return web.json_response(response.json(), status=response.status_code)
+            response_payload = response.json()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs and isinstance(response_payload, dict):
+                response_payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(response_payload, status=response.status_code)
         except httpx.HTTPError as exc:
             return web.json_response(_error_payload("ralph_unavailable", exc), status=502)
         except Exception as exc:
@@ -4248,7 +4272,13 @@ async def run_http_mode(port: int) -> None:
                 record["deployments"] = existing.get("deployments", [])
                 registry["runtimes"][runtime_id] = record
                 await _save_runtime_registry(registry)
-            return web.json_response(record)
+            payload = dict(record)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4258,7 +4288,13 @@ async def run_http_mode(port: int) -> None:
                 registry = await _load_runtime_registry()
             items = list(registry.get("runtimes", {}).values())
             items.sort(key=lambda x: int(x.get("updated_at") or 0), reverse=True)
-            return web.json_response({"runtimes": items, "count": len(items)})
+            payload = {"runtimes": items, "count": len(items)}
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4270,7 +4306,13 @@ async def run_http_mode(port: int) -> None:
                 runtime = registry.get("runtimes", {}).get(runtime_id)
             if not runtime:
                 return web.json_response({"error": "runtime not found"}, status=404)
-            return web.json_response(runtime)
+            payload = dict(runtime)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4291,7 +4333,13 @@ async def run_http_mode(port: int) -> None:
                     runtime.setdefault("status_notes", []).append({"ts": int(time.time()), "text": note})
                 registry["runtimes"][runtime_id] = runtime
                 await _save_runtime_registry(registry)
-            return web.json_response(runtime)
+            payload = dict(runtime)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4318,7 +4366,13 @@ async def run_http_mode(port: int) -> None:
                 runtime["updated_at"] = int(time.time())
                 registry["runtimes"][runtime_id] = runtime
                 await _save_runtime_registry(registry)
-            return web.json_response({"runtime_id": runtime_id, "deployment": deployment})
+            payload = {"runtime_id": runtime_id, "deployment": deployment}
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4346,7 +4400,13 @@ async def run_http_mode(port: int) -> None:
                 runtime["updated_at"] = int(time.time())
                 registry["runtimes"][runtime_id] = runtime
                 await _save_runtime_registry(registry)
-            return web.json_response({"runtime_id": runtime_id, "to_deployment_id": to_deployment_id, "status": "recorded"})
+            payload = {"runtime_id": runtime_id, "to_deployment_id": to_deployment_id, "status": "recorded"}
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4355,13 +4415,17 @@ async def run_http_mode(port: int) -> None:
         try:
             path = _runtime_scheduler_policy_path()
             policy = _load_runtime_scheduler_policy()
-            return web.json_response(
-                {
-                    "policy": policy,
-                    "source": str(path),
-                    "exists": path.exists(),
-                }
-            )
+            payload = {
+                "policy": policy,
+                "source": str(path),
+                "exists": path.exists(),
+            }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -4465,20 +4529,24 @@ async def run_http_mode(port: int) -> None:
                     registry["runtimes"][selected["runtime_id"]] = selected_runtime
                     await _save_runtime_registry(registry)
 
-            return web.json_response(
-                {
-                    "objective": objective,
-                    "strategy": strategy,
-                    "selected": selected,
-                    "candidate_count": len(candidates),
-                    "candidates": top_candidates,
-                    "policy": {
-                        "allowed_statuses": sorted(allowed_statuses),
-                        "max_candidates": max_candidates,
-                        "require_all_tags": require_all_tags,
-                    },
-                }
-            )
+            payload = {
+                "objective": objective,
+                "strategy": strategy,
+                "selected": selected,
+                "candidate_count": len(candidates),
+                "candidates": top_candidates,
+                "policy": {
+                    "allowed_statuses": sorted(allowed_statuses),
+                    "max_candidates": max_candidates,
+                    "require_all_tags": require_all_tags,
+                },
+            }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
