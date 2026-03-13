@@ -375,6 +375,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py" 'tool-
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py" 'build_tool_call_finalization_messages' 'ai-coordinator exposes a tool-call finalization prompt builder'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'post_tool_finalization' 'Delegate endpoint supports a bounded post-tool finalization pass'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '"delegation_finalization_applied"' 'Delegate endpoint records finalization metadata in audit state'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '"active_lesson_refs"' 'Delegate endpoint surfaces active lesson references on delegated responses'
 check_pattern "scripts/ai/aq-report" '"provider_fallback_recovery": provider_fallbacks' 'aq-report JSON output includes recovered provider fallback state'
 check_pattern "scripts/ai/aq-report" 'Provider Fallback Recovery' 'aq-report surfaces recovered provider fallback state in human-readable outputs'
 check_pattern "scripts/ai/aq-report" 'Treat this as provider-budget or remote-routing pressure, not a local backend outage' 'aq-report recommendations distinguish recovered provider fallback pressure from local backend outages'
