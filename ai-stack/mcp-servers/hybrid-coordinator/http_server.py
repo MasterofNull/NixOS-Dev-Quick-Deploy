@@ -39,6 +39,7 @@ from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 from ai_coordinator import (
     build_messages as _ai_coordinator_build_messages,
+    build_reasoning_finalization_messages as _ai_coordinator_build_reasoning_finalization_messages,
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
     infer_profile as _ai_coordinator_infer_profile,
@@ -3818,6 +3819,54 @@ async def run_http_mode(port: int) -> None:
                         final_classification = finalization_classification
                         finalization_applied = True
                         finalization_status_code = int(finalization_response.status_code)
+            elif (
+                "empty_content" in (final_classification.get("failure_classes") or [])
+                and effective_profile == "remote-reasoning"
+                and response.status_code < 400
+            ):
+                salvage = final_classification.get("salvage") if isinstance(final_classification.get("salvage"), dict) else {}
+                reasoning_excerpt = str(salvage.get("reasoning_excerpt") or "").strip()
+                if reasoning_excerpt:
+                    finalization_messages = _ai_coordinator_build_reasoning_finalization_messages(
+                        task,
+                        reasoning_excerpt,
+                        profile=effective_profile,
+                    )
+                    finalization_payload: Dict[str, Any] = {
+                        "messages": finalization_messages,
+                        "stream": False,
+                        "max_tokens": min(int(data.get("max_tokens") or 260) or 260, 260),
+                        "temperature": 0,
+                    }
+                    if "model" in payload:
+                        finalization_payload["model"] = payload["model"]
+                    async with httpx.AsyncClient(timeout=timeout_s) as client:
+                        finalization_response = await client.post(
+                            f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
+                            headers={
+                                "Content-Type": "application/json",
+                                "X-AI-Profile": effective_profile,
+                                "X-AI-Route": "remote",
+                            },
+                            json=finalization_payload,
+                        )
+                    finalization_body = finalization_response.json()
+                    finalization_classification = classify_delegated_response(
+                        task=task,
+                        messages=finalization_messages,
+                        status_code=int(finalization_response.status_code),
+                        body=finalization_body,
+                        profile=effective_profile,
+                        runtime_id=effective_runtime_id,
+                        stage="post_reasoning_finalization",
+                        fallback_applied=fallback_applied,
+                    )
+                    if finalization_response.status_code < 400 and not finalization_classification.get("is_failure"):
+                        response = finalization_response
+                        body = finalization_body
+                        final_classification = finalization_classification
+                        finalization_applied = True
+                        finalization_status_code = int(finalization_response.status_code)
             recovered_artifact = (
                 {"available": False}
                 if not final_classification.get("is_failure")
@@ -3883,7 +3932,13 @@ async def run_http_mode(port: int) -> None:
                     "finalization": {
                         "applied": finalization_applied,
                         "status_code": finalization_status_code,
-                        "reason": "tool_call_without_final_text remediation" if finalization_applied else "",
+                        "reason": (
+                            "tool_call_without_final_text remediation"
+                            if finalization_applied and effective_profile == "remote-tool-calling"
+                            else "reasoning_only remediation"
+                            if finalization_applied and effective_profile == "remote-reasoning"
+                            else ""
+                        ),
                     },
                     "active_lesson_refs": lesson_refs,
                     "delegation_feedback": {
