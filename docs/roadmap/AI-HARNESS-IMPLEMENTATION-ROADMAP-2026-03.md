@@ -567,7 +567,7 @@ Validation:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `aq-report now exposes remote-profile, routing, retrieval-breadth, and Continue/editor history as 1h/24h/7d windows, route latency decomposition is report-visible, and nixos-quick-deploy surfaces compact trend lines for each; the next gap is broader consumer parity and remaining non-monitoring roadmap tracks`
+Current Slice: `aq-report now exposes remote-profile, routing, retrieval-breadth, Continue/editor history, and workflow-review acceptance dimensions, and nixos-quick-deploy now surfaces compact workflow review counts plus top accepted task/profile context alongside the existing trend lines; the next gap is broader consumer parity and remaining non-monitoring roadmap tracks`
 Next Validation:
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization'`
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
@@ -580,13 +580,13 @@ Next Validation:
 - `python3 scripts/testing/test-continue-editor-history.py`
 - deploy summary output
 Open Risks / Blockers:
-- Track H multi-window operator history is now in place for the main monitored AI surfaces; the next gaps are broader consumer parity and remaining unfinished tracks outside monitoring
+- Track H multi-window operator history is now in place for the main monitored AI surfaces and deploy summary now includes workflow review/acceptance context; the next gaps are broader consumer parity and remaining unfinished tracks outside monitoring
 
 Tasks:
 1. remote profile utilization summary parity across all operator-facing consumers
 2. retrieval-breadth summary parity across all operator-facing consumers
 3. routing summary parity across all operator-facing consumers
-4. Continue/editor summary parity across all operator-facing consumers
+4. Continue/editor and workflow-acceptance summary parity across all operator-facing consumers
 
 Validation:
 - `scripts/ai/aq-report --format json`

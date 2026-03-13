@@ -410,6 +410,8 @@ print_completion_test_results() {
     local remote_profile_window remote_profile_top remote_profile_calls remote_profile_success remote_profile_label
     local continue_editor_available continue_editor_healthy continue_editor_failed continue_editor_total continue_editor_first_fail continue_editor_label
     local agent_lesson_label
+    local workflow_review_required workflow_reviewed workflow_accepted workflow_rejected workflow_pending
+    local workflow_top_review_type workflow_patch_reviews workflow_accepted_task_class workflow_accepted_reviewed_profile
     local i=0
 
     routing_local="$(printf '%s' "${json}" | jq -r '.routing.local_n // 0')"
@@ -421,6 +423,15 @@ print_completion_test_results() {
     eval_latest="$(printf '%s' "${json}" | jq -r '.eval_trend.latest_pct // "n/a"')"
     eval_trend="$(printf '%s' "${json}" | jq -r '.eval_trend.trend // "unknown"')"
     intent_cov="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.contract_coverage_pct // "n/a"')"
+    workflow_review_required="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.reviewer_gate_required_runs // 0')"
+    workflow_reviewed="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.sessions_with_reviews // 0')"
+    workflow_accepted="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.accepted_reviews // 0')"
+    workflow_rejected="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.rejected_reviews // 0')"
+    workflow_pending="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.pending_reviews // 0')"
+    workflow_top_review_type="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.top_review_types[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    workflow_patch_reviews="$(printf '%s' "${json}" | jq -r '"accepted=\(.intent_contract_compliance.accepted_patch_reviews // 0) rejected=\(.intent_contract_compliance.rejected_patch_reviews // 0)"')"
+    workflow_accepted_task_class="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.accepted_task_classes[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    workflow_accepted_reviewed_profile="$(printf '%s' "${json}" | jq -r '.intent_contract_compliance.accepted_by_reviewed_profile[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
     security_cache="$(printf '%s' "${json}" | jq -r '.tool_security_auditor.cache_hit_pct // "n/a"')"
     semantic_route_calls="$(printf '%s' "${json}" | jq -r '.semantic_tooling_autorun.route_calls // 0')"
     hint_unique="$(printf '%s' "${json}" | jq -r '.hint_diversity.unique_hints // 0')"
@@ -670,6 +681,29 @@ PY
     fi
     printf '  %-28s %s%% (%s)\n' "Eval latest" "${eval_latest}" "${eval_trend}"
     printf '  %-28s %s%%\n' "Intent-contract coverage" "${intent_cov}"
+    printf '  %-28s required=%s reviewed=%s accepted=%s rejected=%s pending=%s\n' \
+      "Workflow reviews" \
+      "${workflow_review_required}" \
+      "${workflow_reviewed}" \
+      "${workflow_accepted}" \
+      "${workflow_rejected}" \
+      "${workflow_pending}"
+    if [[ -n "${workflow_top_review_type}" ]]; then
+      printf '  %-28s %s; patch=%s\n' "Workflow review mix" "${workflow_top_review_type}" "${workflow_patch_reviews}"
+    fi
+    if [[ -n "${workflow_accepted_task_class}" || -n "${workflow_accepted_reviewed_profile}" ]]; then
+      local workflow_acceptance_label=""
+      if [[ -n "${workflow_accepted_task_class}" ]]; then
+        workflow_acceptance_label="task=${workflow_accepted_task_class}"
+      fi
+      if [[ -n "${workflow_accepted_reviewed_profile}" ]]; then
+        if [[ -n "${workflow_acceptance_label}" ]]; then
+          workflow_acceptance_label="${workflow_acceptance_label}; "
+        fi
+        workflow_acceptance_label="${workflow_acceptance_label}profile=${workflow_accepted_reviewed_profile}"
+      fi
+      printf '  %-28s %s\n' "Workflow acceptance" "${workflow_acceptance_label}"
+    fi
     printf '  %-28s %s%%\n' "Security-auditor cache hit" "${security_cache}"
     printf '  %-28s %s\n' "Recent health" "${recent_health_label}"
     printf '  %-28s %s\n' "Continue/editor" "${continue_editor_label}"
