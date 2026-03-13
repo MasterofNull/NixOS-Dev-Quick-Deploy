@@ -47,7 +47,7 @@ from ai_coordinator import (
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 from web_research import fetch_web_research
-from delegation_feedback import classify_delegated_response, record_delegation_feedback
+from delegation_feedback import build_recovered_artifact, classify_delegated_response, record_delegation_feedback
 import mcp_handlers
 
 logger = logging.getLogger("hybrid-coordinator")
@@ -3345,6 +3345,7 @@ async def run_http_mode(port: int) -> None:
                 stage="final",
                 fallback_applied=fallback_applied,
             )
+            recovered_artifact = build_recovered_artifact(task, final_classification)
             try:
                 record_delegation_feedback(
                 task=task,
@@ -3378,6 +3379,7 @@ async def run_http_mode(port: int) -> None:
                 "delegation_failure_class": final_classification.get("primary_failure_class", ""),
                 "delegation_failure_classes": final_classification.get("failure_classes", []),
                 "delegation_salvage_useful": bool((final_classification.get("salvage") or {}).get("has_useful_data")),
+                "delegation_recovery_class": recovered_artifact.get("recovery_class", "") if recovered_artifact.get("available") else "",
             }
 
             return web.json_response(
@@ -3404,6 +3406,7 @@ async def run_http_mode(port: int) -> None:
                         "initial": initial_classification,
                         "final": final_classification,
                     },
+                    "artifact_recovery": recovered_artifact,
                     "response": body,
                 },
                 status=response.status_code,
