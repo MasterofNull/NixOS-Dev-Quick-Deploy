@@ -3759,12 +3759,16 @@ async def run_http_mode(port: int) -> None:
                 limit = max(1, min(100, int(limit_raw)))
             except ValueError:
                 limit = 25
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             payload = await _aidb_shared_skills_catalog(limit=limit)
             return web.json_response(
                 {
                     "status": "ok",
                     "service": "ai-coordinator",
                     "shared_skill_registry": payload,
+                    "active_lesson_refs": lesson_refs,
                 }
             )
         except Exception as exc:
