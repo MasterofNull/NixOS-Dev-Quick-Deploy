@@ -421,7 +421,7 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, and direct query response metadata from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
+Current Slice: `accepted lessons now feed back into the hint engine, deploy summary, delegated response metadata, direct query response metadata, and direct workflow-plan response metadata from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
@@ -430,9 +430,10 @@ Next Validation:
 - `curl -sS ... /control/ai-coordinator/lessons`
 - live `/control/ai-coordinator/delegate` smoke with `active_lesson_refs`
 - `scripts/testing/smoke-query-lesson-refs.sh`
+- `scripts/testing/smoke-workflow-plan-lesson-refs.sh`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons now affect hints, deploy/operator summaries, delegated responses, and direct query metadata, but broader direct routing/reference materialization remains incomplete beyond those first consumers
+- accepted lessons now affect hints, deploy/operator summaries, delegated responses, direct query metadata, and direct workflow-plan metadata, but broader direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
