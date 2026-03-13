@@ -78,6 +78,50 @@ _check_output() {
   fi
 }
 
+_primary_user() {
+  if [[ -n "${AQ_QA_PRIMARY_USER:-}" ]]; then
+    printf '%s' "${AQ_QA_PRIMARY_USER}"
+    return 0
+  fi
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    printf '%s' "${SUDO_USER}"
+    return 0
+  fi
+  local repo_owner
+  repo_owner="$(stat -c '%U' "${REPO_ROOT}" 2>/dev/null || true)"
+  if [[ -n "${repo_owner}" && "${repo_owner}" != "UNKNOWN" ]]; then
+    printf '%s' "${repo_owner}"
+    return 0
+  fi
+  printf '%s' "${USER:-}"
+}
+
+_continue_cli_path() {
+  local user home_dir
+  if command -v cn >/dev/null 2>&1; then
+    command -v cn
+    return 0
+  fi
+  user="$(_primary_user)"
+  home_dir="$(getent passwd "${user}" 2>/dev/null | cut -d: -f6)"
+  for candidate in \
+    "${HOME:-}/.nix-profile/bin/cn" \
+    "${home_dir}/.nix-profile/bin/cn" \
+    "/etc/profiles/per-user/${user}/bin/cn"
+  do
+    [[ -x "${candidate}" ]] || continue
+    printf '%s' "${candidate}"
+    return 0
+  done
+  return 1
+}
+
+_continue_cli_help() {
+  local cli
+  cli="$(_continue_cli_path)" || return 1
+  "${cli}" --help
+}
+
 # HTTP health check: curl URL, expect JSON with status=ok.
 _http_health() {
   local id="$1" desc="$2" url="$3"
@@ -132,11 +176,17 @@ _continue_local_smoke() {
 # Port binding check.
 _port() {
   local id="$1" desc="$2" port="$3"
-  if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-    _pass "$id" "$desc"
-  else
-    _fail "$id" "$desc" "port $port not bound"
-  fi
+  local attempts="${AQ_QA_PORT_RETRY_ATTEMPTS:-4}"
+  local delay="${AQ_QA_PORT_RETRY_DELAY_SECONDS:-1}"
+  local i
+  for ((i=1; i<=attempts; i++)); do
+    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+      _pass "$id" "$desc"
+      return 0
+    fi
+    (( i < attempts )) && sleep "${delay}"
+  done
+  _fail "$id" "$desc" "port $port not bound"
 }
 
 # ---------------------------------------------------------------------------
@@ -210,7 +260,7 @@ run_phase_0() {
   _http_health "0.4.2" "embedding server /health" "http://127.0.0.1:8081/health"
 
   # 0.5 Continue/editor runtime basics
-  _check "0.5.1" "Continue CLI help works" cn --help
+  _check "0.5.1" "Continue CLI help works" _continue_cli_help
   _check "0.5.2" "Continue config targets continue-local via switchboard" _continue_config_ok
   _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' bash -lc 'codium --list-extensions 2>/dev/null | tr "[:upper:]" "[:lower:]"'
   _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
