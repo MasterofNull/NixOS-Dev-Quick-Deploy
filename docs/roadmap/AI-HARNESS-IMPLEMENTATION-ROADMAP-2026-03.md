@@ -104,6 +104,8 @@ Tracking fields to update after each slice:
 | 2026-03-13 | governed lesson schema + promotion action pass | validated_local | `aq-report` now emits governed lesson candidate fields including state, scope, evidence count, materialization class, validation link, and traceability targets, and can surface a machine-readable `promote_agent_lesson` action when candidates meet the threshold |
 | 2026-03-13 | persistent lesson registry + review surface | validated_local | `aq-report` now syncs lesson candidates into a durable pending-review/promoted/avoided/rejected registry, `/control/ai-coordinator/lessons` exposes that state live, and the coordinator now accepts bounded lesson-review updates instead of leaving promotion purely report-derived |
 | 2026-03-13 | accepted lesson runtime surfacing pass | validated_local | hints now prefer accepted active lessons from the durable registry, and `nixos-quick-deploy.sh` surfaces accepted active lessons before transient candidates so reviewer-approved lesson state affects live operator feedback instead of remaining dormant metadata |
+| 2026-03-13 | workflow blueprint coverage + reviewer gate metadata | validated_live | added the missing repo-refactor, deploy-safe, continue/editor rescue, and remote-reasoning blueprints, workflow runs now persist reviewer-gate snapshots so accepted/rejected review state becomes part of session telemetry and report summaries, and a live `continue-editor-rescue` smoke persisted an accepted reviewer gate with the expected blueprint title |
+| 2026-03-13 | repo-backed workflow blueprint activation fix | validated_live | switched `WORKFLOW_BLUEPRINTS_FILE` from the baked store JSON to the mutable repo path so quick-deploy and repo-backed service restarts can activate blueprint edits live instead of serving stale declarative copies, then live-verified the running coordinator exported the repo path and served the expanded blueprint catalog |
 | 2026-03-13 | delegated artifact recovery salvage pass | validated_live | `/control/ai-coordinator/delegate` now returns bounded `artifact_recovery` output for tool-call-only, reasoning-only, and partial-text delegated failures, preserving useful tool arguments and reasoning excerpts so failed remote calls still yield actionable local summaries |
 | 2026-03-13 | BitNet declarative sidecar scaffold pass | validated_local | added a disabled-by-default `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` scaffold plus shared endpoint wiring so benchmark-only BitNet experiments now have a tracked host-local config surface without touching switchboard or replacing llama.cpp |
 | 2026-03-13 | BitNet benchmark harness + baseline comparison pass | validated_local | added a repo-native `aq-bitnet-benchmark` path with pinned Python 3.12/devShell/toolchain/runtime-lib fixes plus direct local-llama baseline comparison via `aq-bitnet-compare`; host now builds BitNet and materializes a dummy GGUF, while direct BitNet benchmark execution still ends in `SIGSEGV` and remains a measured blocker rather than an assumed viable runtime |
@@ -229,10 +231,12 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `workflow plan, query, hints, qa, and learning surfaces exist; shared runtime blueprint and reviewer-gate reporting still need completion`
+Current Slice: `required runtime blueprints now cover repo refactor, deploy-safe ops, continue/editor rescue, and remote reasoning escalation, workflow sessions now persist reviewer-gate snapshots, and live validation confirmed the coordinator reads blueprint definitions from the repo-backed path; the next gap is broader end-to-end orchestration smoke across these richer blueprint families`
 Next Validation:
 - `scripts/testing/check-runtime-plan-catalog.sh`
 - live `/workflow/plan`, `/query`, `/hints` contract checks
+- `python3 scripts/testing/test-workflow-blueprints.py`
+- `python3 scripts/testing/test-workflow-review-gate.py`
 Open Risks / Blockers:
 - some newer agent surfaces were added before being fully normalized to the shared runtime contract
 

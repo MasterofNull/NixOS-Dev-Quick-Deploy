@@ -840,6 +840,11 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
     missing_contract_obj = 0
     depth_counts: Dict[str, int] = {}
     blueprint_counts: Dict[str, int] = {}
+    review_gate_required = 0
+    accepted_reviews = 0
+    rejected_reviews = 0
+    pending_reviews = 0
+    sessions_with_reviews = 0
     for sess in sessions:
         contract = sess.get("intent_contract")
         has_contract = (
@@ -863,6 +868,20 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         bp = str(sess.get("blueprint_id", "") or "").strip()
         if bp:
             blueprint_counts[bp] = blueprint_counts.get(bp, 0) + 1
+        reviewer_gate = sess.get("reviewer_gate")
+        if isinstance(reviewer_gate, dict):
+            if bool(reviewer_gate.get("required", False)):
+                review_gate_required += 1
+            status = str(reviewer_gate.get("status", "") or "").strip().lower()
+            history = reviewer_gate.get("history", [])
+            if isinstance(history, list) and history:
+                sessions_with_reviews += 1
+            if status == "accepted":
+                accepted_reviews += 1
+            elif status == "rejected":
+                rejected_reviews += 1
+            elif status == "pending_review":
+                pending_reviews += 1
 
     top_blueprints = sorted(blueprint_counts.items(), key=lambda x: -x[1])[:5]
     return {
@@ -875,6 +894,11 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         "contract_coverage_pct": round((with_contract / total) * 100.0, 1) if total else None,
         "depth_distribution": depth_counts,
         "top_blueprints": top_blueprints,
+        "reviewer_gate_required_runs": review_gate_required,
+        "sessions_with_reviews": sessions_with_reviews,
+        "accepted_reviews": accepted_reviews,
+        "rejected_reviews": rejected_reviews,
+        "pending_reviews": pending_reviews,
     }
 
 
@@ -3228,6 +3252,14 @@ def format_md(
                 lines += ["", "Top blueprints by runs:"]
                 for bp, n in top_bp:
                     lines.append(f"- `{bp}`: {n}")
+            review_required = int(intent_compliance.get("reviewer_gate_required_runs", 0) or 0)
+            reviewed = int(intent_compliance.get("sessions_with_reviews", 0) or 0)
+            accepted = int(intent_compliance.get("accepted_reviews", 0) or 0)
+            rejected = int(intent_compliance.get("rejected_reviews", 0) or 0)
+            pending = int(intent_compliance.get("pending_reviews", 0) or 0)
+            lines.append(
+                f"- Reviewer gate: required={review_required} reviewed={reviewed} accepted={accepted} rejected={rejected} pending={pending}"
+            )
     else:
         lines.append("*Workflow session store unavailable.*")
     lines.append("")
@@ -3748,6 +3780,14 @@ def format_text(
                 lines.append("  Top blueprints:")
                 for bp, n in top_bp:
                     lines.append(f"    {n:3d}x  {bp}")
+            review_required = int(intent_compliance.get("reviewer_gate_required_runs", 0) or 0)
+            reviewed = int(intent_compliance.get("sessions_with_reviews", 0) or 0)
+            accepted = int(intent_compliance.get("accepted_reviews", 0) or 0)
+            rejected = int(intent_compliance.get("rejected_reviews", 0) or 0)
+            pending = int(intent_compliance.get("pending_reviews", 0) or 0)
+            lines.append(
+                f"  Reviewer gate: required={review_required} reviewed={reviewed} accepted={accepted} rejected={rejected} pending={pending}"
+            )
     else:
         lines.append("  Workflow session store unavailable.")
     lines.append("")
