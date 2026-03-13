@@ -3697,11 +3697,13 @@ async def run_http_mode(port: int) -> None:
         try:
             async with _agent_lessons_lock:
                 registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(registry, limit=2)
             return web.json_response(
                 {
                     "status": "ok",
                     "service": "ai-coordinator",
                     "agent_lessons": registry,
+                    "active_lesson_refs": lesson_refs,
                 }
             )
         except Exception as exc:
@@ -3740,12 +3742,14 @@ async def run_http_mode(port: int) -> None:
                 registry["entries"] = entries
                 await _save_agent_lessons_registry(registry)
                 registry = await _load_agent_lessons_registry()
+                lesson_refs = _active_lesson_refs(registry, limit=2)
             return web.json_response(
                 {
                     "status": "ok",
                     "service": "ai-coordinator",
                     "agent_lessons": registry,
                     "reviewed_lesson": target,
+                    "active_lesson_refs": lesson_refs,
                 }
             )
         except Exception as exc:
