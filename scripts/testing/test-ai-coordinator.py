@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator")
 
 from ai_coordinator import (  # noqa: E402
     build_messages,
+    build_reasoning_finalization_messages,
     build_tool_call_finalization_messages,
     default_runtime_id_for_profile,
     infer_profile,
@@ -110,6 +111,23 @@ def main() -> int:
     assert_true("Expected artifact:" in messages[1]["content"], "user message should include artifact contract")
     assert_true("Allowed repo paths:" in messages[1]["content"], "user message should include repo path allowlist")
     assert_true("Anti-goals:" in messages[1]["content"], "user message should include anti-goals when provided")
+    assert_true("Completion rules:" in messages[1]["content"], "user message should include completion rules")
+    assert_true("minimal patch sketch" in messages[1]["content"].lower(), "remote coding contract should stay patch-oriented")
+
+    reasoning_messages = build_messages(
+        "Review the architecture risks in this coordinator slice.",
+        context={"constraints": ["keep the output bounded to top risks and recommendation"]},
+        profile="remote-reasoning",
+    )
+    assert_true("recommended direction first" in reasoning_messages[1]["content"].lower(), "remote reasoning contract should lead with decision guidance")
+    assert_true("do not drift into patch design" in reasoning_messages[1]["content"].lower(), "remote reasoning contract should suppress patch drift")
+
+    free_messages = build_messages(
+        "Summarize the most useful delegated findings.",
+        context={"constraints": ["keep it short"]},
+        profile="remote-free",
+    )
+    assert_true("main finding, evidence, and one next step" in free_messages[1]["content"].lower(), "remote free contract should stay compact")
 
     local_messages = build_messages(
         "Prepare a local tool-calling fallback contract.",
@@ -118,6 +136,7 @@ def main() -> int:
     )
     assert_true("local tool-calling prep sub-agent" in local_messages[0]["content"].lower(), "local tool-calling system prompt missing")
     assert_true("fallback" in local_messages[1]["content"].lower(), "local tool-calling artifact contract should mention fallback")
+    assert_true("approved harness capabilities" in local_messages[1]["content"].lower(), "local tool-calling contract should stay bounded")
 
     remote_tool_messages = build_messages(
         "Produce a bounded tool-calling artifact.",
@@ -135,6 +154,15 @@ def main() -> int:
     assert_true(len(finalization_messages) == 2, "tool-call finalization should produce system and user messages")
     assert_true("bounded finalization pass" in finalization_messages[0]["content"].lower(), "finalization system prompt should explain remediation mode")
     assert_true("proposed tool-call plan" in finalization_messages[1]["content"].lower(), "finalization user prompt should summarize tool calls")
+
+    reasoning_finalization_messages = build_reasoning_finalization_messages(
+        "Review the main risk of overlong delegated prompt envelopes.",
+        "Recommended direction: shorten the envelope and keep only one decision plus evidence.",
+        profile="remote-reasoning",
+    )
+    assert_true(len(reasoning_finalization_messages) == 2, "reasoning finalization should produce system and user messages")
+    assert_true("reasoning-only reply" in reasoning_finalization_messages[0]["content"].lower(), "reasoning finalization system prompt should explain remediation mode")
+    assert_true("recovered reasoning draft" in reasoning_finalization_messages[1]["content"].lower(), "reasoning finalization user prompt should include recovered draft")
 
     print("PASS: ai-coordinator exposes default local/OpenRouter runtime lanes and profile inference")
     return 0
