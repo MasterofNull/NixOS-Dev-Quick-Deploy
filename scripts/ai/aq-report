@@ -2176,6 +2176,37 @@ def routing_split(entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     return data
 
 
+def routing_split_windows(
+    entries: List[dict],
+    *,
+    now: datetime,
+    report_since: datetime,
+) -> Dict[str, Any]:
+    """Materialize comparable routing windows from route_search backend audit metadata."""
+    windows = [
+        ("1h", timedelta(hours=1)),
+        ("24h", timedelta(hours=24)),
+        ("7d", timedelta(days=7)),
+    ]
+    summaries: Dict[str, Any] = {}
+    for label, delta in windows:
+        cutoff = now - delta
+        window_entries = [
+            entry for entry in entries
+            if (_entry_ts_utc(entry) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
+        ]
+        summaries[label] = routing_split(window_entries)
+        summaries[label]["window"] = label
+        summaries[label]["partial_window"] = report_since > cutoff
+    return {
+        "available": any(
+            isinstance(summary, dict) and summary.get("available")
+            for summary in summaries.values()
+        ),
+        "windows": summaries,
+    }
+
+
 def cache_hit_rate() -> Dict[str, Any]:
     """Fetch embedding cache hit rate from Prometheus counters."""
     hits = prom_query("sum(embedding_cache_hits_total) or vector(0)")
@@ -3086,6 +3117,7 @@ def format_md(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
     recent_route: Dict[str, Any],
+    routing_windows: Dict[str, Any],
     cache: Dict[str, Any],
     cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
@@ -3160,6 +3192,21 @@ def format_md(
                 f"- Backend split metric missing; observed **{route['query_ok_n']}** successful `/query` requests."
             )
         lines.append(f"- Recent context: {_routing_recent_context(recent_route)}")
+        route_windows = routing_windows.get("windows") if isinstance(routing_windows, dict) else {}
+        if route_windows:
+            for label in ("1h", "24h", "7d"):
+                summary = route_windows.get(label) if isinstance(route_windows, dict) else None
+                if not isinstance(summary, dict) or not summary.get("available"):
+                    lines.append(f"- {label}: routing history unavailable")
+                    continue
+                local_pct = summary.get("local_pct")
+                remote_pct = 100 - local_pct if local_pct is not None else None
+                partial = " (partial)" if summary.get("partial_window") else ""
+                lines.append(
+                    f"- {label}{partial}: local **{summary.get('local_n', 0)}**"
+                    f" ({_na(local_pct, '.1f', '%')}), remote **{summary.get('remote_n', 0)}**"
+                    f" ({_na(remote_pct, '.1f', '%')})"
+                )
     else:
         lines.append("*Prometheus unreachable — routing metrics unavailable.*")
     lines.append("")
@@ -3707,6 +3754,7 @@ def format_text(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
     recent_route: Dict[str, Any],
+    routing_windows: Dict[str, Any],
     cache: Dict[str, Any],
     cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
@@ -3807,6 +3855,21 @@ def format_text(
                 f"  Backend split metric missing; successful /query requests observed: {route['query_ok_n']}"
             )
         lines.append(f"  Recent context: {_routing_recent_context(recent_route)}")
+        route_windows = routing_windows.get("windows") if isinstance(routing_windows, dict) else {}
+        if route_windows:
+            for label in ("1h", "24h", "7d"):
+                summary = route_windows.get(label) if isinstance(route_windows, dict) else None
+                if not isinstance(summary, dict) or not summary.get("available"):
+                    lines.append(f"  {label}: routing history unavailable")
+                    continue
+                local_pct = summary.get("local_pct")
+                remote_pct = 100 - local_pct if local_pct is not None else None
+                partial = " (partial)" if summary.get("partial_window") else ""
+                lines.append(
+                    f"  {label}{partial}: local {summary.get('local_n', 0)}"
+                    f" ({_na(local_pct, '.1f', '%')}), remote {summary.get('remote_n', 0)}"
+                    f" ({_na(remote_pct, '.1f', '%')})"
+                )
     else:
         lines.append("  Prometheus unreachable.")
     lines.append("")
@@ -4332,6 +4395,7 @@ def format_json(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
     recent_route: Dict[str, Any],
+    routing_windows: Dict[str, Any],
     cache: Dict[str, Any],
     cache_prewarm: Dict[str, Any],
     eval_trend: Dict[str, Any],
@@ -4375,6 +4439,7 @@ def format_json(
         "tool_performance": tool_stats,
         "routing": route,
         "recent_routing": recent_route,
+        "routing_windows": routing_windows,
         "cache": cache,
         "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
@@ -4509,6 +4574,7 @@ def main() -> None:
     route = routing_split(audit_entries)
     recent_route = routing_split(recent_audit_entries)
     recent_route["window"] = "1h"
+    routing_windows = routing_split_windows(audit_entries, now=now, report_since=since_dt)
     recent_retrieval_breadth = route_retrieval_breadth(recent_audit_entries)
     recent_retrieval_breadth["window"] = "1h"
     retrieval_breadth_windows = route_retrieval_breadth_windows(audit_entries, now=now, report_since=since_dt)
@@ -4578,6 +4644,7 @@ def main() -> None:
         tool_stats,
         route,
         recent_route,
+        routing_windows,
         cache,
         cache_prewarm,
         eval_trend,
