@@ -49,6 +49,7 @@ def _runtime_record(
 def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
     now_ts = int(now if now is not None else time.time())
     remote_configured = bool(Config.SWITCHBOARD_REMOTE_URL)
+    local_tool_calling_status = "degraded"
 
     remote_free_status = "ready" if remote_configured and Config.SWITCHBOARD_REMOTE_ALIAS_FREE else (
         "degraded" if remote_configured else "offline"
@@ -57,6 +58,9 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
         "degraded" if remote_configured else "offline"
     )
     remote_reasoning_status = "ready" if remote_configured and Config.SWITCHBOARD_REMOTE_ALIAS_REASONING else (
+        "degraded" if remote_configured else "offline"
+    )
+    remote_tool_calling_status = "ready" if remote_configured and Config.SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING else (
         "degraded" if remote_configured else "offline"
     )
 
@@ -69,6 +73,19 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             tags=["local", "hybrid", "harness", "repo", "default"],
             status="ready",
             note="Built-in local-first harness lane.",
+            now=now_ts,
+        ),
+        _runtime_record(
+            "local-tool-calling",
+            name="Local Tool-Calling Prep Lane",
+            profile="local-tool-calling",
+            runtime_class="local-agent",
+            tags=["local", "tool-calling", "future-ready", "prep", "llama.cpp"],
+            status=local_tool_calling_status,
+            note=(
+                "Preparatory local lane for future local model tool-calling support. "
+                "Current local backends may reject or ignore tool payloads."
+            ),
             now=now_ts,
         ),
         _runtime_record(
@@ -102,6 +119,17 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             status=remote_reasoning_status,
             note="Uses the higher-judgment remote lane for architecture and review tasks.",
             model_alias=Config.SWITCHBOARD_REMOTE_ALIAS_REASONING,
+            now=now_ts,
+        ),
+        _runtime_record(
+            "openrouter-tool-calling",
+            name="OpenRouter Tool-Calling Agent Lane",
+            profile="remote-tool-calling",
+            runtime_class="remote-agent",
+            tags=["remote", "openrouter", "tool-calling", "tools", "execution"],
+            status=remote_tool_calling_status,
+            note="Uses the tool-calling oriented remote lane for bounded tool-use delegation.",
+            model_alias=Config.SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING,
             now=now_ts,
         ),
     ]
@@ -193,10 +221,16 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
     profile = str(requested_profile or "").strip().lower()
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
         return "default"
-    if profile in {"remote-free", "remote-coding", "remote-reasoning"}:
+    if profile == "local-tool-calling":
+        return "local-tool-calling"
+    if profile in {"remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
         return profile
 
     lowered = str(task or "").lower()
+    if any(token in lowered for token in ("local tool call", "local tool-call", "local tool use", "local function call")):
+        return "local-tool-calling"
+    if any(token in lowered for token in ("tool call", "tool-call", "tool use", "function call", "call tools", "tool routing")):
+        return "remote-tool-calling"
     if any(token in lowered for token in ("architecture", "review", "risk", "tradeoff", "policy", "reasoning")):
         return "remote-reasoning"
     if any(token in lowered for token in ("code", "patch", "implement", "refactor", "fix", "debug")):
@@ -210,9 +244,11 @@ def default_runtime_id_for_profile(profile: str) -> str:
         "local": "local-hybrid",
         "local-hybrid": "local-hybrid",
         "continue-local": "local-hybrid",
+        "local-tool-calling": "local-tool-calling",
         "remote-free": "openrouter-free",
         "remote-coding": "openrouter-coding",
         "remote-reasoning": "openrouter-reasoning",
+        "remote-tool-calling": "openrouter-tool-calling",
     }
     return mapping.get(str(profile or "").strip().lower(), "openrouter-free")
 
@@ -221,7 +257,9 @@ def _delegation_system_prompt(profile: str) -> str:
     role = {
         "remote-coding": "implementation sub-agent",
         "remote-reasoning": "architecture/review sub-agent",
+        "remote-tool-calling": "tool-calling sub-agent",
         "remote-free": "bounded research/planning sub-agent",
+        "local-tool-calling": "local tool-calling prep sub-agent",
         "default": "local delegated sub-agent",
     }.get(str(profile or "").strip().lower(), "delegated sub-agent")
     return (
@@ -259,6 +297,8 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
     default_artifact = {
         "remote-coding": "small patch plan or implementation sketch tied to existing repo paths",
         "remote-reasoning": "design/review notes with concrete risks and recommended direction",
+        "remote-tool-calling": "bounded tool-calling plan or tool-use-ready task output with strict arguments",
+        "local-tool-calling": "local tool-calling-ready task contract with explicit fallback if the backend lacks tool support",
         "remote-free": "bounded synthesis with actionable findings",
         "default": "bounded task result with evidence",
     }.get(str(profile or "").strip().lower(), "bounded task result with evidence")

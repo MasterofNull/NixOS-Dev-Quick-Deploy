@@ -28,13 +28,17 @@ def main() -> int:
     merged = merge_runtime_defaults({"runtimes": {}})
     runtime_ids = set((merged.get("runtimes", {}) or {}).keys())
     assert_true("local-hybrid" in runtime_ids, "local-hybrid default missing")
+    assert_true("local-tool-calling" in runtime_ids, "local-tool-calling default missing")
     assert_true("openrouter-free" in runtime_ids, "openrouter-free default missing")
     assert_true("openrouter-coding" in runtime_ids, "openrouter-coding default missing")
     assert_true("openrouter-reasoning" in runtime_ids, "openrouter-reasoning default missing")
+    assert_true("openrouter-tool-calling" in runtime_ids, "openrouter-tool-calling default missing")
 
     assert_true(infer_profile("review architecture tradeoffs") == "remote-reasoning", "reasoning profile inference failed")
     assert_true(infer_profile("implement patch for service failure") == "remote-coding", "coding profile inference failed")
     assert_true(infer_profile("gather quick external context") == "remote-free", "free profile inference failed")
+    assert_true(infer_profile("prepare a local tool call for a future model") == "local-tool-calling", "local tool-calling profile inference failed")
+    assert_true(infer_profile("use a tool call against the remote lane") == "remote-tool-calling", "remote tool-calling profile inference failed")
     assert_true(infer_profile("use the local lane", "continue-local") == "default", "continue-local should map to default lane")
 
     refreshed = merge_runtime_defaults(
@@ -56,7 +60,9 @@ def main() -> int:
     assert_true(default_runtime_id_for_profile("remote-free") == "openrouter-free", "free runtime mapping failed")
     assert_true(default_runtime_id_for_profile("remote-coding") == "openrouter-coding", "coding runtime mapping failed")
     assert_true(default_runtime_id_for_profile("remote-reasoning") == "openrouter-reasoning", "reasoning runtime mapping failed")
+    assert_true(default_runtime_id_for_profile("remote-tool-calling") == "openrouter-tool-calling", "tool-calling runtime mapping failed")
     assert_true(default_runtime_id_for_profile("continue-local") == "local-hybrid", "continue-local runtime mapping failed")
+    assert_true(default_runtime_id_for_profile("local-tool-calling") == "local-tool-calling", "local tool-calling runtime mapping failed")
 
     pruned = prune_runtime_registry(
         {
@@ -103,6 +109,14 @@ def main() -> int:
     assert_true("Expected artifact:" in messages[1]["content"], "user message should include artifact contract")
     assert_true("Allowed repo paths:" in messages[1]["content"], "user message should include repo path allowlist")
     assert_true("Anti-goals:" in messages[1]["content"], "user message should include anti-goals when provided")
+
+    local_messages = build_messages(
+        "Prepare a local tool-calling fallback contract.",
+        context={"constraints": ["return explicit fallback if tools are unsupported"]},
+        profile="local-tool-calling",
+    )
+    assert_true("local tool-calling prep sub-agent" in local_messages[0]["content"].lower(), "local tool-calling system prompt missing")
+    assert_true("fallback" in local_messages[1]["content"].lower(), "local tool-calling artifact contract should mention fallback")
 
     print("PASS: ai-coordinator exposes default local/OpenRouter runtime lanes and profile inference")
     return 0

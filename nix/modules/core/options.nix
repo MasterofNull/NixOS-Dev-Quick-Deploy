@@ -1243,6 +1243,16 @@
             example = "anthropic/claude-sonnet-4.5";
             description = "Remote model alias used for architecture and higher-judgment reasoning requests.";
           };
+
+          toolCalling = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "openrouter/auto";
+            description = ''
+              Remote model alias used for explicit tool-calling oriented requests.
+              Prefer an OpenRouter model/router that supports stable OpenAI-compatible tool use.
+            '';
+          };
         };
 
         remoteBudget = {
