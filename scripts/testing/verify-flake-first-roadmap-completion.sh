@@ -494,6 +494,8 @@ check_pattern "scripts/governance/tier0-validation-gate.sh" 'origin/main\.\.\.HE
 check_pattern "nix/pkgs/continue-cli.nix" 'stdenvNoCC\.mkDerivation' 'Continue CLI is packaged as a declarative wrapped runtime derivation'
 check_pattern "nix/pkgs/continue-cli.nix" 'makeWrapper .*node.*/bin/node' 'Continue CLI wrapper executes the bundled CLI with Node'
 check_absent_pattern "nix/pkgs/continue-cli.nix" 'npmDepsHash = null' 'Continue CLI derivation no longer uses a broken null npmDepsHash'
+check_pattern "nix/home/base.nix" '"contextLength": 16384' 'Continue config matches the local llama.cpp context window instead of a stale 4k cap'
+check_pattern "scripts/ai/aq-qa" 'contextLength\"\) or 0\) >= 12000' 'aq-qa enforces a Continue context-window floor for agent mode'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" 'name="run_qa_check"' 'Hybrid coordinator exposes MCP QA tool'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_bash_binary' 'Hybrid QA tool resolves an explicit bash binary for systemd-safe execution'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py" '_resolve_python3_binary|_build_qa_exec_env' 'Hybrid QA tool resolves python3 and PATH for systemd-safe execution'

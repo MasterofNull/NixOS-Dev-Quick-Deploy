@@ -1103,7 +1103,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="19.9"
+    _config_version="20.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1121,7 +1121,7 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "19.9",
+  "__configVersion": "20.0",
   "models": [
     {
       "title": "Local Fast (Embedded Assist)",
@@ -1134,8 +1134,8 @@ PYEOF
           "X-AI-Profile": "embedded-assist"
         }
       },
-      "contextLength": 4096,
-      "maxTokens": 384
+      "contextLength": 16384,
+      "maxTokens": 768
     },
     {
       "title": "Local Stable (Continue Local)",
@@ -1148,8 +1148,8 @@ PYEOF
           "X-AI-Profile": "continue-local"
         }
       },
-      "contextLength": 4096,
-      "maxTokens": 384
+      "contextLength": 16384,
+      "maxTokens": 768
     }
   ],
   "tabAutocompleteModel": {
