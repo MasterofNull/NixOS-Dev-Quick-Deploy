@@ -173,6 +173,18 @@ _continue_local_smoke() {
     python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); print(content); raise SystemExit(0 if content else 1)'
 }
 
+_aq_report_snapshot() {
+  if [[ -n "${AQ_QA_AQ_REPORT_JSON:-}" ]]; then
+    printf '%s' "${AQ_QA_AQ_REPORT_JSON}"
+    return 0
+  fi
+  AQ_QA_AQ_REPORT_JSON="$(
+    cd "${REPO_ROOT}" && python3 "${SCRIPT_DIR}/aq-report" --format json 2>/dev/null || true
+  )"
+  [[ -n "${AQ_QA_AQ_REPORT_JSON}" ]] || return 1
+  printf '%s' "${AQ_QA_AQ_REPORT_JSON}"
+}
+
 # Port binding check.
 _port() {
   local id="$1" desc="$2" port="$3"
@@ -327,6 +339,65 @@ run_phase_1() {
   else
     _fail "1.5.2" "hybrid-coordinator GET /hints" "no response or auth failed"
   fi
+
+  local report_json retrieval_summary
+  report_json="$(_aq_report_snapshot)" || report_json=""
+  retrieval_summary="$(python3 - <<'PY' "${report_json}"
+import json, sys
+
+raw = sys.argv[1]
+if not raw:
+    print("error|aq-report unavailable")
+    raise SystemExit(0)
+
+try:
+    data = json.loads(raw)
+except Exception:
+    print("error|aq-report parse failed")
+    raise SystemExit(0)
+
+rag = data.get("rag_posture") or {}
+breadth = data.get("route_retrieval_breadth") or {}
+fallback = data.get("provider_fallback_recovery") or {}
+
+if not rag.get("available"):
+    print("error|rag posture unavailable")
+    raise SystemExit(0)
+if "memory_recall_share_pct" not in rag:
+    print("error|memory recall share missing")
+    raise SystemExit(0)
+
+recent_calls = int(rag.get("recent_retrieval_calls") or 0)
+if recent_calls <= 0:
+    print("skip|no recent retrieval calls")
+    raise SystemExit(0)
+
+if not breadth.get("available"):
+    print("error|retrieval breadth unavailable")
+    raise SystemExit(0)
+
+avg = breadth.get("avg_collection_count")
+if avg in (None, ""):
+    print("error|retrieval breadth missing avg_collection_count")
+    raise SystemExit(0)
+
+route_calls = int(breadth.get("route_calls") or 0)
+share = rag.get("memory_recall_share_pct")
+fallback_available = bool(fallback.get("available"))
+print(f"ok|recent_calls={recent_calls}, route_calls={route_calls}, avg_collection_count={avg}, memory_recall_share_pct={share}, fallback_available={'yes' if fallback_available else 'no'}")
+PY
+)"
+  case "${retrieval_summary%%|*}" in
+    ok)
+      _pass "1.5.3" "aq-report exposes retrieval acceptance metrics (${retrieval_summary#*|})"
+      ;;
+    skip)
+      _skip "1.5.3" "aq-report exposes retrieval acceptance metrics" "${retrieval_summary#*|}"
+      ;;
+    *)
+      _fail "1.5.3" "aq-report exposes retrieval acceptance metrics" "${retrieval_summary#*|}"
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
