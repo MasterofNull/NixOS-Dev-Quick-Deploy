@@ -414,8 +414,13 @@ let
         return {k: v for k, v in raw_headers.items() if k.lower() not in hop}
 
     def _estimate_tokens(text: str) -> int:
-        # Lightweight approximation for guardrail decisions.
-        return max(1, int(len((text or "").split()) * 1.3))
+        # Lightweight approximation for guardrail decisions. Keep a
+        # character-based floor so long dense blobs without whitespace do not
+        # evade input trimming.
+        text = str(text or "")
+        word_estimate = int(len(text.split()) * 1.3)
+        char_estimate = int((len(text) + 3) / 4)
+        return max(1, word_estimate, char_estimate)
 
     def _estimate_messages_tokens(messages: list) -> int:
         total = 0
@@ -436,6 +441,24 @@ let
                 for part in content
             )
         return str(content)
+
+    def _truncate_text_to_token_budget(text: str, max_tokens: int) -> str:
+        raw = str(text or "")
+        if max_tokens <= 0 or _estimate_tokens(raw) <= max_tokens:
+            return raw
+        max_chars = max(64, max_tokens * 4)
+        if len(raw) <= max_chars:
+            return raw
+        if max_chars <= 80:
+            return raw[:max_chars]
+        head_chars = int(max_chars * 0.7)
+        tail_chars = max(24, max_chars - head_chars - 18)
+        return raw[:head_chars] + "\n[... trimmed ...]\n" + raw[-tail_chars:]
+
+    def _truncate_message_to_token_budget(message: dict, max_tokens: int) -> dict:
+        updated = dict(message)
+        updated["content"] = _truncate_text_to_token_budget(_extract_content_text(message), max_tokens)
+        return updated
 
     def _tokenize(text: str) -> list[str]:
         return [t for t in re.split(r"[^a-z0-9_./-]+", (text or "").lower()) if len(t) >= 2]
@@ -626,6 +649,20 @@ let
                     break
             else:
                 kept.pop(0)
+
+        if kept and _estimate_messages_tokens(kept) > max_tokens:
+            largest_idx = max(
+                range(len(kept)),
+                key=lambda idx: _estimate_tokens(_extract_content_text(kept[idx])) if isinstance(kept[idx], dict) else 0,
+            )
+            reserved_tokens = 0
+            for idx, message in enumerate(kept):
+                if idx == largest_idx or not isinstance(message, dict):
+                    continue
+                reserved_tokens += _estimate_tokens(_extract_content_text(message))
+            available_tokens = max(128, max_tokens - reserved_tokens)
+            if isinstance(kept[largest_idx], dict):
+                kept[largest_idx] = _truncate_message_to_token_budget(kept[largest_idx], available_tokens)
 
         after = _estimate_messages_tokens(kept)
         gate_applied = False
