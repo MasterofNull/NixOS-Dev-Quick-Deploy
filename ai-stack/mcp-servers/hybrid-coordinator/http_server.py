@@ -2089,6 +2089,9 @@ async def run_http_mode(port: int) -> None:
     async def handle_feedback(request):
         try:
             data = await request.json()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             interaction_id = data.get("interaction_id")
             outcome = data.get("outcome")
             user_feedback = data.get("user_feedback", 0)
@@ -2104,10 +2107,16 @@ async def run_http_mode(port: int) -> None:
                     model=data.get("model"),
                     variant=data.get("variant"),
                 )
-                return web.json_response({"status": "recorded", "feedback_id": feedback_id})
+                payload = {"status": "recorded", "feedback_id": feedback_id}
+                if lesson_refs:
+                    payload["active_lesson_refs"] = lesson_refs
+                return web.json_response(payload)
             if interaction_id and outcome:
                 await _update_outcome(interaction_id=interaction_id, outcome=outcome, user_feedback=user_feedback)
-                return web.json_response({"status": "updated"})
+                payload = {"status": "updated"}
+                if lesson_refs:
+                    payload["active_lesson_refs"] = lesson_refs
+                return web.json_response(payload)
             return web.json_response({"error": "missing_feedback_fields"}, status=400)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
@@ -2118,6 +2127,9 @@ async def run_http_mode(port: int) -> None:
             interaction_id = request.match_info.get("interaction_id", "")
             if not interaction_id:
                 return web.json_response({"error": "interaction_id required in path"}, status=400)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             data = await request.json()
             rating = data.get("rating")
             if rating not in (1, -1):
@@ -2128,7 +2140,10 @@ async def run_http_mode(port: int) -> None:
                 note=str(data.get("note", ""))[:1000],
                 query=str(data.get("query", ""))[:500],
             )
-            return web.json_response({"status": "recorded", "feedback_id": feedback_id})
+            payload = {"status": "recorded", "feedback_id": feedback_id}
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -3452,13 +3467,17 @@ async def run_http_mode(port: int) -> None:
             if not session:
                 return web.json_response({"error": "session not found"}, status=404)
             _ensure_session_runtime_fields(session)
-            return web.json_response(
-                {
-                    "session_id": session_id,
-                    "isolation": session.get("isolation", {}),
-                    "resolved_profile": _resolve_isolation_profile(session),
-                }
-            )
+            payload = {
+                "session_id": session_id,
+                "isolation": session.get("isolation", {}),
+                "resolved_profile": _resolve_isolation_profile(session),
+            }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -3492,13 +3511,17 @@ async def run_http_mode(port: int) -> None:
                 )
                 sessions[session_id] = session
                 await _save_workflow_sessions(sessions)
-            return web.json_response(
-                {
-                    "session_id": session_id,
-                    "isolation": session.get("isolation", {}),
-                    "resolved_profile": _resolve_isolation_profile(session),
-                }
-            )
+            payload = {
+                "session_id": session_id,
+                "isolation": session.get("isolation", {}),
+                "resolved_profile": _resolve_isolation_profile(session),
+            }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
