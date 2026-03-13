@@ -4,12 +4,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../config/service-endpoints.sh
-source "${SCRIPT_DIR}/../config/service-endpoints.sh"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=../../config/service-endpoints.sh
+source "${REPO_ROOT}/config/service-endpoints.sh"
 
 SEED_COUNT="${AI_HARNESS_IMPROVEMENT_SEED_COUNT:-10}"
 SUMMARY_OUT="${AI_HARNESS_IMPROVEMENT_SUMMARY_PATH:-/tmp/ai-harness-improvement-latest.json}"
-WORKSPACE="${AI_HARNESS_IMPROVEMENT_WORKSPACE:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+WORKSPACE="${AI_HARNESS_IMPROVEMENT_WORKSPACE:-${REPO_ROOT}}"
 HARNESS_EVAL_TIMEOUT_SECONDS="${AI_HARNESS_IMPROVEMENT_HARNESS_EVAL_TIMEOUT_SECONDS:-20}"
 
 HYBRID_KEY="${HYBRID_API_KEY:-}"
@@ -45,9 +46,9 @@ run_step() {
   fi
 }
 
-run_step "Health check" "${SCRIPT_DIR}/check-mcp-health.sh"
-run_step "Curate residual gaps" "${SCRIPT_DIR}/curate-residual-gaps.sh"
-run_step "Seed routing + cache traffic" "${SCRIPT_DIR}/seed-routing-traffic.sh" --count "${SEED_COUNT}"
+run_step "Health check" "${REPO_ROOT}/scripts/testing/check-mcp-health.sh"
+run_step "Curate residual gaps" "${REPO_ROOT}/scripts/curate-residual-gaps.sh"
+run_step "Seed routing + cache traffic" "${REPO_ROOT}/scripts/data/seed-routing-traffic.sh" --count "${SEED_COUNT}"
 
 if [[ -n "$HYBRID_KEY" ]]; then
   if curl -fsS --max-time "${HARNESS_EVAL_TIMEOUT_SECONDS}" --connect-timeout 5 -X POST "${HYBRID_URL%/}/harness/eval" \
@@ -100,7 +101,7 @@ else
   log "FAIL: Aider-wrapper analysis fastpath probe"
 fi
 
-if ! "${ROOT_DIR}/scripts/ai/aq-report" --since=7d --format=json >/tmp/ai-harness-aq-report.json; then
+if ! "${REPO_ROOT}/scripts/ai/aq-report" --since=7d --format=json >/tmp/ai-harness-aq-report.json; then
   FAILURES=$((FAILURES + 1))
   log "FAIL: aq-report JSON generation"
 fi

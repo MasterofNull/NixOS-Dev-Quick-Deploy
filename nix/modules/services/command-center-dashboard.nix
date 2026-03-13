@@ -54,11 +54,21 @@ in
         Restart = "on-failure";
         RestartSec = "5s";
         WorkingDirectory = dashboardBackendRoot;
-        NoNewPrivileges = true;
+        # The dashboard executes a tightly bounded set of sudo -n systemctl
+        # operations for operator service control. NoNewPrivileges blocks that
+        # escalation path entirely, so keep it disabled while ReadOnlyPaths and
+        # NixOS sudo allowlists constrain what can run.
+        NoNewPrivileges = false;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
         ReadOnlyPaths = [ dashboardRoot ];
-        ReadWritePaths = [ cc.dataDir "/tmp" ];
+        ReadWritePaths = [
+          cc.dataDir
+          "/tmp"
+          "/run/sudo/ts"
+          "${dashboardRoot}/docs/development"
+          "${dashboardRoot}/data"
+        ];
       };
       environment = {
         SERVICE_HOST = "127.0.0.1";
@@ -84,8 +94,11 @@ in
         POSTGRES_PORT = toString ports.postgres;
         AIDB_DB_USER = mcp.postgres.user;
         AIDB_DB_NAME = mcp.postgres.database;
+        BASH_BIN = "${pkgs.bash}/bin/bash";
         PRSI_ACTION_QUEUE_PATH = "${cc.dataDir}/telemetry/prsi-action-queue.json";
         PRSI_ACTIONS_LOG_PATH = "${cc.dataDir}/telemetry/prsi-actions.jsonl";
+        PRSI_POLICY_FILE = "${mcp.repoPath}/config/runtime-prsi-policy.json";
+        PRSI_STATE_PATH = "${cc.dataDir}/telemetry/prsi-runtime-state.json";
         OPTIMIZER_OVERRIDES_ENV = "${cc.dataDir}/telemetry/optimizer-overrides.env";
         OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
         AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";

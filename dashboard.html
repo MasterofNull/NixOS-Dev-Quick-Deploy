@@ -1003,7 +1003,7 @@
                     <span>🖥️ HOST: <span id="hostname" class="copyable">localhost</span></span>
                 </div>
                 <div class="header-meta-item">
-                    <span>🧭 MODE: <span id="runtimeMode" class="copyable">unknown</span></span>
+                    <span>🧭 MODE: <span id="runtimeMode" class="copyable">discovering runtime</span></span>
                 </div>
             </div>
             <div class="health-score">
@@ -1033,7 +1033,7 @@
                 <div class="operator-label">Runtime</div>
                 <div class="operator-value" id="runtimeState">
                     <span class="operator-dot"></span>
-                    <span id="runtimeStateText">unknown</span>
+                    <span id="runtimeStateText">discovering runtime</span>
                 </div>
                 <div class="operator-detail" id="runtimeStateDetail">Waiting for service inventory</div>
             </div>
@@ -1049,7 +1049,7 @@
                 <div class="operator-label">Full Refresh</div>
                 <div class="operator-value" id="refreshState">
                     <span class="operator-dot"></span>
-                    <span id="refreshStateText">pending</span>
+                    <span id="refreshStateText">initializing</span>
                 </div>
                 <div class="operator-detail" id="refreshStateDetail">Dashboard has not completed a full load yet</div>
             </div>
@@ -1894,7 +1894,7 @@
                             <div id="configList" class="data-list">
                                 <div class="data-item">
                                     <span>Loading action catalog...</span>
-                                    <span class="data-meta">pending</span>
+                                    <span class="data-meta">initializing</span>
                                 </div>
                             </div>
                         </div>
@@ -2027,11 +2027,11 @@
                             </div>
                         </div>
                         <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <button onclick="runHarnessMaintenance('phase_plan')" class="action-btn" style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Harness Phases</button>
-                            <button onclick="runHarnessMaintenance('research_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Research Sync</button>
-                            <button onclick="runHarnessMaintenance('catalog_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Sync Library Catalog</button>
-                            <button onclick="runHarnessMaintenance('acceptance_checks')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Acceptance</button>
-                            <button onclick="runHarnessMaintenance('improvement_pass')" class="action-btn" style="background: var(--accent-magenta); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Improvement Pass</button>
+                            <button data-harness-action="phase_plan" onclick="runHarnessMaintenance('phase_plan')" class="action-btn" style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Harness Phases</button>
+                            <button data-harness-action="research_sync" onclick="runHarnessMaintenance('research_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Research Sync</button>
+                            <button data-harness-action="catalog_sync" onclick="runHarnessMaintenance('catalog_sync')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Sync Library Catalog</button>
+                            <button data-harness-action="acceptance_checks" onclick="runHarnessMaintenance('acceptance_checks')" class="action-btn" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Run Acceptance</button>
+                            <button data-harness-action="improvement_pass" onclick="runHarnessMaintenance('improvement_pass')" class="action-btn" style="background: var(--accent-magenta); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Improvement Pass</button>
                             <div id="harnessActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
                         </div>
                     </div>
@@ -2873,9 +2873,9 @@
                 host_name: metrics?.hostname || 'localhost',
                 cpu: {
                     usage_percent: Number(metrics?.cpu?.usage_percent ?? 0),
-                    temperature: metrics?.cpu?.temperature || 'N/A',
-                    model: metrics?.cpu?.model || 'Unknown',
-                    arch: metrics?.cpu?.arch || 'Unknown'
+                    temperature: metrics?.cpu?.temperature || 'sensor offline',
+                    model: metrics?.cpu?.model || 'model not reported',
+                    arch: metrics?.cpu?.arch || 'arch not reported'
                 },
                 gpu: metrics?.gpu || {},
                 memory: {
@@ -2887,7 +2887,7 @@
                     percent: `${diskPercent.toFixed(1)}%`
                 },
                 uptime_seconds: Number(metrics?.uptime ?? 0),
-                load_average: metrics?.load_average || 'N/A'
+                load_average: metrics?.load_average || null
             };
         }
 
@@ -2951,7 +2951,7 @@
                 .map((service) => service?.port)
                 .filter((port) => port !== undefined && port !== null)
                 .map(String);
-            const iface = metrics?.network?.interface || 'unknown';
+            const iface = metrics?.network?.interface || 'link-detecting';
             return {
                 timestamp: new Date().toISOString(),
                 connections: { active: Number(metrics?.network?.active_connections ?? 0) },
@@ -2978,7 +2978,7 @@
                 authentication: { failed_logins_1h: 0 },
                 mandatory_access_control: { apparmor: { status: apparmorStatus, profiles_loaded: 'systemd' } },
                 firewall: { status: firewallStatus, provider: firewall.provider || 'nftables', enabled: !!firewall.enabled },
-                updates: { available: 'N/A' },
+                updates: { available: 'managed by deploy workflow' },
                 aidb_readiness: readinessHealthy ? 'healthy' : 'degraded'
             };
         }
@@ -3142,7 +3142,7 @@
         }
 
         function formatLoadAverage(loadAverage) {
-            if (loadAverage === null || loadAverage === undefined) return 'N/A';
+            if (loadAverage === null || loadAverage === undefined) return 'awaiting sample';
             if (typeof loadAverage === 'string') return loadAverage;
             if (typeof loadAverage === 'object') {
                 const one = Number(loadAverage.one ?? 0).toFixed(2);
@@ -3165,8 +3165,8 @@
             const sampleSkills = ['aidb-knowledge', 'nixos-deployment', 'health-monitoring'];
             const llmModelRaw = aiMetrics?.services?.llama_cpp?.model || '';
             const embedModelRaw = aiMetrics?.services?.embeddings?.model || '';
-            const llmModel = llmModelRaw ? llmModelRaw.split('/').pop() : 'N/A';
-            const embeddingModel = embedModelRaw ? embedModelRaw.split('/').pop() : 'N/A';
+            const llmModel = llmModelRaw ? llmModelRaw.split('/').pop() : 'model not reported';
+            const embeddingModel = embedModelRaw ? embedModelRaw.split('/').pop() : 'model not reported';
             return {
                 aidb_status: aiMetrics?.services?.aidb?.status || 'unknown',
                 rag: { collection_count: collectionCount },
@@ -3221,19 +3221,19 @@
             return typeof value === 'number' && Number.isFinite(value);
         }
 
-        function displayCount(value, zeroLabel = 'none', nullLabel = 'unavailable') {
+        function displayCount(value, zeroLabel = '0', nullLabel = 'awaiting telemetry') {
             if (!hasNumeric(value)) return nullLabel;
             if (Number(value) === 0) return zeroLabel;
             return `${Math.round(Number(value))}`;
         }
 
-        function displayPercent(value, decimals = 1, zeroLabel = 'none', nullLabel = 'unavailable') {
+        function displayPercent(value, decimals = 1, zeroLabel = '0%', nullLabel = 'awaiting telemetry') {
             if (!hasNumeric(value)) return nullLabel;
             if (Number(value) === 0) return zeroLabel;
             return `${Number(value).toFixed(decimals)}%`;
         }
 
-        function displayStatusText(value, nullLabel = 'not reported') {
+        function displayStatusText(value, nullLabel = 'awaiting report') {
             const text = String(value ?? '').trim();
             if (!text) return nullLabel;
             if (text.toLowerCase() === 'unknown') return nullLabel;
@@ -3276,13 +3276,13 @@
                 ? 'Synthetic data enabled through ?demo=1 or localStorage'
                 : 'Live operator data from local service endpoints',
             runtime: 'warning',
-            runtimeText: 'unknown',
+            runtimeText: 'discovering runtime',
             runtimeDetail: 'Waiting for service inventory',
             stack: 'warning',
             stackText: 'checking',
             stackDetail: 'No aggregate health data yet',
             refresh: 'warning',
-            refreshText: 'pending',
+            refreshText: 'initializing',
             refreshDetail: 'Dashboard has not completed a full load yet'
         };
 
@@ -3756,7 +3756,7 @@
                     cachedContainer.innerHTML = `
                         <div class="data-item">
                             <span>Cached GGUFs</span>
-                            <span class="data-meta">none</span>
+                            <span class="data-meta">cache not populated yet</span>
                         </div>
                     `;
                 } else {
@@ -3783,7 +3783,7 @@
                     embeddingContainer.innerHTML = `
                         <div class="data-item">
                             <span>Sentence-Transformers</span>
-                            <span class="data-meta">none</span>
+                            <span class="data-meta">cache not populated yet</span>
                         </div>
                     `;
                 } else {
@@ -4158,10 +4158,10 @@
 
             const avgScore = parseFloat(telemetry.avg_value_score ?? 0);
             document.getElementById('hybridAvgValue').textContent = displayPercent(avgScore, 1, 'not scored');
-            document.getElementById('hybridHighValue').textContent = displayCount(Number(telemetry.high_value_count), 'none');
+            document.getElementById('hybridHighValue').textContent = displayCount(Number(telemetry.high_value_count), '0');
 
             const learning = hybrid.learning || {};
-            document.getElementById('hybridPatterns').textContent = displayCount(Number(learning.pattern_extractions), 'none');
+            document.getElementById('hybridPatterns').textContent = displayCount(Number(learning.pattern_extractions), '0');
 
             const routingPercent = parseFloat(tokenSavings?.routing?.local_percent ?? 0);
             document.getElementById('hybridLocalPercent').textContent = displayPercent(routingPercent, 1, 'idle');
@@ -4183,7 +4183,7 @@
             const fineTuning = data.fine_tuning || {};
 
             document.getElementById('learningTotal').textContent = displayCount(Number(interactions.total), 'idle');
-            document.getElementById('learningHighValue').textContent = displayCount(Number(interactions.high_value), 'none');
+            document.getElementById('learningHighValue').textContent = displayCount(Number(interactions.high_value), '0');
 
             const learningRate = parseFloat(patterns.learning_rate ?? 0);
             document.getElementById('learningRate').textContent = hasNumeric(learningRate)
@@ -4194,8 +4194,8 @@
             document.getElementById('learningAvgScore').textContent = hasNumeric(avgScore)
                 ? (avgScore === 0 ? 'neutral' : avgScore.toFixed(2))
                 : '--';
-            document.getElementById('learningPatterns').textContent = hasNumeric(patterns.extractions) ? displayCount(Number(patterns.extractions), 'none') : '--';
-            document.getElementById('learningFinetune').textContent = hasNumeric(fineTuning.samples) ? displayCount(Number(fineTuning.samples), 'none') : '--';
+            document.getElementById('learningPatterns').textContent = hasNumeric(patterns.extractions) ? displayCount(Number(patterns.extractions), '0') : '--';
+            document.getElementById('learningFinetune').textContent = hasNumeric(fineTuning.samples) ? displayCount(Number(fineTuning.samples), '0') : '--';
         }
 
         function updateAIInternals(data) {
@@ -4206,13 +4206,70 @@
             const evalLatest = numericOrNull(data?.eval_latest_pct);
             const toolRows = numericOrNull(data?.tool_performance_rows);
             const gapCount = numericOrNull(data?.query_gap_count);
-            document.getElementById('aiInternalsCacheHit').textContent = displayPercent(cacheHit, 1, 'cold', 'unavailable');
-            document.getElementById('aiInternalsLocalRouting').textContent = displayPercent(localRouting, 1, 'idle', 'unavailable');
-            document.getElementById('aiInternalsTokensCompressed').textContent = displayCount(tokensCompressed, 'none', 'unavailable');
-            document.getElementById('aiInternalsHintAdoption').textContent = displayPercent(hintAdoption, 1, 'none', 'unavailable');
-            document.getElementById('aiInternalsEvalLatest').textContent = displayPercent(evalLatest, 1, 'pending', 'unavailable');
-            document.getElementById('aiInternalsToolRows').textContent = displayCount(toolRows, 'none', 'unavailable');
-            document.getElementById('aiInternalsGapCount').textContent = displayCount(gapCount, 'clear', 'unavailable');
+            document.getElementById('aiInternalsCacheHit').textContent = displayPercent(cacheHit, 1, 'cache warming', 'awaiting cache telemetry');
+            document.getElementById('aiInternalsLocalRouting').textContent = displayPercent(localRouting, 1, 'routing idle', 'awaiting routing telemetry');
+            document.getElementById('aiInternalsTokensCompressed').textContent = displayCount(tokensCompressed, '0', 'awaiting compression telemetry');
+            document.getElementById('aiInternalsHintAdoption').textContent = displayPercent(hintAdoption, 1, '0%', 'awaiting hint telemetry');
+            document.getElementById('aiInternalsEvalLatest').textContent = displayPercent(evalLatest, 1, 'evaluation queued', 'awaiting evaluation result');
+            document.getElementById('aiInternalsToolRows').textContent = displayCount(toolRows, '0', 'awaiting tool telemetry');
+            document.getElementById('aiInternalsGapCount').textContent = displayCount(gapCount, 'queue clear', 'awaiting gap telemetry');
+        }
+
+        const HARNESS_ACTION_SCRIPT = {
+            phase_plan: 'run-ai-harness-phase-plan.sh',
+            research_sync: 'sync-ai-research-knowledge.sh',
+            catalog_sync: 'sync-aidb-library-catalog.sh',
+            acceptance_checks: 'run-acceptance-checks.sh',
+            improvement_pass: 'run-harness-improvement-pass.sh'
+        };
+
+        function summarizeScriptReadiness(script) {
+            if (script.exists && script.executable) return 'ready to run';
+            if (script.exists && !script.executable) return `not executable at ${script.path}`;
+            return `missing at ${script.path}`;
+        }
+
+        function parseApiErrorPayload(payload, fallbackMessage) {
+            if (!payload) return fallbackMessage;
+            if (typeof payload.detail === 'string') {
+                try {
+                    const parsed = JSON.parse(payload.detail);
+                    if (parsed?.error) return parsed.error;
+                    if (parsed?.message) return parsed.message;
+                } catch (error) {
+                    return payload.detail;
+                }
+                return payload.detail;
+            }
+            return payload.stderr || payload.error || payload.message || fallbackMessage;
+        }
+
+        function formatPrsiActionTitle(action) {
+            const raw = action?.raw_action || {};
+            const actionName = raw.action || action?.action || 'proposal';
+            if (actionName === 'prefer_local') {
+                return 'Switch default model routing to local inference';
+            }
+            if (actionName === 'tighten_openrouter_delegation_contract') {
+                return 'Tighten the OpenRouter delegation prompt contract';
+            }
+            if (actionName === 'prewarm_cache') {
+                return 'Prewarm retrieval cache before another miss spike';
+            }
+            return actionName.replaceAll('_', ' ');
+        }
+
+        function buildPrsiFingerprint(action) {
+            const raw = action?.raw_action || {};
+            return JSON.stringify({
+                action: raw.action || action?.action || '',
+                type: raw.type || action?.type || '',
+                reason: action?.reason || raw.reason || '',
+                services: raw.services || [],
+                env_overrides: raw.env_overrides || {},
+                topic: raw.topic || '',
+                message: raw.message || ''
+            });
         }
 
         function updateHarnessOverview(aiMetrics) {
@@ -4226,6 +4283,7 @@
             const policies = overview.policies || {};
             const discovery = scorecard.discovery || {};
             const scripts = Array.isArray(maintenance.scripts) ? maintenance.scripts : [];
+            const scriptMap = new Map(scripts.map((script) => [script.name, script]));
             const totalRuns = Number(acceptance.total ?? stats.total_runs ?? 0);
             const passedRuns = Number(acceptance.passed ?? stats.passed ?? 0);
             const passRate = totalRuns > 0 ? (passedRuns / totalRuns) * 100 : null;
@@ -4240,19 +4298,24 @@
                 ? Number(discovery.cache_hit_rate) * 100
                 : null;
 
-            document.getElementById('harnessPassRate').textContent = passRate === null ? 'unavailable' : displayPercent(passRate, 1, 'pending');
-            document.getElementById('harnessDiscoveryInvoked').textContent = discoveryInvoked === null ? 'unavailable' : displayCount(discoveryInvoked, 'idle');
-            document.getElementById('harnessDiscoveryCache').textContent = discoveryCache === null ? 'unavailable' : displayPercent(discoveryCache, 1, 'cold');
+            document.getElementById('harnessPassRate').textContent =
+                passRate === null ? 'awaiting acceptance evidence' : displayPercent(passRate, 1, 'acceptance queued');
+            document.getElementById('harnessDiscoveryInvoked').textContent =
+                discoveryInvoked === null ? 'awaiting discovery telemetry' : displayCount(discoveryInvoked, 'idle');
+            document.getElementById('harnessDiscoveryCache').textContent =
+                discoveryCache === null ? 'awaiting discovery telemetry' : displayPercent(discoveryCache, 1, 'cold cache');
             document.getElementById('harnessScriptsReady').textContent =
-                scriptsReady === null || scriptsTotal === null ? 'unavailable' : `${scriptsReady}/${scriptsTotal}`;
-            document.getElementById('harnessResearchCandidates').textContent = researchCandidates === null ? 'unavailable' : displayCount(researchCandidates, 'none');
+                scriptsReady === null || scriptsTotal === null ? 'inventory pending' : `${scriptsReady}/${scriptsTotal}`;
+            document.getElementById('harnessResearchCandidates').textContent =
+                researchCandidates === null ? 'research bundle pending' : displayCount(researchCandidates, '0');
             const improvementRuns = Number.isFinite(Number(improvement.total_runs)) ? Number(improvement.total_runs) : null;
             const improvementSuccess = Number.isFinite(Number(improvement.success_rate_pct)) ? Number(improvement.success_rate_pct) : null;
-            document.getElementById('harnessImprovementRuns').textContent = improvementRuns === null ? 'unavailable' : displayCount(improvementRuns, 'never');
+            document.getElementById('harnessImprovementRuns').textContent =
+                improvementRuns === null ? 'awaiting first pass' : displayCount(improvementRuns, 'not run yet');
             document.getElementById('harnessImprovementSuccess').textContent =
-                improvementSuccess === null ? 'unavailable' : displayPercent(improvementSuccess, 1, 'not started');
+                improvementSuccess === null ? 'awaiting run outcome' : displayPercent(improvementSuccess, 1, 'not started');
             document.getElementById('harnessImprovementLast').textContent =
-                improvement.last_run_at ? formatTimestampWithStaleness(improvement.last_run_at, 120) : 'never run';
+                improvement.last_run_at ? formatTimestampWithStaleness(improvement.last_run_at, 120) : (improvement.reason || 'never run');
 
             const toolPolicyPresent = Object.keys(policies.tool_execution_policy || {}).length > 0;
             const outboundPolicyPresent = Object.keys(policies.outbound_http_policy || {}).length > 0;
@@ -4262,7 +4325,7 @@
             const badge = document.getElementById('harnessOpsBadge');
             if (badge) {
                 const healthy = passRate !== null && passRate >= 70 && totalRuns > 0;
-                badge.textContent = healthy ? 'Operational' : 'Needs Attention';
+                badge.textContent = healthy ? 'Operational' : (totalRuns > 0 ? 'Review Recommended' : 'Awaiting Evidence');
                 badge.style.background = healthy ? 'var(--status-online)' : 'var(--status-warning)';
                 badge.style.color = healthy ? 'var(--bg-primary)' : 'var(--bg-primary)';
             }
@@ -4270,11 +4333,11 @@
             const list = document.getElementById('harnessScriptList');
             if (list) {
                 if (!scripts.length) {
-                    list.innerHTML = `<div class="data-item"><span>Harness script inventory unavailable in current API build</span><span class="data-meta">limited</span></div>`;
+                    list.innerHTML = `<div class="data-item"><span>Harness script inventory is still loading from the runtime API</span><span class="data-meta">loading</span></div>`;
                 } else {
                     list.innerHTML = scripts.map((script) => {
                         const ok = script.exists && script.executable;
-                        const state = ok ? 'ready' : 'not present';
+                        const state = summarizeScriptReadiness(script);
                         return `
                             <div class="data-item">
                                 <span>${script.name}</span>
@@ -4284,6 +4347,75 @@
                     }).join('');
                 }
             }
+
+            Object.entries(HARNESS_ACTION_SCRIPT).forEach(([action, scriptName]) => {
+                const button = document.querySelector(`[data-harness-action="${action}"]`);
+                if (!button) return;
+                const script = scriptMap.get(scriptName);
+                const unavailable = !script || !script.exists || !script.executable;
+                button.disabled = unavailable;
+                button.style.opacity = unavailable ? '0.45' : '1';
+                button.style.cursor = unavailable ? 'not-allowed' : 'pointer';
+                button.title = unavailable
+                    ? summarizeScriptReadiness(script || { exists: false, executable: false, path: scriptName })
+                    : `Runs ${scriptName}`;
+            });
+        }
+
+        function formatPrsiReason(reason) {
+            const text = String(reason || '').trim();
+            if (!text) return 'No rationale was attached to this proposal.';
+            if (text.startsWith('local_healthy_pct=')) {
+                const pct = text.split('=')[1];
+                return `Route default provider to local because recent local health measured ${pct}%.`;
+            }
+            if (text.startsWith('cache_hit_pct_low=')) {
+                const pct = text.split('=')[1];
+                return `Prewarm retrieval traffic because cache hit rate fell to ${pct}%.`;
+            }
+            if (text.startsWith('eval_score_falling latest=')) {
+                const pct = text.split('=')[1];
+                return `Escalate to a human because the latest evaluation result dropped to ${pct}.`;
+            }
+            if (text.startsWith('delegation_failures=')) {
+                return `Tighten the remote delegation prompt contract because recent delegated runs failed with: ${text.replace('delegation_failures=', '')}.`;
+            }
+            return text.replaceAll('_', ' ');
+        }
+
+        function summarizePrsiIntent(action) {
+            const raw = action?.raw_action || {};
+            const confidence = Number.isFinite(Number(action?.confidence ?? raw.confidence))
+                ? `Confidence: ${Math.round(Number(action?.confidence ?? raw.confidence) * 100)}%.`
+                : '';
+            const estimatedCost = Number.isFinite(Number(raw.estimated_token_cost))
+                ? `Estimated token cost: ${Number(raw.estimated_token_cost).toLocaleString()}.`
+                : '';
+            const services = Array.isArray(raw.services) && raw.services.length
+                ? `Targets: ${raw.services.join(', ')}.`
+                : '';
+            const overrides = raw.env_overrides && typeof raw.env_overrides === 'object'
+                ? `Overrides: ${Object.entries(raw.env_overrides).map(([key, value]) => `${key}=${value}`).join(', ')}.`
+                : '';
+            const topic = raw.topic ? `Topic: ${raw.topic}.` : '';
+            const message = raw.message ? `Message: ${raw.message}` : '';
+            const evidence = Array.isArray(raw.evidence) && raw.evidence.length
+                ? `Evidence: ${raw.evidence.length} recorded failure sample(s).`
+                : '';
+            const notes = Array.isArray(raw.notes) && raw.notes.length
+                ? `Notes: ${raw.notes.join(' ')}`
+                : '';
+            return [
+                formatPrsiReason(action?.reason || raw.reason),
+                services,
+                overrides,
+                topic,
+                message,
+                evidence,
+                notes,
+                confidence,
+                estimatedCost
+            ].filter(Boolean).join(' ');
         }
 
         function updatePRSIQueue(data) {
@@ -4318,18 +4450,47 @@
             const list = document.getElementById('prsiActionList');
             if (!list) return;
             if (!actions.length) {
-                list.innerHTML = `<div class="data-item"><span>No queued actions</span><span class="data-meta">clear</span></div>`;
+                list.innerHTML = `<div class="data-item"><span>No PRSI actions are waiting for review or execution</span><span class="data-meta">queue clear</span></div>`;
                 return;
             }
-            const top = actions
+            const grouped = new Map();
+            actions
                 .filter((a) => (a.status || '') === 'pending_approval' || (a.status || '') === 'approved')
+                .forEach((action) => {
+                    const key = buildPrsiFingerprint(action);
+                    const existing = grouped.get(key);
+                    if (existing) {
+                        existing.items.push(action);
+                        existing.seenCount += Number(action.seen_count || 1);
+                        if (String(action.last_seen_at || action.created_at || '') > String(existing.latestAt || '')) {
+                            existing.latestAt = action.last_seen_at || action.created_at;
+                        }
+                        return;
+                    }
+                    grouped.set(key, {
+                        exemplar: action,
+                        items: [action],
+                        seenCount: Number(action.seen_count || 1),
+                        latestAt: action.last_seen_at || action.created_at
+                    });
+                });
+            const top = Array.from(grouped.values())
+                .sort((a, b) => String(b.latestAt || '').localeCompare(String(a.latestAt || '')))
                 .slice(0, 5);
-            list.innerHTML = top.map((a) => `
+            list.innerHTML = top.map((group) => {
+                const a = group.exemplar;
+                const queueEntries = group.items.length;
+                return `
                 <div class="data-item">
-                    <span>${(a.action || 'action')} · ${(a.type || 'type')}</span>
-                    <span class="data-meta">${(a.status || 'unknown')} · ${(a.risk || 'n/a')}</span>
+                    <div style="display:flex; flex-direction:column; gap:0.25rem; max-width:80%;">
+                        <span>${formatPrsiActionTitle(a)} · ${(a.type || 'change')}</span>
+                        <span style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">${summarizePrsiIntent(a)}</span>
+                        <span style="font-size:0.72rem; color:var(--text-muted);">${queueEntries} matching queue entr${queueEntries === 1 ? 'y' : 'ies'} • Seen ${group.seenCount} time(s) • Updated ${formatTimestampWithStaleness(group.latestAt, 240)}</span>
+                    </div>
+                    <span class="data-meta">${(a.status || 'review pending')} · ${(a.risk || 'risk review pending')} · ${(a.safe === false ? 'manual gate required' : 'safe change')}</span>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         async function syncPrsiQueue() {
@@ -4369,17 +4530,18 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ limit: 5, dry_run: false, auto_sync: true })
                 });
+                const payload = await response.json().catch(() => ({}));
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    throw new Error(parseApiErrorPayload(payload, `HTTP ${response.status}`));
                 }
                 if (statusEl) {
-                    statusEl.textContent = 'Approved actions executed';
+                    statusEl.textContent = payload?.execute_result?.message || 'Approved actions executed';
                     statusEl.style.color = 'var(--status-online)';
                 }
                 await refreshDashboard();
             } catch (error) {
                 if (statusEl) {
-                    statusEl.textContent = 'Execution failed';
+                    statusEl.textContent = `Execution failed: ${error.message}`;
                     statusEl.style.color = 'var(--status-error)';
                 }
                 console.error('PRSI execute failed:', error);
@@ -4403,16 +4565,16 @@
                 }
                 const payload = await response.json();
                 if (!response.ok || !payload.success) {
-                    throw new Error(payload?.stderr || payload?.detail || `HTTP ${response.status}`);
+                    throw new Error(parseApiErrorPayload(payload, `HTTP ${response.status}`));
                 }
                 if (statusEl) {
-                    statusEl.textContent = `${action}: success`;
+                    statusEl.textContent = `${action}: success (${Math.round((payload.duration_ms || 0) / 1000)}s)`;
                     statusEl.style.color = 'var(--status-online)';
                 }
                 await refreshDashboard();
             } catch (error) {
                 if (statusEl) {
-                    statusEl.textContent = `${action}: failed`;
+                    statusEl.textContent = `${action}: ${error.message}`;
                     statusEl.style.color = 'var(--status-error)';
                 }
                 console.error(`Harness maintenance action failed (${action}):`, error);
@@ -4537,8 +4699,8 @@
 
             document.getElementById('proofAidb').textContent = (data.aidb_status || 'offline').toUpperCase();
             document.getElementById('proofRag').textContent = data.rag?.collection_count ?? '--';
-            document.getElementById('proofLlmModel').textContent = data.llm?.model_name || 'N/A';
-            document.getElementById('proofEmbeddingModel').textContent = data.llm?.embedding_model_name || 'N/A';
+            document.getElementById('proofLlmModel').textContent = data.llm?.model_name || 'model not reported';
+            document.getElementById('proofEmbeddingModel').textContent = data.llm?.embedding_model_name || 'model not reported';
             document.getElementById('proofSkills').textContent = data.skills?.count ?? '--';
             document.getElementById('proofTelemetry').textContent = data.telemetry?.events ?? '--';
             document.getElementById('proofContainers').textContent = data.orchestration?.containers_running ?? '--';
@@ -4548,8 +4710,8 @@
                 const sampleSkills = (data.skills?.samples || []).join(', ');
                 const lastEvent = data.telemetry?.last_event || {};
                 const eventLine = lastEvent.event_type
-                    ? `last_event=${lastEvent.event_type} source=${lastEvent.source || 'n/a'} llm=${lastEvent.llm_used || 'n/a'} model=${lastEvent.model || 'n/a'}`
-                    : 'last_event=--';
+                    ? `last_event=${lastEvent.event_type} source=${lastEvent.source || 'not reported'} llm=${lastEvent.llm_used || 'not reported'} model=${lastEvent.model || 'not reported'}`
+                    : 'last_event=awaiting telemetry';
                 details.textContent = `skills=[${sampleSkills || '--'}] | ${eventLine}`;
             }
 
@@ -4612,7 +4774,7 @@
             }
 
             if (!data || !data.actions) {
-                container.innerHTML = '<div class="data-item"><span>No operator actions available</span><span class="data-meta">empty</span></div>';
+                container.innerHTML = '<div class="data-item"><span>No operator actions are registered in the command catalog</span><span class="data-meta">catalog empty</span></div>';
                 return;
             }
 
@@ -4639,12 +4801,14 @@
                         const item = document.createElement('div');
                         item.className = 'data-item';
                         const mode = action.mode || 'copy';
+                        const descriptor = action.description || action.command || 'Command details unavailable';
                         const runButton = mode === 'run'
                             ? `<button class="export-btn" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="runAction('${action.label.replace(/'/g, "\\'")}')">Run</button>`
-                            : `<span style="font-size: 0.75rem; color: var(--text-muted);">copy</span>`;
+                            : `<span style="font-size: 0.75rem; color: var(--text-muted);">copy command</span>`;
                         item.innerHTML = `
                             <div>
                                 <div>${action.label}</div>
+                                <div class="data-meta">${descriptor}</div>
                                 <div class="data-meta copyable" title="Click to copy">${action.command || ''}</div>
                             </div>
                             <div>${action.command ? runButton : '--'}</div>
@@ -4654,7 +4818,7 @@
                     container.appendChild(actionsGrid);
                 });
             } else {
-                container.innerHTML = '<div class="data-item"><span>No operator actions available</span><span class="data-meta">empty</span></div>';
+                container.innerHTML = '<div class="data-item"><span>No operator actions are registered in the command catalog</span><span class="data-meta">catalog empty</span></div>';
             }
         }
 
@@ -4672,6 +4836,7 @@
                 const payload = await response.json();
                 if (status) {
                     status.textContent = payload.message || (payload.status === 'ok' ? 'Action completed' : 'Action failed');
+                    status.style.color = payload.status === 'ok' ? 'var(--status-online)' : 'var(--status-error)';
                 }
                 if (payload.output) {
                     console.log(payload.output);
@@ -4679,6 +4844,7 @@
             } catch (error) {
                 if (status) {
                     status.textContent = `Action failed: ${error.message}`;
+                    status.style.color = 'var(--status-error)';
                 }
             }
         }
@@ -4817,11 +4983,17 @@
         function updateServicesList(services) {
             const list = document.getElementById('servicesList');
             const badge = document.getElementById('servicesBadge');
+            const statusEl = document.getElementById('stackControlStatus');
 
             badge.textContent = `${services.length} Services`;
+            if (statusEl && services.length > 0) {
+                const running = services.filter((service) => service.status === 'running').length;
+                statusEl.textContent = `${running}/${services.length} services running`;
+                statusEl.style.color = running === services.length ? 'var(--status-online)' : 'var(--text-secondary)';
+            }
 
             if (services.length === 0) {
-                list.innerHTML = '<p style="color: var(--text-muted);">No services found</p>';
+                list.innerHTML = '<p style="color: var(--text-muted);">No managed services were returned by the runtime API</p>';
                 return;
             }
 
@@ -4835,7 +5007,7 @@
                         </div>
                     </div>
                     <div class="service-controls">
-                        <span class="service-status-badge ${service.status}">${service.status}</span>
+                        <span class="service-status-badge ${service.status}">${service.status.replace('-', ' ')}</span>
                         <button class="service-btn start"
                                 onclick="serviceAction('${service.id}', 'start')"
                                 ${service.status === 'running' ? 'disabled' : ''}>
@@ -4856,26 +5028,40 @@
         }
 
         async function serviceAction(serviceId, action) {
+            const statusEl = document.getElementById('stackControlStatus');
             try {
+                if (statusEl) {
+                    statusEl.textContent = `${action} requested for ${serviceId}...`;
+                    statusEl.style.color = 'var(--status-warning)';
+                }
                 const response = await fetch(`${FASTAPI_BASE}/api/services/${serviceId}/${action}`, {
                     method: 'POST'
                 });
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    alert(`Failed to ${action} service: ${error.detail || 'Unknown error'}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    const detail = result?.message || result?.detail || `Failed to ${action} ${serviceId}`;
+                    if (statusEl) {
+                        statusEl.textContent = detail;
+                        statusEl.style.color = 'var(--status-error)';
+                    }
                     return;
                 }
-
-                const result = await response.json();
                 console.log(`Service ${action} result:`, result);
+                if (statusEl) {
+                    statusEl.textContent = result.message || `${serviceId} ${action} completed`;
+                    statusEl.style.color = 'var(--status-online)';
+                }
 
                 // Reload services list after action
                 setTimeout(loadServices, 1000);
 
             } catch (error) {
                 console.error(`Error ${action}ing service:`, error);
-                alert(`Error ${action}ing service: ${error.message}`);
+                if (statusEl) {
+                    statusEl.textContent = `Unable to ${action} ${serviceId}: ${error.message}`;
+                    statusEl.style.color = 'var(--status-error)';
+                }
             }
         }
 
@@ -4993,9 +5179,9 @@
             // Update CPU
             const cpuUsage = metrics.cpu.usage_percent;
             document.getElementById('cpuUsage').textContent = cpuUsage.toFixed(1);
-            document.getElementById('cpuModel').textContent = metrics.cpu.model || 'Unknown';
-            document.getElementById('cpuTemp').textContent = metrics.cpu.temperature || 'N/A';
-            document.getElementById('cpuArch').textContent = metrics.cpu.arch || 'N/A';
+            document.getElementById('cpuModel').textContent = metrics.cpu.model || 'model not reported';
+            document.getElementById('cpuTemp').textContent = metrics.cpu.temperature || 'sensor offline';
+            document.getElementById('cpuArch').textContent = metrics.cpu.arch || 'arch not reported';
             document.getElementById('loadAvg').textContent = formatLoadAverage(metrics.load_average);
 
             // Update Memory
@@ -5049,16 +5235,20 @@
             }
 
             // Update GPU if available
-            if (metrics.gpu && metrics.gpu.name !== 'N/A') {
+            if (metrics.gpu && metrics.gpu.name && metrics.gpu.name !== 'N/A') {
                 document.getElementById('gpuName').textContent = metrics.gpu.name;
                 const gpuBusy = metrics.gpu.busy_percent !== null && metrics.gpu.busy_percent !== undefined
                     ? `${metrics.gpu.busy_percent}%`
-                    : (metrics.gpu.usage || 'N/A');
+                    : (metrics.gpu.usage || 'activity not reported');
                 const gpuVram = metrics.gpu.vram_used_mb !== null && metrics.gpu.vram_total_mb !== null
                     ? `${metrics.gpu.vram_used_mb} / ${metrics.gpu.vram_total_mb} MB`
-                    : (metrics.gpu.memory || 'N/A');
+                    : (metrics.gpu.memory || 'memory not reported');
                 document.getElementById('gpuBusy').textContent = gpuBusy;
                 document.getElementById('gpuVram').textContent = gpuVram;
+            } else {
+                document.getElementById('gpuName').textContent = 'GPU telemetry unavailable';
+                document.getElementById('gpuBusy').textContent = 'activity not reported';
+                document.getElementById('gpuVram').textContent = 'memory not reported';
             }
 
             const gpuBusyPercent = Number(metrics?.gpu?.busy_percent ?? 0);
@@ -5119,7 +5309,7 @@
                     return current && current !== 'healthy';
                 }).length;
 
-                overall.textContent = data.overall_status || '--';
+                overall.textContent = data.overall_status || 'awaiting aggregate health';
                 count.textContent = String(entries.length);
 
                 if (data.overall_status === 'healthy') {
@@ -5132,12 +5322,12 @@
                     badge.style.background = 'var(--status-error)';
                     dashboardRuntimeState.stack = 'error';
                 }
-                dashboardRuntimeState.stackText = data.overall_status || 'unknown';
+                dashboardRuntimeState.stackText = data.overall_status || 'awaiting aggregate health';
                 dashboardRuntimeState.stackDetail = `${issueCount} issue(s) across ${entries.length} checked services`;
                 renderOperatorStrip();
 
                 list.innerHTML = entries.map(([name, info]) => {
-                    const status = info?.status || 'unknown';
+                    const status = info?.status || 'health check pending';
                     const statusClass = status === 'healthy' ? 'status-online' :
                                       status === 'degraded' ? 'status-warning' : 'status-offline';
                     return `<div class="data-item">
@@ -5146,11 +5336,11 @@
                     </div>`;
                 }).join('');
             } catch (err) {
-                overall.textContent = '--';
-                count.textContent = '--';
-                list.innerHTML = '<div class="data-item"><span>Stack health</span><span class="data-meta status-offline">unavailable</span></div>';
+                overall.textContent = 'health probe unavailable';
+                count.textContent = '0';
+                list.innerHTML = '<div class="data-item"><span>Stack health</span><span class="data-meta status-offline">probe unavailable</span></div>';
                 dashboardRuntimeState.stack = 'error';
-                dashboardRuntimeState.stackText = 'unavailable';
+                dashboardRuntimeState.stackText = 'probe unavailable';
                 dashboardRuntimeState.stackDetail = 'Aggregate health endpoint did not respond';
                 renderOperatorStrip();
             }
@@ -5191,9 +5381,9 @@
                 if (!response.ok) throw new Error('services fetch failed');
                 const services = await response.json();
                 const hasSystemd = (services || []).some((s) => s.type === 'systemd');
-                modeElement.textContent = hasSystemd ? 'systemd/local' : 'unknown';
+                modeElement.textContent = hasSystemd ? 'systemd/local' : 'runtime inventory incomplete';
                 dashboardRuntimeState.runtime = hasSystemd ? 'online' : 'warning';
-                dashboardRuntimeState.runtimeText = hasSystemd ? 'systemd/local' : 'unknown';
+                dashboardRuntimeState.runtimeText = hasSystemd ? 'systemd/local' : 'runtime inventory incomplete';
                 dashboardRuntimeState.runtimeDetail = hasSystemd
                     ? 'Service inventory returned local systemd units'
                     : 'API responded but runtime type is incomplete';
@@ -5270,105 +5460,120 @@
         async function startAIStack() {
             const statusEl = document.getElementById('stackControlStatus');
             const startBtn = document.getElementById('startStackBtn');
+            const stopBtn = document.getElementById('stopStackBtn');
+            const restartBtn = document.getElementById('restartStackBtn');
 
-            statusEl.textContent = 'Starting AI stack...';
+            statusEl.textContent = 'Starting managed AI stack services...';
             statusEl.style.color = 'var(--status-warning)';
             startBtn.disabled = true;
+            stopBtn.disabled = true;
+            restartBtn.disabled = true;
 
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/containers/ai-stack/start`, {
+                const response = await fetch(`${FASTAPI_BASE}/api/services/actions/start-all`, {
                     method: 'POST'
                 });
                 const result = await response.json();
 
                 if (result.success) {
-                    statusEl.textContent = '✓ ' + result.message;
+                    statusEl.textContent = `Started ${result.succeeded}/${result.results?.length || 0} services`;
                     statusEl.style.color = 'var(--status-online)';
 
                     // Refresh services list after a delay
                     setTimeout(() => {
                         loadServices();
-                        statusEl.textContent = '';
                     }, 3000);
                 } else {
-                    statusEl.textContent = '✗ ' + result.message;
+                    statusEl.textContent = result.message || 'One or more services could not be started';
                     statusEl.style.color = 'var(--status-error)';
                 }
             } catch (error) {
-                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.textContent = 'Start-all request failed: ' + error.message;
                 statusEl.style.color = 'var(--status-error)';
             } finally {
                 startBtn.disabled = false;
+                stopBtn.disabled = false;
+                restartBtn.disabled = false;
             }
         }
 
         async function stopAIStack() {
             const statusEl = document.getElementById('stackControlStatus');
             const stopBtn = document.getElementById('stopStackBtn');
+            const startBtn = document.getElementById('startStackBtn');
+            const restartBtn = document.getElementById('restartStackBtn');
 
-            statusEl.textContent = 'Stopping AI stack...';
+            statusEl.textContent = 'Stopping managed AI stack services...';
             statusEl.style.color = 'var(--status-warning)';
             stopBtn.disabled = true;
+            startBtn.disabled = true;
+            restartBtn.disabled = true;
 
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/containers/ai-stack/stop`, {
+                const response = await fetch(`${FASTAPI_BASE}/api/services/actions/stop-all`, {
                     method: 'POST'
                 });
                 const result = await response.json();
 
                 if (result.success) {
-                    statusEl.textContent = '✓ ' + result.message;
+                    statusEl.textContent = `Stopped ${result.succeeded}/${result.results?.length || 0} services`;
                     statusEl.style.color = 'var(--status-online)';
 
                     // Refresh services list after a delay
                     setTimeout(() => {
                         loadServices();
-                        statusEl.textContent = '';
                     }, 3000);
                 } else {
-                    statusEl.textContent = '✗ ' + result.message;
+                    statusEl.textContent = result.message || 'One or more services could not be stopped';
                     statusEl.style.color = 'var(--status-error)';
                 }
             } catch (error) {
-                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.textContent = 'Stop-all request failed: ' + error.message;
                 statusEl.style.color = 'var(--status-error)';
             } finally {
                 stopBtn.disabled = false;
+                startBtn.disabled = false;
+                restartBtn.disabled = false;
             }
         }
 
         async function restartAIStack() {
             const statusEl = document.getElementById('stackControlStatus');
             const restartBtn = document.getElementById('restartStackBtn');
+            const startBtn = document.getElementById('startStackBtn');
+            const stopBtn = document.getElementById('stopStackBtn');
 
-            statusEl.textContent = 'Restarting AI stack...';
+            statusEl.textContent = 'Restarting managed AI stack services...';
             statusEl.style.color = 'var(--status-warning)';
             restartBtn.disabled = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = true;
 
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/containers/ai-stack/restart`, {
+                const response = await fetch(`${FASTAPI_BASE}/api/services/actions/restart-all`, {
                     method: 'POST'
                 });
                 const result = await response.json();
 
                 if (result.success) {
-                    statusEl.textContent = '✓ ' + result.message;
+                    statusEl.textContent = `Restarted ${result.succeeded}/${result.results?.length || 0} services`;
                     statusEl.style.color = 'var(--status-online)';
 
                     // Refresh services list after a delay
                     setTimeout(() => {
                         loadServices();
-                        statusEl.textContent = '';
                     }, 3000);
                 } else {
-                    statusEl.textContent = '✗ ' + result.message;
+                    statusEl.textContent = result.message || 'One or more services could not be restarted';
                     statusEl.style.color = 'var(--status-error)';
                 }
             } catch (error) {
-                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.textContent = 'Restart-all request failed: ' + error.message;
                 statusEl.style.color = 'var(--status-error)';
             } finally {
                 restartBtn.disabled = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = false;
             }
         }
 
@@ -5687,7 +5892,7 @@
 
                     if (Object.keys(breakers).length === 0) {
                         container.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">No circuit breakers registered</div>';
-                        document.getElementById('circuitBreakerBadge').textContent = 'None';
+                        document.getElementById('circuitBreakerBadge').textContent = 'No Open Circuits';
                         return;
                     }
 

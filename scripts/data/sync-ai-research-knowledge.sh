@@ -28,7 +28,7 @@ if [[ "$VALIDATE_ONLY" == "true" ]]; then
   exit 0
 fi
 
-python3 "${SCRIPT_DIR}/discover-improvements.py" >/dev/null
+python3 "${REPO_ROOT}/scripts/governance/discover-improvements.py" >/dev/null
 
 if [[ ! -f "$REPORT_PATH" ]]; then
   # fallback to newest report if date stamp differs
