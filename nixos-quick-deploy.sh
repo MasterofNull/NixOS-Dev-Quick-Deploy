@@ -971,13 +971,8 @@ PY
     return 1
   fi
 
-  http_code="$(hybrid_post_json_capture \
-    "/qa/check" \
-    '{"phase":"0","format":"json","timeout_seconds":30}' \
-    "${qa_check_body}" \
-    "${hybrid_api_key}" || true)"
-  if [[ ! "${http_code}" =~ ^2 ]]; then
-    log_warn "Repo-backed AI capability check failed: /qa/check returned HTTP ${http_code}"
+  if ! "${REPO_ROOT}/scripts/ai/aq-qa" 0 --json > "${qa_check_body}"; then
+    log_warn "Repo-backed AI capability check failed: local aq-qa 0 returned non-zero"
     sed -n '1,80p' "${qa_check_body}" >&2 || true
     rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
     return 1
@@ -989,11 +984,11 @@ import sys
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     payload = json.load(handle)
 
-if payload.get("status") != "ok":
+if int(payload.get("failed", 0) or 0) != 0:
     raise SystemExit(1)
 PY
   then
-    log_warn "Repo-backed AI capability check failed: /qa/check did not return status=ok"
+    log_warn "Repo-backed AI capability check failed: local aq-qa 0 reported failures"
     sed -n '1,80p' "${qa_check_body}" >&2 || true
     rm -f "${workflow_plan_body}" "${qa_check_body}" "${learning_export_body}"
     return 1

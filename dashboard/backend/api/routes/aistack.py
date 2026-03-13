@@ -260,6 +260,7 @@ def _script_path(name: str) -> Path:
         _repo_root() / "scripts" / name,
         _repo_root() / "scripts" / "automation" / name,
         _repo_root() / "scripts" / "ai" / name,
+        _repo_root() / "scripts" / "data" / name,
         _repo_root() / "scripts" / "testing" / name,
         _repo_root() / "scripts" / "governance" / name,
         _repo_root() / "scripts" / "deploy" / name,
@@ -320,7 +321,14 @@ async def _run_harness_script(
         raise HTTPException(status_code=404, detail=f"Script not found: {path}")
     if not os.access(path, os.X_OK):
         raise HTTPException(status_code=400, detail=f"Script not executable: {path}")
+    bash_bin = os.getenv("BASH_BIN", "/run/current-system/sw/bin/bash")
     argv = [str(path)] + (args or [])
+    if path.suffix == ".sh":
+        argv = [bash_bin, str(path)] + (args or [])
+    env = os.environ.copy()
+    existing_path = env.get("PATH", "")
+    extra_path = "/run/current-system/sw/bin:/usr/bin:/bin"
+    env["PATH"] = f"{extra_path}:{existing_path}" if existing_path else extra_path
     t0 = time.monotonic()
     try:
         result = await asyncio.to_thread(
@@ -331,6 +339,7 @@ async def _run_harness_script(
             check=False,
             timeout=timeout_seconds,
             cwd=str(_repo_root()),
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(status_code=504, detail=f"Script timeout: {script_name}") from exc
@@ -545,7 +554,13 @@ async def _fetch_improvement_pass_stats(hours: int = 24) -> Dict[str, Any]:
         )
         total = int(row["total_runs"] or 0)
         successful = int(row["successful_runs"] or 0)
-        last_metadata = dict(latest["metadata"]) if latest and latest["metadata"] else {}
+        raw_metadata = latest["metadata"] if latest and latest["metadata"] else {}
+        if isinstance(raw_metadata, str):
+            try:
+                raw_metadata = json.loads(raw_metadata)
+            except json.JSONDecodeError:
+                raw_metadata = {}
+        last_metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
         return {
             "available": True,
             "window_hours": hours,
