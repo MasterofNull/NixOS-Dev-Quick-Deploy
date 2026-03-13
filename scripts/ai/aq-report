@@ -98,6 +98,9 @@ LOCAL_SHARED_SKILLS_DIR = Path(
 EXTERNAL_SHARED_SKILLS_MANIFEST = Path(
     os.getenv("AQ_SHARED_SKILL_MANIFEST", str(Path(__file__).resolve().parents[2] / "config" / "approved-skill-sources.json"))
 )
+LLAMA_BENCHMARK_RUNS_DIR = Path(
+    os.getenv("AQ_LLAMA_BENCHMARK_RUNS_DIR", "~/.local/share/nixos-ai-stack/llama-benchmarks")
+).expanduser()
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -628,6 +631,93 @@ def prom_query_range(metric: str, start: datetime, step: str = "1h") -> List[Tup
         return [(float(v[0]), float(v[1])) for v in results[0].get("values", [])]
     except Exception:
         return []
+
+
+def read_llama_benchmark_runs(since: datetime) -> Dict[str, Any]:
+    if not LLAMA_BENCHMARK_RUNS_DIR.is_dir():
+        return {"available": False, "source": str(LLAMA_BENCHMARK_RUNS_DIR)}
+
+    runs: List[Dict[str, Any]] = []
+    for path in sorted(LLAMA_BENCHMARK_RUNS_DIR.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        ts = _score_ts_utc(payload.get("saved_at")) or datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        if ts < since:
+            continue
+        payload["_saved_ts"] = ts
+        payload["_path"] = str(path)
+        runs.append(payload)
+
+    runs.sort(key=lambda item: item.get("_saved_ts", datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+    return {"available": True, "source": str(LLAMA_BENCHMARK_RUNS_DIR), "runs": runs}
+
+
+def summarize_llama_benchmark_runs(data: Dict[str, Any]) -> Dict[str, Any]:
+    if not data.get("available"):
+        return {"available": False, "source": data.get("source")}
+
+    runs = data.get("runs") if isinstance(data.get("runs"), list) else []
+    if not runs:
+        return {
+            "available": True,
+            "source": data.get("source"),
+            "total_runs": 0,
+            "quality_passed_runs": 0,
+            "latest_run": None,
+            "best_latency_run": None,
+            "best_tps_run": None,
+        }
+
+    valid_runs = [run for run in runs if isinstance(run, dict) and isinstance(run.get("summary"), dict)]
+    quality_passed = [
+        run for run in valid_runs
+        if bool((run.get("summary") or {}).get("all_quality_checks_passed"))
+    ]
+
+    def _latency_key(run: Dict[str, Any]) -> float:
+        summary = run.get("summary") or {}
+        return float(summary.get("avg_warm_latency_s") or 1e12)
+
+    def _tps_key(run: Dict[str, Any]) -> float:
+        summary = run.get("summary") or {}
+        return float(summary.get("avg_completion_tokens_per_second") or -1.0)
+
+    pool = quality_passed or valid_runs
+    best_latency = min(pool, key=_latency_key) if pool else None
+    best_tps = max(pool, key=_tps_key) if pool else None
+    latest = runs[0]
+
+    def _compact(run: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not run:
+            return None
+        summary = run.get("summary") or {}
+        resources = run.get("resource_observations") or {}
+        return {
+            "run_id": run.get("run_id"),
+            "target_model": run.get("target_model"),
+            "target_ctx_size": run.get("target_ctx_size"),
+            "saved_at": run.get("saved_at") or str(run.get("_saved_ts") or ""),
+            "avg_warm_latency_s": summary.get("avg_warm_latency_s"),
+            "avg_completion_tokens_per_second": summary.get("avg_completion_tokens_per_second"),
+            "all_quality_checks_passed": summary.get("all_quality_checks_passed"),
+            "peak_rss_mb": resources.get("peak_rss_mb"),
+            "avg_gpu_busy_percent": resources.get("avg_gpu_busy_percent"),
+            "path": run.get("saved_path") or run.get("_path"),
+        }
+
+    return {
+        "available": True,
+        "source": data.get("source"),
+        "total_runs": len(runs),
+        "quality_passed_runs": len(quality_passed),
+        "latest_run": _compact(latest),
+        "best_latency_run": _compact(best_latency),
+        "best_tps_run": _compact(best_tps),
+    }
 
 
 def _pg_creds() -> tuple[str, int, str, str, str]:
@@ -2598,6 +2688,7 @@ def format_md(
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     historical_hint_watch: Optional[Dict[str, Any]] = None,
     agent_lessons: Optional[Dict[str, Any]] = None,
+    llama_benchmark_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -2817,6 +2908,35 @@ def format_md(
         mismatches = shared_skill_registry.get("path_mismatches") or []
         for item in mismatches[:3]:
             lines.append(f"  - `{item.get('slug')}` path drift: `{item.get('aidb_source_path')}`")
+    lines.append("")
+
+    lines += ["## 8ac. Llama Benchmark Runs", ""]
+    if not llama_benchmark_summary or not llama_benchmark_summary.get("available"):
+        lines.append("*Saved llama benchmark runs unavailable.*")
+    elif int(llama_benchmark_summary.get("total_runs", 0) or 0) == 0:
+        lines.append("*No saved llama benchmark runs in this window.*")
+    else:
+        lines.append(
+            f"- Saved runs: **{llama_benchmark_summary.get('total_runs', 0)}**"
+            f" ({llama_benchmark_summary.get('quality_passed_runs', 0)} with all quality checks passing)"
+        )
+        latest_run = llama_benchmark_summary.get("latest_run") or {}
+        if latest_run:
+            lines.append(
+                f"- Latest: `{latest_run.get('run_id')}` — {latest_run.get('target_model')} @ {latest_run.get('target_ctx_size')} ctx "
+                f"(warm { _na(latest_run.get('avg_warm_latency_s'), '.3f', 's') }, "
+                f"{ _na(latest_run.get('avg_completion_tokens_per_second'), '.2f', ' tok/s') })"
+            )
+        best_latency = llama_benchmark_summary.get("best_latency_run") or {}
+        if best_latency:
+            lines.append(
+                f"- Best latency: `{best_latency.get('run_id')}` — warm { _na(best_latency.get('avg_warm_latency_s'), '.3f', 's') }"
+            )
+        best_tps = llama_benchmark_summary.get("best_tps_run") or {}
+        if best_tps:
+            lines.append(
+                f"- Best throughput: `{best_tps.get('run_id')}` — { _na(best_tps.get('avg_completion_tokens_per_second'), '.2f', ' tok/s') }"
+            )
     lines.append("")
 
     lines += ["## 8aa. Delegated Prompt Failures", ""]
@@ -3076,6 +3196,7 @@ def format_text(
     recent_hint_diversity_stats: Optional[Dict[str, Any]] = None,
     historical_hint_watch: Optional[Dict[str, Any]] = None,
     agent_lessons: Optional[Dict[str, Any]] = None,
+    llama_benchmark_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -3295,6 +3416,35 @@ def format_text(
             lines.append(f"  Missing in AIDB: {', '.join(missing[:8])}")
         for item in (shared_skill_registry.get("path_mismatches") or [])[:3]:
             lines.append(f"    {item.get('slug')}: path drift -> {item.get('aidb_source_path')}")
+    lines.append("")
+
+    lines += ["[ 8ac. Llama Benchmark Runs ]"]
+    if not llama_benchmark_summary or not llama_benchmark_summary.get("available"):
+        lines.append("  Saved llama benchmark runs unavailable.")
+    elif int(llama_benchmark_summary.get("total_runs", 0) or 0) == 0:
+        lines.append("  No saved llama benchmark runs in this window.")
+    else:
+        lines.append(
+            f"  Saved runs: {llama_benchmark_summary.get('total_runs', 0)}"
+            f" ({llama_benchmark_summary.get('quality_passed_runs', 0)} quality-pass)"
+        )
+        latest_run = llama_benchmark_summary.get("latest_run") or {}
+        if latest_run:
+            lines.append(
+                f"  Latest: {latest_run.get('run_id')} -> {latest_run.get('target_model')} @ {latest_run.get('target_ctx_size')} "
+                f"(warm {_na(latest_run.get('avg_warm_latency_s'), '.3f', 's')}, "
+                f"{_na(latest_run.get('avg_completion_tokens_per_second'), '.2f', ' tok/s')})"
+            )
+        best_latency = llama_benchmark_summary.get("best_latency_run") or {}
+        if best_latency:
+            lines.append(
+                f"  Best latency: {best_latency.get('run_id')} ({_na(best_latency.get('avg_warm_latency_s'), '.3f', 's')})"
+            )
+        best_tps = llama_benchmark_summary.get("best_tps_run") or {}
+        if best_tps:
+            lines.append(
+                f"  Best throughput: {best_tps.get('run_id')} ({_na(best_tps.get('avg_completion_tokens_per_second'), '.2f', ' tok/s')})"
+            )
     lines.append("")
 
     lines += ["[ 8aa. Delegated Prompt Failures ]"]
@@ -3735,6 +3885,7 @@ def main() -> None:
         hint_diversity_stats,
         recent_hint_diversity_stats,
     )
+    llama_benchmark_summary = summarize_llama_benchmark_runs(read_llama_benchmark_runs(since_dt))
     recs = build_recommendations(
         tool_stats,
         route,
@@ -3788,11 +3939,12 @@ def main() -> None:
         recent_hint_diversity_stats,
         historical_hint_watch,
         agent_lessons,
+        llama_benchmark_summary,
     )
     if args.fmt == "md":
         output = format_md(*fmt_args)
     elif args.fmt == "json":
-        output = format_json(*fmt_args, structured_actions=structured_actions)
+        output = format_json(*fmt_args[:-1], structured_actions=structured_actions)
     else:
         output = format_text(*fmt_args)
 
