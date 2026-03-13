@@ -484,6 +484,10 @@ print_completion_test_results() {
     delegated_failure_class="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_failure_classes[0][0] // empty')"
     delegated_failure_class_count="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_failure_classes[0][1] // 0')"
     delegated_failure_profile="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failures.top_profiles[0][0] // empty')"
+    delegated_failure_24h_total="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failure_windows.windows["24h"].total_failures // 0')"
+    delegated_failure_24h_salvageable="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failure_windows.windows["24h"].salvageable_pct // "n/a"')"
+    delegated_failure_7d_total="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failure_windows.windows["7d"].total_failures // 0')"
+    delegated_failure_7d_salvageable="$(printf '%s' "${json}" | jq -r '.delegated_prompt_failure_windows.windows["7d"].salvageable_pct // "n/a"')"
     continue_editor_available="$(printf '%s' "${json}" | jq -r '.continue_editor.available // false')"
     continue_editor_healthy="$(printf '%s' "${json}" | jq -r '.continue_editor.healthy // false')"
     continue_editor_failed="$(printf '%s' "${json}" | jq -r '.continue_editor.failed_n // 0')"
@@ -590,6 +594,7 @@ print_completion_test_results() {
       fi
       delegated_failure_label="${delegated_failure_label}; salvageable=${delegated_failure_salvageable}"
     fi
+    delegated_failure_trend_label="24h=${delegated_failure_24h_total} (${delegated_failure_24h_salvageable}% salvageable)  7d=${delegated_failure_7d_total} (${delegated_failure_7d_salvageable}% salvageable)"
     if [[ "${rag_memory_share}" != "n/a" ]]; then
       rag_memory_share="${rag_memory_share}%"
     fi
@@ -665,6 +670,7 @@ PY
     printf '  %-28s %s\n' "Remote profile trend" "${remote_profile_trend_label}"
     printf '  %-28s %s\n' "Route latency (${route_latency_window})" "${route_latency_label}"
     printf '  %-28s %s\n' "Delegated prompt failures" "${delegated_failure_label}"
+    printf '  %-28s %s\n' "Delegated failure trend" "${delegated_failure_trend_label}"
     printf '  %-28s %s\n' "Prewarm candidate" "${rag_prewarm_label}"
     if [[ -n "${agent_lesson_label}" ]]; then
       printf '  %-28s %s\n' "Agent lesson" "${agent_lesson_label}"

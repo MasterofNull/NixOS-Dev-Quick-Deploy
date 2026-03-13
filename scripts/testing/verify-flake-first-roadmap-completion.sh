@@ -605,8 +605,10 @@ check_pattern "scripts/ai/aq-report" 'top_reviewers' 'aq-report summarizes workf
 check_pattern "scripts/ai/aq-report" 'accepted_blueprints|rejected_blueprints' 'aq-report summarizes accepted and rejected workflow blueprints'
 check_pattern "scripts/ai/aq-report" 'top_review_types|accepted_patch_reviews|patch_reviews_by_reviewed_agent|accepted_task_classes' 'aq-report summarizes patch-review and task-class workflow telemetry'
 check_pattern "scripts/ai/aq-report" 'accepted_by_reviewed_profile|rejected_by_reviewed_profile' 'aq-report summarizes workflow acceptance by reviewed profile'
+check_pattern "scripts/ai/aq-report" 'delegated_prompt_failure_windows' 'aq-report materializes delegated prompt-failure history windows'
 check_pattern "scripts/testing/test-workflow-review-gate.py" 'top_reviewers|accepted_blueprints|rejected_blueprints|accepted_patch_reviews|patch_reviews_by_reviewed_agent' 'Workflow review-gate test covers reviewer, blueprint, and patch-review aggregates'
 check_pattern "nixos-quick-deploy.sh" 'Workflow reviews|Workflow review mix|Workflow acceptance' 'quick deploy summary surfaces workflow review and acceptance context'
+check_pattern "nixos-quick-deploy.sh" 'Delegated failure trend' 'quick deploy summary surfaces delegated prompt-failure trend'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
 if (( fail_count > 0 )); then
