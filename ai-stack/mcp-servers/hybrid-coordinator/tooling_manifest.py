@@ -90,8 +90,16 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
             "orchestrate",
             "orchestration",
             "workflow",
+            "openrouter",
+            "remote agent",
+            "delegate",
         )
     ):
+        add(
+            "ai_coordinator_delegate",
+            "/control/ai-coordinator/delegate",
+            "Route a bounded delegated task through the ai-coordinator runtime lanes.",
+        )
         add(
             "loop_orchestrate",
             "/workflow/orchestrate",
@@ -176,6 +184,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["prompt", "backend", "max_iterations", "require_approval", "context"],
         "output_focus": "Task id, backend, queue status, and activation posture only.",
     },
+    "ai_coordinator_delegate": {
+        "method": "POST",
+        "mcp_tool": "",
+        "args": ["task", "profile", "messages", "tools", "tool_choice", "max_tokens"],
+        "output_focus": "Selected runtime, route metadata, and concise delegated response only.",
+    },
     "loop_status": {
         "method": "GET",
         "mcp_tool": "",
@@ -208,7 +222,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery"])},
         {
             "id": "execute",
-            "tools": pick(["route_search", "memory_recall", "workflow_run_start", "loop_orchestrate", "feedback"]),
+            "tools": pick(["route_search", "memory_recall", "workflow_run_start", "ai_coordinator_delegate", "loop_orchestrate", "feedback"]),
         },
         {"id": "validate", "tools": pick(["qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
         {"id": "handoff", "tools": pick(["feedback", "learning_stats"])},
@@ -237,8 +251,21 @@ def build_tooling_manifest(
         max_reason_chars if max_reason_chars is not None else _env_int("AI_CODE_EXEC_MAX_REASON_CHARS", 160)
     )
 
+    priority = {
+        "ai_coordinator_delegate": 100,
+        "loop_orchestrate": 95,
+        "loop_status": 90,
+        "workflow_run_start": 85,
+        "qa_check": 80,
+        "harness_eval": 75,
+    }
+    ordered_tools = sorted(
+        tools,
+        key=lambda tool: (-priority.get(str(tool.get("name", "")).strip(), 0), tools.index(tool)),
+    )
+
     compact_tools: List[Dict[str, Any]] = []
-    for tool in tools[:max_tools_value]:
+    for tool in ordered_tools[:max_tools_value]:
         name = str(tool.get("name", "")).strip()
         spec = _TOOL_RUNTIME_SPECS.get(name, {})
         compact_tools.append(
