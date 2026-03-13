@@ -191,6 +191,10 @@ _continue_editor_flow_smoke() {
   bash "${REPO_ROOT}/scripts/testing/smoke-continue-editor-flow.sh"
 }
 
+_flagship_cli_surface_smoke() {
+  bash "${REPO_ROOT}/scripts/testing/smoke-flagship-cli-surfaces.sh"
+}
+
 _aq_report_snapshot() {
   if [[ -n "${AQ_QA_AQ_REPORT_JSON:-}" ]]; then
     printf '%s' "${AQ_QA_AQ_REPORT_JSON}"
@@ -296,6 +300,9 @@ run_phase_0() {
   _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
   _check "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
+
+  # 0.6 Flagship agent CLI surface basics
+  _check "0.6.1" "flagship agent CLI help smokes" _flagship_cli_surface_smoke
 }
 
 # ---------------------------------------------------------------------------

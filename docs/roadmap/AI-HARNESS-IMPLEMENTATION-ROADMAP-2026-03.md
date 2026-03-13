@@ -68,7 +68,7 @@ Tracking fields to update after each slice:
 
 | Area | Status | Evidence | Next Action |
 | --- | --- | --- | --- |
-| Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
+| Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again, and repo-native help smokes now prove `cn`, `codex`, `qwen`, `gemini`, and `pi` are present on this host; Codex/Qwen/Gemini/Claude CLI delivery is still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter prompt-contract tuning | in_progress | free-capable aliases are live across remote lanes, `remote-tool-calling` now has a bounded post-tool finalization pass, and delegated prompt-failure history is now materialized across 1h/24h/7d windows so envelope changes can be measured over time; broader delegated prompt classes still need the same tightening so repeated empty/generic replies do not keep landing in the failure ledger | extend prompt-contract revision beyond tool-calling into free/reasoning/coding micro-task templates and keep validating with live delegated smokes plus failure-trend deltas |
 | Continue/local web research lane | in_progress | bounded `/research/web/fetch`, `/research/workflows/curated-fetch`, and `/research/web/browser-fetch` lanes are now live; the browser-assisted fallback successfully rendered a real Calflora page, the curated manifest includes a California-native pack, and source-level fetch policy now lets approved workflows escalate only the weak sources to browser fallback, while broader source-pack coverage remains incomplete | expand approved source packs beyond the current U.S./California seeds and keep challenge/captcha handling in compliant fallback lanes without implementing anti-bot evasion |
 | Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, a pinned `agentskill.sh` source (`learn`) is imported through the same governed manifest path, and the coordinator now exposes the approved catalog directly; broader remote-agent export/install surfaces remain incomplete | extend governed manifest coverage and broader remote-agent export/install surfaces |
@@ -77,6 +77,7 @@ Tracking fields to update after each slice:
 
 | Date | Slice / Commit | Status | Notes |
 | --- | --- | --- | --- |
+| 2026-03-13 | flagship CLI help smoke coverage | validated_local | repo-native smoke coverage now proves `cn`, `codex`, `qwen`, `gemini`, and `pi` all respond to `--help`, and Phase 0 now tracks that coverage instead of leaving those external/scaffolded surfaces as ad hoc manual checks |
 | 2026-03-13 | delegated prompt-failure history windows | validated_local | `aq-report` now materializes 1h/24h/7d delegated prompt-failure windows and `nixos-quick-deploy.sh` surfaces the trend so prompt-envelope tuning can be measured over time instead of inferred from one aggregate bucket |
 | 2026-03-13 | `d9f3e06` agent-review corrective pass | validated_local | fixed broken Continue CLI packaging, fixed Tier 0 pre-deploy file detection, added required implementation roadmap and agent surface matrix |
 | 2026-03-13 | route-search retrieval breadth batch | validated_live | bounded route-search collection selection and retrieval-breadth reporting are live |
@@ -144,7 +145,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, the browser-assisted fallback lane, the California-native source pack, and source-level fetch policy are live; the next gap is expanding approved source packs further`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, explicit flagship CLI help smokes for cn/codex/qwen/gemini/pi, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, the browser-assisted fallback lane, the California-native source pack, and source-level fetch policy are live; the next gap is expanding approved source packs further while continuing to move external CLI surfaces toward declarative packaging where viable`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -195,6 +196,7 @@ Validation:
   - `qwen --help`
   - `gemini --help`
   - `pi --help`
+- `scripts/testing/smoke-flagship-cli-surfaces.sh`
 - support-matrix doc and runtime validation output remain aligned
 
 Acceptance:
