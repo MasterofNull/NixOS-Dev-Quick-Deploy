@@ -10,6 +10,7 @@
     "ruby"
     "neovim"
     "python3"
+    "python312"
     "sqlite"
     "wireshark"
     "tcpdump"
@@ -31,6 +32,10 @@
     "dvc"
     # httpie: human-friendly HTTP client for local API testing.
     "httpie"
+    # BitNet benchmark prerequisites.
+    "cmake"
+    "clang"
+    "zlib"
   ];
 
   gaming = [
