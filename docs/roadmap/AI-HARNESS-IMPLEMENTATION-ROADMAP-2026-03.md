@@ -70,7 +70,7 @@ Tracking fields to update after each slice:
 | --- | --- | --- | --- |
 | Flagship agent CLI coverage | in_progress | Continue CLI packaging and HM activation are now fixed again; Codex/Qwen/Gemini/Claude CLI delivery still mixed between declarative, external, and scaffolded | keep support matrix current and package or explicitly classify each remaining surface |
 | OpenRouter paid-lane drift | in_progress | `remote-free` validates live, but `remote-coding` and `remote-reasoning` returned `402` because host defaults still pointed at paid aliases | repoint coding/reasoning lanes to official free-capable aliases, activate, and re-run live delegation smokes |
-| Continue/local web research lane | validated_live | a bounded `/research/web/fetch` lane is live with robots-aware pacing, selector limits, response caps, and tooling/SDK exposure; live smokes confirmed one allowed HTTPS fetch and one redirect-to-HTTP policy block | wire the lane into a real native-plant lookup workflow with curated source lists and request budgets |
+| Continue/local web research lane | in_progress | a bounded `/research/web/fetch` lane is live, and a generic manifest-backed curated workflow layer now runs live through `/research/workflows/curated-fetch`; the first pack validates the path, but one source currently lands in `empty_extract` and bot-gated pages still need compliant fallback expansion | tune the first pack, add more approved source packs, and expand browser-assisted/manual fallback handling for bot-gated public sites without implementing anti-bot evasion |
 | Shared skill ingestion and registry | validated_live | local shared skills sync into approved AIDB registry entries through a repo-native path, a pinned `agentskill.sh` source (`learn`) is imported through the same governed manifest path, and the coordinator now exposes the approved catalog directly; broader remote-agent export/install surfaces remain incomplete | extend governed manifest coverage and broader remote-agent export/install surfaces |
 
 ## Execution Ledger
@@ -108,6 +108,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | shared skill registry sync bridge | validated_live | added a repo-native `aq-sync-shared-skills.py` path that imports local `.agent/skills` entries into AIDB and promotes them to approved visibility, added cache-busting drift reporting in `aq-report`, and live-verified `23/23` approved shared skills |
 | 2026-03-13 | governed external skill import bootstrap | validated_live | added a pinned external skill-source manifest, locked `agentskill-sh/learn` by commit, imported it through the same AIDB approval path, and live-verified `24/24` expected approved shared skills in `aq-report` |
 | 2026-03-13 | coordinator shared-skill visibility surface | validated_live | added `/control/ai-coordinator/skills`, exposed shared skill summary in coordinator status, wired SDK/RPC/tooling-manifest support, and live-verified the coordinator returns the approved 24-skill catalog including `learn` |
+| 2026-03-13 | curated research workflow layer | validated_live | added a manifest-backed `/research/workflows/curated-fetch` layer with SDK/RPC/tooling-manifest exposure, live-validated the first approved source pack, and classified empty-extract/bot-gated pages into explicit fallback signals instead of treating them as successful scraping |
 
 ## High-Priority Tracks
 
@@ -115,7 +116,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, and coordinator shared-skill visibility are live; remaining work is broader CLI coverage consistency, a real native-plant research workflow, and broader remote-agent export/install surfaces`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, and the generic curated research workflow layer are live; the next gap is expanding approved source packs and compliant fallback handling for bot-gated public sites`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
@@ -125,7 +126,7 @@ Open Risks / Blockers:
 - Codex/Qwen/Gemini/Claude CLI delivery is still inconsistent across declarative, external, and npm-global paths
 - `pi` remains scaffolded, not validated as a real declarative package
 - Home Manager is no longer blocked on Continue CLI, but future CLI package additions still need isolated `outPath`/activation validation before they are treated as safe for unattended deploys
-- Continue/editor health now reaches `aq-report` and deploy summaries, and bounded web research is live, but the first real workflow task still needs a curated native-plant lookup implementation
+- Continue/editor health now reaches `aq-report` and deploy summaries, and the generic curated-workflow layer is now live, but broader approved source-pack coverage and browser-assisted/manual fallback handling still need expansion for bot-gated sites such as some native-plant databases
 
 Goal:
 - make flagship agent CLIs, IDE companions, and remote-provider entrypoints declarative where possible, and explicitly scaffolded where upstream packaging still blocks full declarative rollout
@@ -178,14 +179,13 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility and a bounded web-research lane locally; next gap is live deployment validation plus a real native-plant lookup workflow`
-Current Slice: `continue/editor runtime now has reporting visibility and a bounded web-research lane live; next gap is a real native-plant lookup workflow and any task-specific extraction tuning it reveals`
+Current Slice: `continue/editor runtime now has reporting visibility, a bounded web-research lane, and a generic curated-workflow layer live; next gap is broader approved source-pack coverage plus compliant fallback handling for bot-gated public sites`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
 - `python3 scripts/testing/test-web-research-lane.py`
 - live `POST /research/web/fetch` smoke after deploy
 Open Risks / Blockers:
-- the first real native-plant workflow may require curated selectors or a small source allowlist policy if target databases redirect unexpectedly
+- some approved public sources may still need selector tuning, source substitution, or browser-assisted/manual fallback when they present bot gates or unstable markup
 - CLI/package coverage is still mixed across agent surfaces
 
 Goal:
@@ -203,7 +203,7 @@ Tasks:
    - enforce concurrency, rate, timeout, and retry-with-backoff limits
    - prefer targeted fetches over broad crawling
    - keep raw fetch/tooling separate from model summarization
-8. Add one validation target based on a real bounded public-data task such as native plant lookup for the user’s area, using a curated source list and explicit request limits rather than unconstrained site crawling.
+8. Add one generic curated-workflow layer for bounded public-data tasks, then validate it with one real example such as native plant lookup for the user’s area using an approved source pack and explicit request limits rather than unconstrained site crawling.
 
 Validation:
 - `scripts/ai/aq-qa 0 --json`

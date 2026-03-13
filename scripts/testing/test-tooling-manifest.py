@@ -43,14 +43,23 @@ def main() -> int:
     research_tools = workflow_tool_catalog(research_query)
     research_tool_names = [tool["name"] for tool in research_tools]
     assert_true("web_research_fetch" in research_tool_names, "web research query missing web_research_fetch")
+    assert_true("curated_research_fetch" in research_tool_names, "web research query missing curated_research_fetch")
     research_manifest = build_tooling_manifest(research_query, research_tools)
     assert_true(
         any(tool["name"] == "web_research_fetch" for tool in research_manifest["tools"]),
         "manifest omits web_research_fetch",
     )
     assert_true(
+        any(tool["name"] == "curated_research_fetch" for tool in research_manifest["tools"]),
+        "manifest omits curated_research_fetch",
+    )
+    assert_true(
         any(phase["id"] == "execute" and "web_research_fetch" in phase["tools"] for phase in research_manifest["phases"]),
         "execute phase does not expose web_research_fetch",
+    )
+    assert_true(
+        any(phase["id"] == "execute" and "curated_research_fetch" in phase["tools"] for phase in research_manifest["phases"]),
+        "execute phase does not expose curated_research_fetch",
     )
 
     skill_query = "find a shared skill from agentskill and show the approved catalog"

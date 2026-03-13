@@ -88,6 +88,23 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
             "/research/web/fetch",
             "Bounded polite web fetch -> extract for explicit public URLs with robots-aware pacing.",
         )
+    if any(
+        k in q
+        for k in (
+            "organize web data",
+            "summarize website data",
+            "curated research",
+            "research workflow",
+            "source pack",
+            "native plant",
+            "plants for my area",
+        )
+    ):
+        add(
+            "curated_research_fetch",
+            "/research/workflows/curated-fetch",
+            "Run a manifest-backed bounded research workflow that expands into approved explicit URLs only.",
+        )
 
     if any(k in q for k in ("nixos", "service", "systemd", "deploy", "boot", "shutdown")):
         add("route_search", "/query", "Search indexed NixOS docs, policies, and prior fixes.")
@@ -218,6 +235,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["urls", "selectors", "max_text_chars"],
         "output_focus": "Per-page title, extracted text excerpt, links, and policy/skip metadata only.",
     },
+    "curated_research_fetch": {
+        "method": "POST",
+        "mcp_tool": "",
+        "args": ["workflow", "inputs", "max_text_chars"],
+        "output_focus": "Workflow metadata, selected sources, organized per-source excerpts, and fallback hints only.",
+    },
     "loop_orchestrate": {
         "method": "POST",
         "mcp_tool": "",
@@ -267,6 +290,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                     "route_search",
                     "memory_recall",
                     "web_research_fetch",
+                    "curated_research_fetch",
                     "workflow_run_start",
                     "ai_coordinator_delegate",
                     "loop_orchestrate",

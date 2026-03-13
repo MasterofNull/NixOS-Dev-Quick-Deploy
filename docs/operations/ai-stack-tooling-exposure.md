@@ -1,7 +1,7 @@
 # AI Stack Tooling Exposure
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-03-07
+Last Updated: 2026-03-13
 
 This document explains how the AI stack tooling is exposed globally on NixOS
 systems for use by **any AI agent** (Claude, GPT, Codex, Qwen, Gemini, Aider,
@@ -106,6 +106,7 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/workflow/plan` | POST | Create execution plan |
 | `/qa/check` | POST | Run bounded `aq-qa` validation via hybrid coordinator |
 | `/research/web/fetch` | POST | Bounded polite public-web fetch -> extract lane for explicit URLs |
+| `/research/workflows/curated-fetch` | POST | Manifest-backed bounded research workflow expanded into approved explicit URLs |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/control/ai-coordinator/status` | GET | List coordinator runtime lanes and remote readiness |
 | `/control/ai-coordinator/skills` | GET | List harness-approved shared skill catalog for local and delegated agents |
@@ -120,6 +121,11 @@ curl -sf http://127.0.0.1:8003/hints?query=nixos+services
 curl -s http://127.0.0.1:8003/research/web/fetch \
   -H 'Content-Type: application/json' \
   -d '{"urls":["https://example.com"],"selectors":["h1"],"max_text_chars":300}'
+
+# Run a curated workflow pack that expands into approved explicit URLs
+curl -s http://127.0.0.1:8003/research/workflows/curated-fetch \
+  -H 'Content-Type: application/json' \
+  -d '{"workflow":"native-plants-us","inputs":{"state":"California"},"max_text_chars":500}'
 
 # Queue long-running agentic work through the harness layer
 curl -s http://127.0.0.1:8003/workflow/orchestrate \
@@ -140,6 +146,7 @@ The hybrid coordinator SDKs now expose both planning and the coached query path:
 - Python: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qa_check(...)`
 - TypeScript/JavaScript: `HarnessClient.plan(...)`, `HarnessClient.query(...)`, `HarnessClient.qaCheck(...)`
 - Python: `HarnessClient.web_research_fetch(...)` for bounded public-web extraction
+- Python: `HarnessClient.curated_research_fetch(...)` for manifest-backed bounded research packs
 
 That means SDK consumers receive the same `prompt_coaching` and token-discipline guidance that raw `POST /query` returns.
 
@@ -153,6 +160,18 @@ The web research surface is intentionally narrow:
 - raw fetch/extract stays separate from model summarization
 
 This keeps Continue/local-model research tasks usable without turning the harness into an unconstrained scraper.
+
+## Curated Research Workflows
+
+The curated workflow layer sits above `/research/web/fetch`:
+- workflow packs are declared in [config/curated-web-research-sources.json](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/curated-web-research-sources.json)
+- each pack expands into a small approved set of explicit public URLs
+- the primitive fetch/extract limits still apply after expansion
+- challenge or bot-gated pages are classified for compliant fallback instead of treated as successful extraction
+- fallback means allowed browser-assisted capture, official exports/APIs, archived public data, or user-provided artifacts, not anti-bot evasion
+- the first pack is `native-plants-us`, but the surface itself is generic and reusable for other public-data tasks
+
+This gives local and delegated agents a reusable gather -> display -> organize path without hardcoding one-off scrapers into the harness.
 
 ## Planned Shared Skill Registry
 

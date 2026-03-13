@@ -47,6 +47,7 @@ from ai_coordinator import (
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 from web_research import fetch_web_research
+from research_workflows import list_curated_research_workflows, run_curated_research_workflow
 from delegation_feedback import build_recovered_artifact, classify_delegated_response, record_delegation_feedback
 import mcp_handlers
 
@@ -151,6 +152,8 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "ai_coordinator_delegate"
     if path == "/research/web/fetch" and method == "POST":
         return "web_research_fetch"
+    if path == "/research/workflows/curated-fetch" and method == "POST":
+        return "curated_research_fetch"
     return None
 
 
@@ -850,7 +853,9 @@ def _build_workflow_plan(
             {
                 "id": "execute",
                 "goal": "Apply small reversible changes.",
-                "tools": pick_tool_names({"route_search", "memory_recall", "web_research_fetch", "feedback"}),
+                "tools": pick_tool_names(
+                    {"route_search", "memory_recall", "web_research_fetch", "curated_research_fetch", "feedback"}
+                ),
                 "exit_criteria": "Primary objective implemented.",
             },
             {
@@ -2490,6 +2495,46 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_curated_research_fetch(request: web.Request) -> web.Response:
+        """Run a manifest-backed bounded research workflow over approved explicit public URLs."""
+        try:
+            if not Config.AI_WEB_RESEARCH_ENABLED:
+                return web.json_response({"error": "web_research_disabled"}, status=503)
+
+            data = await request.json()
+            workflow = str(data.get("workflow") or "").strip()
+            if not workflow:
+                return web.json_response({"error": "workflow required"}, status=400)
+            inputs = data.get("inputs")
+            if inputs is not None and not isinstance(inputs, dict):
+                return web.json_response({"error": "inputs must be an object"}, status=400)
+
+            max_text_chars = data.get("max_text_chars")
+            if max_text_chars is not None:
+                max_text_chars = int(max_text_chars or 0)
+
+            result = await run_curated_research_workflow(
+                workflow_slug=workflow,
+                inputs=inputs if isinstance(inputs, dict) else None,
+                max_text_chars=max_text_chars,
+            )
+            request["audit_metadata"] = {
+                "workflow": workflow,
+                "available_workflows": len(list_curated_research_workflows()),
+                "selected_sources": len(result.get("selected_sources", []) or []),
+                "page_requests": int((((result.get("fetch") or {}).get("metrics") or {}).get("page_requests", 0) or 0)),
+                "needs_fallback": len([item for item in (result.get("results") or []) if item.get("status") != "ok"]),
+            }
+            return web.json_response(result)
+        except KeyError as exc:
+            return web.json_response({"error": "unknown_workflow", "detail": str(exc)}, status=404)
+        except ValueError as exc:
+            return web.json_response({"error": "invalid_request", "detail": str(exc)}, status=400)
+        except PermissionError as exc:
+            return web.json_response({"error": "policy_blocked", "detail": str(exc)}, status=403)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_workflow_orchestrate(request: web.Request) -> web.Response:
         """Submit work to the Ralph loop through the harness layer."""
         try:
@@ -3814,6 +3859,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
     http_app.router.add_get("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
     http_app.router.add_post("/research/web/fetch", handle_web_research_fetch)
+    http_app.router.add_post("/research/workflows/curated-fetch", handle_curated_research_fetch)
     http_app.router.add_post("/workflow/orchestrate", handle_workflow_orchestrate)
     http_app.router.add_get("/workflow/orchestrate/{task_id}", handle_workflow_orchestrate_status)
     http_app.router.add_post("/workflow/session/start", handle_workflow_session_start)

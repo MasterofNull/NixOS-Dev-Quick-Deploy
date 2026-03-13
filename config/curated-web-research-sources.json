@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "slug": "native-plants-us",
+      "description": "Bounded public native-plant research pack for U.S. workflows.",
+      "max_urls": 2,
+      "default_max_text_chars": 900,
+      "inputs": [
+        {
+          "name": "state",
+          "required": false,
+          "description": "Optional state or region filter recorded with the workflow request."
+        },
+        {
+          "name": "query",
+          "required": false,
+          "description": "Optional search term recorded with the workflow request."
+        }
+      ],
+      "sources": [
+        {
+          "name": "usda-plants-home",
+          "url": "https://plants.usda.gov/home",
+          "selectors": [
+            "main",
+            "article",
+            ".content"
+          ],
+          "purpose": "Official federal plant database landing page and browse context."
+        },
+        {
+          "name": "lady-bird-johnson-plants",
+          "url": "https://www.wildflower.org/plants/",
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
+          "purpose": "Native plant database landing and search page."
+        }
+      ]
+    }
+  ]
+}
