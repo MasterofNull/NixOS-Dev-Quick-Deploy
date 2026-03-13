@@ -2103,6 +2103,38 @@ def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
     }
 
 
+def route_retrieval_breadth_windows(
+    entries: List[dict],
+    *,
+    now: datetime,
+    report_since: datetime,
+) -> Dict[str, Any]:
+    """Materialize comparable retrieval-breadth windows."""
+    windows = [
+        ("1h", timedelta(hours=1)),
+        ("24h", timedelta(hours=24)),
+        ("7d", timedelta(days=7)),
+    ]
+    summaries: Dict[str, Any] = {}
+    for label, delta in windows:
+        cutoff = now - delta
+        summaries[label] = route_retrieval_breadth(
+            [
+                entry for entry in entries
+                if (_entry_ts_utc(entry) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
+            ]
+        )
+        summaries[label]["window"] = label
+        summaries[label]["partial_window"] = report_since > cutoff
+    return {
+        "available": any(
+            isinstance(summary, dict) and int(summary.get("route_calls", 0) or 0) > 0
+            for summary in summaries.values()
+        ),
+        "windows": summaries,
+    }
+
+
 def routing_split(entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Fetch local vs remote routing split from Prometheus."""
     local_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="local"}) or vector(0)')
@@ -3069,6 +3101,7 @@ def format_md(
     remote_profile_windows: Dict[str, Any],
     route_latency_decomposition: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
+    retrieval_breadth_windows: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -3422,6 +3455,26 @@ def format_md(
             lines.append(f"- Active profiles: {labels}")
     lines.append("")
 
+    lines += ["## 8bb. Retrieval Breadth Trends", ""]
+    breadth_windows = retrieval_breadth_windows.get("windows") if isinstance(retrieval_breadth_windows, dict) else {}
+    if not breadth_windows:
+        lines.append("*No multi-window retrieval-breadth data available.*")
+    else:
+        for label in ("1h", "24h", "7d"):
+            summary = breadth_windows.get(label) if isinstance(breadth_windows, dict) else None
+            if not isinstance(summary, dict) or int(summary.get("route_calls", 0) or 0) <= 0:
+                lines.append(f"- {label}: no route_search retrieval-breadth data recorded")
+                continue
+            avg = summary.get("avg_collection_count")
+            top_profiles = summary.get("top_profiles") or []
+            top_profile = top_profiles[0][0] if top_profiles else "n/a"
+            partial = " (partial)" if summary.get("partial_window") else ""
+            lines.append(
+                f"- {label}{partial}: avg collections/call **{_na(avg, '.2f')}**,"
+                f" top profile `{top_profile}`"
+            )
+    lines.append("")
+
     lines += [f"## 8c. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')})", ""]
     recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
     if recovered_count <= 0:
@@ -3669,6 +3722,7 @@ def format_text(
     remote_profile_windows: Dict[str, Any],
     route_latency_decomposition: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
+    retrieval_breadth_windows: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -4023,6 +4077,25 @@ def format_text(
             lines.append(f"  Active profiles: {labels}")
     lines.append("")
 
+    lines += ["[ 8bb. Retrieval Breadth Trends ]"]
+    breadth_windows = retrieval_breadth_windows.get("windows") if isinstance(retrieval_breadth_windows, dict) else {}
+    if not breadth_windows:
+        lines.append("  No multi-window retrieval-breadth data available.")
+    else:
+        for label in ("1h", "24h", "7d"):
+            summary = breadth_windows.get(label) if isinstance(breadth_windows, dict) else None
+            if not isinstance(summary, dict) or int(summary.get("route_calls", 0) or 0) <= 0:
+                lines.append(f"  {label}: no route_search retrieval-breadth data recorded")
+                continue
+            avg = summary.get("avg_collection_count")
+            top_profiles = summary.get("top_profiles") or []
+            top_profile = top_profiles[0][0] if top_profiles else "n/a"
+            partial = " (partial)" if summary.get("partial_window") else ""
+            lines.append(
+                f"  {label}{partial}: avg collections/call {_na(avg, '.2f')}, top profile {top_profile}"
+            )
+    lines.append("")
+
     lines += [f"[ 8c. Provider Fallback Recovery ({provider_fallbacks.get('window', '1h')}) ]"]
     recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
     if recovered_count <= 0:
@@ -4274,6 +4347,7 @@ def format_json(
     remote_profile_windows: Dict[str, Any],
     route_latency_decomposition: Dict[str, Any],
     retrieval_breadth: Dict[str, Any],
+    retrieval_breadth_windows: Dict[str, Any],
     provider_fallbacks: Dict[str, Any],
     historical_watch: Dict[str, Any],
     recs: List[str],
@@ -4319,6 +4393,7 @@ def format_json(
         "remote_profile_utilization_windows": remote_profile_windows,
         "route_search_latency_decomposition": route_latency_decomposition,
         "route_retrieval_breadth": retrieval_breadth,
+        "route_retrieval_breadth_windows": retrieval_breadth_windows,
         "provider_fallback_recovery": provider_fallbacks,
         "historical_watchlist": historical_watch,
         "recommendations": recs,
@@ -4436,6 +4511,7 @@ def main() -> None:
     recent_route["window"] = "1h"
     recent_retrieval_breadth = route_retrieval_breadth(recent_audit_entries)
     recent_retrieval_breadth["window"] = "1h"
+    retrieval_breadth_windows = route_retrieval_breadth_windows(audit_entries, now=now, report_since=since_dt)
     recent_provider_fallbacks = route_provider_fallback_health(recent_audit_entries)
     recent_provider_fallbacks["window"] = "1h"
     recent_remote_profile_summary = remote_profile_utilization(recent_audit_entries, window="1h")
@@ -4517,6 +4593,7 @@ def main() -> None:
         remote_profile_windows,
         route_latency_decomposition,
         recent_retrieval_breadth,
+        retrieval_breadth_windows,
         recent_provider_fallbacks,
         historical_health_watch,
         recs,

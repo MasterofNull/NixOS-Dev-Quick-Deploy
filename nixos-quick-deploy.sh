@@ -445,6 +445,10 @@ print_completion_test_results() {
     rag_prewarm_prompt="$(printf '%s' "${json}" | jq -r '.rag_posture.prewarm_candidates[0].id // empty')"
     retrieval_breadth_avg="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth.avg_collection_count // "n/a"')"
     retrieval_breadth_profile="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth.top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    retrieval_breadth_24h_avg="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth_windows.windows["24h"].avg_collection_count // "n/a"')"
+    retrieval_breadth_24h_profile="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth_windows.windows["24h"].top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
+    retrieval_breadth_7d_avg="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth_windows.windows["7d"].avg_collection_count // "n/a"')"
+    retrieval_breadth_7d_profile="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth_windows.windows["7d"].top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
     provider_fallback_window="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.window // "1h"')"
     provider_fallback_count="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_count // 0')"
     provider_fallback_pct="$(printf '%s' "${json}" | jq -r '.provider_fallback_recovery.recovered_pct // "n/a"')"
@@ -518,6 +522,14 @@ print_completion_test_results() {
     retrieval_breadth_label="${retrieval_breadth_avg}"
     if [[ -n "${retrieval_breadth_profile}" ]]; then
       retrieval_breadth_label="${retrieval_breadth_label} (${retrieval_breadth_profile})"
+    fi
+    retrieval_breadth_trend_label="24h=${retrieval_breadth_24h_avg}"
+    if [[ -n "${retrieval_breadth_24h_profile}" ]]; then
+      retrieval_breadth_trend_label="${retrieval_breadth_trend_label} (${retrieval_breadth_24h_profile})"
+    fi
+    retrieval_breadth_trend_label="${retrieval_breadth_trend_label}  7d=${retrieval_breadth_7d_avg}"
+    if [[ -n "${retrieval_breadth_7d_profile}" ]]; then
+      retrieval_breadth_trend_label="${retrieval_breadth_trend_label} (${retrieval_breadth_7d_profile})"
     fi
     if [[ "${provider_fallback_count}" == "0" ]]; then
       provider_fallback_label="none (${provider_fallback_window})"
@@ -626,6 +638,7 @@ PY
     printf '  %-28s %s\n' "RAG posture" "${rag_posture_label}"
     printf '  %-28s %s\n' "RAG mix (1h)" "${rag_mix_label}"
     printf '  %-28s %s\n' "Retrieval breadth (1h)" "${retrieval_breadth_label}"
+    printf '  %-28s %s\n' "Retrieval breadth trend" "${retrieval_breadth_trend_label}"
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
     printf '  %-28s %s\n' "Provider fallback (${provider_fallback_window})" "${provider_fallback_label}"
     printf '  %-28s %s\n' "Remote profile use (${remote_profile_window})" "${remote_profile_label}"

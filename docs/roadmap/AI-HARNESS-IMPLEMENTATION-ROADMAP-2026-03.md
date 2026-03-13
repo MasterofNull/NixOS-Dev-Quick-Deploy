@@ -133,6 +133,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | workflow reviewer acceptance telemetry | validated_local | `aq-report` now summarizes workflow requester-role mix, accepted/rejected review state by requester role, top reviewers, and accepted/rejected blueprints so reviewer-gated workflow health is measurable without reading raw session JSON |
 | 2026-03-13 | remote profile trend and route latency reporting | validated_local | `aq-report` now materializes delegated remote-profile utilization as comparable 1h/24h/7d windows and adds a route_search latency decomposition block by backend, fallback, and status class so Track H has trend depth instead of a single recent summary |
 | 2026-03-13 | deploy summary remote trend visibility | validated_local | `nixos-quick-deploy.sh` now surfaces 24h/7d remote-profile trend snapshots plus route_search p95/top-class latency context so Track H’s new report sections are visible in normal deploy loops |
+| 2026-03-13 | retrieval breadth history and deploy summary | validated_local | `aq-report` now materializes route_search retrieval-breadth as 1h/24h/7d windows and `nixos-quick-deploy.sh` surfaces the 24h/7d breadth trend so Track H no longer depends on a recent-only breadth snapshot |
 
 ## High-Priority Tracks
 
@@ -561,23 +562,26 @@ Validation:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `aq-report now exposes delegated remote-profile utilization as 1h/24h/7d windows, route_search latency decomposition is report-visible, and nixos-quick-deploy now surfaces compact 24h/7d remote trend plus route-latency summary lines; the next gap is broader trend history such as retrieval-breadth time windows instead of recent-only snapshots`
+Current Slice: `aq-report now exposes delegated remote-profile utilization plus route_search retrieval-breadth as 1h/24h/7d windows, route latency decomposition is report-visible, and nixos-quick-deploy surfaces compact remote/breadth trend lines; the next gap is extending the same multi-window treatment to more operator-facing health areas such as Continue/editor and routing history`
 Next Validation:
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization'`
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
+- `python3 scripts/ai/aq-report --format json | jq '.route_retrieval_breadth_windows'`
 - `python3 scripts/testing/test-remote-profile-utilization.py`
+- `python3 scripts/testing/test-retrieval-breadth-history.py`
 - deploy summary output
 Open Risks / Blockers:
-- remote trend and route-latency signals now reach both aq-report and deploy summaries, but retrieval-breadth still lacks the same multi-window history view
+- multi-window trend coverage now exists for remote profiles, route latency, and retrieval breadth, but Continue/editor and routing history still lack the same operator-facing time-window treatment
 
 Tasks:
-1. retrieval-breadth history
-2. broader 24h/7d monitoring views for continue/editor and routing health
-3. remote profile utilization summary parity across all operator-facing consumers
+1. broader 24h/7d monitoring views for continue/editor and routing health
+2. remote profile utilization summary parity across all operator-facing consumers
+3. retrieval-breadth summary parity across all operator-facing consumers
 
 Validation:
 - `scripts/ai/aq-report --format json`
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
+- `python3 scripts/ai/aq-report --format json | jq '.route_retrieval_breadth_windows'`
 - deploy summary output
 
 ### Track I — Operator and Prompt-Writing Guidance
