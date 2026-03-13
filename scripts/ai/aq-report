@@ -3164,10 +3164,22 @@ def rag_posture(
     tree_recent = int(recent_mix.get("tree_search", 0) or 0)
     recall_quality = _memory_recall_quality(recent_audit_entries)
     recall_miss_pct = recall_quality.get("miss_pct")
+    memory_recall_diagnosis = "healthy"
+    memory_recall_actions: List[str] = []
     if route_recent >= 12 and memory_recent <= max(2, int(route_recent * 0.15)):
+        memory_recall_diagnosis = "unused"
         reasons.append("memory recall is lightly used relative to route_search")
+        memory_recall_actions.append(
+            "recall prior context before broad route_search on continuation and long-horizon repo tasks"
+        )
     if recall_miss_pct is not None and float(recall_miss_pct) >= 50.0:
+        memory_recall_diagnosis = "weak"
         reasons.append(f"memory recall misses are high ({_na(recall_miss_pct, '.1f', '%')})")
+        memory_recall_actions = [
+            "persist sharper milestone summaries or recent task checkpoints before relying on recall"
+        ]
+    elif recent_calls == 0:
+        memory_recall_diagnosis = "historical"
     prewarm_candidates = _rag_prewarm_candidates(top_prompts or [], recent_mix)
     return {
         "available": True,
@@ -3187,6 +3199,8 @@ def rag_posture(
         "memory_recall_attempts": int(recall_quality.get("attempts", 0) or 0),
         "memory_recall_misses": int(recall_quality.get("misses", 0) or 0),
         "memory_recall_miss_pct": recall_miss_pct,
+        "memory_recall_diagnosis": memory_recall_diagnosis,
+        "memory_recall_actions": memory_recall_actions,
         "tree_search_share_pct": round(100.0 * tree_recent / recent_calls, 1) if recent_calls else None,
         "prewarm_candidates": prewarm_candidates,
         "reasons": reasons,
@@ -3475,10 +3489,16 @@ def format_md(
             lines.append(f"- Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
         memory_share = rag_posture_summary.get("memory_recall_share_pct")
         memory_miss_pct = rag_posture_summary.get("memory_recall_miss_pct")
+        memory_diagnosis = rag_posture_summary.get("memory_recall_diagnosis")
+        memory_actions = rag_posture_summary.get("memory_recall_actions") or []
         if memory_share is not None:
             lines.append(f"- Memory recall share: **{_na(memory_share, '.1f', '%')}**")
         if memory_miss_pct is not None:
             lines.append(f"- Memory recall miss rate: **{_na(memory_miss_pct, '.1f', '%')}**")
+        if memory_diagnosis:
+            lines.append(f"- Memory recall diagnosis: **{memory_diagnosis}**")
+        if memory_actions:
+            lines.append(f"- Memory recall remediation: {'; '.join(str(action) for action in memory_actions)}")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"- Cache hit rate: **{_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}**")
         cache_context = rag_posture_summary.get("cache_context")
@@ -4156,10 +4176,16 @@ def format_text(
             lines.append(f"  Recent retrieval mix: {_format_retrieval_mix(recent_mix)}")
         memory_share = rag_posture_summary.get("memory_recall_share_pct")
         memory_miss_pct = rag_posture_summary.get("memory_recall_miss_pct")
+        memory_diagnosis = rag_posture_summary.get("memory_recall_diagnosis")
+        memory_actions = rag_posture_summary.get("memory_recall_actions") or []
         if memory_share is not None:
             lines.append(f"  Memory recall share: {_na(memory_share, '.1f', '%')}")
         if memory_miss_pct is not None:
             lines.append(f"  Memory recall miss rate: {_na(memory_miss_pct, '.1f', '%')}")
+        if memory_diagnosis:
+            lines.append(f"  Memory recall diagnosis: {memory_diagnosis}")
+        if memory_actions:
+            lines.append(f"  Memory recall remediation: {'; '.join(str(action) for action in memory_actions)}")
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"  Cache hit rate: {_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}")
         cache_context = rag_posture_summary.get("cache_context")
