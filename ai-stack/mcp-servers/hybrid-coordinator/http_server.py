@@ -488,6 +488,27 @@ def _normalize_agent_lessons_registry(data: Any) -> Dict[str, Any]:
     return registry
 
 
+def _active_lesson_refs(registry: Dict[str, Any], limit: int = 2) -> List[Dict[str, Any]]:
+    active_lessons = registry.get("active_lessons") if isinstance(registry, dict) else []
+    if not isinstance(active_lessons, list):
+        return []
+    refs: List[Dict[str, Any]] = []
+    for item in active_lessons[:max(0, limit)]:
+        if not isinstance(item, dict):
+            continue
+        refs.append(
+            {
+                "lesson_key": str(item.get("lesson_key", "") or "").strip(),
+                "agent": str(item.get("agent", "") or "").strip(),
+                "hint_id": str(item.get("hint_id", "") or "").strip(),
+                "scope": str(item.get("scope", "") or "").strip(),
+                "materialization": str(item.get("materialization", "") or "").strip(),
+                "updated_at": str(item.get("updated_at", "") or "").strip(),
+            }
+        )
+    return [item for item in refs if item.get("lesson_key")]
+
+
 async def _load_agent_lessons_registry() -> Dict[str, Any]:
     path = _agent_lessons_registry_path()
     if not path.exists():
@@ -3628,6 +3649,9 @@ async def run_http_mode(port: int) -> None:
             task = str(data.get("task") or data.get("query") or "").strip()
             if not task:
                 return web.json_response({"error": "task required"}, status=400)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
 
             requested_profile = str(data.get("profile") or "").strip().lower()
             selected_profile = _ai_coordinator_infer_profile(task, requested_profile)
@@ -3861,6 +3885,7 @@ async def run_http_mode(port: int) -> None:
                         "status_code": finalization_status_code,
                         "reason": "tool_call_without_final_text remediation" if finalization_applied else "",
                     },
+                    "active_lesson_refs": lesson_refs,
                     "delegation_feedback": {
                         "initial": initial_classification,
                         "final": final_classification,

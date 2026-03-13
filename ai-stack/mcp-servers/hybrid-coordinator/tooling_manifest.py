@@ -288,7 +288,7 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "method": "POST",
         "mcp_tool": "",
         "args": ["task", "profile", "messages", "tools", "tool_choice", "max_tokens"],
-        "output_focus": "Selected runtime, route metadata, and concise delegated response only.",
+        "output_focus": "Selected runtime, route metadata, active lesson refs, and concise delegated response only.",
     },
     "loop_status": {
         "method": "GET",
