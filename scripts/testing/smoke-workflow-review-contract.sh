@@ -491,4 +491,71 @@ jq -e '.reviewer_gate.last_review.task_class == "self_improvement"' "${TMP_DIR}/
 jq -e '.reviewer_gate.last_review.reviewed_agent == "claude"' "${TMP_DIR}/prsi-run.json" >/dev/null
 jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-reasoning"' "${TMP_DIR}/prsi-run.json" >/dev/null
 
+cat > "${TMP_DIR}/research-start.json.payload" <<'EOF'
+{
+  "query": "Validate bounded research workflow review persistence",
+  "blueprint_id": "bounded-research-review",
+  "intent_contract": {
+    "user_intent": "Validate bounded research workflow review persistence",
+    "definition_of_done": [
+      "bounded research review classification persists",
+      "reviewed research profile is recorded"
+    ],
+    "depth_expectation": "standard",
+    "spirit_constraints": [
+      "bounded smoke only"
+    ],
+    "no_early_exit_without": [
+      "live session retrieval"
+    ]
+  }
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/workflow/run/start" \
+  --data @"${TMP_DIR}/research-start.json.payload" > "${TMP_DIR}/research-start.json"
+research_session_id="$(jq -r '.session_id // empty' "${TMP_DIR}/research-start.json")"
+[[ -n "${research_session_id}" ]] || {
+  echo "ERROR: bounded research workflow/run/start did not return session_id" >&2
+  exit 1
+}
+jq -e '.blueprint_id == "bounded-research-review"' "${TMP_DIR}/research-start.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "pending_review"' "${TMP_DIR}/research-start.json" >/dev/null
+
+cat > "${TMP_DIR}/research-review.json.payload" <<EOF
+{
+  "session_id": "${research_session_id}",
+  "response": "Artifact review confirms bounded research preserves approved sources, evidence excerpts, and explicit stop conditions.",
+  "criteria": [
+    "approved sources",
+    "evidence excerpts",
+    "stop conditions"
+  ],
+  "expected_keywords": [
+    "bounded research",
+    "artifact review"
+  ],
+  "min_criteria_ratio": 1.0,
+  "min_keyword_ratio": 1.0,
+  "reviewer": "codex",
+  "review_type": "artifact_review",
+  "artifact_kind": "research_brief",
+  "task_class": "retrieval_research",
+  "reviewed_agent": "gemini",
+  "reviewed_profile": "remote-free"
+}
+EOF
+curl -fsS "${json_hdr[@]}" -X POST "${HYBRID_URL}/review/acceptance" \
+  --data @"${TMP_DIR}/research-review.json.payload" > "${TMP_DIR}/research-review.json"
+jq -e '.passed == true' "${TMP_DIR}/research-review.json" >/dev/null
+jq -e --arg sid "${research_session_id}" '.session_id == $sid' "${TMP_DIR}/research-review.json" >/dev/null
+
+curl -fsS "${hdr[@]}" "${HYBRID_URL}/workflow/run/${research_session_id}" > "${TMP_DIR}/research-run.json"
+jq -e '.blueprint_title == "Bounded Research / Retrieval Review"' "${TMP_DIR}/research-run.json" >/dev/null
+jq -e '.reviewer_gate.required == true and .reviewer_gate.status == "accepted"' "${TMP_DIR}/research-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.review_type == "artifact_review"' "${TMP_DIR}/research-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.artifact_kind == "research_brief"' "${TMP_DIR}/research-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.task_class == "retrieval_research"' "${TMP_DIR}/research-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_agent == "gemini"' "${TMP_DIR}/research-run.json" >/dev/null
+jq -e '.reviewer_gate.last_review.reviewed_profile == "remote-free"' "${TMP_DIR}/research-run.json" >/dev/null
+
 printf 'PASS: workflow review contract smoke\n'
