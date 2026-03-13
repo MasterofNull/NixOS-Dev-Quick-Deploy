@@ -87,8 +87,8 @@
         # flake-based deploys do not silently drop remote routing.
         remoteUrl = lib.mkDefault "https://openrouter.ai/api";
         remoteModelAliases.free = lib.mkDefault "openrouter/free";
-        remoteModelAliases.coding = lib.mkDefault "qwen/qwen3-coder-next";
-        remoteModelAliases.reasoning = lib.mkDefault "anthropic/claude-sonnet-4.5";
+        remoteModelAliases.coding = lib.mkDefault "qwen/qwen3-coder:free";
+        remoteModelAliases.reasoning = lib.mkDefault "stepfun/step-3.5-flash:free";
         remoteBudget.dailyTokenCap = lib.mkDefault 0;
         remoteBudget.fallbackToLocal = lib.mkDefault true;
       };
