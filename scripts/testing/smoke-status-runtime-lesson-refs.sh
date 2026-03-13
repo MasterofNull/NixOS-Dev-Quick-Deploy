@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verify status, stats, and runtime-control responses surface active lesson refs.
+
 HYBRID_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
 HYBRID_API_KEY="${HYBRID_COORDINATOR_API_KEY:-}"
 HYBRID_API_KEY_FILE="${HYBRID_COORDINATOR_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
