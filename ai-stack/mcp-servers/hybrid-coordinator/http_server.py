@@ -2135,7 +2135,13 @@ async def run_http_mode(port: int) -> None:
                 max_tokens=data.get("max_tokens", 2000),
                 metadata=data.get("metadata"),
             )
-            return web.json_response(response.dict())
+            payload = response.dict()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -2303,6 +2309,11 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response({"error": "invalid_proposal", "detail": str(exc)}, status=400)
         result = await apply_proposal(proposal)
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+        if lesson_refs and isinstance(result, dict):
+            result["active_lesson_refs"] = lesson_refs
         return web.json_response(result)
 
     async def handle_metrics(_request):
@@ -2345,11 +2356,17 @@ async def run_http_mode(port: int) -> None:
 
             from metrics import EMBEDDING_CACHE_INVALIDATIONS
             EMBEDDING_CACHE_INVALIDATIONS.labels(trigger=trigger).inc()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
 
             if scope == "all":
                 deleted = await cache.clear_all()
                 logger.info("cache_invalidation trigger=%s scope=all deleted=%d", trigger, deleted)
-                return web.json_response({"status": "ok", "keys_deleted": deleted})
+                payload = {"status": "ok", "keys_deleted": deleted}
+                if lesson_refs:
+                    payload["active_lesson_refs"] = lesson_refs
+                return web.json_response(payload)
             else:
                 # Future: support prefix-based invalidation
                 return web.json_response({"error": "unsupported scope"}, status=400)
@@ -2446,7 +2463,13 @@ async def run_http_mode(port: int) -> None:
                 await _learning_pipeline._save_finetuning_examples(examples)
                 await _learning_pipeline._index_patterns(patterns)
             await _learning_pipeline._write_stats_snapshot()
-            return web.json_response({"status": "ok", "patterns": len(patterns), "examples": examples_count})
+            payload = {"status": "ok", "patterns": len(patterns), "examples": examples_count}
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response({"status": "error", "detail": str(exc)}, status=500)
 
@@ -2492,12 +2515,18 @@ async def run_http_mode(port: int) -> None:
             avg_a = stats_a.get("avg_rating")
             avg_b = stats_b.get("avg_rating")
             delta = (float(avg_a) - float(avg_b)) if avg_a is not None and avg_b is not None else None
-            return web.json_response({
+            payload = {
                 "status": "ok",
                 "variant_a": stats_a,
                 "variant_b": stats_b,
                 "delta": {"avg_rating": delta},
-            })
+            }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except RuntimeError as exc:
             return web.json_response({"error": str(exc)}, status=503)
         except Exception as exc:
@@ -2531,20 +2560,29 @@ async def run_http_mode(port: int) -> None:
         stdout, stderr = await proc.communicate()
         duration = _time.monotonic() - start
         MODEL_RELOAD_DURATION.labels(service=service).observe(duration)
+        async with _agent_lessons_lock:
+            lesson_registry = await _load_agent_lessons_registry()
+        lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
         if proc.returncode == 0:
             MODEL_RELOADS.labels(service=service, status="success").inc()
-            return web.json_response({
+            payload = {
                 "status": "restarted",
                 "service": service_unit,
                 "duration_seconds": round(duration, 2),
-            })
+            }
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         else:
             MODEL_RELOADS.labels(service=service, status="failure").inc()
-            return web.json_response({
+            payload = {
                 "status": "failed",
                 "service": service_unit,
                 "error": stderr.decode("utf-8", errors="replace")[:500],
-            }, status=500)
+            }
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload, status=500)
 
     async def handle_model_status(request: web.Request) -> web.Response:
         """GET /model/status — return status of model services (Phase 5)."""
