@@ -2212,7 +2212,13 @@ async def run_http_mode(port: int) -> None:
                 categories=data.get("categories"),
                 token_budget=data.get("token_budget", 500),
             )
-            return web.json_response(discovery_response.dict())
+            payload = discovery_response.dict()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -2223,7 +2229,13 @@ async def run_http_mode(port: int) -> None:
                 query_type=data.get("query_type", "quick_lookup"),
                 context_level=data.get("context_level", "standard"),
             )
-            return web.json_response(recommendations)
+            payload = dict(recommendations)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -3059,12 +3071,18 @@ async def run_http_mode(port: int) -> None:
             roots = [n["session_id"] for n in nodes if n.get("parent_session_id") is None]
             nodes.sort(key=lambda n: int(n.get("updated_at") or 0), reverse=True)
 
-            return web.json_response({
+            payload = {
                 "nodes": nodes,
                 "edges": edges,
                 "roots": roots,
                 "count": len(nodes),
-            })
+            }
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -3096,7 +3114,13 @@ async def run_http_mode(port: int) -> None:
                 }
                 sessions[new_id] = forked
                 await _save_workflow_sessions(sessions)
-            return web.json_response({"session_id": new_id, "forked_from": session_id, "status": "created"})
+            payload = {"session_id": new_id, "forked_from": session_id, "status": "created"}
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -3126,7 +3150,13 @@ async def run_http_mode(port: int) -> None:
                     session["updated_at"] = int(time.time())
                     sessions[session_id] = session
                     await _save_workflow_sessions(sessions)
-                    return web.json_response(session)
+                    payload = dict(session)
+                    async with _agent_lessons_lock:
+                        lesson_registry = await _load_agent_lessons_registry()
+                    lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+                    if lesson_refs:
+                        payload["active_lesson_refs"] = lesson_refs
+                    return web.json_response(payload)
 
                 phase = phases[idx]
                 if note:
@@ -3192,7 +3222,13 @@ async def run_http_mode(port: int) -> None:
                 session["updated_at"] = int(time.time())
                 sessions[session_id] = session
                 await _save_workflow_sessions(sessions)
-            return web.json_response(session)
+            payload = dict(session)
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            if lesson_refs:
+                payload["active_lesson_refs"] = lesson_refs
+            return web.json_response(payload)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
