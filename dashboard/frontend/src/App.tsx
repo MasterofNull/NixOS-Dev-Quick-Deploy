@@ -6,7 +6,8 @@ import { SystemOverview } from '@/components/SystemOverview';
 import { MetricsChart } from '@/components/MetricsChart';
 import { ServiceControl } from '@/components/ServiceControl';
 import { AIInternals } from '@/components/AIInternals';
-import { Activity } from 'lucide-react';
+import { CommandCenterOperations } from '@/components/CommandCenterOperations';
+import { Activity, ShieldCheck } from 'lucide-react';
 
 const queryClient = new QueryClient();
 
@@ -66,23 +67,29 @@ function DashboardContent() {
   const lastUpdate = useDashboardStore((state) => state.lastUpdate);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background command-shell">
       {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+      <header className="border-b border-border/70 bg-background/95 backdrop-blur">
+        <div className="container mx-auto px-4 py-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <Activity className="h-8 w-8 text-primary" />
+              <div className="command-shell__icon">
+                <Activity className="h-8 w-8 text-primary" />
+              </div>
               <div>
-                <h1 className="text-2xl font-bold">NixOS System Dashboard</h1>
+                <p className="command-center-kicker">Declarative Command Center</p>
+                <h1 className="text-3xl font-bold tracking-tight">NixOS AI Operations Dashboard</h1>
                 <p className="text-sm text-muted-foreground">
-                  Real-time system monitoring and control
+                  Real-time system monitoring, PRSI orchestration review, and AI harness maintenance
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-primary">{healthScore}</div>
-              <div className="text-xs text-muted-foreground">Health Score</div>
+            <div className="flex items-center gap-4 rounded-full border border-border/70 bg-card/80 px-4 py-3 shadow-sm">
+              <ShieldCheck className="h-5 w-5 text-emerald-500" />
+              <div className="text-right">
+                <div className="text-3xl font-bold text-primary">{healthScore}</div>
+                <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Health Score</div>
+              </div>
             </div>
           </div>
         </div>
@@ -102,8 +109,10 @@ function DashboardContent() {
             </div>
           </div>
 
+          <CommandCenterOperations />
+
           <section>
-            <h2 className="text-lg font-semibold mb-4">AI Internals</h2>
+            <h2 className="mb-4 text-lg font-semibold">AI Internals</h2>
             <AIInternals />
           </section>
         </div>

@@ -1,42 +1,77 @@
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  min-height: 100vh;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.command-shell {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, hsl(var(--color-primary)) 9%, transparent) 0, transparent 32%),
+    radial-gradient(circle at top right, color-mix(in srgb, hsl(198 93% 60%) 12%, transparent) 0, transparent 30%);
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.command-shell__icon {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, hsl(var(--color-border)) 80%, transparent);
+  background: linear-gradient(145deg, color-mix(in srgb, hsl(var(--color-card)) 92%, transparent), color-mix(in srgb, hsl(var(--color-muted)) 88%, transparent));
+  box-shadow: 0 12px 30px color-mix(in srgb, hsl(var(--color-foreground)) 10%, transparent);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.command-center-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, hsl(var(--color-primary)) 70%, hsl(var(--color-muted-foreground)));
 }
 
-.card {
-  padding: 2em;
+.command-panel {
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, hsl(var(--color-card)) 97%, transparent), color-mix(in srgb, hsl(var(--color-card)) 92%, hsl(var(--color-muted)) 8%));
+  box-shadow: 0 20px 60px color-mix(in srgb, hsl(var(--color-foreground)) 7%, transparent);
 }
 
-.read-the-docs {
-  color: #888;
+.ops-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, hsl(var(--color-border)) 82%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, hsl(var(--color-background)) 65%, hsl(var(--color-card)));
+}
+
+.ops-stat strong {
+  font-size: 1.85rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.ops-stat-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--color-muted-foreground));
+}
+
+.ops-list-item {
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, hsl(var(--color-border)) 78%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, hsl(var(--color-background)) 78%, hsl(var(--color-card)));
+}
+
+.ops-empty-state {
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px dashed color-mix(in srgb, hsl(var(--color-border)) 85%, transparent);
+  background: color-mix(in srgb, hsl(var(--color-muted)) 35%, transparent);
 }

@@ -33,6 +33,13 @@ EXPECTED_CANDIDATES = [
         "filename": "Qwen3-4B-Instruct-2507-Q5_K_M.gguf",
         "model_path": "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q5_K_M.gguf",
     },
+    {
+        "slug": "qwen3_8b_q4_k_m",
+        "label": "Qwen3-8B-Q4_K_M.gguf",
+        "repo": "lm-kit/qwen-3-8b-instruct-gguf",
+        "filename": "Qwen3-8B-Q4_K_M.gguf",
+        "model_path": "/var/lib/llama-cpp/models/Qwen3-8B-Q4_K_M.gguf",
+    },
 ]
 
 

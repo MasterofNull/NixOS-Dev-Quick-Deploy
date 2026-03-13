@@ -2,6 +2,13 @@ import type {
   AIInternalsMetrics,
   ContainerInfo,
   HealthScore,
+  HarnessMaintenanceAction,
+  HarnessMaintenanceRunResult,
+  HarnessOverview,
+  PRSIApprovalResult,
+  PRSIActionsResponse,
+  PRSIExecuteResult,
+  PRSISyncResult,
   ServiceStatus,
   SystemMetrics,
 } from '@/types/metrics';
@@ -46,6 +53,49 @@ export class DashboardAPI {
 
   static async getAIInternals(): Promise<AIInternalsMetrics> {
     return this.fetchJSON<AIInternalsMetrics>('/metrics');
+  }
+
+  static async getHarnessOverview(): Promise<HarnessOverview> {
+    return this.fetchJSON<HarnessOverview>('/harness/overview');
+  }
+
+  static async runHarnessMaintenance(action: HarnessMaintenanceAction): Promise<HarnessMaintenanceRunResult> {
+    return this.fetchJSON<HarnessMaintenanceRunResult>('/harness/maintenance/run', {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    });
+  }
+
+  static async getPRSIActions(): Promise<PRSIActionsResponse> {
+    return this.fetchJSON<PRSIActionsResponse>('/prsi/actions');
+  }
+
+  static async syncPRSIActions(since: string = '1d'): Promise<PRSISyncResult> {
+    return this.fetchJSON<PRSISyncResult>(`/prsi/sync?since=${encodeURIComponent(since)}`, {
+      method: 'POST',
+    });
+  }
+
+  static async approvePRSIAction(actionId: string, decision: 'approve' | 'reject'): Promise<PRSIApprovalResult> {
+    return this.fetchJSON<PRSIApprovalResult>('/prsi/approve', {
+      method: 'POST',
+      body: JSON.stringify({
+        action_id: actionId,
+        decision,
+        by: 'command-center-dashboard',
+      }),
+    });
+  }
+
+  static async executePRSIActions(limit: number, dryRun: boolean, autoSync: boolean = true): Promise<PRSIExecuteResult> {
+    return this.fetchJSON<PRSIExecuteResult>('/prsi/execute', {
+      method: 'POST',
+      body: JSON.stringify({
+        limit,
+        dry_run: dryRun,
+        auto_sync: autoSync,
+      }),
+    });
   }
 
   // Services
