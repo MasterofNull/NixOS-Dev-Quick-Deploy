@@ -575,6 +575,11 @@ check_pattern "scripts/ai/aq-report" 'handoff_by_requester_role' 'aq-report summ
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'request_context\["orchestration"\] = orchestration' 'Direct query requests normalize orchestration metadata at entry'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'metadata\["orchestration"\]' 'Direct query responses expose compact orchestration metadata'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'for key in \("requesting_agent", "requester_role", "delegate_via_coordinator_only"\)' 'Internal autorun audit rows inherit query requester metadata'
+check_pattern "scripts/ai/aq-report" 'top_requester_roles' 'aq-report summarizes workflow requester-role mix'
+check_pattern "scripts/ai/aq-report" 'accepted_by_requester_role' 'aq-report summarizes accepted workflow reviews by requester role'
+check_pattern "scripts/ai/aq-report" 'top_reviewers' 'aq-report summarizes workflow reviewer activity'
+check_pattern "scripts/ai/aq-report" 'accepted_blueprints|rejected_blueprints' 'aq-report summarizes accepted and rejected workflow blueprints'
+check_pattern "scripts/testing/test-workflow-review-gate.py" 'top_reviewers|accepted_blueprints|rejected_blueprints' 'Workflow review-gate test covers reviewer and blueprint aggregates'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
 if (( fail_count > 0 )); then
