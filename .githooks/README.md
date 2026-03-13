@@ -35,12 +35,20 @@ git commit --no-verify
 
 Runs repository quick lint before push:
 
+- ✅ Fetches upstream and blocks push early if your local branch is behind remote
 - ✅ Executes `./scripts/governance/quick-deploy-lint.sh --mode fast`
 - ✅ Blocks push on governance/runtime lint regressions
 
 Emergency bypass (not recommended):
 ```bash
+SKIP_PRE_PUSH_SYNC_CHECK=true git push
 SKIP_PRE_PUSH_LINT=true git push
+```
+
+Recommended sync workflow when collaborating from multiple sessions/machines:
+
+```bash
+git pull --rebase --autostash
 ```
 
 ## Automatic Fixes
