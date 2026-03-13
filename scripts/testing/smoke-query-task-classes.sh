@@ -131,4 +131,48 @@ jq -e '.prompt_coaching.score > 0' "${TMP_DIR}/deploy.json" >/dev/null
 jq -e '.prompt_coaching.suggested_prompt | length > 0' "${TMP_DIR}/deploy.json" >/dev/null
 jq -e '.active_lesson_refs | length >= 1' "${TMP_DIR}/deploy.json" >/dev/null
 
+cat > "${TMP_DIR}/review.json.payload" <<'EOF'
+{
+  "query": "review this patch safely and call out regressions first with concrete evidence",
+  "prefer_local": true,
+  "generate_response": false,
+  "agent_type": "codex",
+  "requesting_agent": "codex",
+  "requester_role": "orchestrator"
+}
+EOF
+
+curl -fsS \
+  -H "X-API-Key: ${HYBRID_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/query" \
+  --data @"${TMP_DIR}/review.json.payload" > "${TMP_DIR}/review.json"
+
+jq -e '.metadata.orchestration.requester_role == "orchestrator"' "${TMP_DIR}/review.json" >/dev/null
+jq -e '.prompt_coaching.score > 0' "${TMP_DIR}/review.json" >/dev/null
+jq -e '.prompt_coaching.suggested_prompt | length > 0' "${TMP_DIR}/review.json" >/dev/null
+jq -e '.active_lesson_refs | length >= 1' "${TMP_DIR}/review.json" >/dev/null
+
+cat > "${TMP_DIR}/research.json.payload" <<'EOF'
+{
+  "query": "research and summarize a source-bounded web dataset with retrieval evidence and explicit stop conditions",
+  "prefer_local": true,
+  "generate_response": false,
+  "agent_type": "continue",
+  "requesting_agent": "continue",
+  "requester_role": "orchestrator"
+}
+EOF
+
+curl -fsS \
+  -H "X-API-Key: ${HYBRID_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -X POST "${HYBRID_URL}/query" \
+  --data @"${TMP_DIR}/research.json.payload" > "${TMP_DIR}/research.json"
+
+jq -e '.metadata.orchestration.requester_role == "orchestrator"' "${TMP_DIR}/research.json" >/dev/null
+jq -e '.prompt_coaching.score > 0' "${TMP_DIR}/research.json" >/dev/null
+jq -e '.prompt_coaching.suggested_prompt | length > 0' "${TMP_DIR}/research.json" >/dev/null
+jq -e '.active_lesson_refs | length >= 1' "${TMP_DIR}/research.json" >/dev/null
+
 printf 'PASS: query task-class smoke\n'
