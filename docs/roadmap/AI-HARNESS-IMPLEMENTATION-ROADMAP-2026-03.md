@@ -88,6 +88,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | free-lane alias corrective pass | in_progress | `remote-coding` and `remote-reasoning` produced `402` under paid aliases, so host defaults are being moved to official free-capable models before re-validation |
 | 2026-03-13 | remote-free fallback hardening | in_progress | `remote-coding` free alias hit upstream `429`, so coordinator delegation is being updated to retry bounded coding/reasoning requests on `remote-free` before surfacing failure |
 | 2026-03-13 | continue-cli + home-manager activation corrective pass | validated_live | removed invalid disabled `home.file` stubs for legacy COSMIC units, fixed `nix/pkgs/continue-cli.nix` to use a valid `sha256` fetch source, and revalidated `home-manager switch` plus full quick-deploy system/home phases |
+| 2026-03-13 | delegated research bootstrap for next tracks | validated_live | exercised `/control/ai-coordinator/delegate` on `remote-free` for bounded BitNet/EvoSkill/coding-agent synthesis so next planning slices use the live remote lane instead of only local reasoning |
 
 ## High-Priority Tracks
 
@@ -283,6 +284,7 @@ Current Slice: `remote profiles and fallback reporting exist; coding/reasoning l
 Next Validation:
 - targeted remote profile smokes
 - `scripts/ai/aq-report --format json | jq '.provider_fallback_recovery, .routing'`
+- bounded delegated research/review calls recorded through `/control/ai-coordinator/delegate`
 Open Risks / Blockers:
 - advanced OpenRouter tool-calling and multi-agent delegation is not yet wired as a first-class local harness capability
 - remote coding/reasoning lanes can still hit provider-side free-model rate limits and need bounded fallback to the free lane
@@ -314,6 +316,16 @@ Tasks:
 9. Ensure remote delegation can consume the same approved skill catalog as local agents:
    - remote agents see harness-approved skill metadata
    - remote agents do not self-install unapproved third-party skills
+10. Start using the remote lanes for bounded sub-agent work instead of keeping them as smoke-only paths:
+   - `remote-free` for research synthesis and plan expansion
+   - `remote-coding` for patch sketching and implementation drafts
+   - `remote-reasoning` for architecture/review passes
+   - local reviewer gate remains mandatory before code adoption or commit
+11. Align coordinator task envelopes with coding-agent best practices:
+   - small discrete task contracts
+   - explicit expected artifact/evidence fields
+   - resumable slices with reviewer acceptance/rejection
+   - tool use bounded by harness-approved capabilities only
 
 Validation:
 - `curl -sS ... /workflow/plan`
@@ -364,6 +376,17 @@ Tasks:
 6. Separate internally promoted lessons from imported third-party skills:
    - imported skills require source metadata, approval state, and risk notes
    - first external source to normalize: `agentskill.sh`
+7. Mirror the EvoSkill-style loop without relaxing governance:
+   - candidate skill generation
+   - bounded evaluation on held-out tasks
+   - reviewer acceptance before promotion
+   - retire or demote lessons that stop producing measurable value
+8. Keep lesson promotion grounded in explicit task families:
+   - planning/orchestration
+   - implementation
+   - review
+   - retrieval/research
+   - operational remediation
 
 Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
@@ -396,17 +419,23 @@ Tasks:
    - supported BitNet models
    - performance delta vs llama.cpp on this host class
    - packaging/runtime implications for NixOS
+   - CPU-first viability and RAM footprint tradeoffs for bitnet.cpp specifically
 2. Prototype a non-default BitNet runtime role:
    - isolated service
    - explicit port option
    - no replacement of llama.cpp until validated
+   - prefer sidecar benchmarking before any switchboard integration
 3. Add benchmark scripts for:
    - tokens/sec
    - latency
    - power/CPU efficiency if available
    - model-loading behavior
+   - cold-start and warm-start comparisons against the current llama.cpp lane
 4. Add hybrid-coordinator backend abstraction checks so BitNet can be selected as a local backend profile if it proves viable.
 5. Keep rollout behind a feature flag until parity and health checks pass.
+6. Treat BitNet as optional even if viable:
+   - keep llama.cpp as baseline
+   - document measured reasons for any host class where BitNet is not worth enabling
 
 Validation:
 - benchmark script outputs under `scripts/ai/`
