@@ -348,6 +348,48 @@ def _profile_completion_rules(profile: str) -> List[str]:
     ]
 
 
+def _task_shape_completion_rules(task: str, profile: str) -> List[str]:
+    lowered = str(task or "").strip().lower()
+    normalized = str(profile or "").strip().lower()
+    rules: List[str] = []
+    if any(token in lowered for token in ("deploy", "rollback", "switch", "nixos-rebuild", "service restart", "systemd")):
+        rules.extend(
+            [
+                "- include the exact live verification signal and one rollback path",
+                "- prefer declarative activation guidance over ad hoc restart loops when both are viable",
+            ]
+        )
+    if any(token in lowered for token in ("fix", "bug", "regression", "debug", "failure")) and normalized in {"remote-coding", "remote-free", "default"}:
+        rules.extend(
+            [
+                "- state the most likely root cause before proposing the smallest reversible fix",
+                "- include one concrete validation step that would prove the bugfix actually worked",
+            ]
+        )
+    if any(token in lowered for token in ("review", "risk", "tradeoff", "acceptance", "patch review")):
+        rules.extend(
+            [
+                "- lead with the recommended direction or top finding before secondary commentary",
+                "- call out the main residual risk instead of returning only a neutral summary",
+            ]
+        )
+    if any(token in lowered for token in ("research", "scrape", "summarize", "source", "dataset", "retrieval")):
+        rules.extend(
+            [
+                "- keep findings tied to explicit sources or bounded source packs when provided",
+                "- separate extracted evidence from summary claims so the orchestrator can review quickly",
+            ]
+        )
+    seen = set()
+    deduped: List[str] = []
+    for item in rules:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] | None) -> str:
     ctx = context if isinstance(context, dict) else {}
     repo_paths = _normalize_list(ctx.get("repo_paths"))
@@ -380,6 +422,7 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
         "Completion rules:",
     ]
     lines.extend(_profile_completion_rules(profile))
+    lines.extend(_task_shape_completion_rules(task, profile))
     if output_format:
         lines.append(f"Output format constraint: {output_format}")
     if repo_paths:
