@@ -144,7 +144,7 @@ cfg_path = sys.argv[1]
 with open(cfg_path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-if data.get("__configVersion") != "20.0":
+if data.get("__configVersion") != "21.0":
     raise SystemExit(1)
 
 models = data.get("models") or []
@@ -163,6 +163,14 @@ if tab_model.get("apiBase") != "http://127.0.0.1:8085/v1":
     raise SystemExit(1)
 if ((tab_model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") != "continue-local":
     raise SystemExit(1)
+providers = data.get("contextProviders") or []
+if not any(
+    isinstance(provider, dict)
+    and provider.get("name") == "aq-hints"
+    and ((provider.get("params") or {}).get("endpoint") == "http://127.0.0.1:8003/hints")
+    for provider in providers
+):
+    raise SystemExit(1)
 PY
 }
 
@@ -177,6 +185,10 @@ _continue_local_smoke() {
 
 _continue_local_large_context_smoke() {
   bash "${REPO_ROOT}/scripts/testing/test-switchboard-continue-context-window.sh"
+}
+
+_continue_editor_flow_smoke() {
+  bash "${REPO_ROOT}/scripts/testing/smoke-continue-editor-flow.sh"
 }
 
 _aq_report_snapshot() {
@@ -283,6 +295,7 @@ run_phase_0() {
   _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' bash -lc 'codium --list-extensions 2>/dev/null | tr "[:upper:]" "[:lower:]"'
   _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
+  _check "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
 }
 
 # ---------------------------------------------------------------------------

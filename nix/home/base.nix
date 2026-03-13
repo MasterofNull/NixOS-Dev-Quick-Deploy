@@ -1103,7 +1103,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="20.0"
+    _config_version="21.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1121,7 +1121,7 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "20.0",
+  "__configVersion": "21.0",
   "models": [
     {
       "title": "Local Fast (Embedded Assist)",
@@ -1166,6 +1166,12 @@ PYEOF
     "maxTokens": 48
   },
   "contextProviders": [
+    {
+      "name": "aq-hints",
+      "params": {
+        "endpoint": "http://127.0.0.1:8003/hints"
+      }
+    },
     { "name": "file", "params": {} },
     { "name": "diff", "params": {} }
   ],
