@@ -48,8 +48,14 @@ def main() -> int:
                     "required": True,
                     "status": "accepted",
                     "history": [{"ts": now_epoch, "passed": True, "score": 1.0}],
+                    "last_review": {"ts": now_epoch, "passed": True, "score": 1.0, "reviewer": "codex"},
                 },
                 "blueprint_id": "repo-refactor-guarded",
+                "orchestration": {
+                    "requesting_agent": "continue",
+                    "requester_role": "orchestrator",
+                    "delegate_via_coordinator_only": True,
+                },
             },
             "pending-session": {
                 "session_id": "pending-session",
@@ -69,15 +75,51 @@ def main() -> int:
                     "history": [],
                 },
                 "blueprint_id": "continue-editor-rescue",
+                "orchestration": {
+                    "requesting_agent": "qwen",
+                    "requester_role": "sub-agent",
+                    "delegate_via_coordinator_only": True,
+                },
+            },
+            "rejected-session": {
+                "session_id": "rejected-session",
+                "objective": "rejected smoke",
+                "created_at": now_epoch,
+                "updated_at": now_epoch,
+                "intent_contract": {
+                    "user_intent": "rejected smoke",
+                    "definition_of_done": "rejected gate",
+                    "depth_expectation": "minimum",
+                    "spirit_constraints": ["stay bounded"],
+                    "no_early_exit_without": ["review state"],
+                },
+                "reviewer_gate": {
+                    "required": True,
+                    "status": "rejected",
+                    "history": [{"ts": now_epoch, "passed": False, "score": 0.2}],
+                    "last_review": {"ts": now_epoch, "passed": False, "score": 0.2, "reviewer": "codex"},
+                },
+                "blueprint_id": "continue-editor-rescue",
+                "orchestration": {
+                    "requesting_agent": "continue",
+                    "requester_role": "orchestrator",
+                    "delegate_via_coordinator_only": True,
+                },
             },
         }
         tmp_path.write_text(json.dumps(payload), encoding="utf-8")
         MODULE.WORKFLOW_SESSIONS_PATH = tmp_path
         summary = MODULE.read_workflow_sessions(now - timedelta(days=1))
-        assert_true(summary.get("reviewer_gate_required_runs") == 2, "expected two reviewer-gated runs")
-        assert_true(summary.get("sessions_with_reviews") == 1, "expected one reviewed session")
+        assert_true(summary.get("reviewer_gate_required_runs") == 3, "expected three reviewer-gated runs")
+        assert_true(summary.get("sessions_with_reviews") == 2, "expected two reviewed sessions")
         assert_true(summary.get("accepted_reviews") == 1, "expected one accepted review")
+        assert_true(summary.get("rejected_reviews") == 1, "expected one rejected review")
         assert_true(summary.get("pending_reviews") == 1, "expected one pending review")
+        assert_true(any(role == "orchestrator" and count == 2 for role, count in (summary.get("top_requester_roles") or [])), "expected requester role summary")
+        assert_true(any(role == "orchestrator" and count == 1 for role, count in (summary.get("accepted_by_requester_role") or [])), "expected accepted role summary")
+        assert_true(any(reviewer == "codex" and count == 2 for reviewer, count in (summary.get("top_reviewers") or [])), "expected reviewer summary")
+        assert_true(any(bp == "repo-refactor-guarded" and count == 1 for bp, count in (summary.get("accepted_blueprints") or [])), "expected accepted blueprint summary")
+        assert_true(any(bp == "continue-editor-rescue" and count == 1 for bp, count in (summary.get("rejected_blueprints") or [])), "expected rejected blueprint summary")
     finally:
         MODULE.WORKFLOW_SESSIONS_PATH = original_path
         if tmp_path.exists():

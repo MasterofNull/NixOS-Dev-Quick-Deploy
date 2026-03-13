@@ -909,6 +909,12 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
     rejected_reviews = 0
     pending_reviews = 0
     sessions_with_reviews = 0
+    requester_role_counts: Dict[str, int] = {}
+    accepted_by_requester_role: Dict[str, int] = {}
+    rejected_by_requester_role: Dict[str, int] = {}
+    reviewer_counts: Dict[str, int] = {}
+    accepted_blueprint_counts: Dict[str, int] = {}
+    rejected_blueprint_counts: Dict[str, int] = {}
     for sess in sessions:
         contract = sess.get("intent_contract")
         has_contract = (
@@ -932,6 +938,12 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         bp = str(sess.get("blueprint_id", "") or "").strip()
         if bp:
             blueprint_counts[bp] = blueprint_counts.get(bp, 0) + 1
+        orchestration = sess.get("orchestration")
+        requester_role = ""
+        if isinstance(orchestration, dict):
+            requester_role = str(orchestration.get("requester_role", "") or "").strip().lower()
+            if requester_role:
+                requester_role_counts[requester_role] = requester_role_counts.get(requester_role, 0) + 1
         reviewer_gate = sess.get("reviewer_gate")
         if isinstance(reviewer_gate, dict):
             if bool(reviewer_gate.get("required", False)):
@@ -940,10 +952,23 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
             history = reviewer_gate.get("history", [])
             if isinstance(history, list) and history:
                 sessions_with_reviews += 1
+            last_review = reviewer_gate.get("last_review")
+            if isinstance(last_review, dict):
+                reviewer = str(last_review.get("reviewer", "") or "").strip().lower()
+                if reviewer:
+                    reviewer_counts[reviewer] = reviewer_counts.get(reviewer, 0) + 1
             if status == "accepted":
                 accepted_reviews += 1
+                if requester_role:
+                    accepted_by_requester_role[requester_role] = accepted_by_requester_role.get(requester_role, 0) + 1
+                if bp:
+                    accepted_blueprint_counts[bp] = accepted_blueprint_counts.get(bp, 0) + 1
             elif status == "rejected":
                 rejected_reviews += 1
+                if requester_role:
+                    rejected_by_requester_role[requester_role] = rejected_by_requester_role.get(requester_role, 0) + 1
+                if bp:
+                    rejected_blueprint_counts[bp] = rejected_blueprint_counts.get(bp, 0) + 1
             elif status == "pending_review":
                 pending_reviews += 1
 
@@ -963,6 +988,12 @@ def read_workflow_sessions(since: datetime) -> Dict[str, Any]:
         "accepted_reviews": accepted_reviews,
         "rejected_reviews": rejected_reviews,
         "pending_reviews": pending_reviews,
+        "top_requester_roles": sorted(requester_role_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "accepted_by_requester_role": sorted(accepted_by_requester_role.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "rejected_by_requester_role": sorted(rejected_by_requester_role.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "top_reviewers": sorted(reviewer_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "accepted_blueprints": sorted(accepted_blueprint_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
+        "rejected_blueprints": sorted(rejected_blueprint_counts.items(), key=lambda x: (-x[1], x[0]))[:5],
     }
 
 
@@ -3348,6 +3379,18 @@ def format_md(
             lines.append(
                 f"- Reviewer gate: required={review_required} reviewed={reviewed} accepted={accepted} rejected={rejected} pending={pending}"
             )
+            top_roles = intent_compliance.get("top_requester_roles", [])
+            if top_roles:
+                lines.append(f"- Requester roles: {', '.join(f'`{role}` ({count})' for role, count in top_roles[:3])}")
+            accepted_roles = intent_compliance.get("accepted_by_requester_role", [])
+            if accepted_roles:
+                lines.append(f"- Accepted by requester role: {', '.join(f'`{role}` ({count})' for role, count in accepted_roles[:3])}")
+            reviewers = intent_compliance.get("top_reviewers", [])
+            if reviewers:
+                lines.append(f"- Reviewers: {', '.join(f'`{reviewer}` ({count})' for reviewer, count in reviewers[:3])}")
+            accepted_blueprints = intent_compliance.get("accepted_blueprints", [])
+            if accepted_blueprints:
+                lines.append(f"- Accepted blueprints: {', '.join(f'`{bp}` ({count})' for bp, count in accepted_blueprints[:3])}")
     else:
         lines.append("*Workflow session store unavailable.*")
     lines.append("")
@@ -3900,6 +3943,18 @@ def format_text(
             lines.append(
                 f"  Reviewer gate: required={review_required} reviewed={reviewed} accepted={accepted} rejected={rejected} pending={pending}"
             )
+            top_roles = intent_compliance.get("top_requester_roles", [])
+            if top_roles:
+                lines.append(f"  Requester roles: {', '.join(f'{role}({count})' for role, count in top_roles[:3])}")
+            accepted_roles = intent_compliance.get("accepted_by_requester_role", [])
+            if accepted_roles:
+                lines.append(f"  Accepted by requester role: {', '.join(f'{role}({count})' for role, count in accepted_roles[:3])}")
+            reviewers = intent_compliance.get("top_reviewers", [])
+            if reviewers:
+                lines.append(f"  Reviewers: {', '.join(f'{reviewer}({count})' for reviewer, count in reviewers[:3])}")
+            accepted_blueprints = intent_compliance.get("accepted_blueprints", [])
+            if accepted_blueprints:
+                lines.append(f"  Accepted blueprints: {', '.join(f'{bp}({count})' for bp, count in accepted_blueprints[:3])}")
     else:
         lines.append("  Workflow session store unavailable.")
     lines.append("")

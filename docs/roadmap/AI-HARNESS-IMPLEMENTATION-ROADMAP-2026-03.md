@@ -130,6 +130,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | delegation caller identity and handoff telemetry | validated_live | delegated runtime responses now return normalized `orchestration` metadata, delegated failure telemetry records `requesting_agent`, `requester_role`, and `handoff_requested`, and `aq-report` now summarizes requester-role plus coordinator-handoff frequency for delegated remote traffic |
 | 2026-03-13 | direct query caller identity propagation | validated_live | `/query` now normalizes caller identity at request entry, carries orchestration metadata into query responses and compact metadata blocks, and propagates requester-role fields into internal autorun audit rows so editor/human query traffic is not invisible until remote delegation happens |
 | 2026-03-13 | continue editor path smoke + aq-hints restore | validated_live | restored the generated Continue `aq-hints` HTTP context provider, added a bounded `prompt -> hints -> workflow plan -> query -> feedback` Continue-facing smoke, and promoted that smoke into `aq-qa 0.5.6` so editor-path regressions become deploy-visible instead of anecdotal |
+| 2026-03-13 | workflow reviewer acceptance telemetry | validated_local | `aq-report` now summarizes workflow requester-role mix, accepted/rejected review state by requester role, top reviewers, and accepted/rejected blueprints so reviewer-gated workflow health is measurable without reading raw session JSON |
 
 ## High-Priority Tracks
 
@@ -532,12 +533,14 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, aq-report summarizes coordinator-handoff frequency by requester role, and `/query` now returns compact orchestration metadata while propagating requester-role fields into internal autorun audit rows; the next gap is wider query/editor acceptance and patch-review telemetry across more agent/task classes`
+Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, aq-report now summarizes workflow requester-role mix, accepted/rejected review state by requester role, top reviewers, and accepted/rejected blueprints, and `/query` returns compact orchestration metadata while propagating requester-role fields into internal autorun audit rows; the next gap is wider query/editor acceptance and patch-review telemetry across more agent/task classes`
 Next Validation:
 - live `/query` responses return normalized orchestration metadata for human and editor callers
 - internal autorun audit rows inherit requester-role metadata from the parent query request
+- `python3 scripts/testing/test-workflow-review-gate.py`
+- `python3 scripts/ai/aq-report --format json | jq '.intent_contract_compliance'`
 Open Risks / Blockers:
-- top-level orchestrator identity is now explicit in workflow state, delegated responses, and direct query responses, but editor-specific acceptance and patch-review telemetry still needs broader coverage across more task classes
+- top-level orchestrator identity is now explicit in workflow state, delegated responses, direct query responses, and workflow review summaries, but editor-specific acceptance and patch-review telemetry still needs broader coverage across more task classes
 - the policy forbids nested sub-agent fan-out and both delegated plus direct-query caller telemetry now exist, but wider patch-review and acceptance telemetry for more agent/task classes is still unfinished
 
 Tasks:
@@ -549,6 +552,8 @@ Tasks:
 Validation:
 - `aq-report` lesson and tooling sections
 - workflow run evidence payloads
+- `python3 scripts/testing/test-workflow-review-gate.py`
+- `python3 scripts/ai/aq-report --format json | jq '.intent_contract_compliance'`
 
 ### Track H — Monitoring and Reporting Expansion
 
