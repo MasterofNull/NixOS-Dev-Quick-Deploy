@@ -118,6 +118,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | BitNet declarative sidecar scaffold pass | validated_local | added a disabled-by-default `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` scaffold plus shared endpoint wiring so benchmark-only BitNet experiments now have a tracked host-local config surface without touching switchboard or replacing llama.cpp |
 | 2026-03-13 | BitNet benchmark harness + baseline comparison pass | validated_local | added a repo-native `aq-bitnet-benchmark` path with pinned Python 3.12/devShell/toolchain/runtime-lib fixes plus direct local-llama baseline comparison via `aq-bitnet-compare`; host now builds BitNet and materializes a dummy GGUF, while direct BitNet benchmark execution still ends in `SIGSEGV` and remains a measured blocker rather than an assumed viable runtime |
 | 2026-03-13 | shared skill registry sync bridge | validated_live | added a repo-native `aq-sync-shared-skills.py` path that imports local `.agent/skills` entries into AIDB and promotes them to approved visibility, added cache-busting drift reporting in `aq-report`, and live-verified `23/23` approved shared skills |
+| 2026-03-13 | orchestrator boundary activation pass | validated_live | workflow runs now persist explicit `orchestration` policy for the human-prompted/top-level agent, delegated contracts forbid nested sub-agent fan-out, and a live `/workflow/run/start` smoke plus persisted session check confirmed `requested_by=continue`, `requester_role=orchestrator`, and `delegate_via_coordinator_only=true` |
 | 2026-03-13 | governed external skill import bootstrap | validated_live | added a pinned external skill-source manifest, locked `agentskill-sh/learn` by commit, imported it through the same AIDB approval path, and live-verified `24/24` expected approved shared skills in `aq-report` |
 | 2026-03-13 | coordinator shared-skill visibility surface | validated_live | added `/control/ai-coordinator/skills`, exposed shared skill summary in coordinator status, wired SDK/RPC/tooling-manifest support, and live-verified the coordinator returns the approved 24-skill catalog including `learn` |
 | 2026-03-13 | curated research workflow layer | validated_live | added a manifest-backed `/research/workflows/curated-fetch` layer with SDK/RPC/tooling-manifest exposure, live-validated the first approved source pack, and classified empty-extract/bot-gated pages into explicit fallback signals instead of treating them as successful scraping |
@@ -520,6 +521,16 @@ Acceptance:
 ## Medium-Priority Tracks
 
 ### Track G — Coding-Agent Workflow Effectiveness
+
+Track Status: `in_progress`
+Last Updated: `2026-03-13`
+Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated sub-agent contracts forbid nested fan-out, and further delegation is redirected into coordinator handoff instead of sub-agent self-spawn`
+Next Validation:
+- live query/editor caller surfaces propagate richer agent identity into workflow and delegation paths
+- coordinator telemetry reports coordinator-handoff frequency by requester role
+Open Risks / Blockers:
+- top-level orchestrator identity is now explicit in workflow state and live `/workflow/run/start` responses, but query-time and editor-time caller surfaces still need to pass richer agent identity consistently
+- the policy forbids nested sub-agent fan-out, but broader telemetry around coordinator handoff frequency is still missing
 
 Tasks:
 1. tighten delegator/reviewer evidence contracts
