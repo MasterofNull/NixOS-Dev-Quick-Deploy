@@ -1669,6 +1669,31 @@ class HintsEngine:
                 )
             )
 
+        deploy_focus = any(
+            token in query_lower
+            for token in ("deploy", "rollback", "switch", "nixos-rebuild", "quick-deploy", "service restart", "systemd")
+        )
+        if deploy_focus:
+            hints.append(
+                Hint(
+                    id="prompt_coaching_deploy_safe_ops",
+                    type="prompt_coaching",
+                    title="Keep deploy-safe ops requests explicit about verify and rollback",
+                    score=0.69,
+                    snippet=(
+                        "Name the target service or host, the intended activation path, the required live verification, "
+                        "and the rollback command. Prefer declarative switch paths before ad hoc restart loops."
+                    )[:220],
+                    reason="Compact operator guidance for deploy, rollback, and service-activation tasks",
+                    tags=["prompting", "coaching", "deploy", "rollback", "operator-guidance"],
+                    agent_hints={
+                        "human": "State the target host/service, exact success signal, and rollback command you expect.",
+                        "codex": "Use deploy-safe ops workflow framing and prove live verification before calling a deploy done.",
+                        "continue": "Keep deploy requests bounded to one host/service and one verification target at a time.",
+                    },
+                )
+            )
+
         return hints
 
     def _hints_from_latest_report(self, query: str, query_tokens: List[str]) -> List[Hint]:

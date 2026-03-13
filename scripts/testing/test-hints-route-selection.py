@@ -66,6 +66,17 @@ def main() -> int:
         "expected research workflow coaching hint",
     )
 
+    deploy_hints = engine.rank(
+        "deploy this nixos service safely and include rollback plus live verification",
+        max_hints=6,
+        agent_type="codex",
+    )
+    deploy_ids = [item.id for item in deploy_hints]
+    assert_true(
+        "prompt_coaching_deploy_safe_ops" in deploy_ids,
+        "expected deploy-safe ops coaching hint",
+    )
+
     print("PASS: hints engine surfaces compact task-class coaching")
     return 0
 
