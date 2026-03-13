@@ -885,6 +885,42 @@ def agent_lesson_candidates(since: datetime) -> Dict[str, Any]:
     if not HINT_FEEDBACK_PATH.exists():
         return {"available": True, "total_events": 0, "candidates": []}
 
+    def _lesson_scope(hint_id: str, preferred_tags: List[str]) -> str:
+        text = " ".join([hint_id] + list(preferred_tags or [])).lower()
+        if any(token in text for token in ("plan", "orchestrat", "workflow", "intent")):
+            return "planning_orchestration"
+        if any(token in text for token in ("implement", "patch", "code", "refactor", "debug")):
+            return "implementation"
+        if any(token in text for token in ("review", "risk", "policy", "reasoning", "tradeoff")):
+            return "review"
+        if any(token in text for token in ("retrieval", "rag", "research", "route_search", "memory")):
+            return "retrieval_research"
+        if any(token in text for token in ("deploy", "systemd", "runtime", "service", "nixos", "remediate")):
+            return "operational_remediation"
+        return "general"
+
+    def _lesson_materialization(direction: str, event_count: int, confidence: float, preferred_tools: List[str]) -> str:
+        if direction == "avoid":
+            return "reject_noise"
+        if event_count >= 5 and confidence >= 0.75 and preferred_tools:
+            return "skill_draft"
+        if event_count >= 3 and confidence >= 0.6:
+            return "quick_reference"
+        return "hint_only"
+
+    def _lesson_traceability(hint_id: str, agent: str, materialization: str) -> Dict[str, Any]:
+        targets = ["hint"]
+        if materialization in {"quick_reference", "skill_draft"}:
+            targets.append("reference")
+        if materialization == "skill_draft":
+            targets.append("skill_registry")
+        return {
+            "source_type": "hint_feedback",
+            "source_agent": agent,
+            "source_hint_id": hint_id,
+            "targets": targets,
+        }
+
     grouped: Dict[Tuple[str, str], Dict[str, Any]] = {}
     total_events = 0
     try:
@@ -965,13 +1001,20 @@ def agent_lesson_candidates(since: datetime) -> Dict[str, Any]:
             else:
                 continue
             confidence = round(abs(net) / total, 2)
+            materialization = _lesson_materialization(direction, total, confidence, row["preferred_tools"])
             candidates.append({
                 "agent": row["agent"],
                 "hint_id": row["hint_id"],
                 "direction": direction,
+                "state": direction,
+                "scope": _lesson_scope(str(row["hint_id"]), row["preferred_tags"]),
                 "net_signal": net,
                 "event_count": total,
+                "evidence_count": total,
                 "confidence": confidence,
+                "materialization": materialization,
+                "validation_link": "scripts/ai/aq-report --format json | jq '.agent_lessons'",
+                "traceability": _lesson_traceability(str(row["hint_id"]), str(row["agent"]), materialization),
                 "comments": row["comments"],
                 "preferred_tools": row["preferred_tools"],
                 "preferred_tags": row["preferred_tags"],
@@ -1998,6 +2041,7 @@ def build_structured_actions(
     eval_trend: Dict[str, Any],
     gaps: List[dict],
     delegated_prompt_failures: Optional[Dict[str, Any]] = None,
+    agent_lessons: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """Machine-readable optimization actions for aq-optimizer."""
     actions: List[dict] = []
@@ -2071,6 +2115,24 @@ def build_structured_actions(
                     "Treat each delegated rejection or unusable reply as a local prompt-contract failure.",
                     "Digest salvageable commands, file paths, and excerpts before retrying.",
                 ],
+            })
+
+    if agent_lessons and agent_lessons.get("available"):
+        promote_candidates = [
+            item for item in (agent_lessons.get("candidates") or [])
+            if isinstance(item, dict) and str(item.get("state") or "") == "promote"
+        ]
+        if promote_candidates:
+            top = promote_candidates[0]
+            actions.append({
+                "type": "lesson",
+                "action": "promote_agent_lesson",
+                "reason": f"{top.get('hint_id')}:{top.get('materialization')}:{top.get('event_count')}",
+                "safe": True,
+                "confidence": float(top.get("confidence", 0.0) or 0.0),
+                "scope": top.get("scope"),
+                "materialization": top.get("materialization"),
+                "validation": "scripts/ai/aq-report --format json | jq '.agent_lessons'",
             })
 
     knowledge_gaps = [
@@ -3548,7 +3610,7 @@ def main() -> None:
         recent_provider_fallbacks,
         recent_retrieval_breadth,
     )
-    structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps, delegation_feedback)
+    structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps, delegation_feedback, agent_lessons)
 
     # Render
     fmt_args = (
