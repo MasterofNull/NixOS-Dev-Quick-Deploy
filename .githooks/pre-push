@@ -4,6 +4,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+summarize_lint_failure() {
+  local lint_log="$1"
+  local failed_step failed_detail
+
+  failed_step="$(rg '^\[FAIL\]' "${lint_log}" | tail -1 | sed 's/^\[FAIL\] //' || true)"
+  failed_detail="$(rg '^(FAIL:|\[[^]]+\] FAIL )' "${lint_log}" | tail -1 || true)"
+
+  {
+    echo
+    echo "pre-push: quick lint failed."
+    [[ -n "${failed_step}" ]] && echo "pre-push: failing check -> ${failed_step}"
+    [[ -n "${failed_detail}" ]] && echo "pre-push: detail -> ${failed_detail}"
+    echo "pre-push: inspect the log above, fix the reported check, then push again."
+  } >&2
+}
+
 run_upstream_sync_check() {
   if [[ "${SKIP_PRE_PUSH_SYNC_CHECK:-false}" == "true" ]]; then
     echo "pre-push: SKIP_PRE_PUSH_SYNC_CHECK=true -> skipping upstream sync check"
@@ -63,4 +79,12 @@ fi
 run_upstream_sync_check
 
 echo "Running pre-push quick lint gate..."
-./scripts/governance/quick-deploy-lint.sh --mode fast
+lint_log="$(mktemp "${TMPDIR:-/tmp}/pre-push-lint-XXXXXX.log")"
+trap 'rm -f "${lint_log}"' EXIT
+if ./scripts/governance/quick-deploy-lint.sh --mode fast 2>&1 | tee "${lint_log}"; then
+  exit 0
+fi
+
+rc=${PIPESTATUS[0]}
+summarize_lint_failure "${lint_log}"
+exit "${rc}"

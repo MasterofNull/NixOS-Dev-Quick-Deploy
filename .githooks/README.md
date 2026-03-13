@@ -38,6 +38,7 @@ Runs repository quick lint before push:
 - ✅ Fetches upstream and blocks push early if your local branch is behind remote
 - ✅ Executes `./scripts/governance/quick-deploy-lint.sh --mode fast`
 - ✅ Blocks push on governance/runtime lint regressions
+- ✅ Prints a short failing-check summary after lint errors for easier IDE push debugging
 
 Emergency bypass (not recommended):
 ```bash
