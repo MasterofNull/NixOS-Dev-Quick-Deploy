@@ -503,7 +503,7 @@ check_pattern "nix/modules/services/mcp-servers.nix" 'WORKFLOW_BLUEPRINTS_FILE=\
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/start' 'Workflow review-contract smoke covers workflow run start'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/review/acceptance' 'Workflow review-contract smoke covers reviewer acceptance persistence'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/\$\{session_id\}' 'Workflow review-contract smoke covers persisted workflow run retrieval'
-check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class' 'Workflow review-contract smoke covers classified patch-review persistence'
+check_pattern "scripts/testing/smoke-workflow-review-contract.sh" 'review_type|artifact_kind|reviewed_agent|reviewed_profile|task_class|remote-reasoning-escalation' 'Workflow review-contract smoke covers classified multi-task review persistence'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Tracking Conventions' 'Detailed implementation roadmap defines tracking conventions'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track Status: `|Current Slice: `|Next Validation:' 'Detailed implementation roadmap includes live tracking fields'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" '## Execution Ledger' 'Detailed implementation roadmap records an execution ledger section'
@@ -602,6 +602,7 @@ check_pattern "scripts/ai/aq-report" 'accepted_by_requester_role' 'aq-report sum
 check_pattern "scripts/ai/aq-report" 'top_reviewers' 'aq-report summarizes workflow reviewer activity'
 check_pattern "scripts/ai/aq-report" 'accepted_blueprints|rejected_blueprints' 'aq-report summarizes accepted and rejected workflow blueprints'
 check_pattern "scripts/ai/aq-report" 'top_review_types|accepted_patch_reviews|patch_reviews_by_reviewed_agent|accepted_task_classes' 'aq-report summarizes patch-review and task-class workflow telemetry'
+check_pattern "scripts/ai/aq-report" 'accepted_by_reviewed_profile|rejected_by_reviewed_profile' 'aq-report summarizes workflow acceptance by reviewed profile'
 check_pattern "scripts/testing/test-workflow-review-gate.py" 'top_reviewers|accepted_blueprints|rejected_blueprints|accepted_patch_reviews|patch_reviews_by_reviewed_agent' 'Workflow review-gate test covers reviewer, blueprint, and patch-review aggregates'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
