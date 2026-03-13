@@ -110,6 +110,8 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/research/workflows/curated-fetch` | POST | Manifest-backed bounded research workflow expanded into approved explicit URLs |
 | `/workflow/orchestrate` | POST | Submit loop-orchestration work via harness |
 | `/control/ai-coordinator/status` | GET | List coordinator runtime lanes and remote readiness |
+| `/control/ai-coordinator/lessons` | GET | List persisted agent lessons and pending-review candidates |
+| `/control/ai-coordinator/lessons/review` | POST | Update governed agent-lesson review state |
 | `/control/ai-coordinator/skills` | GET | List harness-approved shared skill catalog for local and delegated agents |
 | `/control/ai-coordinator/delegate` | POST | Delegate a bounded task through the ai-coordinator |
 | `/health` | GET | Check service health |

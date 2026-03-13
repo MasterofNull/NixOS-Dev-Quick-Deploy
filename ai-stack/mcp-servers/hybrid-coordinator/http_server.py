@@ -92,6 +92,7 @@ _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
 _embedding_cache_ref: Optional[Callable] = None      # Phase 21.3 — lambda: embedding_cache
 _workflow_sessions_lock = asyncio.Lock()
 _runtime_registry_lock = asyncio.Lock()
+_agent_lessons_lock = asyncio.Lock()
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
 
@@ -147,6 +148,10 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "workflow_run_start"
     if path == "/control/ai-coordinator/status" and method == "GET":
         return "ai_coordinator_status"
+    if path == "/control/ai-coordinator/lessons" and method == "GET":
+        return "ai_coordinator_lessons"
+    if path == "/control/ai-coordinator/lessons/review" and method == "POST":
+        return "ai_coordinator_lessons_review"
     if path == "/control/ai-coordinator/skills" and method == "GET":
         return "ai_coordinator_skills"
     if path == "/control/ai-coordinator/delegate" and method == "POST":
@@ -399,6 +404,15 @@ def _runtime_registry_path() -> Path:
     return data_dir / "agent-runtimes.json"
 
 
+def _agent_lessons_registry_path() -> Path:
+    data_dir = Path(
+        os.path.expanduser(
+            os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")
+        )
+    )
+    return data_dir / "agent-lessons.json"
+
+
 def _workflow_blueprints_path() -> Path:
     return Path(
         os.path.expanduser(
@@ -413,6 +427,81 @@ def _hint_feedback_log_path() -> Path:
             os.getenv("HINT_FEEDBACK_LOG_PATH", "/var/log/nixos-ai-stack/hint-feedback.jsonl")
         )
     )
+
+
+def _default_agent_lessons_registry() -> Dict[str, Any]:
+    return {
+        "available": True,
+        "path": str(_agent_lessons_registry_path()),
+        "entries": [],
+        "counts": {
+            "total": 0,
+            "pending_review": 0,
+            "promoted": 0,
+            "avoided": 0,
+            "rejected": 0,
+        },
+        "active_lessons": [],
+    }
+
+
+def _normalize_agent_lessons_registry(data: Any) -> Dict[str, Any]:
+    registry = _default_agent_lessons_registry()
+    if isinstance(data, dict):
+        entries = data.get("entries")
+        if isinstance(entries, list):
+            registry["entries"] = [item for item in entries if isinstance(item, dict)]
+    counts = {
+        "total": len(registry["entries"]),
+        "pending_review": 0,
+        "promoted": 0,
+        "avoided": 0,
+        "rejected": 0,
+    }
+    active_lessons: List[Dict[str, Any]] = []
+    for item in registry["entries"]:
+        state = str(item.get("state", "") or "").strip().lower()
+        if state in counts:
+            counts[state] += 1
+        if state in {"promoted", "avoided"}:
+            active_lessons.append(
+                {
+                    "lesson_key": item.get("lesson_key"),
+                    "agent": item.get("agent"),
+                    "hint_id": item.get("hint_id"),
+                    "state": state,
+                    "scope": item.get("scope"),
+                    "materialization": item.get("materialization"),
+                    "updated_at": item.get("updated_at"),
+                }
+            )
+    active_lessons.sort(
+        key=lambda item: (
+            str(item.get("state") or ""),
+            str(item.get("agent") or ""),
+            str(item.get("hint_id") or ""),
+        )
+    )
+    registry["counts"] = counts
+    registry["active_lessons"] = active_lessons[:10]
+    return registry
+
+
+async def _load_agent_lessons_registry() -> Dict[str, Any]:
+    path = _agent_lessons_registry_path()
+    if not path.exists():
+        return _default_agent_lessons_registry()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _default_agent_lessons_registry()
+    return _normalize_agent_lessons_registry(data)
+
+
+async def _save_agent_lessons_registry(data: Dict[str, Any]) -> None:
+    path = _agent_lessons_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_normalize_agent_lessons_registry(data), indent=2) + "\n", encoding="utf-8")
 
 
 def _normalize_string_list(value: Any) -> List[str]:
@@ -3335,6 +3424,8 @@ async def run_http_mode(port: int) -> None:
         try:
             async with _runtime_registry_lock:
                 registry = await _load_runtime_registry()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
             runtimes = list((registry.get("runtimes", {}) or {}).values())
             swb_state = await _switchboard_ai_coordinator_state()
             remote_aliases = swb_state.get("remote_aliases", {})
@@ -3357,8 +3448,72 @@ async def run_http_mode(port: int) -> None:
                         "skills": shared_skills.get("skills", []),
                         "truncated": bool(shared_skills.get("truncated", False)),
                     },
+                    "agent_lessons": {
+                        "available": lesson_registry.get("available", False),
+                        "counts": lesson_registry.get("counts", {}),
+                        "active_lessons": lesson_registry.get("active_lessons", []),
+                    },
                     "runtimes": runtimes,
                     "count": len(runtimes),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_ai_coordinator_lessons(_request: web.Request) -> web.Response:
+        """Expose the persistent agent-lesson registry."""
+        try:
+            async with _agent_lessons_lock:
+                registry = await _load_agent_lessons_registry()
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "service": "ai-coordinator",
+                    "agent_lessons": registry,
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_ai_coordinator_lessons_review(request: web.Request) -> web.Response:
+        """Update review state for a persisted agent lesson."""
+        try:
+            data = await request.json()
+            requested_key = str(data.get("lesson_key") or "").strip()
+            requested_state = str(data.get("state") or "").strip().lower()
+            reviewer = str(data.get("reviewer") or "codex").strip()
+            comment = str(data.get("comment") or "").strip()
+            allowed_states = {"pending_review", "promoted", "avoided", "rejected"}
+            if requested_state not in allowed_states:
+                return web.json_response({"error": "state must be one of pending_review, promoted, avoided, rejected"}, status=400)
+            async with _agent_lessons_lock:
+                registry = await _load_agent_lessons_registry()
+                entries = [item for item in (registry.get("entries") or []) if isinstance(item, dict)]
+                target = None
+                for item in entries:
+                    lesson_key = str(item.get("lesson_key", "") or "").strip()
+                    if requested_key and lesson_key == requested_key:
+                        target = item
+                        break
+                if target is None:
+                    return web.json_response({"error": "lesson not found"}, status=404)
+                stamp = datetime.utcnow().isoformat() + "Z"
+                target["state"] = requested_state
+                target["review"] = {
+                    "reviewer": reviewer[:64],
+                    "comment": comment[:240],
+                    "reviewed_at": stamp,
+                }
+                target["updated_at"] = stamp
+                registry["entries"] = entries
+                await _save_agent_lessons_registry(registry)
+                registry = await _load_agent_lessons_registry()
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "service": "ai-coordinator",
+                    "agent_lessons": registry,
+                    "reviewed_lesson": target,
                 }
             )
         except Exception as exc:
@@ -3928,6 +4083,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
     http_app.router.add_get("/parity/scorecard", handle_parity_scorecard)
     http_app.router.add_get("/control/ai-coordinator/status", handle_ai_coordinator_status)
+    http_app.router.add_get("/control/ai-coordinator/lessons", handle_ai_coordinator_lessons)
+    http_app.router.add_post("/control/ai-coordinator/lessons/review", handle_ai_coordinator_lessons_review)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)

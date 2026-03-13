@@ -60,6 +60,9 @@ TASK_AUDIT_PATH = Path(
 HINT_FEEDBACK_PATH = Path(
     os.getenv("HINT_FEEDBACK_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "hint-feedback.jsonl"))
 )
+AGENT_LESSON_REGISTRY_PATH = Path(
+    os.getenv("AGENT_LESSON_REGISTRY_PATH", "/var/lib/ai-stack/hybrid/agent-lessons.json")
+)
 AGENT_LESSON_EXCLUDED_AGENTS = {
     "seed-tool-audit",
     "post-deploy-converge",
@@ -1222,6 +1225,159 @@ def agent_lesson_candidates(since: datetime) -> Dict[str, Any]:
         return {"available": True, "total_events": 0, "candidates": []}
 
 
+def _agent_lesson_key(agent: str, hint_id: str, direction: str) -> str:
+    return "::".join(
+        [
+            re.sub(r"[^a-z0-9]+", "-", str(agent or "").strip().lower()).strip("-") or "unknown",
+            re.sub(r"[^a-z0-9]+", "-", str(hint_id or "").strip().lower()).strip("-") or "unknown",
+            re.sub(r"[^a-z0-9]+", "-", str(direction or "").strip().lower()).strip("-") or "pending",
+        ]
+    )
+
+
+def _default_agent_lesson_registry() -> Dict[str, Any]:
+    return {
+        "available": True,
+        "path": str(AGENT_LESSON_REGISTRY_PATH),
+        "entries": [],
+        "counts": {
+            "total": 0,
+            "pending_review": 0,
+            "promoted": 0,
+            "avoided": 0,
+            "rejected": 0,
+        },
+        "active_lessons": [],
+    }
+
+
+def _load_agent_lesson_registry() -> Dict[str, Any]:
+    registry = _default_agent_lesson_registry()
+    if not AGENT_LESSON_REGISTRY_PATH.exists():
+        return registry
+    try:
+        data = json.loads(AGENT_LESSON_REGISTRY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return registry
+    if not isinstance(data, dict):
+        return registry
+    entries = data.get("entries")
+    if isinstance(entries, list):
+        registry["entries"] = [item for item in entries if isinstance(item, dict)]
+    return registry
+
+
+def _compute_agent_lesson_registry_summary(registry: Dict[str, Any]) -> Dict[str, Any]:
+    entries = [item for item in (registry.get("entries") or []) if isinstance(item, dict)]
+    counts = {
+        "total": len(entries),
+        "pending_review": 0,
+        "promoted": 0,
+        "avoided": 0,
+        "rejected": 0,
+    }
+    active_lessons: List[Dict[str, Any]] = []
+    for item in entries:
+        state = str(item.get("state", "") or "").strip().lower()
+        if state in counts:
+            counts[state] += 1
+        if state in {"promoted", "avoided"}:
+            active_lessons.append({
+                "lesson_key": item.get("lesson_key"),
+                "agent": item.get("agent"),
+                "hint_id": item.get("hint_id"),
+                "state": state,
+                "scope": item.get("scope"),
+                "materialization": item.get("materialization"),
+                "updated_at": item.get("updated_at"),
+            })
+    active_lessons.sort(
+        key=lambda item: (
+            str(item.get("state") or ""),
+            str(item.get("agent") or ""),
+            str(item.get("hint_id") or ""),
+        )
+    )
+    registry["counts"] = counts
+    registry["active_lessons"] = active_lessons[:10]
+    registry["available"] = True
+    registry["path"] = str(AGENT_LESSON_REGISTRY_PATH)
+    return registry
+
+
+def sync_agent_lesson_registry(agent_lessons: Dict[str, Any], now: Optional[datetime] = None) -> Dict[str, Any]:
+    registry = _load_agent_lesson_registry()
+    entries = [item for item in (registry.get("entries") or []) if isinstance(item, dict)]
+    index: Dict[str, Dict[str, Any]] = {}
+    for item in entries:
+        lesson_key = str(item.get("lesson_key", "") or "").strip()
+        if lesson_key:
+            index[lesson_key] = item
+    stamp = (now or datetime.now(tz=timezone.utc)).isoformat().replace("+00:00", "Z")
+    changed = False
+    for candidate in (agent_lessons.get("candidates") or []):
+        if not isinstance(candidate, dict):
+            continue
+        lesson_key = _agent_lesson_key(
+            str(candidate.get("agent", "") or ""),
+            str(candidate.get("hint_id", "") or ""),
+            str(candidate.get("direction", "") or ""),
+        )
+        existing = index.get(lesson_key)
+        if existing is None:
+            existing = {
+                "lesson_key": lesson_key,
+                "state": "pending_review",
+                "first_seen_at": stamp,
+            }
+            entries.append(existing)
+            index[lesson_key] = existing
+            changed = True
+        previous_snapshot = dict(existing)
+        existing.update(
+            {
+                "lesson_key": lesson_key,
+                "agent": candidate.get("agent"),
+                "hint_id": candidate.get("hint_id"),
+                "recommended_direction": candidate.get("direction"),
+                "scope": candidate.get("scope"),
+                "materialization": candidate.get("materialization"),
+                "confidence": candidate.get("confidence"),
+                "event_count": candidate.get("event_count"),
+                "evidence_count": candidate.get("evidence_count"),
+                "comments": candidate.get("comments") or [],
+                "preferred_tools": candidate.get("preferred_tools") or [],
+                "preferred_tags": candidate.get("preferred_tags") or [],
+                "traceability": candidate.get("traceability") or {},
+                "validation_link": candidate.get("validation_link"),
+                "last_seen_at": stamp,
+                "updated_at": stamp,
+            }
+        )
+        if existing.get("state") not in {"pending_review", "promoted", "avoided", "rejected"}:
+            existing["state"] = "pending_review"
+        if existing != previous_snapshot:
+            changed = True
+        candidate["lesson_key"] = lesson_key
+        candidate["registry_state"] = existing.get("state", "pending_review")
+    entries.sort(
+        key=lambda item: (
+            str(item.get("state") or ""),
+            str(item.get("agent") or ""),
+            str(item.get("hint_id") or ""),
+        )
+    )
+    registry["entries"] = entries
+    registry = _compute_agent_lesson_registry_summary(registry)
+    if changed or not AGENT_LESSON_REGISTRY_PATH.exists():
+        try:
+            AGENT_LESSON_REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            AGENT_LESSON_REGISTRY_PATH.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            registry["write_failed"] = True
+    return registry
+
+
 def hint_diversity(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute concentration/diversity quality signals for injected hints."""
     if not adoption or not adoption.get("available"):
@@ -1359,10 +1515,12 @@ def historical_hint_watchlist(
 def _format_agent_lesson_candidate(candidate: Dict[str, Any]) -> str:
     tools = candidate.get("preferred_tools") or []
     tool_suffix = f"; tools={','.join(str(t) for t in tools[:2])}" if tools else ""
+    registry_state = str(candidate.get("registry_state", "") or "").strip()
+    state_suffix = f"; registry={registry_state}" if registry_state else ""
     return (
         f"{candidate.get('agent')}:{candidate.get('direction')} {candidate.get('hint_id')} "
         f"(events={candidate.get('event_count')}, confidence={candidate.get('confidence')})"
-        f"{tool_suffix}"
+        f"{tool_suffix}{state_suffix}"
     )
 
 
@@ -2313,16 +2471,21 @@ def build_structured_actions(
     if agent_lessons and agent_lessons.get("available"):
         promote_candidates = [
             item for item in (agent_lessons.get("candidates") or [])
-            if isinstance(item, dict) and str(item.get("state") or "") == "promote"
+            if (
+                isinstance(item, dict)
+                and str(item.get("state") or "") == "promote"
+                and str(item.get("registry_state") or "pending_review") == "pending_review"
+            )
         ]
         if promote_candidates:
             top = promote_candidates[0]
             actions.append({
                 "type": "lesson",
-                "action": "promote_agent_lesson",
+                "action": "review_agent_lesson",
                 "reason": f"{top.get('hint_id')}:{top.get('materialization')}:{top.get('event_count')}",
                 "safe": True,
                 "confidence": float(top.get("confidence", 0.0) or 0.0),
+                "lesson_key": top.get("lesson_key"),
                 "scope": top.get("scope"),
                 "materialization": top.get("materialization"),
                 "validation": "scripts/ai/aq-report --format json | jq '.agent_lessons'",
@@ -3153,6 +3316,7 @@ def format_md(
 
     lines += ["## 14c. Agent Lesson Promotion Candidates", ""]
     lesson_candidates = (agent_lessons or {}).get("candidates") or []
+    lesson_registry = (agent_lessons or {}).get("registry") or {}
     if not lesson_candidates:
         lines.append("*No cross-agent lesson candidates met the promotion threshold in this window.*")
     else:
@@ -3161,6 +3325,11 @@ def format_md(
             comments = item.get("comments") or []
             if comments:
                 lines.append(f"  - Example feedback: {comments[0]}")
+    if lesson_registry.get("available"):
+        counts = lesson_registry.get("counts") or {}
+        lines.append(
+            f"- `registry pending={counts.get('pending_review', 0)} promoted={counts.get('promoted', 0)} avoided={counts.get('avoided', 0)} rejected={counts.get('rejected', 0)}`"
+        )
     lines.append("")
 
     return "\n".join(lines)
@@ -3665,6 +3834,7 @@ def format_text(
 
     lines += ["[ 14c. Agent Lesson Promotion Candidates ]"]
     lesson_candidates = (agent_lessons or {}).get("candidates") or []
+    lesson_registry = (agent_lessons or {}).get("registry") or {}
     if not lesson_candidates:
         lines.append("  No cross-agent lesson candidates met the promotion threshold in this window.")
     else:
@@ -3673,6 +3843,15 @@ def format_text(
             comments = item.get("comments") or []
             if comments:
                 lines.append(f"    Example feedback: {comments[0]}")
+    if lesson_registry.get("available"):
+        counts = lesson_registry.get("counts") or {}
+        lines.append(
+            "  Registry: "
+            f"pending={counts.get('pending_review', 0)} "
+            f"promoted={counts.get('promoted', 0)} "
+            f"avoided={counts.get('avoided', 0)} "
+            f"rejected={counts.get('rejected', 0)}"
+        )
     lines += ["", sep]
     return "\n".join(lines)
 
@@ -3874,6 +4053,7 @@ def main() -> None:
     )[:3]
     rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, recent_audit_entries, cache, gaps, top_prompts)
     agent_lessons = agent_lesson_candidates(since_dt)
+    agent_lessons["registry"] = sync_agent_lesson_registry(agent_lessons)
     hint_diversity_stats = hint_diversity(adoption)
     recent_hint_adoption = hint_adoption(recent_cutoff)
     recent_hint_adoption["window"] = "1h"
