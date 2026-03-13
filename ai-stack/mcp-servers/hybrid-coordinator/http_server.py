@@ -516,6 +516,35 @@ def _active_lesson_refs(registry: Dict[str, Any], limit: int = 2) -> List[Dict[s
     return [item for item in refs if item.get("lesson_key")]
 
 
+def _normalize_review_type(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return text or "acceptance"
+
+
+def _normalize_artifact_kind(value: Any, review_type: str) -> str:
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if text:
+        return text
+    if review_type == "patch_review":
+        return "patch"
+    if review_type == "plan_review":
+        return "plan"
+    if review_type == "artifact_review":
+        return "artifact"
+    return "response"
+
+
+def _normalize_task_class(value: Any, session: Optional[Dict[str, Any]]) -> str:
+    text = str(value or "").strip().lower().replace(" ", "_")
+    if text:
+        return text
+    if isinstance(session, dict):
+        blueprint_id = str(session.get("blueprint_id", "") or "").strip().lower()
+        if blueprint_id:
+            return blueprint_id
+    return "general"
+
+
 async def _load_agent_lessons_registry() -> Dict[str, Any]:
     path = _agent_lessons_registry_path()
     if not path.exists():
@@ -3159,23 +3188,39 @@ async def run_http_mode(port: int) -> None:
             session_id = str(data.get("session_id", "") or "").strip()
             if session_id:
                 now = int(time.time())
-                review_snapshot = {
-                    "ts": now,
-                    "passed": passed,
-                    "score": response_payload["score"],
-                    "reviewer": str(data.get("reviewer", "") or "codex").strip()[:64] or "codex",
-                    "criteria_ratio": round(criteria_ratio, 4),
-                    "keyword_ratio": round(keyword_ratio, 4),
-                    "criteria_threshold": min_criteria_ratio,
-                    "keyword_threshold": min_keyword_ratio,
-                    "criteria_total": criteria_total,
-                    "keyword_total": keyword_total,
-                }
+                reviewer = str(data.get("reviewer", "") or "codex").strip()[:64] or "codex"
                 async with _workflow_sessions_lock:
                     sessions = await _load_workflow_sessions()
                     session = sessions.get(session_id)
                     if session:
                         _ensure_session_runtime_fields(session)
+                        orchestration = session.get("orchestration")
+                        review_type = _normalize_review_type(data.get("review_type"))
+                        artifact_kind = _normalize_artifact_kind(data.get("artifact_kind"), review_type)
+                        task_class = _normalize_task_class(data.get("task_class"), session)
+                        reviewed_agent = str(
+                            data.get("reviewed_agent")
+                            or (orchestration.get("requesting_agent") if isinstance(orchestration, dict) else "")
+                            or "unknown"
+                        ).strip()[:64] or "unknown"
+                        reviewed_profile = str(data.get("reviewed_profile") or "").strip()[:64]
+                        review_snapshot = {
+                            "ts": now,
+                            "passed": passed,
+                            "score": response_payload["score"],
+                            "reviewer": reviewer,
+                            "review_type": review_type,
+                            "artifact_kind": artifact_kind,
+                            "task_class": task_class,
+                            "reviewed_agent": reviewed_agent,
+                            "reviewed_profile": reviewed_profile,
+                            "criteria_ratio": round(criteria_ratio, 4),
+                            "keyword_ratio": round(keyword_ratio, 4),
+                            "criteria_threshold": min_criteria_ratio,
+                            "keyword_threshold": min_keyword_ratio,
+                            "criteria_total": criteria_total,
+                            "keyword_total": keyword_total,
+                        }
                         gate = session.get("reviewer_gate", {})
                         if not isinstance(gate, dict):
                             gate = {}
@@ -3197,6 +3242,12 @@ async def run_http_mode(port: int) -> None:
                                 "phase_id": f"phase-{int(session.get('current_phase_index', 0))}",
                                 "detail": f"review gate -> {'accepted' if passed else 'rejected'}",
                                 "score": response_payload["score"],
+                                "review_type": review_type,
+                                "artifact_kind": artifact_kind,
+                                "task_class": task_class,
+                                "reviewed_agent": reviewed_agent,
+                                "reviewed_profile": reviewed_profile,
+                                "reviewer": reviewer,
                             }
                         )
                         sessions[session_id] = session

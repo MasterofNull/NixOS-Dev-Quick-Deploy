@@ -538,26 +538,27 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, aq-report now summarizes workflow requester-role mix, accepted/rejected review state by requester role, top reviewers, and accepted/rejected blueprints, and `/query` returns compact orchestration metadata while propagating requester-role fields into internal autorun audit rows; the next gap is wider query/editor acceptance and patch-review telemetry across more agent/task classes`
+Current Slice: `workflow runs now persist live orchestrator policy for top-level callers, delegated runtime responses surface normalized caller identity, delegated failure telemetry records requester-role and handoff metadata, `/query` returns compact orchestration metadata while propagating requester-role fields into internal autorun audit rows, and aq-report now summarizes reviewer state by requester role, review type, reviewed agent, blueprint, and task class so cross-agent patch-review telemetry is no longer implicit; the next gap is broader live query/editor acceptance coverage across more task classes`
 Next Validation:
 - live `/query` responses return normalized orchestration metadata for human and editor callers
 - internal autorun audit rows inherit requester-role metadata from the parent query request
 - `python3 scripts/testing/test-workflow-review-gate.py`
 - `python3 scripts/ai/aq-report --format json | jq '.intent_contract_compliance'`
 Open Risks / Blockers:
-- top-level orchestrator identity is now explicit in workflow state, delegated responses, direct query responses, and workflow review summaries, but editor-specific acceptance and patch-review telemetry still needs broader coverage across more task classes
-- the policy forbids nested sub-agent fan-out and both delegated plus direct-query caller telemetry now exist, but wider patch-review and acceptance telemetry for more agent/task classes is still unfinished
+- top-level orchestrator identity is now explicit in workflow state, delegated responses, direct query responses, and workflow review summaries, but editor-specific live acceptance coverage still needs broader coverage across more task classes
+- the policy forbids nested sub-agent fan-out and both delegated plus direct-query caller telemetry now exist, but broader live acceptance evidence for more agent/task classes is still unfinished
 
 Tasks:
 1. tighten delegator/reviewer evidence contracts
 2. add more explicit sub-agent role boundaries to runtime blueprints
-3. add cross-agent patch-review telemetry
+3. extend live acceptance coverage across more editor/query task classes
 4. measure acceptance rate by agent/profile/task class
 
 Validation:
 - `aq-report` lesson and tooling sections
 - workflow run evidence payloads
 - `python3 scripts/testing/test-workflow-review-gate.py`
+- `python3 scripts/ai/aq-report --format json | jq '.intent_contract_compliance | {top_review_types, accepted_patch_reviews, patch_reviews_by_reviewed_agent, accepted_task_classes}'`
 - `python3 scripts/ai/aq-report --format json | jq '.intent_contract_compliance'`
 
 ### Track H — Monitoring and Reporting Expansion
