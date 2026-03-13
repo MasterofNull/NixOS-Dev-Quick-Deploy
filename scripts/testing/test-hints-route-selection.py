@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Targeted checks for route-selection and Continue/editor prompt coaching."""
+"""Targeted checks for compact task-class prompt coaching."""
 
 from __future__ import annotations
 
@@ -44,7 +44,29 @@ def main() -> int:
         "expected Continue/editor troubleshooting coaching hint",
     )
 
-    print("PASS: hints engine surfaces route-selection and Continue/editor coaching")
+    review_hints = engine.rank(
+        "please do a patch review on this git diff and call out regressions first",
+        max_hints=6,
+        agent_type="codex",
+    )
+    review_ids = [item.id for item in review_hints]
+    assert_true(
+        "prompt_coaching_patch_review" in review_ids,
+        "expected patch-review coaching hint",
+    )
+
+    research_hints = engine.rank(
+        "research and summarize a source-bounded web dataset with retrieval evidence",
+        max_hints=6,
+        agent_type="continue",
+    )
+    research_ids = [item.id for item in research_hints]
+    assert_true(
+        "prompt_coaching_research_workflow" in research_ids,
+        "expected research workflow coaching hint",
+    )
+
+    print("PASS: hints engine surfaces compact task-class coaching")
     return 0
 
 
