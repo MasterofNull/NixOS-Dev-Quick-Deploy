@@ -103,6 +103,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | tool-call-only failure classification refinement | validated_live | refined delegated failure capture so remote tool-call-only completions are recorded as `tool_call_without_final_text` with salvaged tool arguments instead of opaque `empty_content`, then revalidated the same live OpenRouter tool-calling smoke after coordinator restart |
 | 2026-03-13 | governed lesson schema + promotion action pass | validated_local | `aq-report` now emits governed lesson candidate fields including state, scope, evidence count, materialization class, validation link, and traceability targets, and can surface a machine-readable `promote_agent_lesson` action when candidates meet the threshold |
 | 2026-03-13 | delegated artifact recovery salvage pass | validated_live | `/control/ai-coordinator/delegate` now returns bounded `artifact_recovery` output for tool-call-only, reasoning-only, and partial-text delegated failures, preserving useful tool arguments and reasoning excerpts so failed remote calls still yield actionable local summaries |
+| 2026-03-13 | BitNet declarative sidecar scaffold pass | validated_local | added a disabled-by-default `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` scaffold plus shared endpoint wiring so benchmark-only BitNet experiments now have a tracked host-local config surface without touching switchboard or replacing llama.cpp |
 
 ## High-Priority Tracks
 
@@ -432,14 +433,15 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `host-fit feasibility probe and benchmark plan now exist locally; no runtime role or sidecar benchmark execution has happened yet`
+Current Slice: `host-fit feasibility probe now includes a declarative sidecar scaffold with explicit option, port, and endpoint surfaces; the next gap is a real benchmark shell/build path and then an isolated sidecar runtime proof`
 Next Validation:
 - `python3 scripts/ai/aq-bitnet-feasibility.py --format json`
 - `python3 scripts/testing/test-bitnet-feasibility.py`
-- declarative service checks once a feature-flagged role exists
+- nix parse for the new `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` surfaces
 Open Risks / Blockers:
 - no current BitNet packaging/runtime evidence on this host class
 - must not destabilize existing llama.cpp service health
+- declarative scaffold exists, but no executable bitnet.cpp sidecar package or service has been introduced yet
 
 Goal:
 - determine where BitNet can improve local inference economics without destabilizing the stack

@@ -115,6 +115,7 @@ in
     # Centralized port registry wiring
     mySystem.aiStack.llamaCpp.port = lib.mkDefault ports.llamaCpp;
     mySystem.aiStack.embeddingServer.port = lib.mkDefault ports.embedding;
+    mySystem.aiStack.bitnet.port = lib.mkDefault ports.bitnet;
     mySystem.aiStack.switchboard.port = lib.mkDefault ports.switchboard;
     mySystem.mcpServers.aidbPort = lib.mkDefault ports.mcpAidb;
     mySystem.mcpServers.hybridPort = lib.mkDefault ports.mcpHybrid;

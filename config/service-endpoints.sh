@@ -48,6 +48,7 @@ fi
 # only for compatibility helpers and defaults to the unified API port.
 : "${DASHBOARD_URL:=${DASHBOARD_API_URL}}"
 : "${EMBEDDINGS_URL:=http://${SERVICE_HOST}:${EMBEDDINGS_PORT:-8081}}"
+: "${BITNET_URL:=http://${SERVICE_HOST}:${BITNET_PORT:-8086}}"
 : "${SWITCHBOARD_URL:=http://${SERVICE_HOST}:${SWITCHBOARD_PORT:-8085}}"
 : "${AIDER_WRAPPER_URL:=http://${SERVICE_HOST}:${AIDER_WRAPPER_PORT:-8090}}"
 : "${NETDATA_URL:=http://${SERVICE_HOST}:${NETDATA_PORT:-19999}}"
