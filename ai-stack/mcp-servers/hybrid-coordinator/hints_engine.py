@@ -1768,6 +1768,32 @@ class HintsEngine:
                     )
                 )
 
+        delegated_failures = data.get("delegated_prompt_failures", {})
+        if isinstance(delegated_failures, dict) and delegated_failures.get("available"):
+            total_failures = int(delegated_failures.get("total_failures", 0) or 0)
+            top_failure_classes = delegated_failures.get("top_failure_classes") or []
+            delegate_focus = any(
+                token in query_lower
+                for token in ("openrouter", "delegate", "delegation", "prompt", "agent", "orchestrat", "improv")
+            )
+            if delegate_focus and total_failures >= 1:
+                failure_text = ", ".join(f"{name}={count}" for name, count in top_failure_classes[:2]) or "unknown"
+                hints.append(
+                    Hint(
+                        id="runtime_delegation_prompt_contract",
+                        type="runtime_signal",
+                        title="Delegated failures should be treated as prompt-contract failures",
+                        score=0.81,
+                        snippet=(
+                            f"{total_failures} delegated failures recorded recently ({failure_text}). "
+                            "Tighten scope, require explicit output shape, and digest salvageable content before retry."
+                        )[:220],
+                        reason="Derived from live aq-report delegated_prompt_failures telemetry",
+                        tags=["runtime", "delegation", "prompt-contract", "openrouter"],
+                        agent_hints={},
+                    )
+                )
+
         agent_lessons = data.get("agent_lessons", {})
         lesson_candidates = agent_lessons.get("candidates") if isinstance(agent_lessons, dict) else []
         if isinstance(lesson_candidates, list):

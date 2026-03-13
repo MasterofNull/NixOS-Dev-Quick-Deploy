@@ -37,6 +37,7 @@ required = [
     "top_prompts",
     "query_gaps",
     "recommendations",
+    "delegated_prompt_failures",
     "hint_adoption",
     "task_tooling_quality",
     "intent_contract_compliance",
@@ -65,6 +66,9 @@ if not isinstance(doc.get("cache"), dict):
     raise SystemExit(1)
 if not isinstance(doc.get("tool_security_auditor"), dict):
     print("ERROR: aq-report.tool_security_auditor must be an object", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(doc.get("delegated_prompt_failures"), dict):
+    print("ERROR: aq-report.delegated_prompt_failures must be an object", file=sys.stderr)
     raise SystemExit(1)
 if not isinstance(doc.get("semantic_tooling_autorun"), dict):
     print("ERROR: aq-report.semantic_tooling_autorun must be an object", file=sys.stderr)
