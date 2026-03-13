@@ -301,6 +301,8 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_patch_review' 'Hints engine surfaces compact patch-review guidance'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_research_workflow' 'Hints engine surfaces compact research workflow guidance'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_deploy_safe_ops' 'Hints engine surfaces compact deploy-safe ops guidance'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_bugfix_safe' 'Hints engine surfaces compact bugfix guidance'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'prompt_coaching_service_hardening' 'Hints engine surfaces compact service-hardening guidance'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_div_repeat_cap_pct = self._parse_float_env\("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 45.0' 'Hints engine tightens hint diversity repeat cap to 45%'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'include_debug_metadata = .*debug' 'Hints HTTP endpoint exposes explicit debug metadata opt-in'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'prompt_coaching' 'Workflow plan metadata includes prompt coaching'

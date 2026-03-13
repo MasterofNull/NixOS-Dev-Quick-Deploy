@@ -77,6 +77,28 @@ def main() -> int:
         "expected deploy-safe ops coaching hint",
     )
 
+    bugfix_hints = engine.rank(
+        "debug this failing regression and produce a safe bugfix with explicit validation",
+        max_hints=6,
+        agent_type="codex",
+    )
+    bugfix_ids = [item.id for item in bugfix_hints]
+    assert_true(
+        "prompt_coaching_bugfix_safe" in bugfix_ids,
+        "expected bugfix coaching hint",
+    )
+
+    hardening_hints = engine.rank(
+        "harden this nixos service and preserve health checks plus rollback guidance",
+        max_hints=6,
+        agent_type="claude",
+    )
+    hardening_ids = [item.id for item in hardening_hints]
+    assert_true(
+        "prompt_coaching_service_hardening" in hardening_ids,
+        "expected service-hardening coaching hint",
+    )
+
     print("PASS: hints engine surfaces compact task-class coaching")
     return 0
 
