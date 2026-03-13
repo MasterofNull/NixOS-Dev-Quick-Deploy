@@ -214,6 +214,7 @@ def classify_delegated_response(
 ) -> Dict[str, Any]:
     text = extract_delegated_text(body)
     text_lower = text.lower()
+    handoff_requested = "coordinator_handoff" in text_lower
     tool_calls = extract_tool_call_summary(body)
     reasoning_excerpt = extract_reasoning_excerpt(body)
     path_summary = extract_repo_path_summary(text)
@@ -299,6 +300,7 @@ def classify_delegated_response(
         "stage": stage,
         "http_status": int(status_code),
         "fallback_applied": bool(fallback_applied),
+        "handoff_requested": handoff_requested,
     }
 
 
@@ -363,6 +365,8 @@ def record_delegation_feedback(
     classification: Dict[str, Any],
     final_profile: str,
     final_runtime_id: str,
+    requesting_agent: str = "human",
+    requester_role: str = "orchestrator",
 ) -> None:
     if not classification.get("is_failure"):
         return
@@ -374,11 +378,14 @@ def record_delegation_feedback(
         "selected_runtime_id": selected_runtime_id,
         "final_profile": final_profile,
         "final_runtime_id": final_runtime_id,
+        "requesting_agent": str(requesting_agent or "human").strip() or "human",
+        "requester_role": str(requester_role or "orchestrator").strip() or "orchestrator",
         "failure_stage": classification.get("stage"),
         "http_status": classification.get("http_status"),
         "failure_class": classification.get("primary_failure_class"),
         "failure_classes": classification.get("failure_classes") or [],
         "fallback_applied": bool(classification.get("fallback_applied")),
+        "handoff_requested": bool(classification.get("handoff_requested")),
         "response_preview": classification.get("response_preview", ""),
         "salvage": classification.get("salvage") if isinstance(classification.get("salvage"), dict) else {},
         "improvement_actions": classification.get("improvement_actions") or [],

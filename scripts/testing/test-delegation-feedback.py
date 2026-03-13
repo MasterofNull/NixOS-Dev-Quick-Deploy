@@ -125,10 +125,13 @@ def main() -> int:
                         {
                             "timestamp": "2026-03-13T12:00:00Z",
                             "selected_profile": "remote-free",
+                            "requesting_agent": "continue",
+                            "requester_role": "orchestrator",
                             "failure_stage": "final",
                             "failure_class": "json_contract_failed",
                             "failure_classes": ["json_contract_failed", "invented_repo_paths"],
                             "fallback_applied": False,
+                            "handoff_requested": True,
                             "task_excerpt": "Return strict JSON for delegated plan",
                             "response_preview": "Here is a summary",
                             "salvage": {"has_useful_data": True, "commands": ["sudo systemctl status ai-hybrid-coordinator.service"]},
@@ -139,10 +142,13 @@ def main() -> int:
                         {
                             "timestamp": "2026-03-13T12:05:00Z",
                             "selected_profile": "remote-coding",
+                            "requesting_agent": "qwen",
+                            "requester_role": "sub-agent",
                             "failure_stage": "initial",
                             "failure_class": "rate_limited",
                             "failure_classes": ["rate_limited"],
                             "fallback_applied": True,
+                            "handoff_requested": False,
                             "task_excerpt": "Implement bounded fix",
                             "response_preview": "",
                             "salvage": {"has_useful_data": False},
@@ -170,8 +176,37 @@ def main() -> int:
         assert_true(int(delegated.get("total_failures", 0) or 0) == 2, "expected delegated failure count")
         top_classes = delegated.get("top_failure_classes") or []
         assert_true(any(name == "json_contract_failed" for name, _count in top_classes), "missing delegated failure class")
+        remote_profiles = payload.get("remote_profile_utilization") if isinstance(payload.get("remote_profile_utilization"), dict) else {}
+        assert_true(remote_profiles.get("available") in {False, True}, "remote profile utilization payload should exist")
         actions = payload.get("structured_actions") or []
         assert_true(any(item.get("action") == "tighten_openrouter_delegation_contract" for item in actions if isinstance(item, dict)), "missing prompt structured action")
+
+        aggregated = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import json, runpy, sys; "
+                    "mod = runpy.run_path(sys.argv[1]); "
+                    "entries = ["
+                    "{'tool_name':'ai_coordinator_delegate','outcome':'ok','metadata':{'selected_profile':'remote-free','selected_runtime_id':'openrouter-free','requester_role':'orchestrator','requesting_agent':'continue','delegation_handoff_requested':True}},"
+                    "{'tool_name':'ai_coordinator_delegate','outcome':'ok','metadata':{'selected_profile':'remote-coding','selected_runtime_id':'openrouter-coding','requester_role':'sub-agent','requesting_agent':'qwen','delegation_handoff_requested':False}}"
+                    "]; "
+                    "print(json.dumps(mod['remote_profile_utilization'](entries, window='1h')))"
+                ),
+                str(ROOT / 'scripts' / 'ai' / 'aq-report'),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=60,
+        )
+        assert_true(aggregated.returncode == 0, f"remote_profile_utilization probe failed: {(aggregated.stderr or '').strip()}")
+        remote_summary = json.loads(aggregated.stdout)
+        assert_true(int(remote_summary.get("handoff_requested", 0) or 0) == 1, "expected one coordinator handoff")
+        assert_true(any(name == "orchestrator" and count == 1 for name, count in (remote_summary.get("handoff_by_requester_role") or [])), "missing handoff-by-role summary")
+        assert_true(any(name == "continue" and count == 1 for name, count in (remote_summary.get("top_requesting_agents") or [])), "missing requesting-agent summary")
 
     print("PASS: delegation feedback classification and aq-report surfacing work")
     return 0

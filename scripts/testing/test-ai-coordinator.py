@@ -14,6 +14,7 @@ from ai_coordinator import (  # noqa: E402
     build_messages,
     build_reasoning_finalization_messages,
     build_tool_call_finalization_messages,
+    coerce_orchestration_context,
     default_runtime_id_for_profile,
     infer_profile,
     merge_runtime_defaults,
@@ -65,6 +66,11 @@ def main() -> int:
     assert_true(default_runtime_id_for_profile("remote-tool-calling") == "openrouter-tool-calling", "tool-calling runtime mapping failed")
     assert_true(default_runtime_id_for_profile("continue-local") == "local-hybrid", "continue-local runtime mapping failed")
     assert_true(default_runtime_id_for_profile("local-tool-calling") == "local-tool-calling", "local tool-calling runtime mapping failed")
+
+    orchestration = coerce_orchestration_context({"agent_type": "continue", "role": "sub-agent"})
+    assert_true(orchestration["requesting_agent"] == "continue", "orchestration should preserve requesting agent")
+    assert_true(orchestration["requester_role"] == "sub-agent", "orchestration should preserve requester role")
+    assert_true(orchestration["delegate_via_coordinator_only"] is True, "orchestration should enforce coordinator-only delegation")
 
     pruned = prune_runtime_registry(
         {
