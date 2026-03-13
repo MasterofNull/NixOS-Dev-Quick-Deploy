@@ -103,6 +103,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | tool-call-only failure classification refinement | validated_live | refined delegated failure capture so remote tool-call-only completions are recorded as `tool_call_without_final_text` with salvaged tool arguments instead of opaque `empty_content`, then revalidated the same live OpenRouter tool-calling smoke after coordinator restart |
 | 2026-03-13 | governed lesson schema + promotion action pass | validated_local | `aq-report` now emits governed lesson candidate fields including state, scope, evidence count, materialization class, validation link, and traceability targets, and can surface a machine-readable `promote_agent_lesson` action when candidates meet the threshold |
 | 2026-03-13 | persistent lesson registry + review surface | validated_local | `aq-report` now syncs lesson candidates into a durable pending-review/promoted/avoided/rejected registry, `/control/ai-coordinator/lessons` exposes that state live, and the coordinator now accepts bounded lesson-review updates instead of leaving promotion purely report-derived |
+| 2026-03-13 | accepted lesson runtime surfacing pass | validated_local | hints now prefer accepted active lessons from the durable registry, and `nixos-quick-deploy.sh` surfaces accepted active lessons before transient candidates so reviewer-approved lesson state affects live operator feedback instead of remaining dormant metadata |
 | 2026-03-13 | delegated artifact recovery salvage pass | validated_live | `/control/ai-coordinator/delegate` now returns bounded `artifact_recovery` output for tool-call-only, reasoning-only, and partial-text delegated failures, preserving useful tool arguments and reasoning excerpts so failed remote calls still yield actionable local summaries |
 | 2026-03-13 | BitNet declarative sidecar scaffold pass | validated_local | added a disabled-by-default `mySystem.aiStack.bitnet` and `mySystem.ports.bitnet` scaffold plus shared endpoint wiring so benchmark-only BitNet experiments now have a tracked host-local config surface without touching switchboard or replacing llama.cpp |
 | 2026-03-13 | BitNet benchmark harness + baseline comparison pass | validated_local | added a repo-native `aq-bitnet-benchmark` path with pinned Python 3.12/devShell/toolchain/runtime-lib fixes plus direct local-llama baseline comparison via `aq-bitnet-compare`; host now builds BitNet and materializes a dummy GGUF, while direct BitNet benchmark execution still ends in `SIGSEGV` and remains a measured blocker rather than an assumed viable runtime |
@@ -383,15 +384,16 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `aq-report now syncs governed lesson candidates into a durable registry, and ai-coordinator exposes explicit lesson review state through a live control surface; the next gap is feeding accepted lessons back into more direct hint/routing/reference materialization paths`
+Current Slice: `accepted lessons now feed back into the hint engine and deploy summary from the durable registry; the next gap is broader direct routing/reference materialization beyond those first runtime consumers`
 Next Validation:
 - `scripts/ai/aq-report --format json | jq '.agent_lessons'`
 - `python3 scripts/testing/test-agent-lesson-schema.py`
 - `python3 scripts/testing/test-agent-lesson-registry.py`
+- `python3 scripts/testing/test-hints-agent-lessons.py`
 - `curl -sS ... /control/ai-coordinator/lessons`
 - hint/report traceability checks once schema lands
 Open Risks / Blockers:
-- accepted lessons are durable now, but accepted lesson state is not yet fed into broader routing/reference materialization beyond the report and hint surfaces
+- accepted lessons now affect hints and deploy/operator summaries, but direct routing/reference materialization remains incomplete beyond those first consumers
 
 Goal:
 - reuse the existing hint/report/feedback pipeline as a controlled lesson-promotion loop
