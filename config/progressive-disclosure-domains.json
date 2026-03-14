@@ -1,0 +1,217 @@
+{
+  "version": "1.0.0",
+  "description": "Progressive disclosure domain mapping for minimal-token, high-impact agent context loading",
+  "disclosure_strategy": {
+    "default_level": "minimal",
+    "levels": ["minimal", "standard", "full"],
+    "token_budgets": {
+      "minimal": 500,
+      "standard": 1500,
+      "full": 4000
+    }
+  },
+  "domains": {
+    "nixos-dev": {
+      "name": "NixOS Development",
+      "description": "System configuration, modules, flakes, and declarative infrastructure",
+      "triggers": ["nix", "nixos", "flake", "module", "derivation", "home-manager", "overlay", "systemd", "service"],
+      "disclosure": {
+        "minimal": {
+          "context": "NixOS declarative system. Prefer module changes over scripts.",
+          "tools": ["nix-build", "nixos-rebuild", "nix-shell"],
+          "hints": ["Keep changes declarative", "Test with --dry-run first"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["nix-instantiate", "nix-env", "nix-store", "home-manager"],
+          "mcp_endpoints": ["/workflow/plan", "/hints"],
+          "skills": ["nixos-deployment"],
+          "docs": ["docs/agent-guides/40-HYBRID-WORKFLOW.md"]
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["nix-diff", "nix-tree", "nixos-option", "nix flake"],
+          "mcp_endpoints": ["/control/ai-coordinator/delegate", "/research/web/fetch"],
+          "research_packs": ["tech-documentation"],
+          "memory_recall": ["nixos", "module", "flake", "derivation"]
+        }
+      }
+    },
+    "web-dev": {
+      "name": "Web Development",
+      "description": "Frontend, backend, APIs, and web application development",
+      "triggers": ["react", "vue", "svelte", "nextjs", "api", "frontend", "backend", "css", "html", "javascript", "typescript", "node", "express", "fastapi"],
+      "disclosure": {
+        "minimal": {
+          "context": "Web development. Consider accessibility and performance.",
+          "tools": ["npm", "node", "curl"],
+          "hints": ["Use semantic HTML", "Consider mobile-first"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["npx", "yarn", "pnpm", "vite", "webpack"],
+          "mcp_endpoints": ["/workflow/plan", "/hints"],
+          "skills": ["frontend-design", "web-artifacts-builder"],
+          "docs": []
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["playwright", "lighthouse", "bundlesize"],
+          "mcp_endpoints": ["/research/web/fetch", "/research/web/browser-fetch"],
+          "skills": ["webapp-testing"],
+          "memory_recall": ["frontend", "api", "component", "style"]
+        }
+      }
+    },
+    "ai-harness": {
+      "name": "AI Harness Development",
+      "description": "MCP servers, agent workflows, RAG, and AI infrastructure",
+      "triggers": ["mcp", "agent", "llm", "rag", "embedding", "workflow", "coordinator", "hints", "delegation", "harness", "ai-stack", "telemetry"],
+      "disclosure": {
+        "minimal": {
+          "context": "AI harness development. Use aq-* CLIs and workflow endpoints.",
+          "tools": ["aq-report", "aq-qa", "aq-hints"],
+          "hints": ["Check aq-report first", "Use workflow/plan endpoint"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["aq-optimizer", "aq-patterns", "aq-gap-auto-remediate", "aq-autoresearch"],
+          "mcp_endpoints": ["/workflow/plan", "/hints", "/control/ai-coordinator/status", "/harness/stats"],
+          "skills": ["ai-stack-qa", "mcp-builder", "health-monitoring"],
+          "docs": ["CLAUDE.md", "docs/agent-guides/01-QUICK-START.md"]
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["mcp-bridge-hybrid.py", "aqd"],
+          "mcp_endpoints": ["/control/ai-coordinator/delegate", "/control/autoresearch/run", "/learning/stats"],
+          "skills": ["rag-techniques", "skill-creator"],
+          "memory_recall": ["mcp", "workflow", "harness", "agent", "delegation"],
+          "research_packs": ["tech-documentation"]
+        }
+      }
+    },
+    "data-engineering": {
+      "name": "Data Scraping & Visualization",
+      "description": "Web scraping, data organization, analysis, and visualization",
+      "triggers": ["scrape", "scraping", "data", "csv", "json", "pandas", "visualization", "chart", "graph", "etl", "transform", "parse", "extract"],
+      "disclosure": {
+        "minimal": {
+          "context": "Data engineering. Respect robots.txt and rate limits.",
+          "tools": ["curl", "jq", "python"],
+          "hints": ["Use polite fetch policy", "Validate data schema"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["httpie", "sqlite3", "csvkit"],
+          "mcp_endpoints": ["/research/web/fetch", "/research/workflows/curated-fetch"],
+          "skills": ["pdf", "xlsx"],
+          "docs": []
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["playwright", "pandas", "polars"],
+          "mcp_endpoints": ["/research/web/browser-fetch"],
+          "research_packs": ["native-plants-us", "native-plants-california", "native-plants-mendocino", "security-advisories"],
+          "memory_recall": ["data", "scrape", "extract", "transform"]
+        }
+      }
+    },
+    "devops": {
+      "name": "DevOps & Infrastructure",
+      "description": "Deployment, monitoring, CI/CD, and system operations",
+      "triggers": ["deploy", "rollback", "ci", "cd", "docker", "container", "kubernetes", "systemd", "service", "monitoring", "prometheus", "grafana", "terraform"],
+      "disclosure": {
+        "minimal": {
+          "context": "DevOps/Infrastructure. Always have rollback plan.",
+          "tools": ["systemctl", "journalctl", "git"],
+          "hints": ["Test in staging first", "Document rollback steps"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["docker", "podman", "gh"],
+          "mcp_endpoints": ["/control/runtimes", "/health/detailed"],
+          "skills": ["nixos-deployment"],
+          "docs": ["docs/agent-guides/40-HYBRID-WORKFLOW.md"]
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["kubectl", "terraform", "ansible"],
+          "mcp_endpoints": ["/control/runtimes/schedule/select", "/metrics"],
+          "skills": ["security-scanner", "performance-profiler"],
+          "memory_recall": ["deploy", "service", "rollback", "infrastructure"]
+        }
+      }
+    },
+    "security": {
+      "name": "Security & Hardening",
+      "description": "Security audits, vulnerability scanning, and system hardening",
+      "triggers": ["security", "cve", "vulnerability", "harden", "sandbox", "audit", "owasp", "penetration", "exploit"],
+      "disclosure": {
+        "minimal": {
+          "context": "Security focus. Never bypass security controls without explicit approval.",
+          "tools": ["openssl", "ssh-keygen"],
+          "hints": ["Check for CVEs first", "Follow principle of least privilege"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["nmap", "nikto", "trivy"],
+          "mcp_endpoints": ["/hints"],
+          "skills": ["security-scanner"],
+          "research_packs": ["security-advisories"]
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["burpsuite", "metasploit"],
+          "mcp_endpoints": ["/research/web/fetch"],
+          "memory_recall": ["security", "cve", "vulnerability", "hardening"]
+        }
+      }
+    },
+    "documentation": {
+      "name": "Documentation & Communication",
+      "description": "Technical writing, documentation, and internal communications",
+      "triggers": ["doc", "documentation", "readme", "guide", "tutorial", "report", "presentation", "slides"],
+      "disclosure": {
+        "minimal": {
+          "context": "Documentation work. Keep it concise and actionable.",
+          "tools": ["markdown-lint"],
+          "hints": ["Use headers for structure", "Include code examples"]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": ["pandoc", "mermaid"],
+          "mcp_endpoints": [],
+          "skills": ["pdf", "pptx", "internal-comms"],
+          "docs": []
+        },
+        "full": {
+          "extends": "standard",
+          "tools": ["latex", "sphinx"],
+          "skills": ["brand-guidelines", "theme-factory"],
+          "memory_recall": ["documentation", "guide", "readme"]
+        }
+      }
+    }
+  },
+  "domain_detection": {
+    "method": "keyword_weighted",
+    "fallback_domain": "ai-harness",
+    "multi_domain_handling": "primary_plus_secondary",
+    "confidence_threshold": 0.3
+  },
+  "loading_rules": {
+    "always_load": {
+      "context": "Tool-first approach. Use aq-hints before planning.",
+      "mcp_endpoints": ["/health"],
+      "docs": ["CLAUDE.md"]
+    },
+    "escalation_triggers": [
+      "complex",
+      "multi-step",
+      "architecture",
+      "design",
+      "security",
+      "production"
+    ]
+  }
+}
