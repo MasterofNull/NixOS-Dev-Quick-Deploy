@@ -431,15 +431,20 @@ python3 scripts/ai/aq-bitnet-compare.py
 | cn | PASS | /home/hyperd/.nix-profile/bin/cn |
 | claude | PASS | /home/hyperd/.local/bin/claude |
 | pi | PASS (aliased) | ~/.npm-global/bin/pi |
-| codex | MISSING | needs packaging |
-| qwen | MISSING | needs packaging |
-| gemini | MISSING | needs packaging |
+| codex | INSTALLED (PATH issue) | ~/.npm-global/bin/codex |
+| qwen | INSTALLED (PATH issue) | ~/.npm-global/bin/qwen |
+| gemini | INSTALLED (PATH issue) | ~/.npm-global/bin/gemini |
+
+### PATH Remediation
+
+The npm-global CLIs are installed but `~/.npm-global/bin` is not in PATH for all shell contexts.
+Fix: Ensure `~/.npm-global/bin` is in PATH via shell profile or Home Manager.
 
 ### Next Actions
 
-1. Package missing CLIs (codex, qwen, gemini) or document as external-only
+1. Fix PATH wiring for npm-global CLIs
 2. Run full acceptance suite
-3. Commit final batch progress
+3. Commit batch progress
 
 ---
 
