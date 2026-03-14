@@ -440,11 +440,25 @@ python3 scripts/ai/aq-bitnet-compare.py
 The npm-global CLIs are installed but `~/.npm-global/bin` is not in PATH for all shell contexts.
 Fix: Ensure `~/.npm-global/bin` is in PATH via shell profile or Home Manager.
 
+### Autoresearch Integration (NEW)
+
+Implemented Karpathy's autoresearch concept for local model optimization:
+- `ai-stack/autoresearch/autoresearch.py` - Core experiment framework
+- `ai-stack/autoresearch/local_model_optimizer.py` - Chat & embed optimization
+- `scripts/ai/aq-autoresearch` - CLI wrapper
+
+Features:
+- Token efficiency measurement per successful task
+- Prompt template optimization
+- Temperature tuning experiments
+- Embedding batch size optimization
+- SQLite experiment ledger
+
 ### Next Actions
 
 1. Fix PATH wiring for npm-global CLIs
-2. Run full acceptance suite
-3. Commit batch progress
+2. Add coordinator endpoint for autoresearch
+3. Commit all progress
 
 ---
 
