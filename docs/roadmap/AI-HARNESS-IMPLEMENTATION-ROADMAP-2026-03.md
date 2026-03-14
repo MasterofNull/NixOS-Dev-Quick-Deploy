@@ -142,6 +142,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | retrieval breadth history and deploy summary | validated_local | `aq-report` now materializes route_search retrieval-breadth as 1h/24h/7d windows and `nixos-quick-deploy.sh` surfaces the 24h/7d breadth trend so Track H no longer depends on a recent-only breadth snapshot |
 | 2026-03-13 | routing history and deploy summary | validated_local | `aq-report` now materializes routing history as 1h/24h/7d windows from route_search backend audit data and `nixos-quick-deploy.sh` surfaces the same routing trend in deploy summaries |
 | 2026-03-13 | continue/editor history and deploy summary | validated_local | `aq-report` now persists bounded Continue/editor health snapshots and materializes 1h/24h/7d health windows, and `nixos-quick-deploy.sh` surfaces a compact Continue trend line in deploy summaries |
+| 2026-03-13 | continue/editor failure-category reporting | validated_local | `aq-report` now classifies Continue/editor failures into typed categories such as `agent_flow`, `switchboard_routing`, and `editor_extension`, persists the latest category set into history windows, and `nixos-quick-deploy.sh` now surfaces the top current category plus the latest 24h category mix when the editor path is degraded |
 
 ## High-Priority Tracks
 
@@ -213,18 +214,19 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `continue/editor runtime now has reporting visibility, restored generated aq-hints provider wiring, a bounded Continue-facing prompt -> hints -> workflow -> query -> feedback smoke in Phase 0, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors, and direct /query task-class acceptance now covers Continue/editor-rescue asks in addition to bugfix, hardening, PRSI, and other orchestration metadata paths; the next gap is broader real agent/planning-mode acceptance inside the extension, not missing harness wiring`
+Current Slice: `continue/editor runtime now has reporting visibility, restored generated aq-hints provider wiring, a bounded Continue-facing prompt -> hints -> workflow -> query -> feedback smoke in Phase 0, bounded web research, generic curated workflows, browser-assisted fallback, a regenerated Continue config that matches the local llama.cpp context window, a live switchboard fix for dense oversized prompts that used to bypass trimming and fail as 502 transport errors, direct /query task-class acceptance now covers Continue/editor-rescue asks in addition to bugfix, hardening, PRSI, and other orchestration metadata paths, and aq-report/deploy summaries now classify Continue/editor failures into typed runtime categories instead of only a flat failed-check count; the next gap is broader real agent/planning-mode acceptance inside the extension, not missing harness wiring`
 Next Validation:
 - `scripts/ai/aq-qa 0 --json | jq '.tests[] | select(.id | startswith("0.5."))'`
 - `scripts/testing/smoke-continue-editor-flow.sh`
 - `python3 scripts/testing/test-web-research-lane.py`
 - `scripts/testing/test-switchboard-continue-context-window.sh`
+- `python3 scripts/testing/test-continue-editor-failure-categories.py`
 - `python3 scripts/ai/aq-report --format json | jq '.continue_editor'`
 - live `POST /research/web/fetch` smoke after deploy
 Open Risks / Blockers:
 - some approved public sources still need selector tuning or source substitution even though the browser-assisted fallback lane is now available
 - CLI/package coverage is still mixed across agent surfaces
-- Continue agent/planning mode still needs explicit live confirmation inside the extension after the transport-side trimming fix, even though the stale 4k generated config, missing aq-hints provider wiring, and dense-prompt switchboard failure are now fixed and covered by deploy-time smoke
+- Continue agent/planning mode still needs explicit live confirmation inside the extension after the transport-side trimming fix, even though the stale 4k generated config, missing aq-hints provider wiring, dense-prompt switchboard failure, and flat uncategorized editor failure reporting are now fixed and covered by deploy-time smoke
 
 Goal:
 - make Continue/editor-driven agent flows a validated and observable first-class path

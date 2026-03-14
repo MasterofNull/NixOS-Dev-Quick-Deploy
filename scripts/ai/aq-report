@@ -35,6 +35,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -196,6 +197,14 @@ def continue_editor_health() -> Dict[str, Any]:
         "0.5.5": "continue-local trims oversized dense prompts",
         "0.5.6": "Continue/editor prompt to feedback smoke",
     }
+    failure_category_map = {
+        "0.5.1": "cli_runtime",
+        "0.5.2": "config_generation",
+        "0.5.3": "editor_extension",
+        "0.5.4": "switchboard_routing",
+        "0.5.5": "context_window_trimming",
+        "0.5.6": "agent_flow",
+    }
     checks: List[Dict[str, Any]] = []
     for item in data.get("tests") or []:
         check_id = str(item.get("id", "") or "").strip()
@@ -207,6 +216,7 @@ def continue_editor_health() -> Dict[str, Any]:
                 "id": check_id,
                 "description": str(item.get("description") or item.get("name") or labels.get(check_id, check_id)),
                 "status": status,
+                "failure_category": failure_category_map.get(check_id, "unknown"),
             }
         )
     if not checks:
@@ -219,6 +229,10 @@ def continue_editor_health() -> Dict[str, Any]:
     passed_n = sum(1 for item in checks if item.get("status") == "PASS")
     failed = [item for item in checks if item.get("status") == "FAIL"]
     skipped_n = sum(1 for item in checks if item.get("status") == "SKIP")
+    failure_categories = sorted(
+        Counter(item.get("failure_category", "unknown") for item in failed if item.get("failure_category")).items(),
+        key=lambda entry: (-entry[1], entry[0]),
+    )
     return {
         "available": True,
         "source": str(AQ_QA_SCRIPT),
@@ -228,6 +242,8 @@ def continue_editor_health() -> Dict[str, Any]:
         "failed_n": len(failed),
         "skipped_n": skipped_n,
         "checks": checks,
+        "failure_categories": failure_categories,
+        "top_failure_category": failure_categories[0][0] if failure_categories else None,
     }
 
 
@@ -241,6 +257,7 @@ def append_continue_editor_snapshot(snapshot: Dict[str, Any], *, timestamp: date
         "passed_n": int(snapshot.get("passed_n", 0) or 0),
         "failed_n": int(snapshot.get("failed_n", 0) or 0),
         "skipped_n": int(snapshot.get("skipped_n", 0) or 0),
+        "failure_categories": snapshot.get("failure_categories") or [],
     }
     try:
         last_record = None
@@ -313,6 +330,7 @@ def continue_editor_windows(*, now: datetime, report_since: datetime) -> Dict[st
             "latest_healthy": bool(latest.get("healthy")),
             "latest_failed_n": int(latest.get("failed_n", 0) or 0),
             "latest_total_checks": int(latest.get("total_checks", 0) or 0),
+            "latest_failure_categories": latest.get("failure_categories") or [],
         }
     return {"available": True, "source": str(CONTINUE_EDITOR_HISTORY_PATH), "windows": summaries}
 
@@ -3619,6 +3637,10 @@ def format_md(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"  - `{item.get('id')}` — {item.get('description')}")
+        failure_categories = continue_editor.get("failure_categories") or []
+        if failure_categories:
+            rendered = ", ".join(f"{name}({count})" for name, count in failure_categories)
+            lines.append(f"- Failure categories: {rendered}")
     window_map = continue_editor_windows.get("windows") if isinstance(continue_editor_windows, dict) else {}
     if window_map:
         for label in ("1h", "24h", "7d"):
@@ -3632,6 +3654,10 @@ def format_md(
                 f" across {summary.get('samples', 0)} snapshot(s); latest failures "
                 f"{summary.get('latest_failed_n', 0)}/{summary.get('latest_total_checks', 0)}"
             )
+            latest_failure_categories = summary.get("latest_failure_categories") or []
+            if latest_failure_categories and not summary.get("latest_healthy"):
+                rendered = ", ".join(f"{name}({count})" for name, count in latest_failure_categories)
+                lines.append(f"  latest failure categories: {rendered}")
     lines.append("")
 
     lines += ["## 8ab. Shared Skill Registry", ""]
@@ -4326,6 +4352,10 @@ def format_text(
         for item in (continue_editor.get("checks") or []):
             if item.get("status") == "FAIL":
                 lines.append(f"    {item.get('id')}: {item.get('description')}")
+        failure_categories = continue_editor.get("failure_categories") or []
+        if failure_categories:
+            rendered = ", ".join(f"{name}({count})" for name, count in failure_categories)
+            lines.append(f"  Failure categories: {rendered}")
     window_map = continue_editor_windows.get("windows") if isinstance(continue_editor_windows, dict) else {}
     if window_map:
         for label in ("1h", "24h", "7d"):
@@ -4339,6 +4369,10 @@ def format_text(
                 f" across {summary.get('samples', 0)} snapshot(s); latest failures "
                 f"{summary.get('latest_failed_n', 0)}/{summary.get('latest_total_checks', 0)}"
             )
+            latest_failure_categories = summary.get("latest_failure_categories") or []
+            if latest_failure_categories and not summary.get("latest_healthy"):
+                rendered = ", ".join(f"{name}({count})" for name, count in latest_failure_categories)
+                lines.append(f"    latest failure categories: {rendered}")
     lines.append("")
 
     lines += ["[ 8ab. Shared Skill Registry ]"]
