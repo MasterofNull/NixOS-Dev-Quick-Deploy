@@ -3,8 +3,8 @@
 **Generated:** 2026-03-13
 **Status:** Active
 **Owner:** AI Harness
-**Last Updated:** 2026-03-13
-**Version:** 1.0.0
+**Last Updated:** 2026-03-14
+**Version:** 1.1.0
 
 ---
 
@@ -436,6 +436,202 @@ python3 scripts/ai/aq-bitnet-compare.py
 
 ---
 
+## Phase 9: Agentic RAG Enhancement
+
+**Objective:** Implement reflection loops, generator-critic patterns, and query routing from agentic RAG research.
+**Gate:** RAG reflection active, generator-critic pattern working, query routing by complexity
+
+### Batch 9.1: Reflection Loop Implementation
+**Status:** pending
+**Tasks:**
+- [ ] Add self-critique step after RAG retrieval (evaluate relevance before using)
+- [ ] Implement retrieval re-try on low-confidence results
+- [ ] Add reflection metrics to status endpoint
+- [ ] Track reflection-triggered improvements
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.rag_reflection_stats'
+python3 scripts/testing/test-rag-reflection-loop.py
+```
+
+### Batch 9.2: Generator-Critic Pattern
+**Status:** pending
+**Tasks:**
+- [ ] Implement critic step for generated responses (self-verify before return)
+- [ ] Add quality scoring for delegation outputs
+- [ ] Implement revision request on critic rejection
+- [ ] Track critic intervention rate
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.generator_critic_stats'
+python3 scripts/testing/test-generator-critic-pattern.py
+```
+
+### Batch 9.3: Query Complexity Routing
+**Status:** pending
+**Tasks:**
+- [ ] Implement query complexity scoring (simple/medium/complex)
+- [ ] Route simple queries to lightweight models
+- [ ] Route complex queries to reasoning-capable models
+- [ ] Add routing decision logging and analysis
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.query_routing_breakdown'
+python3 scripts/testing/test-query-complexity-router.py
+```
+
+---
+
+## Phase 10: Hint Diversity Fix (Critical)
+
+**Objective:** Fix 80% hint concentration problem and achieve true diversity.
+**Gate:** No single hint >30% concentration, unique hints ≥15
+
+### Batch 10.1: Concentration Diagnosis
+**Status:** pending
+**Tasks:**
+- [ ] Identify dominant hint causing 80% concentration
+- [ ] Analyze hint selection algorithm
+- [ ] Profile task-class to hint mapping
+- [ ] Document current hint routing logic
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.hint_concentration_analysis'
+```
+
+### Batch 10.2: Hint Routing Overhaul
+**Status:** pending
+**Tasks:**
+- [ ] Implement task-class-aware hint selection
+- [ ] Add randomization with diversity guarantee
+- [ ] Implement hint cooldown (don't repeat same hint consecutively)
+- [ ] Add file-type-specific hint routing
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.hint_diversity'
+# Expect: max_concentration < 0.30, unique_hints >= 15
+```
+
+### Batch 10.3: Token-Efficient Hint Delivery
+**Status:** pending
+**Tasks:**
+- [ ] Implement hint compression for long hints
+- [ ] Add hint priority ranking
+- [ ] Cap total hint tokens per request
+- [ ] Implement progressive hint disclosure
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.hint_token_budget'
+```
+
+---
+
+## Phase 11: MCP Protocol Compliance
+
+**Objective:** Implement MCP 2026 roadmap features for protocol compliance.
+**Gate:** .well-known endpoint active, health pings working
+
+### Batch 11.1: Well-Known Metadata Endpoint
+**Status:** completed
+**Tasks:**
+- [x] Implement /.well-known/mcp.json endpoint on all MCP servers
+- [x] Include server capabilities, version, supported protocols
+- [x] Add tool schema definitions
+- [x] Document endpoint format
+
+**Evidence:**
+- Added /.well-known/mcp.json to hybrid-coordinator (http_server.py)
+- Added /.well-known/mcp.json to ralph-wiggum (server.py)
+- Added /.well-known/mcp.json to aidb (server.py)
+- All endpoints expose mcp_version, server info, capabilities, protocols, endpoints, rate_limiting, and links
+
+**Validation:**
+```bash
+curl -sS http://127.0.0.1:8003/.well-known/mcp.json | jq .
+curl -sS http://127.0.0.1:8001/.well-known/mcp.json | jq .
+curl -sS http://127.0.0.1:8002/.well-known/mcp.json | jq .
+```
+
+### Batch 11.2: Health Ping Protocol
+**Status:** pending
+**Tasks:**
+- [ ] Implement /health endpoint on all MCP servers
+- [ ] Add structured health response (status, latency, dependencies)
+- [ ] Implement health aggregator in coordinator
+- [ ] Add health history tracking
+
+**Validation:**
+```bash
+scripts/testing/smoke-mcp-health-pings.sh
+```
+
+### Batch 11.3: Signed Component Support
+**Status:** pending
+**Tasks:**
+- [ ] Research MCP signed component specification
+- [ ] Implement signature validation for tool definitions
+- [ ] Add signature generation for custom tools
+- [ ] Document signing workflow
+
+**Validation:**
+```bash
+python3 scripts/testing/test-mcp-signature-validation.py
+```
+
+---
+
+## Phase 12: Dual-Model Architecture
+
+**Objective:** Implement reasoning + coding model separation for optimal task routing.
+**Gate:** Dual-model routing active, measurable quality improvement
+
+### Batch 12.1: Model Role Classification
+**Status:** pending
+**Tasks:**
+- [ ] Define reasoning-model tasks (planning, architecture, analysis)
+- [ ] Define coding-model tasks (implementation, refactoring, tests)
+- [ ] Create task classifier for automatic routing
+- [ ] Document model role boundaries
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.model_role_classification'
+```
+
+### Batch 12.2: Dual-Model Routing
+**Status:** pending
+**Tasks:**
+- [ ] Implement reasoning-first, coding-second pipeline
+- [ ] Add model handoff protocol
+- [ ] Implement context transfer between models
+- [ ] Track dual-model collaboration metrics
+
+**Validation:**
+```bash
+python3 scripts/testing/test-dual-model-routing.py
+```
+
+### Batch 12.3: Context Hygiene Automation
+**Status:** pending
+**Tasks:**
+- [ ] Implement automatic context pruning
+- [ ] Add stale context detection
+- [ ] Implement summary compression for long contexts
+- [ ] Track context token budget adherence
+
+**Validation:**
+```bash
+scripts/ai/aq-report --format=json | jq '.context_hygiene_stats'
+```
+
+---
+
 ## Quality Gates Summary
 
 | Phase | Gate Criteria | Validation Command |
@@ -448,6 +644,10 @@ python3 scripts/ai/aq-bitnet-compare.py
 | Phase 6 | Hint entropy ≥2.5 | `aq-report --format=json \| jq '.hint_diversity'` |
 | Phase 7 | All CLI smokes pass | `smoke-flagship-cli-surfaces.sh` |
 | Phase 8 | BitNet benchmark runs | `aq-bitnet-compare.py` (blocked) |
+| Phase 9 | RAG reflection active | `aq-report --format=json \| jq '.rag_reflection_stats'` |
+| Phase 10 | Hint concentration <30% | `aq-report --format=json \| jq '.hint_concentration_analysis'` |
+| Phase 11 | .well-known endpoints active | `curl -sS http://127.0.0.1:8003/.well-known/mcp.json` |
+| Phase 12 | Dual-model routing active | `aq-report --format=json \| jq '.model_role_classification'` |
 
 ---
 
@@ -472,12 +672,18 @@ python3 scripts/ai/aq-bitnet-compare.py
 | 2026-03-14 | 6.2 Pattern Extraction Pipeline | aq-patterns CLI implemented |
 | 2026-03-14 | 6.3 Gap Auto-Remediation | Timer validated (ai-gap-auto-remediate.timer active) |
 | 2026-03-14 | 3.2 PRSI Action Execution | aq-optimizer and aq-gap-auto-remediate validated |
+| 2026-03-14 | 1.3 Web Research Lane Expansion | 3 workflow packs added (mendocino, tech-docs, security) |
+| 2026-03-14 | 3.3 Multi-Window Trend Visibility | trend_1h/24h/7d windows, trend_summary, delegation_failures |
+| 2026-03-14 | 4.2 Provider Fallback Policy | provider-fallback-policy.json, _provider_health_summary() |
+| 2026-03-14 | 4.3 Prompt Contract Tightening | delegation-prompt-contracts.json, 4 delegation templates |
+| 2026-03-14 | 10.2 Hint Routing Overhaul | Diversity fix: 25% cap, 60% hard exclude, fallback hints |
+| 2026-03-14 | 11.1 Well-Known Metadata Endpoint | /.well-known/mcp.json on hybrid, ralph, aidb |
 
 ### Current Batch
 
-**Batch:** Phase 7 Complete - Moving to remaining pending batches
-**Status:** complete
-**Completed:** 2026-03-14
+**Batch:** Phase 9-12 Gap Analysis Implementation
+**Status:** in_progress
+**Started:** 2026-03-14
 
 ### CLI Package Status
 
@@ -575,13 +781,17 @@ EOF
 ```
 Phase 1 (Continue) ──┬──> Phase 3 (Monitoring)
                      │
-Phase 2 (Memory) ────┼──> Phase 4 (Delegation)
-                     │
-Phase 5 (Lessons) ───┴──> Phase 6 (Self-Improvement)
+Phase 2 (Memory) ────┼──> Phase 4 (Delegation) ──> Phase 9 (Agentic RAG)
+                     │                                    │
+Phase 5 (Lessons) ───┴──> Phase 6 (Self-Improvement) ────┴──> Phase 10 (Hint Fix)
 
 Phase 7 (CLI) ───────────> Independent
 
 Phase 8 (BitNet) ────────> BLOCKED
+
+Phase 11 (MCP Compliance) ──> Independent (all MCP servers)
+
+Phase 12 (Dual-Model) ──────> Depends on Phase 4 + Phase 9
 ```
 
 ---
@@ -591,3 +801,4 @@ Phase 8 (BitNet) ────────> BLOCKED
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-03-13 | Initial roadmap creation |
+| 1.1.0 | 2026-03-14 | Added Phases 9-12 from video research gap analysis |

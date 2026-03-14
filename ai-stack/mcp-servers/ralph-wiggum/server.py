@@ -321,6 +321,49 @@ app = FastAPI(
 )
 
 
+@app.get("/.well-known/mcp.json")
+async def well_known_mcp():
+    """
+    MCP Protocol Compliance: /.well-known/mcp.json endpoint.
+
+    Exposes server capabilities, version, and supported protocols
+    per MCP 2026 roadmap recommendations.
+    """
+    return {
+        "mcp_version": "2026.1",
+        "server": {
+            "name": "ralph-wiggum",
+            "version": "1.0.0",
+            "description": "Agent loop orchestration and PRSI queue management server",
+        },
+        "capabilities": {
+            "agent_loops": True,
+            "prsi_queue": True,
+            "task_dispatch": True,
+            "backend_routing": True,
+            "health_monitoring": True,
+        },
+        "protocols": {
+            "http": True,
+            "jsonrpc": False,
+        },
+        "endpoints": {
+            "health": "/health",
+            "health_detailed": "/health/detailed",
+            "prsi_actions": "/api/prsi/actions",
+            "prsi_sync": "/api/prsi/sync",
+            "loop_status": "/loop/status",
+        },
+        "rate_limiting": {
+            "enabled": False,
+        },
+        "links": {
+            "documentation": "https://github.com/yourusername/NixOS-Dev-Quick-Deploy",
+            "health": "/health",
+        },
+    }
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
