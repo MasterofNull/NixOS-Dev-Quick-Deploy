@@ -1359,6 +1359,52 @@ class MonitoringServer:
         )
 
     def _register_routes(self) -> None:
+        # MCP Protocol Compliance: /.well-known/mcp.json endpoint
+        @self.app.get("/.well-known/mcp.json")
+        async def well_known_mcp() -> Dict[str, Any]:
+            """
+            Exposes server capabilities, version, and supported protocols
+            per MCP 2026 roadmap recommendations.
+            """
+            return {
+                "mcp_version": "2026.1",
+                "server": {
+                    "name": "aidb",
+                    "version": SERVICE_VERSION,
+                    "description": "AI database, vector search, skill registry, and RAG pipeline server",
+                },
+                "capabilities": {
+                    "vector_search": True,
+                    "semantic_cache": True,
+                    "skill_registry": True,
+                    "tool_registry": True,
+                    "document_embeddings": True,
+                    "rag_pipeline": True,
+                    "telemetry": True,
+                    "redis_cache": True,
+                },
+                "protocols": {
+                    "http": True,
+                    "websocket": True,
+                    "mcp_stdio": True,
+                },
+                "endpoints": {
+                    "health": "/health",
+                    "health_fast": "/health/fast",
+                    "vector_search": "/vector_search",
+                    "skills": "/skills",
+                    "tools": "/api/v1/tools",
+                    "rag": "/rag/query",
+                },
+                "rate_limiting": {
+                    "enabled": True,
+                },
+                "links": {
+                    "documentation": "https://github.com/yourusername/NixOS-Dev-Quick-Deploy",
+                    "health": "/health",
+                },
+            }
+
         # Legacy health endpoints (keep for backwards compatibility)
         @self.app.get("/health")
         async def health() -> Dict[str, Any]:

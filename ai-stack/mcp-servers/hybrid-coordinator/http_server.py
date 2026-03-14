@@ -1675,7 +1675,9 @@ async def run_http_mode(port: int) -> None:
 
     @web.middleware
     async def api_key_middleware(request, handler):
-        if request.path in ("/health", "/metrics"):
+        # Public endpoints that don't require authentication
+        public_paths = ("/health", "/metrics", "/.well-known/mcp.json", "/health/detailed")
+        if request.path in public_paths:
             return await handler(request)
         if not Config.API_KEY:
             return await handler(request)
@@ -1726,6 +1728,74 @@ async def run_http_mode(port: int) -> None:
         lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
         if lesson_refs:
             payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
+
+    async def handle_well_known_mcp(request):
+        """
+        MCP Protocol Compliance: /.well-known/mcp.json endpoint.
+
+        Exposes server capabilities, version, and supported protocols
+        per MCP 2026 roadmap recommendations.
+        """
+        # Build tool catalog summary (use empty query for general catalog)
+        try:
+            tool_list = workflow_tool_catalog("")
+            tool_count = len(tool_list) if isinstance(tool_list, list) else 0
+            tool_summary = [
+                {"name": t.get("name", ""), "description": (t.get("description", "") or "")[:100]}
+                for t in (tool_list if isinstance(tool_list, list) else [])[:10]
+            ]
+        except Exception:
+            tool_count = 0
+            tool_summary = []
+
+        payload = {
+            "mcp_version": "2026.1",
+            "server": {
+                "name": "hybrid-coordinator",
+                "version": "1.1.0",
+                "description": "AI workflow orchestration and RAG coordination server",
+            },
+            "capabilities": {
+                "augment_query": True,
+                "route_search": True,
+                "tree_search": True,
+                "memory_store": True,
+                "memory_recall": True,
+                "hints": True,
+                "workflow_orchestration": True,
+                "multi_turn_context": True,
+                "web_research": True,
+                "browser_research": True,
+                "delegation": True,
+                "autoresearch": True,
+            },
+            "protocols": {
+                "http": True,
+                "mcp_stdio": True,
+                "jsonrpc": True,
+            },
+            "tools": {
+                "count": tool_count,
+                "summary": tool_summary,
+            },
+            "endpoints": {
+                "health": "/health",
+                "health_detailed": "/health/detailed",
+                "status": "/status",
+                "hints": "/hints",
+                "workflow_plan": "/workflow/plan",
+                "delegate": "/control/ai-coordinator/delegate",
+            },
+            "rate_limiting": {
+                "enabled": True,
+                "default_rpm": 60,
+            },
+            "links": {
+                "documentation": "https://github.com/yourusername/NixOS-Dev-Quick-Deploy",
+                "health": "/health",
+            },
+        }
         return web.json_response(payload)
 
     async def handle_health(request):
@@ -4938,6 +5008,7 @@ async def run_http_mode(port: int) -> None:
     http_app = web.Application(
         middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
     )
+    http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)
     http_app.router.add_get("/status", handle_status)

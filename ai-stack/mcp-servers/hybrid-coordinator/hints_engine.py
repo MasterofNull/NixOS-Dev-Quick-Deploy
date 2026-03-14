@@ -481,8 +481,9 @@ class HintsEngine:
             else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
         )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
-        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 45.0, min_value=10.0, max_value=100.0)
-        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 5, min_value=1)
+        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 25.0, min_value=10.0, max_value=100.0)
+        self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 3, min_value=1)
+        self._div_hard_exclude_pct = self._parse_float_env("AI_HINT_DIVERSITY_HARD_EXCLUDE_PCT", 60.0, min_value=30.0, max_value=100.0)
         self._div_type_max = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MAX",
             default="runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1,prompt_coaching:2",
@@ -711,12 +712,27 @@ class HintsEngine:
         if usage_total <= 0 or hint.id not in overused_ids:
             return hint
         share = usage_counts.get(hint.id, 0) / max(usage_total, 1)
+        # Hard exclude hints exceeding critical concentration threshold
+        hard_exclude_ratio = self._div_hard_exclude_pct / 100.0
+        if share >= hard_exclude_ratio:
+            return Hint(
+                id=hint.id,
+                type=hint.type,
+                title=hint.title,
+                score=0.0,  # Zero score = excluded from selection
+                snippet=hint.snippet,
+                reason=f"{hint.reason}; hard_excluded_concentration={share:.0%}".strip("; "),
+                tags=hint.tags,
+                agent_hints=hint.agent_hints,
+            )
         # Penalty scales with over-concentration and increases more aggressively
         # for severe dominance so repeated hints rotate out sooner.
         over = max(0.0, share - (self._div_repeat_cap_pct / 100.0))
-        penalty = min(0.32, max(0.08, over * 0.85))
-        if share >= 0.75:
-            penalty = min(0.38, penalty + 0.06)
+        penalty = min(0.55, max(0.15, over * 1.5))  # More aggressive: 0.15-0.55 range
+        if share >= 0.50:
+            penalty = min(0.65, penalty + 0.10)  # Extra penalty for 50%+ concentration
+        if share >= 0.40:
+            penalty = min(0.50, penalty + 0.05)  # Extra penalty for 40%+ concentration
         adjusted = max(0.0, hint.score - penalty)
         reason = f"{hint.reason}; diversity_repeat_penalty=-{penalty:.2f}".strip("; ")
         return Hint(
@@ -1185,6 +1201,7 @@ class HintsEngine:
                 "diversity_policy": {
                     "repeat_window": self._div_repeat_window,
                     "repeat_cap_pct": self._div_repeat_cap_pct,
+                    "hard_exclude_pct": self._div_hard_exclude_pct,
                     "repeat_min_count": self._div_repeat_min_count,
                     "type_min": self._div_type_min,
                     "type_max": self._div_type_max,
@@ -1828,6 +1845,79 @@ class HintsEngine:
                     },
                 )
             )
+
+        # General-purpose fallback hints (lower scores, activate broadly for diversity)
+        # These ensure alternatives exist when specific hints get penalized
+        import random
+        fallback_pool = [
+            Hint(
+                id="prompt_coaching_incremental_steps",
+                type="prompt_coaching",
+                title="Break work into incremental, verifiable steps",
+                score=0.55,
+                snippet=(
+                    "Prefer small atomic changes with clear verification over large batches. "
+                    "Each step should be independently testable and reversible."
+                )[:220],
+                reason="General guidance for incremental development workflow",
+                tags=["prompting", "coaching", "incremental", "workflow"],
+                agent_hints={
+                    "human": "Request one change at a time with explicit verification criteria.",
+                    "codex": "Complete and verify each step before starting the next.",
+                },
+            ),
+            Hint(
+                id="prompt_coaching_context_efficiency",
+                type="prompt_coaching",
+                title="Keep context focused and token-efficient",
+                score=0.52,
+                snippet=(
+                    "Include only relevant context for the current task. "
+                    "Prune stale information and use summaries instead of full histories."
+                )[:220],
+                reason="General guidance for efficient context management",
+                tags=["prompting", "coaching", "context", "efficiency"],
+                agent_hints={
+                    "human": "Provide essential context, not everything you know.",
+                    "codex": "Reference specific files/functions rather than dumping full contents.",
+                },
+            ),
+            Hint(
+                id="prompt_coaching_validation_first",
+                type="prompt_coaching",
+                title="Define validation criteria before implementation",
+                score=0.54,
+                snippet=(
+                    "State success criteria, edge cases, and verification commands before coding. "
+                    "Implementation without clear acceptance criteria leads to ambiguous completion."
+                )[:220],
+                reason="General guidance for validation-driven development",
+                tags=["prompting", "coaching", "validation", "tdd"],
+                agent_hints={
+                    "human": "Tell me how you'll know when this is done correctly.",
+                    "codex": "Define tests or checks before writing implementation code.",
+                },
+            ),
+            Hint(
+                id="prompt_coaching_scope_boundaries",
+                type="prompt_coaching",
+                title="Maintain clear scope boundaries on each task",
+                score=0.51,
+                snippet=(
+                    "Stay within the assigned slice. Avoid scope creep into adjacent concerns. "
+                    "If related work is discovered, document it separately for later."
+                )[:220],
+                reason="General guidance for bounded task execution",
+                tags=["prompting", "coaching", "scope", "boundaries"],
+                agent_hints={
+                    "human": "Be explicit about what's in-scope vs out-of-scope.",
+                    "codex": "Complete the assigned task before suggesting related improvements.",
+                },
+            ),
+        ]
+        # Add 1-2 random fallback hints for diversity
+        random.shuffle(fallback_pool)
+        hints.extend(fallback_pool[:2])
 
         return hints
 
