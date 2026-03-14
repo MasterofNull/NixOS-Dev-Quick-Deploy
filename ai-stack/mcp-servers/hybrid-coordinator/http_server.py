@@ -1032,6 +1032,26 @@ def _provider_health_summary() -> Dict[str, Any]:
     }
 
 
+def _get_domain_disclosure_summary() -> Dict[str, Any]:
+    """Summarize available progressive disclosure domains (Phase 12.3)."""
+    try:
+        from progressive_disclosure import get_domain_loader
+        loader = get_domain_loader()
+        domains = loader.list_domains()
+        return {
+            "available": True,
+            "domain_count": len(domains),
+            "domains": [{"id": d["id"], "name": d["name"]} for d in domains],
+            "levels": ["minimal", "standard", "full"],
+            "config_path": str(loader._config_path),
+        }
+    except Exception as e:
+        return {
+            "available": False,
+            "reason": str(e),
+        }
+
+
 def _normalize_tags(value: Any) -> List[str]:
     if not isinstance(value, list):
         return []
@@ -4217,6 +4237,7 @@ async def run_http_mode(port: int) -> None:
                     },
                     "report_summary": report_summary,
                     "provider_health": _provider_health_summary(),
+                    "domain_disclosure": _get_domain_disclosure_summary(),
                     "active_lesson_refs": lesson_refs,
                     "runtimes": runtimes,
                     "count": len(runtimes),

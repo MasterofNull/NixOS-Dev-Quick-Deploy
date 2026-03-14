@@ -8,7 +8,15 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+# Domain-based progressive disclosure (Phase 12.3)
+try:
+    from progressive_disclosure import get_domain_loader, DomainContext
+    DOMAIN_LOADER_AVAILABLE = True
+except ImportError:
+    DOMAIN_LOADER_AVAILABLE = False
+    DomainContext = None  # type: ignore
 
 try:
     import yaml
@@ -1158,6 +1166,50 @@ class HintsEngine:
         compact.update(self._compact_missing_fields(prompt_coaching.get("missing_fields", [])))
         return compact
 
+    def _get_domain_context(self, query: str) -> Dict[str, Any]:
+        """
+        Get domain-specific context for progressive disclosure (Phase 12.3).
+
+        Returns compact domain context with tools, skills, and hints relevant
+        to the detected work domain (nixos-dev, web-dev, ai-harness, etc.).
+        """
+        if not DOMAIN_LOADER_AVAILABLE:
+            return {"available": False, "reason": "domain_loader_not_available"}
+
+        try:
+            loader = get_domain_loader()
+            contexts = loader.get_context(query, max_domains=2)
+            if not contexts:
+                return {"available": False, "reason": "no_domain_match"}
+
+            primary = contexts[0]
+            result: Dict[str, Any] = {
+                "available": True,
+                "primary_domain": {
+                    "id": primary.domain_id,
+                    "name": primary.domain_name,
+                    "level": primary.level,
+                    "context": primary.context_text,
+                    "tools": primary.tools[:5],  # Cap for token efficiency
+                    "skills": primary.skills[:3],
+                    "mcp_endpoints": primary.mcp_endpoints[:3],
+                    "token_estimate": primary.token_estimate,
+                },
+                "compact_injection": primary.to_compact_string(),
+            }
+
+            if len(contexts) > 1:
+                secondary = contexts[1]
+                result["secondary_domain"] = {
+                    "id": secondary.domain_id,
+                    "name": secondary.domain_name,
+                    "tools": secondary.tools[:3],
+                }
+
+            return result
+        except Exception as e:
+            return {"available": False, "reason": f"error: {e}"}
+
     def rank_as_dict(
         self,
         query: str,
@@ -1184,12 +1236,17 @@ class HintsEngine:
             if include_debug_metadata
             else self._compact_prompt_coaching_payload(prompt_coaching)
         )
+
+        # Domain-based progressive disclosure (Phase 12.3)
+        domain_context = self._get_domain_context(query)
+
         result = {
             "hints": [self.to_dict(h, include_debug_metadata=include_debug_metadata) for h in hints],
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
             "agent_type": agent_type,
             "prompt_coaching": prompt_coaching_payload,
+            "domain_context": domain_context,
             "feedback_contract": {
                 "endpoint": "/hints/feedback",
                 "required_any_of": ["helpful", "score"],
