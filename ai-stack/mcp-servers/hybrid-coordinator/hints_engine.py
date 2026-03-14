@@ -2076,6 +2076,7 @@ class HintsEngine:
                 )
 
         delegated_failures = data.get("delegated_prompt_failures", {})
+        delegated_failure_windows = data.get("delegated_prompt_failure_windows", {})
         if isinstance(delegated_failures, dict) and delegated_failures.get("available"):
             total_failures = int(delegated_failures.get("total_failures", 0) or 0)
             top_failure_classes = delegated_failures.get("top_failure_classes") or []
@@ -2083,8 +2084,17 @@ class HintsEngine:
                 token in query_lower
                 for token in ("openrouter", "delegate", "delegation", "prompt", "agent", "orchestrat", "improv")
             )
+            trend = delegated_failure_windows.get("trend") if isinstance(delegated_failure_windows, dict) else {}
+            trend_status = str(trend.get("status", "") or "").strip().lower() if isinstance(trend, dict) else ""
+            trend_actions = [
+                str(action).strip()
+                for action in (trend.get("actions") or [])
+                if str(action).strip()
+            ] if isinstance(trend, dict) else []
             if delegate_focus and total_failures >= 1:
                 failure_text = ", ".join(f"{name}={count}" for name, count in top_failure_classes[:2]) or "unknown"
+                remediation_text = trend_actions[0] if trend_actions else "Tighten scope, require explicit output shape, and digest salvageable content before retry"
+                trend_prefix = f"{trend_status} trend; " if trend_status in {"worsening", "steady", "improving"} else ""
                 hints.append(
                     Hint(
                         id="runtime_delegation_prompt_contract",
@@ -2092,8 +2102,8 @@ class HintsEngine:
                         title="Delegated failures should be treated as prompt-contract failures",
                         score=0.81,
                         snippet=(
-                            f"{total_failures} delegated failures recorded recently ({failure_text}). "
-                            "Tighten scope, require explicit output shape, and digest salvageable content before retry."
+                            f"{total_failures} delegated failures recorded recently ({failure_text}); {trend_prefix}"
+                            f"{remediation_text}."
                         )[:220],
                         reason="Derived from live aq-report delegated_prompt_failures telemetry",
                         tags=["runtime", "delegation", "prompt-contract", "openrouter"],
