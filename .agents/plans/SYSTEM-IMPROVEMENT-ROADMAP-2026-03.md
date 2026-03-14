@@ -300,16 +300,19 @@ scripts/ai/aq-report --format=json | jq '.hint_diversity'
 ```
 
 ### Batch 6.2: Pattern Extraction Pipeline
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Implement automated pattern detection (3+ occurrence threshold)
-- [ ] Add pattern quality scoring (filter <0.7)
+- [x] Implement automated pattern detection (3+ occurrence threshold)
+- [x] Add pattern quality scoring (filter <0.7)
 - [ ] Integrate patterns into hints/RAG
 - [ ] Track pattern effectiveness
 
+**Evidence:** scripts/ai/aq-patterns CLI with extract/list/stats/quality commands
+
 **Validation:**
 ```bash
-scripts/ai/aq-report --format=json | jq '.patterns'
+scripts/ai/aq-patterns stats --format json
+scripts/ai/aq-patterns extract --min-occurrences 3
 ```
 
 ### Batch 6.3: Gap Auto-Remediation
