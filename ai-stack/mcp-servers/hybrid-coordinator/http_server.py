@@ -98,6 +98,9 @@ _runtime_registry_lock = asyncio.Lock()
 _agent_lessons_lock = asyncio.Lock()
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
+_AQ_REPORT_LATEST_JSON = Path(
+    os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+)
 
 
 def _read_secret_file(path: str) -> str:
@@ -107,6 +110,69 @@ def _read_secret_file(path: str) -> str:
         return Path(path).read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         return ""
+
+
+def _load_aq_report_status_summary() -> Dict[str, Any]:
+    try:
+        if not _AQ_REPORT_LATEST_JSON.exists():
+            return {"available": False, "source": str(_AQ_REPORT_LATEST_JSON)}
+        payload = json.loads(_AQ_REPORT_LATEST_JSON.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "available": False,
+            "source": str(_AQ_REPORT_LATEST_JSON),
+            "error": str(exc)[:180],
+        }
+
+    continue_editor = payload.get("continue_editor") or {}
+    continue_windows = ((payload.get("continue_editor_windows") or {}).get("windows") or {})
+    workflow_review = payload.get("intent_contract_compliance") or {}
+    retrieval_windows = ((payload.get("route_retrieval_breadth_windows") or {}).get("windows") or {})
+    routing_windows = ((payload.get("routing_windows") or {}).get("windows") or {})
+    remote_windows = ((payload.get("remote_profile_utilization_windows") or {}).get("windows") or {})
+    route_latency = payload.get("route_search_latency_decomposition") or {}
+
+    return {
+        "available": True,
+        "source": str(_AQ_REPORT_LATEST_JSON),
+        "generated_at": payload.get("generated_at", ""),
+        "continue_editor": {
+            "healthy": bool(continue_editor.get("healthy", False)),
+            "failed_n": int(continue_editor.get("failed_n", 0) or 0),
+            "total_checks": int(continue_editor.get("total_checks", 0) or 0),
+            "top_failure_category": continue_editor.get("top_failure_category"),
+            "trend_24h": continue_windows.get("24h", {}),
+            "trend_7d": continue_windows.get("7d", {}),
+        },
+        "remote_profile_utilization": {
+            "current": payload.get("remote_profile_utilization", {}),
+            "trend_24h": remote_windows.get("24h", {}),
+            "trend_7d": remote_windows.get("7d", {}),
+        },
+        "routing": {
+            "current": payload.get("routing", {}),
+            "trend_24h": routing_windows.get("24h", {}),
+            "trend_7d": routing_windows.get("7d", {}),
+            "latency": {
+                "window": route_latency.get("window", ""),
+                "overall_p95_ms": route_latency.get("overall_p95_ms"),
+                "top_breakdown": (route_latency.get("breakdown") or [])[:3],
+            },
+        },
+        "retrieval": {
+            "current": payload.get("route_retrieval_breadth", {}),
+            "trend_24h": retrieval_windows.get("24h", {}),
+            "trend_7d": retrieval_windows.get("7d", {}),
+        },
+        "workflow_review": {
+            "required_reviews": int(workflow_review.get("required_reviews", 0) or 0),
+            "accepted_reviews": int(workflow_review.get("accepted_reviews", 0) or 0),
+            "rejected_reviews": int(workflow_review.get("rejected_reviews", 0) or 0),
+            "top_review_types": (workflow_review.get("top_review_types") or [])[:3],
+            "accepted_task_classes": (workflow_review.get("accepted_task_classes") or [])[:5],
+            "accepted_by_reviewed_profile": (workflow_review.get("accepted_by_reviewed_profile") or [])[:5],
+        },
+    }
 
 
 def _ralph_request_headers() -> Dict[str, str]:
@@ -3947,6 +4013,7 @@ async def run_http_mode(port: int) -> None:
             remote_configured = bool(swb_state.get("remote_configured", False))
             shared_skills = await _aidb_shared_skills_catalog(limit=10)
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            report_summary = _load_aq_report_status_summary()
             for runtime in runtimes:
                 runtime_id = str(runtime.get("runtime_id", "")).strip()
                 runtime = _apply_remote_runtime_status(runtime, runtime_id, remote_aliases, remote_configured)
@@ -3969,6 +4036,7 @@ async def run_http_mode(port: int) -> None:
                         "counts": lesson_registry.get("counts", {}),
                         "active_lessons": lesson_registry.get("active_lessons", []),
                     },
+                    "report_summary": report_summary,
                     "active_lesson_refs": lesson_refs,
                     "runtimes": runtimes,
                     "count": len(runtimes),
