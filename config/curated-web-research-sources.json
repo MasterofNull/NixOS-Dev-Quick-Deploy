@@ -89,6 +89,124 @@
           "purpose": "Calflora What Grows Here entry point for locality-oriented plant lookup."
         }
       ]
+    },
+    {
+      "slug": "native-plants-mendocino",
+      "description": "Mendocino County-specific native plant research pack.",
+      "max_urls": 3,
+      "default_max_text_chars": 1200,
+      "inputs": [
+        {
+          "name": "location",
+          "required": false,
+          "description": "Specific Mendocino location (e.g., coast, inland, Anderson Valley)."
+        },
+        {
+          "name": "query",
+          "required": false,
+          "description": "Plant species or habitat query."
+        }
+      ],
+      "sources": [
+        {
+          "name": "calflora-mendocino-county",
+          "url": "https://www.calflora.org/entry/wgh.html#srch=t&place=Mendocino+County",
+          "fetch_mode": "http",
+          "fallback_fetch_mode": "browser",
+          "selectors": ["main", "article", "#content", ".content"],
+          "purpose": "Calflora What Grows Here filtered by Mendocino County."
+        },
+        {
+          "name": "mendocino-coast-botanical",
+          "url": "https://www.gardenbythesea.org/",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", ".content"],
+          "purpose": "Mendocino Coast Botanical Gardens native plant information."
+        },
+        {
+          "name": "jepson-mendocino",
+          "url": "https://ucjeps.berkeley.edu/eflora/eflora_display.php?tid=99999",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", "#content"],
+          "purpose": "UC Jepson Flora Project reference for California plants."
+        }
+      ]
+    },
+    {
+      "slug": "tech-documentation",
+      "description": "Technical documentation research pack for development workflows.",
+      "max_urls": 3,
+      "default_max_text_chars": 2000,
+      "inputs": [
+        {
+          "name": "technology",
+          "required": true,
+          "description": "Technology stack or framework name."
+        },
+        {
+          "name": "topic",
+          "required": false,
+          "description": "Specific topic within the technology."
+        }
+      ],
+      "sources": [
+        {
+          "name": "nixos-manual",
+          "url": "https://nixos.org/manual/nixos/stable/",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", ".content", "#content"],
+          "purpose": "Official NixOS documentation."
+        },
+        {
+          "name": "nix-dev-manual",
+          "url": "https://nix.dev/",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", ".content"],
+          "purpose": "Community Nix learning resources."
+        },
+        {
+          "name": "home-manager-options",
+          "url": "https://nix-community.github.io/home-manager/options.xhtml",
+          "fetch_mode": "http",
+          "fallback_fetch_mode": "browser",
+          "selectors": ["main", "article", "#content", ".content"],
+          "purpose": "Home Manager options reference."
+        }
+      ]
+    },
+    {
+      "slug": "security-advisories",
+      "description": "Security advisory and CVE research pack.",
+      "max_urls": 2,
+      "default_max_text_chars": 1500,
+      "inputs": [
+        {
+          "name": "cve_id",
+          "required": false,
+          "description": "Specific CVE ID to research."
+        },
+        {
+          "name": "product",
+          "required": false,
+          "description": "Product or component name."
+        }
+      ],
+      "sources": [
+        {
+          "name": "nvd-search",
+          "url": "https://nvd.nist.gov/vuln/search",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", "#content", ".content"],
+          "purpose": "NIST National Vulnerability Database search."
+        },
+        {
+          "name": "github-advisories",
+          "url": "https://github.com/advisories",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", "#content"],
+          "purpose": "GitHub Security Advisories database."
+        }
+      ]
     }
   ]
 }
