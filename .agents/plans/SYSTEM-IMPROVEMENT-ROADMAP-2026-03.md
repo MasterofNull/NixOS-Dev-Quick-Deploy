@@ -76,12 +76,19 @@ python3 scripts/testing/test-continue-editor-failure-categories.py
 ```
 
 ### Batch 1.3: Web Research Lane Expansion
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Expand approved source packs beyond California-native
-- [ ] Add Mendocino-specific source pack
-- [ ] Validate browser fallback for complex pages
-- [ ] Add source selector tuning for known-problematic sites
+- [x] Expand approved source packs beyond California-native (tech-documentation, security-advisories)
+- [x] Add Mendocino-specific source pack (native-plants-mendocino with 3 sources)
+- [x] Validate browser fallback for complex pages (fallback_fetch_mode configured)
+- [x] Add source selector tuning for known-problematic sites (selectors per source)
+
+**Evidence:**
+- Added 3 new workflow packs: native-plants-mendocino, tech-documentation, security-advisories
+- Mendocino pack includes: calflora-mendocino-county, mendocino-coast-botanical, jepson-mendocino
+- Tech docs pack includes: nixos-manual, nix-dev-manual, home-manager-options
+- Security pack includes: nvd-search, github-advisories
+- Browser fallback configured on calflora and home-manager sources
 
 **Validation:**
 ```bash
