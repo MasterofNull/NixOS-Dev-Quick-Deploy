@@ -624,12 +624,44 @@ def delegated_prompt_failure_windows(
             }
         )
         summaries[label]["partial_window"] = report_since > cutoff
+    one_h = summaries.get("1h") if isinstance(summaries.get("1h"), dict) else {}
+    twenty_four_h = summaries.get("24h") if isinstance(summaries.get("24h"), dict) else {}
+    recent_failures = int(one_h.get("total_failures", 0) or 0)
+    daily_failures = int(twenty_four_h.get("total_failures", 0) or 0)
+    trend_status = "historical"
+    trend_actions: List[str] = []
+    trend_summary = ""
+    if daily_failures <= 0 and recent_failures <= 0:
+        trend_status = "healthy"
+        trend_summary = "no delegated prompt failures recorded in the compared windows"
+    elif daily_failures < 4:
+        trend_status = "low_sample"
+        trend_summary = "delegated prompt failure volume is too low for a stable trend"
+    else:
+        projected_daily = recent_failures * 24
+        baseline = float(daily_failures)
+        ratio = (projected_daily / baseline) if baseline > 0 else None
+        if ratio is not None and ratio <= 0.5:
+            trend_status = "improving"
+            trend_summary = "recent delegated prompt failures are pacing below the 24h baseline"
+        elif ratio is not None and ratio >= 1.25:
+            trend_status = "worsening"
+            trend_summary = "recent delegated prompt failures are pacing above the 24h baseline"
+            trend_actions.append("tighten delegated task envelopes for the top failure classes before retrying the same task shape")
+        else:
+            trend_status = "steady"
+            trend_summary = "delegated prompt failures are pacing close to the 24h baseline"
     return {
         "available": any(
             isinstance(summary, dict) and summary.get("available")
             for summary in summaries.values()
         ),
         "windows": summaries,
+        "trend": {
+            "status": trend_status,
+            "summary": trend_summary,
+            "actions": trend_actions,
+        },
     }
 
 
@@ -3674,6 +3706,14 @@ def format_md(
                 f"7d={int(seven_day.get('total_failures', 0) or 0)}"
                 f" ({_na(seven_day.get('salvageable_pct'), '.1f', '%')} salvageable)"
             )
+    failure_trend = delegated_prompt_failure_windows.get("trend") if isinstance(delegated_prompt_failure_windows, dict) else {}
+    if isinstance(failure_trend, dict) and failure_trend.get("status"):
+        lines.append(f"- Failure trend status: **{failure_trend.get('status')}**")
+        if failure_trend.get("summary"):
+            lines.append(f"- Failure trend note: {failure_trend.get('summary')}")
+        actions = failure_trend.get("actions") or []
+        if actions:
+            lines.append(f"- Failure trend remediation: {'; '.join(str(action) for action in actions)}")
     lines.append("")
 
     lines += [f"## 8aaa. Remote Profile Utilization ({remote_profile_summary.get('window', since_label)})", ""]
@@ -4375,6 +4415,14 @@ def format_text(
                 f"  7d={int(seven_day.get('total_failures', 0) or 0)}"
                 f" ({_na(seven_day.get('salvageable_pct'), '.1f', '%')} salvageable)"
             )
+    failure_trend = delegated_prompt_failure_windows.get("trend") if isinstance(delegated_prompt_failure_windows, dict) else {}
+    if isinstance(failure_trend, dict) and failure_trend.get("status"):
+        lines.append(f"  Failure trend status: {failure_trend.get('status')}")
+        if failure_trend.get("summary"):
+            lines.append(f"  Failure trend note: {failure_trend.get('summary')}")
+        actions = failure_trend.get("actions") or []
+        if actions:
+            lines.append(f"  Failure trend remediation: {'; '.join(str(action) for action in actions)}")
     lines.append("")
 
     lines += [f"[ 8aaa. Remote Profile Utilization ({remote_profile_summary.get('window', since_label)}) ]"]
