@@ -493,7 +493,9 @@ print_completion_test_results() {
     continue_editor_failed="$(printf '%s' "${json}" | jq -r '.continue_editor.failed_n // 0')"
     continue_editor_total="$(printf '%s' "${json}" | jq -r '.continue_editor.total_checks // 0')"
     continue_editor_first_fail="$(printf '%s' "${json}" | jq -r '(.continue_editor.checks // [] | map(select(.status == "FAIL")) | .[0] // empty) | if .id then "\(.id) \(.description)" else empty end')"
+    continue_editor_top_failure_category="$(printf '%s' "${json}" | jq -r '.continue_editor.top_failure_category // empty')"
     continue_editor_24h="$(printf '%s' "${json}" | jq -r '.continue_editor_windows.windows["24h"] | if .available then "\(.healthy_pct)%/\(.samples)" else "none" end')"
+    continue_editor_24h_failure_categories="$(printf '%s' "${json}" | jq -r '(.continue_editor_windows.windows["24h"].latest_failure_categories // []) | if length > 0 then map("\(.[0])(\(.[1]))") | join(", ") else empty end')"
     continue_editor_7d="$(printf '%s' "${json}" | jq -r '.continue_editor_windows.windows["7d"] | if .available then "\(.healthy_pct)%/\(.samples)" else "none" end')"
     agent_lesson_label="$(printf '%s' "${json}" | jq -r '
       if .agent_lessons.registry.active_lessons[0].hint_id then
@@ -651,8 +653,14 @@ PY
       if [[ -n "${continue_editor_first_fail}" ]]; then
         continue_editor_label="${continue_editor_label}; ${continue_editor_first_fail}"
       fi
+      if [[ -n "${continue_editor_top_failure_category}" ]]; then
+        continue_editor_label="${continue_editor_label}; category=${continue_editor_top_failure_category}"
+      fi
     fi
     continue_editor_trend_label="24h=${continue_editor_24h}  7d=${continue_editor_7d}"
+    if [[ -n "${continue_editor_24h_failure_categories}" ]]; then
+      continue_editor_trend_label="${continue_editor_trend_label}; latest24h=${continue_editor_24h_failure_categories}"
+    fi
     cache_prewarm_label="${cache_prewarm_enabled_state}/${cache_prewarm_active_state}"
 
     log "AI stack report (summary):"
