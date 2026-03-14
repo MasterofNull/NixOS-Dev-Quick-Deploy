@@ -4,6 +4,9 @@ set -euo pipefail
 # Smoke-test flagship agent CLI surfaces that are either declarative or
 # explicitly classified as external-but-integrated.
 
+# Extend PATH with common install locations for npm-global CLIs
+export PATH="${HOME}/.npm-global/bin:${HOME}/.local/bin:${HOME}/.nix-profile/bin:${PATH}"
+
 commands=(cn codex qwen gemini claude pi)
 
 for cmd in "${commands[@]}"; do

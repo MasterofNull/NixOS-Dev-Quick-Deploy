@@ -4131,6 +4131,48 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_autoresearch_status(_request: web.Request) -> web.Response:
+        """Get autoresearch experiment status and summary."""
+        try:
+            import sys
+            autoresearch_path = Path(__file__).parent.parent.parent / "autoresearch"
+            if str(autoresearch_path) not in sys.path:
+                sys.path.insert(0, str(autoresearch_path))
+            from autoresearch import ExperimentLedger
+            ledger = ExperimentLedger()
+            summary = ledger.get_experiment_summary()
+            accepted = ledger.get_accepted_experiments(limit=5)
+            return web.json_response({
+                "status": "ok",
+                "service": "autoresearch",
+                "summary": summary,
+                "recent_accepted": accepted,
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_autoresearch_run(request: web.Request) -> web.Response:
+        """Run autoresearch optimization experiments."""
+        try:
+            data = await request.json() if request.can_read_body else {}
+            chat_variants = int(data.get("chat_variants", 3))
+            embed_variants = int(data.get("embed_variants", 3))
+
+            import sys
+            autoresearch_path = Path(__file__).parent.parent.parent / "autoresearch"
+            if str(autoresearch_path) not in sys.path:
+                sys.path.insert(0, str(autoresearch_path))
+            from local_model_optimizer import run_full_optimization
+
+            result = await run_full_optimization(chat_variants, embed_variants)
+            return web.json_response({
+                "status": "ok",
+                "service": "autoresearch",
+                "result": result,
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         """Run a bounded delegated task through the selected ai-coordinator lane."""
         try:
@@ -4852,6 +4894,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/ai-coordinator/lessons/review", handle_ai_coordinator_lessons_review)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
+    http_app.router.add_get("/control/autoresearch/status", handle_autoresearch_status)
+    http_app.router.add_post("/control/autoresearch/run", handle_autoresearch_run)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)
     http_app.router.add_get("/control/runtimes/{runtime_id}", handle_runtime_get)
