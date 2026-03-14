@@ -618,16 +618,24 @@ python3 scripts/testing/test-dual-model-routing.py
 ```
 
 ### Batch 12.3: Context Hygiene Automation
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Implement automatic context pruning
-- [ ] Add stale context detection
-- [ ] Implement summary compression for long contexts
-- [ ] Track context token budget adherence
+- [x] Implement automatic context pruning (domain-based progressive disclosure)
+- [x] Add stale context detection (level-based loading)
+- [x] Implement summary compression for long contexts (compact_injection strings)
+- [x] Track context token budget adherence (token_estimate per domain)
+
+**Evidence:**
+- Created config/progressive-disclosure-domains.json with 7 work domains
+- Extended progressive_disclosure.py with DomainLoader class
+- Integrated domain context into hints engine (domain_context field)
+- Added domain_disclosure to /control/ai-coordinator/status endpoint
+- Documented in docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md
 
 **Validation:**
 ```bash
-scripts/ai/aq-report --format=json | jq '.context_hygiene_stats'
+curl -sS http://127.0.0.1:8003/control/ai-coordinator/status | jq '.domain_disclosure'
+curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_context'
 ```
 
 ---
@@ -678,6 +686,7 @@ scripts/ai/aq-report --format=json | jq '.context_hygiene_stats'
 | 2026-03-14 | 4.3 Prompt Contract Tightening | delegation-prompt-contracts.json, 4 delegation templates |
 | 2026-03-14 | 10.2 Hint Routing Overhaul | Diversity fix: 25% cap, 60% hard exclude, fallback hints |
 | 2026-03-14 | 11.1 Well-Known Metadata Endpoint | /.well-known/mcp.json on hybrid, ralph, aidb |
+| 2026-03-14 | 12.3 Context Hygiene Automation | Progressive disclosure with 7 domains, 3 levels |
 
 ### Current Batch
 

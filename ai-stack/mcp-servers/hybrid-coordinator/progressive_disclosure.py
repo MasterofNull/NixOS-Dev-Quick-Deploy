@@ -415,3 +415,212 @@ class ProgressiveDisclosure:
         }
 
         return recommendations.get(query_type, recommendations["quick_lookup"])
+
+
+# ---------------------------------------------------------------------------
+# Domain-Based Progressive Disclosure (Phase 12.3 Extension)
+# ---------------------------------------------------------------------------
+
+import json
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+DOMAIN_CONFIG_PATH = Path(os.getenv(
+    "PROGRESSIVE_DISCLOSURE_CONFIG",
+    "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/progressive-disclosure-domains.json"
+))
+
+
+@dataclass
+class DomainContext:
+    """Context loaded for a specific domain at a disclosure level."""
+    domain_id: str
+    domain_name: str
+    level: str
+    context_text: str
+    tools: List[str] = field(default_factory=list)
+    hints: List[str] = field(default_factory=list)
+    mcp_endpoints: List[str] = field(default_factory=list)
+    skills: List[str] = field(default_factory=list)
+    docs: List[str] = field(default_factory=list)
+    research_packs: List[str] = field(default_factory=list)
+    memory_recall: List[str] = field(default_factory=list)
+    token_estimate: int = 0
+
+    def to_compact_string(self) -> str:
+        """Generate compact context string for injection (minimal tokens)."""
+        parts = [f"[{self.domain_name}]", self.context_text]
+        if self.tools:
+            parts.append(f"Tools: {', '.join(self.tools[:5])}")
+        if self.hints:
+            parts.append(f"Tips: {'; '.join(self.hints[:2])}")
+        if self.skills:
+            parts.append(f"Skills: {', '.join(self.skills[:3])}")
+        return " | ".join(parts)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "domain_id": self.domain_id,
+            "domain_name": self.domain_name,
+            "level": self.level,
+            "context_text": self.context_text,
+            "tools": self.tools,
+            "hints": self.hints,
+            "mcp_endpoints": self.mcp_endpoints,
+            "skills": self.skills,
+            "docs": self.docs,
+            "research_packs": self.research_packs,
+            "memory_recall": self.memory_recall,
+            "token_estimate": self.token_estimate,
+        }
+
+
+@dataclass
+class DomainMatch:
+    """Result of domain detection."""
+    domain_id: str
+    confidence: float
+    matched_triggers: List[str]
+
+
+class DomainLoader:
+    """
+    Loads domain-specific context using progressive disclosure.
+
+    Domains: nixos-dev, web-dev, ai-harness, data-engineering, devops, security, documentation
+    Levels: minimal (500 tokens), standard (1500 tokens), full (4000 tokens)
+    """
+
+    def __init__(self, config_path: Optional[Path] = None):
+        self._config_path = config_path or DOMAIN_CONFIG_PATH
+        self._config: Optional[Dict[str, Any]] = None
+        self._load_config()
+
+    def _load_config(self) -> None:
+        """Load configuration from JSON file."""
+        try:
+            if self._config_path.exists():
+                self._config = json.loads(self._config_path.read_text(encoding="utf-8"))
+                logger.debug("Loaded domain config from %s", self._config_path)
+            else:
+                logger.warning("Domain config not found, using defaults")
+                self._config = {"domains": {}, "domain_detection": {"fallback_domain": "ai-harness"}}
+        except Exception as e:
+            logger.error("Failed to load domain config: %s", e)
+            self._config = {"domains": {}}
+
+    def detect_domains(self, query: str) -> List[DomainMatch]:
+        """Detect which domains match the query based on trigger keywords."""
+        if not self._config:
+            return []
+
+        query_lower = query.lower()
+        query_tokens = set(re.findall(r'\b\w+\b', query_lower))
+        matches: List[DomainMatch] = []
+
+        for domain_id, domain_data in self._config.get("domains", {}).items():
+            triggers = domain_data.get("triggers", [])
+            matched = [t for t in triggers if t in query_lower or t in query_tokens]
+            if matched:
+                confidence = min(len(matched) / max(len(triggers), 1) + 0.1 * len(matched), 1.0)
+                matches.append(DomainMatch(domain_id=domain_id, confidence=confidence, matched_triggers=matched))
+
+        matches.sort(key=lambda m: m.confidence, reverse=True)
+        threshold = self._config.get("domain_detection", {}).get("confidence_threshold", 0.2)
+        return [m for m in matches if m.confidence >= threshold]
+
+    def get_context(self, query: str, level: Optional[str] = None, max_domains: int = 2) -> List[DomainContext]:
+        """Get domain-specific context for a query."""
+        matches = self.detect_domains(query)
+        if not matches:
+            fallback = self._config.get("domain_detection", {}).get("fallback_domain", "ai-harness")
+            matches = [DomainMatch(domain_id=fallback, confidence=0.5, matched_triggers=[])]
+
+        if level is None:
+            level = self._detect_level(query)
+
+        return [ctx for m in matches[:max_domains] if (ctx := self._load_domain_context(m.domain_id, level))]
+
+    def _detect_level(self, query: str) -> str:
+        """Auto-detect disclosure level based on query complexity."""
+        query_lower = query.lower()
+        escalation = self._config.get("loading_rules", {}).get("escalation_triggers", [])
+        if any(t in query_lower for t in escalation):
+            return "full"
+        if any(t in query_lower for t in ["implement", "create", "build", "configure", "setup"]):
+            return "standard"
+        return "minimal"
+
+    def _load_domain_context(self, domain_id: str, level: str) -> Optional[DomainContext]:
+        """Load context for a specific domain at a given level."""
+        domain = self._config.get("domains", {}).get(domain_id)
+        if not domain:
+            return None
+
+        merged = self._merge_levels(domain.get("disclosure", {}), level)
+        context_text = merged.get("context", "")
+        token_estimate = len(context_text) // 4 + len(merged.get("tools", [])) * 3
+
+        return DomainContext(
+            domain_id=domain_id,
+            domain_name=domain.get("name", domain_id),
+            level=level,
+            context_text=context_text,
+            tools=merged.get("tools", []),
+            hints=merged.get("hints", []),
+            mcp_endpoints=merged.get("mcp_endpoints", []),
+            skills=merged.get("skills", []),
+            docs=merged.get("docs", []),
+            research_packs=merged.get("research_packs", []),
+            memory_recall=merged.get("memory_recall", []),
+            token_estimate=token_estimate,
+        )
+
+    def _merge_levels(self, disclosure: Dict[str, Any], target_level: str) -> Dict[str, Any]:
+        """Merge disclosure levels following inheritance chain."""
+        level_order = ["minimal", "standard", "full"]
+        try:
+            target_idx = level_order.index(target_level)
+        except ValueError:
+            target_idx = 0
+
+        merged: Dict[str, Any] = {}
+        list_keys = ["tools", "hints", "mcp_endpoints", "skills", "docs", "research_packs", "memory_recall"]
+
+        for level in level_order[:target_idx + 1]:
+            level_data = disclosure.get(level, {})
+            if "context" in level_data:
+                merged["context"] = level_data["context"]
+            for key in list_keys:
+                if key in level_data:
+                    merged.setdefault(key, []).extend(
+                        item for item in level_data[key] if item not in merged.get(key, [])
+                    )
+        return merged
+
+    def list_domains(self) -> List[Dict[str, str]]:
+        """List all available domains."""
+        return [
+            {"id": did, "name": d.get("name", did), "description": d.get("description", "")}
+            for did, d in self._config.get("domains", {}).items()
+        ]
+
+
+# Singleton instance
+_domain_loader: Optional[DomainLoader] = None
+
+
+def get_domain_loader() -> DomainLoader:
+    """Get or create the singleton DomainLoader instance."""
+    global _domain_loader
+    if _domain_loader is None:
+        _domain_loader = DomainLoader()
+    return _domain_loader
+
+
+def get_domain_context(query: str, level: Optional[str] = None) -> List[DomainContext]:
+    """Convenience function to get domain context for a query."""
+    return get_domain_loader().get_context(query, level)
