@@ -1,6 +1,6 @@
 # Agent Parity Matrix: Codebuff vs pi.dev vs NixOS AI Stack
 
-Last updated: 2026-03-03
+Last updated: 2026-03-14
 
 Execution tracker:
 - [System Improvement Plan and Working Document (March 2026)](SYSTEM-IMPROVEMENT-PLAN-2026-03.md)
@@ -725,3 +725,63 @@ Report remediation slice (2026-03-03, pre-deploy hardening):
   - semantic cache hit rate recovered to `54.2%`
   - workflow recommendations cleared to:
     `No critical issues detected. System is operating within normal parameters.`
+
+## Flagship Agent CLI Support Matrix (2026-03-14)
+
+### CLI Availability Status
+
+| CLI | Package Type | Path | Harness Integration | Status |
+|-----|-------------|------|---------------------|--------|
+| cn (Continue) | Nix declarative | `/home/hyperd/.nix-profile/bin/cn` | Full (MCP bridge, hints, workflows) | PASS |
+| claude | npm global | `~/.local/bin/claude` | Partial (external orchestrator) | PASS |
+| codex | npm global | `~/.npm-global/bin/codex` | Partial (external, OpenAI API) | PASS |
+| qwen | npm global | `~/.npm-global/bin/qwen` | Partial (external, Alibaba API) | PASS |
+| gemini | npm global | `~/.npm-global/bin/gemini` | Partial (external, Google API) | PASS |
+| pi | npm global | `~/.npm-global/bin/pi` | Partial (external CLI) | PASS |
+
+### Harness Integration Levels
+
+| Level | Description | CLIs |
+|-------|-------------|------|
+| Full | MCP bridge + hints + workflows + memory | cn (Continue) |
+| Partial | External CLI, API-only, no MCP | claude, codex, qwen, gemini, pi |
+| External-only | No local harness integration | codex, qwen, gemini |
+
+### External-Only Surfaces
+
+These CLIs connect directly to external APIs and do not integrate with the local AI harness:
+
+1. **codex** - OpenAI Codex CLI, requires `OPENAI_API_KEY`
+2. **qwen** - Alibaba Qwen CLI, requires `DASHSCOPE_API_KEY`
+3. **gemini** - Google Gemini CLI, requires `GOOGLE_API_KEY`
+
+### Upgrade Path Documentation
+
+| CLI | Current State | Upgrade Path |
+|-----|--------------|--------------|
+| cn | Nix declarative, full integration | Maintain via Home Manager |
+| claude | npm global, partial integration | Add MCP server config for harness tools |
+| codex | npm global, external-only | Consider local proxy for cost/latency |
+| qwen | npm global, external-only | Consider switchboard integration |
+| gemini | npm global, external-only | Consider switchboard integration |
+| pi | npm global, partial | Evaluate skill extension for harness |
+
+### Validation
+
+```bash
+# Smoke test all flagship CLIs
+scripts/testing/smoke-flagship-cli-surfaces.sh
+
+# QA phase-0 validation
+scripts/ai/aq-qa 0
+```
+
+### PATH Configuration
+
+The npm-global CLIs require `~/.npm-global/bin` in PATH. The smoke test script now extends PATH automatically:
+
+```bash
+export PATH="${HOME}/.npm-global/bin:${HOME}/.local/bin:${HOME}/.nix-profile/bin:${PATH}"
+```
+
+For persistent PATH configuration, add to shell profile or Home Manager.
