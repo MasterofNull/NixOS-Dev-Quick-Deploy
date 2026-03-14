@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# aq-autoresearch — Run autoresearch optimization experiments
+# Optimizes local chat and embedding models for token efficiency
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+AUTORESEARCH_DIR="${REPO_ROOT}/ai-stack/autoresearch"
+
+usage() {
+    cat <<EOF
+Usage: aq-autoresearch [command] [options]
+
+Commands:
+    run         Run optimization experiments (default)
+    status      Show experiment summary
+    results     Show recent results
+    apply       Apply best configuration
+
+Options:
+    --chat-variants N       Number of chat variants to test (default: 3)
+    --embed-variants N      Number of embed variants to test (default: 3)
+    --max-experiments N     Max experiments for full loop (default: 5)
+    --format json|text      Output format (default: text)
+    --help                  Show this help
+
+Examples:
+    aq-autoresearch run --chat-variants 5
+    aq-autoresearch status --format json
+    aq-autoresearch results
+EOF
+}
+
+# Defaults
+COMMAND="run"
+CHAT_VARIANTS=3
+EMBED_VARIANTS=3
+MAX_EXPERIMENTS=5
+FORMAT="text"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        run|status|results|apply)
+            COMMAND="$1"
+            shift
+            ;;
+        --chat-variants)
+            CHAT_VARIANTS="$2"
+            shift 2
+            ;;
+        --embed-variants)
+            EMBED_VARIANTS="$2"
+            shift 2
+            ;;
+        --max-experiments)
+            MAX_EXPERIMENTS="$2"
+            shift 2
+            ;;
+        --format)
+            FORMAT="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Ensure Python environment
+export PYTHONPATH="${AUTORESEARCH_DIR}:${PYTHONPATH:-}"
+
+case "${COMMAND}" in
+    run)
+        echo "Running autoresearch optimization..."
+        echo "Chat variants: ${CHAT_VARIANTS}, Embed variants: ${EMBED_VARIANTS}"
+        echo ""
+
+        RESULT=$(python3 "${AUTORESEARCH_DIR}/local_model_optimizer.py" "${CHAT_VARIANTS}" "${EMBED_VARIANTS}" 2>/dev/null)
+
+        if [[ "${FORMAT}" == "json" ]]; then
+            echo "${RESULT}"
+        else
+            # Parse and display results
+            echo "═══════════════════════════════════════════════════════════"
+            echo "  AUTORESEARCH OPTIMIZATION RESULTS"
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+
+            echo "[ Chat Model Optimization ]"
+            echo "${RESULT}" | jq -r '
+                if .chat.error then
+                    "  Error: \(.chat.error)"
+                else
+                    "  Best config: \(.chat.best_config.name)",
+                    "  Efficiency score: \(.chat.best_config.efficiency_score | tostring | .[0:6])",
+                    "  Tokens per task: \(.chat.best_config.tokens_per_task | tostring | .[0:6])",
+                    "  Success rate: \((.chat.best_config.success_rate * 100) | tostring | .[0:4])%",
+                    "",
+                    "  All variants:",
+                    (.chat.all_results[:5][] | "    \(.name): efficiency=\(.efficiency | tostring | .[0:5]) success=\((.success_rate * 100) | tostring | .[0:4])%")
+                end
+            ' 2>/dev/null || echo "  (no chat results)"
+
+            echo ""
+            echo "[ Embedding Model Optimization ]"
+            echo "${RESULT}" | jq -r '
+                if .embed.error then
+                    "  Error: \(.embed.error)"
+                else
+                    "  Best config: \(.embed.best_config.name)",
+                    "  Efficiency score: \(.embed.best_config.efficiency_score | tostring | .[0:6])",
+                    "  Avg latency: \(.embed.best_config.avg_latency_ms | tostring | .[0:6])ms",
+                    "  Dimensions: \(.embed.best_config.embedding_dimensions)",
+                    "",
+                    "  All variants:",
+                    (.embed.all_results[:5][] | "    \(.name): efficiency=\(.efficiency | tostring | .[0:5]) latency=\(.avg_latency_ms | tostring | .[0:6])ms")
+                end
+            ' 2>/dev/null || echo "  (no embed results)"
+
+            echo ""
+            echo "[ Recommendations ]"
+            echo "${RESULT}" | jq -r '
+                if (.recommendations | length) == 0 then
+                    "  No recommendations"
+                else
+                    .recommendations[] | "  [\(.type)] \(.action): \(.expected_improvement)"
+                end
+            ' 2>/dev/null || echo "  (no recommendations)"
+
+            echo ""
+            echo "═══════════════════════════════════════════════════════════"
+        fi
+        ;;
+
+    status)
+        python3 -c "
+import json
+import sys
+sys.path.insert(0, '${AUTORESEARCH_DIR}')
+from autoresearch import ExperimentLedger
+ledger = ExperimentLedger()
+summary = ledger.get_experiment_summary()
+print(json.dumps(summary, indent=2))
+" 2>/dev/null || echo '{"total": 0, "completed": 0, "accepted": 0}'
+        ;;
+
+    results)
+        python3 -c "
+import json
+import sys
+sys.path.insert(0, '${AUTORESEARCH_DIR}')
+from autoresearch import ExperimentLedger
+ledger = ExperimentLedger()
+accepted = ledger.get_accepted_experiments(10)
+print(json.dumps(accepted, indent=2))
+" 2>/dev/null || echo '[]'
+        ;;
+
+    apply)
+        echo "Applying best configuration..."
+        echo "Note: This would update switchboard/coordinator config"
+        echo "Feature pending implementation"
+        ;;
+
+    *)
+        echo "Unknown command: ${COMMAND}" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
