@@ -238,6 +238,172 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
     return "remote-free"
 
 
+# ---------------------------------------------------------------------------
+# Phase 9.3: Query Complexity Routing
+# ---------------------------------------------------------------------------
+
+# Routing telemetry accumulator
+_ROUTING_DECISIONS: List[Dict[str, Any]] = []
+_ROUTING_DECISION_MAX = 500  # Rolling window
+
+
+def _record_routing_decision(decision: Dict[str, Any]) -> None:
+    """Record routing decision for telemetry analysis."""
+    global _ROUTING_DECISIONS
+    _ROUTING_DECISIONS.append({**decision, "ts": int(time.time())})
+    if len(_ROUTING_DECISIONS) > _ROUTING_DECISION_MAX:
+        _ROUTING_DECISIONS = _ROUTING_DECISIONS[-_ROUTING_DECISION_MAX:]
+
+
+def detect_query_complexity(query: str) -> Dict[str, Any]:
+    """
+    Detect query complexity for intelligent model routing.
+
+    Returns:
+        Dict with complexity level, confidence, and matched signals.
+
+    Complexity levels:
+    - simple: Quick lookups, factual questions → lightweight/free models
+    - medium: Standard tasks → balanced models
+    - complex: Multi-step reasoning, debugging → capable models
+    - architecture: Design decisions, security → reasoning-focused models
+    """
+    query_lower = query.lower()
+    word_count = len(query.split())
+
+    # Signal detection
+    arch_signals = ["architect", "design", "system", "infrastructure", "security", "scalab", "tradeoff", "pattern"]
+    complex_signals = ["implement", "integrate", "migrate", "refactor", "debug", "troubleshoot", "multi-step"]
+    simple_signals = ["what is", "how do", "where", "list", "show", "find", "get", "check", "which"]
+    coding_signals = ["code", "function", "class", "method", "api", "endpoint", "module"]
+
+    matched_arch = [s for s in arch_signals if s in query_lower]
+    matched_complex = [s for s in complex_signals if s in query_lower]
+    matched_simple = [s for s in simple_signals if s in query_lower]
+    matched_coding = [s for s in coding_signals if s in query_lower]
+
+    # Determine complexity
+    if matched_arch:
+        complexity = "architecture"
+        confidence = min(0.5 + len(matched_arch) * 0.15, 0.95)
+    elif matched_complex or word_count > 40:
+        complexity = "complex"
+        confidence = min(0.5 + len(matched_complex) * 0.12, 0.90)
+    elif matched_simple and word_count < 15:
+        complexity = "simple"
+        confidence = min(0.6 + len(matched_simple) * 0.1, 0.90)
+    elif matched_coding:
+        complexity = "medium"  # Coding tasks are medium by default
+        confidence = 0.7
+    else:
+        complexity = "medium"
+        confidence = 0.5
+
+    return {
+        "complexity": complexity,
+        "confidence": confidence,
+        "word_count": word_count,
+        "signals": {
+            "architecture": matched_arch,
+            "complex": matched_complex,
+            "simple": matched_simple,
+            "coding": matched_coding,
+        },
+    }
+
+
+def route_by_complexity(
+    query: str,
+    requested_profile: str = "",
+    prefer_local: bool = False,
+) -> Dict[str, Any]:
+    """
+    Route query to appropriate model based on complexity.
+
+    Args:
+        query: The task/query to route
+        requested_profile: Explicit profile request (overrides auto-routing)
+        prefer_local: Prefer local models when possible
+
+    Returns:
+        Dict with recommended_profile, complexity, and routing rationale.
+    """
+    # If explicit profile requested, honor it
+    if requested_profile:
+        explicit = infer_profile(query, requested_profile)
+        return {
+            "recommended_profile": explicit,
+            "complexity": "explicit",
+            "rationale": f"explicit profile requested: {requested_profile}",
+            "auto_routed": False,
+        }
+
+    # Detect complexity
+    complexity_info = detect_query_complexity(query)
+    complexity = complexity_info["complexity"]
+
+    # Map complexity to profiles
+    COMPLEXITY_TO_PROFILE = {
+        "simple": "remote-free" if not prefer_local else "default",
+        "medium": "remote-coding" if not prefer_local else "default",
+        "complex": "remote-coding",  # Complex tasks need capable coding models
+        "architecture": "remote-reasoning",  # Architecture needs reasoning
+    }
+
+    recommended = COMPLEXITY_TO_PROFILE.get(complexity, "remote-free")
+
+    # Build rationale
+    signals = complexity_info.get("signals", {})
+    signal_parts = []
+    for sig_type, matches in signals.items():
+        if matches:
+            signal_parts.append(f"{sig_type}({','.join(matches[:2])})")
+    rationale = f"complexity={complexity}, confidence={complexity_info['confidence']:.0%}"
+    if signal_parts:
+        rationale += f", signals=[{'; '.join(signal_parts[:3])}]"
+
+    decision = {
+        "recommended_profile": recommended,
+        "complexity": complexity,
+        "complexity_confidence": complexity_info["confidence"],
+        "word_count": complexity_info["word_count"],
+        "rationale": rationale,
+        "auto_routed": True,
+        "prefer_local": prefer_local,
+    }
+
+    # Record for telemetry
+    _record_routing_decision({
+        "query_prefix": query[:60] + "..." if len(query) > 60 else query,
+        "complexity": complexity,
+        "profile": recommended,
+        "confidence": complexity_info["confidence"],
+    })
+
+    return decision
+
+
+def get_routing_stats() -> Dict[str, Any]:
+    """Get routing decision statistics for analysis."""
+    if not _ROUTING_DECISIONS:
+        return {"total_decisions": 0, "breakdown": {}}
+
+    breakdown: Dict[str, int] = {}
+    profile_breakdown: Dict[str, int] = {}
+    for d in _ROUTING_DECISIONS:
+        c = d.get("complexity", "unknown")
+        p = d.get("profile", "unknown")
+        breakdown[c] = breakdown.get(c, 0) + 1
+        profile_breakdown[p] = profile_breakdown.get(p, 0) + 1
+
+    return {
+        "total_decisions": len(_ROUTING_DECISIONS),
+        "complexity_breakdown": breakdown,
+        "profile_breakdown": profile_breakdown,
+        "recent_window_seconds": _ROUTING_DECISIONS[-1]["ts"] - _ROUTING_DECISIONS[0]["ts"] if len(_ROUTING_DECISIONS) > 1 else 0,
+    }
+
+
 def default_runtime_id_for_profile(profile: str) -> str:
     mapping = {
         "default": "local-hybrid",

@@ -470,16 +470,32 @@ python3 scripts/testing/test-generator-critic-pattern.py
 ```
 
 ### Batch 9.3: Query Complexity Routing
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Implement query complexity scoring (simple/medium/complex)
-- [ ] Route simple queries to lightweight models
-- [ ] Route complex queries to reasoning-capable models
-- [ ] Add routing decision logging and analysis
+- [x] Implement query complexity scoring (simple/medium/complex)
+- [x] Route simple queries to lightweight models
+- [x] Route complex queries to reasoning-capable models
+- [x] Add routing decision logging and analysis
+
+**Evidence:**
+- Added `detect_query_complexity()` and `route_by_complexity()` to ai_coordinator.py
+- Complexity levels: simple → remote-free, medium → remote-coding, complex → remote-coding, architecture → remote-reasoning
+- Routing telemetry with rolling 500-decision window
+- `get_routing_stats()` for complexity and profile breakdowns
+- Integrated into delegation handler with `routing_decision` in response
+- Added to status endpoint under `routing.complexity_routing`
+
+**Also implemented:** Context-aware token budgeting (10.3 extension):
+- `TokenBudgetContext` class with task phase detection
+- Budgets: new_phase=600, continued_work=350, sub_task=200, refinement=150
+- Post-compaction restore factor (1.8x) prevents context starvation
+- Auto-detection of task phase and query complexity
+
+**Note:** Service restart required for runtime activation.
 
 **Validation:**
 ```bash
-scripts/ai/aq-report --format=json | jq '.query_routing_breakdown'
+curl -sS http://127.0.0.1:8003/status | jq '.routing.complexity_routing'
 python3 scripts/testing/test-query-complexity-router.py
 ```
 
@@ -717,6 +733,8 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-14 | 12.3 Context Hygiene Automation | Progressive disclosure with 7 domains, 3 levels |
 | 2026-03-14 | 11.2 Health Ping Protocol | /health/aggregate with latency tracking, history, trends |
 | 2026-03-14 | 10.3 Token-Efficient Hint Delivery | compact_mode, max_hint_tokens, snippet compression |
+| 2026-03-14 | 9.3 Query Complexity Routing | detect_query_complexity, route_by_complexity, telemetry |
+| 2026-03-14 | (ext) Context-Aware Token Budgeting | TokenBudgetContext with phase/complexity detection |
 
 ### Current Batch
 
