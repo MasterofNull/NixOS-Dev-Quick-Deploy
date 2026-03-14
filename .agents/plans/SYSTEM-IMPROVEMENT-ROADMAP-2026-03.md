@@ -276,12 +276,18 @@ scripts/ai/aq-report --format=json | jq '.shared_skills'
 **Gate:** Hint entropy ≥2.5 bits, pattern library ≥20
 
 ### Batch 6.1: Hint Template Expansion
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Add 8-10 new hint templates for underserved task types
+- [x] Add 8-10 new hint templates for underserved task types
 - [ ] Implement context-aware hint routing by file type
 - [ ] Add hint feedback acceleration
 - [ ] Reduce dominant hint concentration
+
+**Evidence:** Added 10 new templates to ai-stack/prompts/registry.yaml:
+- code_review_structured, debugging_systematic, test_generation_coverage
+- refactoring_incremental, documentation_api, security_audit_focused
+- performance_optimization, migration_upgrade_plan, api_integration_guide
+- configuration_setup
 
 **Validation:**
 ```bash
@@ -422,6 +428,7 @@ python3 scripts/ai/aq-bitnet-compare.py
 | 2026-03-13 | 5.1 Lesson Registry Completion | smoke-delegate-lesson-refs.sh PASS |
 | 2026-03-13 | 7.1 Package Validation | smoke-flagship-cli-surfaces.sh PASS, all CLIs respond to --help |
 | 2026-03-14 | 7.2 Support Matrix Update | docs/AGENT-PARITY-MATRIX.md updated with CLI support matrix |
+| 2026-03-14 | 6.1 Hint Template Expansion | 10 new templates added to registry.yaml |
 
 ### Current Batch
 
