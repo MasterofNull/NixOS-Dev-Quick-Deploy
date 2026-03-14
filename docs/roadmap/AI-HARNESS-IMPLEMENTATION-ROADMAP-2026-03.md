@@ -144,6 +144,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | continue/editor history and deploy summary | validated_local | `aq-report` now persists bounded Continue/editor health snapshots and materializes 1h/24h/7d health windows, and `nixos-quick-deploy.sh` surfaces a compact Continue trend line in deploy summaries |
 | 2026-03-13 | continue/editor failure-category reporting | validated_local | `aq-report` now classifies Continue/editor failures into typed categories such as `agent_flow`, `switchboard_routing`, and `editor_extension`, persists the latest category set into history windows, and `nixos-quick-deploy.sh` now surfaces the top current category plus the latest 24h category mix when the editor path is degraded |
 | 2026-03-13 | route-search collection narrowing policy | validated_local | `route_handler` now narrows retrieval collections by task class and continuation context instead of using a mostly static broad profile, so continuation code/debug asks stay on a tighter `continuation-code` path and lookup/reasoning asks avoid unnecessary collection fan-out before the report layer flags `broad_scanning` |
+| 2026-03-13 | flagship CLI smoke coverage for Claude | validated_local | the flagship CLI smoke and surface matrix now include `claude` in addition to `cn`, `codex`, `qwen`, `gemini`, and `pi`, so Required Foundation stops under-reporting one of the installed top-level agent CLIs on this host |
 
 ## High-Priority Tracks
 
@@ -151,7 +152,7 @@ Tracking fields to update after each slice:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, explicit flagship CLI help smokes for cn/codex/qwen/gemini/pi, deploy-time direct aq-qa capability verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, the browser-assisted fallback lane, the California-native source pack, and source-level fetch policy are live; the next gap is expanding approved source packs further while continuing to move external CLI surfaces toward declarative packaging where viable`
+Current Slice: `Continue CLI derivation, Home Manager activation, repo-backed QA verification, explicit flagship CLI help smokes for cn/codex/qwen/gemini/claude/pi, deploy-time direct aq-qa capability verification, report visibility, bounded web research, local shared skill sync, the first governed agentskill.sh import, coordinator shared-skill visibility, the generic curated research workflow layer, the browser-assisted fallback lane, the California-native source pack, and source-level fetch policy are live; the next gap is expanding approved source packs further while continuing to move external CLI surfaces toward declarative packaging where viable`
 Next Validation:
 - `nix-build` for each packaged agent CLI
 - `scripts/testing/verify-flake-first-roadmap-completion.sh`
