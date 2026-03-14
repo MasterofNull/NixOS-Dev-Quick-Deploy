@@ -145,6 +145,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | continue/editor failure-category reporting | validated_local | `aq-report` now classifies Continue/editor failures into typed categories such as `agent_flow`, `switchboard_routing`, and `editor_extension`, persists the latest category set into history windows, and `nixos-quick-deploy.sh` now surfaces the top current category plus the latest 24h category mix when the editor path is degraded |
 | 2026-03-13 | route-search collection narrowing policy | validated_local | `route_handler` now narrows retrieval collections by task class and continuation context instead of using a mostly static broad profile, so continuation code/debug asks stay on a tighter `continuation-code` path and lookup/reasoning asks avoid unnecessary collection fan-out before the report layer flags `broad_scanning` |
 | 2026-03-13 | flagship CLI smoke coverage for Claude | validated_local | the flagship CLI smoke and surface matrix now include `claude` in addition to `cn`, `codex`, `qwen`, `gemini`, and `pi`, so Required Foundation stops under-reporting one of the installed top-level agent CLIs on this host |
+| 2026-03-13 | coordinator status report-summary parity | validated_live | `/control/ai-coordinator/status` now exposes a compact `report_summary` block sourced from the latest `aq-report` JSON, carrying remote-profile, routing, retrieval, Continue/editor, and workflow-review trend state so the harness status surface matches the main operator summaries instead of leaving those signals siloed in deploy output |
 
 ## High-Priority Tracks
 
@@ -611,7 +612,7 @@ Validation:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `aq-report now exposes remote-profile, routing, retrieval-breadth, Continue/editor history, and workflow-review acceptance dimensions, and nixos-quick-deploy now surfaces compact workflow review counts plus top accepted task/profile context alongside the existing trend lines; the next gap is broader consumer parity and remaining non-monitoring roadmap tracks`
+Current Slice: `aq-report now exposes remote-profile, routing, retrieval-breadth, Continue/editor history, and workflow-review acceptance dimensions, nixos-quick-deploy now surfaces compact workflow review counts plus top accepted task/profile context alongside the existing trend lines, and /control/ai-coordinator/status now exposes the same trend families through a compact report_summary block; the next gap is broader consumer parity and remaining non-monitoring roadmap tracks`
 Next Validation:
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization'`
 - `python3 scripts/ai/aq-report --format json | jq '.remote_profile_utilization_windows, .route_search_latency_decomposition'`
@@ -622,9 +623,10 @@ Next Validation:
 - `python3 scripts/testing/test-retrieval-breadth-history.py`
 - `python3 scripts/testing/test-routing-history.py`
 - `python3 scripts/testing/test-continue-editor-history.py`
+- `scripts/testing/smoke-status-report-summary.sh`
 - deploy summary output
 Open Risks / Blockers:
-- Track H multi-window operator history is now in place for the main monitored AI surfaces and deploy summary now includes workflow review/acceptance context; the next gaps are broader consumer parity and remaining unfinished tracks outside monitoring
+- Track H multi-window operator history is now in place for the main monitored AI surfaces, deploy summary includes workflow review/acceptance context, and coordinator status now exposes a compact report-backed summary; the next gaps are broader consumer parity and remaining unfinished tracks outside monitoring
 
 Tasks:
 1. remote profile utilization summary parity across all operator-facing consumers
