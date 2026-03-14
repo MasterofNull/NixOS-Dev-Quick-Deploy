@@ -4,7 +4,7 @@ set -euo pipefail
 # Smoke-test flagship agent CLI surfaces that are either declarative or
 # explicitly classified as external-but-integrated.
 
-commands=(cn codex qwen gemini pi)
+commands=(cn codex qwen gemini claude pi)
 
 for cmd in "${commands[@]}"; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then

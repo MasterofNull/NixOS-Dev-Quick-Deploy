@@ -17,7 +17,7 @@ Purpose:
 | Codex VS Code extension | Declarative VSIX wiring | Active | switchboard base URL, shared env, local harness paths | Home Manager switch, extension presence |
 | Codex CLI (`codex`) | External binary on PATH | Integrated, host help smoke green, not yet declaratively packaged in-repo | switchboard/OpenAI-compatible path, VSCodium executable wiring | `codex --help` |
 | Claude Code extension | Declarative extension wiring | Active | local harness env injection, executable path wiring | Home Manager switch, extension presence |
-| Claude CLI (`~/.local/bin/claude`) | Native upstream install | Integrated, not yet declaratively packaged in-repo | VSCodium executable wiring, local harness env injection | `~/.local/bin/claude --help` |
+| Claude CLI (`claude`) | Native upstream install on PATH | Integrated, host help smoke green, not yet declaratively packaged in-repo | VSCodium executable wiring, local harness env injection | `claude --help` |
 | Gemini Code Assist / companion | Declarative VSIX wiring | Active | VSCodium extension layer, local env wiring | Home Manager switch, extension presence |
 | Gemini CLI (`gemini`) | External binary on PATH | Integrated, host help smoke green, not yet declaratively packaged in-repo | switchboard/OpenAI-compatible path via shared shell env | `gemini --help` |
 | Qwen IDE companion | Declarative VSIX wiring | Active | VSCodium extension layer, `.qwen/` session rules | Home Manager switch, extension presence |
