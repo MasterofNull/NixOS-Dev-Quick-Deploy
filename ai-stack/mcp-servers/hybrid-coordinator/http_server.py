@@ -88,6 +88,10 @@ _HARNESS_STATS: Dict[str, Any] = {}
 _CIRCUIT_BREAKERS: Optional[Any] = None
 _SERVICE_NAME: str = "hybrid-coordinator"
 
+# Phase 11.2 — Health history tracking for trend analysis
+from collections import deque
+_HEALTH_HISTORY: deque = deque(maxlen=60)  # Last 60 snapshots (1 hour at 1/min)
+
 _local_llm_healthy_ref: Optional[Callable] = None   # lambda: _local_llm_healthy
 _local_llm_loading_ref: Optional[Callable] = None   # lambda: _local_llm_loading
 _queue_depth_ref: Optional[Callable] = None          # lambda: _model_loading_queue_depth
@@ -1696,7 +1700,7 @@ async def run_http_mode(port: int) -> None:
     @web.middleware
     async def api_key_middleware(request, handler):
         # Public endpoints that don't require authentication
-        public_paths = ("/health", "/metrics", "/.well-known/mcp.json", "/health/detailed")
+        public_paths = ("/health", "/metrics", "/.well-known/mcp.json", "/health/detailed", "/health/aggregate")
         if request.path in public_paths:
             return await handler(request)
         if not Config.API_KEY:
@@ -1940,6 +1944,95 @@ async def run_http_mode(port: int) -> None:
         if lesson_refs:
             payload["active_lesson_refs"] = lesson_refs
         return web.json_response(payload, status=200 if service_status in ("healthy", "degraded") else 503)
+
+    async def handle_health_aggregate(request):
+        """
+        Phase 11.2 — Health aggregator endpoint.
+
+        Pings all MCP servers, measures latency, aggregates health status,
+        and maintains health history for trend analysis.
+        """
+        servers = {
+            "hybrid-coordinator": {"url": "http://127.0.0.1:8003", "endpoint": "/health"},
+            "aidb": {"url": os.getenv("AIDB_URL", "http://127.0.0.1:8002").strip(), "endpoint": "/health"},
+            "ralph-wiggum": {"url": Config.RALPH_WIGGUM_URL.rstrip("/"), "endpoint": "/health"},
+            "llama-cpp": {"url": os.getenv("LLAMA_CPP_URL", "http://127.0.0.1:8080").strip(), "endpoint": "/health"},
+            "qdrant": {"url": os.getenv("QDRANT_URL", "http://127.0.0.1:6333").strip(), "endpoint": "/collections"},
+        }
+
+        results: Dict[str, Any] = {}
+        aggregate_start = time.time()
+
+        async def ping_server(name: str, info: Dict[str, str]) -> Dict[str, Any]:
+            url = f"{info['url']}{info['endpoint']}"
+            start = time.time()
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    resp = await client.get(url)
+                    latency_ms = round((time.time() - start) * 1000, 1)
+                    body = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
+                    status = "healthy" if resp.status_code < 400 else "degraded" if resp.status_code < 500 else "unhealthy"
+                    return {
+                        "status": status,
+                        "http_status": resp.status_code,
+                        "latency_ms": latency_ms,
+                        "reported_status": body.get("status"),
+                    }
+            except Exception as exc:
+                latency_ms = round((time.time() - start) * 1000, 1)
+                return {
+                    "status": "unreachable",
+                    "latency_ms": latency_ms,
+                    "error": str(exc)[:120],
+                }
+
+        # Ping all servers concurrently
+        tasks = {name: ping_server(name, info) for name, info in servers.items()}
+        for name, task in tasks.items():
+            results[name] = await task
+
+        aggregate_latency_ms = round((time.time() - aggregate_start) * 1000, 1)
+
+        # Determine overall status
+        statuses = [r.get("status", "unknown") for r in results.values()]
+        if all(s == "healthy" for s in statuses):
+            overall = "healthy"
+        elif any(s in ("unhealthy", "unreachable") for s in statuses):
+            overall = "degraded"
+        else:
+            overall = "partially_healthy"
+
+        # Record health history
+        snapshot = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "overall": overall,
+            "servers": {k: v.get("status") for k, v in results.items()},
+            "latencies": {k: v.get("latency_ms") for k, v in results.items()},
+        }
+        _HEALTH_HISTORY.append(snapshot)
+
+        # Build trend from history
+        trend = None
+        if len(_HEALTH_HISTORY) >= 3:
+            recent = list(_HEALTH_HISTORY)[-10:]
+            healthy_count = sum(1 for h in recent if h.get("overall") == "healthy")
+            if healthy_count >= 8:
+                trend = "stable"
+            elif healthy_count >= 5:
+                trend = "fluctuating"
+            else:
+                trend = "degrading"
+
+        payload = {
+            "status": overall,
+            "aggregate_latency_ms": aggregate_latency_ms,
+            "servers": results,
+            "trend": trend,
+            "history_depth": len(_HEALTH_HISTORY),
+            "checked_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+        return web.json_response(payload, status=200 if overall == "healthy" else 207)
 
     async def handle_stats(request):
         payload = {
@@ -2922,6 +3015,9 @@ async def run_http_mode(port: int) -> None:
                 max_hints = int(body.get("max_hints", 4))
                 agent_type = ctx.get("agent_type", "remote") if isinstance(ctx, dict) else "remote"
                 include_debug_metadata = bool(body.get("include_debug_metadata") or body.get("debug"))
+                # Phase 10.3 — Token-efficient hint delivery
+                max_hint_tokens = int(body.get("max_hint_tokens", 0))
+                compact_mode = bool(body.get("compact", False))
             else:
                 is_continue = request.rel_url.query.get("format") == "continue"
                 query = request.rel_url.query.get("q", "")
@@ -2929,6 +3025,9 @@ async def run_http_mode(port: int) -> None:
                 max_hints = int(request.rel_url.query.get("max", "4"))
                 agent_type = request.rel_url.query.get("agent", "remote")
                 include_debug_metadata = request.rel_url.query.get("debug", "0").strip().lower() in {"1", "true", "yes"}
+                # Phase 10.3 — Token-efficient hint delivery
+                max_hint_tokens = int(request.rel_url.query.get("max_tokens", "0"))
+                compact_mode = request.rel_url.query.get("compact", "0").strip().lower() in {"1", "true", "yes"}
 
             try:
                 import sys as _sys
@@ -2944,6 +3043,8 @@ async def run_http_mode(port: int) -> None:
                     max_hints=max_hints,
                     agent_type=agent_type,
                     include_debug_metadata=include_debug_metadata,
+                    max_hint_tokens=max_hint_tokens,
+                    compact_mode=compact_mode,
                 )
             except Exception as exc:
                 logger.warning("hints_engine_unavailable error=%s", exc)
@@ -5017,7 +5118,7 @@ async def run_http_mode(port: int) -> None:
             "/harness/eval": int(os.getenv("RATE_LIMIT_EVAL_RPM", "20")),
             "/workflow": int(os.getenv("RATE_LIMIT_WORKFLOW_RPM", "30")),
         },
-        exempt_paths={"/health", "/metrics", "/health/detailed"},
+        exempt_paths={"/health", "/metrics", "/health/detailed", "/health/aggregate"},
     )
     _rate_limiter, rate_limit_middleware = create_rate_limiter_middleware(rate_limiter_config)
     logger.info(
@@ -5032,6 +5133,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)
+    http_app.router.add_get("/health/aggregate", handle_health_aggregate)  # Phase 11.2
     http_app.router.add_get("/status", handle_status)
     http_app.router.add_get("/stats", handle_stats)
     http_app.router.add_post("/augment_query", handle_augment_query)
