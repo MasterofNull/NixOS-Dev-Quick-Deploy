@@ -206,6 +206,7 @@ def _select_route_collections(
         term in q
         for term in ("pattern", "workflow", "best practice", "guide", "how", "approach", "strategy")
     )
+    task_shape = task_classifier.classify(query, "", max_output_tokens=200).task_type
 
     selected: List[str] = []
 
@@ -213,31 +214,56 @@ def _select_route_collections(
         if name in ordered and name not in selected:
             selected.append(name)
 
-    add("best-practices")
-    if wants_error or route in {"tree", "hybrid"}:
-        add("error-solutions")
-    if wants_code or generate_response or route == "tree" or continuation:
+    if wants_code or task_shape == "code" or generate_response or route == "tree" or continuation:
         add("codebase-context")
-    if wants_patterns or (generate_response and token_count >= 10):
+    if wants_error or task_shape == "code" or route in {"tree", "hybrid"}:
+        add("error-solutions")
+    if task_shape in {"lookup", "reasoning", "synthesize"} or wants_patterns:
+        add("best-practices")
+    if wants_patterns or task_shape in {"reasoning", "synthesize"} or (generate_response and token_count >= 10):
         add("skills-patterns")
     if wants_history:
         add("interaction-history")
 
     if not selected:
-        selected = ordered[:3]
+        if task_shape == "lookup":
+            for name in ("best-practices", "skills-patterns"):
+                add(name)
+        elif task_shape == "code":
+            for name in ("codebase-context", "error-solutions", "skills-patterns"):
+                add(name)
+        elif task_shape == "reasoning":
+            for name in ("best-practices", "skills-patterns", "codebase-context"):
+                add(name)
+        if not selected:
+            selected = ordered[:3]
 
     if continuation and "interaction-history" in selected:
         selected.remove("interaction-history")
 
     max_collections = 3
     profile = "standard"
-    if route == "tree" or (generate_response and token_count >= 12):
+    if task_shape == "lookup":
+        profile = "lookup-focused"
+        max_collections = 2
+    elif task_shape == "code" or wants_code:
+        profile = "code-focused"
+        max_collections = 3
+    elif task_shape == "reasoning":
+        profile = "reasoning-focused"
+        max_collections = 3
+    if route == "tree" or (generate_response and token_count >= 12 and task_shape not in {"lookup"}):
         max_collections = 4
-        profile = "detailed"
+        profile = "detailed" if profile == "standard" else f"{profile}-detailed"
     if wants_history:
         profile = "history-aware"
     elif continuation:
         profile = "continuation"
+        max_collections = min(max_collections, 2)
+    if continuation and (task_shape == "code" or wants_code or wants_error):
+        profile = "continuation-code"
+    elif continuation and task_shape == "reasoning":
+        profile = "continuation-reasoning"
 
     return {
         "profile": profile,
