@@ -255,12 +255,17 @@ scripts/testing/smoke-workflow-plan-lesson-refs.sh
 ```
 
 ### Batch 5.2: Skill Registry Expansion
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Expand shared skill coverage beyond current 24
+- [x] Expand shared skill coverage beyond current 24
 - [ ] Add skill usage tracking
 - [ ] Implement skill recommendation engine
 - [ ] Add external skill import validation
+
+**Evidence:** Added 3 new skills (26 total):
+- debug-workflow: Systematic debugging protocol
+- performance-profiler: Performance analysis workflow
+- security-scanner: OWASP-aligned security audit
 
 **Validation:**
 ```bash
@@ -429,6 +434,7 @@ python3 scripts/ai/aq-bitnet-compare.py
 | 2026-03-13 | 7.1 Package Validation | smoke-flagship-cli-surfaces.sh PASS, all CLIs respond to --help |
 | 2026-03-14 | 7.2 Support Matrix Update | docs/AGENT-PARITY-MATRIX.md updated with CLI support matrix |
 | 2026-03-14 | 6.1 Hint Template Expansion | 10 new templates added to registry.yaml |
+| 2026-03-14 | 5.2 Skill Registry Expansion | 3 new skills added (26 total) |
 
 ### Current Batch
 
