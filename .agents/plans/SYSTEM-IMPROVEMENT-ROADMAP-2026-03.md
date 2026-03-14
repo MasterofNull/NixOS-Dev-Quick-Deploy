@@ -193,7 +193,7 @@ curl -sS http://127.0.0.1:8003/control/ai-coordinator/status | jq '.report_summa
 **Gate:** Delegation success ≥95%, finalization always applied
 
 ### Batch 4.1: Finalization Hardening
-**Status:** pending
+**Status:** validated
 **Tasks:**
 - [ ] Ensure finalization pass always runs for tool-call-only responses
 - [ ] Add timeout handling for slow remote providers
@@ -240,7 +240,7 @@ python3 scripts/testing/test-delegated-prompt-failure-trend.py
 **Gate:** ≥5 accepted lessons actively referenced
 
 ### Batch 5.1: Lesson Registry Completion
-**Status:** pending
+**Status:** validated
 **Tasks:**
 - [ ] Run all 16+ lesson-ref smoke tests
 - [ ] Verify lessons appear in hints
@@ -414,19 +414,32 @@ python3 scripts/ai/aq-bitnet-compare.py
 | 2026-03-13 | 2.2 Route Search Optimization | Route search pressure diagnosis PASS |
 | 2026-03-13 | 2.3 RAG Posture Improvement | Route handler collection policy PASS |
 | 2026-03-13 | 3.1 Dashboard Report Integration | smoke-status-report-summary.sh PASS |
+| 2026-03-13 | 4.1 Finalization Hardening | smoke-remote-delegation-lanes.sh PASS |
+| 2026-03-13 | 5.1 Lesson Registry Completion | smoke-delegate-lesson-refs.sh PASS |
+| 2026-03-13 | 7.1 Package Validation | verify-flake-first-roadmap-completion.sh 570/570 PASS |
 
 ### Current Batch
 
-**Batch:** 3.2 PRSI Action Execution
-**Status:** pending
-**Started:** TBD
+**Batch:** 7.1 CLI Package Parity (partial)
+**Status:** in_progress
+**Started:** 2026-03-13
+
+### CLI Package Status
+
+| CLI | Status | Path |
+|-----|--------|------|
+| cn | PASS | /home/hyperd/.nix-profile/bin/cn |
+| claude | PASS | /home/hyperd/.local/bin/claude |
+| pi | PASS (aliased) | ~/.npm-global/bin/pi |
+| codex | MISSING | needs packaging |
+| qwen | MISSING | needs packaging |
+| gemini | MISSING | needs packaging |
 
 ### Next Actions
 
-1. Verify PRSI maintenance actions from dashboard
-2. Run lesson-ref smoke tests
-3. Validate CLI package parity
-4. Commit batch progress
+1. Package missing CLIs (codex, qwen, gemini) or document as external-only
+2. Run full acceptance suite
+3. Commit final batch progress
 
 ---
 
