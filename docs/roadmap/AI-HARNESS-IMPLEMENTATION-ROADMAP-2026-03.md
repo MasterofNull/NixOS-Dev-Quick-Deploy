@@ -143,6 +143,7 @@ Tracking fields to update after each slice:
 | 2026-03-13 | routing history and deploy summary | validated_local | `aq-report` now materializes routing history as 1h/24h/7d windows from route_search backend audit data and `nixos-quick-deploy.sh` surfaces the same routing trend in deploy summaries |
 | 2026-03-13 | continue/editor history and deploy summary | validated_local | `aq-report` now persists bounded Continue/editor health snapshots and materializes 1h/24h/7d health windows, and `nixos-quick-deploy.sh` surfaces a compact Continue trend line in deploy summaries |
 | 2026-03-13 | continue/editor failure-category reporting | validated_local | `aq-report` now classifies Continue/editor failures into typed categories such as `agent_flow`, `switchboard_routing`, and `editor_extension`, persists the latest category set into history windows, and `nixos-quick-deploy.sh` now surfaces the top current category plus the latest 24h category mix when the editor path is degraded |
+| 2026-03-13 | route-search collection narrowing policy | validated_local | `route_handler` now narrows retrieval collections by task class and continuation context instead of using a mostly static broad profile, so continuation code/debug asks stay on a tighter `continuation-code` path and lookup/reasoning asks avoid unnecessary collection fan-out before the report layer flags `broad_scanning` |
 
 ## High-Priority Tracks
 
@@ -311,17 +312,18 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `retrieval breadth, continuation memory recall, report visibility, and a report-backed aq-qa acceptance check are live, aq-report plus hints now classify memory recall explicitly as weak vs unused with structured remediation actions, and route_search breadth/provider pressure are being tightened into explicit diagnosis and remediation instead of threshold-only summaries; the next gap is applying those route_search remediation signals back into narrowing and fallback policy rather than visibility alone`
+Current Slice: `retrieval breadth, continuation memory recall, report visibility, and a report-backed aq-qa acceptance check are live, aq-report plus hints now classify memory recall explicitly as weak vs unused with structured remediation actions, route_search breadth/provider pressure are now expressed as explicit diagnosis/remediation instead of threshold-only summaries, and route_handler now narrows collection fan-out by task class plus continuation context so code/debug continuations, lookup asks, and reasoning asks do not all share the same broad retrieval profile; the next gap is applying the provider-fallback pressure signal back into runtime fallback policy rather than visibility alone`
 Next Validation:
 - `scripts/ai/aq-report --format text`
 - `scripts/ai/aq-report --format json | jq '.rag_posture, .route_retrieval_breadth'`
 - `python3 scripts/testing/test-rag-posture-diagnosis.py`
 - `python3 scripts/testing/test-route-search-pressure-diagnosis.py`
+- `python3 scripts/testing/test-route-handler-collection-policy.py`
 - `scripts/ai/aq-qa 1 --json | jq '.tests[] | select(.id == "1.5.3")'`
 - `scripts/ai/aq-qa 0 --json`
 Open Risks / Blockers:
 - `route_search` is still the main active recent reliability issue
-- memory recall diagnosis is now explicit, but route_search pressure remediation is still not complete
+- memory recall diagnosis is now explicit and collection narrowing is runtime-backed, but provider-fallback pressure remediation is still not complete
 
 Goal:
 - make retrieval selection intentional, cheap, and visible
