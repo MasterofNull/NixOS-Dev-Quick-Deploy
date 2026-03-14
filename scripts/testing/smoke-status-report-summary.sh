@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Smoke test: verify ai-coordinator status endpoint exposes compact aq-report summary
+# Validates report_summary structure with trend data for remote_profile, routing,
+# retrieval, continue_editor, and workflow_review metrics.
 set -euo pipefail
 
 HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
