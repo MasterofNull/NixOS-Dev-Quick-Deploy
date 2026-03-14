@@ -341,12 +341,14 @@ cn --help && codex --help && qwen --help && gemini --help && claude --help && pi
 ```
 
 ### Batch 7.2: Support Matrix Update
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Update support matrix with current status
-- [ ] Document external-only surfaces
-- [ ] Add harness integration status per CLI
-- [ ] Create upgrade path documentation
+- [x] Update support matrix with current status
+- [x] Document external-only surfaces
+- [x] Add harness integration status per CLI
+- [x] Create upgrade path documentation
+
+**Evidence:** docs/AGENT-PARITY-MATRIX.md updated with CLI Support Matrix section
 
 **Validation:**
 ```bash
@@ -419,12 +421,13 @@ python3 scripts/ai/aq-bitnet-compare.py
 | 2026-03-13 | 4.1 Finalization Hardening | smoke-remote-delegation-lanes.sh PASS |
 | 2026-03-13 | 5.1 Lesson Registry Completion | smoke-delegate-lesson-refs.sh PASS |
 | 2026-03-13 | 7.1 Package Validation | smoke-flagship-cli-surfaces.sh PASS, all CLIs respond to --help |
+| 2026-03-14 | 7.2 Support Matrix Update | docs/AGENT-PARITY-MATRIX.md updated with CLI support matrix |
 
 ### Current Batch
 
-**Batch:** 7.2 Support Matrix Update
-**Status:** in_progress
-**Started:** 2026-03-13
+**Batch:** Phase 7 Complete - Moving to remaining pending batches
+**Status:** complete
+**Completed:** 2026-03-14
 
 ### CLI Package Status
 
