@@ -1,40 +1,38 @@
 # Improvement Discovery Report
 **Date:** 2026-03-13
-**Status:** active
-**Owner:** codex
+**Status:** Active
+**Owner:** AI Harness
 **Last Updated:** 2026-03-13
-**Note:** GitHub rate limit exceeded; set `GITHUB_TOKEN` or `GH_TOKEN` and rerun.
-
 
 ## Candidate Summary (Scored)
 
 ### https://github.com/ggml-org/llama.cpp/releases
 - **Repo:** ggml-org/llama.cpp
 - **Score:** 64.0
-- **Latest release:** b8323
-- **Release URL:** https://github.com/ggml-org/llama.cpp/releases/tag/b8323
-- **Stars:** 97828
+- **Latest release:** b8325
+- **Release URL:** https://github.com/ggml-org/llama.cpp/releases/tag/b8325
+- **Stars:** 97843
 
 ### https://github.com/qdrant/qdrant/releases
 - **Repo:** qdrant/qdrant
 - **Score:** 56.0
 - **Latest release:** v1.17.0
 - **Release URL:** https://github.com/qdrant/qdrant/releases/tag/v1.17.0
-- **Stars:** 29501
+- **Stars:** 29509
 
 ### https://github.com/ollama/ollama/releases
 - **Repo:** ollama/ollama
 - **Score:** 56.0
 - **Latest release:** v0.17.7
 - **Release URL:** https://github.com/ollama/ollama/releases/tag/v0.17.7
-- **Stars:** 164969
+- **Stars:** 164982
 
 ### https://github.com/open-webui/open-webui/releases
 - **Repo:** open-webui/open-webui
 - **Score:** 48.0
 - **Latest release:** v0.8.10
 - **Release URL:** https://github.com/open-webui/open-webui/releases/tag/v0.8.10
-- **Stars:** 127052
+- **Stars:** 127076
 
 ### https://github.com/numman-ali/openskills/releases
 - **Repo:** numman-ali/openskills
@@ -43,9 +41,16 @@
 - **Release URL:** https://github.com/numman-ali/openskills/releases/tag/v1.5.0
 - **Stars:** 9001
 
+### https://github.com/utensils/mcp-nixos/releases
+- **Repo:** utensils/mcp-nixos
+- **Score:** 31.66
+- **Latest release:** v2.3.0: HTTP Transport & Modular Architecture
+- **Release URL:** https://github.com/utensils/mcp-nixos/releases/tag/v2.3.0
+- **Stars:** 473
+
 ## Signals (Low-Trust)
 
-- https://github.com/utensils/mcp-nixos/releases (error: 'NoneType' object has no attribute 'get')
+- None
 
 ## Skipped (Not Due)
 
@@ -80,16 +85,16 @@
 - **Tag:** v1.17.0
 - **Release URL:** https://github.com/qdrant/qdrant/releases/tag/v1.17.0
 - **Published:** 2026-02-20T11:11:50Z
-- **Stars:** 29501
+- **Stars:** 29509
 
 ### https://github.com/ggml-org/llama.cpp/releases
 - **Type:** github_release
 - **Weight:** 0.8
-- **Latest release:** b8323
-- **Tag:** b8323
-- **Release URL:** https://github.com/ggml-org/llama.cpp/releases/tag/b8323
-- **Published:** 2026-03-13T19:50:30Z
-- **Stars:** 97828
+- **Latest release:** b8325
+- **Tag:** b8325
+- **Release URL:** https://github.com/ggml-org/llama.cpp/releases/tag/b8325
+- **Published:** 2026-03-14T00:50:58Z
+- **Stars:** 97843
 
 ### https://github.com/open-webui/open-webui/releases
 - **Type:** github_release
@@ -98,7 +103,7 @@
 - **Tag:** v0.8.10
 - **Release URL:** https://github.com/open-webui/open-webui/releases/tag/v0.8.10
 - **Published:** 2026-03-09T00:09:55Z
-- **Stars:** 127052
+- **Stars:** 127076
 
 ### https://github.com/ollama/ollama/releases
 - **Type:** github_release
@@ -107,7 +112,7 @@
 - **Tag:** v0.17.7
 - **Release URL:** https://github.com/ollama/ollama/releases/tag/v0.17.7
 - **Published:** 2026-03-05T05:51:09Z
-- **Stars:** 164969
+- **Stars:** 164982
 
 ### https://github.com/numman-ali/openskills/releases
 - **Type:** github_release
@@ -121,7 +126,10 @@
 ### https://github.com/utensils/mcp-nixos/releases
 - **Type:** github_release
 - **Weight:** 0.5
-- **Error:** HTTP Error 403: rate limit exceeded
+- **Latest release:** v2.3.0: HTTP Transport & Modular Architecture
+- **Tag:** v2.3.0
+- **Release URL:** https://github.com/utensils/mcp-nixos/releases/tag/v2.3.0
+- **Published:** 2026-03-06T03:35:57Z
 - **Stars:** 473
 
 ### https://paperswithcode.com/
