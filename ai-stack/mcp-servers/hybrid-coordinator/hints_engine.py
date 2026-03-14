@@ -359,6 +359,229 @@ def _compress_snippet(snippet: str, max_chars: int = 200) -> str:
     return truncated.rstrip() + "…"
 
 
+# ---------------------------------------------------------------------------
+# Context-Aware Token Budgeting (Phase 10.3 Extension)
+# ---------------------------------------------------------------------------
+
+class TokenBudgetContext:
+    """
+    Context-aware token budget calculator.
+
+    Adjusts token limits based on:
+    - Task phase: new_phase > continued_work > sub_task
+    - Compaction state: post_compaction gets restored budget
+    - Query complexity: complex queries get more tokens
+
+    Usage:
+        budget = TokenBudgetContext()
+        tokens = budget.calculate(
+            task_phase="new_phase",
+            query_complexity="complex",
+            post_compaction=False
+        )
+    """
+
+    # Base budgets by task phase
+    PHASE_BUDGETS = {
+        "new_phase": 600,       # Starting new work - need full context
+        "continued_work": 350,  # Already have context from previous turns
+        "sub_task": 200,        # Delegated sub-task - parent has context
+        "refinement": 150,      # Minor refinement - minimal context needed
+    }
+
+    # Multipliers for query complexity
+    COMPLEXITY_MULTIPLIERS = {
+        "simple": 0.6,          # Simple lookup/factual
+        "medium": 1.0,          # Standard task
+        "complex": 1.5,         # Multi-step reasoning
+        "architecture": 2.0,    # Design/architecture decisions
+    }
+
+    # Post-compaction restoration factor
+    COMPACTION_RESTORE_FACTOR = 1.8  # Restore ~80% more tokens after compaction
+
+    def __init__(self):
+        self._session_turn_count = 0
+        self._last_compaction_turn = 0
+
+    def calculate(
+        self,
+        task_phase: str = "continued_work",
+        query_complexity: str = "medium",
+        post_compaction: bool = False,
+        turn_count: int = 0,
+    ) -> int:
+        """
+        Calculate context-aware token budget.
+
+        Args:
+            task_phase: new_phase | continued_work | sub_task | refinement
+            query_complexity: simple | medium | complex | architecture
+            post_compaction: True if context was recently compacted
+            turn_count: Current conversation turn (0 = auto-detect)
+
+        Returns:
+            Recommended token budget for hints
+        """
+        base = self.PHASE_BUDGETS.get(task_phase, self.PHASE_BUDGETS["continued_work"])
+        multiplier = self.COMPLEXITY_MULTIPLIERS.get(query_complexity, 1.0)
+
+        budget = int(base * multiplier)
+
+        # Post-compaction: restore larger budget to avoid context starvation
+        if post_compaction:
+            budget = int(budget * self.COMPACTION_RESTORE_FACTOR)
+
+        # Early turns in session get slightly more context
+        effective_turn = turn_count if turn_count > 0 else self._session_turn_count
+        if effective_turn <= 2:
+            budget = int(budget * 1.2)  # 20% boost for early context building
+
+        return min(budget, 1200)  # Hard cap to prevent runaway
+
+    def detect_phase(self, query: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """Auto-detect task phase from query and context."""
+        query_lower = query.lower()
+
+        # New phase indicators
+        new_phase_signals = [
+            "implement", "create", "build", "add feature", "new",
+            "design", "architect", "plan", "start", "begin"
+        ]
+        if any(s in query_lower for s in new_phase_signals):
+            return "new_phase"
+
+        # Sub-task indicators
+        subtask_signals = [
+            "fix", "update", "modify", "change", "adjust",
+            "then", "next", "also", "and then"
+        ]
+        if any(s in query_lower for s in subtask_signals):
+            return "sub_task"
+
+        # Refinement indicators
+        refinement_signals = [
+            "tweak", "polish", "cleanup", "format", "rename",
+            "typo", "minor", "small"
+        ]
+        if any(s in query_lower for s in refinement_signals):
+            return "refinement"
+
+        # Default to continued work
+        return "continued_work"
+
+    def detect_complexity(self, query: str) -> str:
+        """Auto-detect query complexity."""
+        query_lower = query.lower()
+        word_count = len(query.split())
+
+        # Architecture/design signals
+        arch_signals = [
+            "architect", "design", "system", "infrastructure",
+            "security", "scalab", "performance", "tradeoff"
+        ]
+        if any(s in query_lower for s in arch_signals):
+            return "architecture"
+
+        # Complex task signals
+        complex_signals = [
+            "implement", "integrate", "migrate", "refactor",
+            "debug", "troubleshoot", "multi-step", "complex"
+        ]
+        if any(s in query_lower for s in complex_signals) or word_count > 30:
+            return "complex"
+
+        # Simple task signals
+        simple_signals = [
+            "what is", "how do", "where", "list", "show",
+            "find", "get", "check"
+        ]
+        if any(s in query_lower for s in simple_signals) and word_count < 15:
+            return "simple"
+
+        return "medium"
+
+    def increment_turn(self) -> None:
+        """Increment session turn counter."""
+        self._session_turn_count += 1
+
+    def mark_compaction(self) -> None:
+        """Mark that compaction occurred at current turn."""
+        self._last_compaction_turn = self._session_turn_count
+
+    def is_post_compaction(self, lookback_turns: int = 2) -> bool:
+        """Check if we're in post-compaction recovery window."""
+        return (self._session_turn_count - self._last_compaction_turn) <= lookback_turns
+
+
+# Singleton for session-scoped budget tracking
+_token_budget_context: Optional[TokenBudgetContext] = None
+
+
+def get_token_budget_context() -> TokenBudgetContext:
+    """Get or create singleton TokenBudgetContext."""
+    global _token_budget_context
+    if _token_budget_context is None:
+        _token_budget_context = TokenBudgetContext()
+    return _token_budget_context
+
+
+def calculate_context_aware_budget(
+    query: str,
+    task_phase: Optional[str] = None,
+    query_complexity: Optional[str] = None,
+    post_compaction: bool = False,
+) -> Dict[str, Any]:
+    """
+    Convenience function for context-aware token budget calculation.
+
+    Returns dict with budget and metadata for transparency.
+    """
+    ctx = get_token_budget_context()
+
+    # Auto-detect if not provided
+    detected_phase = task_phase or ctx.detect_phase(query)
+    detected_complexity = query_complexity or ctx.detect_complexity(query)
+    is_post_compact = post_compaction or ctx.is_post_compaction()
+
+    budget = ctx.calculate(
+        task_phase=detected_phase,
+        query_complexity=detected_complexity,
+        post_compaction=is_post_compact,
+    )
+
+    return {
+        "recommended_tokens": budget,
+        "task_phase": detected_phase,
+        "query_complexity": detected_complexity,
+        "post_compaction": is_post_compact,
+        "rationale": _budget_rationale(detected_phase, detected_complexity, is_post_compact),
+    }
+
+
+def _budget_rationale(phase: str, complexity: str, post_compact: bool) -> str:
+    """Generate human-readable rationale for budget decision."""
+    parts = []
+    if phase == "new_phase":
+        parts.append("new work needs full context")
+    elif phase == "sub_task":
+        parts.append("sub-task inherits parent context")
+    elif phase == "refinement":
+        parts.append("minor refinement needs minimal context")
+
+    if complexity == "architecture":
+        parts.append("architecture requires comprehensive context")
+    elif complexity == "complex":
+        parts.append("complex task needs broader context")
+    elif complexity == "simple":
+        parts.append("simple query needs focused context")
+
+    if post_compact:
+        parts.append("post-compaction recovery boost applied")
+
+    return "; ".join(parts) if parts else "standard context allocation"
+
+
 def _longest_common_substring_len(a: str, b: str) -> int:
     """Return the length of the longest common substring of a and b."""
     if not a or not b:
@@ -1323,6 +1546,9 @@ class HintsEngine:
             serialized_hints.append(hint_dict)
             total_hint_tokens += hint_token_est
 
+        # Context-aware budget calculation
+        context_budget = calculate_context_aware_budget(query)
+
         result = {
             "hints": serialized_hints,
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -1335,6 +1561,11 @@ class HintsEngine:
                 "max_tokens": max_hint_tokens if max_hint_tokens > 0 else None,
                 "hints_truncated": hints_truncated,
                 "compact_mode": compact_mode,
+                # Context-aware recommendations
+                "recommended_tokens": context_budget["recommended_tokens"],
+                "task_phase": context_budget["task_phase"],
+                "query_complexity": context_budget["query_complexity"],
+                "rationale": context_budget["rationale"],
             },
             "feedback_contract": {
                 "endpoint": "/hints/feedback",

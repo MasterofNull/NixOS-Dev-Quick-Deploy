@@ -46,6 +46,9 @@ from ai_coordinator import (
     infer_profile as _ai_coordinator_infer_profile,
     merge_runtime_defaults as _ai_coordinator_merge_runtime_defaults,
     prune_runtime_registry as _ai_coordinator_prune_runtime_registry,
+    # Phase 9.3 — Query Complexity Routing
+    route_by_complexity as _ai_coordinator_route_by_complexity,
+    get_routing_stats as _ai_coordinator_get_routing_stats,
 )
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
@@ -1745,6 +1748,8 @@ async def run_http_mode(port: int) -> None:
             "routing": {
                 "threshold": threshold,
                 "local_supports_json": os.getenv("LOCAL_MODEL_SUPPORTS_JSON", "false").lower() == "true",
+                # Phase 9.3 — Query Complexity Routing stats
+                "complexity_routing": _ai_coordinator_get_routing_stats(),
             },
         }
         async with _agent_lessons_lock:
@@ -3018,6 +3023,9 @@ async def run_http_mode(port: int) -> None:
                 # Phase 10.3 — Token-efficient hint delivery
                 max_hint_tokens = int(body.get("max_hint_tokens", 0))
                 compact_mode = bool(body.get("compact", False))
+                # Context-aware token budgeting
+                task_phase = body.get("task_phase", "")  # new_phase, continued_work, sub_task, refinement
+                post_compaction = bool(body.get("post_compaction", False))
             else:
                 is_continue = request.rel_url.query.get("format") == "continue"
                 query = request.rel_url.query.get("q", "")
@@ -3028,6 +3036,9 @@ async def run_http_mode(port: int) -> None:
                 # Phase 10.3 — Token-efficient hint delivery
                 max_hint_tokens = int(request.rel_url.query.get("max_tokens", "0"))
                 compact_mode = request.rel_url.query.get("compact", "0").strip().lower() in {"1", "true", "yes"}
+                # Context-aware token budgeting
+                task_phase = request.rel_url.query.get("task_phase", "")
+                post_compaction = request.rel_url.query.get("post_compaction", "0").strip().lower() in {"1", "true", "yes"}
 
             try:
                 import sys as _sys
@@ -4488,7 +4499,11 @@ async def run_http_mode(port: int) -> None:
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
 
             requested_profile = str(data.get("profile") or "").strip().lower()
-            selected_profile = _ai_coordinator_infer_profile(task, requested_profile)
+            prefer_local = bool(data.get("prefer_local", False))
+
+            # Phase 9.3 — Use complexity routing for auto-selection
+            routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
+            selected_profile = routing_decision["recommended_profile"]
             selected_runtime_id = _ai_coordinator_default_runtime_id_for_profile(selected_profile)
 
             async with _runtime_registry_lock:
@@ -4761,6 +4776,12 @@ async def run_http_mode(port: int) -> None:
                         "profile": runtime.get("profile", effective_profile),
                         "model_alias": runtime.get("model_alias", ""),
                         "status": runtime.get("status", status),
+                    },
+                    # Phase 9.3 — Query complexity routing decision
+                    "routing_decision": {
+                        "complexity": routing_decision.get("complexity", "unknown"),
+                        "auto_routed": routing_decision.get("auto_routed", False),
+                        "rationale": routing_decision.get("rationale", ""),
                     },
                     "fallback": (
                         {
