@@ -101,6 +101,16 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include verbose hint/debug metadata in JSON output",
     )
+    # Phase 10.3 — Token-efficient hint delivery
+    p.add_argument(
+        "--compact",
+        action="store_true",
+        help="Use compact hint format for minimal token footprint",
+    )
+    p.add_argument(
+        "--max-tokens", type=int, default=0,
+        help="Cap total hint tokens (0 = unlimited, e.g. 200 for tight budget)",
+    )
     return p.parse_args()
 
 
@@ -109,7 +119,10 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 
-def _fetch_local(query: str, context: str, max_hints: int, agent: str, debug_meta: bool) -> Optional[Dict[str, Any]]:
+def _fetch_local(
+    query: str, context: str, max_hints: int, agent: str, debug_meta: bool,
+    compact: bool = False, max_tokens: int = 0
+) -> Optional[Dict[str, Any]]:
     if not _ENGINE_AVAILABLE:
         return None
     try:
@@ -120,15 +133,23 @@ def _fetch_local(query: str, context: str, max_hints: int, agent: str, debug_met
             max_hints=max_hints,
             agent_type=agent,
             include_debug_metadata=debug_meta,
+            max_hint_tokens=max_tokens,
+            compact_mode=compact,
         )
     except Exception:
         return None
 
 
-def _fetch_rest(query: str, context: str, max_hints: int, agent: str, debug_meta: bool) -> Optional[Dict[str, Any]]:
-    params = urllib.parse.urlencode(
-        {"q": query, "context": context, "max": max_hints, "agent": agent, "debug": "1" if debug_meta else "0"}
-    )
+def _fetch_rest(
+    query: str, context: str, max_hints: int, agent: str, debug_meta: bool,
+    compact: bool = False, max_tokens: int = 0
+) -> Optional[Dict[str, Any]]:
+    params = urllib.parse.urlencode({
+        "q": query, "context": context, "max": max_hints, "agent": agent,
+        "debug": "1" if debug_meta else "0",
+        "compact": "1" if compact else "0",
+        "max_tokens": str(max_tokens),
+    })
     url = f"{HYBRID_URL}/hints?{params}"
     try:
         headers = {"Accept": "application/json"}
@@ -142,8 +163,14 @@ def _fetch_rest(query: str, context: str, max_hints: int, agent: str, debug_meta
         return None
 
 
-def get_hints(query: str, context: str, max_hints: int, agent: str, debug_meta: bool) -> Dict[str, Any]:
-    result = _fetch_local(query, context, max_hints, agent, debug_meta) or _fetch_rest(query, context, max_hints, agent, debug_meta)
+def get_hints(
+    query: str, context: str, max_hints: int, agent: str, debug_meta: bool,
+    compact: bool = False, max_tokens: int = 0
+) -> Dict[str, Any]:
+    result = (
+        _fetch_local(query, context, max_hints, agent, debug_meta, compact, max_tokens)
+        or _fetch_rest(query, context, max_hints, agent, debug_meta, compact, max_tokens)
+    )
     if result is None:
         print(
             "ERROR: hints_engine unavailable locally and REST fallback failed.\n"
@@ -335,7 +362,10 @@ def _format_shell_complete(result: Dict[str, Any]) -> str:
 
 def main() -> None:
     args = _parse_args()
-    result = get_hints(args.query, args.context, args.max, args.agent, args.debug_meta)
+    result = get_hints(
+        args.query, args.context, args.max, args.agent, args.debug_meta,
+        compact=args.compact, max_tokens=args.max_tokens
+    )
     result = _augment_for_agent(result, args.agent, args.debug_meta)
 
     if args.fmt == "json":
