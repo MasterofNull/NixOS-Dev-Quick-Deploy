@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "description": "Provider fallback policy for automatic recovery and cost-aware routing",
+  "fallback_triggers": {
+    "rate_limited": {
+      "enabled": true,
+      "http_codes": [429],
+      "fallback_order": ["local-hybrid", "local-llama", "queue"],
+      "cooldown_seconds": 300,
+      "max_retry_attempts": 2
+    },
+    "provider_error": {
+      "enabled": true,
+      "http_codes": [500, 502, 503, 504],
+      "fallback_order": ["local-hybrid", "retry"],
+      "cooldown_seconds": 60,
+      "max_retry_attempts": 3
+    },
+    "auth_failure": {
+      "enabled": true,
+      "http_codes": [401, 403],
+      "fallback_order": ["alert", "local-hybrid"],
+      "cooldown_seconds": 0,
+      "max_retry_attempts": 0
+    },
+    "timeout": {
+      "enabled": true,
+      "threshold_seconds": 30,
+      "fallback_order": ["local-hybrid"],
+      "cooldown_seconds": 120,
+      "max_retry_attempts": 1
+    }
+  },
+  "provider_health": {
+    "tracking_enabled": true,
+    "window_seconds": 3600,
+    "degraded_threshold_pct": 20,
+    "unhealthy_threshold_pct": 50,
+    "recovery_checks": 3,
+    "metrics": ["success_rate", "avg_latency_ms", "rate_limit_count"]
+  },
+  "selection_scoring": {
+    "weights": {
+      "health_score": 0.35,
+      "latency_score": 0.20,
+      "cost_score": 0.20,
+      "success_rate": 0.15,
+      "capability_match": 0.10
+    },
+    "prefer_local_for": {
+      "task_types": ["code_completion", "simple_query", "cached_patterns"],
+      "min_confidence": 0.7
+    }
+  },
+  "cost_aware_routing": {
+    "enabled": true,
+    "budget_tracking": false,
+    "hints": [
+      {
+        "condition": "task_tokens < 500 AND cache_available",
+        "prefer": "local-hybrid",
+        "reason": "small task with cache, local preferred for cost"
+      },
+      {
+        "condition": "task_type == 'reasoning' AND complexity > 0.8",
+        "prefer": "remote-reasoning",
+        "reason": "complex reasoning benefits from remote model"
+      },
+      {
+        "condition": "rate_limit_pressure > 0.5",
+        "prefer": "local-hybrid",
+        "reason": "active rate limit pressure, prefer local"
+      }
+    ],
+    "provider_costs": {
+      "local-hybrid": {"input_per_1k": 0.0, "output_per_1k": 0.0},
+      "local-llama": {"input_per_1k": 0.0, "output_per_1k": 0.0},
+      "openai-gpt4": {"input_per_1k": 0.03, "output_per_1k": 0.06},
+      "anthropic-claude": {"input_per_1k": 0.015, "output_per_1k": 0.075},
+      "gemini-pro": {"input_per_1k": 0.00125, "output_per_1k": 0.005}
+    }
+  },
+  "alerts": {
+    "rate_limit_threshold": 5,
+    "error_rate_threshold_pct": 25,
+    "channels": ["log", "status_endpoint"]
+  }
+}

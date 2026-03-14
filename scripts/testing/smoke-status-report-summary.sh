@@ -34,10 +34,29 @@ http_code="$(
 }
 
 jq -e '.report_summary.available == true' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.trend_summary != null' "${TMP_JSON}" >/dev/null
+
+# Verify 1h/24h/7d windows for all tracked metrics
+jq -e '.report_summary.remote_profile_utilization.trend_1h != null' "${TMP_JSON}" >/dev/null
 jq -e '.report_summary.remote_profile_utilization.trend_24h != null' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.remote_profile_utilization.trend_7d != null' "${TMP_JSON}" >/dev/null
+
+jq -e '.report_summary.routing.trend_1h != null' "${TMP_JSON}" >/dev/null
 jq -e '.report_summary.routing.trend_24h != null' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.routing.trend_7d != null' "${TMP_JSON}" >/dev/null
+
+jq -e '.report_summary.retrieval.trend_1h != null' "${TMP_JSON}" >/dev/null
 jq -e '.report_summary.retrieval.trend_24h != null' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.retrieval.trend_7d != null' "${TMP_JSON}" >/dev/null
+
+jq -e '.report_summary.continue_editor.trend_1h != null' "${TMP_JSON}" >/dev/null
 jq -e '.report_summary.continue_editor.trend_24h != null' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.continue_editor.trend_7d != null' "${TMP_JSON}" >/dev/null
+
+jq -e '.report_summary.delegation_failures.trend_1h != null' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.delegation_failures.trend_24h != null' "${TMP_JSON}" >/dev/null
+jq -e '.report_summary.delegation_failures.trend_7d != null' "${TMP_JSON}" >/dev/null
+
 jq -e '.report_summary.workflow_review.required_reviews >= 0' "${TMP_JSON}" >/dev/null
 
-printf 'PASS: ai-coordinator status exposes compact aq-report summary\n'
+printf 'PASS: ai-coordinator status exposes compact aq-report summary with 1h/24h/7d trends\n'
