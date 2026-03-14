@@ -2234,12 +2234,21 @@ def route_provider_fallback_health(entries: List[dict]) -> Dict[str, Any]:
         fallback_status = metadata.get("fallback_status_code")
         if isinstance(fallback_status, int):
             status_counts[fallback_status] = status_counts.get(fallback_status, 0) + 1
+    diagnosis = "healthy"
+    actions: List[str] = []
+    if not route_events:
+        diagnosis = "historical"
+    elif recovered_count >= 1:
+        diagnosis = "provider_fallback_pressure"
+        actions.append("prefer local-first routing for bounded tasks while upstream 4xx pressure is active")
     return {
         "available": True,
         "route_calls": len(route_events),
         "recovered_count": recovered_count,
         "recovered_pct": round(100 * recovered_count / len(route_events), 1) if route_events else None,
         "status_counts": sorted(status_counts.items(), key=lambda item: (-item[1], item[0])),
+        "diagnosis": diagnosis,
+        "actions": actions,
     }
 
 
@@ -2250,7 +2259,12 @@ def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
         if str(e.get("tool_name", "")).strip().lower() == "route_search"
     ]
     if not route_events:
-        return {"available": True, "route_calls": 0}
+        return {
+            "available": True,
+            "route_calls": 0,
+            "diagnosis": "historical",
+            "actions": [],
+        }
     total_count = 0
     with_count = 0
     profile_counts: Dict[str, int] = {}
@@ -2263,12 +2277,25 @@ def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
         if isinstance(collection_count, int):
             total_count += collection_count
             with_count += 1
+    avg_collection_count = round(total_count / with_count, 2) if with_count else None
+    top_profiles = sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:3]
+    diagnosis = "healthy"
+    actions: List[str] = []
+    if len(route_events) == 0:
+        diagnosis = "historical"
+    elif avg_collection_count is not None and float(avg_collection_count) > 4.0:
+        diagnosis = "broad_scanning"
+        actions.append("narrow route_search collection selection by query class and continuation context")
+        if top_profiles:
+            actions.append(f"review dominant retrieval profile '{top_profiles[0][0]}' for over-broad collection fan-out")
     return {
         "available": True,
         "route_calls": len(route_events),
         "with_count": with_count,
-        "avg_collection_count": round(total_count / with_count, 2) if with_count else None,
-        "top_profiles": sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:3],
+        "avg_collection_count": avg_collection_count,
+        "top_profiles": top_profiles,
+        "diagnosis": diagnosis,
+        "actions": actions,
     }
 
 
@@ -2578,18 +2605,24 @@ def build_recommendations(
         if recovered_count > 0:
             status_counts = recent_provider_fallbacks.get("status_counts") or []
             status_text = _format_provider_fallback_statuses(status_counts) if status_counts else "4xx"
+            provider_actions = recent_provider_fallbacks.get("actions") or []
+            action_suffix = f" Next: {provider_actions[0]}." if provider_actions else ""
             recs.append(
                 f"Recovered remote-provider fallbacks observed ({recovered_count} recent route_search calls; upstream {status_text}). "
                 "Treat this as provider-budget or remote-routing pressure, not a local backend outage."
+                + action_suffix
             )
     if recent_retrieval_breadth and recent_retrieval_breadth.get("available"):
         avg_collection_count = recent_retrieval_breadth.get("avg_collection_count")
         if avg_collection_count is not None and float(avg_collection_count) > 4.0:
             top_profiles = recent_retrieval_breadth.get("top_profiles") or []
             profile_note = f" Dominant profile: {top_profiles[0][0]}." if top_profiles else ""
+            breadth_actions = recent_retrieval_breadth.get("actions") or []
+            action_suffix = f" Next: {breadth_actions[0]}." if breadth_actions else ""
             recs.append(
                 f"route_search is still scanning a broad collection set ({avg_collection_count} collections/call recent avg)."
                 + profile_note
+                + action_suffix
             )
 
     # Query gaps — check AIDB for existing docs before recommending import
@@ -3716,6 +3749,12 @@ def format_md(
         if top_profiles:
             labels = ", ".join(f"`{name}` ({count})" for name, count in top_profiles[:3])
             lines.append(f"- Active profiles: {labels}")
+        diagnosis = retrieval_breadth.get("diagnosis")
+        actions = retrieval_breadth.get("actions") or []
+        if diagnosis:
+            lines.append(f"- Retrieval breadth diagnosis: **{diagnosis}**")
+        if actions:
+            lines.append(f"- Retrieval breadth remediation: {'; '.join(str(action) for action in actions)}")
     lines.append("")
 
     lines += ["## 8bb. Retrieval Breadth Trends", ""]
@@ -3750,6 +3789,12 @@ def format_md(
         status_counts = provider_fallbacks.get("status_counts") or []
         if status_counts:
             lines.append(f"- Upstream status mix: {_format_provider_fallback_statuses(status_counts)}")
+        diagnosis = provider_fallbacks.get("diagnosis")
+        actions = provider_fallbacks.get("actions") or []
+        if diagnosis:
+            lines.append(f"- Provider fallback diagnosis: **{diagnosis}**")
+        if actions:
+            lines.append(f"- Provider fallback remediation: {'; '.join(str(action) for action in actions)}")
         lines.append("- These are tracked separately from backend failures because the user-visible request recovered locally.")
     lines.append("")
 
@@ -4403,6 +4448,12 @@ def format_text(
         if top_profiles:
             labels = ", ".join(f"{name}({count})" for name, count in top_profiles[:3])
             lines.append(f"  Active profiles: {labels}")
+        diagnosis = retrieval_breadth.get("diagnosis")
+        actions = retrieval_breadth.get("actions") or []
+        if diagnosis:
+            lines.append(f"  Retrieval breadth diagnosis: {diagnosis}")
+        if actions:
+            lines.append(f"  Retrieval breadth remediation: {'; '.join(str(action) for action in actions)}")
     lines.append("")
 
     lines += ["[ 8bb. Retrieval Breadth Trends ]"]
@@ -4436,6 +4487,12 @@ def format_text(
         status_counts = provider_fallbacks.get("status_counts") or []
         if status_counts:
             lines.append(f"  Upstream status mix: {_format_provider_fallback_statuses(status_counts)}")
+        diagnosis = provider_fallbacks.get("diagnosis")
+        actions = provider_fallbacks.get("actions") or []
+        if diagnosis:
+            lines.append(f"  Provider fallback diagnosis: {diagnosis}")
+        if actions:
+            lines.append(f"  Provider fallback remediation: {'; '.join(str(action) for action in actions)}")
         lines.append("  These are tracked separately from backend failures because the request recovered locally.")
     lines.append("")
 

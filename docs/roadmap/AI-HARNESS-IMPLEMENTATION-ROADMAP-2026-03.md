@@ -309,11 +309,12 @@ Acceptance:
 
 Track Status: `in_progress`
 Last Updated: `2026-03-13`
-Current Slice: `retrieval breadth, continuation memory recall, report visibility, and a report-backed aq-qa acceptance check are live, and aq-report plus hints now classify memory recall explicitly as weak vs unused with structured remediation actions instead of only free-text notes; the next gap is tightening route_search reliability/remediation loops around recent pressure rather than visibility alone`
+Current Slice: `retrieval breadth, continuation memory recall, report visibility, and a report-backed aq-qa acceptance check are live, aq-report plus hints now classify memory recall explicitly as weak vs unused with structured remediation actions, and route_search breadth/provider pressure are being tightened into explicit diagnosis and remediation instead of threshold-only summaries; the next gap is applying those route_search remediation signals back into narrowing and fallback policy rather than visibility alone`
 Next Validation:
 - `scripts/ai/aq-report --format text`
 - `scripts/ai/aq-report --format json | jq '.rag_posture, .route_retrieval_breadth'`
 - `python3 scripts/testing/test-rag-posture-diagnosis.py`
+- `python3 scripts/testing/test-route-search-pressure-diagnosis.py`
 - `scripts/ai/aq-qa 1 --json | jq '.tests[] | select(.id == "1.5.3")'`
 - `scripts/ai/aq-qa 0 --json`
 Open Risks / Blockers:

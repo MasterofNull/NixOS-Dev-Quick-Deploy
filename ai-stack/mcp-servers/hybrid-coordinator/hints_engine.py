@@ -2019,9 +2019,16 @@ class HintsEngine:
         route_breadth = data.get("route_retrieval_breadth", {})
         if isinstance(route_breadth, dict) and route_breadth.get("available"):
             avg_collections = route_breadth.get("avg_collection_count")
-            if avg_collections is not None and float(avg_collections) > 4.5:
+            diagnosis = str(route_breadth.get("diagnosis", "") or "").strip().lower()
+            actions = [
+                str(action).strip()
+                for action in (route_breadth.get("actions") or [])
+                if str(action).strip()
+            ]
+            if avg_collections is not None and diagnosis == "broad_scanning":
                 top_profiles = route_breadth.get("top_profiles") or []
                 profile_note = f" Dominant profile: {top_profiles[0][0]}." if top_profiles else ""
+                remediation_text = actions[0] if actions else "Prefer bounded collection selection (3-4 max) based on query intent"
                 hints.append(
                     Hint(
                         id="runtime_retrieval_breadth_optimize",
@@ -2030,7 +2037,7 @@ class HintsEngine:
                         score=0.72,
                         snippet=(
                             f"Avg {float(avg_collections):.1f} collections/call detected.{profile_note} "
-                            "Prefer bounded collection selection (3-4 max) based on query intent."
+                            f"{remediation_text[:120]}."
                         )[:220],
                         reason="Derived from live aq-report route_retrieval_breadth showing high collection count",
                         tags=["runtime", "retrieval", "optimization", "latency"],
@@ -2042,9 +2049,16 @@ class HintsEngine:
         provider_fallbacks = data.get("provider_fallback_recovery", {})
         if isinstance(provider_fallbacks, dict) and provider_fallbacks.get("available"):
             recovered_count = int(provider_fallbacks.get("recovered_count", 0) or 0)
-            if recovered_count >= 1:
+            diagnosis = str(provider_fallbacks.get("diagnosis", "") or "").strip().lower()
+            actions = [
+                str(action).strip()
+                for action in (provider_fallbacks.get("actions") or [])
+                if str(action).strip()
+            ]
+            if recovered_count >= 1 and diagnosis == "provider_fallback_pressure":
                 status_counts = provider_fallbacks.get("status_counts") or []
                 status_text = ", ".join(f"{s[0]}={s[1]}" for s in status_counts[:2]) if status_counts else "unknown"
+                remediation_text = actions[0] if actions else "Prefer local-first routing"
                 hints.append(
                     Hint(
                         id="runtime_provider_fallback_pressure",
@@ -2053,7 +2067,7 @@ class HintsEngine:
                         score=0.68,
                         snippet=(
                             f"{recovered_count} recovered fallbacks observed (upstream {status_text}). "
-                            "Treat as provider-budget or remote-routing pressure. Prefer local-first routing."
+                            f"Treat as provider-budget or remote-routing pressure. {remediation_text}."
                         )[:220],
                         reason="Derived from live aq-report provider_fallback_recovery showing remote fallback events",
                         tags=["runtime", "routing", "provider", "fallback"],
