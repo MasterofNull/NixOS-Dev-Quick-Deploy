@@ -212,3 +212,315 @@ prompts:
     tags: [prsi, orchestrator, pessimistic, recursive_improvement, safety, evaluation]
     mean_score: 0.000
     last_evaluated: 2026-03-04
+
+  # Phase 6.1: Hint Template Expansion (2026-03-14)
+  # Adding diverse templates to improve hint variety beyond research-focused prompts
+
+  - id: code_review_structured
+    name: Structured Code Review
+    description: >
+      Template for systematic code review focusing on correctness, security,
+      performance, and maintainability. Produces actionable findings with
+      severity and suggested fixes.
+    template: |
+      REVIEW TARGET:
+      {{ file_path }}
+      {{ code_snippet }}
+
+      REVIEW CRITERIA:
+      1. Correctness: Logic errors, edge cases, error handling
+      2. Security: Input validation, injection risks, secrets exposure
+      3. Performance: Inefficiencies, N+1 queries, memory leaks
+      4. Maintainability: Readability, documentation, test coverage
+
+      OUTPUT FORMAT:
+      For each finding:
+      - Severity: [critical|high|medium|low|info]
+      - Category: [correctness|security|performance|maintainability]
+      - Location: line number or function
+      - Issue: one-sentence description
+      - Fix: concrete suggestion
+    tags: [code_review, quality, security, review, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: debugging_systematic
+    name: Systematic Debugging Workflow
+    description: >
+      Step-by-step debugging template for isolating root causes.
+      Emphasizes evidence collection, hypothesis testing, and minimal
+      reproduction before fix attempts.
+    template: |
+      ERROR CONTEXT:
+      {{ error_message }}
+      {{ stack_trace }}
+
+      DEBUGGING PROTOCOL:
+      1. Reproduce: Confirm the error occurs consistently
+      2. Isolate: Identify the minimal code path that triggers it
+      3. Hypothesize: List 3 likely root causes ranked by probability
+      4. Test: For each hypothesis, describe a test to confirm/refute
+      5. Fix: Apply minimal change to resolve confirmed cause
+      6. Verify: Confirm fix works and no regressions introduced
+
+      OUTPUT:
+      - Reproduction steps
+      - Isolated trigger
+      - Root cause (confirmed)
+      - Fix applied
+      - Verification evidence
+    tags: [debugging, troubleshooting, errors, systematic, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: test_generation_coverage
+    name: Test Generation for Coverage
+    description: >
+      Generates test cases targeting uncovered code paths.
+      Focuses on edge cases, error conditions, and boundary values.
+    template: |
+      TARGET FUNCTION:
+      {{ function_signature }}
+      {{ function_body }}
+
+      COVERAGE GAPS:
+      {{ uncovered_lines }}
+
+      GENERATE TESTS FOR:
+      1. Happy path: Normal successful execution
+      2. Edge cases: Empty inputs, max values, null/undefined
+      3. Error conditions: Invalid inputs, resource unavailable
+      4. Boundary values: Off-by-one, threshold transitions
+      5. Integration points: Mock external dependencies
+
+      OUTPUT:
+      Test cases in {{ test_framework }} format with:
+      - Descriptive test names
+      - Clear arrange/act/assert structure
+      - Expected coverage improvement
+    tags: [testing, coverage, test_generation, quality, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: refactoring_incremental
+    name: Incremental Refactoring Plan
+    description: >
+      Plans safe incremental refactoring with verification gates.
+      Maintains behavior while improving structure.
+    template: |
+      REFACTORING TARGET:
+      {{ code_to_refactor }}
+
+      IMPROVEMENT GOALS:
+      {{ goals }}
+
+      CONSTRAINTS:
+      - No behavior changes (verified by existing tests)
+      - One logical change per step
+      - Each step must be independently deployable
+      - Maintain backward compatibility during transition
+
+      REFACTORING PLAN:
+      1. Add tests if coverage < 80%
+      2. Extract: {{ extraction_candidates }}
+      3. Rename: {{ rename_candidates }}
+      4. Simplify: {{ simplification_candidates }}
+      5. Verify: Run full test suite after each step
+
+      OUTPUT:
+      Numbered steps with before/after diffs
+    tags: [refactoring, improvement, incremental, safe_changes, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: documentation_api
+    name: API Documentation Generator
+    description: >
+      Generates comprehensive API documentation from code.
+      Includes examples, error codes, and usage patterns.
+    template: |
+      API ENDPOINT/FUNCTION:
+      {{ code }}
+
+      DOCUMENT:
+      1. Purpose: One-sentence description
+      2. Parameters: Name, type, required/optional, constraints
+      3. Returns: Type, structure, possible values
+      4. Errors: Error codes, conditions, handling recommendations
+      5. Examples: 2-3 usage examples with curl/code snippets
+      6. Related: Links to related endpoints/functions
+
+      FORMAT: {{ output_format }}
+    tags: [documentation, api, reference, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: security_audit_focused
+    name: Focused Security Audit
+    description: >
+      Security-focused code review targeting OWASP Top 10 and
+      common vulnerability patterns in the project's tech stack.
+    template: |
+      AUDIT TARGET:
+      {{ code_or_config }}
+
+      SECURITY CHECKLIST:
+      - [ ] Input validation and sanitization
+      - [ ] Authentication and authorization
+      - [ ] Secrets management (no hardcoded credentials)
+      - [ ] SQL/command injection prevention
+      - [ ] XSS prevention (output encoding)
+      - [ ] CSRF protection
+      - [ ] Secure defaults (least privilege)
+      - [ ] Error handling (no sensitive data leakage)
+      - [ ] Dependency vulnerabilities
+      - [ ] Logging (no secrets in logs)
+
+      OUTPUT:
+      For each vulnerability:
+      - Severity: [critical|high|medium|low]
+      - OWASP category
+      - Location
+      - Proof of concept (if safe)
+      - Remediation steps
+    tags: [security, audit, owasp, vulnerabilities, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: performance_optimization
+    name: Performance Optimization Analysis
+    description: >
+      Identifies performance bottlenecks and suggests optimizations.
+      Focuses on measurable improvements with minimal code changes.
+    template: |
+      PERFORMANCE CONTEXT:
+      {{ code_or_profile }}
+      {{ metrics }}
+
+      ANALYSIS TARGETS:
+      1. CPU-bound: Hot loops, inefficient algorithms
+      2. Memory-bound: Allocations, leaks, caching opportunities
+      3. I/O-bound: Database queries, network calls, file operations
+      4. Concurrency: Blocking operations, lock contention
+
+      OPTIMIZATION CRITERIA:
+      - Impact: Expected improvement percentage
+      - Effort: Lines of code to change
+      - Risk: Likelihood of regressions
+      - Measurability: How to verify improvement
+
+      OUTPUT:
+      Ranked list of optimizations with:
+      - Current: Baseline measurement
+      - Target: Expected improvement
+      - Change: Specific code modification
+      - Verification: Benchmark command
+    tags: [performance, optimization, profiling, efficiency, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: migration_upgrade_plan
+    name: Migration/Upgrade Planning
+    description: >
+      Plans safe migrations or upgrades with rollback strategies.
+      Covers dependency updates, schema changes, and API migrations.
+    template: |
+      MIGRATION SCOPE:
+      From: {{ current_version }}
+      To: {{ target_version }}
+      Components: {{ affected_components }}
+
+      MIGRATION PLAN:
+      1. Pre-flight:
+         - Backup current state
+         - Document rollback procedure
+         - Identify breaking changes
+      2. Staging:
+         - Apply migration in test environment
+         - Run integration tests
+         - Verify data integrity
+      3. Production:
+         - Schedule maintenance window if needed
+         - Apply migration with monitoring
+         - Verify functionality
+      4. Post-migration:
+         - Clean up deprecated artifacts
+         - Update documentation
+         - Monitor for regressions
+
+      ROLLBACK TRIGGER:
+      {{ rollback_conditions }}
+
+      OUTPUT:
+      Step-by-step runbook with verification commands
+    tags: [migration, upgrade, planning, rollback, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: api_integration_guide
+    name: API Integration Implementation
+    description: >
+      Guides implementation of external API integrations.
+      Covers authentication, error handling, rate limiting, and caching.
+    template: |
+      API TO INTEGRATE:
+      {{ api_name }}
+      {{ api_docs_url }}
+
+      IMPLEMENTATION CHECKLIST:
+      1. Authentication:
+         - Method: {{ auth_method }}
+         - Credential storage: Environment variables only
+      2. Client setup:
+         - Timeout configuration
+         - Retry with exponential backoff
+         - Connection pooling
+      3. Error handling:
+         - HTTP status codes
+         - API-specific error formats
+         - Graceful degradation
+      4. Rate limiting:
+         - Respect API limits
+         - Implement local throttling
+         - Queue for burst protection
+      5. Caching:
+         - Cache-Control header respect
+         - Local cache for repeated requests
+         - Cache invalidation strategy
+
+      OUTPUT:
+      Implementation code with inline comments explaining each decision
+    tags: [api, integration, external, client, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
+
+  - id: configuration_setup
+    name: Configuration and Setup Guide
+    description: >
+      Guides configuration tasks with validation and verification steps.
+      Emphasizes declarative configuration and rollback safety.
+    template: |
+      CONFIGURATION TASK:
+      {{ task_description }}
+
+      CONFIGURATION APPROACH:
+      1. Identify target: {{ config_file_or_service }}
+      2. Backup current: `cp {{ config_path }} {{ config_path }}.bak`
+      3. Validate syntax before applying
+      4. Apply incrementally with verification
+      5. Test functionality after each change
+
+      VALIDATION COMMANDS:
+      {{ validation_commands }}
+
+      ROLLBACK COMMAND:
+      {{ rollback_command }}
+
+      OUTPUT:
+      Configuration changes with:
+      - Before/after comparison
+      - Verification evidence
+      - Rollback confirmation
+    tags: [configuration, setup, declarative, validation, hint_diversity]
+    mean_score: 0.000
+    last_evaluated: 2026-03-14
