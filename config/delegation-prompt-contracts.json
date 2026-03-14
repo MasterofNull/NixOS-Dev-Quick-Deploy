@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "description": "Task-class-specific delegation prompt contracts for token efficiency",
+  "default": {
+    "max_tokens": 2000,
+    "system_prefix_tokens": 150,
+    "require_final_artifact": true,
+    "format": "structured"
+  },
+  "task_classes": {
+    "simple_query": {
+      "description": "Quick factual lookups, single-answer questions",
+      "max_tokens": 500,
+      "system_prefix_tokens": 50,
+      "template_id": "delegation_simple",
+      "format": "direct",
+      "examples": ["what is X", "how do I Y", "explain Z briefly"]
+    },
+    "code_completion": {
+      "description": "Small code snippets, function implementations",
+      "max_tokens": 1000,
+      "system_prefix_tokens": 80,
+      "template_id": "delegation_code",
+      "format": "code_block",
+      "examples": ["implement function", "write a method that", "add error handling"]
+    },
+    "code_review": {
+      "description": "Code review with findings",
+      "max_tokens": 1500,
+      "system_prefix_tokens": 100,
+      "template_id": "code_review_structured",
+      "format": "structured_findings"
+    },
+    "debugging": {
+      "description": "Error analysis and fix suggestions",
+      "max_tokens": 1500,
+      "system_prefix_tokens": 100,
+      "template_id": "debugging_systematic",
+      "format": "structured"
+    },
+    "reasoning": {
+      "description": "Complex analysis requiring multi-step reasoning",
+      "max_tokens": 3000,
+      "system_prefix_tokens": 150,
+      "template_id": "delegation_reasoning",
+      "format": "structured"
+    },
+    "architecture": {
+      "description": "Design decisions and architectural planning",
+      "max_tokens": 2500,
+      "system_prefix_tokens": 120,
+      "template_id": "delegation_architecture",
+      "format": "structured"
+    },
+    "documentation": {
+      "description": "Documentation generation",
+      "max_tokens": 1500,
+      "system_prefix_tokens": 80,
+      "template_id": "documentation_api",
+      "format": "markdown"
+    }
+  },
+  "classification_hints": {
+    "keywords": {
+      "simple_query": ["what is", "how do i", "explain", "briefly", "quick"],
+      "code_completion": ["implement", "write", "create function", "add method"],
+      "code_review": ["review", "check", "audit", "findings"],
+      "debugging": ["error", "bug", "fix", "debug", "traceback", "exception"],
+      "reasoning": ["analyze", "compare", "evaluate", "trade-offs", "design"],
+      "architecture": ["architecture", "design", "structure", "system"],
+      "documentation": ["document", "readme", "api docs", "comments"]
+    },
+    "default_class": "reasoning"
+  },
+  "token_budget_policy": {
+    "small_task_threshold": 100,
+    "reduce_system_prefix_pct": 30,
+    "prefer_local_for_small": true,
+    "cache_prompt_prefix": true
+  }
+}

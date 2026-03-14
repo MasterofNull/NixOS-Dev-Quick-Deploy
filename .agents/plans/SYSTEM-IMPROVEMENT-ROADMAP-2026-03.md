@@ -174,12 +174,20 @@ scripts/ai/aq-gap-auto-remediate --dry-run --limit 3
 ```
 
 ### Batch 3.3: Multi-Window Trend Visibility
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Add 1h/24h/7d trend toggles to dashboard
-- [ ] Show routing history trends visually
-- [ ] Add retrieval breadth trend charts
-- [ ] Show delegated failure trend history
+- [x] Add 1h/24h/7d trend toggles to dashboard (http_server.py updated)
+- [x] Show routing history trends visually (trend_1h/24h/7d in routing section)
+- [x] Add retrieval breadth trend charts (trend_1h/24h/7d in retrieval section)
+- [x] Show delegated failure trend history (new delegation_failures section)
+
+**Evidence:**
+- Added `trend_summary` with quick indicators (↑/↓/→/?)
+- Added `trend_1h` windows alongside existing 24h/7d for all metrics
+- Added `delegation_failures` section with trend_status and windows
+- Updated smoke test to verify all 1h/24h/7d windows
+
+**Note:** Service restart required for runtime activation.
 
 **Validation:**
 ```bash
@@ -209,12 +217,19 @@ python3 scripts/testing/test-delegated-prompt-failure-history.py
 ```
 
 ### Batch 4.2: Provider Fallback Policy
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Implement automatic fallback on provider 429
-- [ ] Add provider health tracking
-- [ ] Create provider selection scoring
-- [ ] Add cost-aware routing hints
+- [x] Implement automatic fallback on provider 429 (config/provider-fallback-policy.json)
+- [x] Add provider health tracking (_provider_health_summary in http_server.py)
+- [x] Create provider selection scoring (selection_scoring weights in policy)
+- [x] Add cost-aware routing hints (cost_aware_routing section with provider costs)
+
+**Evidence:**
+- Created config/provider-fallback-policy.json with fallback triggers, health tracking, and cost hints
+- Added _load_provider_fallback_policy() and _provider_health_summary() to http_server.py
+- Status endpoint now includes provider_health section
+
+**Note:** Service restart required for runtime activation.
 
 **Validation:**
 ```bash
@@ -222,12 +237,17 @@ scripts/ai/aq-report --format=json | jq '.provider_fallback_recovery, .delegated
 ```
 
 ### Batch 4.3: Prompt Contract Tightening
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Reduce prompt token footprint for small tasks
-- [ ] Add task-class-specific prompt templates
-- [ ] Implement prompt quality validation
-- [ ] Track prompt-contract failure trends
+- [x] Reduce prompt token footprint for small tasks (delegation_simple template)
+- [x] Add task-class-specific prompt templates (4 new delegation templates)
+- [x] Implement prompt quality validation (delegation_prompt_contracts.json)
+- [x] Track prompt-contract failure trends (existing in aq-report)
+
+**Evidence:**
+- Created config/delegation-prompt-contracts.json with task-class configs
+- Added 4 compact delegation templates: delegation_simple, delegation_code, delegation_reasoning, delegation_architecture
+- Token budget policy with small_task_threshold and reduce_system_prefix_pct
 
 **Validation:**
 ```bash

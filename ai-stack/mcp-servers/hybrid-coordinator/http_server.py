@@ -131,27 +131,64 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
     routing_windows = ((payload.get("routing_windows") or {}).get("windows") or {})
     remote_windows = ((payload.get("remote_profile_utilization_windows") or {}).get("windows") or {})
     route_latency = payload.get("route_search_latency_decomposition") or {}
+    delegation_windows = ((payload.get("delegated_prompt_failure_windows") or {}).get("windows") or {})
+    delegation_trend = ((payload.get("delegated_prompt_failure_windows") or {}).get("trend") or {})
+
+    # Compute trend indicators for quick visibility
+    def _trend_indicator(w1h: dict, w24h: dict, metric_key: str, higher_is_better: bool = True) -> str:
+        """Return trend indicator: ↑ improving, ↓ worsening, → stable, ? unknown."""
+        try:
+            v1h = w1h.get(metric_key)
+            v24h = w24h.get(metric_key)
+            if v1h is None or v24h is None:
+                return "?"
+            v1h, v24h = float(v1h), float(v24h)
+            if v24h == 0:
+                return "→" if v1h == 0 else ("↑" if higher_is_better else "↓")
+            ratio = v1h / v24h
+            if ratio > 1.1:
+                return "↑" if higher_is_better else "↓"
+            elif ratio < 0.9:
+                return "↓" if higher_is_better else "↑"
+            return "→"
+        except (TypeError, ValueError, ZeroDivisionError):
+            return "?"
+
+    routing_1h = routing_windows.get("1h", {})
+    routing_24h = routing_windows.get("24h", {})
+    retrieval_1h = retrieval_windows.get("1h", {})
+    retrieval_24h = retrieval_windows.get("24h", {})
+    delegation_1h = delegation_windows.get("1h", {})
+    delegation_24h = delegation_windows.get("24h", {})
 
     return {
         "available": True,
         "source": str(_AQ_REPORT_LATEST_JSON),
         "generated_at": payload.get("generated_at", ""),
+        "trend_summary": {
+            "routing_local_pct": _trend_indicator(routing_1h, routing_24h, "local_pct", higher_is_better=True),
+            "retrieval_rag_share": _trend_indicator(retrieval_1h, retrieval_24h, "rag_share_pct", higher_is_better=True),
+            "delegation_failures": _trend_indicator(delegation_1h, delegation_24h, "total_failures", higher_is_better=False),
+        },
         "continue_editor": {
             "healthy": bool(continue_editor.get("healthy", False)),
             "failed_n": int(continue_editor.get("failed_n", 0) or 0),
             "total_checks": int(continue_editor.get("total_checks", 0) or 0),
             "top_failure_category": continue_editor.get("top_failure_category"),
+            "trend_1h": continue_windows.get("1h", {}),
             "trend_24h": continue_windows.get("24h", {}),
             "trend_7d": continue_windows.get("7d", {}),
         },
         "remote_profile_utilization": {
             "current": payload.get("remote_profile_utilization", {}),
+            "trend_1h": remote_windows.get("1h", {}),
             "trend_24h": remote_windows.get("24h", {}),
             "trend_7d": remote_windows.get("7d", {}),
         },
         "routing": {
             "current": payload.get("routing", {}),
-            "trend_24h": routing_windows.get("24h", {}),
+            "trend_1h": routing_1h,
+            "trend_24h": routing_24h,
             "trend_7d": routing_windows.get("7d", {}),
             "latency": {
                 "window": route_latency.get("window", ""),
@@ -161,8 +198,16 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
         },
         "retrieval": {
             "current": payload.get("route_retrieval_breadth", {}),
-            "trend_24h": retrieval_windows.get("24h", {}),
+            "trend_1h": retrieval_1h,
+            "trend_24h": retrieval_24h,
             "trend_7d": retrieval_windows.get("7d", {}),
+        },
+        "delegation_failures": {
+            "trend_status": delegation_trend.get("status", "unknown"),
+            "trend_summary": delegation_trend.get("summary", ""),
+            "trend_1h": delegation_1h,
+            "trend_24h": delegation_24h,
+            "trend_7d": delegation_windows.get("7d", {}),
         },
         "workflow_review": {
             "required_reviews": int(workflow_review.get("required_reviews", 0) or 0),
@@ -921,6 +966,70 @@ def _load_runtime_scheduler_policy() -> Dict[str, Any]:
     except Exception:
         pass
     return _default_runtime_scheduler_policy()
+
+
+def _provider_fallback_policy_path() -> Path:
+    return Path(
+        os.path.expanduser(
+            os.getenv("PROVIDER_FALLBACK_POLICY_FILE", "config/provider-fallback-policy.json")
+        )
+    )
+
+
+def _default_provider_fallback_policy() -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "fallback_triggers": {
+            "rate_limited": {"enabled": True, "http_codes": [429], "cooldown_seconds": 300},
+            "provider_error": {"enabled": True, "http_codes": [500, 502, 503, 504], "cooldown_seconds": 60},
+        },
+        "provider_health": {
+            "tracking_enabled": True,
+            "window_seconds": 3600,
+            "degraded_threshold_pct": 20,
+            "unhealthy_threshold_pct": 50,
+        },
+        "selection_scoring": {
+            "weights": {"health_score": 0.35, "latency_score": 0.20, "cost_score": 0.20, "success_rate": 0.15, "capability_match": 0.10}
+        },
+        "cost_aware_routing": {"enabled": True, "budget_tracking": False},
+    }
+
+
+def _load_provider_fallback_policy() -> Dict[str, Any]:
+    path = _provider_fallback_policy_path()
+    if not path.exists():
+        return _default_provider_fallback_policy()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("fallback_triggers"), dict):
+            return data
+    except Exception:
+        pass
+    return _default_provider_fallback_policy()
+
+
+def _provider_health_summary() -> Dict[str, Any]:
+    """Summarize provider health status based on recent fallback/error rates."""
+    policy = _load_provider_fallback_policy()
+    health_config = policy.get("provider_health", {})
+    cost_config = policy.get("cost_aware_routing", {})
+    selection_config = policy.get("selection_scoring", {})
+
+    return {
+        "available": True,
+        "tracking_enabled": health_config.get("tracking_enabled", True),
+        "window_seconds": health_config.get("window_seconds", 3600),
+        "thresholds": {
+            "degraded_pct": health_config.get("degraded_threshold_pct", 20),
+            "unhealthy_pct": health_config.get("unhealthy_threshold_pct", 50),
+        },
+        "cost_aware_routing": {
+            "enabled": cost_config.get("enabled", True),
+            "budget_tracking": cost_config.get("budget_tracking", False),
+        },
+        "selection_weights": selection_config.get("weights", {}),
+    }
 
 
 def _normalize_tags(value: Any) -> List[str]:
@@ -4037,6 +4146,7 @@ async def run_http_mode(port: int) -> None:
                         "active_lessons": lesson_registry.get("active_lessons", []),
                     },
                     "report_summary": report_summary,
+                    "provider_health": _provider_health_summary(),
                     "active_lesson_refs": lesson_refs,
                     "runtimes": runtimes,
                     "count": len(runtimes),
