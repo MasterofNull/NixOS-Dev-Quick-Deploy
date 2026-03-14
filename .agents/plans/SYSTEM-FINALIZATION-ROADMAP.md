@@ -1,4 +1,4 @@
-# System Finalization Roadmap
+#System Finalization Roadmap
 
 **Generated:** 2026-03-05
 **Last Reconciled:** 2026-03-06
@@ -577,12 +577,12 @@ This roadmap was reconciled against committed work and the latest `nixos-quick-d
 
 ## Quality Gates Summary
 
-| Phase | Gate | Validation Command |
-|-------|------|-------------------|
-| Phase 1 | Security audit clean | `scripts/testing/check-api-auth-hardening.sh && scripts/testing/test-prompt-injection-resilience.sh` |
-| Phase 2 | Eval score ≥ 0.7 | `scripts/ai/aq-report --since=7d --format=json \| jq '.eval_trend.mean_pct'` |
-| Phase 3 | Operationally complete (visual sign-off deferred) | Portal API probes + resume/MCP health + wireplumber 24h scan |
-| Phase 4 | Runbook complete | File existence + TOC validation |
+| Phase   | Gate                                              | Validation Command                                                                                   |
+| ------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Phase 1 | Security audit clean                              | `scripts/testing/check-api-auth-hardening.sh && scripts/testing/test-prompt-injection-resilience.sh` |
+| Phase 2 | Eval score ≥ 0.7                                  | `scripts/ai/aq-report --since=7d --format=json \| jq '.eval_trend.mean_pct'`                         |
+| Phase 3 | Operationally complete (visual sign-off deferred) | Portal API probes + resume/MCP health + wireplumber 24h scan                                         |
+| Phase 4 | Runbook complete                                  | File existence + TOC validation                                                                      |
 
 ---
 
@@ -610,9 +610,62 @@ EOF
 
 ---
 
+## Validation Loop Update (2026-03-13, iteration 10 final closure)
+
+- **Roadmap completion status:** ALL PHASES COMPLETE
+  - Phase 1: Infrastructure Hardening - COMPLETE (all 5 tasks)
+  - Phase 2: Harness Optimization - COMPLETE (all 5 tasks)
+  - Phase 3: COSMIC Desktop Polish - COMPLETE (all 5 tasks, visual sign-off deferred)
+  - Phase 4: Documentation & Packaging - COMPLETE (all 5 tasks)
+
+- **MCP bridge integration gap identified and resolved:**
+  - Issue: Continue.dev local model had no access to AI harness tools
+  - Root cause: `~/.continue/config.json` missing `experimental.modelContextProtocolServers` configuration
+  - Fix applied: Added MCP stdio transport config pointing to `scripts/ai/mcp-bridge-hybrid.py`
+  - Verification: MCP bridge lists all 14 tools (hybrid_search, get_hints, workflow_plan, project_init_workflow, etc.)
+
+- **Project scaffolding validated:**
+  - Ran `project-init` workflow for new project: `/home/hyperd/Documents/Mendocino Coastal Plants`
+  - Scaffolded: `.agent/PROJECT-PRD.md`, `.agent/GLOBAL-RULES.md`, `.claude/commands/`, `.agents/plans/`
+  - Created project-specific `CLAUDE.md` with harness integration guidance
+
+- **Service health confirmed:**
+  - `ai-hybrid-coordinator.service`: active (running)
+  - Hybrid coordinator health: healthy
+  - AIDB health: ok
+  - MCP health: 13 passed, 0 failed (per last validation)
+
+---
+
+## Final Status
+
+**ROADMAP COMPLETE**
+
+All four phases have passed their quality gates:
+
+| Phase | Status | Gate Validation |
+|-------|--------|-----------------|
+| Phase 1 | PASS | Security audit clean, rate limiting active, SSRF protection verified |
+| Phase 2 | PASS | Eval score 83.2% (>70% target), cache hit rate 32%+ |
+| Phase 3 | PASS | Portal APIs verified, wireplumber stable, resume recovery active |
+| Phase 4 | PASS | Runbook complete, skill bundle distributable, acceptance suite green |
+
+**Remaining optional items:**
+- Visual screenshots for greeter/portal dialogs (documentation only)
+- Boot-to-usable timing measurement (if strict gate required)
+
+**Recommended next steps:**
+1. Reload Continue.dev to pick up MCP configuration changes
+2. Test local model access to harness tools via Continue chat
+3. Begin Mendocino Coastal Plants project using the bootstrapped scaffold
+
+---
+
 ## Execution Resume Point
 
-Resume from **final closure + optional UX timing sign-off**:
-1. Optional: capture visual screenshots for greeter and portal dialogs for archival sign-off.
-2. Optional: collect explicit boot-to-usable stopwatch evidence if strict timing gate is required.
-3. Prepare final commit grouping by logical task slices (Phase 1 hardening + Phase 3 closure + docs/status sync).
+**ROADMAP FINALIZED** - No further execution required.
+
+Optional follow-up:
+1. Visual screenshot capture for archival documentation
+2. Boot timing measurement if strict Phase 3 gate evidence needed
+3. Final commit bundling for clean git history
