@@ -332,6 +332,33 @@ def _tokenize(text: str) -> List[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+def _estimate_tokens(text: str) -> int:
+    """
+    Estimate token count for LLM context (Phase 10.3).
+
+    Uses ~4 chars/token heuristic typical for code-mixed content.
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def _compress_snippet(snippet: str, max_chars: int = 200) -> str:
+    """
+    Compress long snippets for token efficiency (Phase 10.3).
+
+    Truncates and adds ellipsis for long snippets.
+    """
+    if not snippet or len(snippet) <= max_chars:
+        return snippet
+    # Try to break at word boundary
+    truncated = snippet[:max_chars]
+    last_space = truncated.rfind(" ")
+    if last_space > max_chars // 2:
+        truncated = truncated[:last_space]
+    return truncated.rstrip() + "…"
+
+
 def _longest_common_substring_len(a: str, b: str) -> int:
     """Return the length of the longest common substring of a and b."""
     if not a or not b:
@@ -1125,14 +1152,39 @@ class HintsEngine:
             agent_hints=hint.agent_hints,
         )
 
-    def to_dict(self, hint: Hint, include_debug_metadata: bool = True) -> dict:
-        """Return a JSON-serialisable dict for *hint*."""
+    def to_dict(
+        self,
+        hint: Hint,
+        include_debug_metadata: bool = True,
+        compact_mode: bool = False,
+        max_snippet_chars: int = 0,
+    ) -> dict:
+        """
+        Return a JSON-serialisable dict for *hint*.
+
+        Phase 10.3 additions:
+        - compact_mode: Minimal fields (id, title, score, compressed snippet)
+        - max_snippet_chars: Compress snippet to max chars (0 = no compression)
+        """
+        snippet = hint.snippet
+        if max_snippet_chars > 0:
+            snippet = _compress_snippet(snippet, max_snippet_chars)
+
+        if compact_mode:
+            # Minimal token footprint
+            return {
+                "id": hint.id,
+                "title": hint.title[:60] + "…" if len(hint.title) > 60 else hint.title,
+                "score": round(hint.score, 2),
+                "text": snippet,
+            }
+
         d: dict = {
             "id": hint.id,
             "type": hint.type,
             "title": hint.title,
             "score": round(hint.score, 4),
-            "snippet": hint.snippet,
+            "snippet": snippet,
         }
         if include_debug_metadata and hint.reason:
             d["reason"] = hint.reason
@@ -1217,8 +1269,16 @@ class HintsEngine:
         max_hints: int = 5,
         agent_type: str = "unknown",
         include_debug_metadata: Optional[bool] = None,
+        max_hint_tokens: int = 0,
+        compact_mode: bool = False,
     ) -> dict:
-        """Return ranked hints as a JSON-serialisable dict."""
+        """
+        Return ranked hints as a JSON-serialisable dict.
+
+        Phase 10.3 additions:
+        - max_hint_tokens: Cap total hint tokens (0 = unlimited)
+        - compact_mode: Use minimal hint format for token efficiency
+        """
         hints = self.rank(query, context=context, max_hints=max_hints, agent_type=agent_type)
         profile = self._load_agent_preference_profile(agent_type)
         usage_counts, usage_total = self._load_recent_hint_usage()
@@ -1240,13 +1300,42 @@ class HintsEngine:
         # Domain-based progressive disclosure (Phase 12.3)
         domain_context = self._get_domain_context(query)
 
+        # Phase 10.3 — Token-efficient hint delivery
+        max_snippet_chars = 150 if compact_mode else 0
+        serialized_hints = []
+        total_hint_tokens = 0
+        hints_truncated = 0
+
+        for h in hints:
+            hint_dict = self.to_dict(
+                h,
+                include_debug_metadata=include_debug_metadata and not compact_mode,
+                compact_mode=compact_mode,
+                max_snippet_chars=max_snippet_chars,
+            )
+            hint_token_est = _estimate_tokens(str(hint_dict))
+
+            # Apply token budget cap
+            if max_hint_tokens > 0 and total_hint_tokens + hint_token_est > max_hint_tokens:
+                hints_truncated += 1
+                continue
+
+            serialized_hints.append(hint_dict)
+            total_hint_tokens += hint_token_est
+
         result = {
-            "hints": [self.to_dict(h, include_debug_metadata=include_debug_metadata) for h in hints],
+            "hints": serialized_hints,
             "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "query": query,
             "agent_type": agent_type,
             "prompt_coaching": prompt_coaching_payload,
             "domain_context": domain_context,
+            "token_budget": {
+                "estimated_tokens": total_hint_tokens,
+                "max_tokens": max_hint_tokens if max_hint_tokens > 0 else None,
+                "hints_truncated": hints_truncated,
+                "compact_mode": compact_mode,
+            },
             "feedback_contract": {
                 "endpoint": "/hints/feedback",
                 "required_any_of": ["helpful", "score"],
