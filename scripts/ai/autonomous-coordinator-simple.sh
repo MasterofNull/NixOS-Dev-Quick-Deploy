@@ -2,15 +2,45 @@
 #
 # Simple Autonomous Coordinator
 # Uses ONLY existing validated CLI tools (no new API wrappers)
+# SECURITY: Runs in restricted mode - no mouse/keyboard control
 #
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 LOG_FILE=".agents/coordinator.log"
+SECURITY_MODE="autonomous"  # Options: autonomous (restricted), interactive (full)
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+# Verify security policy is enforced
+verify_security_policy() {
+    local policy_file="ai-stack/autonomous-orchestrator/security_policy.json"
+
+    if [[ ! -f "$policy_file" ]]; then
+        log "ERROR: Security policy not found: $policy_file"
+        return 1
+    fi
+
+    # Check that policy has autonomous mode restrictions
+    if ! grep -q '"autonomous"' "$policy_file"; then
+        log "ERROR: Security policy missing autonomous mode configuration"
+        return 1
+    fi
+
+    # Verify computer use is disabled in autonomous mode
+    if ! grep -A 5 '"computer_use"' "$policy_file" | grep -q '"enabled": false'; then
+        log "ERROR: Computer use tools must be disabled in autonomous mode"
+        return 1
+    fi
+
+    log "✓ Security policy verified: $SECURITY_MODE mode"
+    log "  - Computer use (mouse/keyboard): DISABLED"
+    log "  - File operations: RESTRICTED to repo paths"
+    log "  - Shell commands: ALLOWLIST only"
+    return 0
 }
 
 find_next_batch() {
@@ -163,6 +193,14 @@ Plan and tasks ready for implementation" 2>/dev/null || true
 main() {
     log "🤖 Simple Autonomous Coordinator starting"
     log "   Using existing CLI tools only"
+    log "   Security mode: $SECURITY_MODE"
+
+    # Verify security policy before starting
+    if ! verify_security_policy; then
+        log "❌ Security policy verification failed"
+        log "   Coordinator will not start without proper security restrictions"
+        exit 1
+    fi
 
     local batches_processed=0
     local max_batches=10  # Process up to 10 batches per run

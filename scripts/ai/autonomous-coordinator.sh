@@ -2,14 +2,31 @@
 #
 # Autonomous CLI Coordinator - NixOS Development Workflow
 # Executes roadmap batches via CLI-only delegation and git commits
+# SECURITY: Runs in restricted mode - no mouse/keyboard control
 #
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 LOG_FILE=".agents/coordinator.log"
+SECURITY_MODE="autonomous"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+# Verify security policy is enforced
+verify_security_policy() {
+    local policy_file="ai-stack/autonomous-orchestrator/security_policy.json"
+    if [[ ! -f "$policy_file" ]]; then
+        log "ERROR: Security policy not found: $policy_file"
+        return 1
+    fi
+    if ! grep -A 5 '"computer_use"' "$policy_file" | grep -q '"enabled": false'; then
+        log "ERROR: Computer use tools must be disabled in autonomous mode"
+        return 1
+    fi
+    log "✓ Security policy verified: $SECURITY_MODE mode"
+    return 0
 }
 
 find_next_batch() {
@@ -131,6 +148,14 @@ Failed: $failed tasks"
 
 main() {
     log "🤖 Autonomous CLI Coordinator starting"
+    log "   Security mode: $SECURITY_MODE"
+
+    # Verify security policy before starting
+    if ! verify_security_policy; then
+        log "❌ Security policy verification failed"
+        exit 1
+    fi
+
     local iteration=1
 
     while true; do
