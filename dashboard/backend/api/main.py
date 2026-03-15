@@ -147,6 +147,14 @@ async def websocket_metrics(websocket: WebSocket):
 # ── Frontend static file serving ────────────────────────────────────────────
 # Serve Command Center dashboard (at repo root)
 _COMMAND_CENTER_PATH = Path(__file__).parent.parent.parent.parent / "dashboard.html"
+_ASSETS_PATH = Path(__file__).parent.parent.parent.parent / "assets"
+
+# Mount assets directory for Chart.js and other static files
+if _ASSETS_PATH.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_ASSETS_PATH)), name="assets")
+    logger.info("Assets directory mounted from %s", _ASSETS_PATH)
+else:
+    logger.warning("Assets directory not found at %s", _ASSETS_PATH)
 
 @app.get("/")
 async def root():
