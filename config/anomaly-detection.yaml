@@ -1,0 +1,144 @@
+# Anomaly Detection Configuration
+# Part of Phase 1 Batch 1.2: Automated Anomaly Detection
+#
+# Configure statistical anomaly detection thresholds and behaviors
+
+# Baseline profiling settings
+baseline:
+  window_size: 1000  # Number of samples to keep in rolling window
+  update_interval_seconds: 300  # 5 minutes
+  minimum_samples: 30  # Minimum samples before anomaly detection starts
+
+# Statistical method thresholds
+detection_methods:
+  z_score:
+    enabled: true
+    threshold: 3.0  # Standard deviations from mean
+    description: "Detects values more than 3 standard deviations from mean"
+
+  iqr:
+    enabled: true
+    multiplier: 1.5  # IQR multiplier for outlier bounds
+    description: "Detects values outside Q1-1.5*IQR to Q3+1.5*IQR range"
+
+  percentile:
+    enabled: false  # Not yet implemented
+    threshold: 99  # P99 threshold
+    description: "Detects values above 99th percentile"
+
+# Severity mapping
+# Maps anomaly severity scores (0.0-1.0) to alert severity levels
+severity_mapping:
+  emergency: 0.9  # Severity score >= 0.9 → Emergency
+  critical: 0.7   # Severity score >= 0.7 → Critical
+  warning: 0.5    # Severity score >= 0.5 → Warning
+  info: 0.0       # Any anomaly → Info
+
+# Auto-remediation policies
+auto_remediation:
+  enabled: true
+  minimum_severity: 0.7  # Only remediate critical+ anomalies
+
+  # Metric-specific workflows
+  workflows:
+    latency:
+      workflow: restart_service
+      enabled: true
+      max_triggers_per_hour: 3
+
+    error_rate:
+      workflow: restart_service
+      enabled: true
+      max_triggers_per_hour: 3
+
+    memory_usage:
+      workflow: clear_cache
+      enabled: true
+      max_triggers_per_hour: 5
+
+    quality_score:
+      workflow: refresh_models
+      enabled: false  # Manual only - might be upstream issue
+      max_triggers_per_hour: 2
+
+    cpu_usage:
+      workflow: scale_resources
+      enabled: false  # Requires orchestration layer
+      max_triggers_per_hour: 1
+
+    throughput:
+      workflow: scale_resources
+      enabled: false  # Requires orchestration layer
+      max_triggers_per_hour: 1
+
+# Per-service metric tracking
+services:
+  hybrid-coordinator:
+    components:
+      - hints
+      - query
+      - workflow
+      - health
+    metrics:
+      - latency
+      - error_rate
+      - throughput
+      - quality_score
+
+  llama-cpp:
+    components:
+      - inference
+      - embedding
+    metrics:
+      - latency
+      - throughput
+      - memory_usage
+      - cpu_usage
+
+  aidb:
+    components:
+      - api
+      - storage
+    metrics:
+      - latency
+      - error_rate
+      - throughput
+
+  qdrant:
+    components:
+      - search
+      - indexing
+    metrics:
+      - latency
+      - throughput
+      - memory_usage
+
+# Alert integration
+alerts:
+  create_for_anomalies: true
+  deduplicate_window_seconds: 300  # 5 minutes
+  group_by:
+    - service
+    - component
+    - metric_type
+
+# Database persistence
+database:
+  path: ~/.local/share/nixos-ai-stack/observability/baselines.db
+  persist_interval_seconds: 300  # 5 minutes
+  retention_days: 30
+
+# Monitoring and reporting
+monitoring:
+  log_anomalies: true
+  log_baselines_update: false  # Too verbose
+  report_interval_seconds: 3600  # Hourly statistics
+
+# Environment variable overrides
+# Set these to customize behavior:
+#
+# ANOMALY_Z_SCORE_THRESHOLD - Z-score threshold (default: 3.0)
+# ANOMALY_IQR_MULTIPLIER - IQR multiplier (default: 1.5)
+# ANOMALY_BASELINE_WINDOW - Baseline window size (default: 1000)
+# ANOMALY_AUTO_REMEDIATE - Enable auto-remediation (default: true)
+# ANOMALY_MIN_SEVERITY - Minimum severity for remediation (default: 0.7)
