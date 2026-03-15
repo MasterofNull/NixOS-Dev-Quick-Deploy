@@ -43,6 +43,12 @@ from .orchestrator import (
     AutonomousOrchestrator,
     get_orchestrator,
 )
+from .security_enforcer import (
+    OperationMode,
+    SecurityViolation,
+    SecurityEnforcer,
+    get_enforcer,
+)
 
 __all__ = [
     # Task types and enums
@@ -79,4 +85,9 @@ __all__ = [
     "OrchestrationResult",
     "AutonomousOrchestrator",
     "get_orchestrator",
+    # Security
+    "OperationMode",
+    "SecurityViolation",
+    "SecurityEnforcer",
+    "get_enforcer",
 ]
