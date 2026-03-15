@@ -467,17 +467,31 @@ scripts/ai/aq-report --format=json | jq '.rag_reflection_stats'
 ```
 
 ### Batch 9.2: Generator-Critic Pattern
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Implement critic step for generated responses (self-verify before return)
-- [ ] Add quality scoring for delegation outputs
-- [ ] Implement revision request on critic rejection
-- [ ] Track critic intervention rate
+- [x] Implement critic step for generated responses (self-verify before return)
+- [x] Add quality scoring for delegation outputs
+- [x] Implement revision request on critic rejection
+- [x] Track critic intervention rate
+
+**Evidence:**
+- Created generator_critic.py with critic evaluation logic (569 lines)
+- Implemented critique_response() with 4 quality criteria:
+  * Completeness: keyword coverage, failure patterns, placeholders
+  * Accuracy: code syntax, config validation, logical consistency
+  * Format compliance: markdown structure, JSON validity, sentence completion
+  * Code quality: security (hardcoded secrets), error handling
+- Quality scoring 0-100 with weighted combination (40% completeness, 30% accuracy, 15% format, 15% code)
+- Created request_revision() async function for retry with feedback
+- Added CriticMetrics tracking: total_evaluations, intervention_rate, revision_success_rate
+- Integrated into delegation_feedback.py with apply_critic_evaluation()
+- Exposed generator_critic_stats via /status endpoint
+- Tracks: quality_score, intervention_rate, revision_rate, quality_improvement
 
 **Validation:**
 ```bash
+curl -sS http://127.0.0.1:8003/status | jq '.generator_critic_stats'
 scripts/ai/aq-report --format=json | jq '.generator_critic_stats'
-python3 scripts/testing/test-generator-critic-pattern.py
 ```
 
 ### Batch 9.3: Query Complexity Routing
@@ -767,6 +781,8 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-14 | 12.2 Dual-Model Routing | classify_and_route(), handoff protocol, routing telemetry |
 | 2026-03-14 | (config) Model Coordinator Config | model-coordinator.json, 6 profiles, routing policy |
 | 2026-03-14 | 9.1 RAG Reflection Loop | rag_reflection.py, relevance scoring, retry logic, metrics |
+| 2026-03-14 | (fix) Hint Diversity Repeat Cap | Adjusted to 45% per roadmap requirement |
+| 2026-03-14 | 9.2 Generator-Critic Pattern | generator_critic.py, 4 quality criteria, revision requests |
 
 ### Current Batch
 

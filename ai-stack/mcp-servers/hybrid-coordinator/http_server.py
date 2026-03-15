@@ -53,6 +53,7 @@ from ai_coordinator import (
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 from rag_reflection import get_reflection_stats as _get_rag_reflection_stats
+from generator_critic import get_critic_stats as _get_generator_critic_stats
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1760,6 +1761,8 @@ async def run_http_mode(port: int) -> None:
             "model_coordination": _get_model_coordinator().get_routing_stats(),
             # Batch 9.1 — RAG Reflection Loop stats
             "rag_reflection_stats": _get_rag_reflection_stats(),
+            # Batch 9.2 — Generator-Critic Pattern stats
+            "generator_critic_stats": _get_generator_critic_stats(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
