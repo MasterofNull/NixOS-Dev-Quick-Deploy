@@ -80,6 +80,12 @@ from remediation_tracker import (
     get_remediation_success_rate as _get_remediation_success_rate,
     get_remediation_trend as _get_remediation_trend,
 )
+from lesson_effectiveness_tracker import (
+    track_lesson_usage as _track_lesson_usage,
+    get_lesson_effectiveness_stats as _get_lesson_effectiveness_stats,
+    get_lesson_recommendation as _get_lesson_recommendation,
+    get_recent_lesson_events as _get_recent_lesson_events,
+)
 from route_handler import get_route_search_metrics as _get_route_search_metrics
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
@@ -1812,6 +1818,8 @@ async def run_http_mode(port: int) -> None:
             "memory_latency_metrics": get_memory_latency_metrics(),
             # Batch 2.2 — Route Search Optimization Metrics
             "route_search_metrics": _get_route_search_metrics(),
+            # Batch 5.1 — Lesson Effectiveness Tracking
+            "lesson_effectiveness_stats": _get_lesson_effectiveness_stats(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
