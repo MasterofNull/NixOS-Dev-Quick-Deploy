@@ -1,0 +1,95 @@
+# Prometheus Configuration for AI Stack
+# Part of Phase 1 Batch 1.1: Unified Metrics Pipeline
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ai-stack'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # AI Stack Services
+  - job_name: 'aidb'
+    static_configs:
+      - targets: ['localhost:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'hybrid-coordinator'
+    static_configs:
+      - targets: ['localhost:8003']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'ralph-wiggum'
+    static_configs:
+      - targets: ['localhost:8004']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'switchboard'
+    static_configs:
+      - targets: ['localhost:8085']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Local Models
+  - job_name: 'llama-cpp'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'llama-embed'
+    static_configs:
+      - targets: ['localhost:8081']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Infrastructure
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:9121']  # redis_exporter
+    scrape_interval: 30s
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['localhost:9187']  # postgres_exporter
+    scrape_interval: 30s
+
+  - job_name: 'qdrant'
+    static_configs:
+      - targets: ['localhost:6333']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # System Metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']  # node_exporter
+    scrape_interval: 30s
+
+  # OpenTelemetry Collector
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['localhost:8888']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
