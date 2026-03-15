@@ -866,9 +866,11 @@ class HintsEngine:
             else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
         )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
-        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 45.0, min_value=10.0, max_value=100.0)
+        # Batch 6.1: Reduced from 45% to 25% for <30% concentration target
+        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 25.0, min_value=10.0, max_value=100.0)
         self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 3, min_value=1)
-        self._div_hard_exclude_pct = self._parse_float_env("AI_HINT_DIVERSITY_HARD_EXCLUDE_PCT", 60.0, min_value=30.0, max_value=100.0)
+        # Batch 6.1: Reduced from 60% to 30% to enforce <30% concentration gate
+        self._div_hard_exclude_pct = self._parse_float_env("AI_HINT_DIVERSITY_HARD_EXCLUDE_PCT", 30.0, min_value=30.0, max_value=100.0)
         self._div_type_max = self._parse_type_quota_env(
             "AI_HINT_DIVERSITY_TYPE_MAX",
             default="runtime_signal:2,prompt_template:1,gap_topic:2,workflow_rule:1,tool_warning:1,prompt_coaching:2",
@@ -1271,6 +1273,9 @@ class HintsEngine:
         Build per-hint feedback signal in [-1.0, 1.0] from:
         - hint-audit adoption outcomes (accepted true/false)
         - explicit /hints/feedback records (helpful bool / score)
+
+        Batch 6.1: Feedback acceleration - reduced window from 4000 to 2000
+        for faster reaction to recent feedback signals.
         """
         stats: Dict[str, Dict[str, int]] = {}
 
@@ -1284,7 +1289,7 @@ class HintsEngine:
         try:
             hint_audit_path = Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
             if hint_audit_path.exists():
-                for raw in hint_audit_path.read_text(encoding="utf-8").splitlines()[-4000:]:
+                for raw in hint_audit_path.read_text(encoding="utf-8").splitlines()[-2000:]:
                     if not raw.strip():
                         continue
                     try:
@@ -1299,7 +1304,7 @@ class HintsEngine:
 
         try:
             if self._hint_feedback_path.exists():
-                for raw in self._hint_feedback_path.read_text(encoding="utf-8").splitlines()[-4000:]:
+                for raw in self._hint_feedback_path.read_text(encoding="utf-8").splitlines()[-2000:]:
                     if not raw.strip():
                         continue
                     try:
@@ -1359,7 +1364,8 @@ class HintsEngine:
         signal = max(-1.0, min(1.0, signal))
         if abs(signal) < 0.01:
             return hint
-        adjusted_score = max(0.0, min(1.0, hint.score + signal * 0.15))
+        # Batch 6.1: Increased multiplier from 0.15 to 0.25 for faster feedback response
+        adjusted_score = max(0.0, min(1.0, hint.score + signal * 0.25))
         reason = hint.reason
         if adjusted_score != hint.score:
             reason = f"{reason}; feedback_signal={signal:+.2f}".strip("; ")
