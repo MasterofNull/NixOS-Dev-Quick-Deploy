@@ -1,0 +1,104 @@
+{
+  "dashboard": {
+    "title": "AI Stack Overview",
+    "tags": ["ai-stack", "overview"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Token Usage (Total)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_tokens_used_total[5m])) by (operation, model)",
+            "legendFormat": "{{operation}} - {{model}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 2,
+        "title": "Cache Hit Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_tokens_cached_total[5m])) / (sum(rate(ai_tokens_used_total[5m])) + sum(rate(ai_tokens_cached_total[5m]))) * 100",
+            "legendFormat": "Cache Hit %"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 3,
+        "title": "Request Latency (p50, p95, p99)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(ai_request_latency_bucket[5m])) by (le, operation))",
+            "legendFormat": "p50 - {{operation}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(ai_request_latency_bucket[5m])) by (le, operation))",
+            "legendFormat": "p95 - {{operation}}"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(ai_request_latency_bucket[5m])) by (le, operation))",
+            "legendFormat": "p99 - {{operation}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 4,
+        "title": "Quality Score (Average)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_quality_score_sum[5m])) / sum(rate(ai_quality_score_count[5m]))",
+            "legendFormat": "Avg Quality"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 5,
+        "title": "Task Success Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_tasks_completed_total[5m])) / (sum(rate(ai_tasks_completed_total[5m])) + sum(rate(ai_tasks_failed_total[5m]))) * 100",
+            "legendFormat": "Success %"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8}
+      },
+      {
+        "id": 6,
+        "title": "API Cost (USD per hour)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_api_cost_total[1h])) by (provider, model)",
+            "legendFormat": "{{provider}} - {{model}}"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8}
+      },
+      {
+        "id": 7,
+        "title": "Service Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=~\"aidb|hybrid-coordinator|ralph-wiggum|switchboard\"}",
+            "legendFormat": "{{job}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 24, "w": 24, "h": 4}
+      }
+    ]
+  }
+}
