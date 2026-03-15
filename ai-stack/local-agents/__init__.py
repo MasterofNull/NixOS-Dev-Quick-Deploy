@@ -52,6 +52,12 @@ from .monitoring_agent import (
     HealthCheck,
     MonitoringAgent,
 )
+from .self_improvement import (
+    QualityDimension,
+    QualityScore,
+    ImprovementRecommendation,
+    SelfImprovementEngine,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,4 +129,9 @@ __all__ = [
     "HealthStatus",
     "HealthCheck",
     "MonitoringAgent",
+    # Self-improvement
+    "QualityDimension",
+    "QualityScore",
+    "ImprovementRecommendation",
+    "SelfImprovementEngine",
 ]
