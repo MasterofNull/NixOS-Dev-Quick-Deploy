@@ -259,12 +259,19 @@ curl -sS http://127.0.0.1:8003/control/ai-coordinator/status | jq '.report_summa
 **Gate:** Delegation success ≥95%, finalization always applied
 
 ### Batch 4.1: Finalization Hardening
-**Status:** validated
+**Status:** completed
 **Tasks:**
-- [ ] Ensure finalization pass always runs for tool-call-only responses
-- [ ] Add timeout handling for slow remote providers
-- [ ] Improve artifact recovery for partial failures
-- [ ] Add delegated response quality scoring
+- [x] Ensure finalization pass always runs for tool-call-only responses
+- [x] Add timeout handling for slow remote providers
+- [x] Improve artifact recovery for partial failures
+- [x] Add delegated response quality scoring
+
+**Evidence:**
+- Finalization for tool-call-only: http_server.py:4917-4964 (detects "tool_call_without_final_text", builds finalization messages, retries)
+- Finalization for empty reasoning: http_server.py:4965-4996+ (detects "empty_content", extracts reasoning_excerpt, retries)
+- Timeout handling: timeout_s parameter with 60s default (lines 4852, 4866, 4938, 4986)
+- Artifact recovery: salvage dict extraction from classify_delegated_response (lines 4922-4924, 4970-4971)
+- Quality scoring: classify_delegated_response() for initial/final/finalization stages (lines 4897, 4907, 4949, 4997)
 
 **Validation:**
 ```bash
