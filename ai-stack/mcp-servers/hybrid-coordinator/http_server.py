@@ -61,6 +61,7 @@ from quality_cache import (
     should_use_cache as _should_use_cache,
 )
 from quality_monitor import get_health_summary as _get_quality_health_summary, get_monitor_stats as _get_quality_monitor_stats
+from auto_quality_improver import get_improvement_summary as _get_auto_improvement_summary
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1779,6 +1780,8 @@ async def run_http_mode(port: int) -> None:
                 cache_stats=_get_quality_cache_stats(),
             ),
             "quality_monitor": _get_quality_monitor_stats(),
+            # Auto Quality Improvement stats
+            "auto_quality_improvement": _get_auto_improvement_summary(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
