@@ -97,6 +97,11 @@ from model_coordinator import (
 )
 import mcp_handlers
 
+# Phase 1: Alert Engine integration
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
+from alert_engine import AlertEngine, AlertSeverity, AlertStatus
+
 logger = logging.getLogger("hybrid-coordinator")
 
 # ---------------------------------------------------------------------------
@@ -147,6 +152,26 @@ _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
 _AQ_REPORT_LATEST_JSON = Path(
     os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
 )
+
+# Phase 1: Alert Engine instance (initialized on first access)
+_ALERT_ENGINE: Optional[AlertEngine] = None
+
+
+def _get_alert_engine() -> AlertEngine:
+    """Get or initialize the global alert engine instance."""
+    global _ALERT_ENGINE
+    if _ALERT_ENGINE is None:
+        data_dir = Path(os.path.expanduser(os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")))
+        rules_config = Path(os.path.expanduser(os.getenv("ALERT_RULES_CONFIG", "config/alert-rules.yaml")))
+
+        _ALERT_ENGINE = AlertEngine(
+            rules_config_path=rules_config if rules_config.exists() else None,
+            dedup_window_seconds=int(os.getenv("ALERT_DEDUP_WINDOW", "300")),
+            grouping_window_seconds=int(os.getenv("ALERT_GROUPING_WINDOW", "60")),
+            max_alert_history=int(os.getenv("ALERT_MAX_HISTORY", "10000")),
+        )
+        logger.info("Alert Engine initialized")
+    return _ALERT_ENGINE
 
 
 def _read_secret_file(path: str) -> str:
@@ -5545,6 +5570,64 @@ async def run_http_mode(port: int) -> None:
     http_app = web.Application(
         middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
     )
+    # Phase 1: WebSocket alert handler
+    async def handle_alerts_websocket(request):
+        """
+        WebSocket endpoint for real-time browser alert notifications.
+
+        Clients connect to this endpoint to receive alert updates in real-time.
+        Alerts are sent as JSON messages with alert details.
+        """
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        alert_engine = _get_alert_engine()
+        alert_engine.register_websocket(ws)
+
+        try:
+            logger.info(f"WebSocket client connected to /ws/alerts from {request.remote}")
+
+            # Send current active alerts on connection
+            active_alerts = alert_engine.get_active_alerts()
+            if active_alerts:
+                for alert in active_alerts[:10]:  # Send up to 10 most recent
+                    await ws.send_json(alert.to_dict())
+
+            # Keep connection alive and listen for client messages
+            async for msg in ws:
+                if msg.type == web.WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                        action = data.get("action")
+
+                        # Support client actions like acknowledge/resolve
+                        if action == "acknowledge" and "alert_id" in data:
+                            await alert_engine.acknowledge_alert(data["alert_id"])
+                        elif action == "resolve" and "alert_id" in data:
+                            await alert_engine.resolve_alert(data["alert_id"])
+                        elif action == "get_active":
+                            alerts = alert_engine.get_active_alerts()
+                            await ws.send_json({
+                                "action": "active_alerts",
+                                "alerts": [a.to_dict() for a in alerts]
+                            })
+                        elif action == "get_stats":
+                            stats = alert_engine.get_stats()
+                            await ws.send_json({
+                                "action": "stats",
+                                "data": stats
+                            })
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON from WebSocket client: {msg.data}")
+                elif msg.type == web.WSMsgType.ERROR:
+                    logger.error(f"WebSocket error: {ws.exception()}")
+
+        finally:
+            alert_engine.unregister_websocket(ws)
+            logger.info(f"WebSocket client disconnected from /ws/alerts")
+
+        return ws
+
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)
@@ -5635,6 +5718,9 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/runtimes/{runtime_id}/rollback", handle_runtime_rollback)
     http_app.router.add_get("/control/runtimes/schedule/policy", handle_runtime_schedule_policy)
     http_app.router.add_post("/control/runtimes/schedule/select", handle_runtime_schedule)
+
+    # Phase 1: WebSocket alert endpoint
+    http_app.router.add_get("/ws/alerts", handle_alerts_websocket)
 
     runner = web.AppRunner(
         http_app,

@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""
+Context Memory Management CLI - Monitor and manage context lifecycle.
+
+Usage:
+    aq-context-manage stats          # Show context memory statistics
+    aq-context-manage check          # Check if compaction should trigger
+    aq-context-manage plan           # Generate compaction plan
+    aq-context-manage compact        # Trigger compaction (requires confirmation)
+    aq-context-manage update         # Update lifecycle states
+
+Part of Context Rot and Recall system.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Add context_memory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack" / "context_memory"))
+
+from context_manager import ContextMemoryManager
+
+
+def format_bytes(bytes_count: int) -> str:
+    """Format bytes as human-readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes_count < 1024.0:
+            return f"{bytes_count:.1f}{unit}"
+        bytes_count /= 1024.0
+    return f"{bytes_count:.1f}TB"
+
+
+def cmd_stats(manager: ContextMemoryManager, json_output: bool = False):
+    """Show context memory statistics."""
+    stats = manager.get_stats()
+
+    if json_output:
+        print(json.dumps(stats, indent=2))
+        return
+
+    print("Context Memory Statistics")
+    print("=" * 60)
+    print(f"Total Contexts: {stats['total_contexts']}")
+    print(f"Total Tokens: {stats['total_tokens']:,} / {stats['window_limit']:,}")
+    print(f"Window Usage: {stats['window_usage_percent']:.1f}%")
+    print(f"Stale Ratio: {stats['stale_ratio']:.1%}")
+    print()
+
+    print("Lifecycle Distribution:")
+    for state, count in sorted(stats['lifecycle_distribution'].items()):
+        print(f"  {state:12} {count:6} contexts")
+    print()
+
+    print("Average Importance by Lifecycle:")
+    for state, avg_imp in sorted(stats['average_importance_by_lifecycle'].items()):
+        print(f"  {state:12} {avg_imp:.3f}")
+
+
+def cmd_check(manager: ContextMemoryManager, json_output: bool = False):
+    """Check if compaction should be triggered."""
+    should_trigger, reason = manager.should_trigger_compaction()
+
+    if json_output:
+        print(json.dumps({
+            "should_trigger": should_trigger,
+            "reason": reason,
+            "stats": manager.get_stats()
+        }, indent=2))
+        return
+
+    print("Compaction Trigger Check")
+    print("=" * 60)
+    print(f"Should Trigger: {should_trigger}")
+    print(f"Reason: {reason}")
+    print()
+
+    if should_trigger:
+        print("⚠️  COMPACTION RECOMMENDED")
+        print()
+        print("Run 'aq-context-manage plan' to see compaction plan")
+        print("Run 'aq-context-manage compact' to trigger compaction")
+        sys.exit(1)  # Exit with error code to signal compaction needed
+    else:
+        print("✓ No compaction needed")
+        sys.exit(0)
+
+
+def cmd_plan(manager: ContextMemoryManager, json_output: bool = False):
+    """Generate compaction plan."""
+    plan = manager.get_compaction_plan()
+
+    if json_output:
+        # Don't output full content in JSON
+        plan_summary = {
+            "stats": plan["stats"],
+            "keep_full_ids": [ctx["id"] for ctx in plan["keep_full"]],
+            "summarize_ids": [ctx["id"] for ctx in plan["summarize"]],
+            "archive_ids": [ctx["id"] for ctx in plan["archive"]],
+        }
+        print(json.dumps(plan_summary, indent=2))
+        return
+
+    print("Compaction Plan")
+    print("=" * 60)
+    print()
+    print(f"Keep Full:   {plan['stats']['keep_full_count']:6} contexts")
+    print(f"Summarize:   {plan['stats']['summarize_count']:6} contexts")
+    print(f"Archive:     {plan['stats']['archive_count']:6} contexts")
+    print(f"Budget Left: {plan['stats']['budget_remaining']:6.0f} tokens")
+    print()
+
+    if plan['keep_full']:
+        print("Top 5 contexts to keep:")
+        for ctx in plan['keep_full'][:5]:
+            print(f"  [{ctx['id'][:8]}] {ctx['context_type']:15} (importance={ctx['importance_score']:.2f}, {ctx['lifecycle_state']})")
+    print()
+
+    if plan['summarize']:
+        print("Top 5 contexts to summarize:")
+        for ctx in plan['summarize'][:5]:
+            print(f"  [{ctx['id'][:8]}] {ctx['context_type']:15} (importance={ctx['importance_score']:.2f}, {ctx['lifecycle_state']})")
+    print()
+
+    if plan['archive']:
+        print(f"Contexts to archive: {len(plan['archive'])}")
+        print("Top 5:")
+        for ctx in plan['archive'][:5]:
+            print(f"  [{ctx['id'][:8]}] {ctx['context_type']:15} (importance={ctx['importance_score']:.2f}, {ctx['lifecycle_state']})")
+
+
+def cmd_update(manager: ContextMemoryManager, json_output: bool = False):
+    """Update lifecycle states for all contexts."""
+    import asyncio
+
+    async def update_async():
+        updated = await manager.update_all_lifecycle_states()
+        return updated
+
+    updated = asyncio.run(update_async())
+
+    if json_output:
+        print(json.dumps({"updated_count": updated}, indent=2))
+        return
+
+    print(f"Updated lifecycle states for {updated} contexts")
+
+
+def cmd_compact(manager: ContextMemoryManager, force: bool = False):
+    """Trigger compaction (placeholder - requires conversation compaction integration)."""
+    should_trigger, reason = manager.should_trigger_compaction()
+
+    if not should_trigger and not force:
+        print("Compaction not recommended at this time.")
+        print(f"Reason: {reason}")
+        print()
+        print("Use --force to trigger anyway")
+        return
+
+    print("Compaction Trigger")
+    print("=" * 60)
+    print()
+    print("⚠️  WARNING: This will trigger conversation compaction in Claude Code.")
+    print()
+    print("This is a MANUAL trigger point. Compaction will be initiated by")
+    print("the conversation context, not this script.")
+    print()
+
+    if not force:
+        confirm = input("Trigger compaction? [y/N]: ")
+        if confirm.lower() != 'y':
+            print("Cancelled.")
+            return
+
+    # Show plan before compaction
+    plan = manager.get_compaction_plan()
+    print()
+    print(f"Plan: Keep {plan['stats']['keep_full_count']}, "
+          f"Summarize {plan['stats']['summarize_count']}, "
+          f"Archive {plan['stats']['archive_count']}")
+    print()
+    print("✓ Ready for compaction")
+    print()
+    print("TO TRIGGER COMPACTION:")
+    print("  1. Note current context state in this conversation")
+    print("  2. Ask Claude to summarize and compact the conversation")
+    print("  3. Context will be preserved according to importance scores")
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Context Memory Management CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  aq-context-manage stats                 # Show current statistics
+  aq-context-manage check                 # Check if compaction needed
+  aq-context-manage plan                  # Show compaction plan
+  aq-context-manage update                # Update lifecycle states
+  aq-context-manage compact               # Trigger compaction
+  aq-context-manage stats --json          # JSON output
+        """
+    )
+
+    parser.add_argument(
+        "command",
+        choices=["stats", "check", "plan", "update", "compact"],
+        help="Command to execute"
+    )
+
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output in JSON format"
+    )
+
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force compaction even if not recommended"
+    )
+
+    parser.add_argument(
+        "--db",
+        type=Path,
+        help="Path to context memory database (default: DATA_DIR/context_memory.db)"
+    )
+
+    args = parser.parse_args()
+
+    # Initialize manager
+    manager = ContextMemoryManager(db_path=args.db)
+
+    # Execute command
+    if args.command == "stats":
+        cmd_stats(manager, json_output=args.json)
+    elif args.command == "check":
+        cmd_check(manager, json_output=args.json)
+    elif args.command == "plan":
+        cmd_plan(manager, json_output=args.json)
+    elif args.command == "update":
+        cmd_update(manager, json_output=args.json)
+    elif args.command == "compact":
+        cmd_compact(manager, force=args.force)
+
+
+if __name__ == "__main__":
+    main()

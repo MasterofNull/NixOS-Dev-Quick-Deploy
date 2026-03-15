@@ -1,0 +1,163 @@
+# Alert Rules Configuration
+# Part of Phase 1 (Monitoring & Observability) implementation
+#
+# Defines alert conditions, thresholds, and automated remediation workflows.
+
+alert_rules:
+  # Service health monitoring
+  - name: service_unhealthy
+    condition: service.status != healthy
+    threshold: 1
+    duration: 60  # seconds - how long condition must persist
+    severity: critical
+    auto_remediate: true
+    remediation_workflow: restart_service
+    enabled: true
+    metadata:
+      description: "Service health check failing"
+      documentation: "Check service logs for errors"
+
+  # High error rate detection
+  - name: high_error_rate
+    condition: error_rate_5m > 0.05  # 5% error rate
+    threshold: 0.05
+    duration: 300  # 5 minutes
+    severity: warning
+    auto_remediate: false
+    enabled: true
+    metadata:
+      description: "Error rate exceeded 5% over 5 minutes"
+      documentation: "Investigate recent changes and check error logs"
+
+  # Memory pressure detection
+  - name: high_memory_usage
+    condition: memory_usage_percent > 90
+    threshold: 90
+    duration: 120  # 2 minutes
+    severity: critical
+    auto_remediate: true
+    remediation_workflow: clear_cache
+    enabled: true
+    metadata:
+      description: "Memory usage above 90%"
+      documentation: "Cache will be cleared automatically"
+
+  # Model loading failures
+  - name: model_loading_failed
+    condition: model_status == failed
+    threshold: 1
+    duration: 30
+    severity: critical
+    auto_remediate: true
+    remediation_workflow: refresh_models
+    enabled: true
+    metadata:
+      description: "Model failed to load"
+      documentation: "Model reload will be triggered automatically"
+
+  # High latency detection
+  - name: high_query_latency
+    condition: p95_latency_ms > 5000
+    threshold: 5000  # 5 seconds
+    duration: 300  # 5 minutes
+    severity: warning
+    auto_remediate: false
+    enabled: true
+    metadata:
+      description: "95th percentile query latency above 5 seconds"
+      documentation: "Check system load and model performance"
+
+  # Disk space warning
+  - name: low_disk_space
+    condition: disk_usage_percent > 85
+    threshold: 85
+    duration: 60
+    severity: warning
+    auto_remediate: true
+    remediation_workflow: rotate_logs
+    enabled: true
+    metadata:
+      description: "Disk usage above 85%"
+      documentation: "Log rotation will be triggered automatically"
+
+  # Database connection failures
+  - name: database_connection_failed
+    condition: db_connection_status == failed
+    threshold: 1
+    duration: 30
+    severity: critical
+    auto_remediate: true
+    remediation_workflow: restart_service
+    enabled: true
+    metadata:
+      description: "Database connection failed"
+      documentation: "Service restart will be attempted"
+      service_name: "postgresql.service"
+
+  # Qdrant collection errors
+  - name: qdrant_collection_error
+    condition: qdrant_collection_status == error
+    threshold: 1
+    duration: 60
+    severity: critical
+    auto_remediate: false  # Requires manual investigation
+    enabled: true
+    metadata:
+      description: "Qdrant collection in error state"
+      documentation: "Check Qdrant logs and collection health"
+
+  # Token budget exhaustion
+  - name: token_budget_exhausted
+    condition: token_budget_remaining_percent < 10
+    threshold: 10
+    duration: 60
+    severity: warning
+    auto_remediate: false
+    enabled: true
+    metadata:
+      description: "Token budget below 10%"
+      documentation: "Monitor token usage and consider budget adjustment"
+
+  # Cache hit rate degradation
+  - name: low_cache_hit_rate
+    condition: cache_hit_rate_percent < 30
+    threshold: 30
+    duration: 600  # 10 minutes
+    severity: info
+    auto_remediate: false
+    enabled: true
+    metadata:
+      description: "Cache hit rate below 30%"
+      documentation: "May indicate cache warming needed or pattern changes"
+
+  # Circuit breaker open
+  - name: circuit_breaker_open
+    condition: circuit_breaker_state == open
+    threshold: 1
+    duration: 60
+    severity: critical
+    auto_remediate: false  # Circuit breaker handles this
+    enabled: true
+    metadata:
+      description: "Circuit breaker triggered"
+      documentation: "Service dependency unhealthy, investigate root cause"
+
+  # Anomaly detection trigger
+  - name: quality_anomaly_detected
+    condition: quality_score_zscore > 3
+    threshold: 3
+    duration: 120
+    severity: warning
+    auto_remediate: false
+    enabled: true
+    metadata:
+      description: "Quality score anomaly detected (>3 standard deviations)"
+      documentation: "Review recent quality metrics and model performance"
+
+# Global alert settings
+settings:
+  deduplication_window_seconds: 300  # 5 minutes
+  grouping_window_seconds: 60        # 1 minute
+  max_alert_history: 10000
+  default_retry_attempts: 3
+  default_retry_delay_seconds: 5
