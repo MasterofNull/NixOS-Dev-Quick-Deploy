@@ -88,9 +88,9 @@
             animation: pulse 2s infinite;
         }
 
-        .status-running { background: var(--success); }
-        .status-stopped { background: var(--danger); }
-        .status-starting { background: var(--warning); }
+        .status-healthy { background: var(--success); }
+        .status-unhealthy { background: var(--danger); }
+        .status-degraded { background: var(--warning); }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -107,7 +107,7 @@
             background: var(--bg);
             border-radius: 4px;
             display: flex;
-            justify-content: space-between;
+            justify-between;
             align-items: center;
         }
 
@@ -131,59 +131,6 @@
             color: var(--primary);
         }
 
-        .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            background: var(--primary);
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            transition: background 0.3s;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .btn:hover {
-            background: #4a8ed1;
-        }
-
-        .btn-success { background: var(--success); }
-        .btn-warning { background: var(--warning); }
-        .btn-danger { background: var(--danger); }
-
-        .btn-success:hover { background: #5fb904; }
-        .btn-warning:hover { background: #d66000; }
-        .btn-danger:hover { background: #a30000; }
-
-        .docs-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .doc-link {
-            padding: 15px;
-            background: white;
-            border-radius: 4px;
-            text-decoration: none;
-            color: var(--dark);
-            border-left: 4px solid var(--primary);
-            transition: all 0.3s;
-        }
-
-        .doc-link:hover {
-            transform: translateX(5px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .doc-link strong {
-            display: block;
-            color: var(--primary);
-            margin-bottom: 5px;
-        }
-
         .section {
             margin-bottom: 40px;
         }
@@ -202,278 +149,357 @@
             margin-top: 40px;
         }
 
-        .quick-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 15px;
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
         }
+
+        .badge-success { background: var(--success); color: white; }
+        .badge-danger { background: var(--danger); color: white; }
+        .badge-warning { background: var(--warning); color: white; }
     </style>
 </head>
 <body>
     <header>
         <div class="container">
             <h1>🚀 NixOS AI Stack Dashboard</h1>
-            <p>Hybrid Local-Remote Learning System • Continuous Improvement • Multi-Node Federation</p>
+            <p>Real-time Service Health • AI Intelligence • Performance Analytics</p>
         </div>
     </header>
 
     <div class="container">
-        <!-- System Status -->
+        <!-- System Overview -->
         <section class="section">
-            <h2>📊 System Status</h2>
+            <h2>📊 System Overview</h2>
             <div class="status-grid">
                 <div class="card">
-                    <h3><span class="status-indicator status-running"></span> Core Services</h3>
-                    <ul class="service-list">
-                        <li class="service-item">
-                            <span>llama.cpp (8080)</span>
-                            <span id="llama-cpp-status">Checking...</span>
-                        </li>
-                        <li class="service-item">
-                            <span>Qdrant Vector DB (6333)</span>
-                            <span id="qdrant-status">Checking...</span>
-                        </li>
+                    <h3><span id="system-status-indicator" class="status-indicator"></span> System Health</h3>
+                    <div class="metric">
+                        <span>Status</span>
+                        <span class="metric-value" id="system-status">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Services Healthy</span>
+                        <span class="metric-value" id="services-health">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Active Issues</span>
+                        <span class="metric-value" id="active-issues">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>💾 Cache Performance</h3>
+                    <div class="metric">
+                        <span>Hit Rate</span>
+                        <span class="metric-value" id="cache-hit-rate">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Hits / Misses</span>
+                        <span class="metric-value" id="cache-stats">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🎯 LLM Routing</h3>
+                    <div class="metric">
+                        <span>Local Usage</span>
+                        <span class="metric-value" id="local-routing">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Total Calls</span>
+                        <span class="metric-value" id="routing-calls">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🧠 Hint Effectiveness</h3>
+                    <div class="metric">
+                        <span>Adoption Rate</span>
+                        <span class="metric-value" id="hint-adoption">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Unique Hints</span>
+                        <span class="metric-value" id="hint-unique">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI Stack Services -->
+        <section class="section">
+            <h2>🔧 AI Stack Services</h2>
+            <div class="status-grid">
+                <div class="card">
+                    <h3>AI Core Services</h3>
+                    <ul class="service-list" id="ai-core-services">
+                        <li class="service-item">Loading services...</li>
                     </ul>
                 </div>
 
                 <div class="card">
-                    <h3><span class="status-indicator status-running"></span> Learning System</h3>
-                    <div class="metric">
-                        <span>Interactions Tracked</span>
-                        <span class="metric-value" id="interactions-count">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>High-Value Data</span>
-                        <span class="metric-value" id="high-value-count">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Patterns Extracted</span>
-                        <span class="metric-value" id="patterns-count">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Error Solutions</span>
-                        <span class="metric-value" id="solutions-count">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Token Savings</span>
-                        <span class="metric-value" id="tokens-saved">Loading...</span>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3><span class="status-indicator status-running"></span> Federation</h3>
-                    <div class="metric">
-                        <span>Node ID</span>
-                        <span class="metric-value" id="node-id">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Mode</span>
-                        <span class="metric-value" id="federation-mode">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Connected Nodes</span>
-                        <span class="metric-value" id="connected-nodes">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Last Sync</span>
-                        <span class="metric-value" id="last-sync">Loading...</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Quick Actions -->
-        <section class="section">
-            <h2>⚡ Quick Actions</h2>
-            <div class="card">
-                <div class="quick-actions">
-                    <a href="http://localhost:3001" class="btn" target="_blank">Open WebUI</a>
-                    <a href="http://localhost:6333/dashboard" class="btn" target="_blank">Qdrant Dashboard</a>
-                    <a href="http://localhost:9200/metrics" class="btn" target="_blank">Metrics</a>
-                    <button class="btn btn-success" onclick="triggerSync()">Sync Now</button>
-                    <button class="btn btn-warning" onclick="generateDataset()">Generate Training Data</button>
-                    <button class="btn btn-warning" onclick="exportSnapshot()">Export Snapshot</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Documentation -->
-        <section class="section">
-            <h2>📚 Documentation</h2>
-            <div class="card">
-                <div class="docs-grid">
-                    <a href="/docs/HYBRID-AI-SYSTEM-GUIDE.md" class="doc-link">
-                        <strong>Complete System Guide</strong>
-                        <small>Hybrid learning implementation</small>
-                    </a>
-                    <a href="/docs/DISTRIBUTED-LEARNING-GUIDE.md" class="doc-link">
-                        <strong>Multi-Node Setup</strong>
-                        <small>Federation & synchronization</small>
-                    </a>
-                    <a href="/docs/AI-AGENT-SETUP.md" class="doc-link">
-                        <strong>Quick Start Guide</strong>
-                        <small>Getting started with AI agents</small>
-                    </a>
-                    <a href="/docs/ai-knowledge-base/HYBRID-LEARNING-ARCHITECTURE.md" class="doc-link">
-                        <strong>Architecture</strong>
-                        <small>Technical deep dive</small>
-                    </a>
-                    <a href="/docs/ai-knowledge-base/reference/llama-cpp-api.md" class="doc-link">
-                        <strong>llama.cpp API</strong>
-                        <small>API reference & examples</small>
-                    </a>
-                    <a href="/docs/ai-knowledge-base/mcp-servers/" class="doc-link">
-                        <strong>MCP Server Catalog</strong>
-                        <small>Available MCP servers</small>
-                    </a>
-                </div>
-            </div>
-        </section>
-
-        <!-- Monitoring -->
-        <section class="section">
-            <h2>🔍 Monitoring & Logs</h2>
-            <div class="status-grid">
-                <div class="card">
-                    <h3>Container Logs</h3>
-                    <ul class="service-list">
-                        <li class="service-item">
-                            <span>llama.cpp</span>
-                            <button class="btn" onclick="viewLogs('llama-cpp')">View Logs</button>
-                        </li>
-                        <li class="service-item">
-                            <span>Qdrant</span>
-                            <button class="btn" onclick="viewLogs('qdrant')">View Logs</button>
-                        </li>
-                        <li class="service-item">
-                            <span>Hybrid Coordinator</span>
-                            <button class="btn" onclick="viewLogs('hybrid-coordinator')">View Logs</button>
-                        </li>
+                    <h3>LLM Services</h3>
+                    <ul class="service-list" id="llm-services">
+                        <li class="service-item">Loading services...</li>
                     </ul>
                 </div>
 
                 <div class="card">
-                    <h3>System Health</h3>
+                    <h3>Storage Services</h3>
+                    <ul class="service-list" id="storage-services">
+                        <li class="service-item">Loading services...</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>Observability Services</h3>
+                    <ul class="service-list" id="observability-services">
+                        <li class="service-item">Loading services...</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool Performance -->
+        <section class="section">
+            <h2>⚡ Tool Performance</h2>
+            <div class="status-grid">
+                <div class="card">
+                    <h3>Overview</h3>
                     <div class="metric">
-                        <span>CPU Usage</span>
-                        <span class="metric-value" id="cpu-usage">Loading...</span>
+                        <span>Total Tools</span>
+                        <span class="metric-value" id="total-tools">Loading...</span>
                     </div>
                     <div class="metric">
-                        <span>Memory Usage</span>
-                        <span class="metric-value" id="memory-usage">Loading...</span>
+                        <span>Total Calls</span>
+                        <span class="metric-value" id="total-calls">Loading...</span>
                     </div>
                     <div class="metric">
-                        <span>Disk Usage</span>
-                        <span class="metric-value" id="disk-usage">Loading...</span>
-                    </div>
-                    <div class="metric">
-                        <span>Network</span>
-                        <span class="metric-value" id="network-status">Loading...</span>
+                        <span>Success Rate</span>
+                        <span class="metric-value" id="success-rate">Loading...</span>
                     </div>
                 </div>
+
+                <div class="card">
+                    <h3>Top 5 Tools (by calls)</h3>
+                    <ul class="service-list" id="top-tools">
+                        <li class="service-item">Loading...</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>Workflow Compliance</h3>
+                    <div class="metric">
+                        <span>Total Runs</span>
+                        <span class="metric-value" id="workflow-runs">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Contract Coverage</span>
+                        <span class="metric-value" id="contract-coverage">Loading...</span>
+                    </div>
+                    <div class="metric">
+                        <span>Task Success Rate</span>
+                        <span class="metric-value" id="task-success">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- System Recommendations -->
+        <section class="section">
+            <h2>💡 System Recommendations</h2>
+            <div class="card">
+                <ul id="recommendations" style="list-style: none; padding: 0;">
+                    <li style="padding: 10px; margin: 5px 0; background: var(--bg); border-radius: 4px;">
+                        Loading recommendations...
+                    </li>
+                </ul>
             </div>
         </section>
     </div>
 
     <footer>
-        <p>NixOS-Dev-Quick-Deploy • Hybrid Local-Remote AI Learning System</p>
-        <p>Version 1.0.0 • Last Updated: 2025-12-19</p>
+        <p>NixOS AI Stack Dashboard • Updated <span id="last-update">...</span></p>
     </footer>
 
     <script>
-        // Service status checks
-        async function checkService(url, elementId) {
-            try {
-                const response = await fetch(url);
-                document.getElementById(elementId).innerHTML =
-                    '<span style="color: var(--success)">✓ Running</span>';
-            } catch (error) {
-                document.getElementById(elementId).innerHTML =
-                    '<span style="color: var(--danger)">✗ Offline</span>';
-            }
-        }
-
-        // Check all services
-        function checkAllServices() {
-            checkService('http://localhost:8080/health', 'llama-cpp-status');
-            checkService('http://localhost:6333/collections', 'qdrant-status');
-        }
-
-        // Load metrics from Qdrant
-        async function loadMetrics() {
-            try {
-                const response = await fetch('http://localhost:6333/collections');
-                const data = await response.json();
-
-                let totalInteractions = 0;
-                let patterns = 0;
-                let solutions = 0;
-
-                data.result.collections.forEach(col => {
-                    if (col.name === 'interaction-history') totalInteractions = col.points_count;
-                    if (col.name === 'skills-patterns') patterns = col.points_count;
-                    if (col.name === 'error-solutions') solutions = col.points_count;
-                });
-
-                document.getElementById('interactions-count').textContent = totalInteractions;
-                document.getElementById('patterns-count').textContent = patterns;
-                document.getElementById('solutions-count').textContent = solutions;
-
-                // Calculate high-value count (estimated)
-                document.getElementById('high-value-count').textContent = Math.floor(totalInteractions * 0.3);
-                document.getElementById('tokens-saved').textContent = (totalInteractions * 500).toLocaleString();
-            } catch (error) {
-                console.error('Error loading metrics:', error);
-            }
-        }
-
-        // Load federation status
-        async function loadFederationStatus() {
-            document.getElementById('node-id').textContent = window.location.hostname;
-            document.getElementById('federation-mode').textContent = 'Standalone';
-            document.getElementById('connected-nodes').textContent = '0';
-            document.getElementById('last-sync').textContent = 'N/A';
-        }
-
-        // Actions
-        async function triggerSync() {
-            alert('Sync triggered! This will sync with configured nodes.');
-            // In production: await fetch('http://localhost:8092/sync', { method: 'POST' });
-        }
-
-        async function generateDataset() {
-            alert('Generating fine-tuning dataset from high-value interactions...');
-            // In production: call MCP server to generate dataset
-        }
-
-        async function exportSnapshot() {
-            alert('Exporting snapshot to /var/lib/hybrid-learning/exports/');
-            // In production: trigger export via API
-        }
-
-        function viewLogs(service) {
-            alert(`To view ${service} logs, run:\npodman logs -f ${service}`);
-        }
+        const API_BASE = 'http://localhost:8889/api';
 
         // Load system health
-        function loadSystemHealth() {
-            document.getElementById('cpu-usage').textContent = 'N/A';
-            document.getElementById('memory-usage').textContent = 'N/A';
-            document.getElementById('disk-usage').textContent = 'N/A';
-            document.getElementById('network-status').textContent = 'OK';
+        async function loadSystemHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/insights/system/health`);
+                const data = await response.json();
+
+                // Update system status
+                document.getElementById('system-status').textContent = data.status.toUpperCase();
+                const indicator = document.getElementById('system-status-indicator');
+                indicator.className = `status-indicator status-${data.status}`;
+
+                // Update metrics
+                document.getElementById('services-health').textContent =
+                    `${data.routing.local_n} / ${data.routing.local_n}`;
+                document.getElementById('active-issues').textContent = data.issues.length;
+
+                // Cache stats
+                document.getElementById('cache-hit-rate').textContent = `${data.cache.hit_pct.toFixed(1)}%`;
+                document.getElementById('cache-stats').textContent =
+                    `${data.cache.hits} / ${data.cache.misses}`;
+
+                // Routing stats
+                document.getElementById('local-routing').textContent = `${data.routing.local_pct.toFixed(0)}%`;
+                document.getElementById('routing-calls').textContent = data.routing.local_n;
+
+                // Recommendations
+                const recsEl = document.getElementById('recommendations');
+                if (data.recommendations.length > 0) {
+                    recsEl.innerHTML = data.recommendations.map(rec =>
+                        `<li style="padding: 10px; margin: 5px 0; background: var(--bg); border-radius: 4px; border-left: 4px solid var(--primary);">
+                            ${rec}
+                        </li>`
+                    ).join('');
+                } else {
+                    recsEl.innerHTML = '<li style="padding: 10px; color: var(--success);">✓ No recommendations - system running optimally</li>';
+                }
+            } catch (error) {
+                console.error('Error loading system health:', error);
+            }
+        }
+
+        // Load all services by category
+        async function loadServices() {
+            try {
+                const response = await fetch(`${API_BASE}/health/services/all`);
+                const data = await response.json();
+                const services = data.services;
+
+                // Group services by category
+                const categories = {
+                    'ai-core': [],
+                    'llm': [],
+                    'storage': [],
+                    'observability': []
+                };
+
+                Object.entries(services).forEach(([id, service]) => {
+                    const category = service.category;
+                    if (categories[category]) {
+                        categories[category].push({ id, ...service });
+                    }
+                });
+
+                // Render services by category
+                renderServiceList('ai-core-services', categories['ai-core']);
+                renderServiceList('llm-services', categories['llm']);
+                renderServiceList('storage-services', categories['storage']);
+                renderServiceList('observability-services', categories['observability']);
+
+            } catch (error) {
+                console.error('Error loading services:', error);
+            }
+        }
+
+        function renderServiceList(elementId, services) {
+            const el = document.getElementById(elementId);
+            if (!services || services.length === 0) {
+                el.innerHTML = '<li class="service-item">No services in this category</li>';
+                return;
+            }
+
+            el.innerHTML = services.map(service => {
+                const statusClass = service.status === 'healthy' ? 'badge-success' : 'badge-danger';
+                return `
+                    <li class="service-item">
+                        <span>${service.name}</span>
+                        <span class="badge ${statusClass}">${service.status}</span>
+                    </li>
+                `;
+            }).join('');
+        }
+
+        // Load tool performance
+        async function loadToolPerformance() {
+            try {
+                const response = await fetch(`${API_BASE}/insights/tools/performance`);
+                const data = await response.json();
+
+                document.getElementById('total-tools').textContent = data.summary.total_tools;
+                document.getElementById('total-calls').textContent = data.summary.total_calls.toLocaleString();
+                document.getElementById('success-rate').textContent =
+                    `${(100 - data.summary.error_rate_pct).toFixed(1)}%`;
+
+                // Top tools
+                const topToolsEl = document.getElementById('top-tools');
+                topToolsEl.innerHTML = data.top_tools.slice(0, 5).map(tool =>
+                    `<li class="service-item">
+                        <span>${tool.name}</span>
+                        <span>${tool.calls.toLocaleString()} calls</span>
+                    </li>`
+                ).join('');
+            } catch (error) {
+                console.error('Error loading tool performance:', error);
+            }
+        }
+
+        // Load hint effectiveness
+        async function loadHintEffectiveness() {
+            try {
+                const response = await fetch(`${API_BASE}/insights/hints/effectiveness`);
+                const data = await response.json();
+
+                if (data.adoption && data.adoption.available) {
+                    document.getElementById('hint-adoption').textContent =
+                        `${data.adoption.adoption_pct.toFixed(0)}%`;
+                    document.getElementById('hint-unique').textContent = data.adoption.unique_hints;
+                }
+            } catch (error) {
+                console.error('Error loading hint effectiveness:', error);
+            }
+        }
+
+        // Load workflow compliance
+        async function loadWorkflowCompliance() {
+            try {
+                const response = await fetch(`${API_BASE}/insights/workflows/compliance`);
+                const data = await response.json();
+
+                if (data.intent_contract && data.intent_contract.available) {
+                    document.getElementById('workflow-runs').textContent =
+                        data.intent_contract.total_runs;
+                    document.getElementById('contract-coverage').textContent =
+                        `${data.intent_contract.contract_coverage_pct.toFixed(1)}%`;
+                }
+
+                if (data.task_tooling && data.task_tooling.available) {
+                    document.getElementById('task-success').textContent =
+                        `${data.task_tooling.success_pct.toFixed(1)}%`;
+                }
+            } catch (error) {
+                console.error('Error loading workflow compliance:', error);
+            }
         }
 
         // Initialize dashboard
+        async function initDashboard() {
+            await Promise.all([
+                loadSystemHealth(),
+                loadServices(),
+                loadToolPerformance(),
+                loadHintEffectiveness(),
+                loadWorkflowCompliance()
+            ]);
+
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Auto-refresh
         document.addEventListener('DOMContentLoaded', function() {
-            checkAllServices();
-            loadMetrics();
-            loadFederationStatus();
-            loadSystemHealth();
+            initDashboard();
 
             // Refresh every 30 seconds
-            setInterval(checkAllServices, 30000);
-            setInterval(loadMetrics, 60000);
+            setInterval(initDashboard, 30000);
         });
     </script>
 </body>
