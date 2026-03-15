@@ -111,6 +111,11 @@ def _parse_args() -> argparse.Namespace:
         "--max-tokens", type=int, default=0,
         help="Cap total hint tokens (0 = unlimited, e.g. 200 for tight budget)",
     )
+    p.add_argument(
+        "--escalate",
+        action="store_true",
+        help="Request expanded context - suspends token limits for deep dives",
+    )
     return p.parse_args()
 
 
@@ -121,7 +126,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _fetch_local(
     query: str, context: str, max_hints: int, agent: str, debug_meta: bool,
-    compact: bool = False, max_tokens: int = 0
+    compact: bool = False, max_tokens: int = 0, escalate: bool = False
 ) -> Optional[Dict[str, Any]]:
     if not _ENGINE_AVAILABLE:
         return None
@@ -135,6 +140,7 @@ def _fetch_local(
             include_debug_metadata=debug_meta,
             max_hint_tokens=max_tokens,
             compact_mode=compact,
+            force_escalation=escalate,
         )
     except Exception:
         return None
@@ -142,13 +148,14 @@ def _fetch_local(
 
 def _fetch_rest(
     query: str, context: str, max_hints: int, agent: str, debug_meta: bool,
-    compact: bool = False, max_tokens: int = 0
+    compact: bool = False, max_tokens: int = 0, escalate: bool = False
 ) -> Optional[Dict[str, Any]]:
     params = urllib.parse.urlencode({
         "q": query, "context": context, "max": max_hints, "agent": agent,
         "debug": "1" if debug_meta else "0",
         "compact": "1" if compact else "0",
         "max_tokens": str(max_tokens),
+        "escalate": "1" if escalate else "0",
     })
     url = f"{HYBRID_URL}/hints?{params}"
     try:
@@ -165,11 +172,11 @@ def _fetch_rest(
 
 def get_hints(
     query: str, context: str, max_hints: int, agent: str, debug_meta: bool,
-    compact: bool = False, max_tokens: int = 0
+    compact: bool = False, max_tokens: int = 0, escalate: bool = False
 ) -> Dict[str, Any]:
     result = (
-        _fetch_local(query, context, max_hints, agent, debug_meta, compact, max_tokens)
-        or _fetch_rest(query, context, max_hints, agent, debug_meta, compact, max_tokens)
+        _fetch_local(query, context, max_hints, agent, debug_meta, compact, max_tokens, escalate)
+        or _fetch_rest(query, context, max_hints, agent, debug_meta, compact, max_tokens, escalate)
     )
     if result is None:
         print(
@@ -364,7 +371,7 @@ def main() -> None:
     args = _parse_args()
     result = get_hints(
         args.query, args.context, args.max, args.agent, args.debug_meta,
-        compact=args.compact, max_tokens=args.max_tokens
+        compact=args.compact, max_tokens=args.max_tokens, escalate=args.escalate
     )
     result = _augment_for_agent(result, args.agent, args.debug_meta)
 

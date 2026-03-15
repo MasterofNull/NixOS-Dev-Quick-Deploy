@@ -400,9 +400,37 @@ class TokenBudgetContext:
     # Post-compaction restoration factor
     COMPACTION_RESTORE_FACTOR = 1.8  # Restore ~80% more tokens after compaction
 
+    # Escalation: when models request expanded context, suspend limits
+    ESCALATION_MULTIPLIER = 4.0  # 4x budget when escalation detected
+    ESCALATION_SIGNALS = [
+        # Explicit expansion requests
+        "deep dive", "more context", "expand", "more detail", "elaborate",
+        "full context", "complete picture", "comprehensive", "thorough",
+        # Information seeking patterns
+        "need to understand", "help me understand", "explain fully",
+        "all relevant", "everything about", "show me all",
+        # Architecture/analysis triggers
+        "analyze in depth", "full analysis", "detailed breakdown",
+        "explore thoroughly", "investigate", "dig deeper",
+        # Re-request patterns (model didn't get enough)
+        "still need", "not enough", "missing context", "can you provide more",
+        "i need more", "give me more", "tell me more",
+    ]
+
     def __init__(self):
         self._session_turn_count = 0
         self._last_compaction_turn = 0
+
+    def detect_escalation(self, query: str) -> bool:
+        """
+        Detect if the query contains escalation signals.
+
+        When models request expanded context ("deep dive", "more context", etc.),
+        we should suspend/increase token limits to let them consume needed info.
+        Token limits are safeguards, not hard restrictions.
+        """
+        query_lower = query.lower()
+        return any(signal in query_lower for signal in self.ESCALATION_SIGNALS)
 
     def calculate(
         self,
@@ -410,6 +438,7 @@ class TokenBudgetContext:
         query_complexity: str = "medium",
         post_compaction: bool = False,
         turn_count: int = 0,
+        escalation_requested: bool = False,
     ) -> int:
         """
         Calculate context-aware token budget.
@@ -419,6 +448,7 @@ class TokenBudgetContext:
             query_complexity: simple | medium | complex | architecture
             post_compaction: True if context was recently compacted
             turn_count: Current conversation turn (0 = auto-detect)
+            escalation_requested: True if model requested expanded context
 
         Returns:
             Recommended token budget for hints
@@ -427,6 +457,13 @@ class TokenBudgetContext:
         multiplier = self.COMPLEXITY_MULTIPLIERS.get(query_complexity, 1.0)
 
         budget = int(base * multiplier)
+
+        # Escalation: model requested expanded context - suspend normal limits
+        # This is the primary override - token limits are safeguards, not restrictions
+        if escalation_requested:
+            budget = int(budget * self.ESCALATION_MULTIPLIER)
+            # When escalating, use a higher cap
+            return min(budget, 4000)  # Allow up to full disclosure budget
 
         # Post-compaction: restore larger budget to avoid context starvation
         if post_compaction:
@@ -437,7 +474,7 @@ class TokenBudgetContext:
         if effective_turn <= 2:
             budget = int(budget * 1.2)  # 20% boost for early context building
 
-        return min(budget, 1200)  # Hard cap to prevent runaway
+        return min(budget, 1200)  # Normal cap for non-escalated queries
 
     def detect_phase(self, query: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Auto-detect task phase from query and context."""
@@ -531,9 +568,17 @@ def calculate_context_aware_budget(
     task_phase: Optional[str] = None,
     query_complexity: Optional[str] = None,
     post_compaction: bool = False,
+    force_escalation: bool = False,
 ) -> Dict[str, Any]:
     """
     Convenience function for context-aware token budget calculation.
+
+    Args:
+        query: The user/model query
+        task_phase: Override phase detection
+        query_complexity: Override complexity detection
+        post_compaction: Force post-compaction mode
+        force_escalation: Force escalation mode (bypass detection)
 
     Returns dict with budget and metadata for transparency.
     """
@@ -544,10 +589,15 @@ def calculate_context_aware_budget(
     detected_complexity = query_complexity or ctx.detect_complexity(query)
     is_post_compact = post_compaction or ctx.is_post_compaction()
 
+    # Detect escalation - model requesting expanded context
+    # Token limits are safeguards, not restrictions; allow models to request more
+    is_escalated = force_escalation or ctx.detect_escalation(query)
+
     budget = ctx.calculate(
         task_phase=detected_phase,
         query_complexity=detected_complexity,
         post_compaction=is_post_compact,
+        escalation_requested=is_escalated,
     )
 
     return {
@@ -555,13 +605,24 @@ def calculate_context_aware_budget(
         "task_phase": detected_phase,
         "query_complexity": detected_complexity,
         "post_compaction": is_post_compact,
-        "rationale": _budget_rationale(detected_phase, detected_complexity, is_post_compact),
+        "escalation_active": is_escalated,
+        "limits_suspended": is_escalated,  # Clear signal that limits are suspended
+        "rationale": _budget_rationale(
+            detected_phase, detected_complexity, is_post_compact, is_escalated
+        ),
     }
 
 
-def _budget_rationale(phase: str, complexity: str, post_compact: bool) -> str:
+def _budget_rationale(
+    phase: str, complexity: str, post_compact: bool, escalated: bool = False
+) -> str:
     """Generate human-readable rationale for budget decision."""
     parts = []
+
+    # Escalation takes priority - it's the primary signal
+    if escalated:
+        parts.append("ESCALATION: model requested expanded context - limits suspended")
+
     if phase == "new_phase":
         parts.append("new work needs full context")
     elif phase == "sub_task":
@@ -1441,6 +1502,32 @@ class HintsEngine:
         compact.update(self._compact_missing_fields(prompt_coaching.get("missing_fields", [])))
         return compact
 
+    def _get_tool_suggestions(self, domain_context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Get tool suggestions for the detected domain (Phase 12.2).
+
+        Returns tool recommendations based on domain and task type.
+        """
+        if not domain_context.get("available"):
+            return []
+
+        try:
+            from model_coordinator import get_model_coordinator
+            coordinator = get_model_coordinator()
+
+            primary_domain = domain_context.get("primary_domain", {})
+            domain_id = primary_domain.get("id", "")
+
+            if not domain_id:
+                return []
+
+            suggestions = coordinator.get_tool_suggestions(domain_id)
+            return suggestions[:3]  # Cap at 3 suggestions for token efficiency
+        except ImportError:
+            return []
+        except Exception:
+            return []
+
     def _get_domain_context(self, query: str) -> Dict[str, Any]:
         """
         Get domain-specific context for progressive disclosure (Phase 12.3).
@@ -1494,6 +1581,7 @@ class HintsEngine:
         include_debug_metadata: Optional[bool] = None,
         max_hint_tokens: int = 0,
         compact_mode: bool = False,
+        force_escalation: bool = False,
     ) -> dict:
         """
         Return ranked hints as a JSON-serialisable dict.
@@ -1501,6 +1589,9 @@ class HintsEngine:
         Phase 10.3 additions:
         - max_hint_tokens: Cap total hint tokens (0 = unlimited)
         - compact_mode: Use minimal hint format for token efficiency
+
+        Escalation (Phase 10.4):
+        - force_escalation: Override detected escalation, suspend token limits
         """
         hints = self.rank(query, context=context, max_hints=max_hints, agent_type=agent_type)
         profile = self._load_agent_preference_profile(agent_type)
@@ -1522,6 +1613,9 @@ class HintsEngine:
 
         # Domain-based progressive disclosure (Phase 12.3)
         domain_context = self._get_domain_context(query)
+
+        # Tool suggestions from model coordinator (Phase 12.2)
+        tool_suggestions = self._get_tool_suggestions(domain_context)
 
         # Phase 10.3 — Token-efficient hint delivery
         max_snippet_chars = 150 if compact_mode else 0
@@ -1546,8 +1640,10 @@ class HintsEngine:
             serialized_hints.append(hint_dict)
             total_hint_tokens += hint_token_est
 
-        # Context-aware budget calculation
-        context_budget = calculate_context_aware_budget(query)
+        # Context-aware budget calculation with escalation support
+        context_budget = calculate_context_aware_budget(
+            query, force_escalation=force_escalation
+        )
 
         result = {
             "hints": serialized_hints,
@@ -1566,12 +1662,17 @@ class HintsEngine:
                 "task_phase": context_budget["task_phase"],
                 "query_complexity": context_budget["query_complexity"],
                 "rationale": context_budget["rationale"],
+                # Escalation state (Phase 10.4)
+                "escalation_active": context_budget.get("escalation_active", False),
+                "limits_suspended": context_budget.get("limits_suspended", False),
             },
             "feedback_contract": {
                 "endpoint": "/hints/feedback",
                 "required_any_of": ["helpful", "score"],
                 "required": ["hint_id"],
             },
+            # Tool suggestions for domain (Phase 12.2)
+            "tool_suggestions": tool_suggestions,
         }
         if include_debug_metadata:
             result["debug_metadata"] = {

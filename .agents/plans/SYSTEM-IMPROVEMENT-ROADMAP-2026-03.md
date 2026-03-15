@@ -636,29 +636,45 @@ python3 scripts/testing/test-mcp-signature-validation.py
 **Gate:** Dual-model routing active, measurable quality improvement
 
 ### Batch 12.1: Model Role Classification
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Define reasoning-model tasks (planning, architecture, analysis)
-- [ ] Define coding-model tasks (implementation, refactoring, tests)
-- [ ] Create task classifier for automatic routing
-- [ ] Document model role boundaries
+- [x] Define reasoning-model tasks (planning, architecture, analysis)
+- [x] Define coding-model tasks (implementation, refactoring, tests)
+- [x] Create task classifier for automatic routing
+- [x] Document model role boundaries
+
+**Evidence:**
+- Created model_coordinator.py with ModelRole enum (ORCHESTRATOR, REASONING, CODING, EMBEDDING, FAST_CHAT)
+- Implemented classify_task() with signal-based role detection
+- ROLE_SIGNALS dict defines task patterns for each model role
+- TaskClassification dataclass captures role, confidence, and signals
 
 **Validation:**
 ```bash
+curl -sS http://127.0.0.1:8003/status | jq '.model_coordination'
 scripts/ai/aq-report --format=json | jq '.model_role_classification'
 ```
 
 ### Batch 12.2: Dual-Model Routing
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Implement reasoning-first, coding-second pipeline
-- [ ] Add model handoff protocol
-- [ ] Implement context transfer between models
-- [ ] Track dual-model collaboration metrics
+- [x] Implement reasoning-first, coding-second pipeline
+- [x] Add model handoff protocol
+- [x] Implement context transfer between models
+- [x] Track dual-model collaboration metrics
+
+**Evidence:**
+- ModelCoordinator.classify_and_route() implements dual-model routing
+- RoutingDecision includes handoff_required and context_transfer_needed flags
+- DEFAULT_PROFILES defines claude-reasoning -> qwen-coder handoff chain
+- _routing_history deque tracks all routing decisions for telemetry
+- HTTP endpoints: /control/models/route, /control/models
 
 **Validation:**
 ```bash
-python3 scripts/testing/test-dual-model-routing.py
+curl -sS -X POST http://127.0.0.1:8003/control/models/route \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Analyze security and implement fixes"}' | jq '.'
 ```
 
 ### Batch 12.3: Context Hygiene Automation
@@ -735,6 +751,9 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-14 | 10.3 Token-Efficient Hint Delivery | compact_mode, max_hint_tokens, snippet compression |
 | 2026-03-14 | 9.3 Query Complexity Routing | detect_query_complexity, route_by_complexity, telemetry |
 | 2026-03-14 | (ext) Context-Aware Token Budgeting | TokenBudgetContext with phase/complexity detection |
+| 2026-03-14 | (ext) Disclosure Escalation Detection | ESCALATION_SIGNALS, 4x multiplier, --escalate flag |
+| 2026-03-14 | 12.1 Model Role Classification | model_coordinator.py, 5 roles, classify_task() |
+| 2026-03-14 | 12.2 Dual-Model Routing | classify_and_route(), handoff protocol, routing telemetry |
 
 ### Current Batch
 
