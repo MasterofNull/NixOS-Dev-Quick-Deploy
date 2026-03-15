@@ -3,8 +3,8 @@
 **Generated:** 2026-03-13
 **Status:** Active
 **Owner:** AI Harness
-**Last Updated:** 2026-03-14
-**Version:** 1.1.0
+**Last Updated:** 2026-03-15
+**Version:** 1.2.0
 
 ---
 
@@ -895,6 +895,10 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-14 | (feat) Quality Monitoring & Alerting | quality_monitor.py, health scoring, trend detection, 3 alert levels |
 | 2026-03-14 | (feat) Cache Integration Production | Integrated quality cache into /query endpoint, live caching active |
 | 2026-03-14 | (feat) Auto Quality Improvement | auto_quality_improver.py, critic+reflection combo, automatic retry |
+| 2026-03-15 | (feat) Intelligent LLM Routing | llm_router.py, 3-tier routing (local/free/paid), auto-escalation |
+| 2026-03-15 | (refactor) Context Store Integration | Deployment routes use SQLite+FTS5, persistent tracking |
+| 2026-03-15 | (feat) LLM Router HTTP Endpoints | /control/llm/route, /execute, /metrics endpoints |
+| 2026-03-15 | (test) LLM Router Integration Test | test-llm-router-integration.py validates tier routing |
 
 ### Current Batch
 
