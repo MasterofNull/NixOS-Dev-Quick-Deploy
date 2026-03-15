@@ -58,6 +58,15 @@ from .self_improvement import (
     ImprovementRecommendation,
     SelfImprovementEngine,
 )
+from .code_executor import (
+    Language,
+    SecurityLevel,
+    ResourceLimits,
+    SecurityScanResult,
+    ExecutionResult,
+    CodeExecutor,
+    get_executor as get_code_executor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +109,12 @@ def initialize_builtin_tools(registry: Optional[ToolRegistry] = None) -> ToolReg
     except ImportError as e:
         logger.warning(f"Failed to import computer_use tools: {e}")
 
+    try:
+        from .builtin_tools.code_execution import register_code_execution_tools
+        register_code_execution_tools(registry)
+    except ImportError as e:
+        logger.warning(f"Failed to import code_execution tools: {e}")
+
     logger.info(f"Initialized tool registry with {len(registry.tools)} built-in tools")
 
     return registry
@@ -134,4 +149,12 @@ __all__ = [
     "QualityScore",
     "ImprovementRecommendation",
     "SelfImprovementEngine",
+    # Code execution
+    "Language",
+    "SecurityLevel",
+    "ResourceLimits",
+    "SecurityScanResult",
+    "ExecutionResult",
+    "CodeExecutor",
+    "get_code_executor",
 ]
