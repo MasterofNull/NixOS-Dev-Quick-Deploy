@@ -383,8 +383,8 @@ scripts/ai/aq-report --format=json | jq '.shared_skills'
 **Tasks:**
 - [x] Add 8-10 new hint templates for underserved task types
 - [x] Implement context-aware hint routing by file type
-- [ ] Add hint feedback acceleration
-- [ ] Reduce dominant hint concentration
+- [x] Add hint feedback acceleration
+- [x] Reduce dominant hint concentration
 
 **Evidence:** Added 10 new templates to ai-stack/prompts/registry.yaml:
 - code_review_structured, debugging_systematic, test_generation_coverage
@@ -392,7 +392,12 @@ scripts/ai/aq-report --format=json | jq '.shared_skills'
 - performance_optimization, migration_upgrade_plan, api_integration_guide
 - configuration_setup
 - Added file-type-aware routing in hints_engine.py (14 file types, tag-based boosting)
-- Commit: a875da4
+- **Feedback acceleration:** Reduced JSONL window from 4000 to 2000 lines for faster reaction
+- **Feedback acceleration:** Increased feedback multiplier from 0.15 to 0.25 for stronger signal
+- **Concentration reduction:** Lowered repeat_cap_pct from 45% to 25%
+- **Concentration reduction:** Lowered hard_exclude_pct from 60% to 30% (enforces <30% gate)
+- Changes in: [hints_engine.py:869-872](ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py#L869-L872), [hints_engine.py:1277](ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py#L1277), [hints_engine.py:1367](ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py#L1367)
+- Commit: a875da4 (original), new changes pending
 
 **Validation:**
 ```bash
