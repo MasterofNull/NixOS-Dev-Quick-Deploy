@@ -64,6 +64,12 @@ from quality_cache import (
 )
 from quality_monitor import get_health_summary as _get_quality_health_summary, get_monitor_stats as _get_quality_monitor_stats
 from auto_quality_improver import get_improvement_summary as _get_auto_improvement_summary
+from skill_usage_tracker import (
+    track_skill_usage as _track_skill_usage,
+    get_skill_usage_stats as _get_skill_usage_stats,
+    get_skill_recommendation as _get_skill_recommendation,
+    get_recent_skill_events as _get_recent_skill_events,
+)
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1784,6 +1790,8 @@ async def run_http_mode(port: int) -> None:
             "quality_monitor": _get_quality_monitor_stats(),
             # Auto Quality Improvement stats
             "auto_quality_improvement": _get_auto_improvement_summary(),
+            # Batch 5.2 — Skill Usage Tracking
+            "skill_usage_stats": _get_skill_usage_stats(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
@@ -4516,6 +4524,51 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_skill_usage_stats(_request: web.Request) -> web.Response:
+        """
+        GET /control/skills/usage — Get skill usage statistics.
+
+        Batch 5.2: Skill Usage Tracking
+        """
+        try:
+            stats = _get_skill_usage_stats()
+            return web.json_response({
+                "status": "ok",
+                "service": "skill_usage_tracker",
+                "usage_stats": stats,
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_skill_recommendations(request: web.Request) -> web.Response:
+        """
+        GET /control/skills/recommendations — Get skill recommendations for an agent.
+
+        Query params:
+            agent: Agent/profile name
+            task_type: Optional task type for context-aware recommendations
+
+        Batch 5.2: Skill Recommendation Engine
+        """
+        try:
+            agent = str(request.query.get("agent", "")).strip()
+            task_type = str(request.query.get("task_type", "")).strip() or None
+
+            if not agent:
+                return web.json_response({"error": "agent parameter required"}, status=400)
+
+            recommendations = _get_skill_recommendation(agent, task_type)
+
+            return web.json_response({
+                "status": "ok",
+                "service": "skill_usage_tracker",
+                "agent": agent,
+                "task_type": task_type,
+                "recommended_skills": recommendations,
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_autoresearch_status(_request: web.Request) -> web.Response:
         """Get autoresearch experiment status and summary."""
         try:
@@ -5532,6 +5585,9 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/ai-coordinator/lessons/review", handle_ai_coordinator_lessons_review)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
+    # Batch 5.2 — Skill Usage Tracking and Recommendations
+    http_app.router.add_get("/control/skills/usage", handle_skill_usage_stats)
+    http_app.router.add_get("/control/skills/recommendations", handle_skill_recommendations)
     # Phase 12.1/12.2 — Model Coordination endpoints
     http_app.router.add_post("/control/models/route", handle_model_route)
     http_app.router.add_get("/control/models", handle_model_list)
