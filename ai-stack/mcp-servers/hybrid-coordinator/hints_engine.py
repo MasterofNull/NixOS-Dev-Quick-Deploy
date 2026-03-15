@@ -730,6 +730,72 @@ def _is_curated_stale_gap(query_text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# File Type Routing (Batch 6.1)
+# ---------------------------------------------------------------------------
+
+# Map file extensions to relevant hint tags
+FILE_TYPE_TAG_MAP = {
+    ".nix": ["nixos", "nix", "module", "flake", "derivation"],
+    ".py": ["python", "code", "testing", "refactoring"],
+    ".js": ["javascript", "code", "testing", "node"],
+    ".ts": ["typescript", "javascript", "code", "testing"],
+    ".sh": ["bash", "shell", "script"],
+    ".md": ["documentation", "markdown"],
+    ".yaml": ["config", "yaml", "kubernetes"],
+    ".yml": ["config", "yaml", "kubernetes"],
+    ".json": ["config", "json", "api"],
+    ".rs": ["rust", "code", "testing"],
+    ".go": ["go", "code", "testing"],
+    ".c": ["c", "code"],
+    ".cpp": ["cpp", "code"],
+    ".h": ["c", "code", "header"],
+}
+
+# File type boost multiplier for relevant hints
+FILE_TYPE_BOOST_MULTIPLIER = 1.3
+
+
+def _detect_file_type(query: str, context: str) -> Optional[str]:
+    """
+    Detect file type from query or context.
+
+    Args:
+        query: User query
+        context: Context string
+
+    Returns:
+        File extension (e.g., ".nix") or None
+    """
+    # Check context first (explicit file extension)
+    for ext in FILE_TYPE_TAG_MAP.keys():
+        if ext in context.lower():
+            return ext
+
+    # Check query for file extensions
+    import re
+    ext_pattern = r'\b(\.\w+)\b'
+    matches = re.findall(ext_pattern, query)
+    for match in matches:
+        if match in FILE_TYPE_TAG_MAP:
+            return match
+
+    # Check for language/file type keywords in query
+    query_lower = query.lower()
+    if "nixos" in query_lower or ".nix" in query_lower:
+        return ".nix"
+    elif "python" in query_lower:
+        return ".py"
+    elif "javascript" in query_lower or "node" in query_lower:
+        return ".js"
+    elif "typescript" in query_lower:
+        return ".ts"
+    elif "bash" in query_lower or "shell" in query_lower:
+        return ".sh"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
 
@@ -900,6 +966,9 @@ class HintsEngine:
         query_tokens = _tokenize(query)
         context_lower = context.lower()
 
+        # Batch 6.1: Detect file type for context-aware routing
+        detected_file_type = _detect_file_type(query, context)
+
         source_a = self._hints_from_registry(query_tokens, context_lower)
         source_b = self._hints_from_gaps(query, query_tokens)
         source_c = self._hints_from_static_rules(query_tokens)
@@ -913,6 +982,9 @@ class HintsEngine:
         combined = [self._apply_efficiency_adjustment(h) for h in combined]
         combined = [self._apply_feedback_adjustment(h, feedback, db_feedback_profiles, query_tokens) for h in combined]
         combined = [self._apply_agent_preference_adjustment(h, preference_profile) for h in combined]
+        # Batch 6.1: Apply file-type-aware boosting
+        if detected_file_type:
+            combined = [self._apply_file_type_boost_inline(h, detected_file_type) for h in combined]
         usage_counts, usage_total = self._load_recent_hint_usage()
         overused_ids = self._compute_overused_hint_ids(usage_counts, usage_total)
         combined = [self._apply_repeat_penalty(h, usage_counts, usage_total, overused_ids) for h in combined]
@@ -1435,6 +1507,43 @@ class HintsEngine:
             tags=hint.tags,
             agent_hints=hint.agent_hints,
         )
+
+    def _apply_file_type_boost_inline(
+        self,
+        hint: Hint,
+        file_type: str,
+    ) -> Hint:
+        """
+        Boost hints relevant to detected file type.
+
+        Batch 6.1: Context-Aware Hint Routing by File Type
+        """
+        if file_type not in FILE_TYPE_TAG_MAP:
+            return hint
+
+        relevant_tags = FILE_TYPE_TAG_MAP[file_type]
+        hint_tags_set = {str(t).strip().lower() for t in (hint.tags or []) if str(t).strip()}
+
+        # Check if hint has tags relevant to this file type
+        common_tags = hint_tags_set & {t.lower() for t in relevant_tags}
+
+        if common_tags:
+            # Boost based on number of matching tags
+            boost = 0.12 * len(common_tags)
+            adjusted = min(1.0, hint.score + boost)
+            reason = f"{hint.reason}; file_type={file_type}(+{boost:.2f})".strip("; ")
+            return Hint(
+                id=hint.id,
+                type=hint.type,
+                title=hint.title,
+                score=adjusted,
+                snippet=hint.snippet,
+                reason=reason,
+                tags=hint.tags,
+                agent_hints=hint.agent_hints,
+            )
+
+        return hint
 
     def to_dict(
         self,
