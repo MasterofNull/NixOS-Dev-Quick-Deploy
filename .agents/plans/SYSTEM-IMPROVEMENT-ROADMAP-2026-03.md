@@ -160,12 +160,20 @@ python3 scripts/testing/test-route-search-pressure-diagnosis.py
 ```
 
 ### Batch 2.3: RAG Posture Improvement
-**Status:** validated
+**Status:** completed
 **Tasks:**
-- [ ] Increase memory recall usage for continuations
-- [ ] Add prewarm candidates from actual retrieval profiles
-- [ ] Tune retrieval breadth thresholds by task class
-- [ ] Add retrieval-profile acceptance checks
+- [x] Increase memory recall usage for continuations
+- [x] Add prewarm candidates from actual retrieval profiles
+- [x] Tune retrieval breadth thresholds by task class
+- [x] Add retrieval-profile acceptance checks
+
+**Evidence:**
+- Continuation memory recall auto-triggered in http_server.py:2270-2298 (limit=3, hybrid retrieval)
+- Prewarm candidates generated from actual usage in aq-report:3150 (_rag_prewarm_candidates uses top_prompts + recent_mix)
+- Task class-based breadth tuning in route_handler.py:222-249 (task_classifier.classify() selects collections by task_type)
+- Retrieval profile acceptance checks in aq-report:2336-2342 (avg_collection_count > 4.0 triggers "broad_scanning" diagnosis)
+- Test 1.5.3: PASS (retrieval acceptance metrics exposed)
+- Metrics: memory_recall_share_pct=26.7%, prewarm_candidates=3, avg_collection_count=2.9, diagnosis="healthy"
 
 **Validation:**
 ```bash
