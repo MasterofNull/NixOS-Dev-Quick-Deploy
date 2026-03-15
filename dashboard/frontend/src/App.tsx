@@ -5,7 +5,7 @@ import { DashboardAPI } from '@/lib/api';
 import { SystemOverview } from '@/components/SystemOverview';
 import { MetricsChart } from '@/components/MetricsChart';
 import { ServiceControl } from '@/components/ServiceControl';
-import { AIInternals } from '@/components/AIInternals';
+import { AIInsightsDashboard } from '@/components/AIInsightsDashboard';
 import { CommandCenterOperations } from '@/components/CommandCenterOperations';
 import { Activity, ShieldCheck } from 'lucide-react';
 
@@ -112,8 +112,8 @@ function DashboardContent() {
           <CommandCenterOperations />
 
           <section>
-            <h2 className="mb-4 text-lg font-semibold">AI Internals</h2>
-            <AIInternals />
+            <h2 className="mb-4 text-lg font-semibold">AI Insights & Intelligence</h2>
+            <AIInsightsDashboard />
           </section>
         </div>
 

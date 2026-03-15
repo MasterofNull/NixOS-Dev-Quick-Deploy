@@ -15,7 +15,7 @@ import os
 from typing import List
 from pathlib import Path
 
-from api.routes import metrics, services, containers, config, websockets, actions, aistack, deployments, health
+from api.routes import metrics, services, containers, config, websockets, actions, aistack, deployments, health, insights
 from api.services.metrics_collector import MetricsCollector
 
 # Configure logging
@@ -93,6 +93,7 @@ app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(aistack.router, prefix="/api", tags=["aistack"])
 app.include_router(deployments.router, prefix="/api", tags=["deployments"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
+app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
