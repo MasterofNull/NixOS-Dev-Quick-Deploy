@@ -54,7 +54,12 @@ from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type
 from rag_reflection import get_reflection_stats as _get_rag_reflection_stats
 from generator_critic import get_critic_stats as _get_generator_critic_stats
-from quality_cache import get_cache_stats as _get_quality_cache_stats
+from quality_cache import (
+    get_cache_stats as _get_quality_cache_stats,
+    get_cached_response as _get_cached_response,
+    cache_response as _cache_response,
+    should_use_cache as _should_use_cache,
+)
 from quality_monitor import get_health_summary as _get_quality_health_summary, get_monitor_stats as _get_quality_monitor_stats
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
@@ -2290,16 +2295,50 @@ async def run_http_mode(port: int) -> None:
                         },
                         status=503,
                     )
-            result = await _route_search(
-                query=query,
-                mode=data.get("mode", "auto"),
-                prefer_local=prefer_local,
-                context=request_context,
-                limit=int(data.get("limit", 5)),
-                keyword_limit=int(data.get("keyword_limit", 5)),
-                score_threshold=float(data.get("score_threshold", 0.7)),
-                generate_response=bool(data.get("generate_response", False)),
-            )
+
+            # Quality cache check (if enabled and appropriate)
+            cache_enabled = bool(data.get("enable_cache", True))
+            cached_result = None
+            if cache_enabled and _should_use_cache(query):
+                cached_result = _get_cached_response(query, context=request_context)
+
+            if cached_result:
+                # Cache hit - use cached response
+                cached_response, cache_metadata = cached_result
+                result = {
+                    "response": cached_response,
+                    "from_cache": True,
+                    "cache_metadata": cache_metadata,
+                    "query": query,
+                }
+                logger.info(f"Cache hit for query: {query[:60]}...")
+            else:
+                # Cache miss - proceed with route_search
+                result = await _route_search(
+                    query=query,
+                    mode=data.get("mode", "auto"),
+                    prefer_local=prefer_local,
+                    context=request_context,
+                    limit=int(data.get("limit", 5)),
+                    keyword_limit=int(data.get("keyword_limit", 5)),
+                    score_threshold=float(data.get("score_threshold", 0.7)),
+                    generate_response=bool(data.get("generate_response", False)),
+                )
+
+                # Cache the response if it has quality metrics
+                if cache_enabled and result.get("response"):
+                    quality_score = result.get("quality_score", 0)
+                    confidence = result.get("confidence", 1.0)
+
+                    # Only cache if we have a quality score (from critic evaluation)
+                    if quality_score > 0:
+                        _cache_response(
+                            query=query,
+                            response=result["response"],
+                            quality_score=quality_score,
+                            confidence=confidence,
+                            context=request_context,
+                        )
             if semantic_tooling_autorun:
                 result["tooling_layer"] = _compact_tooling_layer_response(
                     tooling_layer,
