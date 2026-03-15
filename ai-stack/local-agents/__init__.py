@@ -34,6 +34,19 @@ from .tool_registry import (
     ToolRegistry,
     get_registry,
 )
+from .agent_executor import (
+    AgentType,
+    Task,
+    TaskStatus,
+    LocalAgentExecutor,
+    get_executor,
+)
+from .task_router import (
+    AgentTarget,
+    RoutingDecision,
+    TaskRouter,
+    get_router,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +95,7 @@ def initialize_builtin_tools(registry: Optional[ToolRegistry] = None) -> ToolReg
 
 
 __all__ = [
+    # Tool registry
     "SafetyPolicy",
     "ToolCategory",
     "ToolDefinition",
@@ -89,4 +103,15 @@ __all__ = [
     "ToolRegistry",
     "get_registry",
     "initialize_builtin_tools",
+    # Agent executor
+    "AgentType",
+    "Task",
+    "TaskStatus",
+    "LocalAgentExecutor",
+    "get_executor",
+    # Task router
+    "AgentTarget",
+    "RoutingDecision",
+    "TaskRouter",
+    "get_router",
 ]
