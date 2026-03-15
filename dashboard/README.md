@@ -1,58 +1,58 @@
-# Command Center Dashboard
+# NixOS System Command Center Dashboard
 
-This directory contains the command-center dashboard code and local development helpers.
+**Single Source of Truth for System Monitoring and AI Stack Management**
 
-## Runtime Authority
+## Quick Start
 
-Production runtime is declarative and managed by NixOS/systemd.
-
-- Authoritative service: `command-center-dashboard-api.service`
-- Authoritative operator URL: `${DASHBOARD_URL}` at runtime, typically `http://127.0.0.1:8889`
-- The FastAPI service serves both:
-  - the operator UI at `/`
-  - the dashboard/API routes at `/api/*`
-
-Do not treat `scripts/deploy/start-unified-dashboard.sh` or `scripts/deploy/serve-dashboard.sh` as the production deployment path. They are compatibility or local troubleshooting helpers only.
-
-## Operator Usage
-
-Use the declarative runtime:
+The dashboard is served directly by the FastAPI backend:
 
 ```bash
-systemctl status command-center-dashboard-api.service
-curl http://127.0.0.1:8889/api/health
-open http://127.0.0.1:8889/
+cd backend
+uvicorn api.main:app --host 0.0.0.0 --port 8889 --reload
 ```
 
-If configuration changed:
+Access at: **http://localhost:8889/**
 
-```bash
-sudo nixos-rebuild switch --flake .#$(hostname)
-systemctl restart command-center-dashboard-api.service
+## Architecture
+
+```
+dashboard/
+├── backend/          # FastAPI backend serving dashboard + APIs
+│   ├── api/          # Route handlers and services
+│   └── requirements.txt
+│
+../dashboard.html     # Command Center dashboard (repo root)
+../assets/            # Chart.js and static assets (repo root)
 ```
 
-## Local Development Only
+## Features
 
-For frontend/backend development work in this directory:
+- **System Metrics**: Real-time CPU, memory, disk, GPU, network charts
+- **AI Stack Management**: 13 services with health monitoring
+- **AI Insights & Intelligence**: 5 comprehensive analytics panels
+- **Ralph Wiggum Configuration**: Agent iteration controls
+- **Service Management**: Start/stop/restart controls
+- **Live Updates**: WebSocket + polling for real-time data
 
-```bash
-cd dashboard
-./start-dashboard.sh
-```
+## API Endpoints
 
-That path is for iterative local development only. It is intentionally separate from the declarative production runtime and may use dev-server ports such as `8890`.
+- `/api/health/*` - Service health monitoring
+- `/api/insights/*` - AI intelligence analytics (10 endpoints)
+- `/api/services/*` - Service management
+- `/api/metrics/*` - System metrics
+- `/api/prsi/*` - PRSI workflow actions
+- `/` - Command Center dashboard (HTML)
+- `/assets/*` - Static assets (Chart.js, etc.)
 
-## Directory Notes
+## Development
 
-- `backend/`: FastAPI backend and service integration layer
-- `frontend/`: React/Vite frontend used for active UI development
-- `public/` via Nix module: production-served dashboard entry point
-- `control-center.html`: legacy non-authoritative surface retained for historical reference only
+Backend auto-reloads on file changes when started with `--reload` flag.
+Dashboard is served as static HTML from repo root.
 
-## Phase 1 Cleanup Intent
+## Notes
 
-This README now reflects the cleanup rule for dashboard runtime authority:
+- **No React/Node/pnpm required** - Pure HTML/JavaScript dashboard
+- **No separate frontend build** - Single FastAPI server serves everything
+- **No divergent architectures** - One dashboard, one backend, one API
 
-- one production runtime,
-- one operator entry point,
-- local dev helpers must not present themselves as deployment mechanisms.
+For systemd service management, see main repo documentation.
