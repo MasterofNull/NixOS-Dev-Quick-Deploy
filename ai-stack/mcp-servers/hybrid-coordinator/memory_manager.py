@@ -19,8 +19,12 @@ Usage in server.py:
     result = await memory_manager.recall_agent_memory("query")
 """
 
+import asyncio
 import logging
 import json
+import time
+from collections import deque
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
@@ -54,6 +58,22 @@ _memory_collections: Dict[str, str] = {}
 MAX_MEMORY_SUMMARY_CHARS = 2000
 MAX_MEMORY_CONTENT_CHARS = 8000
 MAX_MEMORY_METADATA_JSON_CHARS = 12000
+
+# Batch 2.1: Memory system improvements
+MEMORY_DEDUP_THRESHOLD = 0.95  # Cosine similarity threshold for deduplication
+MEMORY_RETRY_ATTEMPTS = 3
+MEMORY_RETRY_BASE_DELAY = 0.5  # seconds
+
+@dataclass
+class MemoryLatencyMetrics:
+    """Tracks memory operation latency."""
+    store_latencies: deque = field(default_factory=lambda: deque(maxlen=100))
+    recall_latencies: deque = field(default_factory=lambda: deque(maxlen=100))
+    dedup_skips: int = 0
+    retry_successes: int = 0
+    retry_failures: int = 0
+
+_memory_metrics = MemoryLatencyMetrics()
 
 
 def normalize_memory_type(memory_type: str) -> str:
@@ -96,6 +116,41 @@ def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return scrubbed
 
 
+def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    """Calculate cosine similarity between two vectors."""
+    if len(vec1) != len(vec2):
+        return 0.0
+    dot_product = sum(a * b for a, b in zip(vec1, vec2))
+    magnitude1 = sum(a * a for a in vec1) ** 0.5
+    magnitude2 = sum(b * b for b in vec2) ** 0.5
+    if magnitude1 == 0 or magnitude2 == 0:
+        return 0.0
+    return dot_product / (magnitude1 * magnitude2)
+
+
+async def _check_memory_duplicate(
+    collection: str,
+    embedding: List[float],
+    threshold: float = MEMORY_DEDUP_THRESHOLD
+) -> bool:
+    """Check if a similar memory already exists. Returns True if duplicate found."""
+    try:
+        search_results = _qdrant.search(
+            collection_name=collection,
+            query_vector=embedding,
+            limit=1,
+        )
+        if search_results and len(search_results) > 0:
+            top_score = search_results[0].score
+            if top_score >= threshold:
+                logger.debug(f"Duplicate memory detected (score={top_score:.3f} >= {threshold})")
+                return True
+        return False
+    except Exception as exc:
+        logger.warning(f"Deduplication check failed: {exc}")
+        return False  # Proceed with storage if check fails
+
+
 def init(
     *,
     qdrant_client: Any,
@@ -122,9 +177,12 @@ async def store_agent_memory(
     content: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Store agent memory in typed collections."""
+    """Store agent memory in typed collections with retry and deduplication (Batch 2.1)."""
+    start_time = time.time()
+
     if not Config.AI_MEMORY_ENABLED:
         return {"status": "disabled"}
+
     normalized_type = normalize_memory_type(memory_type)
     normalized_summary = _sanitize_memory_text(
         coerce_memory_summary(summary, content),
@@ -133,9 +191,11 @@ async def store_agent_memory(
     )
     if not normalized_summary:
         raise ValueError("summary or content required")
+
     collection = _memory_collections.get(normalized_type)
     if not collection:
         raise ValueError("memory_type must be episodic|semantic|procedural")
+
     sanitized_content = _sanitize_memory_text(
         content or normalized_summary,
         field_name="content",
@@ -152,34 +212,85 @@ async def store_agent_memory(
     }
     if sanitized_metadata:
         payload.update(sanitized_metadata)
+
     embedding = await _embed(f"{normalized_type}\n{normalized_summary}\n{sanitized_content}")
-    try:
-        _qdrant.upsert(
-            collection_name=collection,
-            points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
-        )
-    except Exception as exc:
-        error_text = str(exc)
-        if "Vector dimension error" in error_text:
-            logger.warning(
-                "Agent memory storage disabled due to embedding/collection dimension mismatch",
-                extra={
+
+    # Batch 2.1: Deduplication check
+    is_duplicate = await _check_memory_duplicate(collection, embedding)
+    if is_duplicate:
+        _memory_metrics.dedup_skips += 1
+        elapsed_ms = (time.time() - start_time) * 1000
+        _memory_metrics.store_latencies.append(elapsed_ms)
+        return {
+            "status": "skipped",
+            "reason": "duplicate",
+            "memory_type": normalized_type,
+            "latency_ms": round(elapsed_ms, 1),
+        }
+
+    # Batch 2.1: Retry logic with exponential backoff
+    last_exception = None
+    for attempt in range(MEMORY_RETRY_ATTEMPTS):
+        try:
+            _qdrant.upsert(
+                collection_name=collection,
+                points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
+            )
+            # Success!
+            if attempt > 0:
+                _memory_metrics.retry_successes += 1
+                logger.info(f"Memory store succeeded on retry attempt {attempt + 1}")
+
+            elapsed_ms = (time.time() - start_time) * 1000
+            _memory_metrics.store_latencies.append(elapsed_ms)
+
+            _record_telemetry(
+                "agent_memory_store",
+                {
+                    "memory_id": memory_id,
                     "memory_type": normalized_type,
                     "collection": collection,
-                    "memory_id": memory_id,
+                    "latency_ms": round(elapsed_ms, 1),
+                    "retry_attempt": attempt,
                 },
             )
             return {
-                "status": "disabled",
-                "reason": "embedding_dimension_mismatch",
+                "status": "stored",
+                "memory_id": memory_id,
                 "memory_type": normalized_type,
+                "latency_ms": round(elapsed_ms, 1),
             }
-        raise
-    _record_telemetry(
-        "agent_memory_store",
-        {"memory_id": memory_id, "memory_type": normalized_type, "collection": collection},
-    )
-    return {"status": "stored", "memory_id": memory_id, "memory_type": normalized_type}
+
+        except Exception as exc:
+            error_text = str(exc)
+            if "Vector dimension error" in error_text:
+                logger.warning(
+                    "Agent memory storage disabled due to embedding/collection dimension mismatch",
+                    extra={
+                        "memory_type": normalized_type,
+                        "collection": collection,
+                        "memory_id": memory_id,
+                    },
+                )
+                return {
+                    "status": "disabled",
+                    "reason": "embedding_dimension_mismatch",
+                    "memory_type": normalized_type,
+                }
+
+            last_exception = exc
+            if attempt < MEMORY_RETRY_ATTEMPTS - 1:
+                delay = MEMORY_RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"Memory store failed on attempt {attempt + 1}/{MEMORY_RETRY_ATTEMPTS}, retrying in {delay}s: {exc}"
+                )
+                await asyncio.sleep(delay)
+            else:
+                _memory_metrics.retry_failures += 1
+                logger.error(f"Memory store failed after {MEMORY_RETRY_ATTEMPTS} attempts: {exc}")
+
+    # All retries exhausted
+    raise last_exception
 
 
 async def recall_agent_memory(
@@ -188,7 +299,9 @@ async def recall_agent_memory(
     limit: Optional[int] = None,
     retrieval_mode: str = "hybrid",
 ) -> Dict[str, Any]:
-    """Recall memories using hybrid/tree retrieval."""
+    """Recall memories using hybrid/tree retrieval with latency tracking (Batch 2.1)."""
+    start_time = time.time()
+
     if not Config.AI_MEMORY_ENABLED:
         return {"status": "disabled", "results": []}
 
@@ -266,6 +379,10 @@ async def recall_agent_memory(
             }
         )
 
+    # Batch 2.1: Track recall latency
+    elapsed_ms = (time.time() - start_time) * 1000
+    _memory_metrics.recall_latencies.append(elapsed_ms)
+
     _record_telemetry(
         "agent_memory_recall",
         {
@@ -275,6 +392,7 @@ async def recall_agent_memory(
             "memory_types": requested_types,
             "reflection_applied": reflection_metadata is not None,
             "reflection_retries": reflection_metadata.get("retry_count", 0) if reflection_metadata else 0,
+            "latency_ms": round(elapsed_ms, 1),
         },
     )
 
@@ -283,6 +401,7 @@ async def recall_agent_memory(
         "query": sanitized_query,
         "mode": "tree" if use_tree else "hybrid",
         "results": memory_rows,
+        "latency_ms": round(elapsed_ms, 1),
     }
 
     # Include reflection metadata if applied
@@ -290,3 +409,42 @@ async def recall_agent_memory(
         result["reflection"] = reflection_metadata
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Batch 2.1: Memory Latency Metrics
+# ---------------------------------------------------------------------------
+
+def get_memory_latency_metrics() -> Dict[str, Any]:
+    """
+    Get memory operation latency and reliability metrics.
+
+    Returns:
+        Dictionary with latency stats, dedup/retry counters
+    """
+    store_latencies_list = list(_memory_metrics.store_latencies)
+    recall_latencies_list = list(_memory_metrics.recall_latencies)
+
+    store_avg = sum(store_latencies_list) / len(store_latencies_list) if store_latencies_list else 0.0
+    recall_avg = sum(recall_latencies_list) / len(recall_latencies_list) if recall_latencies_list else 0.0
+
+    # P95 calculation
+    def p95(values):
+        if not values:
+            return 0.0
+        sorted_vals = sorted(values)
+        idx = int(len(sorted_vals) * 0.95)
+        return sorted_vals[min(idx, len(sorted_vals) - 1)]
+
+    return {
+        "store_latency_avg_ms": round(store_avg, 1),
+        "store_latency_p95_ms": round(p95(store_latencies_list), 1),
+        "recall_latency_avg_ms": round(recall_avg, 1),
+        "recall_latency_p95_ms": round(p95(recall_latencies_list), 1),
+        "total_store_ops": len(store_latencies_list),
+        "total_recall_ops": len(recall_latencies_list),
+        "dedup_skips": _memory_metrics.dedup_skips,
+        "retry_successes": _memory_metrics.retry_successes,
+        "retry_failures": _memory_metrics.retry_failures,
+        "active": True,
+    }
