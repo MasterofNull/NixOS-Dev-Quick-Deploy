@@ -790,14 +790,19 @@ PY
         "${report_script}" --since=7d --format=text 2>/dev/null || true
     else
       if command -v jq >/dev/null 2>&1; then
-        # Try up to 2 times with a small delay (services might still be warming up)
+        # Try up to 4 times with progressive delays (services need time to warm up)
         local attempt=1
-        local max_attempts=2
+        local max_attempts=4
         output=""
+
+        # Initial delay to let services initialize
+        sleep 2
 
         while [[ $attempt -le $max_attempts ]] && [[ -z "$output" || ! $(printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1 && echo "valid") ]]; do
           if [[ $attempt -gt 1 ]]; then
-            sleep 3  # Wait for services to warm up
+            # Progressive delay: 3s, 5s, 8s
+            local delay=$((3 + (attempt - 2) * 2))
+            sleep "$delay"
           fi
 
           output="$(
@@ -811,8 +816,8 @@ PY
           _print_report_summary_from_json "${output}"
         else
           # Only warn if we tried multiple times and still failed
-          if [[ $attempt -gt 2 ]]; then
-            log_warn "AI report JSON summary unavailable after retries; using text fallback."
+          if [[ $attempt -gt $max_attempts ]]; then
+            log_warn "AI report JSON summary unavailable after ${max_attempts} retries; using text fallback."
           fi
           output="$(
             run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
@@ -847,14 +852,19 @@ PY
   fi
 
   if [[ -x "${qa_script}" ]]; then
-    # Try up to 2 times with a small delay (services might still be warming up)
+    # Try up to 4 times with progressive delays (services need time to warm up)
     local attempt=1
-    local max_attempts=2
+    local max_attempts=4
     output=""
+
+    # Initial delay to let services initialize
+    sleep 2
 
     while [[ $attempt -le $max_attempts ]] && [[ -z "$output" || ! $(printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1 && echo "valid") ]]; do
       if [[ $attempt -gt 1 ]]; then
-        sleep 3  # Wait for services to warm up
+        # Progressive delay: 3s, 5s, 8s
+        local delay=$((3 + (attempt - 2) * 2))
+        sleep "$delay"
       fi
 
       output="$(
@@ -871,8 +881,8 @@ PY
       printf '  %-28s %s\n' "Skip" "$(printf '%s' "${output}" | jq -r '(.skipped // .skip // 0)')"
     else
       # Only warn if we tried multiple times and still failed
-      if [[ $attempt -gt 2 ]] || [[ -z "${output}" ]]; then
-        log_warn "AI stack QA phase 0 summary unavailable after retries (services may still be initializing)."
+      if [[ $attempt -gt $max_attempts ]] || [[ -z "${output}" ]]; then
+        log_warn "AI stack QA phase 0 summary unavailable after ${max_attempts} retries (services may still be initializing)."
       fi
     fi
   fi
