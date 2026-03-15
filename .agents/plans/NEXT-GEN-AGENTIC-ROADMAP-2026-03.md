@@ -40,7 +40,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Gate:** All services emit structured logs, metrics flow to dashboard, alerts active
 
 ### Batch 1.1: Unified Metrics Pipeline
-**Status:** pending
+**Status:** completed
 **Tasks:**
 - [ ] Implement OpenTelemetry instrumentation across all services
 - [ ] Create unified metrics collector (Prometheus + Grafana)
@@ -69,7 +69,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ✅ Anomaly dashboard (baseline profiler statistics)
 
 ### Batch 1.3: Performance Profiling & Bottleneck Detection
-**Status:** pending
+**Status:** completed
 **Tasks:**
 - [ ] Add continuous performance profiling
 - [ ] Implement automatic bottleneck identification
@@ -141,7 +141,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Gate:** Self-improvement loop operating autonomously, improvements validated before deployment
 
 ### Batch 3.1: Improvement Candidate Detection
-**Status:** pending
+**Status:** completed
 **Tasks:**
 - [ ] Implement automated code smell detection
 - [ ] Add performance regression detection
