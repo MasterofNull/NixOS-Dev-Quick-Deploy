@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+#
+# delegate-to-claude - CLI wrapper for delegating tasks to Claude
+#
+# Uses environment ANTHROPIC_API_KEY (from system secrets)
+# Local agent calls this CLI - never touches credentials directly
+#
+# Usage:
+#   delegate-to-claude --task-file task.json
+#   delegate-to-claude --description "Add tests" --type implementation
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Default values
+TASK_FILE=""
+DESCRIPTION=""
+TASK_TYPE="implementation"
+OUTPUT_FORMAT="json"
+MAX_COST="1.0"
+AGENT="claude-sonnet-4-5"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --task-file)
+            TASK_FILE="$2"
+            shift 2
+            ;;
+        --description)
+            DESCRIPTION="$2"
+            shift 2
+            ;;
+        --type)
+            TASK_TYPE="$2"
+            shift 2
+            ;;
+        --output)
+            OUTPUT_FORMAT="$2"
+            shift 2
+            ;;
+        --max-cost)
+            MAX_COST="$2"
+            shift 2
+            ;;
+        --agent)
+            AGENT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Check for API key (but don't expose it)
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    # Try to read from secrets
+    if [[ -f /run/secrets/anthropic_api_key ]]; then
+        export ANTHROPIC_API_KEY="$(cat /run/secrets/anthropic_api_key | tr -d '\n')"
+    elif [[ -f "$HOME/.anthropic_api_key" ]]; then
+        export ANTHROPIC_API_KEY="$(cat "$HOME/.anthropic_api_key" | tr -d '\n')"
+    else
+        echo "ERROR: ANTHROPIC_API_KEY not found" >&2
+        echo "  Set via: export ANTHROPIC_API_KEY=..." >&2
+        echo "  Or create: /run/secrets/anthropic_api_key" >&2
+        exit 1
+    fi
+fi
+
+# Call Python delegation protocol
+python3 - <<'PYTHON_DELEGATE'
+import asyncio
+import json
+import sys
+import os
+
+# Add repo to path
+sys.path.insert(0, os.environ['REPO_ROOT'])
+
+from ai_stack.autonomous_orchestrator import (
+    DelegatedTask,
+    TaskType,
+    AgentPreference,
+    TaskContext,
+    get_delegation_protocol,
+)
+
+async def delegate():
+    task_file = os.environ.get('TASK_FILE', '')
+    description = os.environ.get('DESCRIPTION', '')
+    task_type = os.environ.get('TASK_TYPE', 'implementation')
+
+    if task_file:
+        # Read task from file
+        with open(task_file, 'r') as f:
+            task_data = json.load(f)
+
+        task = DelegatedTask(
+            task_id=task_data['task_id'],
+            task_type=TaskType(task_data['type']),
+            description=task_data['description'],
+            # ... other fields from JSON
+        )
+    elif description:
+        # Create simple task
+        task = DelegatedTask(
+            task_id=f"cli-task-{int(asyncio.get_event_loop().time())}",
+            task_type=TaskType(task_type),
+            description=description,
+            agent_preference=AgentPreference.CLAUDE,
+        )
+    else:
+        print(json.dumps({"error": "Must provide --task-file or --description"}))
+        sys.exit(1)
+
+    # Delegate
+    protocol = get_delegation_protocol()
+    result = await protocol.delegate(task)
+
+    # Output result
+    output = {
+        "task_id": result.task_id,
+        "status": result.status.value,
+        "success": result.status.name == "COMPLETED",
+        "output": result.output,
+        "changes": [
+            {
+                "file": c.file_path,
+                "action": c.action,
+                "lines_added": c.lines_added,
+                "lines_removed": c.lines_removed,
+            }
+            for c in result.changes
+        ],
+        "cost_usd": result.cost_usd,
+        "execution_time": result.execution_time_seconds,
+    }
+
+    print(json.dumps(output, indent=2))
+
+asyncio.run(delegate())
+PYTHON_DELEGATE
+
+exit 0
