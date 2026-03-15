@@ -1,0 +1,340 @@
+#!/usr/bin/env bash
+#
+# Unified Deployment CLI
+# Consolidates 306+ scripts into single entry point
+#
+# Version: 1.0.0
+# Architecture: .agents/designs/unified-deploy-cli-architecture.md
+
+set -euo pipefail
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_VERSION="1.0.0"
+DEPLOY_LIB_DIR="${SCRIPT_DIR}/lib/deploy"
+DEPLOY_CMD_DIR="${SCRIPT_DIR}/lib/deploy/commands"
+DEPLOY_CONFIG="${DEPLOY_CONFIG:-${SCRIPT_DIR}/config/deploy.yaml}"
+
+# ============================================================================
+# Core Library
+# ============================================================================
+
+# Source core libraries
+if [[ -f "${DEPLOY_LIB_DIR}/core.sh" ]]; then
+  source "${DEPLOY_LIB_DIR}/core.sh"
+else
+  # Fallback if lib not yet created
+  log_error() { echo "ERROR: $*" >&2; }
+  log_warn() { echo "WARN: $*" >&2; }
+  log_info() { echo "INFO: $*"; }
+  log_debug() { [[ "${VERBOSE:-0}" == "1" ]] && echo "DEBUG: $*"; }
+fi
+
+# ============================================================================
+# Command Registry
+# ============================================================================
+
+declare -A COMMANDS=(
+  [system]="Deploy/manage entire NixOS system"
+  [ai-stack]="Deploy/manage AI stack services"
+  [test]="Run test suites"
+  [health]="Health checks and diagnostics"
+  [security]="Security operations and audits"
+  [dashboard]="Dashboard management"
+  [config]="Configuration management"
+  [search]="Semantic search (deployments, logs, code)"
+  [recover]="Recovery operations"
+  [help]="Show detailed help for commands"
+  [version]="Show version information"
+)
+
+# ============================================================================
+# Global Options
+# ============================================================================
+
+VERBOSE=0
+QUIET=0
+DRY_RUN=0
+NO_COLOR=0
+OUTPUT_JSON=0
+CONFIG_FILE="${DEPLOY_CONFIG}"
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+show_version() {
+  cat <<EOF
+deploy version ${DEPLOY_VERSION}
+
+Unified Deployment CLI
+Consolidates system deployment, AI stack management, testing, health checks,
+security operations, and more into a single, cohesive interface.
+
+Repository: $(git -C "${SCRIPT_DIR}" remote get-url origin 2>/dev/null || echo "local")
+Commit: $(git -C "${SCRIPT_DIR}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+EOF
+}
+
+show_main_help() {
+  cat <<EOF
+Usage: deploy [OPTIONS] COMMAND [COMMAND_OPTIONS] [ARGS...]
+
+Unified deployment and management CLI for NixOS and AI stack.
+
+OPTIONS:
+  -h, --help              Show this help message
+  -v, --verbose           Enable verbose output
+  -q, --quiet             Quiet mode (errors only)
+  --dry-run               Show what would be done without doing it
+  --config FILE           Use alternative config file (default: config/deploy.yaml)
+  --no-color              Disable colored output
+  --json                  Output in JSON format
+  --version               Show version information
+
+COMMANDS:
+EOF
+
+  # Print commands in sorted order
+  for cmd in $(printf '%s\n' "${!COMMANDS[@]}" | sort); do
+    printf "  %-20s %s\n" "$cmd" "${COMMANDS[$cmd]}"
+  done
+
+  cat <<EOF
+
+EXAMPLES:
+  deploy system                    # Deploy entire system
+  deploy system --dry-run          # Preview system changes
+  deploy ai-stack                  # Deploy all AI services
+  deploy test --suite=smoke        # Run smoke tests
+  deploy health                    # Quick health check
+  deploy search "configure mTLS"   # Semantic search
+  deploy help system               # Detailed help for 'system' command
+
+For detailed help on a command:
+  deploy COMMAND --help
+  deploy help COMMAND
+
+Documentation: .agents/designs/unified-deploy-cli-architecture.md
+EOF
+}
+
+show_command_help() {
+  local cmd="$1"
+
+  if [[ ! -v "COMMANDS[$cmd]" ]]; then
+    log_error "Unknown command: $cmd"
+    echo ""
+    echo "Run 'deploy --help' to see available commands."
+    return 1
+  fi
+
+  # Load command-specific help if available
+  if [[ -f "${DEPLOY_CMD_DIR}/${cmd}.sh" ]]; then
+    if declare -f "help_${cmd//-/_}" >/dev/null 2>&1; then
+      "help_${cmd//-/_}"
+      return 0
+    fi
+  fi
+
+  # Fallback generic help
+  cat <<EOF
+Command: deploy $cmd
+
+Description: ${COMMANDS[$cmd]}
+
+Usage:
+  deploy $cmd [OPTIONS] [ARGS...]
+
+Options:
+  --help                  Show this help message
+
+For detailed documentation, see:
+  .agents/designs/unified-deploy-cli-architecture.md
+
+Note: This command is being migrated from legacy scripts.
+      Full implementation coming soon.
+EOF
+}
+
+# ============================================================================
+# Command Dispatcher
+# ============================================================================
+
+dispatch_command() {
+  local cmd="$1"
+  shift
+
+  # Validate command exists
+  if [[ ! -v "COMMANDS[$cmd]" ]]; then
+    log_error "Unknown command: $cmd"
+    echo ""
+    echo "Run 'deploy --help' to see available commands."
+    return 1
+  fi
+
+  # Load command handler
+  local cmd_script="${DEPLOY_CMD_DIR}/${cmd}.sh"
+  local cmd_func="cmd_${cmd//-/_}"
+
+  if [[ -f "$cmd_script" ]]; then
+    source "$cmd_script"
+
+    if declare -f "$cmd_func" >/dev/null 2>&1; then
+      "$cmd_func" "$@"
+      return $?
+    fi
+  fi
+
+  # Command not yet implemented - show migration notice
+  cat <<EOF
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Command '$cmd' - Implementation in Progress
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This command is being migrated from legacy scripts to the unified CLI.
+
+For now, you can use the legacy equivalent:
+EOF
+
+  # Suggest legacy alternative based on command
+  case "$cmd" in
+    system)
+      echo "  ./nixos-quick-deploy.sh"
+      ;;
+    ai-stack)
+      echo "  scripts/ai/ai-stack-health.sh"
+      ;;
+    test)
+      echo "  scripts/automation/run-all-checks.sh"
+      ;;
+    health)
+      echo "  scripts/ai/ai-stack-health.sh"
+      ;;
+    security)
+      echo "  scripts/security/security-audit.sh"
+      ;;
+    *)
+      echo "  (See .agents/audits/deployment-scripts-audit-2026-03.md)"
+      ;;
+  esac
+
+  cat <<EOF
+
+Implementation Status:
+  Phase 1.1: Architecture designed ✓
+  Phase 1.2: Command migration       (in progress)
+  Phase 1.3: Configuration           (planned)
+
+Track progress:
+  .agents/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EOF
+
+  return 1
+}
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+main() {
+  # Handle global options that need immediate action
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version)
+        show_version
+        exit 0
+        ;;
+      -h|--help)
+        if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
+          show_command_help "$2"
+        else
+          show_main_help
+        fi
+        exit 0
+        ;;
+      -v|--verbose)
+        VERBOSE=1
+        export VERBOSE
+        shift
+        ;;
+      -q|--quiet)
+        QUIET=1
+        export QUIET
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        export DRY_RUN
+        shift
+        ;;
+      --config)
+        CONFIG_FILE="$2"
+        export CONFIG_FILE
+        shift 2
+        ;;
+      --no-color)
+        NO_COLOR=1
+        export NO_COLOR
+        shift
+        ;;
+      --json)
+        OUTPUT_JSON=1
+        export OUTPUT_JSON
+        shift
+        ;;
+      -*)
+        log_error "Unknown option: $1"
+        echo ""
+        echo "Run 'deploy --help' for usage."
+        exit 1
+        ;;
+      *)
+        # First non-option is the command
+        break
+        ;;
+    esac
+  done
+
+  # Check if command was provided
+  if [[ $# -eq 0 ]]; then
+    show_main_help
+    exit 1
+  fi
+
+  local command="$1"
+  shift
+
+  # Special handling for 'help' command
+  if [[ "$command" == "help" ]]; then
+    if [[ $# -eq 0 ]]; then
+      show_main_help
+      exit 0
+    else
+      show_command_help "$1"
+      exit $?
+    fi
+  fi
+
+  # Special handling for 'version' command
+  if [[ "$command" == "version" ]]; then
+    show_version
+    exit 0
+  fi
+
+  # Dispatch to command handler
+  dispatch_command "$command" "$@"
+}
+
+# ============================================================================
+# Execute
+# ============================================================================
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

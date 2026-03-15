@@ -15,6 +15,7 @@ LICENSE
 Makefile
 README.md
 dashboard.html
+deploy
 flake.lock
 flake.nix
 nixos-quick-deploy.sh
