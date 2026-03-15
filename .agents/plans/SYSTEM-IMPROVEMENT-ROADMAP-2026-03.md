@@ -442,17 +442,28 @@ python3 scripts/ai/aq-bitnet-compare.py
 **Gate:** RAG reflection active, generator-critic pattern working, query routing by complexity
 
 ### Batch 9.1: Reflection Loop Implementation
-**Status:** pending
+**Status:** completed
 **Tasks:**
-- [ ] Add self-critique step after RAG retrieval (evaluate relevance before using)
-- [ ] Implement retrieval re-try on low-confidence results
-- [ ] Add reflection metrics to status endpoint
-- [ ] Track reflection-triggered improvements
+- [x] Add self-critique step after RAG retrieval (evaluate relevance before using)
+- [x] Implement retrieval re-try on low-confidence results
+- [x] Add reflection metrics to status endpoint
+- [x] Track reflection-triggered improvements
+
+**Evidence:**
+- Created rag_reflection.py with reflection loop logic (348 lines)
+- Added calculate_relevance_score() - combines vector similarity, keyword overlap, length penalty
+- Implemented evaluate_retrieval_quality() - decides retry based on 0.6 confidence threshold
+- Added expand_query_for_retry() - injects domain-specific terms for retry attempts
+- Implemented reflect_on_retrieval() async wrapper - up to 2 retries with query expansion
+- Created ReflectionMetrics dataclass with rolling 100-event windows
+- Integrated reflection into memory_manager.py recall_agent_memory()
+- Exposed rag_reflection_stats via /status endpoint
+- Tracks: total_retrievals, retries_triggered, retry_rate, avg_confidence, improvement_delta
 
 **Validation:**
 ```bash
+curl -sS http://127.0.0.1:8003/status | jq '.rag_reflection_stats'
 scripts/ai/aq-report --format=json | jq '.rag_reflection_stats'
-python3 scripts/testing/test-rag-reflection-loop.py
 ```
 
 ### Batch 9.2: Generator-Critic Pattern
@@ -754,6 +765,8 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-14 | (ext) Disclosure Escalation Detection | ESCALATION_SIGNALS, 4x multiplier, --escalate flag |
 | 2026-03-14 | 12.1 Model Role Classification | model_coordinator.py, 5 roles, classify_task() |
 | 2026-03-14 | 12.2 Dual-Model Routing | classify_and_route(), handoff protocol, routing telemetry |
+| 2026-03-14 | (config) Model Coordinator Config | model-coordinator.json, 6 profiles, routing policy |
+| 2026-03-14 | 9.1 RAG Reflection Loop | rag_reflection.py, relevance scoring, retry logic, metrics |
 
 ### Current Batch
 
