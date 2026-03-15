@@ -1,6 +1,7 @@
 """
 Deployment tracking and history API routes
 Provides real-time deployment progress and historical deployment data
+Integrated with context-aware storage (SQLite + FTS5)
 """
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -11,17 +12,20 @@ import json
 import asyncio
 from pathlib import Path
 
+from api.services.context_store import get_context_store
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# In-memory deployment tracking (Phase 3 will move to persistent storage)
-active_deployments = {}
-deployment_history = []
+# WebSocket connections for real-time updates
 deployment_connections: List[WebSocket] = []
 deployment_lock = asyncio.Lock()
 
-# Deployment event types
+# Get context store singleton
+context_store = get_context_store()
+
+# Deployment event types (for WebSocket broadcasting)
 class DeploymentEventType:
     STARTED = "started"
     PROGRESS = "progress"
@@ -29,57 +33,6 @@ class DeploymentEventType:
     SUCCESS = "success"
     FAILED = "failed"
     ROLLBACK = "rollback"
-
-
-# ============================================================================
-# Deployment Tracking Models
-# ============================================================================
-
-class DeploymentEvent:
-    def __init__(self, deployment_id: str, event_type: str, message: str,
-                 progress: Optional[int] = None, metadata: Optional[dict] = None):
-        self.deployment_id = deployment_id
-        self.event_type = event_type
-        self.message = message
-        self.progress = progress or 0
-        self.metadata = metadata or {}
-        self.timestamp = datetime.utcnow().isoformat()
-
-    def to_dict(self):
-        return {
-            "deployment_id": self.deployment_id,
-            "event_type": self.event_type,
-            "message": self.message,
-            "progress": self.progress,
-            "metadata": self.metadata,
-            "timestamp": self.timestamp
-        }
-
-
-class Deployment:
-    def __init__(self, deployment_id: str, command: str, user: str):
-        self.deployment_id = deployment_id
-        self.command = command
-        self.user = user
-        self.status = "running"
-        self.started_at = datetime.utcnow()
-        self.completed_at = None
-        self.progress = 0
-        self.logs = []
-        self.events = []
-
-    def to_dict(self):
-        return {
-            "deployment_id": self.deployment_id,
-            "command": self.command,
-            "user": self.user,
-            "status": self.status,
-            "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
-            "progress": self.progress,
-            "duration": (datetime.utcnow() - self.started_at).total_seconds() if self.status == "running" else (self.completed_at - self.started_at).total_seconds() if self.completed_at else 0,
-            "events_count": len(self.events)
-        }
 
 
 # ============================================================================
@@ -103,8 +56,8 @@ async def websocket_deployments(websocket: WebSocket):
             if data == "ping":
                 await websocket.send_json({"type": "pong"})
             elif data == "get_active":
-                # Send current active deployments
-                active = [d.to_dict() for d in active_deployments.values()]
+                # Send current active deployments from context store
+                active = context_store.get_recent_deployments(limit=50, status="running")
                 await websocket.send_json({
                     "type": "active_deployments",
                     "deployments": active
@@ -121,14 +74,14 @@ async def websocket_deployments(websocket: WebSocket):
                 deployment_connections.remove(websocket)
 
 
-async def broadcast_deployment_event(event: DeploymentEvent):
+async def broadcast_deployment_event(event_dict: dict):
     """Broadcast deployment event to all connected WebSocket clients"""
     if not deployment_connections:
         return
 
     message = {
         "type": "deployment_event",
-        "event": event.to_dict()
+        "event": event_dict
     }
 
     disconnected = []
@@ -153,19 +106,19 @@ async def broadcast_deployment_event(event: DeploymentEvent):
 @router.post("/deployments/start")
 async def start_deployment(deployment_id: str, command: str, user: str = "system"):
     """Start tracking a new deployment"""
-    deployment = Deployment(deployment_id, command, user)
-    active_deployments[deployment_id] = deployment
+    # Store in context store
+    context_store.start_deployment(deployment_id, command, user)
 
-    event = DeploymentEvent(
-        deployment_id=deployment_id,
-        event_type=DeploymentEventType.STARTED,
-        message=f"Deployment started: {command}",
-        progress=0,
-        metadata={"command": command, "user": user}
-    )
-
-    deployment.events.append(event)
-    await broadcast_deployment_event(event)
+    # Broadcast to WebSocket clients
+    event_dict = {
+        "deployment_id": deployment_id,
+        "event_type": DeploymentEventType.STARTED,
+        "message": f"Deployment started: {command}",
+        "progress": 0,
+        "metadata": {"command": command, "user": user},
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    await broadcast_deployment_event(event_dict)
 
     logger.info(f"Started tracking deployment: {deployment_id}")
     return {"status": "started", "deployment_id": deployment_id}
@@ -179,25 +132,28 @@ async def update_deployment_progress(
     log: Optional[str] = None
 ):
     """Update deployment progress"""
-    if deployment_id not in active_deployments:
-        raise HTTPException(status_code=404, detail="Deployment not found")
+    # Store event in context store
+    event_type = DeploymentEventType.PROGRESS if not log else DeploymentEventType.LOG
+    metadata = {"log": log} if log else None
 
-    deployment = active_deployments[deployment_id]
-    deployment.progress = progress
-
-    if log:
-        deployment.logs.append({"timestamp": datetime.utcnow().isoformat(), "message": log})
-
-    event = DeploymentEvent(
+    context_store.add_event(
         deployment_id=deployment_id,
-        event_type=DeploymentEventType.PROGRESS if not log else DeploymentEventType.LOG,
+        event_type=event_type,
         message=message,
         progress=progress,
-        metadata={"log": log} if log else {}
+        metadata=metadata
     )
 
-    deployment.events.append(event)
-    await broadcast_deployment_event(event)
+    # Broadcast to WebSocket clients
+    event_dict = {
+        "deployment_id": deployment_id,
+        "event_type": event_type,
+        "message": message,
+        "progress": progress,
+        "metadata": metadata or {},
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    await broadcast_deployment_event(event_dict)
 
     return {"status": "updated", "progress": progress}
 
@@ -209,59 +165,52 @@ async def complete_deployment(
     message: Optional[str] = None
 ):
     """Mark deployment as complete"""
-    if deployment_id not in active_deployments:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-
-    deployment = active_deployments[deployment_id]
-    deployment.status = "success" if success else "failed"
-    deployment.completed_at = datetime.utcnow()
-    deployment.progress = 100 if success else deployment.progress
-
-    event = DeploymentEvent(
+    # Complete in context store
+    context_store.complete_deployment(
         deployment_id=deployment_id,
-        event_type=DeploymentEventType.SUCCESS if success else DeploymentEventType.FAILED,
-        message=message or f"Deployment {'completed successfully' if success else 'failed'}",
-        progress=deployment.progress,
-        metadata={"success": success}
+        success=success,
+        message=message
     )
 
-    deployment.events.append(event)
-    await broadcast_deployment_event(event)
+    # Broadcast to WebSocket clients
+    event_type = DeploymentEventType.SUCCESS if success else DeploymentEventType.FAILED
+    event_dict = {
+        "deployment_id": deployment_id,
+        "event_type": event_type,
+        "message": message or f"Deployment {'completed successfully' if success else 'failed'}",
+        "progress": 100 if success else 0,
+        "metadata": {"success": success},
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    await broadcast_deployment_event(event_dict)
 
-    # Move to history
-    deployment_history.append(deployment.to_dict())
-    del active_deployments[deployment_id]
-
-    # Keep only last 100 deployments in history
-    if len(deployment_history) > 100:
-        deployment_history.pop(0)
-
-    logger.info(f"Deployment {deployment_id} completed: {deployment.status}")
-    return {"status": deployment.status}
+    status = "success" if success else "failed"
+    logger.info(f"Deployment {deployment_id} completed: {status}")
+    return {"status": status}
 
 
 @router.get("/deployments/active")
 async def get_active_deployments():
     """Get all currently active deployments"""
+    deployments = context_store.get_recent_deployments(limit=100, status="running")
     return {
-        "deployments": [d.to_dict() for d in active_deployments.values()],
-        "count": len(active_deployments)
+        "deployments": deployments,
+        "count": len(deployments)
     }
 
 
 @router.get("/deployments/history")
 async def get_deployment_history(limit: int = 20, offset: int = 0):
     """Get deployment history"""
-    total = len(deployment_history)
-    start = max(0, total - offset - limit)
-    end = max(0, total - offset)
+    deployments = context_store.get_recent_deployments(limit=limit)
 
-    # Return most recent first
-    items = list(reversed(deployment_history[start:end]))
+    # Apply offset
+    if offset > 0 and offset < len(deployments):
+        deployments = deployments[offset:]
 
     return {
-        "deployments": items,
-        "total": total,
+        "deployments": deployments,
+        "total": len(deployments),
         "limit": limit,
         "offset": offset
     }
@@ -270,28 +219,48 @@ async def get_deployment_history(limit: int = 20, offset: int = 0):
 @router.get("/deployments/{deployment_id}")
 async def get_deployment(deployment_id: str):
     """Get deployment details"""
-    # Check active deployments
-    if deployment_id in active_deployments:
-        deployment = active_deployments[deployment_id]
-        return {
-            **deployment.to_dict(),
-            "logs": deployment.logs,
-            "events": [e.to_dict() for e in deployment.events]
-        }
+    # Get summary from context store
+    summary = context_store.get_deployment_summary(deployment_id)
 
-    # Check history
-    for d in deployment_history:
-        if d["deployment_id"] == deployment_id:
-            return d
+    if not summary:
+        raise HTTPException(status_code=404, detail="Deployment not found")
 
-    raise HTTPException(status_code=404, detail="Deployment not found")
+    # Get timeline for events
+    timeline = context_store.get_deployment_timeline(deployment_id)
+
+    return {
+        **summary,
+        "timeline": timeline
+    }
 
 
 @router.get("/deployments/{deployment_id}/logs")
-async def get_deployment_logs(deployment_id: str):
-    """Get deployment logs"""
-    if deployment_id in active_deployments:
-        deployment = active_deployments[deployment_id]
-        return {"logs": deployment.logs}
+async def get_deployment_logs(deployment_id: str, errors_only: bool = False, limit: int = 100):
+    """Get deployment logs (context-efficient)"""
+    # Check if deployment exists
+    summary = context_store.get_deployment_summary(deployment_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Deployment not found")
 
-    raise HTTPException(status_code=404, detail="Deployment not found or completed")
+    # Get errors only if requested (progressive disclosure)
+    if errors_only:
+        errors = context_store.get_deployment_errors_only(deployment_id, limit=limit)
+        return {"logs": errors, "errors_only": True}
+
+    # Get timeline (condensed, not full logs)
+    timeline = context_store.get_deployment_timeline(deployment_id)
+    return {"logs": timeline, "condensed": True}
+
+
+@router.get("/deployments/search")
+async def search_deployments(query: str, limit: int = 20, offset: int = 0):
+    """Search deployment logs using FTS5 with BM25 ranking"""
+    results = context_store.search_deployments(query, limit=limit, offset=offset)
+
+    return {
+        "results": results,
+        "query": query,
+        "count": len(results),
+        "limit": limit,
+        "offset": offset
+    }
