@@ -1,0 +1,140 @@
+# Notification Channels Configuration
+# Part of Phase 1 (Monitoring & Observability) implementation
+#
+# Configure notification delivery channels, rate limits, and routing.
+
+channels:
+  # Email notifications
+  email:
+    enabled: false  # Set to true and configure SMTP to enable
+    rate_limit_per_hour: 10
+    retry_attempts: 3
+    retry_delay_seconds: 5
+    severity_routing:
+      info: false
+      warning: false
+      critical: true
+      emergency: true
+
+  # Slack notifications
+  slack:
+    enabled: false  # Set to true and configure webhook to enable
+    rate_limit_per_hour: 20
+    retry_attempts: 3
+    retry_delay_seconds: 5
+    severity_routing:
+      info: false
+      warning: true
+      critical: true
+      emergency: true
+
+  # Discord notifications
+  discord:
+    enabled: false  # Set to true and configure webhook to enable
+    rate_limit_per_hour: 20
+    retry_attempts: 3
+    retry_delay_seconds: 5
+    severity_routing:
+      info: false
+      warning: true
+      critical: true
+      emergency: true
+
+  # Generic webhook notifications
+  webhook:
+    enabled: true
+    rate_limit_per_hour: 100
+    retry_attempts: 3
+    retry_delay_seconds: 5
+    severity_routing:
+      info: false
+      warning: false
+      critical: true
+      emergency: true
+
+  # Browser WebSocket notifications
+  browser:
+    enabled: true
+    rate_limit_per_hour: 1000  # High limit for real-time updates
+    retry_attempts: 1  # WebSocket doesn't retry
+    retry_delay_seconds: 0
+    severity_routing:
+      info: true
+      warning: true
+      critical: true
+      emergency: true
+
+# Notification routing rules
+routing:
+  # Emergency alerts go to all channels
+  emergency:
+    channels:
+      - email
+      - slack
+      - discord
+      - webhook
+      - browser
+    escalation_delay_minutes: 5  # Escalate if not acknowledged in 5 min
+
+  # Critical alerts go to primary channels
+  critical:
+    channels:
+      - email
+      - slack
+      - browser
+    escalation_delay_minutes: 15
+
+  # Warning alerts go to monitoring channels
+  warning:
+    channels:
+      - slack
+      - browser
+    escalation_delay_minutes: 30
+
+  # Info alerts only to browser
+  info:
+    channels:
+      - browser
+    escalation_delay_minutes: null  # No escalation
+
+# Alert grouping configuration
+grouping:
+  enabled: true
+  window_seconds: 60
+  max_group_size: 10
+  group_by:
+    - component
+    - severity
+
+# Alert deduplication configuration
+deduplication:
+  enabled: true
+  window_seconds: 300  # 5 minutes
+  fingerprint_fields:
+    - severity
+    - source
+    - component
+    - title
+
+# Environment variable overrides
+# Set these environment variables to configure notification channels:
+#
+# Email:
+#   ALERT_SMTP_HOST - SMTP server hostname
+#   ALERT_SMTP_PORT - SMTP server port (default: 587)
+#   ALERT_SMTP_USER - SMTP username
+#   ALERT_SMTP_PASSWORD - SMTP password
+#   ALERT_EMAIL_FROM - From email address
+#   ALERT_EMAIL_TO - Comma-separated list of recipient emails
+#
+# Slack:
+#   ALERT_SLACK_WEBHOOK_URL - Slack webhook URL
+#   ALERT_SLACK_CHANNEL - Slack channel (default: #alerts)
+#   ALERT_SLACK_USERNAME - Bot username (default: AI Stack Alerts)
+#
+# Discord:
+#   ALERT_DISCORD_WEBHOOK_URL - Discord webhook URL
+#   ALERT_DISCORD_USERNAME - Bot username (default: AI Stack Alerts)
+#
+# Webhook:
+#   ALERT_WEBHOOK_URLS - Comma-separated list of webhook URLs
