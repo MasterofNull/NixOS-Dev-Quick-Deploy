@@ -23,6 +23,26 @@ from .delegation_protocol import (
     DelegationProtocol,
     get_delegation_protocol,
 )
+from .verification import (
+    CheckStatus,
+    CheckResult,
+    VerificationResult,
+    VerificationFramework,
+    get_verifier,
+)
+from .approval import (
+    RiskLevel,
+    ApprovalTier,
+    ApprovalDecision,
+    ApprovalWorkflow,
+    get_approval_workflow,
+)
+from .orchestrator import (
+    ApprovalMode,
+    OrchestrationResult,
+    AutonomousOrchestrator,
+    get_orchestrator,
+)
 
 __all__ = [
     # Task types and enums
@@ -42,4 +62,21 @@ __all__ = [
     "ClaudeAPIClient",
     "DelegationProtocol",
     "get_delegation_protocol",
+    # Verification
+    "CheckStatus",
+    "CheckResult",
+    "VerificationResult",
+    "VerificationFramework",
+    "get_verifier",
+    # Approval
+    "RiskLevel",
+    "ApprovalTier",
+    "ApprovalDecision",
+    "ApprovalWorkflow",
+    "get_approval_workflow",
+    # Orchestrator
+    "ApprovalMode",
+    "OrchestrationResult",
+    "AutonomousOrchestrator",
+    "get_orchestrator",
 ]
