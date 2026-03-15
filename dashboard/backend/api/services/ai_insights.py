@@ -36,7 +36,7 @@ class AIInsightsService:
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=30,
+                timeout=60,
             )
 
             data = json.loads(result.stdout)

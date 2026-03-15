@@ -144,28 +144,19 @@ async def websocket_metrics(websocket: WebSocket):
                 active_connections.remove(websocket)
 
 
-# ── Frontend static file serving (SPA) ───────────────────────────────────────
-# Mount compiled frontend dist directory.  The backend serves both the API
-# (at /api/*) and the React SPA (at /*).  html=True enables index.html
-# fallback so SPA client-side routing works.  Mounts are evaluated after
-# explicit routes so /api/* is never captured by StaticFiles.
-_FRONTEND_DIST = Path(
-    os.getenv(
-        "DASHBOARD_FRONTEND_DIST",
-        str(Path(__file__).parent.parent.parent / "frontend" / "dist"),
-    )
-)
-if _FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True, follow_symlink=True), name="static")
-    logger.info("Frontend dist mounted from %s", _FRONTEND_DIST)
-else:
-    logger.warning("Frontend dist not found at %s — run the build service first", _FRONTEND_DIST)
+# ── Frontend static file serving ────────────────────────────────────────────
+# Serve control-center.html dashboard
+_CONTROL_CENTER_PATH = Path(__file__).parent.parent.parent / "control-center.html"
 
-    @app.get("/")
-    async def root():
+@app.get("/")
+async def root():
+    """Serve the control center dashboard"""
+    if _CONTROL_CENTER_PATH.exists():
+        return FileResponse(_CONTROL_CENTER_PATH)
+    else:
         return JSONResponse(
             {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
-             "note": "Frontend not yet built. Run: sudo systemctl start command-center-dashboard-build"},
+             "note": "Control center dashboard not found"},
             status_code=200,
         )
 
