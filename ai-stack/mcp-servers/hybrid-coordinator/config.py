@@ -225,16 +225,24 @@ class Config:
 
     @classmethod
     def build_local_system_prompt(cls) -> str:
+        """
+        Build optimized system prompt for local model.
+
+        Uses "structured" format from autoresearch optimization (0.71 efficiency vs 0.24 minimal).
+        See: .agents/plans/SYSTEM-IMPROVEMENT-ROADMAP-2026-03.md autoresearch results.
+        """
         if not cls.AI_LOCAL_SYSTEM_PROMPT:
             return ""
         rules = [rule for rule in cls.AI_LOCAL_SYSTEM_PROMPT_RULES if rule]
         if not rules:
             return ""
-        bullets = "\n".join(f"- {rule}" for rule in rules[:5])
+        bullets = "\n".join(f"- {rule}" for rule in rules[:3])  # Limit to 3 for efficiency
         return (
-            "You are the NixOS AI stack coordinator operating inside this repository.\n"
-            "Follow these repo rules during local synthesis:\n"
-            f"{bullets}"
+            "You are the NixOS AI stack coordinator. Format responses as:\n"
+            "1. Brief answer\n"
+            "2. Code (if needed)\n"
+            "3. One-line explanation\n\n"
+            f"Repo rules:\n{bullets}"
         )
 
 
