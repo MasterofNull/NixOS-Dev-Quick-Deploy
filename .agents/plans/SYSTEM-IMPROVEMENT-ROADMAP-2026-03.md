@@ -189,16 +189,24 @@ scripts/ai/aq-qa 1 --json | jq '.tests[] | select(.id == "1.5.3")'
 **Gate:** Dashboard shows all track metrics, PRSI actions executable
 
 ### Batch 3.1: Dashboard Report Integration
-**Status:** validated
+**Status:** completed
 **Tasks:**
-- [ ] Add aq-report summary widget to dashboard
-- [ ] Show trend sparklines for key metrics
-- [ ] Add Continue/editor health status card
-- [ ] Show active lesson refs in dashboard
+- [x] Add aq-report summary widget to dashboard
+- [x] Show trend sparklines for key metrics
+- [x] Add Continue/editor health status card
+- [x] Show active lesson refs in dashboard
+
+**Evidence:**
+- aq-report integration: _load_aq_report_status_summary() in http_server.py:155-254
+- Report summary exposed in /control/ai-coordinator/status endpoint (line 4450)
+- Trend sparklines: trend_summary with ↑/↓/→/? indicators (lines 208-212)
+- Continue/editor health: continue_editor section with healthy status, failures, trends (lines 213-221)
+- Active lesson refs: active_lesson_refs field in status response (line 4453)
+- Multi-window trends: 1h/24h/7d windows for routing, retrieval, delegation (lines 218-250)
 
 **Validation:**
 ```bash
-curl -sS http://127.0.0.1:8003/dashboard.html | grep -q 'report_summary'
+curl -sS http://127.0.0.1:8003/control/ai-coordinator/status | jq '.report_summary, .active_lesson_refs'
 ```
 
 ### Batch 3.2: PRSI Action Execution
