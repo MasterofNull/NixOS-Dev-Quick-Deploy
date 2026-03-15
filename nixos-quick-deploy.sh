@@ -1,4 +1,27 @@
 #!/usr/bin/env bash
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ⚠️  DEPRECATION NOTICE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+# This script is being replaced by the unified deployment CLI.
+#
+# Migration:
+#   OLD: ./nixos-quick-deploy.sh           NEW: ./deploy system
+#   OLD: ./nixos-quick-deploy.sh --help    NEW: ./deploy system --help
+#
+# Benefits of new CLI:
+#   • Unified interface for all operations
+#   • Better error handling and recovery
+#   • Comprehensive health checks
+#   • Configuration management
+#   • Dashboard integration
+#
+# Documentation: .agents/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md
+#
+# This legacy script will be removed in a future release.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
