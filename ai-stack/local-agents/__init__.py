@@ -47,6 +47,11 @@ from .task_router import (
     TaskRouter,
     get_router,
 )
+from .monitoring_agent import (
+    HealthStatus,
+    HealthCheck,
+    MonitoringAgent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,4 +119,8 @@ __all__ = [
     "RoutingDecision",
     "TaskRouter",
     "get_router",
+    # Monitoring agent
+    "HealthStatus",
+    "HealthCheck",
+    "MonitoringAgent",
 ]
