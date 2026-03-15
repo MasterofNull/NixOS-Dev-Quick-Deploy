@@ -21,8 +21,10 @@ import json
 import logging
 import os
 import socket
+import subprocess
+import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
@@ -4556,6 +4558,156 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_prsi_actions_list(_request: web.Request) -> web.Response:
+        """
+        GET /control/prsi/actions — List available PRSI optimization actions.
+
+        Calls aq-report --format=json and returns structured_actions.
+        """
+        try:
+            # Path from ai-stack/mcp-servers/hybrid-coordinator -> repo root
+            repo_root = Path(__file__).parent.parent.parent.parent
+            scripts_dir = repo_root / "scripts/ai"
+            aq_report_path = scripts_dir / "aq-report"
+
+            if not aq_report_path.exists():
+                return web.json_response({
+                    "status": "error",
+                    "error": "aq-report script not found",
+                    "path": str(aq_report_path)
+                }, status=404)
+
+            # Run aq-report to get structured actions
+            # Use the python interpreter from the current process
+            result = subprocess.run(
+                [sys.executable, str(aq_report_path), "--format=json"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                return web.json_response({
+                    "status": "error",
+                    "error": "aq-report failed",
+                    "stderr": result.stderr[:500]
+                }, status=500)
+
+            try:
+                report_data = json.loads(result.stdout)
+                actions = report_data.get("structured_actions", [])
+
+                return web.json_response({
+                    "status": "ok",
+                    "service": "prsi",
+                    "actions": actions,
+                    "action_count": len(actions),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+            except json.JSONDecodeError as exc:
+                return web.json_response({
+                    "status": "error",
+                    "error": "invalid JSON from aq-report",
+                    "detail": str(exc)
+                }, status=500)
+
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_prsi_action_execute(request: web.Request) -> web.Response:
+        """
+        POST /control/prsi/actions/execute — Execute a PRSI optimization action.
+
+        Body:
+            {
+                "action_id": "routing.01",  # Optional - defaults to running aq-optimizer
+                "dry_run": true,            # Optional - defaults to true
+                "action_type": "routing",   # Optional: routing, knowledge, maintenance
+                "params": {}                # Optional: action-specific parameters
+            }
+        """
+        try:
+            data = await request.json() if request.can_read_body else {}
+            dry_run = bool(data.get("dry_run", True))
+            action_type = str(data.get("action_type", "")).strip()
+
+            repo_root = Path(__file__).parent.parent.parent.parent
+            scripts_dir = repo_root / "scripts/ai"
+
+            # If no specific action type, run aq-optimizer
+            if not action_type:
+                aq_optimizer_path = scripts_dir / "aq-optimizer"
+                if not aq_optimizer_path.exists():
+                    return web.json_response({
+                        "status": "error",
+                        "error": "aq-optimizer script not found"
+                    }, status=404)
+
+                cmd = [sys.executable, str(aq_optimizer_path)]
+                if dry_run:
+                    cmd.append("--dry-run")
+                cmd.append("--output-json")
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+
+                return web.json_response({
+                    "status": "ok" if result.returncode == 0 else "failed",
+                    "service": "prsi",
+                    "tool": "aq-optimizer",
+                    "dry_run": dry_run,
+                    "exit_code": result.returncode,
+                    "stdout": result.stdout[:2000],
+                    "stderr": result.stderr[:500] if result.stderr else "",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+
+            # Handle gap remediation
+            elif action_type == "gap_remediation":
+                aq_gap_path = scripts_dir / "aq-gap-auto-remediate"
+                if not aq_gap_path.exists():
+                    return web.json_response({
+                        "status": "error",
+                        "error": "aq-gap-auto-remediate script not found"
+                    }, status=404)
+
+                cmd = [sys.executable, str(aq_gap_path)]
+                if dry_run:
+                    cmd.append("--dry-run")
+                cmd.extend(["--limit", "5"])
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+
+                return web.json_response({
+                    "status": "ok" if result.returncode == 0 else "failed",
+                    "service": "prsi",
+                    "tool": "aq-gap-auto-remediate",
+                    "dry_run": dry_run,
+                    "exit_code": result.returncode,
+                    "stdout": result.stdout[:2000],
+                    "stderr": result.stderr[:500] if result.stderr else "",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+
+            else:
+                return web.json_response({
+                    "status": "error",
+                    "error": f"unknown action_type: {action_type}",
+                    "supported_types": ["routing", "knowledge", "maintenance", "gap_remediation"]
+                }, status=400)
+
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         """Run a bounded delegated task through the selected ai-coordinator lane."""
         try:
@@ -5388,6 +5540,9 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/tools/suggestions", handle_tool_suggestions)
     http_app.router.add_get("/control/autoresearch/status", handle_autoresearch_status)
     http_app.router.add_post("/control/autoresearch/run", handle_autoresearch_run)
+    # Batch 3.2 — PRSI Action Execution endpoints
+    http_app.router.add_get("/control/prsi/actions", handle_prsi_actions_list)
+    http_app.router.add_post("/control/prsi/actions/execute", handle_prsi_action_execute)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)
     http_app.router.add_get("/control/runtimes/{runtime_id}", handle_runtime_get)
