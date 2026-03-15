@@ -325,24 +325,28 @@ python3 scripts/testing/test-delegated-prompt-failure-trend.py
 **Gate:** ≥5 accepted lessons actively referenced
 
 ### Batch 5.1: Lesson Registry Completion
-**Status:** validated
+**Status:** completed
 **Tasks:**
 - [x] Run all 16+ lesson-ref smoke tests
 - [x] Verify lessons appear in hints
 - [x] Confirm lessons affect delegation contracts
-- [ ] Add lesson effectiveness tracking
+- [x] Add lesson effectiveness tracking
 
 **Evidence:**
 - 15/23 lesson-ref smoke tests PASS
 - 8 workflow tests hit 429 rate limits (expected in batch run)
 - Lessons confirmed in: hints, delegate, query, feedback, discovery, augment, context, cache, learning, health, memory, status, skills, session, lessons/review
 - All core endpoints surface active lesson refs correctly
+- Created lesson_effectiveness_tracker.py (323 lines) with usage tracking, effectiveness stats, and recommendations
+- Integrated into /status endpoint (lesson_effectiveness_stats field)
+- Tracks: lesson usage events, success/failure rates, context preferences, top/underused/ineffective lessons
 
 **Validation:**
 ```bash
 scripts/testing/smoke-delegate-lesson-refs.sh
 scripts/testing/smoke-hints-lesson-refs.sh
 scripts/testing/smoke-workflow-plan-lesson-refs.sh
+curl -sS http://127.0.0.1:8003/status | jq '.lesson_effectiveness_stats'
 ```
 
 ### Batch 5.2: Skill Registry Expansion
