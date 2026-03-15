@@ -112,7 +112,18 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
     output_format = str(arguments.get("format", "json")).strip().lower()
     include_sudo = bool(arguments.get("include_sudo", False))
     capability_only = bool(arguments.get("capability_only", False))
-    timeout_seconds = int(arguments.get("timeout_seconds", 60) or 60)
+
+    # Batch 2.1: Increase default timeout and add phase-specific timeouts
+    # Phase 2/3 runtime checks take longer due to package/confinement loops
+    phase_timeouts = {
+        "0": 90,   # Smoke tests
+        "1": 120,  # Infrastructure checks
+        "2": 180,  # Runtime/package/confinement loops
+        "3": 180,  # AppArmor/confinement loops
+        "all": 300,  # All phases
+    }
+    default_timeout = phase_timeouts.get(phase, 120)
+    timeout_seconds = int(arguments.get("timeout_seconds") or default_timeout)
     if timeout_seconds < 5:
         timeout_seconds = 5
     if output_format not in {"json", "text"}:

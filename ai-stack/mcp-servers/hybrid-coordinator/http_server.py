@@ -53,7 +53,7 @@ from ai_coordinator import (
     get_routing_stats as _ai_coordinator_get_routing_stats,
 )
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
-from memory_manager import coerce_memory_summary, normalize_memory_type
+from memory_manager import coerce_memory_summary, normalize_memory_type, get_memory_latency_metrics
 from rag_reflection import get_reflection_stats as _get_rag_reflection_stats
 from generator_critic import get_critic_stats as _get_generator_critic_stats
 from quality_cache import (
@@ -1807,6 +1807,8 @@ async def run_http_mode(port: int) -> None:
             "pattern_effectiveness": _get_pattern_effectiveness(),
             # Batch 6.3 — Remediation Success Rate Tracking
             "remediation_success_rate": _get_remediation_success_rate(),
+            # Batch 2.1 — Memory Latency Metrics
+            "memory_latency_metrics": get_memory_latency_metrics(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
