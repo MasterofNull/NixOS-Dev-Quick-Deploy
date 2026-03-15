@@ -110,16 +110,26 @@ curl -sS -X POST http://127.0.0.1:8003/research/web/fetch -d '{"url":"...","max_
 **Gate:** Memory success ≥95%, Route P95 <2000ms
 
 ### Batch 2.1: Memory System Fixes
-**Status:** validated
+**Status:** completed
 **Tasks:**
-- [ ] Add retry logic to store_agent_memory (3 retries with backoff)
-- [ ] Implement memory deduplication (cosine >0.95 = skip)
-- [ ] Add memory latency metrics to status endpoint
-- [ ] Fix qa_check timeout issues (21 errors seen)
+- [x] Add retry logic to store_agent_memory (3 retries with backoff)
+- [x] Implement memory deduplication (cosine >0.95 = skip)
+- [x] Add memory latency metrics to status endpoint
+- [x] Fix qa_check timeout issues (21 errors seen)
+
+**Evidence:**
+- Added retry logic with exponential backoff (0.5s base delay, 3 attempts)
+- Implemented _check_memory_duplicate() with cosine similarity threshold 0.95
+- Created MemoryLatencyMetrics dataclass tracking store/recall latencies (100-event rolling window)
+- Added get_memory_latency_metrics() exposing avg/p95 latencies, dedup_skips, retry counters
+- Integrated memory_latency_metrics into /status endpoint
+- Increased qa_check timeouts: Phase 0=90s, Phase 1=120s, Phase 2/3=180s, all=300s
+- Changes in: memory_manager.py (+120 lines), http_server.py (import + endpoint), mcp_handlers.py (timeout tuning)
 
 **Validation:**
 ```bash
 scripts/ai/aq-report --format=json | jq '.tool_performance[] | select(.tool=="store_agent_memory")'
+curl -sS http://127.0.0.1:8003/status | jq '.memory_latency_metrics'
 ```
 
 ### Batch 2.2: Route Search Optimization
