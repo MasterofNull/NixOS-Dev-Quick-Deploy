@@ -946,69 +946,120 @@
             document.getElementById('infinite-label').textContent = this.checked ? 'Enabled (Infinite)' : 'Disabled';
         });
 
-        // Health Check Functions
+        // Health Check Functions - Backend API Integration
+        const API_BASE = 'http://localhost:8889/api';
+
         async function checkHealth(service) {
-            const endpoint = healthEndpoints[service];
+            // This function is now deprecated in favor of refreshHealth() which uses
+            // the backend aggregate API, but kept for backwards compatibility
             const indicator = document.getElementById(`health-${service}`);
             const detail = document.getElementById(`detail-${service}`);
 
-            try {
-                // For browser-based health checks, we need CORS-enabled endpoints
-                // In production, this would go through a backend API
-                const url = `http://localhost:${endpoint.port}${endpoint.path || '/health'}`;
+            if (indicator) indicator.textContent = '⏳';
+            if (detail) detail.textContent = 'Checking...';
 
-                // Static-mode browser checks are best-effort only; authoritative
-                // production health comes from the dashboard backend aggregate API.
-                const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'cors',
-                    signal: AbortSignal.timeout(5000)
-                }).catch(() => null);
-
-                if (response && response.ok) {
-                    indicator.textContent = '✅';
-                    detail.textContent = 'Healthy';
-                    return true;
-                } else {
-                    indicator.textContent = '❌';
-                    detail.textContent = response ? `HTTP ${response.status}` : 'Unreachable';
-                    return false;
-                }
-            } catch (error) {
-                // CORS failures or cross-origin blocks mean static mode cannot
-                // authoritatively verify the service from the browser.
-                indicator.textContent = '⚠️';
-                detail.textContent = 'Unavailable in static mode';
-                return null;
-            }
+            return null; // Will be populated by refreshHealth()
         }
 
         async function refreshHealth() {
             document.getElementById('last-health-check').textContent = new Date().toLocaleTimeString();
 
-            let healthy = 0;
-            let total = Object.keys(healthEndpoints).length;
+            try {
+                // Fetch all service health from backend aggregate API
+                const response = await fetch(`${API_BASE}/health/services/all`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(10000)
+                });
 
-            for (const service of Object.keys(healthEndpoints)) {
-                const indicator = document.getElementById(`health-${service}`);
-                indicator.textContent = '⏳';
+                if (!response.ok) {
+                    throw new Error(`Health API returned ${response.status}`);
+                }
 
-                const result = await checkHealth(service);
-                if (result === true) healthy++;
-            }
+                const data = await response.json();
 
-            // Update system status
-            document.getElementById('service-count').textContent = `${healthy}/${total} Healthy`;
-            if (healthy === total) {
-                document.getElementById('system-status').textContent = 'All Systems Operational';
-                document.getElementById('system-status').className = 'status status-online';
-            } else if (healthy > total / 2) {
-                document.getElementById('system-status').textContent = 'Partial Degradation';
-                document.getElementById('system-status').className = 'status status-warning';
-            } else {
-                document.getElementById('system-status').textContent = 'System Issues Detected';
+                // Map backend service IDs to frontend health endpoint keys
+                const serviceMap = {
+                    'postgresql': 'postgres',
+                    'redis': 'redis',
+                    'qdrant': 'qdrant',
+                    'ai-aidb': 'aidb',
+                    'llama-embed': 'embeddings',
+                    'ai-hybrid-coordinator': 'hybrid',
+                    'llama-cpp': 'llama',
+                    'ralph-wiggum': 'ralph',
+                    'grafana': 'grafana',
+                    'prometheus': 'prometheus',
+                    'open-webui': 'openwebui',
+                    'nginx': 'nginx'
+                };
+
+                let healthy = 0;
+                let total = 0;
+
+                // Update each service indicator
+                for (const [backendId, frontendId] of Object.entries(serviceMap)) {
+                    const indicator = document.getElementById(`health-${frontendId}`);
+                    const detail = document.getElementById(`detail-${frontendId}`);
+
+                    if (!indicator) continue;
+
+                    total++;
+                    const serviceData = data.services[backendId];
+
+                    if (serviceData && serviceData.status === 'healthy') {
+                        indicator.textContent = '✅';
+                        detail.textContent = 'Healthy';
+                        healthy++;
+                    } else if (serviceData && serviceData.status === 'degraded') {
+                        indicator.textContent = '⚠️';
+                        detail.textContent = 'Degraded';
+                    } else {
+                        indicator.textContent = '❌';
+                        detail.textContent = serviceData ? serviceData.status : 'Unknown';
+                    }
+                }
+
+                // Update aggregate metrics from backend
+                const aggregate = data.aggregate || {};
+                const healthyCount = aggregate.healthy_count || healthy;
+                const totalCount = aggregate.total_count || total;
+
+                document.getElementById('service-count').textContent = `${healthyCount}/${totalCount} Healthy`;
+
+                if (healthyCount === totalCount) {
+                    document.getElementById('system-status').textContent = 'All Systems Operational';
+                    document.getElementById('system-status').className = 'status status-online';
+                } else if (healthyCount > totalCount / 2) {
+                    document.getElementById('system-status').textContent = 'Partial Degradation';
+                    document.getElementById('system-status').className = 'status status-warning';
+                } else {
+                    document.getElementById('system-status').textContent = 'System Issues Detected';
+                    document.getElementById('system-status').className = 'status status-offline';
+                }
+
+            } catch (error) {
+                console.error('Failed to refresh health from backend:', error);
+                document.getElementById('system-status').textContent = 'Health Check Failed';
                 document.getElementById('system-status').className = 'status status-offline';
+
+                // Fall back to showing error state for all services
+                for (const service of Object.keys(healthEndpoints)) {
+                    const indicator = document.getElementById(`health-${service}`);
+                    const detail = document.getElementById(`detail-${service}`);
+                    if (indicator) indicator.textContent = '⚠️';
+                    if (detail) detail.textContent = 'API Error';
+                }
             }
+        }
+
+        // Auto-refresh health every 30 seconds
+        let healthRefreshInterval = null;
+        function startHealthRefresh() {
+            if (healthRefreshInterval) {
+                clearInterval(healthRefreshInterval);
+            }
+            refreshHealth(); // Initial check
+            healthRefreshInterval = setInterval(refreshHealth, 30000);
         }
 
         function restartService(service) {
@@ -1087,8 +1138,9 @@
             // Set initial status to checking
             document.getElementById('system-status').textContent = 'Checking...';
 
-            // Note: Auto health check disabled to avoid CORS issues
-            // Run refreshHealth() manually or use backend proxy
+            // Start auto-refresh using backend API (no CORS issues!)
+            startHealthRefresh();
+            console.log('Health monitoring started with backend API integration');
         });
     </script>
 </body>
