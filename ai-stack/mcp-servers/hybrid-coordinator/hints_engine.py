@@ -800,7 +800,7 @@ class HintsEngine:
             else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
         )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
-        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 25.0, min_value=10.0, max_value=100.0)
+        self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 45.0, min_value=10.0, max_value=100.0)
         self._div_repeat_min_count = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_MIN_COUNT", 3, min_value=1)
         self._div_hard_exclude_pct = self._parse_float_env("AI_HINT_DIVERSITY_HARD_EXCLUDE_PCT", 60.0, min_value=30.0, max_value=100.0)
         self._div_type_max = self._parse_type_quota_env(
