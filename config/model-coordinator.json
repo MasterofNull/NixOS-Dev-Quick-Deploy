@@ -1,0 +1,210 @@
+{
+  "$schema": "./schemas/model-coordinator-schema.json",
+  "version": "1.0.0",
+  "description": "Model coordinator configuration for dual-model routing and task classification",
+  "models": {
+    "claude-orchestrator": {
+      "role": "orchestrator",
+      "endpoint": "anthropic",
+      "capabilities": ["planning", "review", "delegation", "synthesis", "critique"],
+      "preferred_domains": ["architecture", "planning", "review"],
+      "max_context_tokens": 200000,
+      "is_local": false,
+      "cost_per_1k_tokens": 0.015,
+      "priority": 1,
+      "availability": {
+        "check_endpoint": null,
+        "fallback_model": "claude-reasoning"
+      }
+    },
+    "claude-reasoning": {
+      "role": "reasoning",
+      "endpoint": "anthropic",
+      "capabilities": ["architecture", "analysis", "design", "security", "tradeoff_evaluation"],
+      "preferred_domains": ["architecture", "security", "design"],
+      "max_context_tokens": 200000,
+      "is_local": false,
+      "cost_per_1k_tokens": 0.015,
+      "priority": 2,
+      "availability": {
+        "check_endpoint": null,
+        "fallback_model": "qwen-coder"
+      }
+    },
+    "qwen-coder": {
+      "role": "coding",
+      "endpoint": "openrouter",
+      "capabilities": ["implementation", "refactoring", "testing", "debugging", "code_review"],
+      "preferred_domains": ["web-dev", "ai-harness", "devops", "nixos-dev"],
+      "max_context_tokens": 32768,
+      "is_local": false,
+      "cost_per_1k_tokens": 0.0,
+      "priority": 1,
+      "availability": {
+        "check_endpoint": null,
+        "fallback_model": "codex"
+      },
+      "notes": "Free tier model, preferred for cost-sensitive coding tasks"
+    },
+    "codex": {
+      "role": "coding",
+      "endpoint": "openrouter",
+      "capabilities": ["implementation", "refactoring", "code_review", "optimization"],
+      "preferred_domains": ["web-dev", "data-engineering"],
+      "max_context_tokens": 128000,
+      "is_local": false,
+      "cost_per_1k_tokens": 0.0,
+      "priority": 2,
+      "availability": {
+        "check_endpoint": null,
+        "fallback_model": "qwen-coder"
+      }
+    },
+    "llama-cpp-local": {
+      "role": "fast_chat",
+      "endpoint": "http://127.0.0.1:8080",
+      "capabilities": ["chat", "completion", "quick_lookup", "simple_qa"],
+      "preferred_domains": ["general"],
+      "max_context_tokens": 4096,
+      "is_local": true,
+      "cost_per_1k_tokens": 0.0,
+      "priority": 1,
+      "availability": {
+        "check_endpoint": "http://127.0.0.1:8080/health",
+        "fallback_model": "qwen-coder"
+      },
+      "notes": "Local model for simple queries, reduces remote API costs"
+    },
+    "qdrant-embedding": {
+      "role": "embedding",
+      "endpoint": "http://127.0.0.1:6333",
+      "capabilities": ["embedding", "similarity", "rag", "semantic_search"],
+      "preferred_domains": ["rag", "search"],
+      "max_context_tokens": 512,
+      "is_local": true,
+      "cost_per_1k_tokens": 0.0,
+      "priority": 1,
+      "availability": {
+        "check_endpoint": "http://127.0.0.1:6333/collections",
+        "fallback_model": null
+      },
+      "notes": "Vector database for semantic search and RAG"
+    }
+  },
+  "routing_policy": {
+    "prefer_local_for_simple": true,
+    "prefer_free_tier": true,
+    "max_cost_per_request": 0.05,
+    "handoff_enabled": true,
+    "handoff_threshold": 0.7,
+    "default_reasoning_model": "claude-reasoning",
+    "default_coding_model": "qwen-coder",
+    "default_fast_model": "llama-cpp-local"
+  },
+  "cache_warming": {
+    "enabled": true,
+    "auto_queue_from_logs": false,
+    "batch_size": 5,
+    "processing_interval_seconds": 300,
+    "max_queue_depth": 100,
+    "priority_levels": {
+      "critical": 5,
+      "high": 3,
+      "normal": 1,
+      "low": 0
+    }
+  },
+  "tool_suggestions": {
+    "enabled": true,
+    "max_suggestions_per_domain": 3,
+    "domains": {
+      "nixos-dev": [
+        {
+          "tool": "nixos-rebuild",
+          "when": "deploying changes",
+          "priority": 1,
+          "command_template": "sudo nixos-rebuild switch"
+        },
+        {
+          "tool": "nix-build",
+          "when": "testing derivations",
+          "priority": 2,
+          "command_template": "nix-build '<nixpkgs>' -A {package}"
+        },
+        {
+          "tool": "nix flake check",
+          "when": "validating flake",
+          "priority": 2,
+          "command_template": "nix flake check"
+        }
+      ],
+      "ai-harness": [
+        {
+          "tool": "aq-report",
+          "when": "checking system status",
+          "priority": 1,
+          "command_template": "scripts/ai/aq-report --format=json"
+        },
+        {
+          "tool": "aq-hints",
+          "when": "getting workflow hints",
+          "priority": 2,
+          "command_template": "scripts/ai/aq-hints \"{query}\""
+        },
+        {
+          "tool": "aq-qa",
+          "when": "running QA checks",
+          "priority": 2,
+          "command_template": "scripts/ai/aq-qa"
+        }
+      ],
+      "web-dev": [
+        {
+          "tool": "npm run build",
+          "when": "building project",
+          "priority": 1,
+          "command_template": "npm run build"
+        },
+        {
+          "tool": "npm test",
+          "when": "running tests",
+          "priority": 2,
+          "command_template": "npm test"
+        },
+        {
+          "tool": "npx eslint",
+          "when": "linting code",
+          "priority": 3,
+          "command_template": "npx eslint {path}"
+        }
+      ],
+      "devops": [
+        {
+          "tool": "systemctl status",
+          "when": "checking service",
+          "priority": 1,
+          "command_template": "systemctl status {service}"
+        },
+        {
+          "tool": "journalctl",
+          "when": "viewing logs",
+          "priority": 2,
+          "command_template": "journalctl -u {service} -f"
+        },
+        {
+          "tool": "docker ps",
+          "when": "checking containers",
+          "priority": 3,
+          "command_template": "docker ps -a"
+        }
+      ]
+    }
+  },
+  "telemetry": {
+    "routing_history_size": 500,
+    "track_costs": true,
+    "track_latency": true,
+    "track_success_rate": true,
+    "export_interval_seconds": 3600
+  }
+}

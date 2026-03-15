@@ -28,6 +28,11 @@ from uuid import uuid4
 from qdrant_client.models import PointStruct
 
 from config import Config
+from rag_reflection import (
+    reflect_on_retrieval,
+    should_reflect,
+    get_reflection_stats,
+)
 from shared.telemetry_privacy import redact_secrets, scrub_telemetry_payload
 
 logger = logging.getLogger("hybrid-coordinator")
@@ -214,6 +219,39 @@ async def recall_agent_memory(
         )
 
     raw_results = search_result.get("combined_results", [])
+
+    # Batch 9.1: Reflection loop for RAG quality improvement
+    reflection_metadata = None
+    if should_reflect(sanitized_query):
+        # Helper function for retry
+        async def _retry_search(expanded_query: str):
+            if use_tree:
+                return await _tree_search(
+                    query=expanded_query,
+                    collections=collections,
+                    limit=limit_value,
+                    keyword_limit=limit_value,
+                    score_threshold=0.6,
+                )
+            else:
+                return await _hybrid_search(
+                    query=expanded_query,
+                    collections=collections,
+                    limit=limit_value,
+                    keyword_limit=limit_value,
+                    score_threshold=0.6,
+                )
+
+        # Apply reflection loop
+        final_results, reflection_metadata = await reflect_on_retrieval(
+            query=sanitized_query,
+            results=raw_results,
+            retrieval_func=_retry_search,
+            min_confidence=0.6,
+            max_retries=2,
+        )
+        raw_results = final_results
+
     memory_rows = []
     for item in raw_results[:limit_value]:
         payload = item.get("payload") or {}
@@ -235,11 +273,20 @@ async def recall_agent_memory(
             "results": len(memory_rows),
             "mode": "tree" if use_tree else "hybrid",
             "memory_types": requested_types,
+            "reflection_applied": reflection_metadata is not None,
+            "reflection_retries": reflection_metadata.get("retry_count", 0) if reflection_metadata else 0,
         },
     )
-    return {
+
+    result = {
         "status": "ok",
         "query": sanitized_query,
         "mode": "tree" if use_tree else "hybrid",
         "results": memory_rows,
     }
+
+    # Include reflection metadata if applied
+    if reflection_metadata:
+        result["reflection"] = reflection_metadata
+
+    return result
