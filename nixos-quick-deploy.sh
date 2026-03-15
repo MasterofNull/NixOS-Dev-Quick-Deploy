@@ -790,18 +790,50 @@ PY
         "${report_script}" --since=7d --format=text 2>/dev/null || true
     else
       if command -v jq >/dev/null 2>&1; then
-        output="$(
-          run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
-            "${report_script}" --since=7d --format=json 2>/dev/null || true
-        )"
+        # Try up to 2 times with a small delay (services might still be warming up)
+        local attempt=1
+        local max_attempts=2
+        output=""
+
+        while [[ $attempt -le $max_attempts ]] && [[ -z "$output" || ! $(printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1 && echo "valid") ]]; do
+          if [[ $attempt -gt 1 ]]; then
+            sleep 3  # Wait for services to warm up
+          fi
+
+          output="$(
+            run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
+              "${report_script}" --since=7d --format=json 2>/dev/null || true
+          )"
+          ((attempt++))
+        done
+
         if [[ -n "${output}" ]] && printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1; then
           _print_report_summary_from_json "${output}"
         else
-          log_warn "AI report JSON summary unavailable; using text fallback."
+          # Only warn if we tried multiple times and still failed
+          if [[ $attempt -gt 2 ]]; then
+            log_warn "AI report JSON summary unavailable after retries; using text fallback."
+          fi
           output="$(
             run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
               "${report_script}" --since=7d --format=text 2>/dev/null || true
           )"
+          if [[ -n "${output}" ]]; then
+            log "AI stack report (summary):"
+            printf '%s\n' "${output}" \
+              | awk '/^\[ 2\. Routing Split \]/, /^\[ 3\./ { if ($0 !~ /^\[ 3\./) print }'
+            printf '%s\n' "${output}" \
+              | awk '/^\[ 3\. Semantic Cache \]/, /^\[ 4\./ { if ($0 !~ /^\[ 4\./) print }'
+            printf '%s\n' "${output}" \
+              | awk '/^\[ 9\. Hint Adoption/, /^\[ 10\./ { if ($0 !~ /^\[ 10\./) print }'
+          fi
+        fi
+      else
+        output="$(
+          run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
+            "${report_script}" --since=7d --format=text 2>/dev/null || true
+        )"
+        if [[ -n "${output}" ]]; then
           log "AI stack report (summary):"
           printf '%s\n' "${output}" \
             | awk '/^\[ 2\. Routing Split \]/, /^\[ 3\./ { if ($0 !~ /^\[ 3\./) print }'
@@ -810,34 +842,38 @@ PY
           printf '%s\n' "${output}" \
             | awk '/^\[ 9\. Hint Adoption/, /^\[ 10\./ { if ($0 !~ /^\[ 10\./) print }'
         fi
-      else
-        output="$(
-          run_with_timeout_if_available "${COMPLETION_TEST_REPORT_TIMEOUT_SECONDS}" \
-            "${report_script}" --since=7d --format=text 2>/dev/null || true
-        )"
-        log "AI stack report (summary):"
-        printf '%s\n' "${output}" \
-          | awk '/^\[ 2\. Routing Split \]/, /^\[ 3\./ { if ($0 !~ /^\[ 3\./) print }'
-        printf '%s\n' "${output}" \
-          | awk '/^\[ 3\. Semantic Cache \]/, /^\[ 4\./ { if ($0 !~ /^\[ 4\./) print }'
-        printf '%s\n' "${output}" \
-          | awk '/^\[ 9\. Hint Adoption/, /^\[ 10\./ { if ($0 !~ /^\[ 10\./) print }'
       fi
     fi
   fi
 
   if [[ -x "${qa_script}" ]]; then
-    output="$(
-      run_with_timeout_if_available "${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS}" \
-        "${qa_script}" 0 --json 2>/dev/null || true
-    )"
+    # Try up to 2 times with a small delay (services might still be warming up)
+    local attempt=1
+    local max_attempts=2
+    output=""
+
+    while [[ $attempt -le $max_attempts ]] && [[ -z "$output" || ! $(printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1 && echo "valid") ]]; do
+      if [[ $attempt -gt 1 ]]; then
+        sleep 3  # Wait for services to warm up
+      fi
+
+      output="$(
+        run_with_timeout_if_available "${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS}" \
+          "${qa_script}" 0 --json 2>/dev/null || true
+      )"
+      ((attempt++))
+    done
+
     if [[ -n "${output}" ]] && command -v jq >/dev/null 2>&1 && printf '%s' "${output}" | jq -e '.' >/dev/null 2>&1; then
       log "AI stack QA phase 0:"
       printf '  %-28s %s\n' "Pass" "$(printf '%s' "${output}" | jq -r '(.passed // .pass // 0)')"
       printf '  %-28s %s\n' "Fail" "$(printf '%s' "${output}" | jq -r '(.failed // .fail // 0)')"
       printf '  %-28s %s\n' "Skip" "$(printf '%s' "${output}" | jq -r '(.skipped // .skip // 0)')"
     else
-      log_warn "AI stack QA phase 0 summary unavailable."
+      # Only warn if we tried multiple times and still failed
+      if [[ $attempt -gt 2 ]] || [[ -z "${output}" ]]; then
+        log_warn "AI stack QA phase 0 summary unavailable after retries (services may still be initializing)."
+      fi
     fi
   fi
 }
