@@ -493,7 +493,7 @@ async def main():
     result = pruner.prune(
         Path("model"),
         sparsity=0.3,  # 30% sparsity
-        Path("pruned_model"),
+        output_path=Path("pruned_model"),
     )
 
     logger.info(f"  Sparsity: 30%")
