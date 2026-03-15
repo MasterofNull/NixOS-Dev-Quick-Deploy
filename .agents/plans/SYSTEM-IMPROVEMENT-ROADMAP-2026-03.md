@@ -732,15 +732,31 @@ curl -sS http://127.0.0.1:8003/health/aggregate | jq '.servers | keys'
 ```
 
 ### Batch 11.3: Signed Component Support
-**Status:** pending
+**Status:** blocked
 **Tasks:**
-- [ ] Research MCP signed component specification
+- [x] Research MCP signed component specification
 - [ ] Implement signature validation for tool definitions
 - [ ] Add signature generation for custom tools
 - [ ] Document signing workflow
 
+**Findings:**
+- MCP specification 2025-11-25 does not include signed component support
+- 2026 roadmap lists "deeper security work" as low priority, no component signing specifics
+- No SEPs (Spec Enhancement Proposals) found for component signing
+- Current MCP trust model: server origin-based, not cryptographic signatures
+- Research documented in [.agents/research/mcp-signed-components-2026-03.md](.agents/research/mcp-signed-components-2026-03.md)
+
+**Blocking Reason:**
+Cannot implement against non-existent specification.
+
+**Recommendations:**
+1. Skip batch pending upstream MCP spec
+2. Propose SEP to MCP community if critical for project
+3. Implement custom signing layer as local extension (risk: divergence from future spec)
+
 **Validation:**
 ```bash
+# Blocked pending specification
 python3 scripts/testing/test-mcp-signature-validation.py
 ```
 
