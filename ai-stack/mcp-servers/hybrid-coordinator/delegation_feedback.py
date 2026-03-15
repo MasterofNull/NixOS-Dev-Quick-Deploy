@@ -5,7 +5,14 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+# Batch 9.2 — Generator-Critic Pattern (optional quality gate)
+try:
+    from generator_critic import critique_response, should_apply_critic
+    _CRITIC_AVAILABLE = True
+except ImportError:
+    _CRITIC_AVAILABLE = False
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REPO_PATH_RE = re.compile(r"(?:^|[\s`'\"])(/?[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+\.(?:nix|py|sh|md|js|ts|json|ya?ml))(?:$|[\s`'\",.:;])")
@@ -391,3 +398,82 @@ def record_delegation_feedback(
         "improvement_actions": classification.get("improvement_actions") or [],
     }
     append_jsonl(delegation_feedback_log_path(), payload)
+
+
+# ---------------------------------------------------------------------------
+# Batch 9.2: Generator-Critic Quality Gate (Optional)
+# ---------------------------------------------------------------------------
+
+def apply_critic_evaluation(
+    task: str,
+    response_text: str,
+    classification: Dict[str, Any],
+    enable_critic: bool = False,
+) -> Dict[str, Any]:
+    """
+    Optionally apply generator-critic pattern for quality evaluation.
+
+    This is a lightweight integration that tracks metrics but doesn't
+    block responses. Full critic integration with revision requests can
+    be enabled by setting enable_critic=True.
+
+    Args:
+        task: Original task
+        response_text: Generated response
+        classification: Existing delegation classification
+        enable_critic: If True, apply full critic evaluation
+
+    Returns:
+        Enhanced classification with critic metadata
+    """
+    if not _CRITIC_AVAILABLE or not enable_critic:
+        return classification
+
+    if not should_apply_critic(task):
+        return classification
+
+    # Determine task type for critic
+    task_lower = task.lower()
+    if any(word in task_lower for word in ["implement", "code", "function", "script"]):
+        task_type = "code"
+    elif any(word in task_lower for word in ["config", "nix", "systemd"]):
+        task_type = "config"
+    else:
+        task_type = "general"
+
+    # Run critic evaluation
+    try:
+        critique = critique_response(
+            task=task,
+            response_text=response_text,
+            task_type=task_type,
+            quality_threshold=70.0,
+        )
+
+        # Add critic metadata to classification
+        classification["critic"] = {
+            "evaluated": True,
+            "quality_score": critique.quality_score,
+            "passed": critique.passed,
+            "completeness": critique.completeness_score,
+            "accuracy": critique.accuracy_score,
+            "format": critique.format_score,
+            "code_quality": critique.code_quality_score,
+            "issues_found": len(critique.overall_issues),
+            "evaluation_time_ms": critique.evaluation_time_ms,
+        }
+
+        # If critic failed, add to failure classes
+        if not critique.passed and "critic_quality_below_threshold" not in classification.get("failure_classes", []):
+            classification["failure_classes"] = classification.get("failure_classes", []) + ["critic_quality_below_threshold"]
+            classification["improvement_actions"] = classification.get("improvement_actions", []) + [
+                f"improve response quality (score: {critique.quality_score:.1f}/100) - {critique.overall_issues[0] if critique.overall_issues else 'see critic feedback'}"
+            ]
+
+    except Exception as e:
+        classification["critic"] = {
+            "evaluated": False,
+            "error": str(e),
+        }
+
+    return classification
