@@ -786,6 +786,8 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-14 | (perf) Autoresearch Optimization Applied | Structured system prompt (3x efficiency), config.py updated |
 | 2026-03-14 | (feat) Quality-Aware Response Caching | quality_cache.py, critic/reflection integration, LRU eviction |
 | 2026-03-14 | (feat) Quality Monitoring & Alerting | quality_monitor.py, health scoring, trend detection, 3 alert levels |
+| 2026-03-14 | (feat) Cache Integration Production | Integrated quality cache into /query endpoint, live caching active |
+| 2026-03-14 | (feat) Auto Quality Improvement | auto_quality_improver.py, critic+reflection combo, automatic retry |
 
 ### Current Batch
 
