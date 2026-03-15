@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""
+aq-cache-warm — Proactive cache warming CLI for AI stack
+
+Queue queries for pre-computation of hints, embeddings, and tool suggestions.
+This enables faster responses by anticipating common query patterns.
+
+Usage:
+  aq-cache-warm queue "How do I deploy NixOS?" --domain=nixos-dev --priority=2
+  aq-cache-warm batch --file=queries.txt --domain=ai-harness
+  aq-cache-warm status
+  aq-cache-warm process --batch-size=5
+
+Environment:
+  HYBRID_URL           Hybrid coordinator base URL (default: http://127.0.0.1:8003)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+HYBRID_URL = os.getenv("HYBRID_URL", "http://127.0.0.1:8003").rstrip("/")
+
+# ---------------------------------------------------------------------------
+# Local import fallback
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENGINE_DIR = _REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator"
+
+if str(_ENGINE_DIR) not in sys.path and _ENGINE_DIR.exists():
+    sys.path.insert(0, str(_ENGINE_DIR))
+
+try:
+    from model_coordinator import get_model_coordinator
+    _LOCAL_AVAILABLE = True
+except ImportError:
+    _LOCAL_AVAILABLE = False
+
+
+# ---------------------------------------------------------------------------
+# API helpers
+# ---------------------------------------------------------------------------
+
+def _load_api_key() -> Optional[str]:
+    """Load API key from secrets file."""
+    key_path = Path("/run/secrets/hybrid_coordinator_api_key")
+    if key_path.exists():
+        return key_path.read_text().strip()
+    return None
+
+
+def _post_request(endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Make POST request to hybrid coordinator."""
+    url = f"{HYBRID_URL}{endpoint}"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    api_key = _load_api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode("utf-8"),
+        headers=headers,
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}", "detail": e.read().decode("utf-8", errors="replace")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _get_request(endpoint: str, params: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Make GET request to hybrid coordinator."""
+    url = f"{HYBRID_URL}{endpoint}"
+    if params:
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        url = f"{url}?{query}"
+
+    headers = {"Accept": "application/json"}
+    api_key = _load_api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}", "detail": e.read().decode("utf-8", errors="replace")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def cmd_queue(args: argparse.Namespace) -> int:
+    """Queue a single query for cache warming."""
+    query = args.query
+    domain = args.domain
+    priority = args.priority
+
+    if _LOCAL_AVAILABLE and not args.force_remote:
+        coord = get_model_coordinator()
+        coord.queue_cache_warming(query, domain, priority)
+        print(f"✓ Queued (local): {query[:60]}...")
+        return 0
+
+    result = _post_request("/control/cache/warm", {
+        "query": query,
+        "domain": domain,
+        "priority": priority,
+    })
+
+    if "error" in result:
+        print(f"✗ Error: {result['error']}", file=sys.stderr)
+        return 1
+
+    print(f"✓ Queued: {query[:60]}...")
+    return 0
+
+
+def cmd_batch(args: argparse.Namespace) -> int:
+    """Queue multiple queries from a file."""
+    file_path = Path(args.file)
+    if not file_path.exists():
+        print(f"✗ File not found: {file_path}", file=sys.stderr)
+        return 1
+
+    queries = [line.strip() for line in file_path.read_text().splitlines() if line.strip()]
+    if not queries:
+        print("✗ No queries found in file", file=sys.stderr)
+        return 1
+
+    domain = args.domain
+    priority = args.priority
+
+    if _LOCAL_AVAILABLE and not args.force_remote:
+        coord = get_model_coordinator()
+        for q in queries:
+            coord.queue_cache_warming(q, domain, priority)
+        print(f"✓ Queued {len(queries)} queries (local)")
+        return 0
+
+    result = _post_request("/control/cache/warm", {
+        "queries": queries,
+        "domain": domain,
+        "priority": priority,
+    })
+
+    if "error" in result:
+        print(f"✗ Error: {result['error']}", file=sys.stderr)
+        return 1
+
+    print(f"✓ Queued {result.get('count', len(queries))} queries")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Show cache warming queue status."""
+    batch_size = args.batch_size
+
+    if _LOCAL_AVAILABLE and not args.force_remote:
+        coord = get_model_coordinator()
+        batch = coord.get_cache_warming_batch(batch_size)
+        print(f"Cache warming queue ({len(batch)} pending):\n")
+        for item in batch:
+            priority = item.get("priority", 0)
+            query = item.get("query", "")[:60]
+            domain = item.get("domain") or "general"
+            print(f"  [{priority}] [{domain}] {query}...")
+        return 0
+
+    result = _get_request("/control/cache/warm", {"batch_size": str(batch_size)})
+
+    if "error" in result:
+        print(f"✗ Error: {result['error']}", file=sys.stderr)
+        return 1
+
+    batch = result.get("batch", [])
+    print(f"Cache warming queue ({len(batch)} pending):\n")
+    for item in batch:
+        priority = item.get("priority", 0)
+        query = item.get("query", "")[:60]
+        domain = item.get("domain") or "general"
+        print(f"  [{priority}] [{domain}] {query}...")
+    return 0
+
+
+def cmd_process(args: argparse.Namespace) -> int:
+    """Process queued items (generate hints/embeddings)."""
+    batch_size = args.batch_size
+
+    if not _LOCAL_AVAILABLE:
+        print("✗ Local engine required for processing", file=sys.stderr)
+        return 1
+
+    coord = get_model_coordinator()
+    batch = coord.get_cache_warming_batch(batch_size)
+
+    if not batch:
+        print("✓ Queue empty - nothing to process")
+        return 0
+
+    print(f"Processing {len(batch)} queries...")
+
+    # Import hints engine for processing
+    try:
+        from hints_engine import HintsEngine
+        engine = HintsEngine()
+    except ImportError:
+        print("✗ Could not import hints engine", file=sys.stderr)
+        return 1
+
+    processed = []
+    for item in batch:
+        query = item.get("query", "")
+        domain = item.get("domain") or ""
+
+        try:
+            # Generate hints (this warms the cache)
+            result = engine.rank_as_dict(
+                query,
+                context=domain,
+                max_hints=3,
+                agent_type="cache_warming",
+            )
+            hint_count = len(result.get("hints", []))
+            print(f"  ✓ {query[:50]}... ({hint_count} hints)")
+            processed.append(query)
+        except Exception as e:
+            print(f"  ✗ {query[:50]}... ({e})")
+
+    # Clear processed items
+    coord.clear_processed_warming(processed)
+    print(f"\n✓ Processed {len(processed)}/{len(batch)} queries")
+    return 0
+
+
+def cmd_route(args: argparse.Namespace) -> int:
+    """Test model routing for a task."""
+    task = args.task
+
+    if _LOCAL_AVAILABLE and not args.force_remote:
+        from model_coordinator import classify_and_route_task
+        result = classify_and_route_task(task, prefer_local=args.prefer_local)
+    else:
+        result = _post_request("/control/models/route", {
+            "task": task,
+            "prefer_local": args.prefer_local,
+        })
+
+    if "error" in result:
+        print(f"✗ Error: {result['error']}", file=sys.stderr)
+        return 1
+
+    print(f"Task: {task}\n")
+    print(f"Primary model:   {result.get('primary_model', 'unknown')}")
+    if result.get("secondary_model"):
+        print(f"Secondary model: {result.get('secondary_model')}")
+    print(f"Handoff required: {result.get('handoff_required', False)}")
+    print(f"Rationale: {result.get('routing_rationale', '')}")
+
+    classification = result.get("task_classification", {})
+    if classification:
+        print(f"\nClassification:")
+        print(f"  Role: {classification.get('primary_role', 'unknown')}")
+        print(f"  Complexity: {classification.get('complexity', 'unknown')}")
+        print(f"  Confidence: {classification.get('confidence', 0):.0%}")
+
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Proactive cache warming for AI stack",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--force-remote", action="store_true", help="Force REST API usage")
+
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    # queue command
+    queue_parser = subparsers.add_parser("queue", help="Queue a query for warming")
+    queue_parser.add_argument("query", help="Query to warm")
+    queue_parser.add_argument("--domain", default="", help="Domain hint (e.g., nixos-dev)")
+    queue_parser.add_argument("--priority", type=int, default=1, help="Priority (higher = sooner)")
+
+    # batch command
+    batch_parser = subparsers.add_parser("batch", help="Queue queries from file")
+    batch_parser.add_argument("--file", required=True, help="File with queries (one per line)")
+    batch_parser.add_argument("--domain", default="", help="Domain hint for all queries")
+    batch_parser.add_argument("--priority", type=int, default=1, help="Priority for all queries")
+
+    # status command
+    status_parser = subparsers.add_parser("status", help="Show queue status")
+    status_parser.add_argument("--batch-size", type=int, default=10, help="Max items to show")
+
+    # process command
+    process_parser = subparsers.add_parser("process", help="Process queued items")
+    process_parser.add_argument("--batch-size", type=int, default=5, help="Items to process")
+
+    # route command (bonus)
+    route_parser = subparsers.add_parser("route", help="Test model routing for a task")
+    route_parser.add_argument("task", help="Task to route")
+    route_parser.add_argument("--prefer-local", action="store_true", help="Prefer local models")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 0
+
+    commands = {
+        "queue": cmd_queue,
+        "batch": cmd_batch,
+        "status": cmd_status,
+        "process": cmd_process,
+        "route": cmd_route,
+    }
+
+    return commands[args.command](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
