@@ -535,10 +535,115 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 ---
 
+## Phase 11: Local Agent Agentic Capabilities (OpenClaw-like)
+
+**Objective:** Transform local models (agent, planner, chat, embedded) into fully agentic systems with tool use, computer control, and proactive workflow participation.
+
+**Gate:** Local agents successfully execute multi-step tasks with tools autonomously, achieving 80%+ success rate
+
+### Batch 11.1: Tool Calling Infrastructure
+**Status:** pending
+**Tasks:**
+- [ ] Implement llama.cpp function calling protocol
+- [ ] Create tool definition schema (JSON)
+- [ ] Build tool registry with safety policies
+- [ ] Add tool call parsing and validation
+- [ ] Implement tool result formatting for model consumption
+- [ ] Add tool call logging and audit trail
+
+**Deliverables:**
+- Tool calling protocol implementation
+- Tool registry with 20+ built-in tools
+- Safety policy enforcement
+- Audit logging
+
+### Batch 11.2: Computer Use Integration
+**Status:** pending
+**Tasks:**
+- [ ] Integrate PyAutoGUI for mouse/keyboard control
+- [ ] Add screenshot capture and analysis
+- [ ] Implement screen region detection
+- [ ] Add GUI element identification
+- [ ] Create safe action execution with confirmations
+- [ ] Add vision model integration (llava) for screenshot analysis
+
+**Deliverables:**
+- Computer control tools (mouse, keyboard, screenshot)
+- Vision model integration
+- Screen analysis capabilities
+- Safe action execution framework
+
+### Batch 11.3: Workflow Integration
+**Status:** pending
+**Tasks:**
+- [ ] Integrate local agents into workflow execution engine
+- [ ] Add task delegation to local vs remote agents
+- [ ] Implement result validation and feedback loops
+- [ ] Create multi-agent coordination patterns
+- [ ] Add local agent performance tracking
+- [ ] Implement automatic failover to remote agents
+
+**Deliverables:**
+- Workflow delegation to local agents
+- Multi-agent coordination
+- Performance tracking
+- Failover mechanisms
+
+### Batch 11.4: Monitoring & Alert Integration
+**Status:** pending
+**Tasks:**
+- [ ] Enable local agents to monitor system health
+- [ ] Add alert detection and triage capabilities
+- [ ] Implement automated remediation via local agents
+- [ ] Create proactive issue detection
+- [ ] Add self-diagnosis capabilities
+- [ ] Integrate with alert engine from Phase 1
+
+**Deliverables:**
+- Local agent monitoring capabilities
+- Automated alert triage
+- Self-diagnosis tools
+- Integration with alert engine
+
+### Batch 11.5: Self-Improvement Loop
+**Status:** pending
+**Tasks:**
+- [ ] Implement feedback collection from local agent actions
+- [ ] Add quality scoring for local agent outputs
+- [ ] Create automated fine-tuning pipeline
+- [ ] Implement performance benchmarking
+- [ ] Add A/B testing for local agent variants
+- [ ] Create improvement recommendation system
+
+**Deliverables:**
+- Feedback collection pipeline
+- Quality scoring system
+- Fine-tuning automation
+- Performance benchmarks
+- A/B testing framework
+
+### Batch 11.6: Code Execution Sandbox
+**Status:** pending
+**Tasks:**
+- [ ] Create isolated code execution environment
+- [ ] Add support for Python, Bash, JavaScript
+- [ ] Implement resource limits (CPU, memory, time)
+- [ ] Add dependency management
+- [ ] Create result capture and formatting
+- [ ] Implement security scanning
+
+**Deliverables:**
+- Sandboxed code execution
+- Multi-language support
+- Resource limiting
+- Security scanning
+
+---
+
 ## Implementation Priorities
 
 ### Immediate (Week 1-2)
-1. **Phase 1: Monitoring** - Essential foundation for visibility
+1. **Phase 1: Monitoring** - Essential foundation for visibility ✅ STARTED
 2. **Phase 2: Security** - Critical for production readiness
 3. **Phase 7: Token Efficiency** - Immediate cost savings
 
@@ -546,14 +651,15 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 4. **Phase 4: Agentic Capabilities** - Competitive advantage
 5. **Phase 6: Remote Offloading** - Cost optimization
 6. **Phase 8: Progressive Disclosure** - Efficiency gains
+7. **Phase 11: Local Agent Agentic** - LOCAL AGENT AUTONOMY (HIGH PRIORITY)
 
 ### Medium-Term (Week 7-12)
-7. **Phase 3: Self-Improvement** - Automation foundation
-8. **Phase 5: Local Model Optimization** - Long-term cost reduction
-9. **Phase 9: Gap Resolution** - Autonomy enhancement
+8. **Phase 3: Self-Improvement** - Automation foundation
+9. **Phase 5: Local Model Optimization** - Long-term cost reduction
+10. **Phase 9: Gap Resolution** - Autonomy enhancement
 
 ### Long-Term (Month 4+)
-10. **Phase 10: Real-Time Learning** - Continuous improvement
+11. **Phase 10: Real-Time Learning** - Continuous improvement
 
 ---
 
@@ -571,6 +677,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 | Phase 8 | Context loading reduction | 60% |
 | Phase 9 | Gap resolution rate | 80% in 24h |
 | Phase 10 | Improvement latency | <1 hour |
+| Phase 11 | Local agent task success | 80%+ autonomous |
 
 ---
 
@@ -583,6 +690,8 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 | Free agent quota exhaustion | Medium | Implement graceful degradation to paid agents, cache aggressively |
 | Token efficiency breaking quality | High | Comprehensive A/B testing, automated quality monitoring |
 | Self-improvement loop instability | Critical | Circuit breakers, rollback automation, stability metrics |
+| Local agent tool use security | Critical | Comprehensive sandboxing, audit logging, policy enforcement, user confirmations |
+| Computer use safety | High | Confirmations for destructive actions, rollback capabilities, restricted scope |
 
 ---
 
@@ -591,6 +700,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-03-15 | Initial next-generation roadmap creation |
+| 1.1.0 | 2026-03-15 | Added Phase 11: Local Agent Agentic Capabilities (OpenClaw-like) |
 
 ---
 
