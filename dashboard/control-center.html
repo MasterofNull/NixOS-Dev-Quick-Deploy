@@ -1021,8 +1021,8 @@
 
                 // Update aggregate metrics from backend
                 const aggregate = data.aggregate || {};
-                const healthyCount = aggregate.healthy_count || healthy;
-                const totalCount = aggregate.total_count || total;
+                const healthyCount = aggregate.healthy || healthy;
+                const totalCount = aggregate.total || total;
 
                 document.getElementById('service-count').textContent = `${healthyCount}/${totalCount} Healthy`;
 
