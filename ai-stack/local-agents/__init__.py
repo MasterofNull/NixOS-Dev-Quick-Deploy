@@ -24,6 +24,7 @@ Part of Phase 11: Local Agent Agentic Capabilities
 """
 
 import logging
+from typing import Optional
 
 from .tool_registry import (
     SafetyPolicy,
@@ -68,6 +69,12 @@ def initialize_builtin_tools(registry: Optional[ToolRegistry] = None) -> ToolReg
         register_ai_coordination_tools(registry)
     except ImportError as e:
         logger.warning(f"Failed to import ai_coordination tools: {e}")
+
+    try:
+        from .builtin_tools.computer_use import register_computer_use_tools
+        register_computer_use_tools(registry)
+    except ImportError as e:
+        logger.warning(f"Failed to import computer_use tools: {e}")
 
     logger.info(f"Initialized tool registry with {len(registry.tools)} built-in tools")
 
