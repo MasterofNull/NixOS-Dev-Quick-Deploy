@@ -30,6 +30,8 @@ import hashlib
 import logging
 import os
 import time
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
@@ -89,6 +91,17 @@ _switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
+
+# Batch 2.2: Route Search Optimization - Collection Latency Profiling
+@dataclass
+class CollectionLatencyMetrics:
+    """Tracks per-collection search latency for optimization."""
+    collection_latencies: Dict[str, deque] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=50)))
+    total_searches: int = 0
+    simple_query_optimizations: int = 0  # Count of simplified collection fan-outs
+    adaptive_timeout_applications: int = 0  # Count of adaptive timeout uses
+
+_collection_metrics = CollectionLatencyMetrics()
 
 
 def _should_track_query_gap(query: str, best_score: float, results_count: int, threshold: float) -> bool:
@@ -265,6 +278,13 @@ def _select_route_collections(
     elif continuation and task_shape == "reasoning":
         profile = "continuation-reasoning"
 
+    # Batch 2.2: Reduce fan-out for very simple queries (≤3 tokens)
+    if token_count <= 3 and not continuation and not generate_response:
+        max_collections = 1
+        profile = "simple-query-optimized"
+        global _collection_metrics
+        _collection_metrics.simple_query_optimizations += 1
+
     return {
         "profile": profile,
         "collections": selected[:max_collections],
@@ -335,6 +355,10 @@ async def route_search(
             else:
                 route = "hybrid"
 
+    # Batch 2.2: Calculate adaptive timeout based on query complexity
+    token_count = len(_normalize_tokens(query))
+    adaptive_timeout = calculate_adaptive_timeout(query, route, token_count)
+
     # Phase 7.1.2 — LLM query expansion on semantic/hybrid routes
     _working_query = query
     _expansion_count = 1
@@ -344,9 +368,10 @@ async def route_search(
         and route in ("semantic", "hybrid")
     ):
         try:
+            # Batch 2.2: Use adaptive timeout instead of fixed config value
             _expanded = await asyncio.wait_for(
                 _query_expander.expand_with_llm(query, max_expansions=3),
-                timeout=Config.AI_LLM_EXPANSION_TIMEOUT_S,
+                timeout=min(adaptive_timeout, Config.AI_LLM_EXPANSION_TIMEOUT_S),
             )
             if len(_expanded) > 1:
                 _working_query = _expanded[0]  # primary expansion for the main search
@@ -711,6 +736,10 @@ async def route_search(
         raise
 
     latency_ms = int((time.time() - start) * 1000)
+
+    # Batch 2.2: Track collection search latency for profiling
+    track_collection_search_latency(target_collections, latency_ms)
+
     return {
         "route": route, "backend": selected_backend, "response": response_text,
         "results": results, "latency_ms": latency_ms,
@@ -738,4 +767,76 @@ async def route_search(
                 for item in _cap_disc.get("datasets", [])
             ],
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch 2.2: Route Search Optimization Metrics
+# ---------------------------------------------------------------------------
+
+def calculate_adaptive_timeout(query: str, route: str, token_count: int) -> float:
+    """
+    Calculate adaptive timeout based on query complexity.
+
+    Simple queries (≤3 tokens, keyword route): 5s
+    Medium queries (4-8 tokens, hybrid): 10s
+    Complex queries (9+ tokens, tree/semantic): 15s
+
+    Returns:
+        Timeout in seconds
+    """
+    global _collection_metrics
+    _collection_metrics.adaptive_timeout_applications += 1
+
+    if token_count <= 3 and route == "keyword":
+        return 5.0
+    elif token_count <= 8 and route in ("hybrid", "keyword"):
+        return 10.0
+    elif route == "tree" or token_count > 8:
+        return 15.0
+    else:
+        return 12.0  # Default for edge cases
+
+
+def track_collection_search_latency(collections: List[str], latency_ms: float) -> None:
+    """Track latency for a search across given collections."""
+    global _collection_metrics
+    _collection_metrics.total_searches += 1
+    # Store latency for each collection searched
+    for collection in collections:
+        _collection_metrics.collection_latencies[collection].append(latency_ms)
+
+
+def get_route_search_metrics() -> Dict[str, Any]:
+    """
+    Get route search optimization metrics.
+
+    Returns:
+        Dictionary with collection latencies, optimization counts
+    """
+    metrics = _collection_metrics
+
+    # Calculate per-collection averages
+    collection_stats = {}
+    for collection_name, latencies in metrics.collection_latencies.items():
+        if latencies:
+            latencies_list = list(latencies)
+            avg_latency = sum(latencies_list) / len(latencies_list)
+            # P95 calculation
+            sorted_latencies = sorted(latencies_list)
+            p95_idx = int(len(sorted_latencies) * 0.95)
+            p95_latency = sorted_latencies[min(p95_idx, len(sorted_latencies) - 1)] if sorted_latencies else 0.0
+
+            collection_stats[collection_name] = {
+                "avg_latency_ms": round(avg_latency, 1),
+                "p95_latency_ms": round(p95_latency, 1),
+                "search_count": len(latencies_list),
+            }
+
+    return {
+        "total_searches": metrics.total_searches,
+        "simple_query_optimizations": metrics.simple_query_optimizations,
+        "adaptive_timeout_applications": metrics.adaptive_timeout_applications,
+        "collection_stats": collection_stats,
+        "active": True,
     }

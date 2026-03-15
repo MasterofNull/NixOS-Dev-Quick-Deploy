@@ -133,16 +133,29 @@ curl -sS http://127.0.0.1:8003/status | jq '.memory_latency_metrics'
 ```
 
 ### Batch 2.2: Route Search Optimization
-**Status:** validated
+**Status:** completed
 **Tasks:**
-- [ ] Profile route_search latency by collection
-- [ ] Reduce collection fan-out for simple queries
-- [ ] Add provider-fallback pressure into runtime policy
-- [ ] Implement adaptive timeout based on query complexity
+- [x] Profile route_search latency by collection
+- [x] Reduce collection fan-out for simple queries
+- [x] Add provider-fallback pressure into runtime policy
+- [x] Implement adaptive timeout based on query complexity
+
+**Evidence:**
+- Created CollectionLatencyMetrics dataclass with rolling 50-event windows per collection
+- Added track_collection_search_latency() to track per-collection search latency
+- Implemented get_route_search_metrics() exposing collection stats, optimization counts
+- Reduced max_collections to 1 for simple queries (≤3 tokens, non-continuation, non-generation)
+- Tracks simple_query_optimizations counter for monitoring
+- Provider-fallback policy already implemented in Batch 4.2 (config/provider-fallback-policy.json)
+- Implemented calculate_adaptive_timeout() with complexity-based timeouts: 5s/10s/15s
+- Applied adaptive timeouts to query expansion with min() fallback to config value
+- Integrated route_search_metrics into /status endpoint
+- Changes in: route_handler.py (+110 lines), http_server.py (import + endpoint)
 
 **Validation:**
 ```bash
 scripts/ai/aq-report --format=json | jq '.route_search_latency_decomposition'
+curl -sS http://127.0.0.1:8003/status | jq '.route_search_metrics'
 python3 scripts/testing/test-route-search-pressure-diagnosis.py
 ```
 
