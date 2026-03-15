@@ -4,6 +4,7 @@ model_coordinator.py — Model Role Classification and Dual-Model Routing (Phase
 Coordinates work distribution across remote and local models:
 - Model role classification (orchestrator, reasoning, coding, embedding)
 - Task routing to appropriate model types
+- Cost optimization with tier-based routing (local > free > paid)
 - Cache warming for anticipated queries
 - Hint generation and tool suggestion serving
 
@@ -30,6 +31,14 @@ from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Import LLM router for cost-optimization layer
+try:
+    from llm_router import get_router, AgentTier, TaskComplexity
+    _LLM_ROUTER_AVAILABLE = True
+except ImportError:
+    logger.warning("llm_router not available, cost optimization disabled")
+    _LLM_ROUTER_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +307,7 @@ class ModelCoordinator:
         context: Optional[Dict[str, Any]] = None,
         prefer_local: bool = False,
         cost_sensitive: bool = True,
+        use_tier_routing: bool = True,
     ) -> RoutingDecision:
         """
         Classify a task and route to appropriate model(s).
@@ -307,11 +317,23 @@ class ModelCoordinator:
             context: Optional context (domain, complexity, etc.)
             prefer_local: Prefer local models when possible
             cost_sensitive: Prefer free/cheap models when quality allows
+            use_tier_routing: Use LLM router for tier-based cost optimization
 
         Returns:
             RoutingDecision with model assignment and rationale
         """
         classification = classify_task(task, context)
+
+        # Use LLM router for tier-based routing if available
+        tier_suggestion = None
+        if use_tier_routing and _LLM_ROUTER_AVAILABLE and cost_sensitive:
+            try:
+                router = get_router()
+                tier, suggested_model = router.route_task(task, context or {})
+                tier_suggestion = {"tier": tier.value, "model": suggested_model}
+                logger.debug(f"LLM router suggests tier={tier.value}, model={suggested_model}")
+            except Exception as e:
+                logger.warning(f"LLM router failed, falling back to model coordinator: {e}")
 
         # Find models matching the primary role
         primary_candidates = [
@@ -319,17 +341,22 @@ class ModelCoordinator:
             if p.role == classification.primary_role and p.is_available
         ]
 
-        # Apply preferences
-        if prefer_local:
-            local_candidates = [p for p in primary_candidates if p.is_local]
-            if local_candidates:
-                primary_candidates = local_candidates
+        # Apply tier suggestion if available
+        if tier_suggestion and tier_suggestion["model"] in [p.name for p in primary_candidates]:
+            primary_model = tier_suggestion["model"]
+            logger.info(f"Using LLM router suggestion: {primary_model}")
+        else:
+            # Apply preferences
+            if prefer_local:
+                local_candidates = [p for p in primary_candidates if p.is_local]
+                if local_candidates:
+                    primary_candidates = local_candidates
 
-        if cost_sensitive:
-            primary_candidates.sort(key=lambda p: p.cost_per_1k_tokens)
+            if cost_sensitive:
+                primary_candidates.sort(key=lambda p: p.cost_per_1k_tokens)
 
-        # Select primary model
-        primary_model = primary_candidates[0].name if primary_candidates else "qwen-coder"
+            # Select primary model
+            primary_model = primary_candidates[0].name if primary_candidates else "qwen-coder"
 
         # Handle handoff case (reasoning -> coding)
         secondary_model = None
@@ -351,12 +378,16 @@ class ModelCoordinator:
             f"Task classified as {classification.primary_role.value}",
             f"complexity={classification.complexity}",
         ]
+        if tier_suggestion:
+            rationale_parts.append(f"tier={tier_suggestion['tier']}")
         if classification.signals_matched:
             rationale_parts.append(f"signals: {', '.join(classification.signals_matched[:3])}")
         if classification.requires_handoff:
             rationale_parts.append("handoff: reasoning->coding")
         if prefer_local:
             rationale_parts.append("prefer_local=true")
+        if use_tier_routing and not _LLM_ROUTER_AVAILABLE:
+            rationale_parts.append("tier_routing=unavailable")
 
         # Estimate cost (rough)
         primary_profile = self._profiles.get(primary_model)

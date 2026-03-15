@@ -5237,6 +5237,110 @@ async def run_http_mode(port: int) -> None:
             logger.error("handle_tool_suggestions error=%s", exc)
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    # ------------------------------------------------------------------
+    # LLM Router Endpoints (Tier-based Cost Optimization)
+    # ------------------------------------------------------------------
+
+    async def handle_llm_router_route(request: web.Request) -> web.Response:
+        """
+        POST /control/llm/route — Route task using tier-based cost optimization.
+
+        Implements Local > Free > Paid routing strategy.
+        Returns tier assignment and model selection.
+        """
+        try:
+            from llm_router import get_router
+
+            data = await request.json()
+            task_description = str(data.get("task") or data.get("description") or "").strip()
+            if not task_description:
+                return web.json_response({"error": "task required"}, status=400)
+
+            context = data.get("context") if isinstance(data.get("context"), dict) else {}
+
+            router = get_router()
+            tier, model = router.route_task(task_description, context)
+
+            return web.json_response({
+                "task": task_description,
+                "tier": tier.value,
+                "model": model,
+                "routing_strategy": "tier-based cost optimization",
+                "estimated_cost": router._estimate_cost(tier),
+            })
+        except ImportError:
+            return web.json_response({
+                "error": "llm_router not available",
+                "fallback": "use /control/models/route instead"
+            }, status=503)
+        except Exception as exc:
+            logger.error("handle_llm_router_route error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_llm_router_execute(request: web.Request) -> web.Response:
+        """
+        POST /control/llm/execute — Execute task with intelligent routing and auto-escalation.
+
+        Executes task using tier-based routing with automatic escalation on failures.
+        Returns result with tier, model, cost, and escalation information.
+        """
+        try:
+            from llm_router import get_router
+
+            data = await request.json()
+            task = {
+                "description": str(data.get("task") or data.get("description") or "").strip(),
+                "context": data.get("context") if isinstance(data.get("context"), dict) else {},
+                "type": data.get("type", "unknown"),
+                "allow_escalation": bool(data.get("allow_escalation", True)),
+            }
+
+            if not task["description"]:
+                return web.json_response({"error": "task required"}, status=400)
+
+            router = get_router()
+            result = await router.execute_with_routing(task)
+
+            return web.json_response(result)
+        except ImportError:
+            return web.json_response({
+                "error": "llm_router not available",
+                "fallback": "use /query or /control/models/route instead"
+            }, status=503)
+        except Exception as exc:
+            logger.error("handle_llm_router_execute error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_llm_router_metrics(request: web.Request) -> web.Response:
+        """
+        GET /control/llm/metrics — Get LLM router metrics and cost savings.
+
+        Returns tier distribution, cost estimates, escalation rates, and savings.
+        """
+        try:
+            from llm_router import get_router
+
+            router = get_router()
+            metrics = router.get_metrics()
+
+            return web.json_response({
+                "metrics": metrics,
+                "target_distribution": {
+                    "local": "80%",
+                    "free": "15%",
+                    "paid": "5%",
+                },
+                "cost_optimization_goal": "95% reduction ($600/mo → $30/mo)",
+            })
+        except ImportError:
+            return web.json_response({
+                "error": "llm_router not available",
+                "message": "Tier-based routing not initialized"
+            }, status=503)
+        except Exception as exc:
+            logger.error("handle_llm_router_metrics error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_runtime_register(request: web.Request) -> web.Response:
         """Register or update an agent runtime in local control-plane state."""
         try:
@@ -5705,6 +5809,10 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/cache/warm", handle_cache_warming_queue)
     http_app.router.add_get("/control/cache/warm", handle_cache_warming_queue)
     http_app.router.add_get("/control/tools/suggestions", handle_tool_suggestions)
+    # LLM Router endpoints (Tier-based cost optimization)
+    http_app.router.add_post("/control/llm/route", handle_llm_router_route)
+    http_app.router.add_post("/control/llm/execute", handle_llm_router_execute)
+    http_app.router.add_get("/control/llm/metrics", handle_llm_router_metrics)
     http_app.router.add_get("/control/autoresearch/status", handle_autoresearch_status)
     http_app.router.add_post("/control/autoresearch/run", handle_autoresearch_run)
     # Batch 3.2 — PRSI Action Execution endpoints
