@@ -56,6 +56,10 @@ from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
 from delegation_feedback import build_recovered_artifact, classify_delegated_response, record_delegation_feedback
+from model_coordinator import (
+    get_model_coordinator as _get_model_coordinator,
+    classify_and_route_task as _classify_and_route_task,
+)
 import mcp_handlers
 
 logger = logging.getLogger("hybrid-coordinator")
@@ -1751,6 +1755,8 @@ async def run_http_mode(port: int) -> None:
                 # Phase 9.3 — Query Complexity Routing stats
                 "complexity_routing": _ai_coordinator_get_routing_stats(),
             },
+            # Phase 12.1/12.2 — Model Coordination
+            "model_coordination": _get_model_coordinator().get_routing_stats(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
@@ -3026,6 +3032,8 @@ async def run_http_mode(port: int) -> None:
                 # Context-aware token budgeting
                 task_phase = body.get("task_phase", "")  # new_phase, continued_work, sub_task, refinement
                 post_compaction = bool(body.get("post_compaction", False))
+                # Phase 10.4 — Escalation: model requests expanded context
+                force_escalation = bool(body.get("escalate", False))
             else:
                 is_continue = request.rel_url.query.get("format") == "continue"
                 query = request.rel_url.query.get("q", "")
@@ -3039,6 +3047,8 @@ async def run_http_mode(port: int) -> None:
                 # Context-aware token budgeting
                 task_phase = request.rel_url.query.get("task_phase", "")
                 post_compaction = request.rel_url.query.get("post_compaction", "0").strip().lower() in {"1", "true", "yes"}
+                # Phase 10.4 — Escalation: model requests expanded context
+                force_escalation = request.rel_url.query.get("escalate", "0").strip().lower() in {"1", "true", "yes"}
 
             try:
                 import sys as _sys
@@ -3056,6 +3066,7 @@ async def run_http_mode(port: int) -> None:
                     include_debug_metadata=include_debug_metadata,
                     max_hint_tokens=max_hint_tokens,
                     compact_mode=compact_mode,
+                    force_escalation=force_escalation,
                 )
             except Exception as exc:
                 logger.warning("hints_engine_unavailable error=%s", exc)
@@ -4818,6 +4829,97 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    # ------------------------------------------------------------------
+    # Phase 12.1/12.2 — Model Coordination Endpoints
+    # ------------------------------------------------------------------
+
+    async def handle_model_route(request: web.Request) -> web.Response:
+        """
+        POST /control/models/route — Classify and route a task to appropriate model(s).
+
+        Phase 12.1/12.2: Model role classification and dual-model routing.
+        Returns routing decision with primary/secondary model assignments.
+        """
+        try:
+            data = await request.json()
+            task = str(data.get("task") or data.get("query") or "").strip()
+            if not task:
+                return web.json_response({"error": "task required"}, status=400)
+
+            context = data.get("context") if isinstance(data.get("context"), dict) else {}
+            prefer_local = bool(data.get("prefer_local", False))
+
+            result = _classify_and_route_task(task, context, prefer_local=prefer_local)
+            result["task"] = task
+
+            return web.json_response(result)
+        except Exception as exc:
+            logger.error("handle_model_route error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_model_list(request: web.Request) -> web.Response:
+        """GET /control/models — List available model profiles."""
+        try:
+            coordinator = _get_model_coordinator()
+            models = coordinator.list_available_models()
+            stats = coordinator.get_routing_stats()
+            return web.json_response({
+                "models": models,
+                "routing_stats": stats,
+            })
+        except Exception as exc:
+            logger.error("handle_model_list error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_cache_warming_queue(request: web.Request) -> web.Response:
+        """
+        POST /control/cache/warm — Queue queries for proactive cache warming.
+        GET /control/cache/warm — Get current warming queue batch.
+        """
+        try:
+            coordinator = _get_model_coordinator()
+            if request.method == "POST":
+                data = await request.json()
+                queries = data.get("queries") if isinstance(data.get("queries"), list) else []
+                if not queries:
+                    query = str(data.get("query") or "").strip()
+                    if query:
+                        queries = [query]
+                for q in queries:
+                    domain = data.get("domain")
+                    priority = int(data.get("priority", 1))
+                    coordinator.queue_cache_warming(q, domain, priority)
+                return web.json_response({
+                    "status": "queued",
+                    "count": len(queries),
+                })
+            else:
+                batch_size = int(request.rel_url.query.get("batch_size", "5"))
+                batch = coordinator.get_cache_warming_batch(batch_size)
+                return web.json_response({
+                    "batch": batch,
+                    "queue_depth": len(batch),
+                })
+        except Exception as exc:
+            logger.error("handle_cache_warming_queue error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_tool_suggestions(request: web.Request) -> web.Response:
+        """GET /control/tools/suggestions — Get tool suggestions for a domain."""
+        try:
+            domain = request.rel_url.query.get("domain", "ai-harness")
+            task_type = request.rel_url.query.get("task_type", "")
+            coordinator = _get_model_coordinator()
+            suggestions = coordinator.get_tool_suggestions(domain, task_type or None)
+            return web.json_response({
+                "domain": domain,
+                "task_type": task_type or "general",
+                "suggestions": suggestions,
+            })
+        except Exception as exc:
+            logger.error("handle_tool_suggestions error=%s", exc)
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_runtime_register(request: web.Request) -> web.Response:
         """Register or update an agent runtime in local control-plane state."""
         try:
@@ -5219,6 +5321,12 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/ai-coordinator/lessons/review", handle_ai_coordinator_lessons_review)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
+    # Phase 12.1/12.2 — Model Coordination endpoints
+    http_app.router.add_post("/control/models/route", handle_model_route)
+    http_app.router.add_get("/control/models", handle_model_list)
+    http_app.router.add_post("/control/cache/warm", handle_cache_warming_queue)
+    http_app.router.add_get("/control/cache/warm", handle_cache_warming_queue)
+    http_app.router.add_get("/control/tools/suggestions", handle_tool_suggestions)
     http_app.router.add_get("/control/autoresearch/status", handle_autoresearch_status)
     http_app.router.add_post("/control/autoresearch/run", handle_autoresearch_run)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
