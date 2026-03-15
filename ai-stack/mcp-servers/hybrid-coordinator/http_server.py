@@ -55,6 +55,7 @@ from memory_manager import coerce_memory_summary, normalize_memory_type
 from rag_reflection import get_reflection_stats as _get_rag_reflection_stats
 from generator_critic import get_critic_stats as _get_generator_critic_stats
 from quality_cache import get_cache_stats as _get_quality_cache_stats
+from quality_monitor import get_health_summary as _get_quality_health_summary, get_monitor_stats as _get_quality_monitor_stats
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1766,6 +1767,13 @@ async def run_http_mode(port: int) -> None:
             "generator_critic_stats": _get_generator_critic_stats(),
             # Quality-Aware Response Caching stats
             "quality_cache_stats": _get_quality_cache_stats(),
+            # Quality Monitoring & Health
+            "quality_health": _get_quality_health_summary(
+                reflection_stats=_get_rag_reflection_stats(),
+                critic_stats=_get_generator_critic_stats(),
+                cache_stats=_get_quality_cache_stats(),
+            ),
+            "quality_monitor": _get_quality_monitor_stats(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
