@@ -80,6 +80,7 @@ from remediation_tracker import (
     get_remediation_success_rate as _get_remediation_success_rate,
     get_remediation_trend as _get_remediation_trend,
 )
+from route_handler import get_route_search_metrics as _get_route_search_metrics
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1809,6 +1810,8 @@ async def run_http_mode(port: int) -> None:
             "remediation_success_rate": _get_remediation_success_rate(),
             # Batch 2.1 — Memory Latency Metrics
             "memory_latency_metrics": get_memory_latency_metrics(),
+            # Batch 2.2 — Route Search Optimization Metrics
+            "route_search_metrics": _get_route_search_metrics(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
