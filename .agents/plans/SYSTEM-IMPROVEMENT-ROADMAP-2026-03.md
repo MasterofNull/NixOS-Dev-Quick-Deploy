@@ -613,18 +613,23 @@ python3 scripts/testing/test-query-complexity-router.py
 **Gate:** No single hint >30% concentration, unique hints ≥15
 
 ### Batch 10.1: Concentration Diagnosis
-**Status:** validated
+**Status:** completed
 **Tasks:**
 - [x] Identify dominant hint causing 80% concentration
 - [x] Analyze hint selection algorithm
 - [x] Profile task-class to hint mapping
 - [x] Document current hint routing logic
 
-**Evidence:** Diagnosis performed as part of 10.2. Found broad trigger keywords matching 80% of queries.
+**Evidence:**
+- Diagnosis performed as part of 10.2
+- Found dominant hint: "prompt_coaching_research_workflow" at 80% concentration
+- Identified broad trigger keywords matching 80% of queries
+- Analyzed hint selection in hints_engine.py
+- Documented task-class mapping in routing logic
 
 **Validation:**
 ```bash
-scripts/ai/aq-report --format=json | jq '.hint_concentration_analysis'
+scripts/ai/aq-report --format=json | jq '.hint_diversity'
 ```
 
 ### Batch 10.2: Hint Routing Overhaul
