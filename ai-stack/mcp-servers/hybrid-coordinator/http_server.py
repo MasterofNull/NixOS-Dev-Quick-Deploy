@@ -76,6 +76,10 @@ from pattern_integration import (
     get_pattern_effectiveness as _get_pattern_effectiveness,
     track_pattern_usage as _track_pattern_usage,
 )
+from remediation_tracker import (
+    get_remediation_success_rate as _get_remediation_success_rate,
+    get_remediation_trend as _get_remediation_trend,
+)
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1801,6 +1805,8 @@ async def run_http_mode(port: int) -> None:
             # Batch 6.2 — Pattern Integration & Effectiveness
             "pattern_stats": _get_pattern_stats(),
             "pattern_effectiveness": _get_pattern_effectiveness(),
+            # Batch 6.3 — Remediation Success Rate Tracking
+            "remediation_success_rate": _get_remediation_success_rate(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
