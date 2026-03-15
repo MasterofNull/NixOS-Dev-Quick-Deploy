@@ -148,6 +148,47 @@ export class DashboardAPI {
     return this.fetchJSON<{ logs: string }>(`/containers/${containerId}/logs?tail=${tail}`);
   }
 
+  // AI Insights endpoints
+  static async getSystemHealthInsights(): Promise<any> {
+    return this.fetchJSON<any>('/insights/system/health');
+  }
+
+  static async getToolPerformance(): Promise<any> {
+    return this.fetchJSON<any>('/insights/tools/performance');
+  }
+
+  static async getRoutingAnalytics(): Promise<any> {
+    return this.fetchJSON<any>('/insights/routing/analytics');
+  }
+
+  static async getHintEffectiveness(): Promise<any> {
+    return this.fetchJSON<any>('/insights/hints/effectiveness');
+  }
+
+  static async getWorkflowCompliance(): Promise<any> {
+    return this.fetchJSON<any>('/insights/workflows/compliance');
+  }
+
+  static async getQueryComplexity(): Promise<any> {
+    return this.fetchJSON<any>('/insights/queries/complexity');
+  }
+
+  static async getCacheAnalytics(): Promise<any> {
+    return this.fetchJSON<any>('/insights/cache/analytics');
+  }
+
+  static async getAgentLessons(): Promise<any> {
+    return this.fetchJSON<any>('/insights/agents/lessons');
+  }
+
+  static async getStructuredActions(): Promise<any> {
+    return this.fetchJSON<any>('/insights/actions/recommendations');
+  }
+
+  static async getFullInsightsReport(): Promise<any> {
+    return this.fetchJSON<any>('/insights/report/full');
+  }
+
   // WebSocket connection
   static connectWebSocket(onMessage: (data: SystemMetrics) => void): WebSocket {
     const ws = new WebSocket(getWebSocketUrl(WS_METRICS_PATH));
