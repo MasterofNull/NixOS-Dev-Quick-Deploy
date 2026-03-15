@@ -24,6 +24,124 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Pattern Effectiveness Tracking (Batch 6.2)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PatternUsageEvent:
+    """Tracks a single pattern usage event."""
+    pattern_id: str
+    timestamp: str
+    success: bool
+    context: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PatternEffectivenessTracker:
+    """Tracks pattern effectiveness over time."""
+    usage_events: deque = field(default_factory=lambda: deque(maxlen=500))
+    pattern_usage_counts: Dict[str, int] = field(default_factory=lambda: {})
+    pattern_success_counts: Dict[str, int] = field(default_factory=lambda: {})
+
+
+_effectiveness_tracker = PatternEffectivenessTracker()
+
+
+def track_pattern_usage(
+    pattern_id: str,
+    success: bool,
+    context: str = "",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Track a pattern usage event.
+
+    Args:
+        pattern_id: Pattern identifier
+        success: Whether pattern led to successful outcome
+        context: Context of pattern usage
+        metadata: Optional additional metadata
+    """
+    global _effectiveness_tracker
+
+    event = PatternUsageEvent(
+        pattern_id=pattern_id,
+        timestamp=datetime.now(tz=timezone.utc).isoformat(),
+        success=success,
+        context=context,
+        metadata=metadata or {},
+    )
+
+    _effectiveness_tracker.usage_events.append(event)
+    _effectiveness_tracker.pattern_usage_counts[pattern_id] = \
+        _effectiveness_tracker.pattern_usage_counts.get(pattern_id, 0) + 1
+
+    if success:
+        _effectiveness_tracker.pattern_success_counts[pattern_id] = \
+            _effectiveness_tracker.pattern_success_counts.get(pattern_id, 0) + 1
+
+    logger.debug(f"Tracked pattern usage: {pattern_id}, success={success}")
+
+
+def get_pattern_effectiveness() -> Dict[str, Any]:
+    """
+    Get pattern effectiveness statistics.
+
+    Returns:
+        Effectiveness metrics dictionary
+    """
+    tracker = _effectiveness_tracker
+
+    total_events = len(tracker.usage_events)
+    if total_events == 0:
+        return {
+            "total_events": 0,
+            "unique_patterns_used": 0,
+            "overall_success_rate": 0.0,
+            "top_patterns": [],
+            "active": False,
+        }
+
+    # Overall success rate
+    successful_events = sum(1 for e in tracker.usage_events if e.success)
+    overall_success_rate = successful_events / total_events if total_events > 0 else 0.0
+
+    # Per-pattern effectiveness
+    pattern_effectiveness = []
+    for pattern_id, usage_count in tracker.pattern_usage_counts.items():
+        success_count = tracker.pattern_success_counts.get(pattern_id, 0)
+        success_rate = success_count / usage_count if usage_count > 0 else 0.0
+
+        pattern_effectiveness.append({
+            "pattern_id": pattern_id,
+            "usage_count": usage_count,
+            "success_count": success_count,
+            "success_rate": round(success_rate, 3),
+            "effectiveness_score": round(success_rate * min(1.0, usage_count / 10), 3),
+        })
+
+    # Sort by effectiveness score
+    pattern_effectiveness.sort(key=lambda p: p["effectiveness_score"], reverse=True)
+    top_patterns = pattern_effectiveness[:10]
+
+    # Identify underperforming patterns
+    underperforming = [
+        p for p in pattern_effectiveness
+        if p["usage_count"] >= 5 and p["success_rate"] < 0.5
+    ]
+
+    return {
+        "total_events": total_events,
+        "unique_patterns_used": len(tracker.pattern_usage_counts),
+        "overall_success_rate": round(overall_success_rate, 3),
+        "top_patterns": top_patterns,
+        "underperforming_patterns": underperforming[:5],
+        "active": True,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Pattern Data Model
 # ---------------------------------------------------------------------------
 
