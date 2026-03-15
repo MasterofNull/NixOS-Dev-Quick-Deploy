@@ -240,21 +240,22 @@ def route_task(task: Task) -> Agent:
 
 ### Batch 11.6: Code Execution Sandbox
 
-**Status:** pending
+**Status:** completed
 
 **Tasks:**
-- [ ] Create isolated code execution environment
-- [ ] Add support for Python, Bash, JavaScript
-- [ ] Implement resource limits (CPU, memory, time)
-- [ ] Add dependency management
-- [ ] Create result capture and formatting
-- [ ] Implement security scanning
+- [x] Create isolated code execution environment
+- [x] Add support for Python, Bash, JavaScript
+- [x] Implement resource limits (CPU, memory, time)
+- [x] Add dependency management
+- [x] Create result capture and formatting
+- [x] Implement security scanning
 
 **Deliverables:**
-- Sandboxed code execution
-- Multi-language support
-- Resource limiting
-- Security scanning
+- ✅ Sandboxed code execution (code_executor.py, 641 lines)
+- ✅ Multi-language support (Python, Bash, JavaScript)
+- ✅ Resource limiting (timeout, memory, CPU, processes, file size, output)
+- ✅ Security scanning (40+ dangerous patterns, 5 risk levels)
+- ✅ 4 builtin tools (run_python, run_bash, run_javascript, validate_code)
 
 **Safety Policies:**
 - No network access by default
