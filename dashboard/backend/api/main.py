@@ -145,18 +145,18 @@ async def websocket_metrics(websocket: WebSocket):
 
 
 # ── Frontend static file serving ────────────────────────────────────────────
-# Serve control-center.html dashboard
-_CONTROL_CENTER_PATH = Path(__file__).parent.parent.parent / "control-center.html"
+# Serve Command Center dashboard (at repo root)
+_COMMAND_CENTER_PATH = Path(__file__).parent.parent.parent.parent / "dashboard.html"
 
 @app.get("/")
 async def root():
-    """Serve the control center dashboard"""
-    if _CONTROL_CENTER_PATH.exists():
-        return FileResponse(_CONTROL_CENTER_PATH)
+    """Serve the Command Center dashboard"""
+    if _COMMAND_CENTER_PATH.exists():
+        return FileResponse(_COMMAND_CENTER_PATH)
     else:
         return JSONResponse(
             {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
-             "note": "Control center dashboard not found"},
+             "note": "Command Center dashboard not found"},
             status_code=200,
         )
 
