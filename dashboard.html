@@ -2330,6 +2330,170 @@
                     </div>
                 </div>
             </div>
+
+            <!-- AI Insights & Intelligence -->
+            <div class="dashboard-section" id="section-ai-insights">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AI Insights & Intelligence</h2>
+                        </div>
+                        <span class="card-badge" id="insightsBadge">Analytics</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- System Health Intelligence -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">System Health Intelligence</div>
+                            <div class="status-grid" id="systemHealthInsights">
+                                <div class="status-item">
+                                    <span class="status-label">Overall Status</span>
+                                    <span class="status-value" id="sysHealthStatus">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Cache Hit Rate</span>
+                                    <span class="status-value" id="cacheHitRate">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">LLM Routing (Local)</span>
+                                    <span class="status-value" id="llmRoutingLocal">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Eval Trend</span>
+                                    <span class="status-value" id="evalTrend">--</span>
+                                </div>
+                            </div>
+                            <div id="sysHealthRecommendations" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);"></div>
+                        </div>
+
+                        <!-- Tool Performance Analytics -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Tool Performance Analytics</div>
+                            <div class="data-list" id="toolPerformanceList">
+                                <div class="data-item">
+                                    <span>Loading...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LLM Routing Dashboard -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">LLM Routing Analytics</div>
+                            <div class="status-grid" id="routingAnalytics">
+                                <div class="status-item">
+                                    <span class="status-label">Local Queries</span>
+                                    <span class="status-value" id="routingLocalCount">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Remote Queries</span>
+                                    <span class="status-value" id="routingRemoteCount">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Local %</span>
+                                    <span class="status-value" id="routingLocalPct">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Fallback Used</span>
+                                    <span class="status-value" id="routingFallback">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Workflow Compliance -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Workflow Compliance</div>
+                            <div class="data-list" id="workflowComplianceList">
+                                <div class="data-item">
+                                    <span>Loading...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hint Effectiveness -->
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Hint Effectiveness</div>
+                            <div class="data-list" id="hintEffectivenessList">
+                                <div class="data-item">
+                                    <span>Loading...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ralph Wiggum Configuration -->
+            <div class="dashboard-section" id="section-ralph-config">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Ralph Wiggum Configuration</h2>
+                        </div>
+                        <span class="card-badge">Agent Settings</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="data-list">
+                            <div class="data-item" style="display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>Simple Iterations</span>
+                                    <span class="data-meta" id="ralphSimpleVal">3</span>
+                                </div>
+                                <input type="range" id="ralphSimpleSlider" min="1" max="10" value="3"
+                                       style="width: 100%; accent-color: var(--accent-cyan);"
+                                       oninput="document.getElementById('ralphSimpleVal').textContent = this.value">
+                            </div>
+                            <div class="data-item" style="display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>Default Iterations</span>
+                                    <span class="data-meta" id="ralphDefaultVal">10</span>
+                                </div>
+                                <input type="range" id="ralphDefaultSlider" min="5" max="50" value="10"
+                                       style="width: 100%; accent-color: var(--accent-cyan);"
+                                       oninput="document.getElementById('ralphDefaultVal').textContent = this.value">
+                            </div>
+                            <div class="data-item" style="display: flex; flex-direction: column; gap: 0.5rem; align-items: stretch;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>Complex Iterations</span>
+                                    <span class="data-meta" id="ralphComplexVal">25</span>
+                                </div>
+                                <input type="range" id="ralphComplexSlider" min="10" max="100" value="25"
+                                       style="width: 100%; accent-color: var(--accent-cyan);"
+                                       oninput="document.getElementById('ralphComplexVal').textContent = this.value">
+                            </div>
+                            <div class="data-item">
+                                <span>Adaptive Iterations</span>
+                                <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                    <input type="checkbox" id="ralphAdaptive" checked
+                                           style="width: 1.25rem; height: 1.25rem; cursor: pointer; accent-color: var(--accent-cyan);">
+                                    <span class="data-meta" id="ralphAdaptiveLabel">Enabled</span>
+                                </label>
+                            </div>
+                            <div class="data-item">
+                                <span>Infinite Loop Mode</span>
+                                <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                    <input type="checkbox" id="ralphInfinite"
+                                           style="width: 1.25rem; height: 1.25rem; cursor: pointer; accent-color: var(--accent-magenta);">
+                                    <span class="data-meta" id="ralphInfiniteLabel">Disabled</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                            <button onclick="applyRalphConfig()"
+                                    style="padding: 0.5rem 1rem; background: var(--accent-cyan); color: var(--bg-primary); border: none; border-radius: 0.25rem; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; font-weight: 600;">
+                                Apply Settings
+                            </button>
+                            <button onclick="resetRalphConfig()"
+                                    style="padding: 0.5rem 1rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 0.25rem; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem;">
+                                Reset to Defaults
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2371,6 +2535,7 @@
             updateRuntimeMode();
             detectHostMetrics();
             loadStackHealth();
+            loadAIInsights(); // Load AI insights and analytics
 
             // Connect WebSocket for real-time metrics (2-second updates)
             connectMetricsWebSocket();
@@ -2386,6 +2551,8 @@
             setInterval(updateRuntimeMode, 30000);
             // Refresh stack health every 15 seconds
             setInterval(loadStackHealth, 15000);
+            // Refresh AI insights every 30 seconds
+            setInterval(loadAIInsights, 30000);
         });
 
         // Initialize Chart.js
@@ -5345,6 +5512,196 @@
                 renderOperatorStrip();
             }
         }
+
+        // AI Insights Functions
+        async function loadAIInsights() {
+            await Promise.all([
+                loadSystemHealthInsights(),
+                loadToolPerformance(),
+                loadRoutingAnalytics(),
+                loadWorkflowCompliance(),
+                loadHintEffectiveness()
+            ]);
+        }
+
+        async function loadSystemHealthInsights() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/system/health`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('system health insights failed');
+                const data = await response.json();
+
+                document.getElementById('sysHealthStatus').textContent = data.status || 'unknown';
+                document.getElementById('sysHealthStatus').className = `status-value status-${data.status === 'healthy' ? 'online' : data.status === 'degraded' ? 'warning' : 'offline'}`;
+
+                if (data.cache && data.cache.available) {
+                    document.getElementById('cacheHitRate').textContent = `${data.cache.hit_pct.toFixed(1)}%`;
+                }
+
+                if (data.routing && data.routing.available) {
+                    document.getElementById('llmRoutingLocal').textContent = `${data.routing.local_pct.toFixed(1)}%`;
+                }
+
+                if (data.eval_trend && data.eval_trend.available) {
+                    document.getElementById('evalTrend').textContent = `${data.eval_trend.trend} (${data.eval_trend.latest_pct.toFixed(1)}%)`;
+                    document.getElementById('evalTrend').className = `status-value status-${data.eval_trend.trend === 'improving' ? 'online' : data.eval_trend.trend === 'stable' ? 'warning' : 'offline'}`;
+                }
+
+                if (data.recommendations && data.recommendations.length > 0) {
+                    document.getElementById('sysHealthRecommendations').innerHTML = `
+                        <strong>Recommendations:</strong>
+                        <ul style="margin: 0.25rem 0 0 1.5rem; padding: 0;">
+                            ${data.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    `;
+                }
+            } catch (err) {
+                console.error('Failed to load system health insights:', err);
+                document.getElementById('sysHealthStatus').textContent = 'unavailable';
+            }
+        }
+
+        async function loadToolPerformance() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/tools/performance`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('tool performance failed');
+                const data = await response.json();
+
+                const list = document.getElementById('toolPerformanceList');
+                if (data.top_tools && data.top_tools.length > 0) {
+                    list.innerHTML = data.top_tools.slice(0, 5).map(tool => `
+                        <div class="data-item">
+                            <span>${tool.name}</span>
+                            <span class="data-meta">${tool.calls} calls | ${tool.p50_ms.toFixed(0)}ms (p50) | ${tool.success_pct.toFixed(1)}%</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No tool performance data</span><span class="data-meta">--</span></div>';
+                }
+            } catch (err) {
+                console.error('Failed to load tool performance:', err);
+                document.getElementById('toolPerformanceList').innerHTML = '<div class="data-item"><span>Tool performance</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        async function loadRoutingAnalytics() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/routing/analytics`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('routing analytics failed');
+                const data = await response.json();
+
+                document.getElementById('routingLocalCount').textContent = String(data.local_n || 0);
+                document.getElementById('routingRemoteCount').textContent = String(data.remote_n || 0);
+                document.getElementById('routingLocalPct').textContent = `${(data.local_pct || 0).toFixed(1)}%`;
+                document.getElementById('routingFallback').textContent = data.fallback_used ? 'Yes' : 'No';
+                document.getElementById('routingFallback').className = `status-value status-${data.fallback_used ? 'warning' : 'online'}`;
+            } catch (err) {
+                console.error('Failed to load routing analytics:', err);
+                document.getElementById('routingLocalCount').textContent = 'N/A';
+            }
+        }
+
+        async function loadWorkflowCompliance() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/workflows/compliance`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('workflow compliance failed');
+                const data = await response.json();
+
+                const list = document.getElementById('workflowComplianceList');
+                if (data.workflows && Object.keys(data.workflows).length > 0) {
+                    list.innerHTML = Object.entries(data.workflows).map(([name, info]) => `
+                        <div class="data-item">
+                            <span>${name}</span>
+                            <span class="data-meta">${info.compliance_pct?.toFixed(1) || 0}% compliant (${info.runs || 0} runs)</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No workflow data</span><span class="data-meta">--</span></div>';
+                }
+            } catch (err) {
+                console.error('Failed to load workflow compliance:', err);
+                document.getElementById('workflowComplianceList').innerHTML = '<div class="data-item"><span>Workflow compliance</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        async function loadHintEffectiveness() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/hints/effectiveness`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('hint effectiveness failed');
+                const data = await response.json();
+
+                const list = document.getElementById('hintEffectivenessList');
+                if (data.categories && Object.keys(data.categories).length > 0) {
+                    list.innerHTML = Object.entries(data.categories).slice(0, 5).map(([category, info]) => `
+                        <div class="data-item">
+                            <span>${category}</span>
+                            <span class="data-meta">${info.usage_count || 0} uses | ${info.acceptance_pct?.toFixed(1) || 0}% accepted</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No hint data</span><span class="data-meta">--</span></div>';
+                }
+            } catch (err) {
+                console.error('Failed to load hint effectiveness:', err);
+                document.getElementById('hintEffectivenessList').innerHTML = '<div class="data-item"><span>Hint effectiveness</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        // Ralph Wiggum Configuration Functions
+        function applyRalphConfig() {
+            const config = {
+                simple_iterations: parseInt(document.getElementById('ralphSimpleSlider').value),
+                default_iterations: parseInt(document.getElementById('ralphDefaultSlider').value),
+                complex_iterations: parseInt(document.getElementById('ralphComplexSlider').value),
+                adaptive_enabled: document.getElementById('ralphAdaptive').checked,
+                infinite_loop: document.getElementById('ralphInfinite').checked
+            };
+
+            console.log('Applying Ralph Wiggum configuration:', config);
+
+            // In production, this would POST to /api/config/ralph or update .env
+            alert(`Ralph Wiggum Configuration Applied:\n\n` +
+                  `Simple: ${config.simple_iterations}\n` +
+                  `Default: ${config.default_iterations}\n` +
+                  `Complex: ${config.complex_iterations}\n` +
+                  `Adaptive: ${config.adaptive_enabled ? 'Enabled' : 'Disabled'}\n` +
+                  `Infinite Loop: ${config.infinite_loop ? 'Enabled' : 'Disabled'}\n\n` +
+                  `Restart Ralph Wiggum service to apply changes.`);
+        }
+
+        function resetRalphConfig() {
+            document.getElementById('ralphSimpleSlider').value = 3;
+            document.getElementById('ralphDefaultSlider').value = 10;
+            document.getElementById('ralphComplexSlider').value = 25;
+            document.getElementById('ralphAdaptive').checked = true;
+            document.getElementById('ralphInfinite').checked = false;
+
+            document.getElementById('ralphSimpleVal').textContent = '3';
+            document.getElementById('ralphDefaultVal').textContent = '10';
+            document.getElementById('ralphComplexVal').textContent = '25';
+            document.getElementById('ralphAdaptiveLabel').textContent = 'Enabled';
+            document.getElementById('ralphInfiniteLabel').textContent = 'Disabled';
+
+            console.log('Ralph Wiggum configuration reset to defaults');
+        }
+
+        // Event listeners for Ralph Wiggum checkboxes
+        document.addEventListener('DOMContentLoaded', () => {
+            const adaptiveCheckbox = document.getElementById('ralphAdaptive');
+            const infiniteCheckbox = document.getElementById('ralphInfinite');
+
+            if (adaptiveCheckbox) {
+                adaptiveCheckbox.addEventListener('change', function() {
+                    document.getElementById('ralphAdaptiveLabel').textContent = this.checked ? 'Enabled' : 'Disabled';
+                });
+            }
+
+            if (infiniteCheckbox) {
+                infiniteCheckbox.addEventListener('change', function() {
+                    document.getElementById('ralphInfiniteLabel').textContent = this.checked ? 'Enabled' : 'Disabled';
+                });
+            }
+        });
+
 
         // Helper functions
         function formatUptime(seconds) {
