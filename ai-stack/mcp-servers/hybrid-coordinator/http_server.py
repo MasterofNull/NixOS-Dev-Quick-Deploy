@@ -70,6 +70,10 @@ from skill_usage_tracker import (
     get_skill_recommendation as _get_skill_recommendation,
     get_recent_skill_events as _get_recent_skill_events,
 )
+from pattern_integration import (
+    get_pattern_stats as _get_pattern_stats,
+    get_pattern_boost as _get_pattern_boost,
+)
 from browser_research import fetch_browser_research
 from web_research import fetch_web_research
 from research_workflows import list_curated_research_workflows, run_curated_research_workflow
@@ -1792,6 +1796,8 @@ async def run_http_mode(port: int) -> None:
             "auto_quality_improvement": _get_auto_improvement_summary(),
             # Batch 5.2 — Skill Usage Tracking
             "skill_usage_stats": _get_skill_usage_stats(),
+            # Batch 6.2 — Pattern Integration
+            "pattern_stats": _get_pattern_stats(),
         }
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
