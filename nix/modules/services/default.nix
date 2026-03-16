@@ -8,5 +8,6 @@
     ./ingress.nix
     ./capability-registry.nix
     ./switchboard.nix
+    ./autonomous-improvement.nix
   ];
 }
