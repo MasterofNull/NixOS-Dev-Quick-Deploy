@@ -899,6 +899,10 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-15 | (refactor) Context Store Integration | Deployment routes use SQLite+FTS5, persistent tracking |
 | 2026-03-15 | (feat) LLM Router HTTP Endpoints | /control/llm/route, /execute, /metrics endpoints |
 | 2026-03-15 | (test) LLM Router Integration Test | test-llm-router-integration.py validates tier routing |
+| 2026-03-15 | (feat) Local LLM Monitoring System | local_llm_monitor.py, aq-llm-monitor CLI, operation/value tracking |
+| 2026-03-15 | (feat) Autonomous Improvement Integration | monitoring_integration.py, LLM operation tracking for autonomous cycles |
+| 2026-03-15 | (docs) Context Limit Handling Guide | CONTEXT-LIMIT-HANDLING.md, addresses 1615x recurring query issue |
+| 2026-03-15 | (fix) Query Gap Analysis | Identified context limit as top recurring gap, documentation created |
 
 ### Current Batch
 
