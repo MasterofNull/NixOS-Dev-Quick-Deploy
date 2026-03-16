@@ -149,7 +149,38 @@ in {
       # Add CLI wrapper to system packages
       environment.systemPackages = [
         (pkgs.writeShellScriptBin "aq-autonomous-improve" ''
-          exec "${repoPath}/scripts/ai/aq-autonomous-improve" "$@"
+          export PYTHONPATH="${autonomousDir}"
+          export DATA_DIR="${dataDir}"
+          export POSTGRES_HOST="127.0.0.1"
+          export POSTGRES_PORT="${toString ports.postgres}"
+          export POSTGRES_DB="${mcp.postgres.database}"
+          export POSTGRES_USER="${mcp.postgres.user}"
+          export LLM_URL="http://localhost:${toString ai.llamaCpp.port}/v1/chat/completions"
+
+          ${lib.optionalString sec.enable ''
+          if [[ -r "${secretPath postgresPasswordSecret}" ]]; then
+            export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < "${secretPath postgresPasswordSecret}")"
+          fi
+          ''}
+
+          # Parse command and options
+          COMMAND="''${1:-run}"
+          shift || true
+
+          case "$COMMAND" in
+            run)
+              exec ${autonomousPython}/bin/python3 "${autonomousDir}/autonomous_loop.py" "$@"
+              ;;
+            daemon)
+              exec ${autonomousPython}/bin/python3 "${autonomousDir}/autonomous_loop.py" --daemon "$@"
+              ;;
+            status|hypotheses|hyp|trends)
+              exec "${repoPath}/scripts/ai/aq-autonomous-improve" "$COMMAND" "$@"
+              ;;
+            *)
+              exec "${repoPath}/scripts/ai/aq-autonomous-improve" "$COMMAND" "$@"
+              ;;
+          esac
         '')
       ];
     })
