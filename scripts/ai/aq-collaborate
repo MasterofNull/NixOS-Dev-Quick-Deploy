@@ -1,0 +1,389 @@
+#!/usr/bin/env bash
+# CLI wrapper for multi-agent collaboration tooling
+# Part of NixOS-Dev-Quick-Deploy AI stack - Phase 4
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+COLLAB_DIR="$REPO_ROOT/ai-stack/agentic-patterns"
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+usage() {
+    cat <<EOF
+Usage: aq-collaborate <command> [options]
+
+Commands:
+  start <objective>               Start new collaboration
+  plan <collab-id> <objective>    Create collaborative plan
+  contribute <plan-id> ...        Add contribution to plan
+  synthesize <plan-id>            Synthesize plan from contributions
+  review <item-id> ...            Submit review for consensus
+  decide <item-id>                Calculate consensus decision
+  list [--status STATUS]          List collaborations
+  stats <collab-id>               Get collaboration statistics
+  messages <collab-id>            View collaboration messages
+
+Options:
+  --agent ID          Agent identifier
+  --capability SCORE  Agent capability score (0-1)
+  --verdict VERDICT   Review verdict (approve, reject, etc.)
+  --score SCORE       Overall score (0-1)
+  --confidence SCORE  Confidence level (0-1)
+  --help              Show this help message
+
+Examples:
+  # Start collaboration
+  aq-collaborate start "Implement user authentication system"
+
+  # Create plan
+  aq-collaborate plan collab_123 "Design auth flow"
+
+  # Add contribution
+  aq-collaborate contribute plan_456 \\
+    --agent security_expert \\
+    --phase design \\
+    --description "OAuth 2.0 flow" \\
+    --approach "JWT tokens with refresh"
+
+  # Submit review
+  aq-collaborate review item_789 \\
+    --agent reviewer_1 \\
+    --verdict approve \\
+    --score 0.85 \\
+    --feedback "Looks good"
+
+  # Get statistics
+  aq-collaborate stats collab_123
+
+Environment Variables:
+  POSTGRES_HOST          PostgreSQL host (default: 127.0.0.1)
+  POSTGRES_PORT          PostgreSQL port (default: 5432)
+  POSTGRES_USER          PostgreSQL user (default: postgres)
+  POSTGRES_DB            PostgreSQL database (default: ai_context)
+  POSTGRES_PASSWORD      PostgreSQL password
+  POSTGRES_PASSWORD_FILE PostgreSQL password file
+  LLAMA_CHAT_URL         Local LLM URL (default: http://127.0.0.1:8080)
+EOF
+}
+
+ensure_python_deps() {
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}Error: python3 not found${NC}"
+        exit 1
+    fi
+}
+
+get_postgres_password() {
+    if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+        echo "$POSTGRES_PASSWORD"
+    elif [ -n "${POSTGRES_PASSWORD_FILE:-}" ] && [ -f "$POSTGRES_PASSWORD_FILE" ]; then
+        cat "$POSTGRES_PASSWORD_FILE"
+    elif [ -f "/run/secrets/postgres_password" ]; then
+        cat "/run/secrets/postgres_password"
+    else
+        echo ""
+    fi
+}
+
+cmd_start() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: objective required${NC}"
+        usage
+        exit 1
+    fi
+
+    local objective="$1"
+
+    echo -e "${BLUE}Starting collaboration: $objective${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+
+    cd "$COLLAB_DIR"
+    python3 -c "
+import asyncio
+from agent_communication_protocol import CommunicationProtocol
+
+async def main():
+    protocol = CommunicationProtocol()
+    collaboration_id = f'collab_{len(protocol.active_collaborations) + 1}'
+    context = protocol.create_collaboration(collaboration_id, [])
+
+    print(f'✓ Collaboration started: {collaboration_id}')
+    print(f'  Objective: $objective')
+
+asyncio.run(main())
+"
+}
+
+cmd_plan() {
+    if [ $# -lt 2 ]; then
+        echo -e "${RED}Error: collaboration-id and objective required${NC}"
+        usage
+        exit 1
+    fi
+
+    local collab_id="$1"
+    local objective="$2"
+
+    echo -e "${BLUE}Creating plan for collaboration: $collab_id${NC}"
+
+    cd "$COLLAB_DIR"
+    python3 -c "
+import asyncio
+from collaborative_planning import CollaborativePlanner
+
+async def main():
+    planner = CollaborativePlanner()
+
+    try:
+        plan_id = planner.create_plan('$objective')
+        print(f'✓ Plan created: {plan_id}')
+        print(f'  Objective: $objective')
+    finally:
+        await planner.close()
+
+asyncio.run(main())
+"
+}
+
+cmd_synthesize() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: plan-id required${NC}"
+        usage
+        exit 1
+    fi
+
+    local plan_id="$1"
+
+    echo -e "${BLUE}Synthesizing plan: $plan_id${NC}"
+
+    cd "$COLLAB_DIR"
+    python3 -c "
+import asyncio
+import json
+from collaborative_planning import CollaborativePlanner
+
+async def main():
+    planner = CollaborativePlanner()
+
+    try:
+        # Get plan
+        plan = planner.active_plans.get('$plan_id')
+        if not plan:
+            print(f'Error: Plan not found: $plan_id')
+            return
+
+        # Mock agent capabilities for now
+        agent_capabilities = {
+            'agent_1': 0.85,
+            'agent_2': 0.80,
+            'agent_3': 0.90
+        }
+
+        # Synthesize
+        synthesized = await planner.synthesize_plan('$plan_id', agent_capabilities)
+
+        print(f'✓ Plan synthesized: {len(synthesized.synthesized_phases)} phases')
+        for i, phase in enumerate(synthesized.synthesized_phases, 1):
+            print(f'  {i}. {phase.title} ({phase.phase_type.value})')
+            print(f'     Assigned to: {phase.assigned_agent}')
+    finally:
+        await planner.close()
+
+asyncio.run(main())
+"
+}
+
+cmd_review() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: item-id required${NC}"
+        usage
+        exit 1
+    fi
+
+    local item_id="$1"
+    shift
+
+    # Parse options
+    local agent_id=""
+    local verdict=""
+    local score=""
+    local confidence="0.8"
+    local feedback=""
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --agent) agent_id="$2"; shift 2 ;;
+            --verdict) verdict="$2"; shift 2 ;;
+            --score) score="$2"; shift 2 ;;
+            --confidence) confidence="$2"; shift 2 ;;
+            --feedback) feedback="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    if [ -z "$agent_id" ] || [ -z "$verdict" ] || [ -z "$score" ]; then
+        echo -e "${RED}Error: --agent, --verdict, and --score required${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Submitting review for item: $item_id${NC}"
+
+    cd "$COLLAB_DIR"
+    python3 -c "
+import json
+from quality_consensus import QualityConsensus, ReviewVerdict
+
+consensus = QualityConsensus()
+
+review_id = consensus.submit_review(
+    item_id='$item_id',
+    reviewer_id='$agent_id',
+    reviewer_capability=0.85,  # Mock value
+    reviewer_reliability=0.90,  # Mock value
+    verdict=ReviewVerdict.${verdict^^},
+    overall_score=$score,
+    feedback='$feedback',
+    confidence=$confidence
+)
+
+print(f'✓ Review submitted: {review_id}')
+print(f'  Reviewer: $agent_id')
+print(f'  Verdict: $verdict')
+print(f'  Score: $score')
+"
+}
+
+cmd_decide() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: item-id required${NC}"
+        usage
+        exit 1
+    fi
+
+    local item_id="$1"
+
+    echo -e "${BLUE}Calculating consensus for item: $item_id${NC}"
+
+    cd "$COLLAB_DIR"
+    python3 -c "
+import json
+from quality_consensus import QualityConsensus
+
+consensus = QualityConsensus()
+
+# Check if we have reviews
+pending = len(consensus.pending_reviews.get('$item_id', []))
+if pending == 0:
+    print('Error: No reviews submitted for item $item_id')
+    exit(1)
+
+print(f'Processing {pending} reviews...')
+
+decision = consensus.calculate_consensus('$item_id')
+
+print(f'\n✓ Consensus reached:')
+print(f'  Verdict: {decision.final_verdict.value}')
+print(f'  Consensus score: {decision.consensus_score:.2f}')
+print(f'  Approval rate: {decision.approval_rate:.2%}')
+print(f'  Weighted avg: {decision.weighted_average_score:.2f}')
+print(f'  Escalated: {decision.escalated}')
+
+if decision.escalated:
+    print(f'  Escalation reason: {decision.escalation_reason.value}')
+"
+}
+
+cmd_list() {
+    local status="active"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --status) status="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    echo -e "${BLUE}Collaborations (status=$status):${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "${POSTGRES_USER:-postgres}" \
+         -d "${POSTGRES_DB:-ai_context}" \
+         -c "SELECT * FROM active_collaborations_summary ORDER BY started_at DESC LIMIT 20"
+}
+
+cmd_stats() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: collaboration-id required${NC}"
+        usage
+        exit 1
+    fi
+
+    local collab_id="$1"
+
+    echo -e "${BLUE}Collaboration Statistics: $collab_id${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "${POSTGRES_USER:-postgres}" \
+         -d "${POSTGRES_DB:-ai_context}" \
+         -c "SELECT * FROM get_collaboration_stats('$collab_id')"
+}
+
+cmd_messages() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: collaboration-id required${NC}"
+        usage
+        exit 1
+    fi
+
+    local collab_id="$1"
+
+    echo -e "${BLUE}Collaboration Messages: $collab_id${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "${POSTGRES_USER:-postgres}" \
+         -d "${POSTGRES_DB:-ai_context}" \
+         -c "SELECT sender_id, recipient_id, message_type, sent_at FROM collaboration_messages WHERE collaboration_id = '$collab_id' ORDER BY sent_at DESC LIMIT 50"
+}
+
+# Main command dispatch
+ensure_python_deps
+
+if [ $# -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    start) cmd_start "$@" ;;
+    plan) cmd_plan "$@" ;;
+    synthesize) cmd_synthesize "$@" ;;
+    review) cmd_review "$@" ;;
+    decide) cmd_decide "$@" ;;
+    list) cmd_list "$@" ;;
+    stats) cmd_stats "$@" ;;
+    messages) cmd_messages "$@" ;;
+    --help|-h) usage ;;
+    *) echo -e "${RED}Unknown command: $COMMAND${NC}"; usage; exit 1 ;;
+esac
