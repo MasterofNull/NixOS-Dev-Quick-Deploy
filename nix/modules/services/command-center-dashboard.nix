@@ -33,6 +33,9 @@ in
     systemd.tmpfiles.rules = [
       "d ${cc.dataDir} 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
+      # Dashboard needs /run/sudo/ts for sudo -n systemctl operations
+      "d /run/sudo 0711 root root -"
+      "d /run/sudo/ts 0700 ${svcUser} ${svcGroup} -"
     ];
 
     # ── API + dashboard serving ────────────────────────────────────────────────
