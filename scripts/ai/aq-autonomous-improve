@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Autonomous Improvement CLI
+# Wrapper for the autonomous improvement loop
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+AUTONOMOUS_DIR="${REPO_ROOT}/ai-stack/autonomous-improvement"
+
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+usage() {
+    cat <<EOF
+Autonomous Improvement - Local LLM-driven system optimization
+
+Usage:
+    aq-autonomous-improve [COMMAND] [OPTIONS]
+
+Commands:
+    run             Run one improvement cycle (default)
+    daemon          Run continuously as daemon
+    status          Show recent improvement cycles
+    hypotheses      List optimization hypotheses
+    trends          Show metric trends
+
+Options:
+    --dry-run       Generate hypotheses but don't execute experiments
+    --interval N    Daemon check interval in minutes (default: 60)
+    --json          Output in JSON format
+
+Examples:
+    # Run one improvement cycle
+    aq-autonomous-improve run
+
+    # Run as daemon, checking every 30 minutes
+    aq-autonomous-improve daemon --interval 30
+
+    # Dry run (research only, no execution)
+    aq-autonomous-improve run --dry-run
+
+    # Show recent cycles
+    aq-autonomous-improve status --json
+
+EOF
+}
+
+run_cycle() {
+    local dry_run=""
+    if [[ "${1:-}" == "--dry-run" ]]; then
+        dry_run="--dry-run"
+    fi
+
+    echo -e "${GREEN}🚀 Running autonomous improvement cycle${NC}"
+    python3 "${AUTONOMOUS_DIR}/autonomous_loop.py" $dry_run
+}
+
+run_daemon() {
+    local interval=60
+    local dry_run=""
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --interval)
+                interval="$2"
+                shift 2
+                ;;
+            --dry-run)
+                dry_run="--dry-run"
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    echo -e "${GREEN}🤖 Starting autonomous improvement daemon${NC}"
+    echo -e "   Interval: ${interval} minutes"
+    python3 "${AUTONOMOUS_DIR}/autonomous_loop.py" --daemon --interval "$interval" $dry_run
+}
+
+show_status() {
+    local format="${1:-text}"
+
+    if [[ "$format" == "json" ]]; then
+        psql -h 127.0.0.1 -U aidb -d aidb -t -A -F',' -c "
+            SELECT json_agg(row_to_json(t))
+            FROM (
+                SELECT id, cycle_type, status,
+                       started_at, completed_at,
+                       experiments_run, experiments_accepted,
+                       total_improvement_pct
+                FROM improvement_cycles
+                ORDER BY started_at DESC
+                LIMIT 10
+            ) t
+        " 2>/dev/null || echo "[]"
+    else
+        echo -e "${GREEN}📊 Recent Improvement Cycles${NC}\n"
+        psql -h 127.0.0.1 -U aidb -d aidb -c "
+            SELECT
+                LEFT(id::TEXT, 8) AS cycle_id,
+                cycle_type,
+                status,
+                TO_CHAR(started_at, 'MM-DD HH24:MI') AS started,
+                experiments_run AS exps,
+                experiments_accepted AS accepted,
+                COALESCE(total_improvement_pct, 0)::NUMERIC(5,1) AS improve_pct
+            FROM improvement_cycles
+            ORDER BY started_at DESC
+            LIMIT 10
+        " 2>/dev/null || echo "No cycles found (database not ready)"
+    fi
+}
+
+show_hypotheses() {
+    echo -e "${GREEN}💡 Recent Optimization Hypotheses${NC}\n"
+    psql -h 127.0.0.1 -U aidb -d aidb -c "
+        SELECT
+            LEFT(hypothesis_id, 12) AS id,
+            hypothesis_type AS type,
+            priority_score AS priority,
+            risk_level AS risk,
+            LEFT(description, 60) AS description,
+            TO_CHAR(generated_at, 'MM-DD HH24:MI') AS generated
+        FROM optimization_hypotheses
+        ORDER BY generated_at DESC
+        LIMIT 15
+    " 2>/dev/null || echo "No hypotheses found (database not ready)"
+}
+
+show_trends() {
+    echo -e "${GREEN}📈 Metric Trends (24h window)${NC}\n"
+    psql -h 127.0.0.1 -U aidb -d aidb -c "
+        SELECT
+            metric_name,
+            trend_direction AS trend,
+            current_value::NUMERIC(6,2) AS current,
+            baseline_value::NUMERIC(6,2) AS baseline,
+            change_pct::NUMERIC(5,1) AS change_pct,
+            TO_CHAR(last_updated, 'MM-DD HH24:MI') AS updated
+        FROM metric_trends
+        WHERE time_window = '24h'
+        ORDER BY
+            CASE trend_direction
+                WHEN 'degrading' THEN 1
+                WHEN 'volatile' THEN 2
+                WHEN 'stable' THEN 3
+                WHEN 'improving' THEN 4
+                ELSE 5
+            END,
+            metric_name
+    " 2>/dev/null || echo "No trends found (database not ready)"
+}
+
+# Main command dispatcher
+COMMAND="${1:-run}"
+shift || true
+
+case "$COMMAND" in
+    run)
+        run_cycle "$@"
+        ;;
+    daemon)
+        run_daemon "$@"
+        ;;
+    status)
+        format="text"
+        if [[ "${1:-}" == "--json" ]]; then
+            format="json"
+        fi
+        show_status "$format"
+        ;;
+    hypotheses|hyp)
+        show_hypotheses
+        ;;
+    trends)
+        show_trends
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $COMMAND${NC}" >&2
+        echo ""
+        usage
+        exit 1
+        ;;
+esac
