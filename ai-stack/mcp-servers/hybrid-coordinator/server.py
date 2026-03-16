@@ -88,6 +88,8 @@ import memory_manager
 import mcp_handlers
 import model_loader
 import route_handler
+import federated_integration
+import federated_mcp_handlers
 from semantic_cache import SemanticCache
 from interaction_tracker import (
     compute_value_score, track_interaction, update_interaction_outcome,
@@ -217,6 +219,7 @@ llama_cpp_client: Optional[httpx.AsyncClient] = None
 embedding_client: Optional[httpx.AsyncClient] = None
 aidb_client: Optional[httpx.AsyncClient] = None
 multi_turn_manager: Optional[Any] = None
+federated_integration_client: Optional[federated_integration.FederatedIntegration] = None
 feedback_api: Optional[Any] = None
 progressive_disclosure: Optional[Any] = None
 learning_pipeline: Optional[Any] = None  # Continuous learning pipeline
@@ -497,11 +500,26 @@ async def record_learning_feedback(
 
 @app.list_tools()
 async def list_tools() -> List[Tool]:
-    return mcp_handlers.TOOL_DEFINITIONS
+    tools = list(mcp_handlers.TOOL_DEFINITIONS)
+    # Add federated learning tools if available
+    if federated_integration_client is not None:
+        tools.extend(federated_mcp_handlers.FEDERATED_TOOL_DEFINITIONS)
+    return tools
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+    # Check if it's a federated learning tool
+    federated_tool_names = {
+        "recommend_agent_for_task",
+        "get_agent_recommendations",
+        "track_task_completion",
+        "get_federated_stats",
+    }
+    if name in federated_tool_names and federated_integration_client is not None:
+        return await federated_mcp_handlers.dispatch_federated_tool(name, arguments)
+
+    # Otherwise, dispatch to regular handlers
     return await mcp_handlers.dispatch_tool(name, arguments)
 
 
@@ -512,7 +530,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, switchboard_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache
+    global qdrant_client, llama_cpp_client, switchboard_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache, federated_integration_client
 
     _enforce_startup_env()
     await _preflight_check()
@@ -627,9 +645,28 @@ async def initialize_server():
         # Start background learning task
         asyncio.create_task(learning_pipeline.start())
         logger.info("✓ Continuous learning pipeline started")
+
+        # Initialize federated learning integration (Phase 2)
+        federated_integration_client = federated_integration.FederatedIntegration(
+            pg_host=_require_env("POSTGRES_HOST"),
+            pg_port=int(_require_env("POSTGRES_PORT")),
+            pg_user=_require_env("POSTGRES_USER"),
+            pg_database=_require_env("POSTGRES_DB"),
+            pg_password=pg_password,
+            enable_capability_routing=True,
+            enable_pattern_injection=True,
+        )
+        try:
+            await federated_integration_client.connect()
+            federated_mcp_handlers.set_federated_integration(federated_integration_client)
+            logger.info("✓ Federated learning integration initialized")
+        except Exception as exc:
+            logger.warning(f"⚠ Federated learning integration unavailable: {exc}")
+            federated_integration_client = None
     else:
         learning_pipeline = None
-        logger.info("⚠ Continuous learning DISABLED")
+        federated_integration_client = None
+        logger.info("⚠ Continuous learning DISABLED (federated learning also disabled)")
 
     # Phase 6.1 — wire extracted interaction_tracker module
     interaction_tracker.init(
