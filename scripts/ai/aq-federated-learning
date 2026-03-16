@@ -1,0 +1,375 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Federated Learning CLI
+# Manage cross-agent knowledge federation
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+usage() {
+    cat <<EOF
+Federated Learning CLI - Cross-Agent Knowledge Federation
+
+Usage:
+    aq-federated-learning <command> [options]
+
+Commands:
+    aggregate              Aggregate patterns from all agents
+    synthesize <domain>    Synthesize patterns for a task domain
+    recommend <agent>      Generate recommendations for an agent
+    matrix                 Show agent capability matrix
+    patterns <agent>       Show top patterns for an agent
+    stats                  Show federation statistics
+    session <id>           Show synthesis session details
+
+Options:
+    --hours <N>           Time window in hours (default: 24)
+    --limit <N>           Limit results (default: 10)
+    --domain <domain>     Filter by task domain
+    --json                Output as JSON
+
+Examples:
+    # Aggregate patterns from last 24 hours
+    aq-federated-learning aggregate
+
+    # Synthesize NixOS patterns
+    aq-federated-learning synthesize nixos
+
+    # Generate recommendations for Claude
+    aq-federated-learning recommend claude --domain nixos
+
+    # Show capability matrix
+    aq-federated-learning matrix
+
+    # Show federation statistics
+    aq-federated-learning stats --json
+
+EOF
+    exit 1
+}
+
+check_python() {
+    if ! command -v python3 &>/dev/null; then
+        echo -e "${RED}Error: python3 not found${NC}" >&2
+        exit 1
+    fi
+}
+
+check_postgres() {
+    POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
+    if [[ -z "$POSTGRES_PASSWORD" ]] && [[ -f /run/secrets/postgres_password ]]; then
+        POSTGRES_PASSWORD="$(cat /run/secrets/postgres_password)"
+        export POSTGRES_PASSWORD
+    fi
+}
+
+aggregate_patterns() {
+    local hours="${1:-24}"
+
+    check_python
+    check_postgres
+
+    echo -e "${YELLOW}Aggregating patterns from last ${hours}h...${NC}"
+    echo ""
+
+    python3 - <<EOF
+import asyncio
+import sys
+sys.path.insert(0, "${REPO_ROOT}/ai-stack/federated-learning")
+
+from agent_learning_aggregator import AgentLearningAggregator
+
+async def main():
+    aggregator = AgentLearningAggregator()
+    await aggregator.connect()
+    try:
+        patterns = await aggregator.aggregate_patterns(since_hours=${hours})
+        print(f"✓ Aggregated {len(patterns)} patterns")
+
+        stats = await aggregator.update_capability_matrix()
+        print(f"✓ Updated capability matrix: {stats['agents_updated']} agents, {stats['domains_updated']} domains")
+    finally:
+        await aggregator.close()
+
+asyncio.run(main())
+EOF
+}
+
+synthesize_patterns() {
+    local domain="${1:-}"
+
+    if [[ -z "$domain" ]]; then
+        echo -e "${RED}Error: domain required${NC}" >&2
+        usage
+    fi
+
+    check_python
+    check_postgres
+
+    echo -e "${YELLOW}Synthesizing patterns for ${domain}...${NC}"
+    echo ""
+
+    python3 - <<EOF
+import asyncio
+import json
+import sys
+sys.path.insert(0, "${REPO_ROOT}/ai-stack/federated-learning")
+
+from federated_pattern_synthesis import FederatedPatternSynthesis
+
+async def main():
+    synthesizer = FederatedPatternSynthesis()
+    await synthesizer.connect()
+    try:
+        results = await synthesizer.synthesize_patterns(task_domain="${domain}")
+        print(json.dumps(results, indent=2))
+    finally:
+        await synthesizer.close()
+
+asyncio.run(main())
+EOF
+}
+
+generate_recommendations() {
+    local agent="${1:-}"
+    local domain="${2:-}"
+    local limit="${3:-5}"
+
+    if [[ -z "$agent" ]]; then
+        echo -e "${RED}Error: agent required${NC}" >&2
+        usage
+    fi
+
+    check_python
+    check_postgres
+
+    echo -e "${YELLOW}Generating recommendations for ${agent}...${NC}"
+    echo ""
+
+    local domain_arg=""
+    if [[ -n "$domain" ]]; then
+        domain_arg=", task_domain='${domain}'"
+    fi
+
+    python3 - <<EOF
+import asyncio
+import json
+import sys
+sys.path.insert(0, "${REPO_ROOT}/ai-stack/federated-learning")
+
+from federated_pattern_synthesis import FederatedPatternSynthesis
+
+async def main():
+    synthesizer = FederatedPatternSynthesis()
+    await synthesizer.connect()
+    try:
+        recs = await synthesizer.generate_recommendations(
+            target_agent="${agent}"${domain_arg},
+            limit=${limit}
+        )
+
+        if not recs:
+            print("No recommendations available")
+            return
+
+        for i, rec in enumerate(recs, 1):
+            print(f"{i}. From {rec['source_agent']} (confidence: {rec['confidence_score']:.2f})")
+            print(f"   Domain: {rec['task_domain']}")
+            print(f"   {rec['reason']}")
+            print()
+    finally:
+        await synthesizer.close()
+
+asyncio.run(main())
+EOF
+}
+
+show_matrix() {
+    check_postgres
+
+    echo -e "${YELLOW}Agent Capability Matrix${NC}"
+    echo ""
+
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U postgres -d ai_context -c "
+        SELECT
+            task_domain,
+            agent_type,
+            ROUND(capability_score::numeric, 3) as capability,
+            total_attempts,
+            successful_attempts,
+            ROUND((successful_attempts::numeric / NULLIF(total_attempts, 0) * 100)::numeric, 1) as success_pct,
+            rank
+        FROM agent_capability_rankings
+        ORDER BY task_domain, rank
+        LIMIT 50;
+    " 2>/dev/null || echo -e "${RED}Database query failed${NC}"
+}
+
+show_patterns() {
+    local agent="${1:-}"
+
+    if [[ -z "$agent" ]]; then
+        echo -e "${RED}Error: agent required${NC}" >&2
+        usage
+    fi
+
+    check_python
+    check_postgres
+
+    echo -e "${YELLOW}Top patterns for ${agent}${NC}"
+    echo ""
+
+    python3 - <<EOF
+import asyncio
+import sys
+sys.path.insert(0, "${REPO_ROOT}/ai-stack/federated-learning")
+
+from agent_learning_aggregator import AgentLearningAggregator
+
+async def main():
+    aggregator = AgentLearningAggregator()
+    await aggregator.connect()
+    try:
+        patterns = await aggregator.get_top_patterns(agent_type="${agent}", limit=10)
+
+        if not patterns:
+            print("No patterns found")
+            return
+
+        for i, p in enumerate(patterns, 1):
+            print(f"{i}. {p['task_domain']} - {p['pattern_type']}")
+            print(f"   Success: {p['success_rate']:.1%}, Uses: {p['usage_count']}, "
+                  f"Avg time: {p['avg_completion_time_ms']}ms")
+            print()
+    finally:
+        await aggregator.close()
+
+asyncio.run(main())
+EOF
+}
+
+show_stats() {
+    check_postgres
+
+    echo -e "${YELLOW}Federation Statistics${NC}"
+    echo ""
+
+    echo "Pattern Statistics:"
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U postgres -d ai_context -c "
+        SELECT
+            COUNT(*) as total_patterns,
+            COUNT(DISTINCT agent_type) as unique_agents,
+            COUNT(DISTINCT task_domain) as unique_domains,
+            ROUND(AVG(success_rate)::numeric, 3) as avg_success_rate,
+            SUM(usage_count) as total_pattern_uses
+        FROM agent_patterns;
+    " 2>/dev/null
+
+    echo ""
+    echo "Cross-Agent Learning:"
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U postgres -d ai_context -c "
+        SELECT * FROM cross_agent_learning_effectiveness
+        ORDER BY success_count DESC
+        LIMIT 10;
+    " 2>/dev/null
+
+    echo ""
+    echo "Recent Synthesis Sessions:"
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U postgres -d ai_context -c "
+        SELECT
+            session_type,
+            status,
+            patterns_analyzed,
+            recommendations_generated,
+            started_at
+        FROM federated_learning_sessions
+        ORDER BY started_at DESC
+        LIMIT 5;
+    " 2>/dev/null || echo -e "${YELLOW}No synthesis sessions yet${NC}"
+}
+
+# Main command routing
+COMMAND="${1:-}"
+shift || true
+
+case "$COMMAND" in
+    aggregate)
+        HOURS=24
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --hours)
+                    HOURS="$2"
+                    shift 2
+                    ;;
+                *)
+                    echo "Unknown option: $1" >&2
+                    usage
+                    ;;
+            esac
+        done
+        aggregate_patterns "$HOURS"
+        ;;
+
+    synthesize)
+        DOMAIN="${1:-}"
+        shift || true
+        synthesize_patterns "$DOMAIN"
+        ;;
+
+    recommend)
+        AGENT="${1:-}"
+        shift || true
+        DOMAIN=""
+        LIMIT=5
+
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --domain)
+                    DOMAIN="$2"
+                    shift 2
+                    ;;
+                --limit)
+                    LIMIT="$2"
+                    shift 2
+                    ;;
+                *)
+                    echo "Unknown option: $1" >&2
+                    usage
+                    ;;
+            esac
+        done
+
+        generate_recommendations "$AGENT" "$DOMAIN" "$LIMIT"
+        ;;
+
+    matrix)
+        show_matrix
+        ;;
+
+    patterns)
+        AGENT="${1:-}"
+        shift || true
+        show_patterns "$AGENT"
+        ;;
+
+    stats)
+        show_stats
+        ;;
+
+    ""|--help|-h|help)
+        usage
+        ;;
+
+    *)
+        echo -e "${RED}Unknown command: $COMMAND${NC}" >&2
+        echo ""
+        usage
+        ;;
+esac
