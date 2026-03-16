@@ -903,6 +903,8 @@ curl -sS -X POST http://127.0.0.1:8003/hints -d '{"query":"nix"}' | jq '.domain_
 | 2026-03-15 | (feat) Autonomous Improvement Integration | monitoring_integration.py, LLM operation tracking for autonomous cycles |
 | 2026-03-15 | (docs) Context Limit Handling Guide | CONTEXT-LIMIT-HANDLING.md, addresses 1615x recurring query issue |
 | 2026-03-15 | (fix) Query Gap Analysis | Identified context limit as top recurring gap, documentation created |
+| 2026-03-15 | (fix) Dashboard Reboot Fix | Added /run/sudo tmpfiles to prevent startup failure after reboot |
+| 2026-03-15 | (feat) Phase 2 Foundation: Federated Learning | Database schema, aggregator, synthesizer, CLI - cross-agent knowledge sharing |
 
 ### Current Batch
 
