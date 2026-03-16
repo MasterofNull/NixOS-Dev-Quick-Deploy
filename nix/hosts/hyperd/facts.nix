@@ -121,6 +121,12 @@
         routingMode = "auto";
         defaultProvider = "local";
       };
+      # Phase 1: Autonomous Improvement - Local LLM-driven optimization
+      autonomousImprovement = {
+        enable = true;
+        interval = 60;  # Check every 60 minutes
+        dryRun = false; # Set true for research-only mode
+      };
     };
   };
 }
