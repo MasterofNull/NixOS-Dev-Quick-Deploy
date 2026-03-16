@@ -9,5 +9,6 @@
     ./capability-registry.nix
     ./switchboard.nix
     ./autonomous-improvement.nix
+    ./meta-optimization.nix
   ];
 }

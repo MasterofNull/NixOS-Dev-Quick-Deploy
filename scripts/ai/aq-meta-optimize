@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+# CLI wrapper for meta-optimization tooling
+# Part of NixOS-Dev-Quick-Deploy AI stack
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+META_OPT_DIR="$REPO_ROOT/ai-stack/meta-optimization"
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+usage() {
+    cat <<EOF
+Usage: aq-meta-optimize <command> [options]
+
+Commands:
+  analyze [--days N]              Generate improvement proposals
+  proposals [--status STATUS]     List improvement proposals
+  approve <proposal-id>           Approve a proposal for application
+  apply <proposal-id>             Apply an approved proposal
+  validate <history-id>           Validate impact of applied change
+  rollback <history-id> [reason]  Rollback a change that degraded performance
+  baselines                       Capture performance baselines
+  summary [--days N]              Show evolution summary
+  stats                           Show meta-optimization statistics
+
+Options:
+  --days N        Number of days of data to analyze (default: 7)
+  --status S      Filter proposals by status: pending, approved, applied, rejected
+  --help          Show this help message
+
+Examples:
+  aq-meta-optimize analyze --days 7
+  aq-meta-optimize proposals --status pending
+  aq-meta-optimize approve a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  aq-meta-optimize baselines
+  aq-meta-optimize summary --days 30
+
+Environment Variables:
+  POSTGRES_HOST          PostgreSQL host (default: 127.0.0.1)
+  POSTGRES_PORT          PostgreSQL port (default: 5432)
+  POSTGRES_USER          PostgreSQL user (default: postgres)
+  POSTGRES_DB            PostgreSQL database (default: ai_context)
+  POSTGRES_PASSWORD      PostgreSQL password
+  POSTGRES_PASSWORD_FILE PostgreSQL password file
+  LLAMA_CHAT_URL         Local LLM URL (default: http://127.0.0.1:8080)
+EOF
+}
+
+ensure_python_deps() {
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}Error: python3 not found${NC}"
+        exit 1
+    fi
+}
+
+# Get PostgreSQL password from file if available
+get_postgres_password() {
+    if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+        echo "$POSTGRES_PASSWORD"
+    elif [ -n "${POSTGRES_PASSWORD_FILE:-}" ] && [ -f "$POSTGRES_PASSWORD_FILE" ]; then
+        cat "$POSTGRES_PASSWORD_FILE"
+    elif [ -f "/run/secrets/postgres_password" ]; then
+        cat "/run/secrets/postgres_password"
+    else
+        echo ""
+    fi
+}
+
+cmd_analyze() {
+    local days=7
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --days) days="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    echo -e "${BLUE}Running meta-optimization analysis (${days} days)...${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+
+    cd "$META_OPT_DIR"
+    python3 -c "
+import asyncio
+import sys
+from meta_optimizer import MetaOptimizer
+
+async def main():
+    optimizer = MetaOptimizer()
+    await optimizer.connect()
+
+    try:
+        proposals = await optimizer.generate_all_proposals(days=$days)
+
+        print(f'\n{len(proposals)} improvement proposals generated:')
+        for i, proposal in enumerate(proposals, 1):
+            print(f'\n{i}. [{proposal.priority.value.upper()}] {proposal.title}')
+            print(f'   ID: {proposal.id}')
+            print(f'   Target: {proposal.target.value}')
+            print(f'   Expected improvement: {proposal.estimated_improvement_pct:.1f}%')
+            print(f'   Confidence: {proposal.confidence_score:.2f}')
+
+            # Store proposal
+            stored = await optimizer.store_proposal(proposal)
+            if stored:
+                print(f'   ✓ Stored in database')
+
+        if not proposals:
+            print('\nNo optimization opportunities identified.')
+
+    finally:
+        await optimizer.close()
+
+asyncio.run(main())
+"
+}
+
+cmd_proposals() {
+    local status=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --status) status="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+
+    local query="SELECT id, target, priority, title, estimated_improvement_pct, confidence_score, status, created_at FROM harness_improvement_proposals"
+
+    if [ -n "$status" ]; then
+        query="$query WHERE status = '$status'"
+    fi
+
+    query="$query ORDER BY created_at DESC LIMIT 20"
+
+    echo -e "${BLUE}Improvement Proposals:${NC}"
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "${POSTGRES_USER:-postgres}" \
+         -d "${POSTGRES_DB:-ai_context}" \
+         -c "$query"
+}
+
+cmd_approve() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: proposal ID required${NC}"
+        usage
+        exit 1
+    fi
+
+    local proposal_id="$1"
+
+    echo -e "${YELLOW}Approving proposal: $proposal_id${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "${POSTGRES_USER:-postgres}" \
+         -d "${POSTGRES_DB:-ai_context}" \
+         -c "SELECT approve_improvement_proposal('$proposal_id', 'cli_user')"
+
+    echo -e "${GREEN}✓ Proposal approved${NC}"
+}
+
+cmd_baselines() {
+    echo -e "${BLUE}Capturing performance baselines...${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+
+    cd "$META_OPT_DIR"
+    python3 -c "
+import asyncio
+import sys
+from harness_evolution_tracker import HarnessEvolutionTracker
+
+async def main():
+    tracker = HarnessEvolutionTracker()
+    await tracker.connect()
+
+    try:
+        baselines = [
+            ('routing_accuracy', 'route_handler'),
+            ('avg_route_latency_ms', 'route_handler'),
+            ('hint_success_rate', 'hints_engine'),
+        ]
+
+        for metric, component in baselines:
+            baseline_id = await tracker.capture_baseline(metric, component=component, window_hours=24)
+            if baseline_id:
+                print(f'✓ Captured {metric} baseline for {component}')
+            else:
+                print(f'⚠ Could not capture {metric} baseline')
+
+    finally:
+        await tracker.close()
+
+asyncio.run(main())
+"
+}
+
+cmd_summary() {
+    local days=30
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --days) days="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    echo -e "${BLUE}Evolution Summary (last ${days} days):${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+
+    cd "$META_OPT_DIR"
+    python3 -c "
+import asyncio
+import json
+from harness_evolution_tracker import HarnessEvolutionTracker
+
+async def main():
+    tracker = HarnessEvolutionTracker()
+    await tracker.connect()
+
+    try:
+        summary = await tracker.get_evolution_summary(days=$days)
+        print(json.dumps(summary, indent=2, default=str))
+    finally:
+        await tracker.close()
+
+asyncio.run(main())
+"
+}
+
+cmd_stats() {
+    echo -e "${BLUE}Meta-Optimization Statistics:${NC}"
+
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "${POSTGRES_USER:-postgres}" \
+         -d "${POSTGRES_DB:-ai_context}" \
+         -c "SELECT * FROM meta_optimization_impact_summary"
+}
+
+# Main command dispatch
+ensure_python_deps
+
+if [ $# -eq 0 ]; then
+    usage
+    exit 1
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    analyze) cmd_analyze "$@" ;;
+    proposals) cmd_proposals "$@" ;;
+    approve) cmd_approve "$@" ;;
+    baselines) cmd_baselines ;;
+    summary) cmd_summary "$@" ;;
+    stats) cmd_stats ;;
+    --help|-h) usage ;;
+    *) echo -e "${RED}Unknown command: $COMMAND${NC}"; usage; exit 1 ;;
+esac
