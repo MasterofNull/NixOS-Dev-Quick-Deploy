@@ -96,6 +96,26 @@ in {
         ];
         wants = [ "network-online.target" ];
 
+        environment = {
+          PYTHONPATH = autonomousDir;
+          DATA_DIR = dataDir;
+          POSTGRES_HOST = "127.0.0.1";
+          POSTGRES_PORT = toString ports.postgres;
+          POSTGRES_DB = mcp.postgres.database;
+          POSTGRES_USER = mcp.postgres.user;
+          LLM_URL = "http://localhost:${toString ai.llamaCpp.port}/v1/chat/completions";
+        };
+
+        script = ''
+          ${lib.optionalString sec.enable ''
+          export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < ${secretPath postgresPasswordSecret})"
+          ''}
+
+          exec ${autonomousPython}/bin/python3 \
+            ${autonomousDir}/autonomous_loop.py \
+            ${lib.optionalString autonomous.dryRun "--dry-run"}
+        '';
+
         serviceConfig = hardenedBase // {
           Type = "oneshot";
           User = svcUser;
@@ -109,28 +129,7 @@ in {
           RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
           SystemCallFilter = [ "@system-service" ];
           SystemCallErrorNumber = "EPERM";
-
-          # Environment
-          Environment = [
-            "PYTHONPATH=${autonomousDir}"
-            "DATA_DIR=${dataDir}"
-            "POSTGRES_HOST=127.0.0.1"
-            "POSTGRES_PORT=${toString ports.postgres}"
-            "POSTGRES_DB=${mcp.postgres.database}"
-            "POSTGRES_USER=${mcp.postgres.user}"
-            "LLM_URL=http://localhost:${toString ai.llamaCpp.port}/v1/chat/completions"
-          ];
-
-          ExecStart = lib.escapeShellArgs ([
-            "${autonomousPython}/bin/python3"
-            "${autonomousDir}/autonomous_loop.py"
-          ] ++ lib.optional autonomous.dryRun "--dry-run");
         };
-
-        # Load PostgreSQL password from secrets
-        script = lib.optionalString sec.enable ''
-          export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < ${secretPath postgresPasswordSecret})"
-        '';
       };
 
       # Timer to trigger autonomous improvement periodically
