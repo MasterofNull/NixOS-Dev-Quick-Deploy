@@ -107,11 +107,17 @@ search_deployments() {
 
   log_info "Searching deployment history for: $query"
   local api_url="${DASHBOARD_API_URL%/}/api/deployments/search"
+  local context_api_url="${DASHBOARD_API_URL%/}/api/deployments/search/context"
   local encoded_query
   local response
   encoded_query="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$query")"
 
-  if ! response="$(curl -fsS "${api_url}?query=${encoded_query}&limit=${limit}&mode=${mode}")"; then
+  if [[ "$mode" == "natural" || "$mode" == "auto" ]]; then
+    if ! response="$(curl -fsS "${context_api_url}?query=${encoded_query}&limit=${limit}&mode=${mode}")"; then
+      log_warn "Dashboard context-aware deployment search unavailable, falling back to deployment-only search"
+      response="$(curl -fsS "${api_url}?query=${encoded_query}&limit=${limit}&mode=hybrid")" || response=""
+    fi
+  elif ! response="$(curl -fsS "${api_url}?query=${encoded_query}&limit=${limit}&mode=${mode}")"; then
     log_warn "Dashboard deployment search unavailable, falling back to journal search"
     if command -v journalctl >/dev/null 2>&1; then
       journalctl -u nixos-rebuild.service --no-pager | grep -i "$query" | head -n "$limit"
@@ -131,6 +137,7 @@ search_deployments() {
         "No deployment matches"
       else
         "Query intent: \(.query_analysis.intent // "retrieval") | requested mode: \(.mode) | effective mode: \(.effective_mode // .mode)",
+        (if .sources then "Sources: deployments=\(.sources.deployment // 0) config=\(.sources.config // 0) code=\(.sources.code // 0)" else empty end),
         (.results[] |
         "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")")
       end
