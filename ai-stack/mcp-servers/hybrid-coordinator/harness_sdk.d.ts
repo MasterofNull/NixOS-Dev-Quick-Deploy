@@ -25,6 +25,17 @@ export interface RuntimeScheduleRequest {
   includeDegraded?: boolean;
 }
 
+export interface A2AMessagePart {
+  type: "text";
+  text: string;
+}
+
+export interface A2AMessage {
+  role: "user" | "agent";
+  parts: A2AMessagePart[];
+  taskId?: string;
+}
+
 export interface RunStartRequest {
   query: string;
   safety_mode?: "plan-readonly" | "execute-mutating";
@@ -53,6 +64,19 @@ export interface QueryRequestOptions {
 export declare class HarnessClient {
   constructor(opts?: HarnessClientOptions);
   plan(query: string): Promise<Json>;
+  a2aAgentCard(): Promise<Json>;
+  a2aGetCard(): Promise<Json>;
+  a2aSendMessage(
+    text: string,
+    opts?: {
+      taskId?: string;
+      safetyMode?: "plan-readonly" | "execute-mutating";
+      intentContract?: RunStartRequest["intent_contract"];
+    },
+  ): Promise<Json>;
+  a2aGetTask(taskId: string): Promise<Json>;
+  a2aListTasks(limit?: number): Promise<Json>;
+  a2aCancelTask(taskId: string, reason?: string): Promise<Json>;
   query(query: string, opts?: QueryRequestOptions): Promise<Json>;
   toolingManifest(
     query: string,

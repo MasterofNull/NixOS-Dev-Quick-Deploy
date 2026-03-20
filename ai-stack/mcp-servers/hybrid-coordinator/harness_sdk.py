@@ -28,11 +28,69 @@ class HarnessClient:
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
 
+    def _jsonrpc(self, method: str, params: Optional[Dict[str, Any]] = None, request_id: str = "1") -> Dict[str, Any]:
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(
+                self._url("/a2a"),
+                headers=self._headers(),
+                json={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": method,
+                    "params": params or {},
+                },
+            )
+            r.raise_for_status()
+            return r.json()
+
     def plan(self, query: str) -> Dict[str, Any]:
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(self._url("/workflow/plan"), headers=self._headers(), json={"query": query})
             r.raise_for_status()
             return r.json()
+
+    def a2a_agent_card(self) -> Dict[str, Any]:
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.get(self._url("/.well-known/agent.json"), headers=self._headers())
+            r.raise_for_status()
+            return r.json()
+
+    def a2a_get_card(self) -> Dict[str, Any]:
+        return self._jsonrpc("agent/getCard", request_id="agent-card")
+
+    def a2a_send_message(
+        self,
+        text: str,
+        *,
+        task_id: str = "",
+        safety_mode: str = "plan-readonly",
+        intent_contract: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        params: Dict[str, Any] = {
+            "message": {
+                "role": "user",
+                "parts": [{"type": "text", "text": text}],
+            },
+            "safetyMode": safety_mode,
+        }
+        if task_id:
+            params["taskId"] = task_id
+            params["message"]["taskId"] = task_id
+        if intent_contract is not None:
+            params["intent_contract"] = intent_contract
+        return self._jsonrpc("message/send", params=params, request_id="message-send")
+
+    def a2a_get_task(self, task_id: str) -> Dict[str, Any]:
+        return self._jsonrpc("tasks/get", params={"id": task_id}, request_id="task-get")
+
+    def a2a_list_tasks(self, limit: int = 10) -> Dict[str, Any]:
+        return self._jsonrpc("tasks/list", params={"limit": limit}, request_id="task-list")
+
+    def a2a_cancel_task(self, task_id: str, reason: str = "") -> Dict[str, Any]:
+        params: Dict[str, Any] = {"id": task_id}
+        if reason:
+            params["reason"] = reason
+        return self._jsonrpc("tasks/cancel", params=params, request_id="task-cancel")
 
     def query(
         self,
