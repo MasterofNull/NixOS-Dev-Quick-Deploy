@@ -43,6 +43,21 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def _rpc_stream(self, method: str, params: Optional[Dict[str, Any]] = None, request_id: str = "1") -> str:
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(
+                self._url("/a2a"),
+                headers=self._headers(),
+                json={
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": method,
+                    "params": params or {},
+                },
+            )
+            r.raise_for_status()
+            return r.text
+
     def plan(self, query: str) -> Dict[str, Any]:
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.post(self._url("/workflow/plan"), headers=self._headers(), json={"query": query})
@@ -79,6 +94,28 @@ class HarnessClient:
         if intent_contract is not None:
             params["intent_contract"] = intent_contract
         return self._jsonrpc("message/send", params=params, request_id="message-send")
+
+    def a2a_stream_message(
+        self,
+        text: str,
+        *,
+        task_id: str = "",
+        safety_mode: str = "plan-readonly",
+        intent_contract: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        params: Dict[str, Any] = {
+            "message": {
+                "role": "user",
+                "parts": [{"type": "text", "text": text}],
+            },
+            "safetyMode": safety_mode,
+        }
+        if task_id:
+            params["taskId"] = task_id
+            params["message"]["taskId"] = task_id
+        if intent_contract is not None:
+            params["intent_contract"] = intent_contract
+        return self._rpc_stream("message/stream", params=params, request_id="message-stream")
 
     def a2a_get_task(self, task_id: str) -> Dict[str, Any]:
         return self._jsonrpc("tasks/get", params={"id": task_id}, request_id="task-get")

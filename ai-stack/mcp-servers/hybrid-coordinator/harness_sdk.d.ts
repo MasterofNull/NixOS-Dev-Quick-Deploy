@@ -74,6 +74,14 @@ export declare class HarnessClient {
       intentContract?: RunStartRequest["intent_contract"];
     },
   ): Promise<Json>;
+  a2aStreamMessage(
+    text: string,
+    opts?: {
+      taskId?: string;
+      safetyMode?: "plan-readonly" | "execute-mutating";
+      intentContract?: RunStartRequest["intent_contract"];
+    },
+  ): Promise<string>;
   a2aGetTask(taskId: string): Promise<Json>;
   a2aListTasks(limit?: number): Promise<Json>;
   a2aCancelTask(taskId: string, reason?: string): Promise<Json>;

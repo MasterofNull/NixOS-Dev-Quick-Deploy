@@ -40,6 +40,26 @@ export class HarnessClient {
     }
   }
 
+  async requestText(path, init) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const resp = await fetch(`${this.baseUrl}/${path.replace(/^\/+/, "")}`, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          ...this.headers(),
+          ...(init?.headers || {}),
+        },
+      });
+      const body = await resp.text();
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${body}`);
+      return body;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   plan(query) {
     return this.request("/workflow/plan", {
       method: "POST",
@@ -83,6 +103,31 @@ export class HarnessClient {
         jsonrpc: "2.0",
         id: "message-send",
         method: "message/send",
+        params,
+      }),
+    });
+  }
+
+  a2aStreamMessage(text, opts = {}) {
+    const message = {
+      role: "user",
+      parts: [{ type: "text", text }],
+    };
+    const params = {
+      message,
+      safetyMode: opts.safetyMode ?? "plan-readonly",
+    };
+    if (opts.taskId) {
+      message.taskId = opts.taskId;
+      params.taskId = opts.taskId;
+    }
+    if (opts.intentContract) params.intent_contract = opts.intentContract;
+    return this.requestText("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "message-stream",
+        method: "message/stream",
         params,
       }),
     });
