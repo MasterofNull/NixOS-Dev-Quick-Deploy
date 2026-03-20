@@ -614,11 +614,12 @@ RETURN path
 ### Batch 4.4: Google ADK Integration, Parity Check & Discovery
 **Priority:** HIGH
 **Effort:** Medium (3-4 days)
+**Status:** in_progress
 
 **Tasks:**
-- [ ] Map current stack capabilities against Google ADK primitives: agents, multi-agent workflows, tool adapters, sessions/state, evaluation, observability, and A2A
-- [ ] Review ADK integrations relevant to this repo and classify each as `adopt`, `adapt`, `defer`, or `not applicable`
-- [ ] Build an ADK parity scorecard covering existing harness features, missing capabilities, overlap, and implementation risk
+- [x] Map current stack capabilities against Google ADK primitives: agents, multi-agent workflows, tool adapters, sessions/state, evaluation, observability, and A2A
+- [x] Review ADK integrations relevant to this repo and classify each as `adopt`, `adapt`, `defer`, or `not applicable`
+- [x] Build an ADK parity scorecard covering existing harness features, missing capabilities, overlap, and implementation risk
 - [ ] Add a recurring implementation-discovery workflow so new ADK features feed roadmap/backlog updates instead of one-off review notes
 - [ ] Define declarative-first wiring requirements for any adopted ADK-aligned integration, including Nix option ownership and env injection with no hardcoded ports/URLs
 
@@ -627,6 +628,10 @@ RETURN path
 - Prioritized adoption/discovery backlog for AI stack and operator dashboard
 - Integration decision record with rollback notes for any proposed ADK-aligned component
 - Validation checklist tying ADK parity review into harness QA/reviewer gate workflow
+
+**Current evidence:**
+- Initial parity matrix, scored coverage, and improvement suggestions:
+  [docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md)
 
 **Validation:**
 - Scorecard covers current harness against ADK docs and integrations catalog
