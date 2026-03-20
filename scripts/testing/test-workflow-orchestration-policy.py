@@ -42,6 +42,7 @@ if "mcp" not in sys.modules:
 
 from ai_coordinator import coerce_orchestration_context  # noqa: E402
 from http_server import (  # noqa: E402
+    _apply_arbiter_update,
     _apply_consensus_update,
     _build_workflow_run_session,
     _default_agent_evaluations_registry,
@@ -82,29 +83,68 @@ def main() -> int:
     reasoning_policy = (blueprints.get("remote-reasoning-escalation") or {}).get("orchestration_policy") or {}
     assert_true(reasoning_policy.get("primary_lane") == "reasoning", "remote reasoning blueprint should route into reasoning lane")
     assert_true(reasoning_policy.get("selection_strategy") == "escalate-on-complexity", "remote reasoning blueprint should expose explicit escalation strategy")
+    assert_true(reasoning_policy.get("consensus_mode") == "arbiter-review", "remote reasoning blueprint should use arbiter review")
     hardening_policy = (blueprints.get("nixos-service-hardening") or {}).get("orchestration_policy") or {}
     assert_true(hardening_policy.get("primary_lane") == "hardening", "hardening blueprint should expose hardening lane")
     assert_true(hardening_policy.get("consensus_mode") == "reviewer-gate", "hardening blueprint should stay reviewer-gated")
 
-    session = _build_workflow_run_session(
+    arbiter_session = _build_workflow_run_session(
         query="Validate orchestrated consensus behavior",
         data={"blueprint_id": "remote-reasoning-escalation"},
         selected_blueprint=blueprints.get("remote-reasoning-escalation"),
         orchestration=default_ctx,
         lesson_refs=[],
     )
-    consensus = session.get("consensus") or {}
+    consensus = arbiter_session.get("consensus") or {}
     candidates = consensus.get("candidates") or []
     assert_true(consensus.get("status") == "pending", "new sessions should seed pending consensus state")
     assert_true(len(candidates) >= 2, "session consensus should seed multiple candidates")
     assert_true(bool(consensus.get("selected_candidate_id")), "session consensus should select an initial candidate")
+    arbiter_state = consensus.get("arbiter") or {}
+    assert_true(arbiter_state.get("required") is True, "arbiter-review sessions should require arbiter input")
+    assert_true(arbiter_state.get("status") == "pending", "arbiter-review sessions should start pending arbiter state")
 
+    arbiter_candidate_id = next((str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id") == "escalation"), "")
+    if not arbiter_candidate_id:
+        arbiter_candidate_id = str(consensus.get("selected_candidate_id") or "")
+    arbiter_updated = _apply_arbiter_update(
+        arbiter_session,
+        selected_candidate_id=arbiter_candidate_id,
+        arbiter="codex",
+        verdict="prefer",
+        rationale="remote reasoning is warranted for this workflow",
+        summary="arbiter selected the escalation lane",
+        supporting_decisions=[
+            {
+                "candidate_id": arbiter_candidate_id,
+                "reviewer": "codex",
+                "verdict": "prefer",
+                "rationale": "bounded escalation improves synthesis quality",
+            }
+        ],
+    )
+    assert_true(arbiter_updated.get("status") == "accepted", "preferred arbiter decision should accept consensus")
+    assert_true((arbiter_updated.get("arbiter") or {}).get("status") == "resolved", "arbiter decision should resolve arbiter state")
+    assert_true(arbiter_updated.get("selected_candidate_id") == arbiter_candidate_id, "arbiter should be able to select an explicit candidate")
+    assert_true(
+        arbiter_session.get("trajectory") and arbiter_session["trajectory"][-1].get("event_type") == "arbiter_decision",
+        "session trajectory should record arbiter decisions",
+    )
+
+    reviewer_session = _build_workflow_run_session(
+        query="Validate reviewer-gated consensus behavior",
+        data={"blueprint_id": "nixos-service-hardening"},
+        selected_blueprint=blueprints.get("nixos-service-hardening"),
+        orchestration=default_ctx,
+        lesson_refs=[],
+    )
+    reviewer_consensus = reviewer_session.get("consensus") or {}
     updated = _apply_consensus_update(
-        session,
-        selected_candidate_id=str(consensus.get("selected_candidate_id") or ""),
+        reviewer_session,
+        selected_candidate_id=str(reviewer_consensus.get("selected_candidate_id") or ""),
         decisions=[
             {
-                "candidate_id": str(consensus.get("selected_candidate_id") or ""),
+                "candidate_id": str(reviewer_consensus.get("selected_candidate_id") or ""),
                 "reviewer": "codex",
                 "verdict": "accept",
                 "rationale": "best fit for the requested workflow",
@@ -114,7 +154,7 @@ def main() -> int:
     )
     assert_true(updated.get("status") == "accepted", "accepted reviewer decision should accept consensus")
     assert_true(len(updated.get("history") or []) == 1, "consensus history should record the decision")
-    assert_true(session.get("trajectory") and session["trajectory"][-1].get("event_type") == "consensus_update", "session trajectory should record consensus updates")
+    assert_true(reviewer_session.get("trajectory") and reviewer_session["trajectory"][-1].get("event_type") == "consensus_update", "session trajectory should record consensus updates")
 
     evaluation_registry = _default_agent_evaluations_registry()
     evaluation_registry = _record_agent_review_event(

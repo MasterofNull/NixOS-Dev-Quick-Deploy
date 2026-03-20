@@ -358,6 +358,33 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def run_arbiter(
+        self,
+        session_id: str,
+        selected_candidate_id: str,
+        arbiter: str,
+        verdict: str,
+        rationale: str,
+        summary: str = "",
+        supporting_decisions: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            "selected_candidate_id": selected_candidate_id,
+            "arbiter": arbiter,
+            "verdict": verdict,
+            "rationale": rationale,
+            "summary": summary,
+            "supporting_decisions": supporting_decisions or [],
+        }
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(
+                self._url(f"/workflow/run/{session_id}/arbiter"),
+                headers=self._headers(),
+                json=payload,
+            )
+            r.raise_for_status()
+            return r.json()
+
     def run_get_isolation(self, session_id: str) -> Dict[str, Any]:
         with httpx.Client(timeout=self.timeout_s) as client:
             r = client.get(self._url(f"/workflow/run/{session_id}/isolation"), headers=self._headers())

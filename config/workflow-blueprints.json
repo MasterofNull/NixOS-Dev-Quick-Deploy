@@ -462,7 +462,7 @@
         "primary_lane": "reasoning",
         "reviewer_lane": "codex-review",
         "escalation_lane": "flagship-remote",
-        "consensus_mode": "reviewer-gate",
+        "consensus_mode": "arbiter-review",
         "selection_strategy": "escalate-on-complexity",
         "allow_parallel_subagents": false,
         "max_parallel_subagents": 1

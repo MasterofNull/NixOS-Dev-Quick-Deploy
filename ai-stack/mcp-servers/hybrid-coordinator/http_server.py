@@ -1147,13 +1147,15 @@ def _session_to_a2a_artifacts(session: Dict[str, Any]) -> List[Dict[str, Any]]:
     consensus = session.get("consensus", {})
     if isinstance(consensus, dict) and consensus:
         candidate_count = len(consensus.get("candidates", []) or [])
+        arbiter = consensus.get("arbiter") if isinstance(consensus.get("arbiter"), dict) else {}
         consensus_text = (
             f"Consensus status: {str(consensus.get('status', 'pending') or 'pending').strip()}\n"
             f"Consensus mode: {str(consensus.get('consensus_mode', 'reviewer-gate') or 'reviewer-gate').strip()}\n"
             f"Selection strategy: {str(consensus.get('selection_strategy', 'orchestrator-first') or 'orchestrator-first').strip()}\n"
             f"Selected candidate: {str(consensus.get('selected_candidate_id', '') or 'none').strip()}\n"
             f"Selected lane: {str(consensus.get('selected_lane', '') or 'unknown').strip()}\n"
-            f"Candidate count: {candidate_count}"
+            f"Candidate count: {candidate_count}\n"
+            f"Arbiter status: {str(arbiter.get('status', 'not-required') or 'not-required').strip()}"
         )
         artifacts.append(
             {
@@ -1169,6 +1171,29 @@ def _session_to_a2a_artifacts(session: Dict[str, Any]) -> List[Dict[str, Any]]:
                 },
             }
         )
+        last_arbiter = arbiter.get("last_decision") if isinstance(arbiter.get("last_decision"), dict) else {}
+        if last_arbiter:
+            arbiter_text = (
+                f"Arbiter: {str(last_arbiter.get('arbiter', 'unknown') or 'unknown').strip()}\n"
+                f"Verdict: {str(last_arbiter.get('verdict', 'unknown') or 'unknown').strip()}\n"
+                f"Selected candidate: {str(last_arbiter.get('selected_candidate_id', 'none') or 'none').strip()}\n"
+                f"Selected lane: {str(last_arbiter.get('selected_lane', 'unknown') or 'unknown').strip()}\n"
+                f"Rationale: {str(last_arbiter.get('rationale', '') or '').strip()}"
+            )
+            artifacts.append(
+                {
+                    "artifactId": f"{session_id}:arbiter",
+                    "name": "Arbiter Decision",
+                    "description": "Latest arbiter decision for this workflow task.",
+                    "parts": _a2a_text_parts(arbiter_text),
+                    "metadata": {
+                        "workflow_session_id": session_id,
+                        "artifact_kind": "arbiter",
+                        "arbiter_status": str(arbiter.get("status", "") or "").strip(),
+                        "selected_candidate_id": str(last_arbiter.get("selected_candidate_id", "") or "").strip(),
+                    },
+                }
+            )
 
     return artifacts
 
@@ -2343,6 +2368,20 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
 
     candidates.sort(key=lambda item: (float(item.get("score", 0.0)), item.get("candidate_id", "")), reverse=True)
     selected = candidates[0] if candidates else {}
+    arbiter_candidate = next((item for item in candidates if item.get("candidate_id") == "reviewer"), selected)
+    arbiter_state: Dict[str, Any] = {}
+    if consensus_mode == "arbiter-review":
+        arbiter_state = {
+            "required": True,
+            "status": "pending",
+            "arbiter": str((arbiter_candidate or {}).get("agent", "") or "codex"),
+            "arbiter_lane": str((arbiter_candidate or {}).get("lane", "") or "codex-review"),
+            "selected_candidate_id": None,
+            "selected_lane": None,
+            "selected_agent": None,
+            "last_decision": None,
+            "history": [],
+        }
     return {
         "selection_strategy": strategy,
         "consensus_mode": consensus_mode,
@@ -2352,6 +2391,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
         "selected_agent": selected.get("agent"),
         "candidates": candidates,
         "history": [],
+        "arbiter": arbiter_state,
     }
 
 
@@ -2432,6 +2472,109 @@ def _apply_consensus_update(
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
             "decision_count": len(normalized_decisions),
+        }
+    )
+    session["trajectory"] = trajectory
+    session["updated_at"] = now
+    return consensus
+
+
+def _apply_arbiter_update(
+    session: Dict[str, Any],
+    *,
+    selected_candidate_id: str,
+    arbiter: str,
+    verdict: str,
+    rationale: str,
+    summary: str,
+    supporting_decisions: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    consensus = session.get("consensus") if isinstance(session.get("consensus"), dict) else {}
+    if str(consensus.get("consensus_mode", "") or "").strip() != "arbiter-review":
+        raise ValueError("arbiter decisions require consensus_mode=arbiter-review")
+    candidates = consensus.get("candidates") if isinstance(consensus.get("candidates"), list) else []
+    by_id = {
+        str(item.get("candidate_id", "")).strip(): item
+        for item in candidates
+        if isinstance(item, dict) and str(item.get("candidate_id", "")).strip()
+    }
+    if selected_candidate_id not in by_id:
+        raise ValueError("selected_candidate_id must match an existing consensus candidate")
+    normalized_verdict = str(verdict or "").strip().lower()
+    if normalized_verdict not in {"accept", "reject", "prefer"}:
+        raise ValueError("verdict must be one of: accept, reject, prefer")
+    normalized_arbiter = str(arbiter or "").strip()[:64]
+    if not normalized_arbiter:
+        raise ValueError("arbiter required")
+    normalized_rationale = str(rationale or "").strip()[:400]
+    if not normalized_rationale:
+        raise ValueError("rationale required")
+    normalized_summary = str(summary or "").strip()[:400] or normalized_rationale
+    normalized_support = _normalize_consensus_decisions(supporting_decisions or [])
+
+    now = int(time.time())
+    selected_candidate = by_id[selected_candidate_id]
+    arbiter_state = consensus.get("arbiter") if isinstance(consensus.get("arbiter"), dict) else {}
+    history = arbiter_state.get("history") if isinstance(arbiter_state.get("history"), list) else []
+    decision = {
+        "ts": now,
+        "arbiter": normalized_arbiter,
+        "verdict": normalized_verdict,
+        "selected_candidate_id": selected_candidate_id,
+        "selected_lane": selected_candidate.get("lane"),
+        "selected_agent": selected_candidate.get("agent"),
+        "rationale": normalized_rationale,
+        "summary": normalized_summary,
+        "supporting_decisions": normalized_support,
+    }
+    history.append(decision)
+    arbiter_state.update(
+        {
+            "required": True,
+            "status": "resolved",
+            "arbiter": normalized_arbiter,
+            "arbiter_lane": str(arbiter_state.get("arbiter_lane", "") or "codex-review"),
+            "selected_candidate_id": selected_candidate_id,
+            "selected_lane": selected_candidate.get("lane"),
+            "selected_agent": selected_candidate.get("agent"),
+            "last_decision": decision,
+            "history": history[-10:],
+        }
+    )
+    consensus["arbiter"] = arbiter_state
+    consensus["status"] = "accepted" if normalized_verdict in {"accept", "prefer"} else "rejected"
+    consensus["selected_candidate_id"] = selected_candidate_id
+    consensus["selected_lane"] = selected_candidate.get("lane")
+    consensus["selected_agent"] = selected_candidate.get("agent")
+    consensus_history = consensus.get("history") if isinstance(consensus.get("history"), list) else []
+    consensus_history.append(
+        {
+            "ts": now,
+            "source": "arbiter",
+            "arbiter": normalized_arbiter,
+            "verdict": normalized_verdict,
+            "selected_candidate_id": selected_candidate_id,
+            "selected_lane": selected_candidate.get("lane"),
+            "selected_agent": selected_candidate.get("agent"),
+            "summary": normalized_summary,
+            "decisions": normalized_support,
+        }
+    )
+    consensus["history"] = consensus_history[-10:]
+    session["consensus"] = consensus
+    trajectory = session.get("trajectory") if isinstance(session.get("trajectory"), list) else []
+    trajectory.append(
+        {
+            "ts": now,
+            "event_type": "arbiter_decision",
+            "phase_id": f"phase-{int(session.get('current_phase_index', 0))}",
+            "detail": f"arbiter -> {consensus['status']} ({selected_candidate_id})",
+            "arbiter": normalized_arbiter,
+            "verdict": normalized_verdict,
+            "selected_candidate_id": selected_candidate_id,
+            "selected_lane": selected_candidate.get("lane"),
+            "selected_agent": selected_candidate.get("agent"),
+            "supporting_decision_count": len(normalized_support),
         }
     )
     session["trajectory"] = trajectory
@@ -2544,6 +2687,7 @@ def _build_workflow_run_session(
                 "reviewer_gate_required": _blueprint_requires_reviewer_gate(selected_blueprint),
                 "primary_lane": policy_validation["normalized"]["primary_lane"],
                 "consensus_mode": policy_validation["normalized"]["consensus_mode"],
+                "arbiter_required": policy_validation["normalized"]["consensus_mode"] == "arbiter-review",
                 "selected_candidate_id": _seed_agent_evaluation(policy_validation["normalized"], orchestration).get("selected_candidate_id"),
             }
         ],
@@ -5587,6 +5731,63 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_workflow_run_arbiter(request: web.Request) -> web.Response:
+        """Record a bounded arbiter decision for a workflow run in arbiter-review mode."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+            data = await request.json()
+            selected_candidate_id = str(data.get("selected_candidate_id", "") or "").strip()
+            arbiter = str(data.get("arbiter", "") or "").strip()
+            verdict = str(data.get("verdict", "") or "").strip().lower()
+            rationale = str(data.get("rationale", "") or "").strip()[:400]
+            summary = str(data.get("summary", "") or "").strip()[:400]
+            supporting_decisions = data.get("supporting_decisions")
+            if not selected_candidate_id:
+                return web.json_response({"error": "selected_candidate_id required"}, status=400)
+            if not arbiter:
+                return web.json_response({"error": "arbiter required"}, status=400)
+            if verdict not in {"accept", "reject", "prefer"}:
+                return web.json_response({"error": "verdict must be one of: accept, reject, prefer"}, status=400)
+            if not rationale:
+                return web.json_response({"error": "rationale required"}, status=400)
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+                if not session:
+                    return web.json_response({"error": "session not found"}, status=404)
+                _ensure_session_runtime_fields(session)
+                try:
+                    consensus = _apply_arbiter_update(
+                        session,
+                        selected_candidate_id=selected_candidate_id,
+                        arbiter=arbiter,
+                        verdict=verdict,
+                        rationale=rationale,
+                        summary=summary,
+                        supporting_decisions=supporting_decisions if isinstance(supporting_decisions, list) else [],
+                    )
+                except ValueError as exc:
+                    return web.json_response({"error": str(exc)}, status=400)
+                sessions[session_id] = session
+                await _save_workflow_sessions(sessions)
+                if verdict in {"accept", "prefer"}:
+                    async with _agent_evaluations_lock:
+                        evaluation_registry = await _load_agent_evaluations_registry()
+                        evaluation_registry = _record_agent_consensus_event(
+                            evaluation_registry,
+                            agent=str(consensus.get("selected_agent", "") or "unknown"),
+                            lane=str(consensus.get("selected_lane", "") or "unknown"),
+                            selected_candidate_id=selected_candidate_id,
+                            summary=summary or rationale,
+                            ts=int(session.get("updated_at") or time.time()),
+                        )
+                        await _save_agent_evaluations_registry(evaluation_registry)
+            return web.json_response({"status": "ok", "session_id": session_id, "consensus": consensus})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_workflow_run_mode(request: web.Request) -> web.Response:
         """Switch run safety mode; moving to execute-mutating requires confirm=true."""
         try:
@@ -7227,6 +7428,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/workflow/run/start", handle_workflow_run_start)
     http_app.router.add_get("/workflow/run/{session_id}", handle_workflow_run_get)
     http_app.router.add_post("/workflow/run/{session_id}/consensus", handle_workflow_run_consensus)
+    http_app.router.add_post("/workflow/run/{session_id}/arbiter", handle_workflow_run_arbiter)
     http_app.router.add_post("/workflow/run/{session_id}/mode", handle_workflow_run_mode)
     http_app.router.add_get("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_get)
     http_app.router.add_post("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_set)

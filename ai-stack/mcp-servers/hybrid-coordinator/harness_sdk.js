@@ -305,6 +305,20 @@ export class HarnessClient {
     });
   }
 
+  runArbiter(sessionId, selectedCandidateId, arbiter, verdict, rationale, summary = "", supportingDecisions = []) {
+    return this.request(`/workflow/run/${sessionId}/arbiter`, {
+      method: "POST",
+      body: JSON.stringify({
+        selected_candidate_id: selectedCandidateId,
+        arbiter,
+        verdict,
+        rationale,
+        summary,
+        supporting_decisions: supportingDecisions,
+      }),
+    });
+  }
+
   runGetIsolation(sessionId) {
     return this.request(`/workflow/run/${sessionId}/isolation`, { method: "GET" });
   }
