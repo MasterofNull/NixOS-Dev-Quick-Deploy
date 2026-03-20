@@ -84,3 +84,33 @@ def test_generate_response_queries_keep_detailed_collection_budget(monkeypatch):
 
     assert profile["profile"] == "code-focused-detailed"
     assert len(profile["collections"]) >= 3
+
+
+def test_memory_backed_continuation_queries_use_single_collection(monkeypatch):
+    monkeypatch.setattr(
+        route_handler.task_classifier,
+        "classify",
+        lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="code"),
+    )
+    monkeypatch.setattr(
+        route_handler,
+        "_COLLECTIONS",
+        {
+            "best-practices": {},
+            "skills-patterns": {},
+            "codebase-context": {},
+            "error-solutions": {},
+            "interaction-history": {},
+            "agent-memory-main": {},
+        },
+    )
+
+    profile = route_handler._select_route_collections(
+        "continue fixing the failing nixos service after the last patch",
+        route="hybrid",
+        context={"memory_recall": ["last patch changed the service path"]},
+        generate_response=False,
+    )
+
+    assert profile["profile"] == "continuation-code-memory-first"
+    assert profile["collections"] == ["codebase-context"]
