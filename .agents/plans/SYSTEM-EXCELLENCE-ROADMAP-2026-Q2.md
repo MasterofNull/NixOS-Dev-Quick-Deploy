@@ -1,24 +1,26 @@
 # System Excellence Roadmap — 2026 Q2
 
 **Generated:** 2026-03-15
-**Status:** Active - Phase 1 COMPLETE, Phase 2 Batch 2.2 COMPLETE
+**Last Updated:** 2026-03-20
+**Status:** Active - Phase 1 COMPLETE, Phase 2 Batches 2.1-2.3 materially implemented, Phase 3 Batch 3.1 IN PROGRESS
 **Owner:** AI Harness Team
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Objective:** Transform scattered capabilities into a seamless, production-ready, world-class AI development platform
 
 ---
 
 ## Executive Summary
 
-**Current State (2026-03-15 Update):**
+**Current State (2026-03-20 Update):**
 - ✅ 11 phases of AI capabilities implemented (~100K lines of code)
 - ✅ Advanced features: MAML, gap resolution, progressive disclosure, agentic patterns
 - ✅ **PHASE 1 COMPLETE:** Unified deployment CLI with 9 commands operational
 - ✅ **306→1 consolidation:** Single `deploy` entry point replacing all scattered scripts
 - ✅ Configuration management: config/deploy.yaml with 5 sections
-- ⏳ Dashboard exists, partially integrated (Phase 2 in progress)
-- ⏳ Agentic storage techniques ready for Phase 3 implementation
-- ⏳ End-to-end workflows being validated
+- ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
+- ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search and coverage reporting are live
+- ⏳ Knowledge graph and broader multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
 - ✅ Single unified deployment entry point
@@ -202,26 +204,32 @@
 
 **Gate:** Dashboard shows real-time deployment progress, all services monitored
 
-### Batch 2.1: Deployment Pipeline Integration
+### Batch 2.1: Deployment Pipeline Integration ✅ COMPLETE
 **Priority:** CRITICAL
-**Effort:** High (4-5 days)
+**Effort:** High (4-5 days) → **ACTUAL: incremental across multiple slices**
+**Status:** ✅ COMPLETE (2026-03-20)
 
 **Tasks:**
-- [ ] Connect deploy CLI to dashboard WebSocket API
-- [ ] Implement real-time deployment progress tracking
-- [ ] Add deployment logs streaming to dashboard
-- [ ] Create deployment history timeline
-- [ ] Implement rollback from dashboard UI
+- [x] Connect deploy CLI to dashboard WebSocket/API pipeline
+- [x] Implement real-time deployment progress tracking
+- [x] Add deployment history/timeline rendering in dashboard UI
+- [x] Create deployment history search and live operator detail views
+- [x] Implement rollback planning/execution path from dashboard UI
 
 **Deliverables:**
-- Real-time deployment view in dashboard
-- Deployment history with diff view
-- One-click rollback capability
+- ✅ Real-time deployment view in dashboard
+- ✅ Deployment history timeline and search in dashboard
+- ✅ Rollback planning/execution from dashboard UI
+- ✅ Deploy notifier integration and writable production context DB path
 
 **Validation:**
 - Start deployment from CLI, watch progress in dashboard
 - View deployment logs in real-time
 - Rollback from dashboard UI
+
+**Commits:**
+- f9ee4af: Integrate deploy pipeline with dashboard tracking
+- f10399a: Add deployment operations view to dashboard
 
 ### Batch 2.2: Service Monitoring Integration ✅ COMPLETE
 **Priority:** CRITICAL
@@ -260,27 +268,38 @@ curl http://localhost:8889/api/health/aggregate
 - f68f52c: feat: implement comprehensive AI service health monitoring
 - 586f72f: test: add comprehensive health monitoring validation suite
 
-### Batch 2.3: AI Insights Dashboard
+### Batch 2.3: AI Insights Dashboard ✅ SUBSTANTIALLY COMPLETE
 **Priority:** HIGH
-**Effort:** Medium (3-4 days)
+**Effort:** Medium (3-4 days) → **ACTUAL: incremental across multiple slices**
+**Status:** ✅ SUBSTANTIALLY COMPLETE (2026-03-20)
 
 **Tasks:**
-- [ ] Integrate aq-report data into dashboard
-- [ ] Add query complexity analysis visualizations
-- [ ] Create hint effectiveness timeline
-- [ ] Implement model performance comparison
-- [ ] Add agentic workflow success tracking
+- [x] Integrate aq-report-backed insights into dashboard
+- [x] Add query complexity analysis visualizations
+- [x] Implement model/routing performance comparison
+- [x] Add agentic workflow success/compliance tracking
+- [x] Surface A2A readiness and stream maturity in insights UI
+- [x] Add full insights report drill-down
+- [ ] Create richer historical hint-effectiveness timeline visualization
 
 **Deliverables:**
-- AI insights tab in dashboard
-- Query complexity trends
-- Hint effectiveness metrics
-- Model performance comparison charts
+- ✅ AI insights operator surface in dashboard
+- ✅ Query complexity, routing, recommendations, and lessons panels
+- ✅ Workflow compliance and A2A readiness panels
+- ✅ Full report drill-down
+- ⏳ Historical hint-effectiveness timeline refinement
 
 **Validation:**
 - Dashboard shows last 24h of AI operations
 - Can drill down into specific query patterns
 - Model performance trends visible
+
+**Commits:**
+- 071c2bc: Expose A2A readiness in dashboard insights
+- 6e77704: Expose A2A insights in dashboard UI
+- afa3f4d: Expand AI insights dashboard coverage
+- 31f290c: Add routing and workflow insights to dashboard
+- 62507f5: Add full insights report drilldown to dashboard
 
 ---
 
@@ -290,21 +309,26 @@ curl http://localhost:8889/api/health/aggregate
 
 **Gate:** All system interactions stored in vector DB, semantic search working
 
-### Batch 3.1: Vector Storage Infrastructure
+### Batch 3.1: Vector Storage Infrastructure 🚧 IN PROGRESS
 **Priority:** CRITICAL
 **Effort:** High (4-5 days)
+**Status:** 🚧 IN PROGRESS (2026-03-20)
 
 **Tasks:**
-- [ ] Design unified vector storage schema
-- [ ] Implement deployment history vector embeddings
+- [x] Design initial deployment semantic indexing path and coverage metadata
+- [x] Implement deployment history vector embedding/index sync via AIDB-backed summaries
 - [ ] Create interaction log vector embeddings
 - [ ] Add code change vector embeddings
-- [ ] Implement efficient similarity search
+- [x] Implement deployment similarity search API (`keyword|semantic|hybrid`)
+- [x] Expose deployment search coverage/errors in dashboard
+- [ ] Harden semantic-only latency and background materialization
 
 **Deliverables:**
-- Vector storage schema (Qdrant collections)
-- Embedding pipeline for all data types
-- Similarity search API
+- ✅ Deployment search API with hybrid retrieval
+- ✅ `deploy search ... --type deployments --mode hybrid|semantic|keyword`
+- ✅ Dashboard visibility into deployment search coverage/status
+- ⏳ Generalized vector schema beyond deployment history
+- ⏳ Embedding/index pipeline for interactions and code changes
 
 **Validation:**
 ```python
@@ -317,6 +341,39 @@ find_similar_changes(current_change)
 # Search past interactions
 search_interactions("how to configure nixos modules")
 ```
+
+**Commits:**
+- 70c25a7: Add hybrid semantic deployment search
+- 8c91b65: Expose deployment search coverage in dashboard
+
+**Current Notes:**
+- Hybrid deployment retrieval is the reliable operator path today.
+- Semantic-only retrieval is exposed but still subject to upstream embedding/vector latency.
+- Phase 3.2 should build on the same deployment/event store rather than introducing a separate graph silo.
+
+---
+
+## Coordination Notes (2026-03-20)
+
+**Current coordination model:**
+- `codex` remains the orchestrator/reviewer for implementation slices and integration quality.
+- Sub-agent-oriented execution is an active workflow pattern in the harness and repo policy.
+- A2A interoperability is implemented in the hybrid coordinator and exposed in the dashboard/SDKs.
+
+**A2A / multi-agent foundation already landed:**
+- A2A agent card discovery and `/a2a` JSON-RPC facade
+- A2A task/event streaming and task lifecycle methods
+- SDK surfaces for A2A methods
+- TCK runner and mandatory-gap closure work
+- Dashboard visibility into A2A readiness and stream maturity
+
+**Recent coordination-relevant commits:**
+- bc232c2: Add A2A compatibility facade to hybrid coordinator
+- 491afba: Add A2A methods to harness SDK surfaces
+- a5ebe82: Close mandatory A2A protocol gaps against TCK
+- f9ee4af: Integrate deploy pipeline with dashboard tracking
+- 70c25a7: Add hybrid semantic deployment search
+- 8c91b65: Expose deployment search coverage in dashboard
 
 ### Batch 3.2: Knowledge Graph Construction
 **Priority:** HIGH
