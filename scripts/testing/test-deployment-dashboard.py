@@ -176,7 +176,8 @@ class DeploymentDashboardTests:
             and isinstance(context_search.get("query_analysis"), dict)
             and isinstance(context_search.get("sources"), dict)
             and isinstance(context_search.get("results"), list)
-            and any(item.get("source") in {"config", "code", "semantic", "keyword", "deployment"} for item in (context_search.get("results") or []))
+            and "logs" in context_search.get("sources", {})
+            and any(item.get("source") in {"config", "code", "logs", "semantic", "keyword", "deployment"} for item in (context_search.get("results") or []))
             and isinstance(status.get("recent"), list)
             and "summary" in status
             and isinstance(graph.get("nodes"), list)
@@ -198,7 +199,7 @@ class DeploymentDashboardTests:
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, natural={len(natural_search.get('results') or [])}, context={len(context_search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, natural={len(natural_search.get('results') or [])}, context={len(context_search.get('results') or [])}, context_logs={context_search.get('sources', {}).get('logs', 0)}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
         )
         return passed
 
