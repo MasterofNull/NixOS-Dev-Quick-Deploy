@@ -221,6 +221,7 @@ class DeploymentDashboardTests:
             and (ranked_context["results"][0].get("metadata") or {}).get("match_count", 0) >= 1
             and sum(1 for item in (ranked_context.get("results") or []) if item.get("message") == ranked_context["results"][0].get("message")) == 1
             and sum(1 for item in (ranked_context.get("results") or []) if item.get("source") == "logs") == 1
+            and not any(item.get("source") in {"config", "code"} for item in (ranked_context.get("results") or []))
             and not any(item.get("source") == "semantic" for item in (ranked_context.get("results") or []))
             and isinstance(ranked_context.get("operator_guidance", {}).get("next_actions"), list)
             and isinstance(status.get("recent"), list)
