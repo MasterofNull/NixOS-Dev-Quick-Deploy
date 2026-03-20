@@ -67,6 +67,9 @@ cmd_system() {
   local target="local"
   local fast_mode=0
   local force=0
+  local script_dir
+  local notify_script
+  local dashboard_notify=0
 
   # Parse command-specific options
   while [[ $# -gt 0 ]]; do
@@ -105,14 +108,26 @@ cmd_system() {
   done
 
   print_header "System Deployment"
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  notify_script="${script_dir}/lib/deploy/dashboard-notify.sh"
+  if [[ -x "${notify_script}" ]]; then
+    dashboard_notify=1
+    bash "${notify_script}" start "deploy system${do_rollback:+ --rollback}" "${USER:-system}" >/dev/null 2>&1 || true
+  fi
 
   # Validate prerequisites
   log_step 1 4 "Validating prerequisites..."
+  if [[ ${dashboard_notify} -eq 1 ]]; then
+    bash "${notify_script}" progress 5 "Validating system deployment prerequisites" >/dev/null 2>&1 || true
+  fi
   require_command nixos-rebuild "Install NixOS"
   require_command git "nix-env -iA nixos.git"
 
   # Check if we're on NixOS
   if [[ ! -f /etc/NIXOS ]]; then
+    if [[ ${dashboard_notify} -eq 1 ]]; then
+      bash "${notify_script}" complete false "System deployment requires NixOS" >/dev/null 2>&1 || true
+    fi
     die "This command requires NixOS"
   fi
 
@@ -121,16 +136,28 @@ cmd_system() {
   # Rollback if requested
   if [[ $do_rollback -eq 1 ]]; then
     log_step 2 4 "Rolling back to previous generation..."
+    if [[ ${dashboard_notify} -eq 1 ]]; then
+      bash "${notify_script}" progress 20 "Executing system rollback" >/dev/null 2>&1 || true
+    fi
 
     if would_run "nixos-rebuild switch --rollback"; then
+      if [[ ${dashboard_notify} -eq 1 ]]; then
+        bash "${notify_script}" complete true "Dry-run: rollback preview complete" >/dev/null 2>&1 || true
+      fi
       log_success "[DRY-RUN] Would rollback system"
       return 0
     fi
 
     if sudo nixos-rebuild switch --rollback; then
+      if [[ ${dashboard_notify} -eq 1 ]]; then
+        bash "${notify_script}" complete true "System rollback completed successfully" >/dev/null 2>&1 || true
+      fi
       log_success "System rolled back successfully"
       return 0
     else
+      if [[ ${dashboard_notify} -eq 1 ]]; then
+        bash "${notify_script}" complete false "System rollback failed" >/dev/null 2>&1 || true
+      fi
       die "Rollback failed"
     fi
   fi
@@ -138,14 +165,17 @@ cmd_system() {
   # Validate configuration
   log_step 2 4 "Validating configuration..."
 
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-
   if [[ ! -f "${script_dir}/nixos-quick-deploy.sh" ]]; then
+    if [[ ${dashboard_notify} -eq 1 ]]; then
+      bash "${notify_script}" complete false "nixos-quick-deploy.sh not found" >/dev/null 2>&1 || true
+    fi
     die "nixos-quick-deploy.sh not found"
   fi
 
   log_success "Configuration valid"
+  if [[ ${dashboard_notify} -eq 1 ]]; then
+    bash "${notify_script}" progress 20 "Configuration validated, preparing deployment" >/dev/null 2>&1 || true
+  fi
 
   # Deploy
   log_step 3 4 "Deploying system..."
@@ -170,6 +200,9 @@ cmd_system() {
 
   local start_time
   start_time=$(get_timestamp)
+  if [[ ${dashboard_notify} -eq 1 ]]; then
+    bash "${notify_script}" progress 35 "Running nixos-quick-deploy.sh" >/dev/null 2>&1 || true
+  fi
 
   if "${script_dir}/nixos-quick-deploy.sh" "${deploy_args[@]}" "$@"; then
     local end_time
@@ -180,6 +213,9 @@ cmd_system() {
 
     # Post-deployment health check
     log_step 4 4 "Running post-deployment health check..."
+    if [[ ${dashboard_notify} -eq 1 ]]; then
+      bash "${notify_script}" progress 90 "Running post-deployment health checks" >/dev/null 2>&1 || true
+    fi
 
     if command -v systemctl >/dev/null 2>&1; then
       local failed_services
@@ -196,6 +232,9 @@ cmd_system() {
     echo "  • Run 'deploy health' to verify system health"
     echo "  • Run 'deploy ai-stack' to deploy AI services"
     echo "  • Run 'deploy test --suite=smoke' to run smoke tests"
+    if [[ ${dashboard_notify} -eq 1 ]]; then
+      bash "${notify_script}" complete true "System deployment completed successfully" >/dev/null 2>&1 || true
+    fi
 
     return 0
   else
@@ -207,6 +246,9 @@ cmd_system() {
     echo "  • Run 'deploy recover diagnose' for detailed diagnosis"
     echo "  • Run 'deploy system --rollback' to rollback"
     echo "  • See nixos-quick-deploy.sh logs for details"
+    if [[ ${dashboard_notify} -eq 1 ]]; then
+      bash "${notify_script}" complete false "System deployment failed (exit code: ${exit_code})" >/dev/null 2>&1 || true
+    fi
 
     return $exit_code
   fi

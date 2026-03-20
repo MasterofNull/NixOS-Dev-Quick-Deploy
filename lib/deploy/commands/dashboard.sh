@@ -3,6 +3,14 @@
 # Deploy CLI - Dashboard Command
 # Monitoring dashboard management
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+if [[ -f "${REPO_ROOT}/config/service-endpoints.sh" ]]; then
+  # shellcheck source=config/service-endpoints.sh
+  source "${REPO_ROOT}/config/service-endpoints.sh"
+fi
+
 # ============================================================================
 # Help Text
 # ============================================================================
@@ -49,8 +57,8 @@ DESCRIPTION:
   - Control actions (restart, stop services)
 
   Dashboard Components:
-  - Frontend: React SPA (port 3001 by default)
-  - Backend API: FastAPI (port 8005 by default)
+  - Frontend: Command Center SPA served by the backend
+  - Backend API: FastAPI served on the same operator port in production
   - Monitoring: Grafana (port 3000)
   - Metrics: Prometheus (port 9090)
 
@@ -67,10 +75,10 @@ DASHBOARD SERVICES:
   prometheus-node-exporter.service        # Node metrics
 
 URLS (default):
-  Dashboard:    http://localhost:3001
-  API:          http://localhost:8005
-  Grafana:      http://localhost:3000
-  Prometheus:   http://localhost:9090
+  Dashboard:    ${DASHBOARD_URL}
+  API:          ${DASHBOARD_API_URL}
+  Grafana:      ${GRAFANA_URL}
+  Prometheus:   ${PROMETHEUS_URL}
 
 EXIT CODES:
   0    Operation successful
@@ -103,11 +111,11 @@ DASHBOARD_SERVICES=(
   "prometheus-node-exporter.service"
 )
 
-# Default URLs (can be overridden by config)
-DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:3001}"
-DASHBOARD_API_URL="${DASHBOARD_API_URL:-http://localhost:8005}"
-GRAFANA_URL="${GRAFANA_URL:-http://localhost:3000}"
-PROMETHEUS_URL="${PROMETHEUS_URL:-http://localhost:9090}"
+# Default URLs (can be overridden by env/config/service-endpoints.sh)
+DASHBOARD_URL="${DASHBOARD_URL:-http://127.0.0.1:8889}"
+DASHBOARD_API_URL="${DASHBOARD_API_URL:-${DASHBOARD_URL}}"
+GRAFANA_URL="${GRAFANA_URL:-http://127.0.0.1:3000}"
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}"
 
 # ============================================================================
 # Dashboard Operations

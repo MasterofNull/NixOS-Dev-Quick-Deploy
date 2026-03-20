@@ -5,11 +5,14 @@ Integrated with context-aware storage (SQLite + FTS5)
 """
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
-import json
 import asyncio
+import os
+import shlex
+import subprocess
 from pathlib import Path
 
 from api.services.context_store import get_context_store
@@ -24,6 +27,8 @@ deployment_lock = asyncio.Lock()
 
 # Get context store singleton
 context_store = get_context_store()
+REPO_ROOT = Path(__file__).resolve().parents[4]
+BASH_BIN = os.getenv("BASH_BIN", "bash")
 
 # Deployment event types (for WebSocket broadcasting)
 class DeploymentEventType:
@@ -33,6 +38,47 @@ class DeploymentEventType:
     SUCCESS = "success"
     FAILED = "failed"
     ROLLBACK = "rollback"
+
+
+class DeploymentRollbackRequest(BaseModel):
+    """Rollback request for an existing deployment."""
+    confirm: bool = Field(default=False)
+    execute: bool = Field(default=False)
+    reason: str = Field(default="Operator-requested rollback from dashboard")
+    command: str = Field(default="deploy system --rollback")
+
+
+class DeploymentProgressRequest(BaseModel):
+    """Progress/log update payload from the deploy CLI."""
+    progress: int = Field(ge=0, le=100)
+    message: str
+    log: Optional[str] = None
+
+
+class DeploymentCompleteRequest(BaseModel):
+    """Deployment completion payload from the deploy CLI."""
+    success: bool = True
+    message: Optional[str] = None
+
+
+async def _run_rollback_command(command: str) -> subprocess.CompletedProcess:
+    """Run rollback command in the repo root and capture output."""
+    proc = await asyncio.create_subprocess_exec(
+        BASH_BIN,
+        "-lc",
+        command,
+        cwd=str(REPO_ROOT),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=os.environ.copy(),
+    )
+    stdout, stderr = await proc.communicate()
+    return subprocess.CompletedProcess(
+        args=command,
+        returncode=proc.returncode,
+        stdout=stdout.decode("utf-8", errors="replace"),
+        stderr=stderr.decode("utf-8", errors="replace"),
+    )
 
 
 # ============================================================================
@@ -127,20 +173,18 @@ async def start_deployment(deployment_id: str, command: str, user: str = "system
 @router.post("/deployments/{deployment_id}/progress")
 async def update_deployment_progress(
     deployment_id: str,
-    progress: int,
-    message: str,
-    log: Optional[str] = None
+    request: DeploymentProgressRequest,
 ):
     """Update deployment progress"""
     # Store event in context store
-    event_type = DeploymentEventType.PROGRESS if not log else DeploymentEventType.LOG
-    metadata = {"log": log} if log else None
+    event_type = DeploymentEventType.PROGRESS if not request.log else DeploymentEventType.LOG
+    metadata = {"log": request.log} if request.log else None
 
     context_store.add_event(
         deployment_id=deployment_id,
         event_type=event_type,
-        message=message,
-        progress=progress,
+        message=request.message,
+        progress=request.progress,
         metadata=metadata
     )
 
@@ -148,43 +192,42 @@ async def update_deployment_progress(
     event_dict = {
         "deployment_id": deployment_id,
         "event_type": event_type,
-        "message": message,
-        "progress": progress,
+        "message": request.message,
+        "progress": request.progress,
         "metadata": metadata or {},
         "timestamp": datetime.utcnow().isoformat()
     }
     await broadcast_deployment_event(event_dict)
 
-    return {"status": "updated", "progress": progress}
+    return {"status": "updated", "progress": request.progress}
 
 
 @router.post("/deployments/{deployment_id}/complete")
 async def complete_deployment(
     deployment_id: str,
-    success: bool = True,
-    message: Optional[str] = None
+    request: DeploymentCompleteRequest,
 ):
     """Mark deployment as complete"""
     # Complete in context store
     context_store.complete_deployment(
         deployment_id=deployment_id,
-        success=success,
-        message=message
+        success=request.success,
+        message=request.message
     )
 
     # Broadcast to WebSocket clients
-    event_type = DeploymentEventType.SUCCESS if success else DeploymentEventType.FAILED
+    event_type = DeploymentEventType.SUCCESS if request.success else DeploymentEventType.FAILED
     event_dict = {
         "deployment_id": deployment_id,
         "event_type": event_type,
-        "message": message or f"Deployment {'completed successfully' if success else 'failed'}",
-        "progress": 100 if success else 0,
-        "metadata": {"success": success},
+        "message": request.message or f"Deployment {'completed successfully' if request.success else 'failed'}",
+        "progress": 100 if request.success else 0,
+        "metadata": {"success": request.success},
         "timestamp": datetime.utcnow().isoformat()
     }
     await broadcast_deployment_event(event_dict)
 
-    status = "success" if success else "failed"
+    status = "success" if request.success else "failed"
     logger.info(f"Deployment {deployment_id} completed: {status}")
     return {"status": status}
 
@@ -200,17 +243,50 @@ async def get_active_deployments():
 
 
 @router.get("/deployments/history")
-async def get_deployment_history(limit: int = 20, offset: int = 0):
+async def get_deployment_history(
+    limit: int = 20,
+    offset: int = 0,
+    status: Optional[str] = None,
+    include_timeline_preview: bool = False,
+):
     """Get deployment history"""
-    deployments = context_store.get_recent_deployments(limit=limit)
+    deployments = context_store.get_recent_deployments(limit=limit, status=status)
+    total = context_store.count_deployments(status=status)
 
     # Apply offset
     if offset > 0 and offset < len(deployments):
         deployments = deployments[offset:]
+    elif offset >= len(deployments):
+        deployments = []
+
+    if include_timeline_preview:
+        deployments = [
+            {
+                **deployment,
+                "timeline_preview": context_store.get_deployment_timeline(deployment["deployment_id"])[:5],
+            }
+            for deployment in deployments
+        ]
 
     return {
         "deployments": deployments,
-        "total": len(deployments),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "status": status,
+        "has_more": offset + len(deployments) < total,
+    }
+
+
+@router.get("/deployments/search")
+async def search_deployments(query: str, limit: int = 20, offset: int = 0):
+    """Search deployment logs using FTS5 with BM25 ranking."""
+    results = context_store.search_deployments(query, limit=limit, offset=offset)
+
+    return {
+        "results": results,
+        "query": query,
+        "count": len(results),
         "limit": limit,
         "offset": offset
     }
@@ -230,7 +306,11 @@ async def get_deployment(deployment_id: str):
 
     return {
         **summary,
-        "timeline": timeline
+        "timeline": timeline,
+        "rollback": {
+            "available": summary["status"] in {"running", "failed", "success"},
+            "command": "deploy system --rollback",
+        },
     }
 
 
@@ -252,15 +332,79 @@ async def get_deployment_logs(deployment_id: str, errors_only: bool = False, lim
     return {"logs": timeline, "condensed": True}
 
 
-@router.get("/deployments/search")
-async def search_deployments(query: str, limit: int = 20, offset: int = 0):
-    """Search deployment logs using FTS5 with BM25 ranking"""
-    results = context_store.search_deployments(query, limit=limit, offset=offset)
+@router.post("/deployments/{deployment_id}/rollback")
+async def rollback_deployment(deployment_id: str, request: DeploymentRollbackRequest):
+    """Record or execute a rollback request for a deployment."""
+    summary = context_store.get_deployment_summary(deployment_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    if not request.confirm:
+        raise HTTPException(status_code=400, detail="Rollback confirmation is required")
+
+    safe_command = request.command.strip() or "deploy system --rollback"
+    if safe_command != "deploy system --rollback":
+        raise HTTPException(status_code=400, detail="Unsupported rollback command")
+
+    quoted_command = shlex.join(safe_command.split())
+    context_store.add_event(
+        deployment_id=deployment_id,
+        event_type=DeploymentEventType.ROLLBACK,
+        message=request.reason,
+        progress=summary.get("progress") or 0,
+        metadata={
+            "execute": request.execute,
+            "command": quoted_command,
+            "status_before": summary.get("status"),
+        },
+    )
+
+    if not request.execute:
+        event_dict = {
+            "deployment_id": deployment_id,
+            "event_type": DeploymentEventType.ROLLBACK,
+            "message": request.reason,
+            "progress": summary.get("progress") or 0,
+            "metadata": {
+                "execute": False,
+                "command": quoted_command,
+                "planned": True,
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        await broadcast_deployment_event(event_dict)
+        return {
+            "status": "planned",
+            "deployment_id": deployment_id,
+            "rollback_command": quoted_command,
+            "executed": False,
+        }
+
+    result = await _run_rollback_command(quoted_command)
+    success = result.returncode == 0
+    output = (result.stdout + result.stderr).strip()
+    if len(output) > 4000:
+        output = "...[truncated]...\n" + output[-4000:]
+
+    event_dict = {
+        "deployment_id": deployment_id,
+        "event_type": DeploymentEventType.ROLLBACK,
+        "message": request.reason,
+        "progress": summary.get("progress") or 0,
+        "metadata": {
+            "execute": True,
+            "command": quoted_command,
+            "success": success,
+            "returncode": result.returncode,
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    await broadcast_deployment_event(event_dict)
 
     return {
-        "results": results,
-        "query": query,
-        "count": len(results),
-        "limit": limit,
-        "offset": offset
+        "status": "success" if success else "failed",
+        "deployment_id": deployment_id,
+        "rollback_command": quoted_command,
+        "executed": True,
+        "returncode": result.returncode,
+        "output": output,
     }
