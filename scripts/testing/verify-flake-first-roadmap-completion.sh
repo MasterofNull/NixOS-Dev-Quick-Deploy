@@ -627,6 +627,7 @@ check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services\(\)
 check_pattern "nixos-quick-deploy.sh" 'systemd_unit_declared\(\)' 'Quick deploy centralizes systemd unit declaration checks'
 check_pattern "nixos-quick-deploy.sh" 'systemd_unit_enabled_or_running\(\)' 'Quick deploy centralizes systemd unit state checks'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "service restart"' 'Quick deploy reuses repo-backed AI gating for service restarts'
+check_pattern "nixos-quick-deploy.sh" 'command-center-dashboard-api\.service' 'Quick deploy includes the dashboard API in repo-backed restart coverage'
 check_pattern "nixos-quick-deploy.sh" 'should_manage_repo_backed_ai_services "capability verification"' 'Quick deploy reuses repo-backed AI gating for capability verification'
 check_pattern "nixos-quick-deploy.sh" 'ai_service_health_targets\(\)' 'Quick deploy centralizes AI service readiness targets'
 check_pattern "nixos-quick-deploy.sh" 'done < <\(ai_service_health_targets\)' 'Quick deploy iterates AI readiness checks from the shared target table'
