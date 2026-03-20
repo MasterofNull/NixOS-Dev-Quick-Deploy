@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -48,7 +48,7 @@ class AIInsightsService:
 
             # Update cache
             self._cache = data
-            self._cache_timestamp = datetime.utcnow()
+            self._cache_timestamp = datetime.now(timezone.utc)
 
             return data
 
@@ -67,7 +67,7 @@ class AIInsightsService:
         if self._cache is None or self._cache_timestamp is None:
             return False
 
-        age = (datetime.utcnow() - self._cache_timestamp).total_seconds()
+        age = (datetime.now(timezone.utc) - self._cache_timestamp).total_seconds()
         return age < self._cache_ttl_seconds
 
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
@@ -249,7 +249,7 @@ class AIInsightsService:
             )
         )
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "in_progress",
             "controls": {
                 "content_security_policy": bool(csp),

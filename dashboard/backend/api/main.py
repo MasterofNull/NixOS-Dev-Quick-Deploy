@@ -271,6 +271,19 @@ async def root():
         )
 
 
+@app.get("/index.html")
+async def root_index():
+    """Serve the dashboard entrypoint for health checks and static clients."""
+    if _COMMAND_CENTER_PATH.exists():
+        return FileResponse(_COMMAND_CENTER_PATH)
+    else:
+        return JSONResponse(
+            {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
+             "note": "Command Center dashboard not found"},
+            status_code=200,
+        )
+
+
 async def broadcast_metrics():
     """Background task to broadcast metrics to all connected clients"""
     while True:

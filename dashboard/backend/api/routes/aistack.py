@@ -10,7 +10,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from ..config import service_endpoints
@@ -1337,7 +1337,7 @@ async def _run_full_health_probe() -> Dict[str, Any]:
             "degraded": sum(1 for v in health_checks.values() if v["status"] == "degraded"),
             "down": sum(1 for v in health_checks.values() if v["status"] == "down"),
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1492,7 +1492,7 @@ async def get_circuit_breakers() -> Dict[str, Any]:
 
     return {
         "circuit_breakers": circuit_breakers,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -1574,7 +1574,7 @@ async def get_harness_stats() -> Dict[str, Any]:
             "status": "degraded",
             "available": False,
             "reason": "hybrid_harness_stats_unavailable",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
         headers=headers,
     )
@@ -1583,7 +1583,7 @@ async def get_harness_stats() -> Dict[str, Any]:
             "status": "degraded",
             "available": False,
             "reason": "invalid_harness_stats_payload",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     result.setdefault("available", True)
     result.setdefault("status", "ok")
@@ -1658,7 +1658,7 @@ async def get_harness_overview() -> Dict[str, Any]:
     improvement = await _fetch_improvement_pass_stats(hours=24)
 
     return {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "ok",
         "harness": {
             "stats": harness_stats,
@@ -1719,7 +1719,7 @@ async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[st
         "action": payload.action,
         "improvement_summary": improvement_summary or None,
         **result,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1740,7 +1740,7 @@ async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = N
     return {
         "status": "ok",
         "prsi": payload,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1753,7 +1753,7 @@ async def sync_prsi_actions(since: str = "1d") -> Dict[str, Any]:
     return {
         "status": "ok",
         "result": result.get("payload", {}),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1769,7 +1769,7 @@ async def approve_prsi_action(payload: PRSIApprovalPayload) -> Dict[str, Any]:
     return {
         "status": "ok",
         "result": result.get("payload", {}),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1803,7 +1803,7 @@ async def execute_prsi_actions(payload: PRSIExecutePayload) -> Dict[str, Any]:
         "status": "ok",
         "sync_result": sync_result.get("payload", {}) if isinstance(sync_result, dict) else None,
         "execute_result": exec_result.get("payload", {}),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -2084,7 +2084,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
     )
 
     payload = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "services": {
             "aidb": {
                 "service": "aidb",
@@ -2338,7 +2338,7 @@ async def get_ralph_tasks() -> Dict[str, Any]:
 
     return {
         "tasks": tasks,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -2491,7 +2491,7 @@ async def get_aistack_metrics() -> Dict[str, Any]:
             "tokens_compressed_last_hour": before_sum is not None or after_sum is not None,
             "aq_report": isinstance(report, dict) and bool(report),
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -2607,7 +2607,7 @@ async def get_security_audit() -> Dict[str, Any]:
         "high_severity_alert": high_severity_alert,
         "npm_monitor": npm_monitor,
         "report_path": str(latest_report),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     if dashboard_scan.exists():
         try:
