@@ -361,6 +361,99 @@ class AIInsightsService:
             "rag_posture": report.get("rag_posture", {}),
         }
 
+    async def get_performance_hotspots(self) -> Dict[str, Any]:
+        """Return the highest-signal performance hotspots for current optimization work."""
+        report = await self.get_full_report()
+        cache = report.get("cache", {}) if isinstance(report.get("cache"), dict) else {}
+        rag_posture = report.get("rag_posture", {}) if isinstance(report.get("rag_posture"), dict) else {}
+        route_latency = (
+            report.get("route_search_latency_decomposition", {})
+            if isinstance(report.get("route_search_latency_decomposition"), dict)
+            else {}
+        )
+        retrieval_breadth = (
+            report.get("route_retrieval_breadth", {})
+            if isinstance(report.get("route_retrieval_breadth"), dict)
+            else {}
+        )
+        retrieval_windows = (
+            report.get("route_retrieval_breadth_windows", {})
+            if isinstance(report.get("route_retrieval_breadth_windows"), dict)
+            else {}
+        )
+        recent_mix = ((rag_posture.get("retrieval_mix") or {}).get("recent") or {}) if isinstance(rag_posture, dict) else {}
+        top_candidate = None
+        for candidate in rag_posture.get("prewarm_candidates", []) or []:
+            if isinstance(candidate, dict) and candidate.get("id"):
+                top_candidate = {
+                    "id": candidate.get("id"),
+                    "name": candidate.get("name"),
+                }
+                break
+
+        hotspots: List[Dict[str, Any]] = []
+        route_p95 = route_latency.get("p95_ms")
+        if route_p95 is None:
+            route_p95 = route_latency.get("overall_p95_ms")
+        if route_p95 is not None:
+            hotspots.append(
+                {
+                    "id": "route_latency",
+                    "label": "Route Search Latency",
+                    "status": "watch" if float(route_p95) >= 2500 else "healthy",
+                    "summary": f"p95={float(route_p95):.0f}ms",
+                }
+            )
+        if cache.get("available") and cache.get("hit_pct") is not None:
+            cache_hit = float(cache.get("hit_pct") or 0.0)
+            hotspots.append(
+                {
+                    "id": "semantic_cache",
+                    "label": "Semantic Cache Hit Rate",
+                    "status": "watch" if cache_hit < 60.0 else "healthy",
+                    "summary": f"hit_rate={cache_hit:.1f}%",
+                }
+            )
+        breadth_avg = retrieval_breadth.get("avg_collection_count")
+        if breadth_avg is not None:
+            hotspots.append(
+                {
+                    "id": "retrieval_breadth",
+                    "label": "Retrieval Breadth",
+                    "status": "watch" if float(breadth_avg) > 2.5 else "healthy",
+                    "summary": f"avg_collections={float(breadth_avg):.2f}",
+                }
+            )
+        memory_miss_pct = rag_posture.get("memory_recall_miss_pct")
+        if memory_miss_pct is not None:
+            hotspots.append(
+                {
+                    "id": "memory_recall_quality",
+                    "label": "Memory Recall Quality",
+                    "status": "watch" if float(memory_miss_pct) >= 50.0 else "healthy",
+                    "summary": f"miss_rate={float(memory_miss_pct):.1f}%",
+                }
+            )
+
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            "hotspots": hotspots,
+            "route_latency": route_latency,
+            "cache": cache,
+            "retrieval_breadth": retrieval_breadth,
+            "retrieval_breadth_windows": retrieval_windows,
+            "rag_posture": {
+                "status": rag_posture.get("status"),
+                "reasons": rag_posture.get("reasons", []),
+                "recent_retrieval_calls": rag_posture.get("recent_retrieval_calls"),
+                "retrieval_mix_recent": recent_mix,
+                "memory_recall_share_pct": rag_posture.get("memory_recall_share_pct"),
+                "memory_recall_miss_pct": memory_miss_pct,
+                "top_prewarm_candidate": top_candidate,
+            },
+        }
+
     async def get_operator_insight_digest(self, insight_target: str) -> Dict[str, Any]:
         """Return a compact insight summary suitable for operator search guidance."""
         normalized_target = str(insight_target or "full_report").strip().lower()
@@ -388,6 +481,19 @@ class AIInsightsService:
                     f"query_gaps={len(query_gaps)} "
                     f"| rag_enabled={rag_posture.get('enabled', 'unknown')} "
                     f"| breadth_windows={len(complexity.get('retrieval_breadth') or {})}"
+                ),
+            }
+        if normalized_target == "performance_hotspots":
+            hotspots = await self.get_performance_hotspots()
+            top_hotspot = (hotspots.get("hotspots") or [{}])[0]
+            return {
+                "target": normalized_target,
+                "title": "Performance Hotspots",
+                "status": "active",
+                "summary": (
+                    f"hotspots={len(hotspots.get('hotspots') or [])} "
+                    f"| top={top_hotspot.get('id', '--')} "
+                    f"| prewarm={((hotspots.get('rag_posture') or {}).get('top_prewarm_candidate') or {}).get('id', '--')}"
                 ),
             }
 
