@@ -40,6 +40,7 @@ REQUIRED_SNIPPETS = [
     'cluster evidence',
     'query analysis',
     'result.explanation?.summary',
+    'result.explanation.rank_score',
     '/api/deployments/search/context?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}',
     'sources=d:${searchMeta.sources.deployment ?? 0}/l:${searchMeta.sources.logs ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}',
     'function loadDeploymentOps()',

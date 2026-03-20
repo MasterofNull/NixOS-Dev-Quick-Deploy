@@ -356,6 +356,7 @@ search_interactions("how to configure nixos modules")
 - Add natural-language deployment search with query analysis and explanations
 - Add context-aware retrieval across deployments, config, and code
 - Add initial multi-modal retrieval across deployments, logs, config, and code
+- Improve ranking quality so actionable log/config/code context can outrank weak semantic deployment hits
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
@@ -373,6 +374,7 @@ search_interactions("how to configure nixos modules")
 - Deployment search now supports `natural` and `auto` modes with query intent analysis, recommended graph focus, and per-result explanation summaries in both dashboard and CLI.
 - Natural-language operator search now uses a context-aware retrieval path for deployments plus repo config/code context, which consolidates dashboard and harness troubleshooting around a single explainable contract.
 - Operator retrieval now includes live log context alongside deployments/config/code under the same query-analysis and explanation model, reducing the need to pivot between separate dashboard panels or CLI modes.
+- Multi-modal operator retrieval now includes source-aware ranking so actionable log/config/code matches can surface ahead of low-signal semantic deployment results when the query intent calls for it.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -465,6 +467,7 @@ RETURN path
 - [x] Create context-aware retrieval for deployments + config/code
 - [x] Implement initial multi-modal search (logs + code + config)
 - [x] Add search results ranking with relevance scores and explanations
+- [x] Improve source-aware ranking for multi-modal operator retrieval
 
 **Deliverables:**
 - ✅ `deploy search "<natural language query>"`
@@ -473,6 +476,7 @@ RETURN path
 - ✅ Query intent analysis with recommended graph view/focus
 - ✅ Context-aware retrieval across deployments + config/code
 - ✅ Initial multi-modal retrieval across deployments + logs + config + code
+- ✅ Source-aware ranking that boosts actionable logs/config/code when query intent favors them
 - ⏳ Broader context-aware retrieval beyond current operator sources
 
 **Validation:**
