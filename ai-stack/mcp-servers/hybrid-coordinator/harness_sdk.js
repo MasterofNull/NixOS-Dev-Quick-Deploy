@@ -47,6 +47,85 @@ export class HarnessClient {
     });
   }
 
+  a2aAgentCard() {
+    return this.request("/.well-known/agent.json", { method: "GET" });
+  }
+
+  a2aGetCard() {
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "agent-card",
+        method: "agent/getCard",
+        params: {},
+      }),
+    });
+  }
+
+  a2aSendMessage(text, opts = {}) {
+    const message = {
+      role: "user",
+      parts: [{ type: "text", text }],
+    };
+    const params = {
+      message,
+      safetyMode: opts.safetyMode ?? "plan-readonly",
+    };
+    if (opts.taskId) {
+      message.taskId = opts.taskId;
+      params.taskId = opts.taskId;
+    }
+    if (opts.intentContract) params.intent_contract = opts.intentContract;
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "message-send",
+        method: "message/send",
+        params,
+      }),
+    });
+  }
+
+  a2aGetTask(taskId) {
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "task-get",
+        method: "tasks/get",
+        params: { id: taskId },
+      }),
+    });
+  }
+
+  a2aListTasks(limit = 10) {
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "task-list",
+        method: "tasks/list",
+        params: { limit },
+      }),
+    });
+  }
+
+  a2aCancelTask(taskId, reason = "") {
+    const params = { id: taskId };
+    if (reason) params.reason = reason;
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "task-cancel",
+        method: "tasks/cancel",
+        params,
+      }),
+    });
+  }
+
   query(query, opts = {}) {
     const payload = {
       query,

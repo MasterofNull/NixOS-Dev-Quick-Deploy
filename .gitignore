@@ -3,6 +3,9 @@
 *.backup.*
 .cache/
 .config-backups/
+/package.json
+/package-lock.json
+/routing_metrics.db
 
 # User-specific files
 .vscode/
