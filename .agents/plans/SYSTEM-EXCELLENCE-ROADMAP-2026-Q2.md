@@ -387,6 +387,7 @@ search_interactions("how to configure nixos modules")
 - Operator retrieval now also prunes weak secondary log units when one dominant runtime unit already explains the query.
 - Operator retrieval now suppresses low-value code/context tail for runtime-status queries when one dominant log unit already explains the issue.
 - Dominant runtime-status queries now collapse to a single primary runtime evidence block instead of mixing background retrieval context into the answer.
+- Dashboard/API hardening now includes baseline CSP and HTTP security headers on the operator web surface, starting direct execution against the open next-gen security roadmap work.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---

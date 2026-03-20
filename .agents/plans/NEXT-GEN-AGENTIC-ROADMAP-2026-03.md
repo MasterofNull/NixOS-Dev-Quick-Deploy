@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; deployment knowledge-graph context added; deeper orchestration still pending
+**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; deployment knowledge-graph context added; dashboard/API security hardening started; deeper orchestration still pending
 **Created:** 2026-03-15
 **Last Updated:** 2026-03-20
 **Version:** 1.1.0
@@ -24,6 +24,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
+- Dashboard/API security hardening is now moving into the open Batch 2.2 work with baseline CSP and HTTP security headers on the operator web surface.
 - Deployment and operator telemetry now also has natural-language deployment retrieval with query analysis/explanations, context-aware retrieval across deployments/logs/config/code, queryable graph views, cross-deployment relatedness reasoning, cluster summaries, root-cluster/failure-family queries, ranked cause chains, cluster score-breakdown rankings, per-cluster evidence drilldowns, shared operator-guidance follow-up actions that connect retrieval results back into graph/insights surfaces, stronger configuration-intent ranking so fix-oriented queries prefer config/code evidence over noisy logs, file-level repo-context aggregation so repeated line hits do not overwhelm the operator surface, likely-fix path hints so retrieval can point agents toward the next probable remediation target, recommended next-step summaries so operators and sub-agents can act on one concise instruction first, compact insight digests so the operator answer can carry lightweight analytics context without a second panel load, low-value doc pruning when a stronger actionable fix path already exists, unit-level log aggregation so runtime context stays compact when one service dominates the evidence, weak semantic tail pruning when stronger runtime or fix-path evidence is already present, weak secondary log-unit pruning when one dominant runtime unit already explains the operator query, low-value code/context tail suppression for dominant runtime-status queries, and dominant runtime-answer collapse so status-style searches resolve to one primary runtime block when that is the clearest answer.
 - The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
 - Roadmap coordination should assume:
@@ -118,17 +119,18 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Network policies
 
 ### Batch 2.2: Security Audit & Hardening
-**Status:** pending
+**Status:** in progress
 **Tasks:**
 - [ ] Run comprehensive security scan (OWASP ZAP, Nessus)
-- [ ] Implement Content Security Policy for web interfaces
+- [x] Implement baseline Content Security Policy for dashboard/operator web interfaces
 - [ ] Add rate limiting and DDoS protection
 - [ ] Implement secrets rotation automation
-- [ ] Add security headers to all HTTP responses
+- [x] Add baseline security headers to the dashboard/operator HTTP surface
 
 **Deliverables:**
-- Security scan report
-- Hardening recommendations implemented
+- ⏳ Security scan report
+- ⏳ Hardening recommendations implemented
+- ✅ Dashboard/operator CSP + HTTP security headers
 - Automated secrets rotation
 
 ### Batch 2.3: Audit Trail & Compliance

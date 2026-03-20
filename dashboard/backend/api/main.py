@@ -4,7 +4,7 @@ NixOS System Dashboard - FastAPI Backend
 Main application entry point with WebSocket support
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
-from typing import List
+from typing import Dict, List
 from pathlib import Path
 
 from api.routes import metrics, services, containers, config, websockets, actions, aistack, deployments, health, insights
@@ -30,6 +30,46 @@ active_connections: List[WebSocket] = []
 connections_lock = asyncio.Lock()  # Protect against race conditions
 metrics_collector: MetricsCollector = None
 METRICS_BROADCAST_INTERVAL_SECONDS = float(os.getenv("DASHBOARD_METRICS_INTERVAL_SECONDS", "1.0"))
+
+
+def _default_content_security_policy() -> str:
+    """Default CSP for the single-origin dashboard surface."""
+    return "; ".join(
+        [
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "form-action 'self'",
+            "img-src 'self' data:",
+            "font-src 'self' data:",
+            "connect-src 'self' ws: wss:",
+            "script-src 'self' 'unsafe-inline'",
+            "style-src 'self' 'unsafe-inline'",
+        ]
+    )
+
+
+def _build_security_headers() -> Dict[str, str]:
+    """Security headers for HTTP routes served by the dashboard API."""
+    headers = {
+        "Content-Security-Policy": os.getenv("DASHBOARD_CSP", _default_content_security_policy()),
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": os.getenv("DASHBOARD_REFERRER_POLICY", "no-referrer"),
+        "Permissions-Policy": os.getenv(
+            "DASHBOARD_PERMISSIONS_POLICY",
+            "camera=(), microphone=(), geolocation=()",
+        ),
+        "Cross-Origin-Opener-Policy": os.getenv("DASHBOARD_COOP", "same-origin"),
+        "Cross-Origin-Resource-Policy": os.getenv("DASHBOARD_CORP", "same-origin"),
+    }
+    if os.getenv("DASHBOARD_ENABLE_HSTS", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        headers["Strict-Transport-Security"] = os.getenv(
+            "DASHBOARD_HSTS_POLICY",
+            "max-age=31536000; includeSubDomains",
+        )
+    return headers
 
 
 @asynccontextmanager
@@ -83,6 +123,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Apply baseline security headers to dashboard HTTP responses."""
+    response = await call_next(request)
+    for name, value in _build_security_headers().items():
+        response.headers.setdefault(name, value)
+    return response
 
 # Include routers
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
