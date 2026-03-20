@@ -24,6 +24,43 @@ pass "python sdk compile"
 node --check "${SDK_DIR}/harness_sdk.js" || fail "js sdk syntax failed"
 pass "js sdk syntax"
 
+python - <<'PY' "${SDK_DIR}/harness_sdk.py" || fail "python sdk A2A surface drift"
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+required = [
+    "def a2a_agent_card",
+    "def a2a_get_card",
+    "def a2a_send_message",
+    "def a2a_get_task",
+    "def a2a_list_tasks",
+    "def a2a_cancel_task",
+]
+missing = [item for item in required if item not in source]
+if missing:
+    raise SystemExit(f"missing python A2A methods: {missing}")
+PY
+pass "python sdk A2A methods"
+
+python - <<'PY' "${SDK_DIR}/harness_sdk.ts" "${SDK_DIR}/harness_sdk.js" "${SDK_DIR}/harness_sdk.d.ts" || fail "js/ts sdk A2A surface drift"
+from pathlib import Path
+import sys
+required = [
+    "a2aAgentCard",
+    "a2aGetCard",
+    "a2aSendMessage",
+    "a2aGetTask",
+    "a2aListTasks",
+    "a2aCancelTask",
+]
+for raw_path in sys.argv[1:]:
+    source = Path(raw_path).read_text(encoding="utf-8")
+    missing = [item for item in required if item not in source]
+    if missing:
+        raise SystemExit(f"{raw_path}: missing {missing}")
+PY
+pass "js/ts sdk A2A methods"
+
 # Python and npm SDK versions must stay in lockstep.
 "${ROOT}/scripts/testing/check-harness-sdk-version-parity.sh" >/dev/null || fail "SDK version parity check failed"
 pass "sdk version parity"
