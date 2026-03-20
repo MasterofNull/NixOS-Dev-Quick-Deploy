@@ -417,6 +417,7 @@ search_interactions("how to configure nixos modules")
 - Candidate scoring for workflow sessions now reads that longitudinal evaluation registry back in, so prior accepted reviews and prior selections can influence future lane/agent choice.
 - Remote-reasoning workflow runs now support a live arbiter-review path with persisted arbiter decisions, trajectory events, and A2A-visible arbiter artifacts.
 - Workflow run sessions now also expose an initial dynamic team-formation contract, so clients can inspect bounded primary/reviewer/escalation role assignment directly from the coordinator.
+- Workflow runtime events now also feed agent-evaluation history, so future candidate scoring can incorporate actual execution quality signals rather than only review and consensus outcomes.
 
 **Recent coordination-relevant commits:**
 - bc232c2: Add A2A compatibility facade to hybrid coordinator

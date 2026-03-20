@@ -50,6 +50,7 @@ from http_server import (  # noqa: E402
     _load_agent_evaluations_registry_sync,
     _record_agent_consensus_event,
     _record_agent_review_event,
+    _record_agent_runtime_event,
     _save_agent_evaluations_registry,
     _seed_agent_evaluation,
 )
@@ -184,11 +185,25 @@ def main() -> int:
         summary="selected for the reasoning lane",
         ts=2,
     )
+    evaluation_registry = _record_agent_runtime_event(
+        evaluation_registry,
+        agent="claude",
+        profile="reasoning",
+        event_type="completed",
+        risk_class="safe",
+        approved=True,
+        token_delta=120,
+        tool_call_delta=2,
+        detail="completed reasoning workflow cleanly",
+        ts=3,
+    )
     claude = (evaluation_registry.get("agents") or {}).get("claude") or {}
     reasoning = (claude.get("profiles") or {}).get("reasoning") or {}
     remote_reasoning = (claude.get("profiles") or {}).get("remote-reasoning") or {}
     assert_true(remote_reasoning.get("accepted_reviews") == 1, "review event should accumulate accepted reviews")
     assert_true(reasoning.get("consensus_selected") == 1, "consensus event should accumulate selection counts")
+    assert_true(reasoning.get("runtime_events") == 1, "runtime event should accumulate execution history")
+    assert_true(float(reasoning.get("average_runtime_score", 0.0) or 0.0) > 0.0, "runtime event should preserve execution quality")
     assert_true((evaluation_registry.get("summary") or {}).get("agent_count") >= 1, "evaluation summary should track agent count")
 
     with tempfile.TemporaryDirectory(prefix="agent-evals-") as tmp_dir:
@@ -214,10 +229,23 @@ def main() -> int:
             summary="historically preferred for reasoning",
             ts=4,
         )
+        seeded_registry = _record_agent_runtime_event(
+            seeded_registry,
+            agent="human",
+            profile="reasoning",
+            event_type="completed",
+            risk_class="safe",
+            approved=True,
+            token_delta=42,
+            tool_call_delta=1,
+            detail="historically successful reasoning run",
+            ts=5,
+        )
         import asyncio
         asyncio.run(_save_agent_evaluations_registry(seeded_registry))
         reloaded = _load_agent_evaluations_registry_sync()
         assert_true((reloaded.get("summary") or {}).get("consensus_events", 0) >= 1, "reloaded registry should preserve consensus history")
+        assert_true((reloaded.get("summary") or {}).get("runtime_events", 0) >= 1, "reloaded registry should preserve runtime history")
         seeded_consensus = _seed_agent_evaluation(reasoning_policy, default_ctx)
         candidates = seeded_consensus.get("candidates") or []
         primary = next((item for item in candidates if item.get("candidate_id") == "primary"), {})
@@ -228,6 +256,10 @@ def main() -> int:
         assert_true(
             float((primary.get("history_bias") or {}).get("selection_score", 0.0)) > 0.0,
             "historical selection count should feed back into future candidate scoring",
+        )
+        assert_true(
+            float((primary.get("history_bias") or {}).get("runtime_score", 0.0)) > 0.0,
+            "historical runtime quality should feed back into future candidate scoring",
         )
         os.environ.pop("DATA_DIR", None)
 
