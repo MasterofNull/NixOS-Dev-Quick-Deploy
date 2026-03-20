@@ -93,6 +93,18 @@ async def get_workflow_compliance():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/workflows/a2a-readiness")
+async def get_a2a_readiness():
+    """Get A2A compatibility readiness for the hybrid coordinator."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_a2a_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get A2A readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # Query Complexity Analysis Endpoints
 # ============================================================================
