@@ -11,8 +11,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pathlib import Path
-
-import httpx
+from urllib.request import Request, urlopen
 
 from api.config.service_endpoints import HYBRID_URL
 
@@ -178,10 +177,9 @@ class AIInsightsService:
         agent_card_url = f"{HYBRID_URL.rstrip('/')}/.well-known/agent.json"
         rpc_url = f"{HYBRID_URL.rstrip('/')}/a2a"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(agent_card_url)
-                response.raise_for_status()
-            card = response.json()
+            request = Request(agent_card_url, headers={"Accept": "application/json"})
+            with urlopen(request, timeout=10.0) as response:
+                card = json.loads(response.read().decode("utf-8"))
         except Exception as exc:
             logger.error("Failed to get A2A agent card: %s", exc)
             return {

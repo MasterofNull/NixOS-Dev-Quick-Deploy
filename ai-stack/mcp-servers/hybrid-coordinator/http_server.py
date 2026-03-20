@@ -103,6 +103,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 
 logger = logging.getLogger("hybrid-coordinator")
+SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 
 # ---------------------------------------------------------------------------
 # Module-level state — populated by init()
@@ -1659,9 +1660,11 @@ def _normalize_safety_mode(value: str) -> str:
 def _default_budget(data: Dict[str, Any]) -> Dict[str, int]:
     env_token_limit = int(os.getenv("AI_RUN_DEFAULT_TOKEN_LIMIT", "8000"))
     env_tool_call_limit = int(os.getenv("AI_RUN_DEFAULT_TOOL_CALL_LIMIT", "40"))
+    token_limit_raw = data.get("token_limit", env_token_limit)
+    tool_call_limit_raw = data.get("tool_call_limit", env_tool_call_limit)
     return {
-        "token_limit": int(data.get("token_limit", env_token_limit)),
-        "tool_call_limit": int(data.get("tool_call_limit", env_tool_call_limit)),
+        "token_limit": int(env_token_limit if token_limit_raw in (None, "") else token_limit_raw),
+        "tool_call_limit": int(env_tool_call_limit if tool_call_limit_raw in (None, "") else tool_call_limit_raw),
     }
 
 
