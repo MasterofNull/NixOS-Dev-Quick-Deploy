@@ -87,6 +87,39 @@ def main() -> int:
         "expected explicit weak-memory remediation action",
     )
 
+    ranked = aq_report.rag_posture(
+        tool_stats={
+            "route_search": {"calls": 40},
+            "tree_search": {"calls": 4},
+            "recall_agent_memory": {"calls": 2},
+        },
+        recent_tool_stats={
+            "route_search": {"calls": 24},
+            "tree_search": {"calls": 3},
+            "recall_agent_memory": {"calls": 2},
+        },
+        recent_audit_entries=[
+            {"tool_name": "recall_agent_memory", "metadata": {"memory_recall_miss": False}},
+            {"tool_name": "recall_agent_memory", "metadata": {"memory_recall_miss": False}},
+        ],
+        cache={"available": True, "hits": 10, "misses": 20, "hit_pct": 33.3},
+        gaps=[],
+        top_prompts=[
+            {"id": "memory_recall_contextualise", "name": "Memory Recall Contextualise", "mean_score": 0.99},
+            {"id": "route_search_synthesis", "name": "Route Search Synthesis", "mean_score": 0.90},
+            {"id": "gap_detection_score", "name": "Gap Detection Score", "mean_score": 0.88},
+        ],
+        route_latency={"overall_p95_ms": 3661.1},
+        retrieval_breadth={"avg_collection_count": 2.86},
+    )
+    ranked_candidates = ranked.get("prewarm_candidates") or []
+    assert_true(ranked_candidates[0].get("id") == "route_search_synthesis", "expected route_search pressure to rank first")
+    assert_true(
+        "latency" in str(ranked_candidates[0].get("reason", "")).lower()
+        or "cache" in str(ranked_candidates[0].get("reason", "")).lower(),
+        "expected ranked prewarm candidate to expose live-pressure reason",
+    )
+
     with tempfile.TemporaryDirectory(prefix="rag-posture-diagnosis-") as tmpdir:
         report_path = Path(tmpdir) / "latest-aq-report.json"
         report_path.write_text(

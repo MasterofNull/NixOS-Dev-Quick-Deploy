@@ -3150,32 +3150,107 @@ def _format_retrieval_mix(mix: Optional[Dict[str, Any]]) -> str:
 def _rag_prewarm_candidates(
     top_prompts: List[dict],
     recent_mix: Dict[str, int],
+    cache: Optional[Dict[str, Any]] = None,
+    route_latency: Optional[Dict[str, Any]] = None,
+    retrieval_breadth: Optional[Dict[str, Any]] = None,
+    memory_recall_diagnosis: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     candidates: List[Dict[str, str]] = []
     if not top_prompts:
         return candidates
-    wanted: List[str] = []
-    if int(recent_mix.get("route_search", 0) or 0) > 0:
-        wanted.append("route_search")
-    if int(recent_mix.get("recall_agent_memory", 0) or 0) > 0:
-        wanted.append("memory_recall")
-    if int(recent_mix.get("tree_search", 0) or 0) > 0:
-        wanted.append("gap")
-    for family in wanted:
-        for prompt in top_prompts:
-            pid = str(prompt.get("id", "") or "").strip()
-            if not pid:
-                continue
-            if family == "route_search" and "route_search" not in pid:
-                continue
-            if family == "memory_recall" and "memory_recall" not in pid:
-                continue
-            if family == "gap" and "gap" not in pid:
-                continue
-            candidate = {"id": pid, "name": str(prompt.get("name", "") or "").strip()}
-            if candidate not in candidates:
-                candidates.append(candidate)
-            break
+    cache = cache if isinstance(cache, dict) else {}
+    route_latency = route_latency if isinstance(route_latency, dict) else {}
+    retrieval_breadth = retrieval_breadth if isinstance(retrieval_breadth, dict) else {}
+    route_p95 = route_latency.get("overall_p95_ms")
+    if route_p95 is None:
+        route_p95 = route_latency.get("p95_ms")
+    cache_hit_pct = cache.get("hit_pct")
+    breadth_avg = retrieval_breadth.get("avg_collection_count")
+
+    scored_candidates: List[Dict[str, Any]] = []
+    fallback_candidates: List[Dict[str, Any]] = []
+    for idx, prompt in enumerate(top_prompts):
+        pid = str(prompt.get("id", "") or "").strip()
+        if not pid:
+            continue
+        name = str(prompt.get("name", "") or "").strip()
+        prompt_score = float(prompt.get("mean_score", 0.0) or 0.0)
+        family = None
+        if "route_search" in pid:
+            family = "route_search"
+        elif "memory_recall" in pid:
+            family = "memory_recall"
+        elif "gap" in pid or "query_expansion" in pid:
+            family = "gap"
+        if family is None:
+            fallback_candidates.append(
+                {
+                    "id": pid,
+                    "name": name,
+                    "score": int(round(prompt_score * 100)),
+                    "reason": "top prompt fallback",
+                    "_rank": idx,
+                }
+            )
+            continue
+        score = int(round(prompt_score * 100))
+        reasons: List[str] = []
+        if family == "route_search":
+            if route_p95 is not None and float(route_p95) >= 2500.0:
+                score += 60
+                reasons.append("high route_search latency")
+            if cache_hit_pct is not None and float(cache_hit_pct) < 60.0:
+                score += 45
+                reasons.append("weak semantic cache hit rate")
+            if int(recent_mix.get("route_search", 0) or 0) > 0:
+                score += 30
+                reasons.append("recent route_search usage")
+        if family == "memory_recall":
+            if memory_recall_diagnosis == "unused":
+                score += 55
+                reasons.append("memory recall underused")
+            elif memory_recall_diagnosis == "weak":
+                score += 20
+                reasons.append("memory recall quality needs refresh")
+            if int(recent_mix.get("recall_agent_memory", 0) or 0) > 0:
+                score += 20
+                reasons.append("recent memory recall usage")
+        if family == "gap":
+            if breadth_avg is not None and float(breadth_avg) > 2.5:
+                score += 35
+                reasons.append("retrieval breadth remains high")
+            if int(recent_mix.get("tree_search", 0) or 0) > 0:
+                score += 20
+                reasons.append("recent gap detection usage")
+        scored_candidates.append(
+            {
+                "id": pid,
+                "name": name,
+                "score": score,
+                "reason": reasons[0] if reasons else "top prompt family match",
+                "_rank": idx,
+            }
+        )
+
+    for candidate in sorted(scored_candidates, key=lambda item: (-int(item["score"]), int(item["_rank"]))):
+        item = {
+            "id": str(candidate.get("id", "")),
+            "name": str(candidate.get("name", "")),
+            "score": int(candidate.get("score", 0) or 0),
+            "reason": str(candidate.get("reason", "")),
+        }
+        if item not in candidates:
+            candidates.append(item)
+    if not candidates:
+        for candidate in sorted(fallback_candidates, key=lambda item: (-int(item["score"]), int(item["_rank"]))):
+            item = {
+                "id": str(candidate.get("id", "")),
+                "name": str(candidate.get("name", "")),
+                "score": int(candidate.get("score", 0) or 0),
+                "reason": str(candidate.get("reason", "")),
+            }
+            if item not in candidates:
+                candidates.append(item)
     return candidates[:3]
 
 
@@ -3203,6 +3278,8 @@ def rag_posture(
     cache: Dict[str, Any],
     gaps: List[dict],
     top_prompts: Optional[List[dict]] = None,
+    route_latency: Optional[Dict[str, Any]] = None,
+    retrieval_breadth: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Summarize retrieval/RAG posture from live traffic, cache posture, and actionable gaps."""
     retrieval_tools = ("route_search", "tree_search", "recall_agent_memory")
@@ -3263,7 +3340,14 @@ def rag_posture(
         ]
     elif recent_calls == 0:
         memory_recall_diagnosis = "historical"
-    prewarm_candidates = _rag_prewarm_candidates(top_prompts or [], recent_mix)
+    prewarm_candidates = _rag_prewarm_candidates(
+        top_prompts or [],
+        recent_mix,
+        cache=cache,
+        route_latency=route_latency,
+        retrieval_breadth=retrieval_breadth,
+        memory_recall_diagnosis=memory_recall_diagnosis,
+    )
     return {
         "available": True,
         "status": status,
@@ -5033,7 +5117,16 @@ def main() -> None:
         [p for p in prompts if isinstance(p.get("mean_score"), float) and p["mean_score"] > 0],
         key=lambda x: -x["mean_score"],
     )[:3]
-    rag_posture_summary = rag_posture(tool_stats, recent_tool_stats, recent_audit_entries, cache, gaps, top_prompts)
+    rag_posture_summary = rag_posture(
+        tool_stats,
+        recent_tool_stats,
+        recent_audit_entries,
+        cache,
+        gaps,
+        top_prompts,
+        route_latency=route_latency_decomposition,
+        retrieval_breadth=recent_retrieval_breadth,
+    )
     agent_lessons = agent_lesson_candidates(since_dt)
     agent_lessons["registry"] = sync_agent_lesson_registry(agent_lessons)
     hint_diversity_stats = hint_diversity(adoption)
