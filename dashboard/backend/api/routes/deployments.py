@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 
 from api.services.context_store import get_context_store
+from api.services.ai_insights import get_insights_service
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,27 @@ deployment_lock = asyncio.Lock()
 
 # Get context store singleton
 context_store = get_context_store()
+insights_service = get_insights_service()
 REPO_ROOT = Path(__file__).resolve().parents[4]
 BASH_BIN = os.getenv("BASH_BIN", "bash")
+
+
+async def _attach_operator_insight(guidance: dict) -> dict:
+    if not isinstance(guidance, dict):
+        return guidance
+    target = str(guidance.get("insight_target") or "full_report")
+    try:
+        digest = await insights_service.get_operator_insight_digest(target)
+    except Exception as exc:
+        logger.warning("Failed to load operator insight digest for %s: %s", target, exc)
+        digest = {
+            "target": target,
+            "title": "Insight unavailable",
+            "status": "unavailable",
+            "summary": str(exc),
+        }
+    guidance = {**guidance, "insight_digest": digest}
+    return guidance
 
 # Deployment event types (for WebSocket broadcasting)
 class DeploymentEventType:
@@ -313,13 +333,16 @@ async def search_deployments(query: str, limit: int = 20, offset: int = 0, mode:
         item["explanation"] = context_store.explain_deployment_search_result(query, item)
         explained_results.append(item)
 
+    operator_guidance = await _attach_operator_insight(
+        context_store.build_operator_guidance(query, query_analysis, explained_results)
+    )
     return {
         "results": explained_results,
         "query": query,
         "mode": normalized_mode,
         "effective_mode": effective_mode,
         "query_analysis": query_analysis,
-        "operator_guidance": context_store.build_operator_guidance(query, query_analysis, explained_results),
+        "operator_guidance": operator_guidance,
         "count": len(explained_results),
         "limit": limit,
         "offset": offset,
@@ -355,8 +378,10 @@ async def search_deployment_context(query: str, limit: int = 12, mode: str = "na
             semantic_sync = {"status": "error", "synced": 0, "failed": [str(exc)]}
 
     result = await asyncio.to_thread(context_store.search_deployment_context, query, limit, normalized_mode)
+    operator_guidance = await _attach_operator_insight(result.get("operator_guidance") or {})
     return {
         **result,
+        "operator_guidance": operator_guidance,
         "query": query,
         "mode": normalized_mode,
         "semantic_sync": semantic_sync,
