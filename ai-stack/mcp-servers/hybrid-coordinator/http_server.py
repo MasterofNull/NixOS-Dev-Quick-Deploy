@@ -27,6 +27,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from aiohttp import web
@@ -736,9 +737,9 @@ def _normalize_task_class(value: Any, session: Optional[Dict[str, Any]]) -> str:
 
 def _isoformat_epoch(value: Any) -> str:
     try:
-        ts = int(value or 0)
+        ts = float(value or 0)
     except (TypeError, ValueError):
-        ts = 0
+        ts = 0.0
     if ts <= 0:
         return ""
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
@@ -751,9 +752,18 @@ def _a2a_text_parts(text: str) -> List[Dict[str, Any]]:
     return [{"type": "text", "text": normalized}]
 
 
+def _a2a_role(value: Any) -> str:
+    text = str(value or "").strip().upper().replace("-", "_")
+    if text in {"ROLE_USER", "USER"}:
+        return "ROLE_USER"
+    if text in {"ROLE_AGENT", "AGENT", "ASSISTANT"}:
+        return "ROLE_AGENT"
+    return "ROLE_AGENT"
+
+
 def _a2a_message_payload(role: str, text: str, *, message_id: str = "", task_id: str = "") -> Dict[str, Any]:
     message: Dict[str, Any] = {
-        "role": str(role or "agent").strip() or "agent",
+        "role": _a2a_role(role),
         "parts": _a2a_text_parts(text),
     }
     if message_id:
@@ -776,9 +786,12 @@ def _extract_a2a_text(message: Any) -> str:
     for item in parts:
         if not isinstance(item, dict):
             continue
-        if str(item.get("type", "")).strip().lower() != "text":
-            continue
+        part_type = str(item.get("type", "")).strip().lower()
         text = str(item.get("text", "") or "").strip()
+        if not text and not part_type and isinstance(item.get("data"), dict):
+            text = json.dumps(item.get("data"), sort_keys=True)
+        if not text and not part_type and item.get("url"):
+            text = str(item.get("url", "")).strip()
         if text:
             texts.append(text)
     return "\n".join(texts).strip()
@@ -800,14 +813,50 @@ def _a2a_latest_detail(session: Dict[str, Any]) -> str:
 def _a2a_task_state(session: Dict[str, Any]) -> str:
     status = str(session.get("status", "") or "").strip().lower()
     if status == "completed":
-        return "completed"
+        return "TASK_STATE_COMPLETED"
     if status in {"error", "failed"}:
-        return "failed"
+        return "TASK_STATE_FAILED"
     if status == "canceled":
-        return "canceled"
+        return "TASK_STATE_CANCELED"
     if status in {"pending", "queued"}:
-        return "submitted"
-    return "working"
+        return "TASK_STATE_SUBMITTED"
+    return "TASK_STATE_WORKING"
+
+
+def _normalize_a2a_method(value: Any) -> str:
+    text = str(value or "").strip()
+    method_aliases = {
+        "SendMessage": "message/send",
+        "GetTask": "tasks/get",
+        "ListTasks": "tasks/list",
+        "CancelTask": "tasks/cancel",
+        "SubscribeToTask": "tasks/resubscribe",
+        "GetExtendedAgentCard": "agent/getAuthenticatedExtendedCard",
+    }
+    return method_aliases.get(text, text)
+
+
+def _coerce_a2a_request_id(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float)):
+        return value
+    return None
+
+
+def _normalize_a2a_status_filter(value: Any) -> str:
+    text = str(value or "").strip().upper().replace("-", "_")
+    if not text:
+        return ""
+    if text.startswith("TASK_STATE_"):
+        return text
+    mapping = {
+        "SUBMITTED": "TASK_STATE_SUBMITTED",
+        "WORKING": "TASK_STATE_WORKING",
+        "INPUT_REQUIRED": "TASK_STATE_INPUT_REQUIRED",
+        "COMPLETED": "TASK_STATE_COMPLETED",
+        "CANCELED": "TASK_STATE_CANCELED",
+        "FAILED": "TASK_STATE_FAILED",
+    }
+    return mapping.get(text, "")
 
 
 def _session_to_a2a_artifacts(session: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -883,6 +932,15 @@ def _session_history_to_a2a_messages(session: Dict[str, Any], limit: int = 10) -
     return messages
 
 
+def _history_subset(session: Dict[str, Any], history_length: Optional[int]) -> List[Dict[str, Any]]:
+    trajectory = session.get("trajectory", []) if isinstance(session, dict) else []
+    if not isinstance(trajectory, list):
+        return []
+    if history_length is None:
+        return trajectory
+    return trajectory[: max(0, min(len(trajectory), int(history_length)))]
+
+
 def _session_to_a2a_status_event(
     session: Dict[str, Any],
     base_url: str,
@@ -906,7 +964,7 @@ def _session_to_a2a_status_event(
             "state": state,
             "timestamp": status_timestamp,
             "message": _a2a_message_payload(
-                "agent",
+                "ROLE_AGENT",
                 message_text,
                 message_id=f"{session_id}:status:{state}",
                 task_id=session_id,
@@ -928,17 +986,24 @@ def _artifact_to_a2a_update(task: Dict[str, Any], artifact: Dict[str, Any], *, l
     }
 
 
-def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, Any]:
+def _session_to_a2a_task(
+    session: Dict[str, Any],
+    base_url: str,
+    *,
+    history_length: Optional[int] = None,
+    include_artifacts: bool = True,
+) -> Dict[str, Any]:
     session_id = str(session.get("session_id", "") or "").strip()
     objective = str(session.get("objective", "") or "").strip()
     state = _a2a_task_state(session)
     updated_at = session.get("updated_at") or session.get("created_at")
     latest_detail = _a2a_latest_detail(session)
-    artifacts = _session_to_a2a_artifacts(session)
+    artifacts = _session_to_a2a_artifacts(session) if include_artifacts else []
+    history_items = _history_subset(session, history_length)
     task: Dict[str, Any] = {
         "id": session_id,
         "kind": "task",
-        "contextId": session_id,
+        "contextId": str(session.get("context_id", "") or session_id).strip() or session_id,
         "status": {
             "state": state,
             "timestamp": _isoformat_epoch(updated_at),
@@ -958,17 +1023,19 @@ def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, An
             "a2a_stream_url": f"{base_url.rstrip('/')}/a2a/tasks/{session_id}/events",
             "workflow_run_url": f"{base_url.rstrip('/')}/workflow/run/{session_id}",
         },
-        "historyLength": len(session.get("trajectory", []) or []),
+        "historyLength": len(history_items),
     }
     if objective:
         task["message"] = _a2a_message_payload(
-            "agent",
+            "ROLE_AGENT",
             objective,
             message_id=f"{session_id}:summary",
             task_id=session_id,
         )
-    history = _session_history_to_a2a_messages(session)
-    if history:
+    history = _session_history_to_a2a_messages({"session_id": session_id, "trajectory": history_items}, limit=max(1, len(history_items)))
+    if history_length is not None:
+        task["history"] = history
+    elif history:
         task["history"] = history
     if artifacts:
         task["artifacts"] = artifacts
@@ -976,7 +1043,15 @@ def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, An
 
 
 def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
-    origin = base_url.rstrip("/")
+    parsed = urlsplit(base_url.rstrip("/"))
+    hostname = parsed.hostname or ""
+    if hostname in {"127.0.0.1", "::1"}:
+        host = "localhost"
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        origin = urlunsplit((parsed.scheme or "http", host, "", "", "")).rstrip("/")
+    else:
+        origin = base_url.rstrip("/")
     return {
         "protocolVersion": "0.3.0",
         "name": "NixOS Dev Quick Deploy Hybrid Coordinator",
@@ -984,7 +1059,7 @@ def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
             "A2A compatibility surface for the hybrid coordinator. "
             "It exposes guarded workflow planning and task execution over JSON-RPC."
         ),
-        "url": f"{origin}/a2a",
+        "endpoint": f"{origin}/",
         "preferredTransport": "JSONRPC",
         "version": SERVICE_VERSION,
         "provider": {
@@ -998,14 +1073,16 @@ def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
         },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
-        "securitySchemes": {
-            "apiKey": {
-                "type": "apiKey",
-                "name": "X-API-Key",
-                "in": "header",
+        "supportedInterfaces": [
+            {
+                "transport": "JSONRPC",
+                "url": f"{origin}/",
+                "features": {
+                    "streaming": True,
+                    "pushNotifications": False,
+                },
             }
-        },
-        "security": [{"apiKey": []}],
+        ],
         "skills": [
             {
                 "id": "workflow-orchestration",
@@ -1023,7 +1100,7 @@ def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
             },
         ],
         "endpoints": {
-            "rpc": f"{origin}/a2a",
+            "rpc": f"{origin}/",
             "taskEvents": f"{origin}/a2a/tasks/{{taskId}}/events",
         },
     }
@@ -1868,7 +1945,7 @@ def _build_workflow_run_session(
     validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
     session_id = str(uuid4())
     plan = _build_workflow_plan(query)
-    now = int(time.time())
+    now = time.time()
     phases = []
     for idx, phase in enumerate(plan.get("phases", [])):
         phases.append(
@@ -2404,53 +2481,149 @@ async def run_http_mode(port: int) -> None:
         try:
             payload = await request.json()
         except Exception:
-            return web.json_response(_jsonrpc_error(None, -32700, "parse error"), status=400)
+            return web.json_response(_jsonrpc_error(None, -32700, "parse error"))
         if not isinstance(payload, dict):
-            return web.json_response(_jsonrpc_error(None, -32600, "invalid request"), status=400)
+            return web.json_response(_jsonrpc_error(None, -32600, "invalid request"))
 
-        request_id = payload.get("id")
-        method = str(payload.get("method", "") or "").strip()
+        request_id = _coerce_a2a_request_id(payload.get("id"))
+        if payload.get("id") is not None and request_id is None:
+            return web.json_response(_jsonrpc_error(None, -32600, "invalid request"))
+        if str(payload.get("jsonrpc", "") or "") != "2.0":
+            return web.json_response(_jsonrpc_error(request_id, -32600, "invalid request"))
+        raw_method = payload.get("method")
+        if not isinstance(raw_method, str) or not raw_method.strip():
+            return web.json_response(_jsonrpc_error(request_id, -32600, "invalid request"))
+        method = _normalize_a2a_method(raw_method)
         params = payload.get("params")
         if not isinstance(params, dict):
-            params = {}
+            return web.json_response(_jsonrpc_error(request_id, -32602, "invalid params"))
         base_url = f"{request.scheme}://{request.host}"
 
         try:
             if method == "agent/getCard":
                 return web.json_response(_jsonrpc_success(request_id, _build_a2a_agent_card(base_url)))
 
+            if method == "agent/getAuthenticatedExtendedCard":
+                return web.json_response(_jsonrpc_error(request_id, -32007, "authentication required"))
+
+            if method == "tasks/resubscribe":
+                return web.json_response(_jsonrpc_error(request_id, -32003, "push notification not supported"))
+
             if method == "tasks/get":
                 task_id = str(params.get("id") or params.get("taskId") or "").strip()
                 if not task_id:
-                    return web.json_response(_jsonrpc_error(request_id, -32602, "task id required"), status=400)
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "task id required"))
+                history_length = params.get("historyLength")
+                if history_length is not None:
+                    try:
+                        history_length = int(history_length)
+                    except (TypeError, ValueError):
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid historyLength"))
+                    if history_length < 0:
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid historyLength"))
                 async with _workflow_sessions_lock:
                     sessions = await _load_workflow_sessions()
                     session = sessions.get(task_id)
                 if not session:
-                    return web.json_response(_jsonrpc_error(request_id, -32004, "task not found"), status=404)
+                    return web.json_response(_jsonrpc_error(request_id, -32001, "task not found"))
                 _ensure_session_runtime_fields(session)
-                return web.json_response(_jsonrpc_success(request_id, _session_to_a2a_task(session, base_url)))
+                return web.json_response(
+                    _jsonrpc_success(
+                        request_id,
+                        _session_to_a2a_task(session, base_url, history_length=history_length),
+                    )
+                )
 
             if method == "tasks/list":
-                limit = max(1, min(50, int(params.get("limit", 10) or 10)))
+                context_id = str(params.get("contextId") or "").strip()
+                status_filter = _normalize_a2a_status_filter(params.get("status"))
+                if params.get("status") is not None and not status_filter:
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "invalid status"))
+                explicit_page_size = "pageSize" in params
+                page_size_raw = params.get("pageSize", params.get("limit", 50))
+                try:
+                    page_size = int(page_size_raw if page_size_raw is not None else 50)
+                except (TypeError, ValueError):
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "invalid pageSize"))
+                if page_size < 0 or page_size > 100 or (explicit_page_size and page_size == 0):
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "invalid pageSize"))
+                history_length = params.get("historyLength")
+                if history_length is not None:
+                    try:
+                        history_length = int(history_length)
+                    except (TypeError, ValueError):
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid historyLength"))
+                    if history_length < 0:
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid historyLength"))
+                include_artifacts = bool(params.get("includeArtifacts", False))
+                status_timestamp_after = str(params.get("statusTimestampAfter") or "").strip()
+                cutoff_iso = ""
+                if status_timestamp_after:
+                    try:
+                        cutoff_iso = datetime.fromisoformat(status_timestamp_after.replace("Z", "+00:00")).isoformat()
+                    except ValueError:
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid statusTimestampAfter"))
+                page_token = str(params.get("pageToken") or "").strip()
+                start = 0
+                if page_token:
+                    try:
+                        start = int(page_token)
+                    except ValueError:
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid pageToken"))
+                    if start < 0:
+                        return web.json_response(_jsonrpc_error(request_id, -32602, "invalid pageToken"))
                 async with _workflow_sessions_lock:
                     sessions = await _load_workflow_sessions()
                     items = list(sessions.values())
-                items.sort(key=lambda item: int(item.get("updated_at", 0) or 0), reverse=True)
-                tasks = [_session_to_a2a_task(item, base_url) for item in items[:limit] if isinstance(item, dict)]
-                return web.json_response(_jsonrpc_success(request_id, {"tasks": tasks}))
+                items.sort(key=lambda item: float(item.get("updated_at", 0) or 0), reverse=True)
+                filtered: List[Dict[str, Any]] = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    _ensure_session_runtime_fields(item)
+                    task = _session_to_a2a_task(
+                        item,
+                        base_url,
+                        history_length=history_length,
+                        include_artifacts=include_artifacts,
+                    )
+                    if context_id and str(task.get("contextId", "") or "").strip() != context_id:
+                        continue
+                    if status_filter and str(task.get("status", {}).get("state", "") or "").strip() != status_filter:
+                        continue
+                    if cutoff_iso and str(task.get("status", {}).get("timestamp", "") or "") <= cutoff_iso:
+                        continue
+                    filtered.append(task)
+                total_size = len(filtered)
+                if start > total_size:
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "invalid pageToken"))
+                tasks = filtered[start : start + page_size] if page_size > 0 else []
+                next_page_token = ""
+                if start + len(tasks) < total_size:
+                    next_page_token = str(start + len(tasks))
+                return web.json_response(
+                    _jsonrpc_success(
+                        request_id,
+                        {
+                            "tasks": tasks,
+                            "totalSize": total_size,
+                            "pageSize": len(tasks),
+                            "nextPageToken": next_page_token,
+                        },
+                    )
+                )
 
             if method == "tasks/cancel":
                 task_id = str(params.get("id") or params.get("taskId") or "").strip()
                 if not task_id:
-                    return web.json_response(_jsonrpc_error(request_id, -32602, "task id required"), status=400)
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "task id required"))
                 async with _workflow_sessions_lock:
                     sessions = await _load_workflow_sessions()
                     session = sessions.get(task_id)
                     if not session:
-                        return web.json_response(_jsonrpc_error(request_id, -32004, "task not found"), status=404)
+                        return web.json_response(_jsonrpc_error(request_id, -32001, "task not found"))
                     _ensure_session_runtime_fields(session)
-                    now = int(time.time())
+                    now = time.time()
                     session["status"] = "canceled"
                     session["updated_at"] = now
                     session["trajectory"].append(
@@ -2471,12 +2644,17 @@ async def run_http_mode(port: int) -> None:
                 if not text:
                     text = str(params.get("text", "") or "").strip()
                 if not text:
-                    return web.json_response(_jsonrpc_error(request_id, -32602, "message text required"), status=400)
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "message text required"))
 
                 task_id = str(
                     params.get("taskId")
                     or params.get("id")
                     or (message.get("taskId") if isinstance(message, dict) else "")
+                    or ""
+                ).strip()
+                context_id = str(
+                    params.get("contextId")
+                    or (message.get("contextId") if isinstance(message, dict) else "")
                     or ""
                 ).strip()
                 async with _agent_lessons_lock:
@@ -2487,10 +2665,11 @@ async def run_http_mode(port: int) -> None:
                         sessions = await _load_workflow_sessions()
                         session = sessions.get(task_id)
                         if not session:
-                            return web.json_response(_jsonrpc_error(request_id, -32004, "task not found"), status=404)
+                            return web.json_response(_jsonrpc_error(request_id, -32001, "task not found"))
                         _ensure_session_runtime_fields(session)
-                        now = int(time.time())
+                        now = time.time()
                         session["updated_at"] = now
+                        session["status"] = "working"
                         session["trajectory"].append(
                             {
                                 "ts": now,
@@ -2500,6 +2679,8 @@ async def run_http_mode(port: int) -> None:
                                 "risk_class": "safe",
                             }
                         )
+                        if context_id:
+                            session["context_id"] = context_id
                         sessions[task_id] = session
                         await _save_workflow_sessions(sessions)
                 else:
@@ -2532,6 +2713,8 @@ async def run_http_mode(port: int) -> None:
                         orchestration=orchestration,
                         lesson_refs=lesson_refs,
                     )
+                    if context_id:
+                        session["context_id"] = context_id
                     task_id = session["session_id"]
                     async with _workflow_sessions_lock:
                         sessions = await _load_workflow_sessions()
@@ -2542,7 +2725,7 @@ async def run_http_mode(port: int) -> None:
                 result = {
                     "task": task,
                     "message": {
-                        "role": "agent",
+                        "role": "ROLE_AGENT",
                         "parts": _a2a_text_parts(
                             f"Accepted task '{session.get('objective', '')}'. Track status via tasks/get or the task event stream."
                         ),
@@ -2596,12 +2779,11 @@ async def run_http_mode(port: int) -> None:
                     return stream_response
                 return web.json_response(_jsonrpc_success(request_id, result))
 
-            return web.json_response(_jsonrpc_error(request_id, -32601, "method not found"), status=404)
+            return web.json_response(_jsonrpc_error(request_id, -32601, "method not found"))
         except Exception as exc:
             logger.error("handle_a2a_rpc error=%s", exc)
             return web.json_response(
                 _jsonrpc_error(request_id, -32603, "internal error", {"detail": str(exc)[:240]}),
-                status=500,
             )
 
     async def handle_health(request):
@@ -6284,11 +6466,13 @@ async def run_http_mode(port: int) -> None:
         default_rph=int(os.getenv("RATE_LIMIT_DEFAULT_RPH", "3000")),
         burst_multiplier=float(os.getenv("RATE_LIMIT_BURST_MULTIPLIER", "1.5")),
         endpoint_limits={
+            "/": int(os.getenv("RATE_LIMIT_ROOT_RPM", "300")),
             "/query": int(os.getenv("RATE_LIMIT_QUERY_RPM", "30")),
             "/search/tree": int(os.getenv("RATE_LIMIT_TREE_RPM", "20")),
             "/hints": int(os.getenv("RATE_LIMIT_HINTS_RPM", "60")),
             "/harness/eval": int(os.getenv("RATE_LIMIT_EVAL_RPM", "20")),
             "/workflow": int(os.getenv("RATE_LIMIT_WORKFLOW_RPM", "30")),
+            "/a2a": int(os.getenv("RATE_LIMIT_A2A_RPM", "300")),
         },
         exempt_paths={"/health", "/metrics", "/health/detailed", "/health/aggregate"},
     )
@@ -6423,6 +6607,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_set)
     http_app.router.add_post("/workflow/run/{session_id}/event", handle_workflow_run_event)
     http_app.router.add_get("/workflow/run/{session_id}/replay", handle_workflow_run_replay)
+    http_app.router.add_post("/", handle_a2a_rpc)
     http_app.router.add_post("/a2a", handle_a2a_rpc)
     http_app.router.add_get("/a2a/tasks/{session_id}/events", handle_a2a_task_events)
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
