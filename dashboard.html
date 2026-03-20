@@ -2373,6 +2373,36 @@
                             </div>
                         </div>
 
+                        <div class="deployment-grid" style="margin-bottom: 1rem;">
+                            <div class="deployment-panel">
+                                <div class="deployment-subtitle">Deployment Relationship Graph</div>
+                                <div class="status-grid" id="deploymentGraphSummary" style="margin-bottom: 0.75rem;">
+                                    <div class="status-item">
+                                        <span class="status-label">Graph Status</span>
+                                        <span class="status-value" id="deploymentGraphStatus">--</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">Nodes</span>
+                                        <span class="status-value" id="deploymentGraphNodes">--</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">Edges</span>
+                                        <span class="status-value" id="deploymentGraphEdges">--</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">Scope</span>
+                                        <span class="status-value" id="deploymentGraphScope">--</span>
+                                    </div>
+                                </div>
+                                <div class="data-list" id="deploymentGraphList">
+                                    <div class="data-item">
+                                        <span>Loading deployment graph...</span>
+                                        <span class="data-meta">pending</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="deployment-toolbar">
                             <input type="text" class="search-box" id="deploymentSearch" placeholder="Search deployment history or logs..." onkeydown="if (event.key === 'Enter') searchDeploymentHistory()">
                             <select id="deploymentSearchMode" class="search-box" style="max-width: 180px;">
@@ -5944,7 +5974,8 @@
             await Promise.all([
                 loadActiveDeployments(),
                 loadDeploymentHistory(),
-                loadDeploymentSearchStatus()
+                loadDeploymentSearchStatus(),
+                loadDeploymentGraph()
             ]);
 
             if (deploymentState.selectedId) {
@@ -6013,6 +6044,7 @@
 
         async function selectDeployment(deploymentId) {
             await loadDeploymentDetail(deploymentId);
+            await loadDeploymentGraph();
         }
 
         async function searchDeploymentHistory() {
@@ -6075,6 +6107,42 @@
                 document.getElementById('deploymentSearchErrors').textContent = '--';
                 document.getElementById('deploymentSearchProject').textContent = 'unavailable';
                 document.getElementById('deploymentSearchStatusList').innerHTML = `<div class="data-item"><span>Deployment search coverage unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
+            }
+        }
+
+        async function loadDeploymentGraph() {
+            const selectedId = deploymentState.selectedId;
+            const query = selectedId
+                ? `deployment_id=${encodeURIComponent(selectedId)}`
+                : 'recent_limit=6';
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/graph?${query}`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(`deployment graph HTTP ${response.status}`);
+                const data = await response.json();
+                document.getElementById('deploymentGraphStatus').textContent = data.status || 'unknown';
+                document.getElementById('deploymentGraphNodes').textContent = `${data.node_count ?? 0}`;
+                document.getElementById('deploymentGraphEdges').textContent = `${data.edge_count ?? 0}`;
+                document.getElementById('deploymentGraphScope').textContent = data.deployment_scope || 'recent';
+
+                const list = document.getElementById('deploymentGraphList');
+                const edges = Array.isArray(data.edges) ? data.edges : [];
+                if (edges.length) {
+                    list.innerHTML = edges.slice(0, 10).map((edge) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(`${edge.source} -> ${edge.target}`)}</span>
+                            <span class="data-meta">${escapeHtml(edge.relation || 'related')}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No deployment graph edges available</span><span class="data-meta">empty</span></div>';
+                }
+            } catch (error) {
+                console.error('Failed to load deployment graph:', error);
+                document.getElementById('deploymentGraphStatus').textContent = 'unavailable';
+                document.getElementById('deploymentGraphNodes').textContent = '--';
+                document.getElementById('deploymentGraphEdges').textContent = '--';
+                document.getElementById('deploymentGraphScope').textContent = '--';
+                document.getElementById('deploymentGraphList').innerHTML = `<div class="data-item"><span>Deployment graph unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
             }
         }
 

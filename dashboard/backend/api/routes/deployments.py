@@ -313,6 +313,12 @@ async def get_deployment_search_status(recent_limit: int = 8):
     return await asyncio.to_thread(context_store.get_deployment_search_status, recent_limit)
 
 
+@router.get("/deployments/graph")
+async def get_deployment_graph(recent_limit: int = 8, deployment_id: Optional[str] = None):
+    """Get a lightweight relationship graph for recent deployments or a single deployment."""
+    return await asyncio.to_thread(context_store.get_deployment_graph, recent_limit, deployment_id)
+
+
 @router.get("/deployments/{deployment_id}")
 async def get_deployment(deployment_id: str):
     """Get deployment details"""
