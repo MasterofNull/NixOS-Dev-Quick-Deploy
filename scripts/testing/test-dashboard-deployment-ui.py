@@ -20,6 +20,10 @@ REQUIRED_SNIPPETS = [
     'id="deploymentSearchStatusList"',
     'id="deploymentGraphSummary"',
     'id="deploymentGraphList"',
+    'id="deploymentGraphView"',
+    'id="deploymentGraphFocus"',
+    'id="deploymentGraphViewState"',
+    'id="deploymentGraphFocusMatches"',
     'function loadDeploymentOps()',
     'function connectDeploymentWebSocket()',
     'function searchDeploymentHistory()',
@@ -29,7 +33,7 @@ REQUIRED_SNIPPETS = [
     '/api/deployments/history?limit=12&include_timeline_preview=true',
     '/api/deployments/search?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}',
     '/api/deployments/search/status?recent_limit=6',
-    '/api/deployments/graph?',
+    "/api/deployments/graph?${params.toString()}",
     '/api/ws/deployments',
 ]
 

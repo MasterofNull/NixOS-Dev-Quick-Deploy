@@ -130,7 +130,7 @@ class DeploymentDashboardTests:
 
         async with self.session.get(
             f"{API_BASE_URL}/deployments/graph",
-            params={"deployment_id": self.deployment_id},
+            params={"deployment_id": self.deployment_id, "view": "issues", "focus": "dashboard"},
         ) as response:
             if response.status != 200:
                 self.log_test("Deployment Graph", False, f"HTTP {response.status}")
@@ -145,11 +145,14 @@ class DeploymentDashboardTests:
             and "summary" in status
             and isinstance(graph.get("nodes"), list)
             and isinstance(graph.get("edges"), list)
+            and graph.get("view") == "issues"
+            and graph.get("focus") == "dashboard"
+            and isinstance(graph.get("top_relationships"), list)
         )
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, graph_view={graph.get('view')}",
         )
         return passed
 

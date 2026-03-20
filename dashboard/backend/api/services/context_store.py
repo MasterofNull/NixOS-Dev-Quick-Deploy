@@ -30,6 +30,11 @@ GRAPH_STOPWORDS = {
     "deployment", "deploy", "system", "build", "generation", "progress", "started",
     "success", "failed", "running", "rollback", "command", "nixos", "fast",
 }
+GRAPH_SERVICE_HINTS = {
+    "hybrid-coordinator", "dashboard", "switchboard", "qdrant", "prometheus",
+    "postgres", "redis", "embeddings", "llama", "nix", "nixos-rebuild",
+    "command-center", "aidb", "ralph", "mindsdb", "grafana",
+}
 
 
 class ContextStore:
@@ -45,12 +50,7 @@ class ContextStore:
 
     def __init__(self, db_path: str = None):
         if db_path is None:
-            env_path = os.getenv("DASHBOARD_CONTEXT_DB_PATH", "").strip()
-            if env_path:
-                db_path = env_path
-            else:
-                repo_root = Path(__file__).resolve().parents[4]
-                db_path = str(repo_root / "data" / "dashboard" / "context.db")
+            db_path = self._resolve_db_path()
 
         # Ensure directory exists
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -59,6 +59,67 @@ class ContextStore:
         self.conn = None
         self._lock = threading.RLock()
         self._init_db()
+
+    @staticmethod
+    def _candidate_db_paths() -> List[str]:
+        env_path = os.getenv("DASHBOARD_CONTEXT_DB_PATH", "").strip()
+        repo_root = Path(__file__).resolve().parents[4]
+        candidates = []
+        if env_path:
+            candidates.append(env_path)
+        candidates.extend([
+            "/var/lib/nixos-system-dashboard/telemetry/deployments-context.db",
+            str(repo_root / "data" / "dashboard" / "context.db"),
+            "/tmp/nixos-dashboard-context.db",
+        ])
+        return list(dict.fromkeys(candidates))
+
+    @staticmethod
+    def _can_open_writable_db(path: str) -> bool:
+        try:
+            db_file = Path(path)
+            db_file.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(path)
+            conn.execute("CREATE TABLE IF NOT EXISTS _context_store_probe (id INTEGER)")
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.Error:
+            return False
+
+    def _resolve_db_path(self) -> str:
+        for candidate in self._candidate_db_paths():
+            if self._can_open_writable_db(candidate):
+                logger.info("Context store selected writable DB path: %s", candidate)
+                return candidate
+        repo_root = Path(__file__).resolve().parents[4]
+        fallback = str(repo_root / "data" / "dashboard" / "context.db")
+        logger.warning("Context store falling back to default DB path without writability confirmation: %s", fallback)
+        return fallback
+
+    def _reconnect_to_writable_db(self) -> None:
+        replacement = self._resolve_db_path()
+        if replacement == self.db_path and self.conn is not None:
+            return
+        if self.conn is not None:
+            try:
+                self.conn.close()
+            except sqlite3.Error:
+                logger.warning("Failed to close stale context DB connection cleanly", exc_info=True)
+        self.db_path = replacement
+        self._init_db()
+
+    def _execute_write(self, operation: str, callback):
+        try:
+            return callback()
+        except sqlite3.OperationalError as exc:
+            message = str(exc).lower()
+            if "readonly" not in message and "unable to open database file" not in message:
+                raise
+            logger.warning("Context store write failed for %s on %s, retrying with writable fallback", operation, self.db_path)
+            with self._lock:
+                self._reconnect_to_writable_db()
+                return callback()
 
     def _init_db(self):
         """Initialize database schema with FTS5"""
@@ -173,67 +234,75 @@ class ContextStore:
 
     def start_deployment(self, deployment_id: str, command: str, user: str = "system") -> bool:
         """Start tracking a new deployment"""
-        try:
-            now = self._timestamp()
-            self.conn.execute("""
-                INSERT INTO deployments (deployment_id, command, user, status, started_at)
-                VALUES (?, ?, ?, 'running', ?)
-            """, (deployment_id, command, user, now))
+        def write() -> bool:
+            try:
+                now = self._timestamp()
+                self.conn.execute("""
+                    INSERT INTO deployments (deployment_id, command, user, status, started_at)
+                    VALUES (?, ?, ?, 'running', ?)
+                """, (deployment_id, command, user, now))
 
-            self.conn.execute("""
-                INSERT INTO deployment_events (deployment_id, event_type, timestamp, message, user, progress)
-                VALUES (?, 'started', ?, ?, ?, 0)
-            """, (deployment_id, now, f"Deployment started: {command}", user))
+                self.conn.execute("""
+                    INSERT INTO deployment_events (deployment_id, event_type, timestamp, message, user, progress)
+                    VALUES (?, 'started', ?, ?, ?, 0)
+                """, (deployment_id, now, f"Deployment started: {command}", user))
 
-            self.conn.commit()
-            logger.info(f"Started tracking deployment: {deployment_id}")
-            return True
-        except sqlite3.IntegrityError:
-            logger.warning(f"Deployment already exists: {deployment_id}")
-            return False
+                self.conn.commit()
+                logger.info(f"Started tracking deployment: {deployment_id}")
+                return True
+            except sqlite3.IntegrityError:
+                logger.warning(f"Deployment already exists: {deployment_id}")
+                return False
+
+        return self._execute_write("start_deployment", write)
 
     def add_event(self, deployment_id: str, event_type: str, message: str,
                   progress: int = 0, metadata: dict = None) -> int:
         """Add an event to deployment history"""
-        metadata_json = json.dumps(metadata) if metadata else None
-        now = self._timestamp()
+        def write() -> int:
+            metadata_json = json.dumps(metadata) if metadata else None
+            now = self._timestamp()
 
-        cursor = self.conn.execute("""
-            INSERT INTO deployment_events
-            (deployment_id, event_type, timestamp, message, progress, metadata)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (deployment_id, event_type, now, message, progress, metadata_json))
+            cursor = self.conn.execute("""
+                INSERT INTO deployment_events
+                (deployment_id, event_type, timestamp, message, progress, metadata)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (deployment_id, event_type, now, message, progress, metadata_json))
 
-        # Update deployment progress
-        self.conn.execute("""
-            UPDATE deployments SET progress = ? WHERE deployment_id = ?
-        """, (progress, deployment_id))
+            self.conn.execute("""
+                UPDATE deployments SET progress = ? WHERE deployment_id = ?
+            """, (progress, deployment_id))
 
-        self.conn.commit()
-        return cursor.lastrowid
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_event", write)
 
     def complete_deployment(self, deployment_id: str, success: bool = True,
                           exit_code: int = 0, message: str = None) -> bool:
         """Mark deployment as complete"""
-        status = "success" if success else "failed"
-        message = message or f"Deployment {status}"
-        now = self._timestamp()
+        def write() -> bool:
+            status = "success" if success else "failed"
+            final_message = message or f"Deployment {status}"
+            now = self._timestamp()
 
-        self.conn.execute("""
-            UPDATE deployments
-            SET status = ?, completed_at = ?,
-                progress = ?, exit_code = ?
-            WHERE deployment_id = ?
-        """, (status, now, 100 if success else None, exit_code, deployment_id))
+            self.conn.execute("""
+                UPDATE deployments
+                SET status = ?, completed_at = ?,
+                    progress = ?, exit_code = ?
+                WHERE deployment_id = ?
+            """, (status, now, 100 if success else None, exit_code, deployment_id))
 
-        self.conn.execute("""
-            INSERT INTO deployment_events (deployment_id, event_type, timestamp, message, progress)
-            VALUES (?, ?, ?, ?, ?)
-        """, (deployment_id, status, now, message, 100 if success else 0))
+            self.conn.execute("""
+                INSERT INTO deployment_events (deployment_id, event_type, timestamp, message, progress)
+                VALUES (?, ?, ?, ?, ?)
+            """, (deployment_id, status, now, final_message, 100 if success else 0))
 
-        self.conn.commit()
-        logger.info(f"Deployment {deployment_id} completed: {status}")
-        return True
+            self.conn.commit()
+            logger.info(f"Deployment {deployment_id} completed: {status}")
+            return True
+
+        return self._execute_write("complete_deployment", write)
 
     # ========================================================================
     # Context-Aware Retrieval with FTS5 + BM25
@@ -624,7 +693,37 @@ class ContextStore:
             tokens.append(token)
         return list(dict.fromkeys(tokens))[:6]
 
-    def get_deployment_graph(self, recent_limit: int = 8, deployment_id: Optional[str] = None) -> Dict[str, Any]:
+    @staticmethod
+    def _extract_service_tokens(command: str, messages: List[str]) -> List[str]:
+        candidates: List[str] = []
+        corpus = " ".join([command or ""] + [msg or "" for msg in messages]).lower()
+        for token in re.findall(r"[a-z0-9][a-z0-9._-]{2,}", corpus):
+            normalized = token.removesuffix(".service")
+            if normalized in GRAPH_STOPWORDS:
+                continue
+            if normalized in GRAPH_SERVICE_HINTS or token.endswith(".service"):
+                candidates.append(normalized)
+        return list(dict.fromkeys(candidates))[:6]
+
+    @staticmethod
+    def _extract_config_paths(command: str, messages: List[str]) -> List[str]:
+        corpus = "\n".join([command or ""] + [msg or "" for msg in messages])
+        paths = re.findall(r"(?:[\w./-]+/)?[\w.-]+\.(?:nix|json|ya?ml|toml|service)", corpus)
+        return list(dict.fromkeys(paths))[:6]
+
+    @staticmethod
+    def _match_focus(value: str, focus: Optional[str]) -> bool:
+        if not focus:
+            return True
+        return focus.lower() in (value or "").lower()
+
+    def get_deployment_graph(
+        self,
+        recent_limit: int = 8,
+        deployment_id: Optional[str] = None,
+        view: str = "overview",
+        focus: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Build a lightweight relationship graph from deployment summaries and events."""
         if deployment_id:
             summary = self.get_deployment_summary(deployment_id)
@@ -633,10 +732,16 @@ class ContextStore:
             deployments = [self.get_deployment_summary(item["deployment_id"]) for item in self.get_recent_deployments(limit=recent_limit)]
             deployments = [item for item in deployments if item]
 
+        normalized_view = (view or "overview").strip().lower()
+        if normalized_view not in {"overview", "issues", "services", "configs"}:
+            normalized_view = "overview"
+
         nodes: List[Dict[str, Any]] = []
         edges: List[Dict[str, Any]] = []
         seen_nodes: set[str] = set()
         seen_edges: set[Tuple[str, str, str]] = set()
+        relationship_counts: Dict[str, int] = {}
+        focus_matches = 0
 
         def add_node(node_id: str, node_type: str, label: str, **extra: Any) -> None:
             if node_id in seen_nodes:
@@ -645,11 +750,19 @@ class ContextStore:
             nodes.append({"id": node_id, "type": node_type, "label": label, **extra})
 
         def add_edge(source: str, target: str, relation: str) -> None:
+            nonlocal focus_matches
             key = (source, target, relation)
             if key in seen_edges:
                 return
             seen_edges.add(key)
             edges.append({"source": source, "target": target, "relation": relation})
+            relationship_counts[relation] = relationship_counts.get(relation, 0) + 1
+            if focus and (
+                self._match_focus(source, focus)
+                or self._match_focus(target, focus)
+                or self._match_focus(relation, focus)
+            ):
+                focus_matches += 1
 
         for summary in deployments:
             dep_id = str(summary["deployment_id"])
@@ -667,28 +780,74 @@ class ContextStore:
             add_node(status_node, "status", status)
             add_edge(dep_node, status_node, "resulted_in")
 
-            timeline = self.get_deployment_timeline(dep_id)
+            timeline_rows = self.conn.execute(
+                """
+                SELECT event_type, message, timestamp, progress, metadata
+                FROM deployment_events
+                WHERE deployment_id = ?
+                ORDER BY timestamp ASC
+                """,
+                (dep_id,),
+            ).fetchall()
+            timeline = [dict(row) for row in timeline_rows]
+            messages = [str(event.get("message") or "") for event in timeline]
             issue_counts: Dict[str, int] = {}
             for event in timeline:
                 event_type = str(event.get("event_type") or "event")
                 event_node = f"event:{event_type}"
                 add_node(event_node, "event", event_type)
-                add_edge(dep_node, event_node, "emitted")
+                if normalized_view in {"overview", "issues"}:
+                    add_edge(dep_node, event_node, "emitted")
                 if event_type in {"failed", "rollback", "progress", "log"}:
                     for token in self._extract_issue_tokens(str(event.get("message") or "")):
                         issue_counts[token] = issue_counts.get(token, 0) + 1
             for token, count in sorted(issue_counts.items(), key=lambda item: (-item[1], item[0]))[:4]:
                 issue_node = f"issue:{token}"
                 add_node(issue_node, "issue", token, occurrences=count)
-                add_edge(dep_node, issue_node, "signals")
+                if normalized_view in {"overview", "issues"}:
+                    add_edge(dep_node, issue_node, "signals")
+
+            for service in self._extract_service_tokens(command, messages):
+                service_node = f"service:{service}"
+                add_node(service_node, "service", service)
+                if normalized_view in {"overview", "services"}:
+                    add_edge(dep_node, service_node, "touches_service")
+
+            for config_path in self._extract_config_paths(command, messages):
+                config_node = f"config:{config_path}"
+                add_node(config_node, "config", config_path)
+                if normalized_view in {"overview", "configs"}:
+                    add_edge(dep_node, config_node, "references_config")
+
+        if focus:
+            filtered_edges = [
+                edge for edge in edges
+                if self._match_focus(edge["source"], focus)
+                or self._match_focus(edge["target"], focus)
+                or self._match_focus(edge["relation"], focus)
+            ]
+            node_ids = {edge["source"] for edge in filtered_edges} | {edge["target"] for edge in filtered_edges}
+            filtered_nodes = [node for node in nodes if node["id"] in node_ids]
+        else:
+            filtered_nodes = nodes
+            filtered_edges = edges
+
+        top_relationships = [
+            {"relation": relation, "count": count}
+            for relation, count in sorted(relationship_counts.items(), key=lambda item: (-item[1], item[0]))
+        ][:6]
 
         return {
-            "status": "ready" if nodes else "empty",
+            "status": "ready" if filtered_nodes else "empty",
             "deployment_scope": deployment_id or "recent",
-            "node_count": len(nodes),
-            "edge_count": len(edges),
-            "nodes": nodes,
-            "edges": edges,
+            "view": normalized_view,
+            "focus": focus or "",
+            "focus_matches": focus_matches if focus else len(filtered_edges),
+            "node_count": len(filtered_nodes),
+            "edge_count": len(filtered_edges),
+            "top_relationships": top_relationships,
+            "nodes": filtered_nodes,
+            "edges": filtered_edges,
         }
 
     def get_deployment_summary(self, deployment_id: str) -> Optional[Dict]:
@@ -812,28 +971,34 @@ class ContextStore:
                            branch: str = None, commit_hash: str = None,
                            files_changed: List[str] = None) -> int:
         """Track git operation during deployment"""
-        cursor = self.conn.execute("""
-            INSERT INTO git_operations
-            (deployment_id, operation, branch, commit_hash, files_changed)
-            VALUES (?, ?, ?, ?, ?)
-        """, (deployment_id, operation, branch, commit_hash,
-              json.dumps(files_changed) if files_changed else None))
+        def write() -> int:
+            cursor = self.conn.execute("""
+                INSERT INTO git_operations
+                (deployment_id, operation, branch, commit_hash, files_changed)
+                VALUES (?, ?, ?, ?, ?)
+            """, (deployment_id, operation, branch, commit_hash,
+                  json.dumps(files_changed) if files_changed else None))
 
-        self.conn.commit()
-        return cursor.lastrowid
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("track_git_operation", write)
 
     def track_file_edit(self, deployment_id: str, file_path: str,
                        operation: str, size_before: int = None,
                        size_after: int = None) -> int:
         """Track file edit during deployment"""
-        cursor = self.conn.execute("""
-            INSERT INTO file_edits
-            (deployment_id, file_path, operation, size_before, size_after)
-            VALUES (?, ?, ?, ?, ?)
-        """, (deployment_id, file_path, operation, size_before, size_after))
+        def write() -> int:
+            cursor = self.conn.execute("""
+                INSERT INTO file_edits
+                (deployment_id, file_path, operation, size_before, size_after)
+                VALUES (?, ?, ?, ?, ?)
+            """, (deployment_id, file_path, operation, size_before, size_after))
 
-        self.conn.commit()
-        return cursor.lastrowid
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("track_file_edit", write)
 
     # ========================================================================
     # Cleanup and Maintenance
