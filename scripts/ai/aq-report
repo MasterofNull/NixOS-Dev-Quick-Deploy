@@ -2504,6 +2504,69 @@ def cache_hit_rate() -> Dict[str, Any]:
     }
 
 
+def _get_last_prewarm_run(service: str) -> Dict[str, Any]:
+    """Extract last cache prewarm run details from systemd journal."""
+    try:
+        # Get last 50 journal lines for the service
+        result = subprocess.run(
+            ["journalctl", "-u", service, "-n", "50", "--no-pager", "-o", "cat"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {}
+
+        lines = result.stdout.split("\n")
+
+        # Parse seed-routing-traffic output
+        # Looking for: "seed-routing-traffic: N OK, M FAIL"
+        queries_ok = None
+        queries_fail = None
+        backend_seeded = False
+
+        for line in reversed(lines):  # Most recent first
+            if "seed-routing-traffic:" in line and "OK," in line and "FAIL" in line:
+                # Parse "seed-routing-traffic: 8 OK, 0 FAIL"
+                match = re.search(r"(\d+)\s+OK,\s+(\d+)\s+FAIL", line)
+                if match:
+                    queries_ok = int(match.group(1))
+                    queries_fail = int(match.group(2))
+            if "backend-selection seeded" in line:
+                backend_seeded = True
+
+        # Get last activation timestamp
+        ts_result = subprocess.run(
+            ["systemctl", "show", service, "--property=ActiveEnterTimestamp"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        last_activation = None
+        if ts_result.returncode == 0:
+            # Parse "ActiveEnterTimestamp=Fri 2026-03-20 12:34:56 UTC"
+            ts_line = ts_result.stdout.strip()
+            if "=" in ts_line:
+                ts_str = ts_line.split("=", 1)[1]
+                if ts_str and ts_str != "n/a":
+                    last_activation = ts_str
+
+        result_data = {}
+        if queries_ok is not None:
+            result_data["last_run_success"] = queries_fail == 0
+            result_data["last_run_queries_ok"] = queries_ok
+            result_data["last_run_queries_fail"] = queries_fail
+            result_data["last_run_backend_seeded"] = backend_seeded
+        if last_activation:
+            result_data["last_activation"] = last_activation
+
+        return result_data
+    except Exception:
+        return {}
+
+
 def cache_prewarm_status() -> Dict[str, Any]:
     """Inspect declarative cache-prewarm timer state for monitoring context."""
     timer = "ai-cache-prewarm.timer"
@@ -2525,6 +2588,10 @@ def cache_prewarm_status() -> Dict[str, Any]:
         )
     except Exception:
         return {"available": False}
+
+    # Check last service run from journal
+    last_run_info = _get_last_prewarm_run(service)
+
     return {
         "available": True,
         "timer": timer,
@@ -2533,6 +2600,7 @@ def cache_prewarm_status() -> Dict[str, Any]:
         "enabled_state": (enabled.stdout or enabled.stderr or "").strip() or "unknown",
         "active": active.returncode == 0,
         "active_state": (active.stdout or active.stderr or "").strip() or "unknown",
+        **last_run_info,  # Add run details
     }
 
 
@@ -2585,6 +2653,7 @@ def build_recommendations(
     recent_semantic_autorun: Optional[Dict[str, Any]] = None,
     recent_provider_fallbacks: Optional[Dict[str, Any]] = None,
     recent_retrieval_breadth: Optional[Dict[str, Any]] = None,
+    cache_prewarm: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """Derive actionable workflow recommendations from measured data."""
     recs: List[str] = []
@@ -2620,6 +2689,14 @@ def build_recommendations(
         recs.append(
             "Cache metrics unavailable. "
             "Ensure `embedding_cache.py` emits Prometheus counters and Prometheus scrapes the service."
+        )
+
+    # Cache prewarm
+    if cache_prewarm and cache_prewarm.get("available") and cache_prewarm.get("last_run_success") is False:
+        recs.append(
+            f"Cache prewarm failed in last run "
+            f"({cache_prewarm.get('last_run_queries_fail', 0)} failures). "
+            "Check: journalctl -u ai-cache-prewarm.service -n 100"
         )
 
     if rag_posture_summary and rag_posture_summary.get("available"):
@@ -3610,6 +3687,16 @@ def format_md(
                 f"- Cache prewarm timer: **{cache_prewarm.get('enabled_state', 'unknown')}** / "
                 f"active **{cache_prewarm.get('active_state', 'unknown')}**"
             )
+            # Show last run status
+            if cache_prewarm.get("last_run_queries_ok") is not None:
+                ok = cache_prewarm.get("last_run_queries_ok", 0)
+                fail = cache_prewarm.get("last_run_queries_fail", 0)
+                success_icon = "✅" if fail == 0 else "⚠️"
+                lines.append(
+                    f"- Last prewarm run: **{ok} OK, {fail} FAIL** {success_icon}"
+                )
+                if cache_prewarm.get("last_activation"):
+                    lines.append(f"  - Last activation: {cache_prewarm['last_activation']}")
     else:
         lines.append("*Cache metrics unavailable.*")
     lines.append("")
@@ -4350,6 +4437,12 @@ def format_text(
                 f"  Cache prewarm: {cache_prewarm.get('enabled_state', 'unknown')} / "
                 f"active {cache_prewarm.get('active_state', 'unknown')}"
             )
+            # Show last run status
+            if cache_prewarm.get("last_run_queries_ok") is not None:
+                ok = cache_prewarm.get("last_run_queries_ok", 0)
+                fail = cache_prewarm.get("last_run_queries_fail", 0)
+                success_marker = "✓" if fail == 0 else "⚠"
+                lines.append(f"  Last prewarm run: {ok} OK, {fail} FAIL {success_marker}")
     else:
         lines.append("  Cache metrics unavailable.")
     lines.append("")
@@ -5192,6 +5285,7 @@ def main() -> None:
         recent_semantic_autorun,
         recent_provider_fallbacks,
         recent_retrieval_breadth,
+        cache_prewarm,
     )
     structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps, delegation_feedback, agent_lessons)
 
