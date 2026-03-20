@@ -163,6 +163,7 @@ class DeploymentDashboardTests:
             and causality.get("cluster_count", 0) >= 0
             and ("root_cluster" in causality)
             and isinstance(causality.get("cluster_rankings"), list)
+            and all(isinstance(item.get("evidence"), dict) for item in (causality.get("cluster_rankings") or []))
             and isinstance(causality.get("similar_failures"), list)
             and isinstance(causality.get("cause_factors"), list)
             and isinstance(causality.get("cause_chain"), list)
