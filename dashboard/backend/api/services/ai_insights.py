@@ -12,6 +12,10 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pathlib import Path
 
+import httpx
+
+from api.config.service_endpoints import HYBRID_URL
+
 logger = logging.getLogger(__name__)
 
 class AIInsightsService:
@@ -169,6 +173,57 @@ class AIInsightsService:
             "delegated_failure_windows": report.get("delegated_prompt_failure_windows", {}),
         }
 
+    async def get_a2a_readiness(self) -> Dict[str, Any]:
+        """Get A2A compatibility readiness from the live hybrid coordinator."""
+        agent_card_url = f"{HYBRID_URL.rstrip('/')}/.well-known/agent.json"
+        rpc_url = f"{HYBRID_URL.rstrip('/')}/a2a"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(agent_card_url)
+                response.raise_for_status()
+            card = response.json()
+        except Exception as exc:
+            logger.error("Failed to get A2A agent card: %s", exc)
+            return {
+                "available": False,
+                "status": "unavailable",
+                "agent_card_url": agent_card_url,
+                "rpc_url": rpc_url,
+                "error": str(exc),
+            }
+
+        capabilities = card.get("capabilities", {}) if isinstance(card.get("capabilities"), dict) else {}
+        skills = card.get("skills", []) if isinstance(card.get("skills"), list) else []
+        endpoints = card.get("endpoints", {}) if isinstance(card.get("endpoints"), dict) else {}
+        protocol_version = str(card.get("protocolVersion", "") or "")
+        required_methods = [
+            "agent/getCard",
+            "message/send",
+            "tasks/get",
+            "tasks/list",
+            "tasks/cancel",
+        ]
+
+        return {
+            "available": True,
+            "status": "ready" if protocol_version else "degraded",
+            "protocol_version": protocol_version,
+            "agent_card_url": agent_card_url,
+            "rpc_url": endpoints.get("rpc") or rpc_url,
+            "task_events_url": endpoints.get("taskEvents"),
+            "streaming": bool(capabilities.get("streaming", False)),
+            "push_notifications": bool(capabilities.get("pushNotifications", False)),
+            "state_transition_history": bool(capabilities.get("stateTransitionHistory", False)),
+            "skills": {
+                "count": len(skills),
+                "ids": [str(item.get("id", "")).strip() for item in skills if isinstance(item, dict)][:10],
+            },
+            "methods": {
+                "implemented": required_methods,
+                "count": len(required_methods),
+            },
+        }
+
     async def get_query_complexity_analysis(self) -> Dict[str, Any]:
         """Get query complexity and gap analysis."""
         report = await self.get_full_report()
@@ -205,6 +260,7 @@ class AIInsightsService:
     async def get_system_health_overview(self) -> Dict[str, Any]:
         """Get high-level system health overview."""
         report = await self.get_full_report()
+        a2a = await self.get_a2a_readiness()
 
         # Aggregate health indicators
         routing = report.get("routing", {})
@@ -234,6 +290,7 @@ class AIInsightsService:
             "window": report.get("window"),
             "status": overall_status,
             "issues": issues,
+            "a2a": a2a,
             "routing": routing,
             "cache": cache,
             "recent_health": recent_health,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Smoke-test the hybrid coordinator A2A compatibility endpoints.
 set -euo pipefail
 
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
