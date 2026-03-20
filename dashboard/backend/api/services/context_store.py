@@ -799,6 +799,61 @@ class ContextStore:
             })
         return results
 
+    @staticmethod
+    def _build_cause_factors(
+        deployment_features: Dict[str, Dict[str, Any]],
+        cluster: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not cluster:
+            return []
+
+        deployment_ids = cluster.get("deployment_ids") or []
+        service_counts: Dict[str, int] = {}
+        config_counts: Dict[str, int] = {}
+        issue_counts: Dict[str, int] = {}
+        status_counts: Dict[str, int] = {}
+
+        for dep_id in deployment_ids:
+            features = deployment_features.get(dep_id, {})
+            for item in features.get("services", set()):
+                service_counts[item] = service_counts.get(item, 0) + 1
+            for item in features.get("configs", set()):
+                config_counts[item] = config_counts.get(item, 0) + 1
+            for item in features.get("issues", set()):
+                issue_counts[item] = issue_counts.get(item, 0) + 1
+            status = str(features.get("status") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        factors: List[Dict[str, Any]] = []
+        for category, counts in (
+            ("service", service_counts),
+            ("config", config_counts),
+            ("issue", issue_counts),
+            ("status", status_counts),
+        ):
+            for label, count in counts.items():
+                score = count * (3 if category == "issue" else 2 if category == "service" else 1)
+                factors.append({
+                    "category": category,
+                    "label": label,
+                    "count": count,
+                    "score": score,
+                })
+
+        return sorted(factors, key=lambda item: (-item["score"], -item["count"], item["category"], item["label"]))[:8]
+
+    @staticmethod
+    def _build_cause_chain(cluster: Optional[Dict[str, Any]], factors: List[Dict[str, Any]]) -> List[str]:
+        if not cluster:
+            return []
+        steps: List[str] = []
+        statuses = cluster.get("shared_statuses") or []
+        if statuses:
+            steps.append(f"shared_status:{','.join(statuses)}")
+        for factor in factors[:4]:
+            steps.append(f"{factor['category']}:{factor['label']}")
+        return steps
+
     def get_deployment_graph(
         self,
         recent_limit: int = 8,
@@ -993,6 +1048,8 @@ class ContextStore:
                     item.get("cluster_id", ""),
                 ),
             )
+        cause_factors = self._build_cause_factors(deployment_features, root_cluster)
+        cause_chain = self._build_cause_chain(root_cluster, cause_factors)
 
         top_relationships = [
             {"relation": relation, "count": count}
@@ -1012,6 +1069,8 @@ class ContextStore:
             "clusters": filtered_clusters,
             "root_cluster": root_cluster,
             "similar_failures": filtered_failures[:6],
+            "cause_factors": cause_factors,
+            "cause_chain": cause_chain,
             "nodes": filtered_nodes,
             "edges": filtered_edges,
         }
