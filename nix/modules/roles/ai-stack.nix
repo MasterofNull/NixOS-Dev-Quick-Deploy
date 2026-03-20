@@ -1269,6 +1269,17 @@ in {
         description = "AI stack semantic cache prewarm";
         after = [ "network-online.target" "ai-hybrid-coordinator.service" ];
         wants = [ "network-online.target" ];
+        path = with pkgs; [
+          bash
+          coreutils
+          curl
+          findutils
+          gnugrep
+          gnused
+          postgresql
+          python3
+          systemd
+        ];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -1288,6 +1299,7 @@ in {
           Environment = [
             "HYB_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
             "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
+            "SEED_ROUTING_PYTHON_BIN=${pkgs.python3}/bin/python3"
           ] ++ lib.optional cfg.secrets.enable
               "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
         };
