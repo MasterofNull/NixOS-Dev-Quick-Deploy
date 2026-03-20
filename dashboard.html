@@ -6386,6 +6386,7 @@
                         <div class="data-meta">${escapeHtml(operatorGuidance.summary || 'operator guidance pending')}</div>
                         ${operatorGuidance.recommended_next_step ? `<div class="data-meta">${escapeHtml(`next-step=${operatorGuidance.recommended_next_step}`)}</div>` : ''}
                         <div class="data-meta">${escapeHtml(`insight=${operatorGuidance.insight_target || 'full_report'}${Array.isArray(operatorGuidance.result_sources) && operatorGuidance.result_sources.length ? ` | result-sources=${operatorGuidance.result_sources.join(',')}` : ''}`)}</div>
+                        ${operatorGuidance.insight_digest?.summary ? `<div class="data-meta">${escapeHtml(`insight-digest=${operatorGuidance.insight_digest.title || 'insight'} | ${operatorGuidance.insight_digest.summary}`)}</div>` : ''}
                         ${operatorGuidance.likely_fix_path ? `<div class="data-meta">${escapeHtml(`likely-fix=${operatorGuidance.likely_fix_path}${operatorGuidance.likely_fix_reason ? ` | ${operatorGuidance.likely_fix_reason}` : ''}`)}</div>` : ''}
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.45rem; flex-wrap: wrap;">
                             <button class="export-btn" onclick="applyDeploymentSearchGuidance()">Apply Graph Guidance</button>

@@ -256,6 +256,50 @@ class AIInsightsService:
             "rag_posture": report.get("rag_posture", {}),
         }
 
+    async def get_operator_insight_digest(self, insight_target: str) -> Dict[str, Any]:
+        """Return a compact insight summary suitable for operator search guidance."""
+        normalized_target = str(insight_target or "full_report").strip().lower()
+        if normalized_target == "a2a_readiness":
+            readiness = await self.get_a2a_readiness()
+            return {
+                "target": normalized_target,
+                "title": "A2A Readiness",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"protocol={readiness.get('protocol_version', '--')} "
+                    f"| streaming={readiness.get('streaming', False)} "
+                    f"| methods={readiness.get('methods', {}).get('count', 0)}"
+                ),
+            }
+        if normalized_target == "query_complexity":
+            complexity = await self.get_query_complexity_analysis()
+            query_gaps = complexity.get("query_gaps") or []
+            rag_posture = complexity.get("rag_posture") or {}
+            return {
+                "target": normalized_target,
+                "title": "Query Complexity",
+                "status": "active",
+                "summary": (
+                    f"query_gaps={len(query_gaps)} "
+                    f"| rag_enabled={rag_posture.get('enabled', 'unknown')} "
+                    f"| breadth_windows={len(complexity.get('retrieval_breadth') or {})}"
+                ),
+            }
+
+        report = await self.get_full_report()
+        recommendations = report.get("structured_recommendations") or report.get("recommendations") or []
+        query_gaps = report.get("query_gaps") or []
+        return {
+            "target": "full_report",
+            "title": "Full Insights Report",
+            "status": "ready",
+            "summary": (
+                f"recommendations={len(recommendations)} "
+                f"| query_gaps={len(query_gaps)} "
+                f"| generated={report.get('generated_at', '--')}"
+            ),
+        }
+
     async def get_cache_analytics(self) -> Dict[str, Any]:
         """Get cache performance analytics."""
         report = await self.get_full_report()

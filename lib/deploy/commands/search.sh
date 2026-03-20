@@ -150,6 +150,7 @@ search_deployments() {
           end
         )" else empty end),
         (if (.operator_guidance.recommended_next_step // "") != "" then "Recommended next step: \(.operator_guidance.recommended_next_step)" else empty end),
+        (if (.operator_guidance.insight_digest.summary // "") != "" then "Insight digest: \(.operator_guidance.insight_digest.title // "insight") | \(.operator_guidance.insight_digest.summary)" else empty end),
         (.results[] |
         "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")\(
           if (.explanation.rank_score // null) != null
