@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
 
 from ai_coordinator import coerce_orchestration_context  # noqa: E402
+
+BLUEPRINTS_PATH = ROOT / "config" / "workflow-blueprints.json"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -36,6 +39,15 @@ def main() -> int:
     alias_ctx = coerce_orchestration_context({"agent": "continue", "role": "orchestrator"})
     assert_true(alias_ctx["requested_by"] == "continue", "legacy agent alias should normalize into requesting_agent")
     assert_true(alias_ctx["requester_role"] == "orchestrator", "legacy role alias should normalize into requester_role")
+
+    payload = json.loads(BLUEPRINTS_PATH.read_text(encoding="utf-8"))
+    blueprints = {item.get("id"): item for item in (payload.get("blueprints") or []) if isinstance(item, dict)}
+    reasoning_policy = (blueprints.get("remote-reasoning-escalation") or {}).get("orchestration_policy") or {}
+    assert_true(reasoning_policy.get("primary_lane") == "reasoning", "remote reasoning blueprint should route into reasoning lane")
+    assert_true(reasoning_policy.get("selection_strategy") == "escalate-on-complexity", "remote reasoning blueprint should expose explicit escalation strategy")
+    hardening_policy = (blueprints.get("nixos-service-hardening") or {}).get("orchestration_policy") or {}
+    assert_true(hardening_policy.get("primary_lane") == "hardening", "hardening blueprint should expose hardening lane")
+    assert_true(hardening_policy.get("consensus_mode") == "reviewer-gate", "hardening blueprint should stay reviewer-gated")
 
     print("PASS: workflow orchestration defaults keep top-level agents as orchestrators and sub-agents bounded")
     return 0

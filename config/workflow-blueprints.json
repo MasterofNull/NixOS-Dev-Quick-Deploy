@@ -6,6 +6,15 @@
       "title": "Coding Bugfix (Safe First)",
       "description": "Read-first plan, then guarded execution with explicit approval checkpoints.",
       "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "implementation",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "orchestrator-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Fix the root issue with minimal risk and clear validation evidence.",
         "definition_of_done": "Root cause fixed, acceptance checks passed, and rollback guidance documented.",
@@ -65,6 +74,15 @@
       "title": "NixOS Service Hardening",
       "description": "Incremental hardening flow with rollback markers and runtime checks.",
       "default_safety_mode": "execute-mutating",
+      "orchestration_policy": {
+        "primary_lane": "hardening",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "local-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Harden service configuration while preserving runtime stability and rollback safety.",
         "definition_of_done": "Declarative hardening landed, services healthy, and rollback path verified.",
@@ -124,6 +142,15 @@
       "title": "PRSI Pessimistic Recursive Improvement",
       "description": "One-change-per-cycle self-improvement loop with pessimistic validation, explicit rollback, and confidence-gated progression.",
       "default_safety_mode": "execute-mutating",
+      "orchestration_policy": {
+        "primary_lane": "self-improvement",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "evidence-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Continuously improve reliability, security, eval quality, and efficiency under pessimistic assumptions with strict safety gates.",
         "definition_of_done": "Exactly one reversible change is applied, required gates pass, and cycle artifacts capture outcomes and counterfactual risks.",
@@ -207,6 +234,15 @@
       "title": "Repository Refactor (Guarded)",
       "description": "Structured refactor flow with explicit invariants, reviewer gate, and regression evidence.",
       "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "implementation",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "orchestrator-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Refactor repository structure or code organization without changing intended behavior unless explicitly requested.",
         "definition_of_done": "Refactor landed with preserved behavior, validation evidence captured, and rollback guidance documented.",
@@ -254,6 +290,15 @@
       "title": "Deploy / Rollback Safe Ops",
       "description": "Deployment-oriented workflow with explicit rollback readiness and live verification.",
       "default_safety_mode": "execute-mutating",
+      "orchestration_policy": {
+        "primary_lane": "operations",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "local-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Apply deployment-related changes or runtime actions while preserving a clear rollback path and live health verification.",
         "definition_of_done": "Deploy or rollback completed, runtime health verified, and rollback notes updated with exact commands.",
@@ -301,6 +346,15 @@
       "title": "Continue / Editor Rescue",
       "description": "Recover Continue or editor-agent failures through bounded diagnostics and handoff verification.",
       "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "diagnostics",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "local-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Diagnose and recover Continue/editor-agent failures with explicit runtime evidence and safe handoff points.",
         "definition_of_done": "Failure mode categorized, bounded recovery applied or blocked with evidence, and editor path re-smoked.",
@@ -348,6 +402,15 @@
       "title": "Bounded Research / Retrieval Review",
       "description": "Gather bounded source-backed research through approved workflows and require reviewer-visible evidence plus stop conditions.",
       "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "research",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "evidence-review",
+        "selection_strategy": "evidence-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Collect, summarize, or compare source-bounded research without drifting into open-ended scraping or unreviewed synthesis.",
         "definition_of_done": "Approved sources queried, evidence captured, output schema filled, and stop conditions or follow-up gaps documented.",
@@ -395,6 +458,15 @@
       "title": "Remote Reasoning Escalation",
       "description": "Escalate to remote reasoning only after local context capture, explicit constraints, and reviewer-visible output shape.",
       "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "reasoning",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "flagship-remote",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "escalate-on-complexity",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
       "intent_contract": {
         "user_intent": "Use remote reasoning only when the task benefits from deeper synthesis and the local harness already captured the necessary context and constraints.",
         "definition_of_done": "Escalation justification, bounded remote result, local review notes, and follow-up validation path are documented.",

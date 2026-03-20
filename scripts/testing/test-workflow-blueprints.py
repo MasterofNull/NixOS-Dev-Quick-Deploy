@@ -30,6 +30,13 @@ def main() -> int:
     }
     missing = sorted(required - ids)
     assert_true(not missing, f"missing required workflow blueprints: {', '.join(missing)}")
+    for item in items:
+        policy = item.get("orchestration_policy") or {}
+        assert_true(isinstance(policy, dict), f"blueprint {item.get('id')} missing orchestration_policy")
+        assert_true(bool(policy.get("primary_lane")), f"blueprint {item.get('id')} missing primary_lane")
+        assert_true(bool(policy.get("reviewer_lane")), f"blueprint {item.get('id')} missing reviewer_lane")
+        assert_true(bool(policy.get("escalation_lane")), f"blueprint {item.get('id')} missing escalation_lane")
+        assert_true(bool(policy.get("consensus_mode")), f"blueprint {item.get('id')} missing consensus_mode")
     print("PASS: workflow blueprints cover the required harness task families")
     return 0
 

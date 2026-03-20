@@ -105,6 +105,18 @@ async def get_a2a_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/security/compliance")
+async def get_security_compliance():
+    """Get dashboard/operator security compliance posture summary."""
+    try:
+        service = get_insights_service()
+        compliance = await service.get_security_compliance_summary()
+        return compliance
+    except Exception as e:
+        logger.error(f"Failed to get security compliance summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # Query Complexity Analysis Endpoints
 # ============================================================================
