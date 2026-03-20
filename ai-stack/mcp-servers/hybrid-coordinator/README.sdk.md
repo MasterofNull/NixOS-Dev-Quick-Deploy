@@ -131,6 +131,7 @@ Both SDKs cover:
 - `POST /harness/eval`
 - `POST /workflow/run/start`
 - `GET /workflow/run/{id}`
+- `GET /workflow/run/{id}/team`
 - `POST /workflow/run/{id}/mode`
 - `POST /workflow/run/{id}/arbiter`
 - `GET /workflow/run/{id}/isolation`

@@ -109,6 +109,7 @@ export declare class HarnessClient {
   ): Promise<Json>;
   runStart(payload: RunStartRequest): Promise<Json>;
   runGet(sessionId: string, replay?: boolean): Promise<Json>;
+  runGetTeam(sessionId: string): Promise<Json>;
   runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm?: boolean): Promise<Json>;
   runArbiter(
     sessionId: string,

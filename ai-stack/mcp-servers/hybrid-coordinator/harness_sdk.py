@@ -347,6 +347,12 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    def run_get_team(self, session_id: str) -> Dict[str, Any]:
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.get(self._url(f"/workflow/run/{session_id}/team"), headers=self._headers())
+            r.raise_for_status()
+            return r.json()
+
     def run_set_mode(self, session_id: str, safety_mode: str, confirm: bool = False) -> Dict[str, Any]:
         payload = {"safety_mode": safety_mode, "confirm": confirm}
         with httpx.Client(timeout=self.timeout_s) as client:
