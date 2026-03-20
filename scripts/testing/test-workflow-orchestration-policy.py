@@ -8,6 +8,7 @@ import os
 import sys
 import types
 from pathlib import Path
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 os.environ.setdefault("AI_STRICT_ENV", "false")
@@ -44,8 +45,11 @@ from http_server import (  # noqa: E402
     _apply_consensus_update,
     _build_workflow_run_session,
     _default_agent_evaluations_registry,
+    _load_agent_evaluations_registry_sync,
     _record_agent_consensus_event,
     _record_agent_review_event,
+    _save_agent_evaluations_registry,
+    _seed_agent_evaluation,
 )
 
 BLUEPRINTS_PATH = ROOT / "config" / "workflow-blueprints.json"
@@ -138,6 +142,46 @@ def main() -> int:
     assert_true(remote_reasoning.get("accepted_reviews") == 1, "review event should accumulate accepted reviews")
     assert_true(reasoning.get("consensus_selected") == 1, "consensus event should accumulate selection counts")
     assert_true((evaluation_registry.get("summary") or {}).get("agent_count") >= 1, "evaluation summary should track agent count")
+
+    with tempfile.TemporaryDirectory(prefix="agent-evals-") as tmp_dir:
+        eval_path = Path(tmp_dir) / "agent-evaluations.json"
+        os.environ["DATA_DIR"] = tmp_dir
+        seeded_registry = _default_agent_evaluations_registry()
+        seeded_registry = _record_agent_review_event(
+            seeded_registry,
+            agent="human",
+            profile="reasoning",
+            passed=True,
+            score=1.0,
+            reviewer="codex",
+            review_type="acceptance",
+            task_class="remote_reasoning_escalation",
+            ts=3,
+        )
+        seeded_registry = _record_agent_consensus_event(
+            seeded_registry,
+            agent="human",
+            lane="reasoning",
+            selected_candidate_id="primary",
+            summary="historically preferred for reasoning",
+            ts=4,
+        )
+        import asyncio
+        asyncio.run(_save_agent_evaluations_registry(seeded_registry))
+        reloaded = _load_agent_evaluations_registry_sync()
+        assert_true((reloaded.get("summary") or {}).get("consensus_events", 0) >= 1, "reloaded registry should preserve consensus history")
+        seeded_consensus = _seed_agent_evaluation(reasoning_policy, default_ctx)
+        candidates = seeded_consensus.get("candidates") or []
+        primary = next((item for item in candidates if item.get("candidate_id") == "primary"), {})
+        assert_true(
+            float((primary.get("history_bias") or {}).get("review_score", 0.0)) > 0.0,
+            "historical review score should feed back into future candidate scoring",
+        )
+        assert_true(
+            float((primary.get("history_bias") or {}).get("selection_score", 0.0)) > 0.0,
+            "historical selection count should feed back into future candidate scoring",
+        )
+        os.environ.pop("DATA_DIR", None)
 
     print("PASS: workflow orchestration defaults keep top-level agents as orchestrators and sub-agents bounded")
     return 0

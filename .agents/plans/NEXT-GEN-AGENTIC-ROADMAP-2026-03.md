@@ -24,7 +24,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
-- Workflow blueprints and run sessions now carry explicit orchestration policy metadata for lane assignment, escalation, reviewer consensus defaults, seeded candidate evaluation, persisted consensus snapshots, and longitudinal agent evaluation rollups.
+- Workflow blueprints and run sessions now carry explicit orchestration policy metadata for lane assignment, escalation, reviewer consensus defaults, seeded candidate evaluation, persisted consensus snapshots, longitudinal agent evaluation rollups, and feedback-weighted future candidate scoring.
 - Dashboard/API security hardening now includes baseline CSP, HTTP security headers, HTTP rate limiting, lightweight dashboard/operator security scan automation, and non-destructive secrets rotation planning/reporting on the operator web surface.
 - Operator audit/compliance plumbing now includes an append-only dashboard audit trail, summary/report routes, filtered forensic query support, and tamper-evident hash-chain sealing for operator audit events.
 - Deployment and operator telemetry now also has natural-language deployment retrieval with query analysis/explanations, context-aware retrieval across deployments/logs/config/code, queryable graph views, cross-deployment relatedness reasoning, cluster summaries, root-cluster/failure-family queries, ranked cause chains, cluster score-breakdown rankings, per-cluster evidence drilldowns, shared operator-guidance follow-up actions that connect retrieval results back into graph/insights surfaces, stronger configuration-intent ranking so fix-oriented queries prefer config/code evidence over noisy logs, file-level repo-context aggregation so repeated line hits do not overwhelm the operator surface, likely-fix path hints so retrieval can point agents toward the next probable remediation target, recommended next-step summaries so operators and sub-agents can act on one concise instruction first, compact insight digests so the operator answer can carry lightweight analytics context without a second panel load, low-value doc pruning when a stronger actionable fix path already exists, unit-level log aggregation so runtime context stays compact when one service dominates the evidence, weak semantic tail pruning when stronger runtime or fix-path evidence is already present, weak secondary log-unit pruning when one dominant runtime unit already explains the operator query, low-value code/context tail suppression for dominant runtime-status queries, and dominant runtime-answer collapse so status-style searches resolve to one primary runtime block when that is the clearest answer.
@@ -242,6 +242,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ✅ Workflow orchestration policy contract for lane assignment, escalation, and reviewer consensus defaults
 - ✅ Seeded candidate evaluation and persisted consensus snapshots in workflow sessions
 - ✅ Longitudinal agent evaluation registry with review and consensus rollups
+- ✅ Agent-selection feedback loop now biases future candidate scoring from prior review/consensus history
 - ⏳ Team formation engine
 
 **Implemented foundation:**
@@ -254,7 +255,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Still missing for roadmap completion:**
 - Dynamic agent team formation and role routing
 - Native multi-agent arbiter flows beyond workflow-session consensus snapshots
-- Richer agent selection/evaluation feedback loop weighting runtime quality over longer history windows
+- Richer multi-agent selection/evaluation feedback loop weighting runtime quality over longer history windows and across multiple agent roles
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
 
 ### Batch 4.3: Agentic Workflow Automation
