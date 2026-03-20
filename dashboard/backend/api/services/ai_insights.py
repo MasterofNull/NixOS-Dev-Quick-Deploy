@@ -19,6 +19,17 @@ from api.services.runtime_controls import get_dashboard_rate_limiter, get_operat
 
 logger = logging.getLogger(__name__)
 
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _phase4_acceptance_report_path() -> Path:
+    configured = os.getenv("PHASE4_ACCEPTANCE_REPORT_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return _repo_root() / ".reports" / "phase-4-acceptance-report.json"
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
@@ -172,6 +183,58 @@ class AIInsightsService:
             "task_tooling": report.get("task_tooling_quality", {}),
             "delegated_failures": report.get("delegated_prompt_failures", {}),
             "delegated_failure_windows": report.get("delegated_prompt_failure_windows", {}),
+        }
+
+    async def get_phase4_acceptance_summary(self) -> Dict[str, Any]:
+        """Return the latest consolidated Phase 4 workflow acceptance report."""
+        report_path = _phase4_acceptance_report_path()
+        if not report_path.exists():
+            return {
+                "available": False,
+                "status": "no_report",
+                "phase": "4",
+                "report_path": str(report_path),
+                "flows": {},
+            }
+
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.error("Failed to read Phase 4 acceptance report: %s", exc)
+            return {
+                "available": False,
+                "status": "error",
+                "phase": "4",
+                "report_path": str(report_path),
+                "message": str(exc),
+                "flows": {},
+            }
+
+        flows = payload.get("flows", {}) if isinstance(payload.get("flows"), dict) else {}
+        summarized_flows = {
+            key: {
+                "label": flow.get("label"),
+                "status": flow.get("status"),
+                "script": flow.get("script"),
+                "ended_at": flow.get("ended_at"),
+            }
+            for key, flow in flows.items()
+            if isinstance(flow, dict)
+        }
+        passed = sum(1 for flow in summarized_flows.values() if flow.get("status") == "passed")
+        failed = sum(1 for flow in summarized_flows.values() if flow.get("status") != "passed")
+        return {
+            "available": True,
+            "status": payload.get("status", "unknown"),
+            "phase": str(payload.get("phase", "4")),
+            "generated_at": payload.get("generated_at"),
+            "report_path": str(report_path),
+            "summary": {
+                "total_flows": len(summarized_flows),
+                "passed_flows": passed,
+                "failed_flows": failed,
+            },
+            "flows": summarized_flows,
         }
 
     async def get_a2a_readiness(self) -> Dict[str, Any]:
