@@ -995,11 +995,9 @@ class ContextStore:
             if "hybrid" in query.lower() or "coordinator" in query.lower():
                 unit_hints.insert(0, "ai-hybrid-coordinator.service")
 
-        results: List[Dict[str, Any]] = []
+        grouped: Dict[str, Dict[str, Any]] = {}
         seen: set[str] = set()
         for unit in dict.fromkeys(unit_hints):
-            if len(results) >= limit:
-                break
             try:
                 proc = subprocess.run(
                     ["journalctl", "-u", unit, "--since", "7 days ago", "--no-pager", "-n", "200"],
@@ -1024,28 +1022,60 @@ class ContextStore:
                 if key in seen:
                     continue
                 seen.add(key)
-                results.append({
-                    "id": f"log:{unit}:{len(results)+1}",
-                    "deployment_id": "",
-                    "event_type": "log",
-                    "message": unit,
-                    "timestamp": None,
-                    "progress": None,
-                    "metadata": {"unit": unit},
-                    "relevance_score": len(matched_terms),
-                    "snippet": line.strip()[:240],
-                    "source": "logs",
-                    "explanation": {
-                        "summary": f"log match; matched terms: {', '.join(matched_terms)}",
-                        "matched_terms": matched_terms,
-                        "source_reason": "log match",
-                        "score_hint": len(matched_terms),
-                        "action_hint": "Inspect live runtime logs for this unit before changing config or code",
-                    },
-                })
-                if len(results) >= limit:
-                    break
-        return results
+                entry = grouped.get(unit)
+                if entry is None:
+                    entry = {
+                        "id": f"log:{unit}",
+                        "deployment_id": "",
+                        "event_type": "log",
+                        "message": unit,
+                        "timestamp": None,
+                        "progress": None,
+                        "metadata": {
+                            "unit": unit,
+                            "match_count": 0,
+                            "snippets": [],
+                        },
+                        "relevance_score": 0,
+                        "snippet": "",
+                        "source": "logs",
+                        "explanation": {
+                            "summary": "log match",
+                            "matched_terms": [],
+                            "source_reason": "log match",
+                            "score_hint": 0,
+                            "action_hint": "Inspect live runtime logs for this unit before changing config or code",
+                        },
+                    }
+                    grouped[unit] = entry
+                clean_snippet = line.strip()[:240]
+                if clean_snippet and clean_snippet not in entry["metadata"]["snippets"] and len(entry["metadata"]["snippets"]) < 3:
+                    entry["metadata"]["snippets"].append(clean_snippet)
+                entry["metadata"]["match_count"] += 1
+                entry["relevance_score"] = max(int(entry["relevance_score"]), len(matched_terms))
+                existing_terms = entry["explanation"].get("matched_terms") or []
+                entry["explanation"]["matched_terms"] = list(dict.fromkeys([*existing_terms, *matched_terms]))
+                entry["explanation"]["score_hint"] = entry["relevance_score"]
+
+        results: List[Dict[str, Any]] = []
+        for entry in grouped.values():
+            snippets = (entry.get("metadata") or {}).get("snippets") or []
+            matched_terms = entry["explanation"].get("matched_terms") or []
+            entry["snippet"] = " | ".join(snippets[:2]) if snippets else entry["message"]
+            entry["explanation"]["summary"] = (
+                f"log unit match; {(entry.get('metadata') or {}).get('match_count', 0)} hits"
+                f"; matched terms: {', '.join(matched_terms) if matched_terms else 'context'}"
+            )
+            results.append(entry)
+
+        results.sort(
+            key=lambda item: (
+                -int(item.get("relevance_score") or 0),
+                -int((item.get("metadata") or {}).get("match_count") or 0),
+                str(item.get("message") or ""),
+            )
+        )
+        return results[:limit]
 
     @staticmethod
     def _score_context_result(query_analysis: Dict[str, Any], item: Dict[str, Any]) -> int:

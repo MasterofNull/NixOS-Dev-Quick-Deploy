@@ -382,6 +382,7 @@ search_interactions("how to configure nixos modules")
 - Operator retrieval now also emits a single recommended next step so the dashboard search panel can answer with one concise operator action before showing supporting evidence.
 - Operator retrieval now includes a compact insight digest in the same response, tightening the dashboard and CLI into one recommendation block instead of separate search and insight cues.
 - Operator retrieval now prunes low-value documentation hits when a stronger config/code fix path exists, reducing answer noise in the dashboard and CLI.
+- Log-context retrieval now collapses repeated unit hits into compact runtime summaries with hit counts, further reducing operator noise.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -482,6 +483,7 @@ RETURN path
 - [x] Add recommended next-step summaries to operator retrieval guidance
 - [x] Add compact insight digests to operator retrieval guidance
 - [x] Prune low-value docs results when stronger fix paths exist
+- [x] Collapse repeated log hits into unit-level summaries
 
 **Deliverables:**
 - ✅ `deploy search "<natural language query>"`
@@ -498,6 +500,7 @@ RETURN path
 - ✅ Recommended next-step summaries in shared operator retrieval guidance
 - ✅ Compact insight digests embedded in shared operator retrieval guidance
 - ✅ Low-value docs results pruned when stronger fix paths exist
+- ✅ Unit-level log summaries with hit counts for cleaner runtime context
 - ⏳ Broader context-aware retrieval beyond current operator sources
 
 **Validation:**
