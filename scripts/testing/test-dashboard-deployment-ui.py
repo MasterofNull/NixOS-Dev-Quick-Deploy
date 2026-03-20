@@ -42,6 +42,7 @@ REQUIRED_SNIPPETS = [
     'operatorGuidance.summary',
     'operatorGuidance.recommended_next_step',
     'operatorGuidance.insight_target',
+    'operatorGuidance.insight_digest?.summary',
     'operatorGuidance.likely_fix_path',
     'result.metadata?.match_count',
     'result.explanation?.action_hint',
