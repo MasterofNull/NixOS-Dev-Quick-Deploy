@@ -1,0 +1,64 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="720" rx="28" fill="#0B1220"/>
+  <rect x="24" y="24" width="1152" height="672" rx="24" fill="url(#bg)"/>
+  <rect x="56" y="54" width="360" height="170" rx="22" fill="#111827" stroke="#334155"/>
+  <text x="84" y="102" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="34" font-weight="700">NixOS Dev Quick Deploy</text>
+  <text x="84" y="140" fill="#93C5FD" font-family="Arial, sans-serif" font-size="20">Declarative local AI platform for NixOS</text>
+  <text x="84" y="182" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="18">Bootstrap hosts, run local AI services,</text>
+  <text x="84" y="206" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="18">operate through one dashboard and one CLI.</text>
+
+  <rect x="458" y="54" width="304" height="118" rx="20" fill="#0F172A" stroke="#475569"/>
+  <text x="486" y="98" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="26" font-weight="700">Bootstrap</text>
+  <text x="486" y="132" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">nixos-quick-deploy.sh</text>
+
+  <rect x="796" y="54" width="304" height="118" rx="20" fill="#0F172A" stroke="#475569"/>
+  <text x="824" y="98" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="26" font-weight="700">Operations</text>
+  <text x="824" y="132" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">deploy CLI + dashboard</text>
+
+  <rect x="92" y="292" width="236" height="128" rx="20" fill="#172554" stroke="#60A5FA"/>
+  <text x="122" y="338" fill="#DBEAFE" font-family="Arial, sans-serif" font-size="25" font-weight="700">NixOS Modules</text>
+  <text x="122" y="372" fill="#BFDBFE" font-family="Arial, sans-serif" font-size="18">typed options</text>
+  <text x="122" y="396" fill="#BFDBFE" font-family="Arial, sans-serif" font-size="18">service wiring</text>
+
+  <rect x="360" y="292" width="236" height="128" rx="20" fill="#3F1D2E" stroke="#F472B6"/>
+  <text x="390" y="338" fill="#FCE7F3" font-family="Arial, sans-serif" font-size="25" font-weight="700">systemd Runtime</text>
+  <text x="390" y="372" fill="#FBCFE8" font-family="Arial, sans-serif" font-size="18">host-local services</text>
+  <text x="390" y="396" fill="#FBCFE8" font-family="Arial, sans-serif" font-size="18">loopback defaults</text>
+
+  <rect x="628" y="292" width="236" height="128" rx="20" fill="#1F2937" stroke="#34D399"/>
+  <text x="658" y="338" fill="#D1FAE5" font-family="Arial, sans-serif" font-size="25" font-weight="700">AI Services</text>
+  <text x="658" y="372" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="18">llama.cpp</text>
+  <text x="658" y="396" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="18">AIDB / coordinator</text>
+
+  <rect x="896" y="292" width="236" height="128" rx="20" fill="#3A2A12" stroke="#F59E0B"/>
+  <text x="926" y="338" fill="#FEF3C7" font-family="Arial, sans-serif" font-size="25" font-weight="700">Data Layer</text>
+  <text x="926" y="372" fill="#FDE68A" font-family="Arial, sans-serif" font-size="18">PostgreSQL</text>
+  <text x="926" y="396" fill="#FDE68A" font-family="Arial, sans-serif" font-size="18">Qdrant / Redis</text>
+
+  <rect x="220" y="500" width="320" height="132" rx="22" fill="#0F172A" stroke="#60A5FA"/>
+  <text x="250" y="548" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="28" font-weight="700">Command Center</text>
+  <text x="250" y="584" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">127.0.0.1:8889</text>
+  <text x="250" y="610" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">operator UI, health, metrics</text>
+
+  <rect x="660" y="500" width="320" height="132" rx="22" fill="#0F172A" stroke="#34D399"/>
+  <text x="690" y="548" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="28" font-weight="700">Validation Gate</text>
+  <text x="690" y="584" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">pre-commit and pre-deploy</text>
+  <text x="690" y="610" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">syntax, structure, roadmap, QA</text>
+
+  <path d="M610 172V246" stroke="#64748B" stroke-width="4" stroke-linecap="round"/>
+  <path d="M210 420V468H380" stroke="#60A5FA" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M478 420V468H380" stroke="#F472B6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M746 420V468H820" stroke="#34D399" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1014 420V468H820" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M610 246H210V292" stroke="#64748B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M610 246H478V292" stroke="#64748B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M610 246H746V292" stroke="#64748B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M610 246H1014V292" stroke="#64748B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <defs>
+    <linearGradient id="bg" x1="68" y1="54" x2="1136" y2="666" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+</svg>
