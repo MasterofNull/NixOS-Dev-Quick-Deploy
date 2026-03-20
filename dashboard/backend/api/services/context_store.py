@@ -8,6 +8,7 @@ import sqlite3
 import json
 import logging
 import hashlib
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 DEPLOYMENT_SEMANTIC_PROJECT = "dashboard-deployments"
 DEPLOYMENT_SEMANTIC_COLLECTION = "telemetry_patterns"
 DEFAULT_AIDB_KEY_FILE = "/run/secrets/aidb_api_key"
+GRAPH_STOPWORDS = {
+    "deployment", "deploy", "system", "build", "generation", "progress", "started",
+    "success", "failed", "running", "rollback", "command", "nixos", "fast",
+}
 
 
 class ContextStore:
@@ -608,6 +613,82 @@ class ContextStore:
             },
             "latest_error": latest_error,
             "recent": items,
+        }
+
+    @staticmethod
+    def _extract_issue_tokens(text: str) -> List[str]:
+        tokens = []
+        for token in re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{3,}", (text or "").lower()):
+            if token in GRAPH_STOPWORDS:
+                continue
+            tokens.append(token)
+        return list(dict.fromkeys(tokens))[:6]
+
+    def get_deployment_graph(self, recent_limit: int = 8, deployment_id: Optional[str] = None) -> Dict[str, Any]:
+        """Build a lightweight relationship graph from deployment summaries and events."""
+        if deployment_id:
+            summary = self.get_deployment_summary(deployment_id)
+            deployments = [summary] if summary else []
+        else:
+            deployments = [self.get_deployment_summary(item["deployment_id"]) for item in self.get_recent_deployments(limit=recent_limit)]
+            deployments = [item for item in deployments if item]
+
+        nodes: List[Dict[str, Any]] = []
+        edges: List[Dict[str, Any]] = []
+        seen_nodes: set[str] = set()
+        seen_edges: set[Tuple[str, str, str]] = set()
+
+        def add_node(node_id: str, node_type: str, label: str, **extra: Any) -> None:
+            if node_id in seen_nodes:
+                return
+            seen_nodes.add(node_id)
+            nodes.append({"id": node_id, "type": node_type, "label": label, **extra})
+
+        def add_edge(source: str, target: str, relation: str) -> None:
+            key = (source, target, relation)
+            if key in seen_edges:
+                return
+            seen_edges.add(key)
+            edges.append({"source": source, "target": target, "relation": relation})
+
+        for summary in deployments:
+            dep_id = str(summary["deployment_id"])
+            dep_node = f"deployment:{dep_id}"
+            add_node(dep_node, "deployment", dep_id, status=summary.get("status"), progress=summary.get("progress"))
+
+            command = str(summary.get("command") or "").strip()
+            if command:
+                cmd_node = f"command:{command}"
+                add_node(cmd_node, "command", command)
+                add_edge(dep_node, cmd_node, "executed")
+
+            status = str(summary.get("status") or "unknown")
+            status_node = f"status:{status}"
+            add_node(status_node, "status", status)
+            add_edge(dep_node, status_node, "resulted_in")
+
+            timeline = self.get_deployment_timeline(dep_id)
+            issue_counts: Dict[str, int] = {}
+            for event in timeline:
+                event_type = str(event.get("event_type") or "event")
+                event_node = f"event:{event_type}"
+                add_node(event_node, "event", event_type)
+                add_edge(dep_node, event_node, "emitted")
+                if event_type in {"failed", "rollback", "progress", "log"}:
+                    for token in self._extract_issue_tokens(str(event.get("message") or "")):
+                        issue_counts[token] = issue_counts.get(token, 0) + 1
+            for token, count in sorted(issue_counts.items(), key=lambda item: (-item[1], item[0]))[:4]:
+                issue_node = f"issue:{token}"
+                add_node(issue_node, "issue", token, occurrences=count)
+                add_edge(dep_node, issue_node, "signals")
+
+        return {
+            "status": "ready" if nodes else "empty",
+            "deployment_scope": deployment_id or "recent",
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "nodes": nodes,
+            "edges": edges,
         }
 
     def get_deployment_summary(self, deployment_id: str) -> Optional[Dict]:

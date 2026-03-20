@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; deeper orchestration still pending
+**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; deployment knowledge-graph context added; deeper orchestration still pending
 **Created:** 2026-03-15
 **Last Updated:** 2026-03-20
 **Version:** 1.1.0
@@ -24,11 +24,13 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
+- Deployment and operator telemetry now also has a first-pass graph view, which improves shared context for coordinating future agent slices against deployment history.
 - The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
 - Roadmap coordination should assume:
   - `codex` = orchestration/integration/reviewer gate
   - sub-agents = scoped execution slices
   - A2A = interoperability/runtime contract for continued harness evolution
+  - dashboard deployment graph = shared operator context layer, not an orchestration engine
 
 ---
 
