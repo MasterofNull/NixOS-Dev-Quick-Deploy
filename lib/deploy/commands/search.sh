@@ -138,6 +138,12 @@ search_deployments() {
       else
         "Query intent: \(.query_analysis.intent // "retrieval") | requested mode: \(.mode) | effective mode: \(.effective_mode // .mode)",
         (if .sources then "Sources: deployments=\(.sources.deployment // 0) logs=\(.sources.logs // 0) config=\(.sources.config // 0) code=\(.sources.code // 0)" else empty end),
+        (if .operator_guidance then "Operator guidance: \(.operator_guidance.summary // "pending") | graph=\(.operator_guidance.recommended_graph_view // "overview")\(
+          if (.operator_guidance.focus // "") != ""
+          then " | focus=\(.operator_guidance.focus)"
+          else ""
+          end
+        ) | insight=\(.operator_guidance.insight_target // "full_report")" else empty end),
         (.results[] |
         "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")\(
           if (.explanation.rank_score // null) != null

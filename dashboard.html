@@ -6111,6 +6111,7 @@
                     effectiveMode: data.effective_mode || mode,
                     queryAnalysis: data.query_analysis || {},
                     sources: data.sources || null,
+                    operatorGuidance: data.operator_guidance || {},
                 };
                 renderDeploymentSearchResults();
             } catch (error) {
@@ -6367,6 +6368,7 @@
             if (!container) return;
             const searchMeta = deploymentState.searchMeta || {};
             const queryAnalysis = searchMeta.queryAnalysis || {};
+            const operatorGuidance = searchMeta.operatorGuidance || {};
 
             if (!deploymentState.searchResults.length) {
                 const query = document.getElementById('deploymentSearch')?.value?.trim();
@@ -6381,6 +6383,12 @@
                     <div>
                         <div>${escapeHtml(`intent=${queryAnalysis.intent || 'retrieval'} | requested=${searchMeta.mode || 'hybrid'} | effective=${searchMeta.effectiveMode || searchMeta.mode || 'hybrid'}`)}</div>
                         <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}${searchMeta.sources ? ` | sources=d:${searchMeta.sources.deployment ?? 0}/l:${searchMeta.sources.logs ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}` : ''}`)}</div>
+                        <div class="data-meta">${escapeHtml(operatorGuidance.summary || 'operator guidance pending')}</div>
+                        <div class="data-meta">${escapeHtml(`insight=${operatorGuidance.insight_target || 'full_report'}${Array.isArray(operatorGuidance.result_sources) && operatorGuidance.result_sources.length ? ` | result-sources=${operatorGuidance.result_sources.join(',')}` : ''}`)}</div>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.45rem; flex-wrap: wrap;">
+                            <button class="export-btn" onclick="applyDeploymentSearchGuidance()">Apply Graph Guidance</button>
+                            <button class="export-btn" onclick="openDeploymentSearchInsight()">Open Insight Follow-up</button>
+                        </div>
                     </div>
                     <div class="data-meta">query analysis</div>
                 </div>
@@ -6396,6 +6404,28 @@
                     <div class="data-meta">${escapeHtml(result.source || result.event_type || 'event')}</div>
                 </div>
             `).join('')}`;
+        }
+
+        function applyDeploymentSearchGuidance() {
+            const operatorGuidance = deploymentState.searchMeta?.operatorGuidance || {};
+            const graphView = operatorGuidance.recommended_graph_view || deploymentState.searchMeta?.queryAnalysis?.recommended_graph_view || 'overview';
+            const focus = operatorGuidance.focus || deploymentState.searchMeta?.queryAnalysis?.focus || '';
+            const graphViewInput = document.getElementById('deploymentGraphView');
+            const graphFocusInput = document.getElementById('deploymentGraphFocus');
+            if (graphViewInput) graphViewInput.value = graphView;
+            if (graphFocusInput) graphFocusInput.value = focus;
+            loadDeploymentGraph();
+        }
+
+        function openDeploymentSearchInsight() {
+            const operatorGuidance = deploymentState.searchMeta?.operatorGuidance || {};
+            const insightTarget = operatorGuidance.insight_target || 'full_report';
+            const endpoint = insightTarget === 'a2a_readiness'
+                ? `${FASTAPI_BASE}/api/insights/workflows/a2a-readiness`
+                : insightTarget === 'query_complexity'
+                    ? `${FASTAPI_BASE}/api/insights/queries/complexity`
+                    : `${FASTAPI_BASE}/api/insights/report/full`;
+            window.open(endpoint, '_blank', 'noopener,noreferrer');
         }
 
         function renderDeploymentDetail() {

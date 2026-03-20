@@ -297,6 +297,8 @@ async def search_deployments(query: str, limit: int = 20, offset: int = 0, mode:
             )
         except asyncio.TimeoutError:
             semantic_sync = {"status": "timed_out", "synced": 0, "failed": []}
+        except Exception as exc:
+            semantic_sync = {"status": "error", "synced": 0, "failed": [str(exc)]}
 
     if effective_mode == "keyword":
         results = context_store.search_deployments(query, limit=limit, offset=offset)
@@ -317,6 +319,7 @@ async def search_deployments(query: str, limit: int = 20, offset: int = 0, mode:
         "mode": normalized_mode,
         "effective_mode": effective_mode,
         "query_analysis": query_analysis,
+        "operator_guidance": context_store.build_operator_guidance(query, query_analysis, explained_results),
         "count": len(explained_results),
         "limit": limit,
         "offset": offset,
@@ -348,6 +351,8 @@ async def search_deployment_context(query: str, limit: int = 12, mode: str = "na
             )
         except asyncio.TimeoutError:
             semantic_sync = {"status": "timed_out", "synced": 0, "failed": []}
+        except Exception as exc:
+            semantic_sync = {"status": "error", "synced": 0, "failed": [str(exc)]}
 
     result = await asyncio.to_thread(context_store.search_deployment_context, query, limit, normalized_mode)
     return {
