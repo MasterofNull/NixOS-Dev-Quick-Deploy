@@ -184,6 +184,43 @@ class AIInsightsTests:
             self.log_test("Workflow Compliance", False, str(e))
             return False
 
+    async def test_a2a_readiness(self) -> bool:
+        """Test GET /api/insights/workflows/a2a-readiness endpoint."""
+        try:
+            async with self.session.get(f"{INSIGHTS_BASE}/workflows/a2a-readiness") as response:
+                if response.status != 200:
+                    self.log_test("A2A Readiness", False, f"HTTP {response.status}")
+                    return False
+
+                data = await response.json()
+                required_keys = [
+                    "available",
+                    "status",
+                    "protocol_version",
+                    "streaming",
+                    "push_notifications",
+                    "methods",
+                ]
+                if not all(key in data for key in required_keys):
+                    self.log_test("A2A Readiness", False, "Missing required keys")
+                    return False
+
+                implemented = (data.get("methods") or {}).get("implemented") or []
+                if "tasks/list" not in implemented or "tasks/cancel" not in implemented:
+                    self.log_test("A2A Readiness", False, "Missing required A2A methods")
+                    return False
+
+                details = (
+                    f"status={data.get('status')}, protocol={data.get('protocol_version')}, "
+                    f"streaming={data.get('streaming')}, push_notifications={data.get('push_notifications')}"
+                )
+                self.log_test("A2A Readiness", True, details)
+                return True
+
+        except Exception as e:
+            self.log_test("A2A Readiness", False, str(e))
+            return False
+
     async def test_query_complexity(self) -> bool:
         """Test GET /api/insights/queries/complexity endpoint."""
         try:
@@ -335,6 +372,7 @@ class AIInsightsTests:
             await self.test_routing_analytics()
             await self.test_hint_effectiveness()
             await self.test_workflow_compliance()
+            await self.test_a2a_readiness()
             await self.test_query_complexity()
             await self.test_cache_analytics()
             await self.test_agent_lessons()
