@@ -612,6 +612,81 @@ class ContextStore:
                 break
         return combined
 
+    @staticmethod
+    def analyze_deployment_query(query: str) -> Dict[str, Any]:
+        normalized = (query or "").strip().lower()
+        tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{2,}", normalized)
+        has_question = any(word in normalized for word in ("why", "how", "what", "which", "when"))
+        semantic_cues = {"why", "how", "similar", "root", "cause", "explain", "related", "configure", "pattern"}
+        keyword_cues = {"exact", "literal", "grep", "match", "log", "journal"}
+        if has_question or any(token in semantic_cues for token in tokens):
+            intent = "diagnostic"
+            recommended_mode = "hybrid"
+        elif any(token in keyword_cues for token in tokens):
+            intent = "lookup"
+            recommended_mode = "keyword"
+        else:
+            intent = "retrieval"
+            recommended_mode = "hybrid"
+
+        if any(token in normalized for token in ("root", "cause", "related", "cluster", "similar")):
+            recommended_graph_view = "causality"
+        elif any(token in normalized for token in ("service", "systemd", ".service")):
+            recommended_graph_view = "services"
+        elif any(token in normalized for token in ("config", "nix", "yaml", "json", "toml")):
+            recommended_graph_view = "configs"
+        elif any(token in normalized for token in ("fail", "error", "issue", "rollback")):
+            recommended_graph_view = "issues"
+        else:
+            recommended_graph_view = "overview"
+
+        focus_terms = [
+            token for token in tokens
+            if token not in GRAPH_STOPWORDS and len(token) > 3
+        ][:3]
+        focus = focus_terms[0] if focus_terms else ""
+        return {
+            "intent": intent,
+            "recommended_mode": recommended_mode,
+            "recommended_graph_view": recommended_graph_view,
+            "focus": focus,
+            "tokens": tokens[:8],
+        }
+
+    @staticmethod
+    def explain_deployment_search_result(query: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        normalized_query = (query or "").lower()
+        query_terms = [
+            token for token in re.findall(r"[a-z0-9][a-z0-9._/-]{2,}", normalized_query)
+            if token not in GRAPH_STOPWORDS
+        ][:8]
+        haystack = " ".join([
+            str(result.get("deployment_id") or ""),
+            str(result.get("message") or ""),
+            str(result.get("snippet") or ""),
+            str(result.get("event_type") or ""),
+            str(result.get("source") or ""),
+        ]).lower()
+        matched_terms = [term for term in query_terms if term in haystack][:4]
+        source = str(result.get("source") or result.get("event_type") or "event")
+        if source == "semantic":
+            reason = "semantic similarity"
+        elif source == "hybrid":
+            reason = "combined semantic and keyword match"
+        else:
+            reason = "keyword match"
+        if matched_terms:
+            summary = f"{reason}; matched terms: {', '.join(matched_terms)}"
+        else:
+            summary = reason
+        score = result.get("relevance_score")
+        return {
+            "summary": summary,
+            "matched_terms": matched_terms,
+            "source_reason": reason,
+            "score_hint": score,
+        }
+
     def get_deployment_search_status(self, recent_limit: int = 8) -> Dict[str, Any]:
         """Summarize deployment semantic indexing health for operators."""
         totals = self.conn.execute(
