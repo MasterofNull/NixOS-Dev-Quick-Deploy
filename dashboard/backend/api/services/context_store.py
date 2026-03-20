@@ -3,6 +3,7 @@ Context-Aware Storage with SQLite + FTS5
 Implements context-mode strategies for deployment tracking
 """
 
+import os
 import sqlite3
 import json
 import logging
@@ -28,7 +29,12 @@ class ContextStore:
 
     def __init__(self, db_path: str = None):
         if db_path is None:
-            db_path = str(Path.home() / ".deploy" / "context.db")
+            env_path = os.getenv("DASHBOARD_CONTEXT_DB_PATH", "").strip()
+            if env_path:
+                db_path = env_path
+            else:
+                repo_root = Path(__file__).resolve().parents[4]
+                db_path = str(repo_root / "data" / "dashboard" / "context.db")
 
         # Ensure directory exists
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -134,18 +140,24 @@ class ContextStore:
     # Deployment Tracking
     # ========================================================================
 
+    @staticmethod
+    def _timestamp() -> str:
+        """Use microsecond timestamps so high-frequency events do not collide."""
+        return datetime.utcnow().isoformat(timespec="microseconds")
+
     def start_deployment(self, deployment_id: str, command: str, user: str = "system") -> bool:
         """Start tracking a new deployment"""
         try:
+            now = self._timestamp()
             self.conn.execute("""
                 INSERT INTO deployments (deployment_id, command, user, status, started_at)
-                VALUES (?, ?, ?, 'running', CURRENT_TIMESTAMP)
-            """, (deployment_id, command, user))
+                VALUES (?, ?, ?, 'running', ?)
+            """, (deployment_id, command, user, now))
 
             self.conn.execute("""
-                INSERT INTO deployment_events (deployment_id, event_type, message, user, progress)
-                VALUES (?, 'started', ?, ?, 0)
-            """, (deployment_id, f"Deployment started: {command}", user))
+                INSERT INTO deployment_events (deployment_id, event_type, timestamp, message, user, progress)
+                VALUES (?, 'started', ?, ?, ?, 0)
+            """, (deployment_id, now, f"Deployment started: {command}", user))
 
             self.conn.commit()
             logger.info(f"Started tracking deployment: {deployment_id}")
@@ -158,12 +170,13 @@ class ContextStore:
                   progress: int = 0, metadata: dict = None) -> int:
         """Add an event to deployment history"""
         metadata_json = json.dumps(metadata) if metadata else None
+        now = self._timestamp()
 
         cursor = self.conn.execute("""
             INSERT INTO deployment_events
-            (deployment_id, event_type, message, progress, metadata)
-            VALUES (?, ?, ?, ?, ?)
-        """, (deployment_id, event_type, message, progress, metadata_json))
+            (deployment_id, event_type, timestamp, message, progress, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (deployment_id, event_type, now, message, progress, metadata_json))
 
         # Update deployment progress
         self.conn.execute("""
@@ -178,18 +191,19 @@ class ContextStore:
         """Mark deployment as complete"""
         status = "success" if success else "failed"
         message = message or f"Deployment {status}"
+        now = self._timestamp()
 
         self.conn.execute("""
             UPDATE deployments
-            SET status = ?, completed_at = CURRENT_TIMESTAMP,
+            SET status = ?, completed_at = ?,
                 progress = ?, exit_code = ?
             WHERE deployment_id = ?
-        """, (status, 100 if success else None, exit_code, deployment_id))
+        """, (status, now, 100 if success else None, exit_code, deployment_id))
 
         self.conn.execute("""
-            INSERT INTO deployment_events (deployment_id, event_type, message, progress)
-            VALUES (?, ?, ?, ?)
-        """, (deployment_id, status, message, 100 if success else 0))
+            INSERT INTO deployment_events (deployment_id, event_type, timestamp, message, progress)
+            VALUES (?, ?, ?, ?, ?)
+        """, (deployment_id, status, now, message, 100 if success else 0))
 
         self.conn.commit()
         logger.info(f"Deployment {deployment_id} completed: {status}")
@@ -267,8 +281,8 @@ class ContextStore:
             WHERE deployment_id = ?
         """, (deployment_id,))
 
-        row = cursor.fetchone()
-        if not row:
+        summary_row = cursor.fetchone()
+        if not summary_row:
             return None
 
         # Get event counts by type (not full events)
@@ -280,19 +294,19 @@ class ContextStore:
             GROUP BY event_type
         """, (deployment_id,))
 
-        for row in cursor:
-            event_counts[row["event_type"]] = row["count"]
+        for event_row in cursor:
+            event_counts[event_row["event_type"]] = event_row["count"]
 
         return {
-            "deployment_id": row["deployment_id"],
-            "command": row["command"],
-            "user": row["user"],
-            "status": row["status"],
-            "started_at": row["started_at"],
-            "completed_at": row["completed_at"],
-            "progress": row["progress"],
-            "exit_code": row["exit_code"],
-            "duration_seconds": row["duration_seconds"],
+            "deployment_id": summary_row["deployment_id"],
+            "command": summary_row["command"],
+            "user": summary_row["user"],
+            "status": summary_row["status"],
+            "started_at": summary_row["started_at"],
+            "completed_at": summary_row["completed_at"],
+            "progress": summary_row["progress"],
+            "exit_code": summary_row["exit_code"],
+            "duration_seconds": summary_row["duration_seconds"],
             "event_counts": event_counts,
             "context_saved": True  # Full logs in DB, not in response
         }
@@ -316,6 +330,23 @@ class ContextStore:
             """, (limit,))
 
         return [dict(row) for row in cursor]
+
+    def count_deployments(self, status: str = None) -> int:
+        """Count tracked deployments, optionally filtered by status."""
+        if status:
+            cursor = self.conn.execute("""
+                SELECT COUNT(*) AS total
+                FROM deployments
+                WHERE status = ?
+            """, (status,))
+        else:
+            cursor = self.conn.execute("""
+                SELECT COUNT(*) AS total
+                FROM deployments
+            """)
+
+        row = cursor.fetchone()
+        return int(row["total"]) if row and row["total"] is not None else 0
 
     # ========================================================================
     # Progressive Disclosure (Context-Efficient Retrieval)

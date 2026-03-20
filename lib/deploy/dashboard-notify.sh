@@ -3,9 +3,18 @@
 # Dashboard Notification Helper
 # Sends deployment progress updates to dashboard API
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+if [[ -f "${REPO_ROOT}/config/service-endpoints.sh" ]]; then
+  # shellcheck source=config/service-endpoints.sh
+  source "${REPO_ROOT}/config/service-endpoints.sh"
+fi
+
 # Dashboard API URL (configurable via environment)
-DASHBOARD_API_URL="${DASHBOARD_API_URL:-http://localhost:8005}"
+DASHBOARD_API_URL="${DASHBOARD_API_URL:-http://127.0.0.1:8889}"
 DEPLOYMENT_ID="${DEPLOYMENT_ID:-}"
+DEPLOYMENT_ID_FILE="${DEPLOYMENT_ID_FILE:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/nixos-quick-deploy-dashboard-id}"
 
 # Check if dashboard integration is enabled
 DASHBOARD_ENABLED="${DASHBOARD_ENABLED:-true}"
@@ -53,6 +62,10 @@ dashboard_api_call() {
   fi
 }
 
+uri_encode() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
 # Start deployment tracking
 notify_deployment_start() {
   local command="$1"
@@ -66,12 +79,17 @@ notify_deployment_start() {
 
   log_debug "Starting deployment tracking: ${DEPLOYMENT_ID}"
 
+  local command_q
+  local user_q
+  command_q="$(uri_encode "${command}")"
+  user_q="$(uri_encode "${user}")"
+
   dashboard_api_call \
-    "/deployments/start?deployment_id=${DEPLOYMENT_ID}&command=${command}&user=${user}" \
+    "/deployments/start?deployment_id=${DEPLOYMENT_ID}&command=${command_q}&user=${user_q}" \
     "POST"
 
   # Save deployment ID for child processes
-  echo "${DEPLOYMENT_ID}" > /tmp/deploy-id.txt 2>/dev/null || true
+  echo "${DEPLOYMENT_ID}" > "${DEPLOYMENT_ID_FILE}" 2>/dev/null || true
 }
 
 # Update deployment progress
@@ -82,7 +100,7 @@ notify_deployment_progress() {
 
   # Get deployment ID from environment or file
   if [[ -z "$DEPLOYMENT_ID" ]]; then
-    DEPLOYMENT_ID=$(cat /tmp/deploy-id.txt 2>/dev/null || echo "")
+    DEPLOYMENT_ID=$(cat "${DEPLOYMENT_ID_FILE}" 2>/dev/null || echo "")
   fi
 
   if [[ -z "$DEPLOYMENT_ID" ]]; then
@@ -114,7 +132,7 @@ notify_deployment_complete() {
 
   # Get deployment ID from environment or file
   if [[ -z "$DEPLOYMENT_ID" ]]; then
-    DEPLOYMENT_ID=$(cat /tmp/deploy-id.txt 2>/dev/null || echo "")
+    DEPLOYMENT_ID=$(cat "${DEPLOYMENT_ID_FILE}" 2>/dev/null || echo "")
   fi
 
   if [[ -z "$DEPLOYMENT_ID" ]]; then
@@ -132,7 +150,7 @@ notify_deployment_complete() {
     "$json_data"
 
   # Cleanup
-  rm -f /tmp/deploy-id.txt 2>/dev/null || true
+  rm -f "${DEPLOYMENT_ID_FILE}" 2>/dev/null || true
 }
 
 # ============================================================================
@@ -152,9 +170,10 @@ COMMANDS:
   complete [SUCCESS] [MSG]    Complete deployment (SUCCESS: true/false)
 
 ENVIRONMENT VARIABLES:
-  DASHBOARD_API_URL           Dashboard API URL (default: http://localhost:8005)
+  DASHBOARD_API_URL           Dashboard API URL (default: from config/service-endpoints.sh)
   DASHBOARD_ENABLED           Enable dashboard integration (default: true)
   DEPLOYMENT_ID               Deployment tracking ID (auto-generated if not set)
+  DEPLOYMENT_ID_FILE          Deployment ID scratch file for child processes
 
 EXAMPLES:
   dashboard-notify.sh start "deploy system"
