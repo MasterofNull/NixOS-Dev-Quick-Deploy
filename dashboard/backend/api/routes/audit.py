@@ -41,3 +41,8 @@ async def get_operator_audit_events(
             contains=contains,
         ),
     }
+
+
+@router.get("/audit/operator/integrity")
+async def get_operator_audit_integrity(limit: int = 500):
+    return audit_log.integrity_status(limit=limit)
