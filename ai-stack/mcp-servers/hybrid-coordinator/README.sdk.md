@@ -61,6 +61,8 @@ client = HarnessClient(base_url="http://127.0.0.1:8003")
 plan = client.plan("debug continue local profile hangs")
 session = client.start_session("stabilize switchboard profile routing")
 tree = client.workflow_tree()
+card = client.a2a_agent_card()
+task = client.a2a_send_message("Resume the guarded workflow slice")
 ```
 
 ## TypeScript / JavaScript SDK
@@ -91,11 +93,15 @@ const plan = await client.plan("smoke test all workflow profiles");
 const manifest = await client.toolingManifest("debug MCP tool chatter", "typescript");
 const session = await client.startSession("run branch-aware workflow checks");
 const tree = await client.workflowTree();
+const card = await client.a2aAgentCard();
+const task = await client.a2aSendMessage("Resume the guarded workflow slice");
 ```
 
 ## API surface
 
 Both SDKs cover:
+- `GET /.well-known/agent.json`
+- `POST /a2a` for `agent/getCard`, `message/send`, `tasks/get`, `tasks/list`, and `tasks/cancel`
 - `POST /workflow/plan`
 - `POST /workflow/tooling-manifest`
 - `POST /workflow/session/start`

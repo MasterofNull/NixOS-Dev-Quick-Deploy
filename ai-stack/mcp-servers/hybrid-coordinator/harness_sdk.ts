@@ -48,6 +48,17 @@ export interface RuntimeScheduleRequest {
   includeDegraded?: boolean;
 }
 
+export interface A2AMessagePart {
+  type: "text";
+  text: string;
+}
+
+export interface A2AMessage {
+  role: "user" | "agent";
+  parts: A2AMessagePart[];
+  taskId?: string;
+}
+
 export class HarnessClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -92,6 +103,92 @@ export class HarnessClient {
     return this.request("/workflow/plan", {
       method: "POST",
       body: JSON.stringify({ query }),
+    });
+  }
+
+  a2aAgentCard(): Promise<Json> {
+    return this.request("/.well-known/agent.json", { method: "GET" });
+  }
+
+  a2aGetCard(): Promise<Json> {
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "agent-card",
+        method: "agent/getCard",
+        params: {},
+      }),
+    });
+  }
+
+  a2aSendMessage(
+    text: string,
+    opts: {
+      taskId?: string;
+      safetyMode?: "plan-readonly" | "execute-mutating";
+      intentContract?: RunStartRequest["intent_contract"];
+    } = {},
+  ): Promise<Json> {
+    const message: A2AMessage = {
+      role: "user",
+      parts: [{ type: "text", text }],
+    };
+    const params: Json = {
+      message,
+      safetyMode: opts.safetyMode ?? "plan-readonly",
+    };
+    if (opts.taskId) {
+      message.taskId = opts.taskId;
+      params.taskId = opts.taskId;
+    }
+    if (opts.intentContract) params.intent_contract = opts.intentContract as unknown as Json;
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "message-send",
+        method: "message/send",
+        params,
+      }),
+    });
+  }
+
+  a2aGetTask(taskId: string): Promise<Json> {
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "task-get",
+        method: "tasks/get",
+        params: { id: taskId },
+      }),
+    });
+  }
+
+  a2aListTasks(limit = 10): Promise<Json> {
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "task-list",
+        method: "tasks/list",
+        params: { limit },
+      }),
+    });
+  }
+
+  a2aCancelTask(taskId: string, reason = ""): Promise<Json> {
+    const params: Json = { id: taskId };
+    if (reason) params.reason = reason;
+    return this.request("/a2a", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "task-cancel",
+        method: "tasks/cancel",
+        params,
+      }),
     });
   }
 
