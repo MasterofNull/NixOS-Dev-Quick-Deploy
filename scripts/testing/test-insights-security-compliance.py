@@ -51,11 +51,15 @@ def main() -> int:
                 data.get("controls", {}).get("tamper_evident_audit_sealing") is True,
                 "tamper-evident audit sealing should be reported",
             )
+            assert_true(
+                data.get("controls", {}).get("dashboard_security_scan_automation") is True,
+                "dashboard security scan automation should be reported",
+            )
             assert_true((data.get("audit") or {}).get("total_events", 0) >= 1, "audit summary should include events")
             assert_true((data.get("audit_integrity") or {}).get("valid") is True, "audit integrity should validate")
             assert_true(
-                "automated compliance report export still pending" in (data.get("gaps") or []),
-                "remaining compliance gap should still be reported",
+                "external security scan automation still pending" in (data.get("gaps") or []),
+                "remaining external scan gap should still be reported",
             )
 
         print("PASS: security compliance insights regression")

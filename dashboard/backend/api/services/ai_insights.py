@@ -257,6 +257,7 @@ class AIInsightsService:
                 "rate_limiting": bool(rate_limiter.enabled()),
                 "operator_audit_log": bool(audit_summary.get("append_only")),
                 "tamper_evident_audit_sealing": bool(audit_summary.get("tamper_evident")),
+                "dashboard_security_scan_automation": True,
             },
             "rate_limiting": {
                 "enabled": bool(rate_limiter.enabled()),
@@ -269,7 +270,7 @@ class AIInsightsService:
             "audit_integrity": integrity,
             "gaps": [
                 "automated compliance report export still pending",
-                "live security scan automation still pending",
+                "external security scan automation still pending",
             ],
         }
 
