@@ -572,6 +572,8 @@ RETURN path
 **Current evidence:**
 - End-to-end smoke validation path:
   [scripts/testing/smoke-deployment-monitoring-alerting.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-deployment-monitoring-alerting.sh)
+- Consolidated Phase 4 acceptance path:
+  [scripts/testing/smoke-phase-4-integrated-workflows.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-phase-4-integrated-workflows.sh)
 
 ### Batch 4.2: Query → Agent → Storage → Learning Flow
 **Priority:** HIGH
@@ -598,6 +600,8 @@ RETURN path
 **Current evidence:**
 - End-to-end smoke validation path:
   [scripts/testing/smoke-query-agent-storage-learning.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-query-agent-storage-learning.sh)
+- Consolidated Phase 4 acceptance path:
+  [scripts/testing/smoke-phase-4-integrated-workflows.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-phase-4-integrated-workflows.sh)
 
 ### Batch 4.3: Security → Audit → Compliance Flow
 **Priority:** HIGH
@@ -625,6 +629,8 @@ RETURN path
 **Current evidence:**
 - End-to-end smoke validation path:
   [scripts/testing/smoke-security-audit-compliance.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-security-audit-compliance.sh)
+- Consolidated Phase 4 acceptance path:
+  [scripts/testing/smoke-phase-4-integrated-workflows.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-phase-4-integrated-workflows.sh)
 
 ### Batch 4.4: Google ADK Integration, Parity Check & Discovery
 **Priority:** HIGH
@@ -657,6 +663,7 @@ RETURN path
 ### Batch 4.5: Remove Bolt-On Features
 **Priority:** CRITICAL
 **Effort:** High (4-5 days)
+**Status:** in_progress
 
 **Tasks:**
 - [ ] Audit all features for integration status
@@ -674,6 +681,12 @@ RETURN path
 - No feature requires manual enabling
 - All features work out-of-box after deployment
 - Configuration is for customization, not enabling
+
+**Current evidence:**
+- Repo-backed deploy now restarts the operator dashboard automatically alongside mutable AI services:
+  [nixos-quick-deploy.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh)
+- Consolidated Phase 4 acceptance path reduces three independent workflow smokes into one operator-facing report:
+  [scripts/testing/smoke-phase-4-integrated-workflows.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-phase-4-integrated-workflows.sh)
 
 ---
 
