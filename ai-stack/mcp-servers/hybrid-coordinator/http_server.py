@@ -149,6 +149,7 @@ _embedding_cache_ref: Optional[Callable] = None      # Phase 21.3 — lambda: em
 _workflow_sessions_lock = asyncio.Lock()
 _runtime_registry_lock = asyncio.Lock()
 _agent_lessons_lock = asyncio.Lock()
+_agent_evaluations_lock = asyncio.Lock()
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
 _ORCHESTRATION_LANES = {
@@ -624,6 +625,15 @@ def _agent_lessons_registry_path() -> Path:
     return data_dir / "agent-lessons.json"
 
 
+def _agent_evaluations_registry_path() -> Path:
+    data_dir = Path(
+        os.path.expanduser(
+            os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")
+        )
+    )
+    return data_dir / "agent-evaluations.json"
+
+
 def _workflow_blueprints_path() -> Path:
     return Path(
         os.path.expanduser(
@@ -653,6 +663,20 @@ def _default_agent_lessons_registry() -> Dict[str, Any]:
             "rejected": 0,
         },
         "active_lessons": [],
+    }
+
+
+def _default_agent_evaluations_registry() -> Dict[str, Any]:
+    return {
+        "available": True,
+        "path": str(_agent_evaluations_registry_path()),
+        "agents": {},
+        "recent_events": [],
+        "summary": {
+            "agent_count": 0,
+            "review_events": 0,
+            "consensus_events": 0,
+        },
     }
 
 
@@ -696,6 +720,197 @@ def _normalize_agent_lessons_registry(data: Any) -> Dict[str, Any]:
     registry["counts"] = counts
     registry["active_lessons"] = active_lessons[:10]
     return registry
+
+
+def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
+    registry = _default_agent_evaluations_registry()
+    if isinstance(data, dict):
+        agents = data.get("agents")
+        if isinstance(agents, dict):
+            normalized_agents: Dict[str, Any] = {}
+            for key, value in agents.items():
+                agent_key = str(key or "").strip()
+                if not agent_key or not isinstance(value, dict):
+                    continue
+                normalized_agents[agent_key] = {
+                    "agent": agent_key,
+                    "profiles": value.get("profiles", {}) if isinstance(value.get("profiles"), dict) else {},
+                    "totals": value.get("totals", {}) if isinstance(value.get("totals"), dict) else {},
+                    "last_event_at": value.get("last_event_at"),
+                }
+            registry["agents"] = normalized_agents
+        events = data.get("recent_events")
+        if isinstance(events, list):
+            registry["recent_events"] = [item for item in events if isinstance(item, dict)][-25:]
+
+    review_events = 0
+    consensus_events = 0
+    for agent, payload in list(registry["agents"].items()):
+        profiles = payload.get("profiles") if isinstance(payload.get("profiles"), dict) else {}
+        totals = {
+            "review_events": 0,
+            "accepted_reviews": 0,
+            "rejected_reviews": 0,
+            "consensus_selected": 0,
+            "average_review_score": 0.0,
+        }
+        weighted_scores = []
+        total_score_events = 0
+        normalized_profiles: Dict[str, Any] = {}
+        for profile_name, profile_payload in profiles.items():
+            profile_key = str(profile_name or "").strip() or "unknown"
+            if not isinstance(profile_payload, dict):
+                continue
+            review_count = int(profile_payload.get("review_events", 0) or 0)
+            accepted = int(profile_payload.get("accepted_reviews", 0) or 0)
+            rejected = int(profile_payload.get("rejected_reviews", 0) or 0)
+            consensus_selected = int(profile_payload.get("consensus_selected", 0) or 0)
+            avg_score = float(profile_payload.get("average_review_score", 0.0) or 0.0)
+            normalized_profiles[profile_key] = {
+                "review_events": review_count,
+                "accepted_reviews": accepted,
+                "rejected_reviews": rejected,
+                "consensus_selected": consensus_selected,
+                "average_review_score": round(avg_score, 4),
+                "last_event_at": profile_payload.get("last_event_at"),
+            }
+            totals["review_events"] += review_count
+            totals["accepted_reviews"] += accepted
+            totals["rejected_reviews"] += rejected
+            totals["consensus_selected"] += consensus_selected
+            if review_count > 0:
+                weighted_scores.append(avg_score * review_count)
+                total_score_events += review_count
+        totals["average_review_score"] = round(
+            (sum(weighted_scores) / total_score_events) if total_score_events else 0.0,
+            4,
+        )
+        payload["profiles"] = normalized_profiles
+        payload["totals"] = totals
+        review_events += totals["review_events"]
+        consensus_events += totals["consensus_selected"]
+    registry["summary"] = {
+        "agent_count": len(registry["agents"]),
+        "review_events": review_events,
+        "consensus_events": consensus_events,
+    }
+    return registry
+
+
+async def _load_agent_evaluations_registry() -> Dict[str, Any]:
+    path = _agent_evaluations_registry_path()
+    if not path.exists():
+        return _default_agent_evaluations_registry()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _default_agent_evaluations_registry()
+    return _normalize_agent_evaluations_registry(data)
+
+
+async def _save_agent_evaluations_registry(data: Dict[str, Any]) -> None:
+    path = _agent_evaluations_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_normalize_agent_evaluations_registry(data), indent=2) + "\n", encoding="utf-8")
+
+
+def _record_agent_review_event(
+    registry: Dict[str, Any],
+    *,
+    agent: str,
+    profile: str,
+    passed: bool,
+    score: float,
+    reviewer: str,
+    review_type: str,
+    task_class: str,
+    ts: int,
+) -> Dict[str, Any]:
+    normalized = _normalize_agent_evaluations_registry(registry)
+    agent_key = str(agent or "").strip() or "unknown"
+    profile_key = str(profile or "").strip() or "unknown"
+    agent_row = normalized["agents"].setdefault(
+        agent_key,
+        {"agent": agent_key, "profiles": {}, "totals": {}, "last_event_at": None},
+    )
+    profile_row = agent_row["profiles"].setdefault(
+        profile_key,
+        {
+            "review_events": 0,
+            "accepted_reviews": 0,
+            "rejected_reviews": 0,
+            "consensus_selected": 0,
+            "average_review_score": 0.0,
+            "last_event_at": None,
+        },
+    )
+    review_events = int(profile_row.get("review_events", 0) or 0) + 1
+    running_total = float(profile_row.get("average_review_score", 0.0) or 0.0) * max(0, review_events - 1)
+    profile_row["review_events"] = review_events
+    profile_row["accepted_reviews"] = int(profile_row.get("accepted_reviews", 0) or 0) + (1 if passed else 0)
+    profile_row["rejected_reviews"] = int(profile_row.get("rejected_reviews", 0) or 0) + (0 if passed else 1)
+    profile_row["average_review_score"] = round((running_total + float(score)) / review_events, 4)
+    profile_row["last_event_at"] = ts
+    agent_row["last_event_at"] = ts
+    normalized["recent_events"].append(
+        {
+            "ts": ts,
+            "event_type": "review",
+            "agent": agent_key,
+            "profile": profile_key,
+            "passed": bool(passed),
+            "score": round(float(score), 4),
+            "reviewer": reviewer,
+            "review_type": review_type,
+            "task_class": task_class,
+        }
+    )
+    normalized["recent_events"] = normalized["recent_events"][-25:]
+    return _normalize_agent_evaluations_registry(normalized)
+
+
+def _record_agent_consensus_event(
+    registry: Dict[str, Any],
+    *,
+    agent: str,
+    lane: str,
+    selected_candidate_id: str,
+    summary: str,
+    ts: int,
+) -> Dict[str, Any]:
+    normalized = _normalize_agent_evaluations_registry(registry)
+    agent_key = str(agent or "").strip() or "unknown"
+    profile_key = str(lane or "").strip() or "unknown"
+    agent_row = normalized["agents"].setdefault(
+        agent_key,
+        {"agent": agent_key, "profiles": {}, "totals": {}, "last_event_at": None},
+    )
+    profile_row = agent_row["profiles"].setdefault(
+        profile_key,
+        {
+            "review_events": 0,
+            "accepted_reviews": 0,
+            "rejected_reviews": 0,
+            "consensus_selected": 0,
+            "average_review_score": 0.0,
+            "last_event_at": None,
+        },
+    )
+    profile_row["consensus_selected"] = int(profile_row.get("consensus_selected", 0) or 0) + 1
+    profile_row["last_event_at"] = ts
+    agent_row["last_event_at"] = ts
+    normalized["recent_events"].append(
+        {
+            "ts": ts,
+            "event_type": "consensus",
+            "agent": agent_key,
+            "profile": profile_key,
+            "selected_candidate_id": selected_candidate_id,
+            "summary": summary[:240],
+        }
+    )
+    normalized["recent_events"] = normalized["recent_events"][-25:]
+    return _normalize_agent_evaluations_registry(normalized)
 
 
 def _active_lesson_refs(registry: Dict[str, Any], limit: int = 2) -> List[Dict[str, Any]]:
@@ -5202,6 +5417,20 @@ async def run_http_mode(port: int) -> None:
                         )
                         sessions[session_id] = session
                         await _save_workflow_sessions(sessions)
+                        async with _agent_evaluations_lock:
+                            evaluation_registry = await _load_agent_evaluations_registry()
+                            evaluation_registry = _record_agent_review_event(
+                                evaluation_registry,
+                                agent=reviewed_agent,
+                                profile=reviewed_profile or task_class,
+                                passed=passed,
+                                score=float(response_payload["score"]),
+                                reviewer=reviewer,
+                                review_type=review_type,
+                                task_class=task_class,
+                                ts=now,
+                            )
+                            await _save_agent_evaluations_registry(evaluation_registry)
                         response_payload["session_id"] = session_id
                         response_payload["reviewer_gate"] = gate
                     else:
@@ -5301,6 +5530,17 @@ async def run_http_mode(port: int) -> None:
                     return web.json_response({"error": str(exc)}, status=400)
                 sessions[session_id] = session
                 await _save_workflow_sessions(sessions)
+                async with _agent_evaluations_lock:
+                    evaluation_registry = await _load_agent_evaluations_registry()
+                    evaluation_registry = _record_agent_consensus_event(
+                        evaluation_registry,
+                        agent=str(consensus.get("selected_agent", "") or "unknown"),
+                        lane=str(consensus.get("selected_lane", "") or "unknown"),
+                        selected_candidate_id=selected_candidate_id,
+                        summary=summary,
+                        ts=int(session.get("updated_at") or time.time()),
+                    )
+                    await _save_agent_evaluations_registry(evaluation_registry)
             return web.json_response({"status": "ok", "session_id": session_id, "consensus": consensus})
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
@@ -5681,6 +5921,25 @@ async def run_http_mode(port: int) -> None:
                     "service": "ai-coordinator",
                     "agent_lessons": registry,
                     "reviewed_lesson": target,
+                    "active_lesson_refs": lesson_refs,
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_ai_coordinator_evaluations(_request: web.Request) -> web.Response:
+        """Expose longitudinal agent evaluation and selection feedback."""
+        try:
+            async with _agent_evaluations_lock:
+                registry = await _load_agent_evaluations_registry()
+            async with _agent_lessons_lock:
+                lesson_registry = await _load_agent_lessons_registry()
+            lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "service": "ai-coordinator",
+                    "agent_evaluations": registry,
                     "active_lesson_refs": lesson_refs,
                 }
             )
@@ -6939,6 +7198,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/ai-coordinator/status", handle_ai_coordinator_status)
     http_app.router.add_get("/control/ai-coordinator/lessons", handle_ai_coordinator_lessons)
     http_app.router.add_post("/control/ai-coordinator/lessons/review", handle_ai_coordinator_lessons_review)
+    http_app.router.add_get("/control/ai-coordinator/evaluations", handle_ai_coordinator_evaluations)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
     # Batch 5.2 — Skill Usage Tracking and Recommendations
