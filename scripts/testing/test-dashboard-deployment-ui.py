@@ -24,6 +24,8 @@ REQUIRED_SNIPPETS = [
     'id="deploymentGraphFocus"',
     'id="deploymentGraphViewState"',
     'id="deploymentGraphFocusMatches"',
+    '<option value="causality">Causality</option>',
+    'why related',
     'function loadDeploymentOps()',
     'function connectDeploymentWebSocket()',
     'function searchDeploymentHistory()',
