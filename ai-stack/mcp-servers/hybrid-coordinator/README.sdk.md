@@ -44,6 +44,12 @@ Live smoke:
 bash scripts/testing/smoke-a2a-compat.sh
 ```
 
+Upstream conformance runner:
+
+```bash
+bash scripts/testing/run-a2a-tck.sh
+```
+
 ## Python SDK
 
 Path:
