@@ -19,7 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, and an initial deployment graph surface are live
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, and queryable deployment graph views are live
 - ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
@@ -346,12 +346,15 @@ search_interactions("how to configure nixos modules")
 - 70c25a7: Add hybrid semantic deployment search
 - 8c91b65: Expose deployment search coverage in dashboard
 - Add deployment graph API and dashboard view
+- Add deployment graph query views and writable-store recovery
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
 - Semantic-only retrieval is exposed but still subject to upstream embedding/vector latency.
 - Phase 3.2 is now building on the same deployment/event store rather than introducing a separate graph silo.
 - The deployment graph is intentionally lightweight today: deployments, commands, statuses, event types, and issue tokens derived from deployment telemetry.
+- The dashboard graph now supports operator query pivots for `overview`, `issues`, `services`, and `configs`, plus focus filtering for relationship inspection.
+- Context-store writes now self-heal onto a writable service path when runtime env drift would otherwise force a read-only DB fallback.
 
 ---
 
@@ -377,6 +380,7 @@ search_interactions("how to configure nixos modules")
 - 70c25a7: Add hybrid semantic deployment search
 - 8c91b65: Expose deployment search coverage in dashboard
 - Add deployment graph API and dashboard view
+- Add deployment graph query views and writable-store recovery
 
 ### Batch 3.2: Knowledge Graph Construction 🚧 IN PROGRESS
 **Priority:** HIGH
@@ -387,13 +391,14 @@ search_interactions("how to configure nixos modules")
 - [x] Design initial lightweight deployment graph schema on top of the existing event store
 - [x] Extract deployment entities and issue tokens from deployment logs/events
 - [x] Build first-pass relationships between deployments, commands, statuses, events, and issue signals
-- [ ] Implement graph traversal and relationship-focused query modes
+- [x] Implement initial relationship-focused query modes (`overview|issues|services|configs` + focus filter)
 - [x] Create initial graph visualization in dashboard deployment operations
 
 **Deliverables:**
 - ✅ Lightweight deployment graph API from the dashboard context store
 - ✅ Initial graph visualization in dashboard deployment operations
-- ⏳ Relationship query/traversal API beyond raw nodes/edges
+- ✅ Relationship-focused graph query views beyond raw nodes/edges
+- ✅ Writable-path recovery for deployment context storage during runtime drift
 - ⏳ Broader graph coverage for services, configs, and cross-deployment causality
 
 **Validation:**

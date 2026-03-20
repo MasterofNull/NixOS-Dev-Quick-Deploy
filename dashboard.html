@@ -2376,6 +2376,16 @@
                         <div class="deployment-grid" style="margin-bottom: 1rem;">
                             <div class="deployment-panel">
                                 <div class="deployment-subtitle">Deployment Relationship Graph</div>
+                                <div class="deployment-toolbar" style="margin-bottom: 0.75rem;">
+                                    <select id="deploymentGraphView" class="search-box" style="max-width: 180px;" onchange="loadDeploymentGraph()">
+                                        <option value="overview">Overview</option>
+                                        <option value="issues">Issue Signals</option>
+                                        <option value="services">Service Touches</option>
+                                        <option value="configs">Config References</option>
+                                    </select>
+                                    <input type="text" class="search-box" id="deploymentGraphFocus" placeholder="Filter graph focus..." onkeydown="if (event.key === 'Enter') loadDeploymentGraph()">
+                                    <button class="export-btn" onclick="loadDeploymentGraph()">Query Graph</button>
+                                </div>
                                 <div class="status-grid" id="deploymentGraphSummary" style="margin-bottom: 0.75rem;">
                                     <div class="status-item">
                                         <span class="status-label">Graph Status</span>
@@ -2392,6 +2402,14 @@
                                     <div class="status-item">
                                         <span class="status-label">Scope</span>
                                         <span class="status-value" id="deploymentGraphScope">--</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">View</span>
+                                        <span class="status-value" id="deploymentGraphViewState">--</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">Focus Matches</span>
+                                        <span class="status-value" id="deploymentGraphFocusMatches">--</span>
                                     </div>
                                 </div>
                                 <div class="data-list" id="deploymentGraphList">
@@ -6112,27 +6130,46 @@
 
         async function loadDeploymentGraph() {
             const selectedId = deploymentState.selectedId;
-            const query = selectedId
-                ? `deployment_id=${encodeURIComponent(selectedId)}`
-                : 'recent_limit=6';
+            const view = document.getElementById('deploymentGraphView')?.value || 'overview';
+            const focus = document.getElementById('deploymentGraphFocus')?.value?.trim() || '';
+            const params = new URLSearchParams();
+            if (selectedId) {
+                params.set('deployment_id', selectedId);
+            } else {
+                params.set('recent_limit', '6');
+            }
+            params.set('view', view);
+            if (focus) {
+                params.set('focus', focus);
+            }
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/deployments/graph?${query}`, { cache: 'no-store' });
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/graph?${params.toString()}`, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`deployment graph HTTP ${response.status}`);
                 const data = await response.json();
                 document.getElementById('deploymentGraphStatus').textContent = data.status || 'unknown';
                 document.getElementById('deploymentGraphNodes').textContent = `${data.node_count ?? 0}`;
                 document.getElementById('deploymentGraphEdges').textContent = `${data.edge_count ?? 0}`;
                 document.getElementById('deploymentGraphScope').textContent = data.deployment_scope || 'recent';
+                document.getElementById('deploymentGraphViewState').textContent = data.view || view;
+                document.getElementById('deploymentGraphFocusMatches').textContent = `${data.focus_matches ?? 0}`;
 
                 const list = document.getElementById('deploymentGraphList');
+                const relationshipSummary = Array.isArray(data.top_relationships) ? data.top_relationships : [];
                 const edges = Array.isArray(data.edges) ? data.edges : [];
-                if (edges.length) {
-                    list.innerHTML = edges.slice(0, 10).map((edge) => `
+                if (edges.length || relationshipSummary.length) {
+                    const summaryItems = relationshipSummary.slice(0, 4).map((item) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(item.relation || 'relation')}</span>
+                            <span class="data-meta">${escapeHtml(String(item.count ?? 0))} edges</span>
+                        </div>
+                    `).join('');
+                    const edgeItems = edges.slice(0, 8).map((edge) => `
                         <div class="data-item">
                             <span>${escapeHtml(`${edge.source} -> ${edge.target}`)}</span>
                             <span class="data-meta">${escapeHtml(edge.relation || 'related')}</span>
                         </div>
                     `).join('');
+                    list.innerHTML = `${summaryItems}${edgeItems}`;
                 } else {
                     list.innerHTML = '<div class="data-item"><span>No deployment graph edges available</span><span class="data-meta">empty</span></div>';
                 }
@@ -6142,6 +6179,8 @@
                 document.getElementById('deploymentGraphNodes').textContent = '--';
                 document.getElementById('deploymentGraphEdges').textContent = '--';
                 document.getElementById('deploymentGraphScope').textContent = '--';
+                document.getElementById('deploymentGraphViewState').textContent = '--';
+                document.getElementById('deploymentGraphFocusMatches').textContent = '--';
                 document.getElementById('deploymentGraphList').innerHTML = `<div class="data-item"><span>Deployment graph unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
             }
         }
