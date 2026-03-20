@@ -282,25 +282,42 @@ async def get_deployment_history(
 async def search_deployments(query: str, limit: int = 20, offset: int = 0, mode: str = "hybrid"):
     """Search deployment history using keyword, semantic, or hybrid retrieval."""
     normalized_mode = (mode or "hybrid").strip().lower()
-    if normalized_mode not in {"keyword", "semantic", "hybrid"}:
-        raise HTTPException(status_code=400, detail="mode must be keyword, semantic, or hybrid")
+    if normalized_mode not in {"keyword", "semantic", "hybrid", "auto", "natural"}:
+        raise HTTPException(status_code=400, detail="mode must be keyword, semantic, hybrid, auto, or natural")
+
+    query_analysis = context_store.analyze_deployment_query(query)
+    effective_mode = query_analysis["recommended_mode"] if normalized_mode in {"auto", "natural"} else normalized_mode
 
     semantic_sync = None
-    if normalized_mode in {"semantic", "hybrid"}:
-        semantic_sync = await asyncio.to_thread(context_store.sync_recent_deployments, 1)
+    if effective_mode in {"semantic", "hybrid"}:
+        try:
+            semantic_sync = await asyncio.wait_for(
+                asyncio.to_thread(context_store.sync_recent_deployments, 1),
+                timeout=1.5,
+            )
+        except asyncio.TimeoutError:
+            semantic_sync = {"status": "timed_out", "synced": 0, "failed": []}
 
-    if normalized_mode == "keyword":
+    if effective_mode == "keyword":
         results = context_store.search_deployments(query, limit=limit, offset=offset)
-    elif normalized_mode == "semantic":
+    elif effective_mode == "semantic":
         results = context_store.search_deployments_semantic(query, limit=limit, offset=offset)
     else:
         results = context_store.search_deployments_hybrid(query, limit=limit, offset=offset)
 
+    explained_results = []
+    for result in results:
+        item = dict(result)
+        item["explanation"] = context_store.explain_deployment_search_result(query, item)
+        explained_results.append(item)
+
     return {
-        "results": results,
+        "results": explained_results,
         "query": query,
         "mode": normalized_mode,
-        "count": len(results),
+        "effective_mode": effective_mode,
+        "query_analysis": query_analysis,
+        "count": len(explained_results),
         "limit": limit,
         "offset": offset,
         "semantic_sync": semantic_sync,

@@ -2,7 +2,7 @@
 
 **Generated:** 2026-03-15
 **Last Updated:** 2026-03-20
-**Status:** Active - Phase 1 COMPLETE, Phase 2 Batches 2.1-2.3 materially implemented, Phase 3 Batches 3.1-3.2 IN PROGRESS
+**Status:** Active - Phase 1 COMPLETE, Phase 2 Batches 2.1-2.3 materially implemented, Phase 3 Batches 3.1-3.3 IN PROGRESS
 **Owner:** AI Harness Team
 **Version:** 1.3.0
 **Objective:** Transform scattered capabilities into a seamless, production-ready, world-class AI development platform
@@ -19,7 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, cluster score-breakdown rankings, and per-cluster evidence drilldowns are live
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, natural-language deployment retrieval with result explanations, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, cluster score-breakdown rankings, and per-cluster evidence drilldowns are live
 - ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
@@ -321,7 +321,7 @@ curl http://localhost:8889/api/health/aggregate
 - [ ] Add code change vector embeddings
 - [x] Implement deployment similarity search API (`keyword|semantic|hybrid`)
 - [x] Expose deployment search coverage/errors in dashboard
-- [ ] Harden semantic-only latency and background materialization
+- [x] Harden semantic-only latency and background materialization for dashboard/CLI search responsiveness
 
 **Deliverables:**
 - ✅ Deployment search API with hybrid retrieval
@@ -353,6 +353,7 @@ search_interactions("how to configure nixos modules")
 - Add ranked deployment cause-chain summaries
 - Add ranked cluster score-breakdown summaries
 - Add per-cluster evidence drilldowns
+- Add natural-language deployment search with query analysis and explanations
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
@@ -367,6 +368,7 @@ search_interactions("how to configure nixos modules")
 - Cause-factor and cause-chain summaries now rank shared services/configs/issues/status so operators can see a likely explanation path, not just related deployments.
 - Cluster rankings now expose score breakdowns and top factors so the chosen root cluster is inspectable rather than opaque.
 - Ranked clusters now include grouped evidence drilldowns for statuses, issues, services, and config references so operators can inspect the underlying signals directly in the dashboard.
+- Deployment search now supports `natural` and `auto` modes with query intent analysis, recommended graph focus, and per-result explanation summaries in both dashboard and CLI.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -450,18 +452,21 @@ RETURN path
 ### Batch 3.3: AI-Powered Search & Retrieval
 **Priority:** HIGH
 **Effort:** Medium (3-4 days)
+**Status:** 🚧 IN PROGRESS (2026-03-20)
 
 **Tasks:**
-- [ ] Implement semantic search CLI
-- [ ] Add natural language query interface
+- [x] Implement semantic search CLI
+- [x] Add natural language query interface
 - [ ] Create context-aware retrieval
 - [ ] Implement multi-modal search (logs + code + config)
-- [ ] Add search results ranking with relevance scores
+- [x] Add search results ranking with relevance scores and explanations
 
 **Deliverables:**
-- `deploy search "<natural language query>"`
-- Semantic search API endpoint
-- Search results with explanations
+- ✅ `deploy search "<natural language query>"`
+- ✅ Semantic search API endpoint with `auto|natural|hybrid|semantic|keyword`
+- ✅ Search results with explanations
+- ✅ Query intent analysis with recommended graph view/focus
+- ⏳ Broader context-aware retrieval beyond deployments
 
 **Validation:**
 ```bash
