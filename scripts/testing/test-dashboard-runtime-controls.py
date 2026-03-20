@@ -54,6 +54,7 @@ def main() -> int:
             summary = client.get("/api/audit/operator/summary")
             events = client.get("/api/audit/operator/events", params={"limit": 10})
             integrity = client.get("/api/audit/operator/integrity", params={"limit": 10})
+            integrity_window = client.get("/api/audit/operator/integrity", params={"limit": 1})
             filtered = client.get(
                 "/api/audit/operator/events",
                 params={"limit": 10, "path_prefix": "/api/deployments", "method": "POST", "category": "operator_write"},
@@ -61,11 +62,13 @@ def main() -> int:
             assert_true(summary.status_code == 200, "audit summary route should succeed")
             assert_true(events.status_code == 200, "audit events route should succeed")
             assert_true(integrity.status_code == 200, "audit integrity route should succeed")
+            assert_true(integrity_window.status_code == 200, "limited audit integrity route should succeed")
             assert_true(filtered.status_code == 200, "filtered audit events route should succeed")
 
             summary_data = summary.json()
             events_data = events.json()
             integrity_data = integrity.json()
+            integrity_window_data = integrity_window.json()
             filtered_data = filtered.json()
             assert_true(summary_data.get("append_only") is True, "audit summary should mark append-only log")
             assert_true(summary_data.get("tamper_evident") is True, "audit summary should mark tamper-evident sealing")
@@ -74,6 +77,9 @@ def main() -> int:
             assert_true(integrity_data.get("valid") is True, "audit integrity check should pass")
             assert_true(integrity_data.get("sealed_events", 0) >= 1, "audit integrity should report sealed events")
             assert_true(integrity_data.get("legacy_events", 0) == 0, "fresh audit log should not contain legacy events")
+            assert_true(integrity_window_data.get("valid") is True, "limited integrity window should stay valid")
+            assert_true(integrity_window_data.get("window_truncated") is True, "limited integrity window should report truncation")
+            assert_true(integrity_window_data.get("sealed_events", 0) >= 1, "limited integrity window should report sealed events")
             assert_true(
                 any(event.get("path") == "/api/deployments/start" and event.get("method") == "POST" for event in (events_data.get("events") or [])),
                 "deployment start should be present in operator audit log",
