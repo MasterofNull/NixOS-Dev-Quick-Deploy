@@ -21,19 +21,21 @@ Task stream:
 Implemented A2A-style methods:
 - `agent/getCard`
 - `message/send`
+- `message/stream`
 - `tasks/get`
 - `tasks/list`
 - `tasks/cancel`
 
 Explicit boundary:
 - `pushNotifications` remains `false` for now.
-- The supported streaming path is SSE replay via `GET /a2a/tasks/{id}/events`.
+- The supported streaming paths are `message/stream` and SSE replay via `GET /a2a/tasks/{id}/events`.
 - We are intentionally not claiming webhook/push delivery until there is a declarative, validated runtime contract for it.
 
 Runtime mapping:
 - A2A task IDs map directly to persisted workflow run `session_id` values.
 - A2A task state is derived from workflow run `status`.
-- Task event streaming is replayed from workflow `trajectory`.
+- Task status updates are replayed from workflow `trajectory`.
+- Task artifacts are projected from workflow objective, latest detail, and reviewer-gate state.
 - Safety mode, reviewer gate state, and replay URLs remain the underlying source of truth.
 
 Live smoke:
@@ -68,6 +70,7 @@ session = client.start_session("stabilize switchboard profile routing")
 tree = client.workflow_tree()
 card = client.a2a_agent_card()
 task = client.a2a_send_message("Resume the guarded workflow slice")
+stream = client.a2a_stream_message("Stream the guarded workflow slice")
 ```
 
 ## TypeScript / JavaScript SDK
@@ -100,13 +103,15 @@ const session = await client.startSession("run branch-aware workflow checks");
 const tree = await client.workflowTree();
 const card = await client.a2aAgentCard();
 const task = await client.a2aSendMessage("Resume the guarded workflow slice");
+const stream = await client.a2aStreamMessage("Stream the guarded workflow slice");
 ```
 
 ## API surface
 
 Both SDKs cover:
 - `GET /.well-known/agent.json`
-- `POST /a2a` for `agent/getCard`, `message/send`, `tasks/get`, `tasks/list`, and `tasks/cancel`
+- `POST /a2a` for `agent/getCard`, `message/send`, `message/stream`, `tasks/get`, `tasks/list`, and `tasks/cancel`
+- `GET /a2a/tasks/{id}/events`
 - `POST /workflow/plan`
 - `POST /workflow/tooling-manifest`
 - `POST /workflow/session/start`

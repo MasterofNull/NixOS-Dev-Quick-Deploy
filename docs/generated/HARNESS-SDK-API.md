@@ -9,6 +9,7 @@ Do not edit manually.
 - `a2a_agent_card()`
 - `a2a_get_card()`
 - `a2a_send_message(text)`
+- `a2a_stream_message(text)`
 - `a2a_get_task(task_id)`
 - `a2a_list_tasks(limit=10)`
 - `a2a_cancel_task(task_id, reason='')`
@@ -54,6 +55,7 @@ Do not edit manually.
 - `a2aAgentCard()`
 - `a2aGetCard()`
 - `a2aSendMessage(text: string, opts: {, taskId?: string;, safetyMode?: "plan-readonly" | "execute-mutating";, intentContract?: RunStartRequest["intent_contract"];, } = {})`
+- `a2aStreamMessage(text: string, opts: {, taskId?: string;, safetyMode?: "plan-readonly" | "execute-mutating";, intentContract?: RunStartRequest["intent_contract"];, } = {})`
 - `a2aGetTask(taskId: string)`
 - `a2aListTasks(limit = 10)`
 - `a2aCancelTask(taskId: string, reason = "")`
@@ -91,7 +93,7 @@ Do not edit manually.
 
 - `GET /.well-known/agent.json`
 - `GET /.well-known/agent-card.json`
-- `POST /a2a` for `agent/getCard`, `message/send`, `tasks/get`, `tasks/list`, and `tasks/cancel`
+- `POST /a2a` for `agent/getCard`, `message/send`, `message/stream`, `tasks/get`, `tasks/list`, and `tasks/cancel`
 - `GET /a2a/tasks/{id}/events`
 - `POST /workflow/plan`
 - `POST /workflow/tooling-manifest`
@@ -107,7 +109,7 @@ Do not edit manually.
 
 ## A2A Support Boundary
 
-- Agent-card discovery, JSON-RPC task methods, and SSE task replay are supported.
+- Agent-card discovery, JSON-RPC task methods, `message/stream`, and SSE task replay are supported.
 - Push notifications are intentionally unsupported in the current runtime (`pushNotifications=false`).
 - Workflow sessions remain the source of truth behind all A2A task objects.
 
