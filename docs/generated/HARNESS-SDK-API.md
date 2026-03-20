@@ -27,6 +27,7 @@ Do not edit manually.
 - `qa_check(phase='0', output_format='json', timeout_seconds=60, include_sudo=False)`
 - `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40, intent_contract=None, requesting_agent='human', requester_role='orchestrator')`
 - `run_get(session_id, replay=False)`
+- `run_get_team(session_id)`
 - `run_set_mode(session_id, safety_mode, confirm=False)`
 - `run_arbiter(session_id, selected_candidate_id, arbiter, verdict, rationale, summary='', supporting_decisions=None)`
 - `run_get_isolation(session_id)`
@@ -74,6 +75,7 @@ Do not edit manually.
 - `qaCheck(phase = "0", format: "json" | "text" = "json", timeoutSeconds = 60, includeSudo = false)`
 - `runStart(payload: RunStartRequest)`
 - `runGet(sessionId: string, replay = false)`
+- `runGetTeam(sessionId: string)`
 - `runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm = false)`
 - `runArbiter(sessionId: string, selectedCandidateId: string, arbiter: string, verdict: "accept" | "reject" | "prefer", rationale: string, summary = "", supportingDecisions: Json[] = [])`
 - `runGetIsolation(sessionId: string)`

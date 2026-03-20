@@ -386,6 +386,10 @@ export class HarnessClient {
     return this.request(`/workflow/run/${sessionId}?replay=${replay ? "true" : "false"}`, { method: "GET" });
   }
 
+  runGetTeam(sessionId: string): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/team`, { method: "GET" });
+  }
+
   runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm = false): Promise<Json> {
     return this.request(`/workflow/run/${sessionId}/mode`, {
       method: "POST",

@@ -1195,6 +1195,35 @@ def _session_to_a2a_artifacts(session: Dict[str, Any]) -> List[Dict[str, Any]]:
                 }
             )
 
+    team = session.get("team", {})
+    if isinstance(team, dict) and (team.get("members") or []):
+        team_lines = [
+            f"Formation mode: {str(team.get('formation_mode', 'dynamic-role-assignment') or 'dynamic-role-assignment').strip()}",
+            f"Selection strategy: {str(team.get('selection_strategy', 'orchestrator-first') or 'orchestrator-first').strip()}",
+            f"Active slots: {', '.join(str(slot or '').strip() for slot in (team.get('active_slots') or []) if str(slot or '').strip()) or 'none'}",
+        ]
+        for member in team.get("members") or []:
+            if not isinstance(member, dict):
+                continue
+            team_lines.append(
+                f"{str(member.get('slot', 'member') or 'member').strip()}: "
+                f"{str(member.get('agent', 'unknown') or 'unknown').strip()} "
+                f"[{str(member.get('lane', 'unknown') or 'unknown').strip()}]"
+            )
+        artifacts.append(
+            {
+                "artifactId": f"{session_id}:team",
+                "name": "Orchestration Team",
+                "description": "Current dynamically formed role assignment for this workflow task.",
+                "parts": _a2a_text_parts("\n".join(team_lines)),
+                "metadata": {
+                    "workflow_session_id": session_id,
+                    "artifact_kind": "team",
+                    "formation_mode": str(team.get("formation_mode", "") or "").strip(),
+                },
+            }
+        )
+
     return artifacts
 
 
@@ -2395,6 +2424,86 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
     }
 
 
+def _build_orchestration_team(
+    policy: Dict[str, Any],
+    orchestration: Dict[str, Any],
+    consensus: Dict[str, Any],
+) -> Dict[str, Any]:
+    candidates = consensus.get("candidates") if isinstance(consensus.get("candidates"), list) else []
+    by_id = {
+        str(item.get("candidate_id", "")).strip(): item
+        for item in candidates
+        if isinstance(item, dict) and str(item.get("candidate_id", "")).strip()
+    }
+    selected_candidate_id = str(consensus.get("selected_candidate_id", "") or "").strip()
+    primary_candidate = by_id.get(selected_candidate_id) or next(iter(by_id.values()), {})
+    reviewer_candidate = by_id.get("reviewer") or {}
+    escalation_candidate = by_id.get("escalation") or {}
+    requested_by = str(orchestration.get("requested_by", "human") or "human").strip() or "human"
+    requester_role = str(orchestration.get("requester_role", "orchestrator") or "orchestrator").strip() or "orchestrator"
+    allow_parallel = bool(policy.get("allow_parallel_subagents", False))
+    max_parallel = max(1, int(policy.get("max_parallel_subagents", 1) or 1))
+    selection_strategy = str(policy.get("selection_strategy", "orchestrator-first") or "orchestrator-first").strip()
+    consensus_mode = str(consensus.get("consensus_mode", policy.get("consensus_mode", "reviewer-gate")) or "reviewer-gate").strip()
+
+    team_members: List[Dict[str, Any]] = []
+
+    def _append_member(candidate: Dict[str, Any], slot: str, required: bool, activation_reason: str) -> None:
+        if not candidate:
+            return
+        team_members.append(
+            {
+                "slot": slot,
+                "candidate_id": str(candidate.get("candidate_id", "") or "").strip(),
+                "lane": str(candidate.get("lane", "") or "").strip(),
+                "agent": str(candidate.get("agent", "") or "").strip(),
+                "role": str(candidate.get("role", "") or "").strip(),
+                "score": round(float(candidate.get("score", 0.0) or 0.0), 4),
+                "required": required,
+                "activation_reason": activation_reason,
+            }
+        )
+
+    _append_member(primary_candidate, "primary", True, "highest-ranked primary execution candidate")
+    _append_member(reviewer_candidate, "reviewer", True, "reviewer gate coverage")
+
+    if escalation_candidate and (
+        allow_parallel or selection_strategy == "escalate-on-complexity" or consensus_mode == "arbiter-review"
+    ):
+        _append_member(
+            escalation_candidate,
+            "escalation",
+            consensus_mode == "arbiter-review" or selection_strategy == "escalate-on-complexity",
+            "escalation lane reserved for complex or arbitrated tasks",
+        )
+
+    # Keep deterministic bounded team size while allowing limited multi-role composition.
+    unique_members: List[Dict[str, Any]] = []
+    seen_slots = set()
+    for member in team_members:
+        slot = str(member.get("slot", "") or "")
+        if not slot or slot in seen_slots:
+            continue
+        seen_slots.add(slot)
+        unique_members.append(member)
+    required_members = [member for member in unique_members if bool(member.get("required"))]
+    optional_members = [member for member in unique_members if not bool(member.get("required"))]
+    optional_budget = max(0, max_parallel - 1)
+    active_members = required_members + optional_members[:optional_budget]
+    active_slots = [str(member.get("slot", "") or "") for member in active_members]
+    return {
+        "requested_by": requested_by,
+        "requester_role": requester_role,
+        "formation_mode": "dynamic-role-assignment",
+        "selection_strategy": selection_strategy,
+        "consensus_mode": consensus_mode,
+        "allow_parallel_subagents": allow_parallel,
+        "max_parallel_subagents": max_parallel,
+        "active_slots": active_slots,
+        "members": active_members,
+    }
+
+
 def _normalize_consensus_decisions(value: Any) -> List[Dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -2610,6 +2719,9 @@ def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
     policy = session.get("orchestration_policy") if isinstance(session.get("orchestration_policy"), dict) else {}
     orchestration = session.get("orchestration") if isinstance(session.get("orchestration"), dict) else {}
     session.setdefault("consensus", _seed_agent_evaluation(policy, orchestration))
+    team = session.get("team") if isinstance(session.get("team"), dict) else {}
+    if not team:
+        session["team"] = _build_orchestration_team(policy, orchestration, session["consensus"])
 
 
 def _build_workflow_run_session(
@@ -2641,6 +2753,8 @@ def _build_workflow_run_session(
             }
         )
 
+    seeded_consensus = _seed_agent_evaluation(policy_validation["normalized"], orchestration)
+    seeded_team = _build_orchestration_team(policy_validation["normalized"], orchestration, seeded_consensus)
     session = {
         "session_id": session_id,
         "objective": query,
@@ -2660,7 +2774,8 @@ def _build_workflow_run_session(
         "intent_contract": validation["normalized"],
         "orchestration": orchestration,
         "orchestration_policy": policy_validation["normalized"],
-        "consensus": _seed_agent_evaluation(policy_validation["normalized"], orchestration),
+        "consensus": seeded_consensus,
+        "team": seeded_team,
         "reviewer_gate": {
             "required": _blueprint_requires_reviewer_gate(selected_blueprint),
             "last_review": None,
@@ -2688,7 +2803,8 @@ def _build_workflow_run_session(
                 "primary_lane": policy_validation["normalized"]["primary_lane"],
                 "consensus_mode": policy_validation["normalized"]["consensus_mode"],
                 "arbiter_required": policy_validation["normalized"]["consensus_mode"] == "arbiter-review",
-                "selected_candidate_id": _seed_agent_evaluation(policy_validation["normalized"], orchestration).get("selected_candidate_id"),
+                "selected_candidate_id": seeded_consensus.get("selected_candidate_id"),
+                "team_slots": seeded_team.get("active_slots", []),
             }
         ],
     }
@@ -5714,6 +5830,11 @@ async def run_http_mode(port: int) -> None:
                     )
                 except ValueError as exc:
                     return web.json_response({"error": str(exc)}, status=400)
+                session["team"] = _build_orchestration_team(
+                    session.get("orchestration_policy", {}) if isinstance(session.get("orchestration_policy"), dict) else {},
+                    session.get("orchestration", {}) if isinstance(session.get("orchestration"), dict) else {},
+                    consensus,
+                )
                 sessions[session_id] = session
                 await _save_workflow_sessions(sessions)
                 async with _agent_evaluations_lock:
@@ -5770,6 +5891,11 @@ async def run_http_mode(port: int) -> None:
                     )
                 except ValueError as exc:
                     return web.json_response({"error": str(exc)}, status=400)
+                session["team"] = _build_orchestration_team(
+                    session.get("orchestration_policy", {}) if isinstance(session.get("orchestration_policy"), dict) else {},
+                    session.get("orchestration", {}) if isinstance(session.get("orchestration"), dict) else {},
+                    consensus,
+                )
                 sessions[session_id] = session
                 await _save_workflow_sessions(sessions)
                 if verdict in {"accept", "prefer"}:
@@ -5785,6 +5911,26 @@ async def run_http_mode(port: int) -> None:
                         )
                         await _save_agent_evaluations_registry(evaluation_registry)
             return web.json_response({"status": "ok", "session_id": session_id, "consensus": consensus})
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_team(request: web.Request) -> web.Response:
+        """Return the dynamic team assignment for a workflow run."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+            _ensure_session_runtime_fields(session)
+            return web.json_response(
+                {
+                    "session_id": session_id,
+                    "team": session.get("team", {}),
+                    "consensus_mode": ((session.get("consensus") or {}) if isinstance(session.get("consensus"), dict) else {}).get("consensus_mode", ""),
+                }
+            )
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -7427,6 +7573,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/review/acceptance", handle_review_acceptance)
     http_app.router.add_post("/workflow/run/start", handle_workflow_run_start)
     http_app.router.add_get("/workflow/run/{session_id}", handle_workflow_run_get)
+    http_app.router.add_get("/workflow/run/{session_id}/team", handle_workflow_run_team)
     http_app.router.add_post("/workflow/run/{session_id}/consensus", handle_workflow_run_consensus)
     http_app.router.add_post("/workflow/run/{session_id}/arbiter", handle_workflow_run_arbiter)
     http_app.router.add_post("/workflow/run/{session_id}/mode", handle_workflow_run_mode)
