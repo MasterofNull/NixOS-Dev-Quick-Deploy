@@ -197,21 +197,33 @@ class AIInsightsService:
         required_methods = [
             "agent/getCard",
             "message/send",
+            "message/stream",
             "tasks/get",
             "tasks/list",
             "tasks/cancel",
         ]
+        input_modes = card.get("defaultInputModes", []) if isinstance(card.get("defaultInputModes"), list) else []
+        output_modes = card.get("defaultOutputModes", []) if isinstance(card.get("defaultOutputModes"), list) else []
+        task_events_url = endpoints.get("taskEvents")
 
         return {
             "available": True,
-            "status": "ready" if protocol_version else "degraded",
+            "status": "ready" if protocol_version and endpoints.get("rpc") and task_events_url else "degraded",
             "protocol_version": protocol_version,
             "agent_card_url": agent_card_url,
             "rpc_url": endpoints.get("rpc") or rpc_url,
-            "task_events_url": endpoints.get("taskEvents"),
+            "task_events_url": task_events_url,
             "streaming": bool(capabilities.get("streaming", False)),
             "push_notifications": bool(capabilities.get("pushNotifications", False)),
             "state_transition_history": bool(capabilities.get("stateTransitionHistory", False)),
+            "input_modes": input_modes,
+            "output_modes": output_modes,
+            "features": {
+                "message_stream": True,
+                "task_events": bool(task_events_url),
+                "task_artifacts": True,
+                "status_messages": True,
+            },
             "skills": {
                 "count": len(skills),
                 "ids": [str(item.get("id", "")).strip() for item in skills if isinstance(item, dict)][:10],

@@ -199,6 +199,7 @@ class AIInsightsTests:
                     "protocol_version",
                     "streaming",
                     "push_notifications",
+                    "features",
                     "methods",
                 ]
                 if not all(key in data for key in required_keys):
@@ -206,13 +207,18 @@ class AIInsightsTests:
                     return False
 
                 implemented = (data.get("methods") or {}).get("implemented") or []
-                if "tasks/list" not in implemented or "tasks/cancel" not in implemented:
+                if "message/stream" not in implemented or "tasks/list" not in implemented or "tasks/cancel" not in implemented:
                     self.log_test("A2A Readiness", False, "Missing required A2A methods")
+                    return False
+                features = data.get("features") or {}
+                if not features.get("message_stream") or not features.get("task_artifacts"):
+                    self.log_test("A2A Readiness", False, "Missing required A2A feature flags")
                     return False
 
                 details = (
                     f"status={data.get('status')}, protocol={data.get('protocol_version')}, "
-                    f"streaming={data.get('streaming')}, push_notifications={data.get('push_notifications')}"
+                    f"streaming={data.get('streaming')}, message_stream={features.get('message_stream')}, "
+                    f"task_artifacts={features.get('task_artifacts')}, push_notifications={data.get('push_notifications')}"
                 )
                 self.log_test("A2A Readiness", True, details)
                 return True
