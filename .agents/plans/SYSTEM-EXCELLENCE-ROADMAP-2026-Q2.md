@@ -384,6 +384,7 @@ search_interactions("how to configure nixos modules")
 - Operator retrieval now prunes low-value documentation hits when a stronger config/code fix path exists, reducing answer noise in the dashboard and CLI.
 - Log-context retrieval now collapses repeated unit hits into compact runtime summaries with hit counts, further reducing operator noise.
 - Operator retrieval now also prunes weak semantic deployment tail results when stronger runtime or fix-path evidence already exists.
+- Operator retrieval now also prunes weak secondary log units when one dominant runtime unit already explains the query.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -486,6 +487,7 @@ RETURN path
 - [x] Prune low-value docs results when stronger fix paths exist
 - [x] Collapse repeated log hits into unit-level summaries
 - [x] Prune weak semantic tail results when stronger evidence exists
+- [x] Prune weak secondary log units when one dominant runtime unit exists
 
 **Deliverables:**
 - ✅ `deploy search "<natural language query>"`
@@ -504,6 +506,7 @@ RETURN path
 - ✅ Low-value docs results pruned when stronger fix paths exist
 - ✅ Unit-level log summaries with hit counts for cleaner runtime context
 - ✅ Weak semantic tail results pruned when stronger evidence exists
+- ✅ Weak secondary log units pruned when one dominant runtime unit exists
 - ⏳ Broader context-aware retrieval beyond current operator sources
 
 **Validation:**
