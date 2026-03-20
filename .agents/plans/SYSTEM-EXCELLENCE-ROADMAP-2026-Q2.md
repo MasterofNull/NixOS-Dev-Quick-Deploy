@@ -392,6 +392,7 @@ search_interactions("how to configure nixos modules")
 - Dashboard/API insights now also expose a security/compliance posture summary endpoint built from the landed CSP, security headers, rate limiting, and operator audit controls.
 - Dashboard/API operator audit routes now support filtered forensic queries by path, method, status, category, and text, closing more of the open next-gen audit/compliance gap in repo.
 - Dashboard/API operator audit events are now tamper-evidently sealed with a hash chain, and the API exposes audit integrity verification for compliance checks.
+- The existing security-audit workflow now also runs a lightweight dashboard/operator security scan and persists a dedicated report artifact that is exposed through the dashboard security audit API surface.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---

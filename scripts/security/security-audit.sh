@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${AI_SECURITY_AUDIT_DIR:-${HOME}/.local/share/nixos-ai-stack/security}"
 HIGH_CVSS_THRESHOLD="${AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD:-7.0}"
 NOTIFY_USER="${AI_SECURITY_AUDIT_NOTIFY_USER:-}"
+DASHBOARD_SCAN_SCRIPT="${REPO_ROOT}/scripts/security/dashboard-security-scan.sh"
 
 usage() {
   cat <<'EOF'
@@ -48,10 +49,21 @@ require_cmd() {
   fi
 }
 
+has_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
 require_cmd jq
 require_cmd python3
-require_cmd npm
-require_cmd pip-audit
+
+pip_audit_available=false
+npm_available=false
+if has_cmd pip-audit; then
+  pip_audit_available=true
+fi
+if has_cmd npm; then
+  npm_available=true
+fi
 
 mkdir -p "${OUTPUT_DIR}"
 today="$(date +%F)"
@@ -74,51 +86,80 @@ mapfile -t package_files < <(find "${REPO_ROOT}" -type f -name 'package.json' \
 pip_total_vulns=0
 pip_files_scanned=0
 
-for lockfile in "${lockfiles[@]}"; do
-  base="$(echo "${lockfile#"${REPO_ROOT}/"}" | tr '/' '_')"
-  out_json="${pip_results_dir}/${base}.json"
-  set +e
-  pip-audit -r "${lockfile}" --format json > "${out_json}" 2>"${out_json}.stderr"
-  rc=$?
-  set -e
-  if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
-    jq -n --arg lockfile "${lockfile}" --arg err "$(cat "${out_json}.stderr")" \
-      '{dependencies: [], error: $err, lockfile: $lockfile}' > "${out_json}"
-  fi
-  count="$(jq '[.dependencies[]?.vulns[]?] | length' "${out_json}")"
-  pip_total_vulns=$((pip_total_vulns + count))
-  pip_files_scanned=$((pip_files_scanned + 1))
-done
+if [[ "${pip_audit_available}" == true ]]; then
+  for lockfile in "${lockfiles[@]}"; do
+    base="$(echo "${lockfile#"${REPO_ROOT}/"}" | tr '/' '_')"
+    out_json="${pip_results_dir}/${base}.json"
+    set +e
+    pip-audit -r "${lockfile}" --format json > "${out_json}" 2>"${out_json}.stderr"
+    rc=$?
+    set -e
+    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
+      jq -n --arg lockfile "${lockfile}" --arg err "$(cat "${out_json}.stderr")" \
+        '{dependencies: [], error: $err, lockfile: $lockfile}' > "${out_json}"
+    fi
+    count="$(jq '[.dependencies[]?.vulns[]?] | length' "${out_json}")"
+    pip_total_vulns=$((pip_total_vulns + count))
+    pip_files_scanned=$((pip_files_scanned + 1))
+  done
+else
+  jq -n --arg error "pip-audit not installed" '{dependencies: [], error: $error}' > "${pip_results_dir}/scanner-unavailable.json"
+fi
 
 npm_total_high=0
 npm_total_critical=0
 npm_files_scanned=0
 
-for package_file in "${package_files[@]}"; do
-  dir="$(dirname "${package_file}")"
-  if [[ ! -f "${dir}/package-lock.json" ]]; then
-    continue
-  fi
-  base="$(echo "${dir#"${REPO_ROOT}/"}" | tr '/' '_')"
-  out_json="${npm_results_dir}/${base}.json"
+if [[ "${npm_available}" == true ]]; then
+  for package_file in "${package_files[@]}"; do
+    dir="$(dirname "${package_file}")"
+    if [[ ! -f "${dir}/package-lock.json" ]]; then
+      continue
+    fi
+    base="$(echo "${dir#"${REPO_ROOT}/"}" | tr '/' '_')"
+    out_json="${npm_results_dir}/${base}.json"
+    set +e
+    (cd "${dir}" && npm audit --omit=dev --json > "${out_json}" 2>"${out_json}.stderr")
+    rc=$?
+    set -e
+    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
+      jq -n --arg project_dir "${dir}" --arg err "$(cat "${out_json}.stderr")" \
+        '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $err, project_dir: $project_dir}' > "${out_json}"
+    fi
+    high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
+    critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
+    npm_total_high=$((npm_total_high + high))
+    npm_total_critical=$((npm_total_critical + critical))
+    npm_files_scanned=$((npm_files_scanned + 1))
+  done
+else
+  jq -n --arg error "npm not installed" '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $error}' > "${npm_results_dir}/scanner-unavailable.json"
+fi
+
+dashboard_scan_report="${OUTPUT_DIR}/latest-dashboard-security-scan.json"
+dashboard_scan_status="unavailable"
+if [[ -x "${DASHBOARD_SCAN_SCRIPT}" ]]; then
   set +e
-  (cd "${dir}" && npm audit --omit=dev --json > "${out_json}" 2>"${out_json}.stderr")
-  rc=$?
+  "${DASHBOARD_SCAN_SCRIPT}" --output "${dashboard_scan_report}" >"${tmp_root}/dashboard-scan.stdout" 2>"${tmp_root}/dashboard-scan.stderr"
+  dashboard_rc=$?
   set -e
-  if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
-    jq -n --arg project_dir "${dir}" --arg err "$(cat "${out_json}.stderr")" \
-      '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $err, project_dir: $project_dir}' > "${out_json}"
+  if [[ ${dashboard_rc} -eq 0 && -f "${dashboard_scan_report}" ]]; then
+    dashboard_scan_status="$(jq -r '.status // "unknown"' "${dashboard_scan_report}")"
+  else
+    jq -n \
+      --arg generated_at "${timestamp}" \
+      --arg status "error" \
+      --arg error "$(cat "${tmp_root}/dashboard-scan.stderr" 2>/dev/null)" \
+      --arg target "${DASHBOARD_URL:-}" \
+      '{generated_at: $generated_at, status: $status, target: $target, error: $error}' \
+      > "${dashboard_scan_report}"
+    dashboard_scan_status="error"
   fi
-  high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
-  critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
-  npm_total_high=$((npm_total_high + high))
-  npm_total_critical=$((npm_total_critical + critical))
-  npm_files_scanned=$((npm_files_scanned + 1))
-done
+fi
 
 high_or_critical=$((npm_total_high + npm_total_critical))
 overall_status="ok"
-if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 ]]; then
+if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" ]]; then
   overall_status="findings"
 fi
 
@@ -132,6 +173,10 @@ jq -n \
   --argjson npm_total_high "${npm_total_high}" \
   --argjson npm_total_critical "${npm_total_critical}" \
   --argjson npm_files_scanned "${npm_files_scanned}" \
+  --argjson pip_audit_available "$( [[ "${pip_audit_available}" == true ]] && echo true || echo false )" \
+  --argjson npm_available "$( [[ "${npm_available}" == true ]] && echo true || echo false )" \
+  --arg dashboard_scan_status "${dashboard_scan_status}" \
+  --arg dashboard_scan_report "${dashboard_scan_report}" \
   --argjson pip_reports "$(find "${pip_results_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
   --argjson npm_reports "$(find "${npm_results_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
   '{
@@ -141,18 +186,25 @@ jq -n \
     status: $status,
     summary: {
       pip: {
+        scanner_available: $pip_audit_available,
         files_scanned: $pip_files_scanned,
         vulnerabilities_total: $pip_total_vulns
       },
       npm: {
+        scanner_available: $npm_available,
         files_scanned: $npm_files_scanned,
         high: $npm_total_high,
         critical: $npm_total_critical
+      },
+      dashboard_operator: {
+        status: $dashboard_scan_status,
+        report_path: $dashboard_scan_report
       }
     },
     reports: {
       pip: $pip_reports,
-      npm: $npm_reports
+      npm: $npm_reports,
+      dashboard_operator: $dashboard_scan_report
     }
   }' > "${report_file}"
 
