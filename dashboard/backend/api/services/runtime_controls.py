@@ -235,7 +235,8 @@ class OperatorAuditLog:
         return filtered[-max(1, limit):]
 
     def integrity_status(self, limit: int = 500) -> Dict[str, Any]:
-        rows = self.read_recent(limit=limit)
+        requested_limit = max(1, int(limit))
+        rows = self.read_recent(limit=requested_limit + 1)
         if not rows:
             return {
                 "available": False,
@@ -248,7 +249,12 @@ class OperatorAuditLog:
                 "last_hash": "",
             }
 
-        previous_digest = ""
+        predecessor_present = len(rows) > requested_limit
+        predecessor = rows[0] if predecessor_present else None
+        if predecessor_present:
+            rows = rows[1:]
+
+        previous_digest = self._entry_digest(predecessor) if predecessor else ""
         sealed_events = 0
         legacy_events = 0
         first_invalid_index = None
@@ -282,6 +288,7 @@ class OperatorAuditLog:
             "sealed_events": sealed_events,
             "legacy_events": legacy_events,
             "fully_sealed": legacy_events == 0 and sealed_events == len(rows),
+            "window_truncated": predecessor_present,
             "first_invalid_index": first_invalid_index,
             "invalid_reason": invalid_reason or None,
             "last_hash": previous_digest,
