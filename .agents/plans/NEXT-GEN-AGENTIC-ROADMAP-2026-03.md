@@ -24,7 +24,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
-- Deployment and operator telemetry now also has queryable graph views plus cross-deployment relatedness reasoning, which improves shared context for coordinating future agent slices against deployment history and operational relationships.
+- Deployment and operator telemetry now also has queryable graph views, cross-deployment relatedness reasoning, and cluster summaries, which improves shared context for coordinating future agent slices against deployment history and operational relationships.
 - The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
 - Roadmap coordination should assume:
   - `codex` = orchestration/integration/reviewer gate
