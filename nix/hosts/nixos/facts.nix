@@ -32,12 +32,6 @@
       btrfsSubvolumes = [ "@root" "@home" "@nix" ];
     };
     secureboot.enable = false;
-    secrets.enable = true;
-
-    mcpServers = {
-      enable   = true;
-      repoPath = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy";
-    };
 
     # Role enables — profiles set desktop/gaming/aiStack via lib.mkDefault.
     # Override any of these in nix/hosts/<host>/default.nix with lib.mkForce.
@@ -91,17 +85,6 @@
       ui.enable                        = true;
       vectorDb.enable                  = false;
       listenOnLan                      = false;
-      switchboard = {
-        enable = true;
-        routingMode = "auto";
-        defaultProvider = "local";
-      };
-      # Phase 1: Autonomous Improvement - Local LLM-driven optimization
-      autonomousImprovement = {
-        enable = true;
-        interval = 60;  # Check every 60 minutes
-        dryRun = false; # Set true for research-only mode
-      };
     };
   };
 }
