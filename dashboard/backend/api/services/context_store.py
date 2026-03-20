@@ -751,6 +751,13 @@ class ContextStore:
             shared_configs = set.intersection(*(deployment_features[item]["configs"] for item in component))
             shared_issues = set.intersection(*(deployment_features[item]["issues"] for item in component))
             statuses = sorted({deployment_features[item]["status"] for item in component})
+            root_score = (
+                len(component) * 3
+                + len(shared_issues) * 4
+                + len(shared_services) * 2
+                + len(shared_configs) * 2
+                + (2 if "failed" in statuses else 0)
+            )
             clusters.append({
                 "cluster_id": f"cluster-{len(clusters) + 1}",
                 "deployment_ids": sorted(component),
@@ -759,9 +766,38 @@ class ContextStore:
                 "shared_services": sorted(shared_services)[:4],
                 "shared_configs": sorted(shared_configs)[:4],
                 "shared_issues": sorted(shared_issues)[:4],
+                "root_score": root_score,
             })
 
         return clusters
+
+    @staticmethod
+    def _build_similar_failures(
+        deployment_features: Dict[str, Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        families: Dict[Tuple[str, Tuple[str, ...]], List[str]] = {}
+        for dep_id, features in deployment_features.items():
+            issues = tuple(sorted(features["issues"]))[:4]
+            status = str(features["status"])
+            if status != "failed" and not issues:
+                continue
+            key = (status, issues)
+            families.setdefault(key, []).append(dep_id)
+
+        results: List[Dict[str, Any]] = []
+        for index, ((status, issues), deployment_ids) in enumerate(
+            sorted(families.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1]))
+        ):
+            if len(deployment_ids) < 2:
+                continue
+            results.append({
+                "family_id": f"failure-family-{index + 1}",
+                "status": status,
+                "issue_signature": list(issues),
+                "deployment_ids": sorted(deployment_ids),
+                "count": len(deployment_ids),
+            })
+        return results
 
     def get_deployment_graph(
         self,
@@ -910,6 +946,7 @@ class ContextStore:
 
         causality_edges = [edge for edge in edges if edge.get("relation") == "related_to"]
         clusters = self._build_deployment_clusters(deployment_features, causality_edges)
+        similar_failures = self._build_similar_failures(deployment_features)
 
         if focus:
             filtered_edges = [
@@ -936,6 +973,27 @@ class ContextStore:
         else:
             filtered_clusters = clusters
 
+        if focus:
+            filtered_failures = [
+                item for item in similar_failures
+                if any(self._match_focus(dep_id, focus) for dep_id in item["deployment_ids"])
+                or any(self._match_focus(issue, focus) for issue in item["issue_signature"])
+                or self._match_focus(item["status"], focus)
+            ]
+        else:
+            filtered_failures = similar_failures
+
+        root_cluster = None
+        if filtered_clusters:
+            root_cluster = max(
+                filtered_clusters,
+                key=lambda item: (
+                    int(item.get("root_score", 0)),
+                    int(item.get("size", 0)),
+                    item.get("cluster_id", ""),
+                ),
+            )
+
         top_relationships = [
             {"relation": relation, "count": count}
             for relation, count in sorted(relationship_counts.items(), key=lambda item: (-item[1], item[0]))
@@ -952,6 +1010,8 @@ class ContextStore:
             "top_relationships": top_relationships,
             "cluster_count": len(filtered_clusters),
             "clusters": filtered_clusters,
+            "root_cluster": root_cluster,
+            "similar_failures": filtered_failures[:6],
             "nodes": filtered_nodes,
             "edges": filtered_edges,
         }
