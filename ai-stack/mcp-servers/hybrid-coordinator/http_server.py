@@ -301,6 +301,12 @@ def _ralph_request_headers() -> Dict[str, str]:
 
 def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
     """Map high-value HTTP endpoints to tool names for audit coverage."""
+    if path in ("/.well-known/agent.json", "/.well-known/agent-card.json") and method == "GET":
+        return "a2a_agent_card"
+    if path == "/a2a" and method == "POST":
+        return "a2a_rpc"
+    if path.startswith("/a2a/tasks/") and method == "GET":
+        return "a2a_task_events"
     if path == "/query" and method == "POST":
         return "route_search"
     if path == "/augment_query" and method == "POST":
@@ -725,6 +731,160 @@ def _normalize_task_class(value: Any, session: Optional[Dict[str, Any]]) -> str:
         if blueprint_id:
             return blueprint_id
     return "general"
+
+
+def _isoformat_epoch(value: Any) -> str:
+    try:
+        ts = int(value or 0)
+    except (TypeError, ValueError):
+        ts = 0
+    if ts <= 0:
+        return ""
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+def _a2a_text_parts(text: str) -> List[Dict[str, Any]]:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return []
+    return [{"type": "text", "text": normalized}]
+
+
+def _extract_a2a_text(message: Any) -> str:
+    if not isinstance(message, dict):
+        return ""
+    direct = str(message.get("text", "") or "").strip()
+    if direct:
+        return direct
+    parts = message.get("parts")
+    if not isinstance(parts, list):
+        return ""
+    texts: List[str] = []
+    for item in parts:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("type", "")).strip().lower() != "text":
+            continue
+        text = str(item.get("text", "") or "").strip()
+        if text:
+            texts.append(text)
+    return "\n".join(texts).strip()
+
+
+def _a2a_task_state(session: Dict[str, Any]) -> str:
+    status = str(session.get("status", "") or "").strip().lower()
+    if status == "completed":
+        return "completed"
+    if status in {"error", "failed"}:
+        return "failed"
+    if status == "canceled":
+        return "canceled"
+    if status in {"pending", "queued"}:
+        return "submitted"
+    return "working"
+
+
+def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, Any]:
+    session_id = str(session.get("session_id", "") or "").strip()
+    objective = str(session.get("objective", "") or "").strip()
+    state = _a2a_task_state(session)
+    updated_at = session.get("updated_at") or session.get("created_at")
+    task: Dict[str, Any] = {
+        "id": session_id,
+        "kind": "task",
+        "contextId": session_id,
+        "status": {
+            "state": state,
+            "timestamp": _isoformat_epoch(updated_at),
+        },
+        "metadata": {
+            "objective": objective,
+            "safety_mode": str(session.get("safety_mode", "") or "").strip(),
+            "phase_count": len(session.get("phase_state", []) or []),
+            "current_phase_index": int(session.get("current_phase_index", 0) or 0),
+            "reviewer_gate": session.get("reviewer_gate", {}),
+            "a2a_stream_url": f"{base_url.rstrip('/')}/a2a/tasks/{session_id}/events",
+            "workflow_run_url": f"{base_url.rstrip('/')}/workflow/run/{session_id}",
+        },
+        "historyLength": len(session.get("trajectory", []) or []),
+    }
+    if objective:
+        task["message"] = {
+            "role": "agent",
+            "parts": _a2a_text_parts(objective),
+            "messageId": f"{session_id}:summary",
+            "taskId": session_id,
+        }
+    return task
+
+
+def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
+    origin = base_url.rstrip("/")
+    return {
+        "protocolVersion": "0.3.0",
+        "name": "NixOS Dev Quick Deploy Hybrid Coordinator",
+        "description": (
+            "A2A compatibility surface for the hybrid coordinator. "
+            "It exposes guarded workflow planning and task execution over JSON-RPC."
+        ),
+        "url": f"{origin}/a2a",
+        "preferredTransport": "JSONRPC",
+        "version": SERVICE_VERSION,
+        "provider": {
+            "organization": "NixOS-Dev-Quick-Deploy",
+        },
+        "documentationUrl": f"{origin}/.well-known/agent-card.json",
+        "capabilities": {
+            "streaming": True,
+            "pushNotifications": False,
+            "stateTransitionHistory": True,
+        },
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "securitySchemes": {
+            "apiKey": {
+                "type": "apiKey",
+                "name": "X-API-Key",
+                "in": "header",
+            }
+        },
+        "security": [{"apiKey": []}],
+        "skills": [
+            {
+                "id": "workflow-orchestration",
+                "name": "Workflow Orchestration",
+                "description": "Starts guarded workflow runs with intent contracts and replayable trajectory history.",
+                "tags": ["workflow", "orchestration", "guardrails"],
+                "examples": ["Resume the previous deployment integration slice and report evidence."],
+            },
+            {
+                "id": "runtime-review-gate",
+                "name": "Reviewer Gate",
+                "description": "Tracks reviewer-gate state and safety-mode transitions for coding-agent tasks.",
+                "tags": ["review", "safety", "runtime"],
+                "examples": ["Create a bounded fix plan and do not exit until the review gate is satisfied."],
+            },
+        ],
+        "endpoints": {
+            "rpc": f"{origin}/a2a",
+            "taskEvents": f"{origin}/a2a/tasks/{{taskId}}/events",
+        },
+    }
+
+
+def _jsonrpc_success(request_id: Any, result: Dict[str, Any]) -> Dict[str, Any]:
+    return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+
+def _jsonrpc_error(request_id: Any, code: int, message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {"code": code, "message": message},
+    }
+    if isinstance(data, dict) and data:
+        payload["error"]["data"] = data
+    return payload
 
 
 async def _load_agent_lessons_registry() -> Dict[str, Any]:
@@ -1536,6 +1696,82 @@ def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
     )
 
 
+def _build_workflow_run_session(
+    query: str,
+    data: Dict[str, Any],
+    selected_blueprint: Optional[Dict[str, Any]],
+    orchestration: Dict[str, Any],
+    lesson_refs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    incoming_contract = data.get("intent_contract")
+    if incoming_contract is None and selected_blueprint:
+        incoming_contract = selected_blueprint.get("intent_contract", {})
+    validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
+    session_id = str(uuid4())
+    plan = _build_workflow_plan(query)
+    now = int(time.time())
+    phases = []
+    for idx, phase in enumerate(plan.get("phases", [])):
+        phases.append(
+            {
+                "id": phase.get("id", f"phase-{idx}"),
+                "status": "in_progress" if idx == 0 else "pending",
+                "started_at": now if idx == 0 else None,
+                "completed_at": None,
+                "notes": [],
+            }
+        )
+
+    session = {
+        "session_id": session_id,
+        "objective": query,
+        "plan": plan,
+        "phase_state": phases,
+        "current_phase_index": 0,
+        "status": "in_progress",
+        "safety_mode": _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly"))),
+        "budget": _default_budget(data),
+        "usage": _default_usage(),
+        "blueprint_id": str(data.get("blueprint_id", "") or "").strip() or None,
+        "blueprint_title": (
+            str(selected_blueprint.get("title", "")).strip()
+            if isinstance(selected_blueprint, dict)
+            else ""
+        ) or None,
+        "intent_contract": validation["normalized"],
+        "orchestration": orchestration,
+        "reviewer_gate": {
+            "required": _blueprint_requires_reviewer_gate(selected_blueprint),
+            "last_review": None,
+            "history": [],
+            "status": "pending_review" if _blueprint_requires_reviewer_gate(selected_blueprint) else "not_required",
+        },
+        "isolation": {
+            "profile": str(data.get("isolation_profile", "")).strip(),
+            "workspace_root": str(data.get("workspace_root", "")).strip(),
+            "network_policy": str(data.get("network_policy", "")).strip(),
+        },
+        "created_at": now,
+        "updated_at": now,
+        "trajectory": [
+            {
+                "ts": now,
+                "event_type": "run_start",
+                "phase_id": "discover",
+                "detail": "workflow run started",
+                "intent_contract_present": True,
+                "requester_role": orchestration["requester_role"],
+                "requested_by": orchestration["requested_by"],
+                "delegate_via_coordinator_only": True,
+                "reviewer_gate_required": _blueprint_requires_reviewer_gate(selected_blueprint),
+            }
+        ],
+    }
+    if lesson_refs:
+        session["active_lesson_refs"] = lesson_refs
+    return session
+
+
 def _blueprint_requires_reviewer_gate(blueprint: Optional[Dict[str, Any]]) -> bool:
     if not isinstance(blueprint, dict):
         return False
@@ -1767,7 +2003,15 @@ async def run_http_mode(port: int) -> None:
     @web.middleware
     async def api_key_middleware(request, handler):
         # Public endpoints that don't require authentication
-        public_paths = ("/health", "/metrics", "/.well-known/mcp.json", "/health/detailed", "/health/aggregate")
+        public_paths = (
+            "/health",
+            "/metrics",
+            "/.well-known/mcp.json",
+            "/.well-known/agent.json",
+            "/.well-known/agent-card.json",
+            "/health/detailed",
+            "/health/aggregate",
+        )
         if request.path in public_paths:
             return await handler(request)
         if not Config.API_KEY:
@@ -1920,6 +2164,222 @@ async def run_http_mode(port: int) -> None:
             },
         }
         return web.json_response(payload)
+
+    async def handle_well_known_a2a(request: web.Request) -> web.Response:
+        """Expose an A2A-style agent card backed by the hybrid coordinator."""
+        base_url = f"{request.scheme}://{request.host}"
+        return web.json_response(_build_a2a_agent_card(base_url))
+
+    async def handle_a2a_task_events(request: web.Request) -> web.StreamResponse:
+        """Replay task trajectory as a compact SSE stream for A2A clients."""
+        session_id = request.match_info.get("session_id", "")
+        try:
+            since = max(0, int(request.rel_url.query.get("since", "0") or 0))
+        except ValueError:
+            since = 0
+        async with _workflow_sessions_lock:
+            sessions = await _load_workflow_sessions()
+            session = sessions.get(session_id)
+        if not session:
+            return web.json_response({"error": "session not found"}, status=404)
+        _ensure_session_runtime_fields(session)
+        base_url = f"{request.scheme}://{request.host}"
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+        await response.prepare(request)
+        snapshot = _session_to_a2a_task(session, base_url)
+        await response.write(
+            f"event: task.snapshot\ndata: {json.dumps(snapshot, separators=(',', ':'))}\n\n".encode("utf-8")
+        )
+        trajectory = list(session.get("trajectory", []) or [])
+        for idx, event in enumerate(trajectory[since:], start=since):
+            payload = {
+                "taskId": session_id,
+                "index": idx,
+                "timestamp": _isoformat_epoch(event.get("ts")),
+                "eventType": str(event.get("event_type", "")).strip(),
+                "phaseId": str(event.get("phase_id", "")).strip(),
+                "detail": str(event.get("detail", "")).strip(),
+                "riskClass": str(event.get("risk_class", "")).strip(),
+            }
+            await response.write(
+                f"event: task.event\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n".encode("utf-8")
+            )
+        await response.write(b"event: task.complete\ndata: {}\n\n")
+        await response.write_eof()
+        return response
+
+    async def handle_a2a_rpc(request: web.Request) -> web.Response:
+        """Serve a compact A2A-compatible JSON-RPC surface over workflow sessions."""
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response(_jsonrpc_error(None, -32700, "parse error"), status=400)
+        if not isinstance(payload, dict):
+            return web.json_response(_jsonrpc_error(None, -32600, "invalid request"), status=400)
+
+        request_id = payload.get("id")
+        method = str(payload.get("method", "") or "").strip()
+        params = payload.get("params")
+        if not isinstance(params, dict):
+            params = {}
+        base_url = f"{request.scheme}://{request.host}"
+
+        try:
+            if method == "agent/getCard":
+                return web.json_response(_jsonrpc_success(request_id, _build_a2a_agent_card(base_url)))
+
+            if method == "tasks/get":
+                task_id = str(params.get("id") or params.get("taskId") or "").strip()
+                if not task_id:
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "task id required"), status=400)
+                async with _workflow_sessions_lock:
+                    sessions = await _load_workflow_sessions()
+                    session = sessions.get(task_id)
+                if not session:
+                    return web.json_response(_jsonrpc_error(request_id, -32004, "task not found"), status=404)
+                _ensure_session_runtime_fields(session)
+                return web.json_response(_jsonrpc_success(request_id, _session_to_a2a_task(session, base_url)))
+
+            if method == "tasks/list":
+                limit = max(1, min(50, int(params.get("limit", 10) or 10)))
+                async with _workflow_sessions_lock:
+                    sessions = await _load_workflow_sessions()
+                    items = list(sessions.values())
+                items.sort(key=lambda item: int(item.get("updated_at", 0) or 0), reverse=True)
+                tasks = [_session_to_a2a_task(item, base_url) for item in items[:limit] if isinstance(item, dict)]
+                return web.json_response(_jsonrpc_success(request_id, {"tasks": tasks}))
+
+            if method == "tasks/cancel":
+                task_id = str(params.get("id") or params.get("taskId") or "").strip()
+                if not task_id:
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "task id required"), status=400)
+                async with _workflow_sessions_lock:
+                    sessions = await _load_workflow_sessions()
+                    session = sessions.get(task_id)
+                    if not session:
+                        return web.json_response(_jsonrpc_error(request_id, -32004, "task not found"), status=404)
+                    _ensure_session_runtime_fields(session)
+                    now = int(time.time())
+                    session["status"] = "canceled"
+                    session["updated_at"] = now
+                    session["trajectory"].append(
+                        {
+                            "ts": now,
+                            "event_type": "task_canceled",
+                            "phase_id": f"phase-{int(session.get('current_phase_index', 0) or 0)}",
+                            "detail": str(params.get("reason", "") or "canceled via A2A RPC").strip(),
+                        }
+                    )
+                    sessions[task_id] = session
+                    await _save_workflow_sessions(sessions)
+                return web.json_response(_jsonrpc_success(request_id, _session_to_a2a_task(session, base_url)))
+
+            if method == "message/send":
+                message = params.get("message")
+                text = _extract_a2a_text(message)
+                if not text:
+                    text = str(params.get("text", "") or "").strip()
+                if not text:
+                    return web.json_response(_jsonrpc_error(request_id, -32602, "message text required"), status=400)
+
+                task_id = str(
+                    params.get("taskId")
+                    or params.get("id")
+                    or (message.get("taskId") if isinstance(message, dict) else "")
+                    or ""
+                ).strip()
+                async with _agent_lessons_lock:
+                    lesson_registry = await _load_agent_lessons_registry()
+                lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
+                if task_id:
+                    async with _workflow_sessions_lock:
+                        sessions = await _load_workflow_sessions()
+                        session = sessions.get(task_id)
+                        if not session:
+                            return web.json_response(_jsonrpc_error(request_id, -32004, "task not found"), status=404)
+                        _ensure_session_runtime_fields(session)
+                        now = int(time.time())
+                        session["updated_at"] = now
+                        session["trajectory"].append(
+                            {
+                                "ts": now,
+                                "event_type": "message_send",
+                                "phase_id": f"phase-{int(session.get('current_phase_index', 0) or 0)}",
+                                "detail": text,
+                                "risk_class": "safe",
+                            }
+                        )
+                        sessions[task_id] = session
+                        await _save_workflow_sessions(sessions)
+                else:
+                    blueprints_data = _load_and_validate_workflow_blueprints()
+                    blueprint_id = str(params.get("blueprint_id", "") or "").strip()
+                    selected_blueprint = (
+                        blueprints_data.get("blueprint_by_id", {}).get(blueprint_id)
+                        if blueprint_id
+                        else None
+                    )
+                    start_data = {
+                        "query": text,
+                        "prompt": text,
+                        "blueprint_id": blueprint_id,
+                        "safety_mode": str(params.get("safetyMode") or params.get("safety_mode") or "plan-readonly"),
+                        "token_limit": params.get("tokenLimit"),
+                        "tool_call_limit": params.get("toolCallLimit"),
+                        "intent_contract": params.get("intent_contract"),
+                        "isolation_profile": params.get("isolationProfile"),
+                        "workspace_root": params.get("workspaceRoot"),
+                        "network_policy": params.get("networkPolicy"),
+                        "agent": "a2a",
+                        "role": "orchestrator",
+                    }
+                    orchestration = _coerce_orchestration_context(start_data)
+                    session = _build_workflow_run_session(
+                        query=text,
+                        data=start_data,
+                        selected_blueprint=selected_blueprint,
+                        orchestration=orchestration,
+                        lesson_refs=lesson_refs,
+                    )
+                    task_id = session["session_id"]
+                    async with _workflow_sessions_lock:
+                        sessions = await _load_workflow_sessions()
+                        sessions[task_id] = session
+                        await _save_workflow_sessions(sessions)
+
+                task = _session_to_a2a_task(session, base_url)
+                result = {
+                    "task": task,
+                    "message": {
+                        "role": "agent",
+                        "parts": _a2a_text_parts(
+                            f"Accepted task '{session.get('objective', '')}'. Track status via tasks/get or the task event stream."
+                        ),
+                        "messageId": f"{task_id}:accepted",
+                        "taskId": task_id,
+                    },
+                    "stream": {
+                        "url": f"{base_url.rstrip('/')}/a2a/tasks/{task_id}/events",
+                    },
+                }
+                if lesson_refs:
+                    result["active_lesson_refs"] = lesson_refs
+                return web.json_response(_jsonrpc_success(request_id, result))
+
+            return web.json_response(_jsonrpc_error(request_id, -32601, "method not found"), status=404)
+        except Exception as exc:
+            logger.error("handle_a2a_rpc error=%s", exc)
+            return web.json_response(
+                _jsonrpc_error(request_id, -32603, "internal error", {"detail": str(exc)[:240]}),
+                status=500,
+            )
 
     async def handle_health(request):
         """Health check endpoint with circuit breakers."""
@@ -4073,73 +4533,18 @@ async def run_http_mode(port: int) -> None:
                 if blueprint_id
                 else None
             )
-            incoming_contract = data.get("intent_contract")
-            if incoming_contract is None and selected_blueprint:
-                incoming_contract = selected_blueprint.get("intent_contract", {})
-            validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
             orchestration = _coerce_orchestration_context(data)
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
-            session_id = str(uuid4())
-            plan = _build_workflow_plan(query)
-            phases = []
-            for idx, phase in enumerate(plan.get("phases", [])):
-                phases.append({
-                    "id": phase.get("id", f"phase-{idx}"),
-                    "status": "in_progress" if idx == 0 else "pending",
-                    "started_at": int(time.time()) if idx == 0 else None,
-                    "completed_at": None,
-                    "notes": [],
-                })
-            now = int(time.time())
-            session = {
-                "session_id": session_id,
-                "objective": query,
-                "plan": plan,
-                "phase_state": phases,
-                "current_phase_index": 0,
-                "status": "in_progress",
-                "safety_mode": _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly"))),
-                "budget": _default_budget(data),
-                "usage": _default_usage(),
-                "blueprint_id": blueprint_id or None,
-                "blueprint_title": (
-                    str(selected_blueprint.get("title", "")).strip()
-                    if isinstance(selected_blueprint, dict)
-                    else ""
-                ) or None,
-                "intent_contract": validation["normalized"],
-                "orchestration": orchestration,
-                "reviewer_gate": {
-                    "required": _blueprint_requires_reviewer_gate(selected_blueprint),
-                    "last_review": None,
-                    "history": [],
-                    "status": "pending_review" if _blueprint_requires_reviewer_gate(selected_blueprint) else "not_required",
-                },
-                "isolation": {
-                    "profile": str(data.get("isolation_profile", "")).strip(),
-                    "workspace_root": str(data.get("workspace_root", "")).strip(),
-                    "network_policy": str(data.get("network_policy", "")).strip(),
-                },
-                "created_at": now,
-                "updated_at": now,
-                "trajectory": [
-                    {
-                        "ts": now,
-                        "event_type": "run_start",
-                        "phase_id": "discover",
-                        "detail": "workflow run started",
-                        "intent_contract_present": True,
-                        "requester_role": orchestration["requester_role"],
-                        "requested_by": orchestration["requested_by"],
-                        "delegate_via_coordinator_only": True,
-                        "reviewer_gate_required": _blueprint_requires_reviewer_gate(selected_blueprint),
-                    }
-                ],
-            }
-            if lesson_refs:
-                session["active_lesson_refs"] = lesson_refs
+            session = _build_workflow_run_session(
+                query=query,
+                data=data,
+                selected_blueprint=selected_blueprint,
+                orchestration=orchestration,
+                lesson_refs=lesson_refs,
+            )
+            session_id = session["session_id"]
             async with _workflow_sessions_lock:
                 sessions = await _load_workflow_sessions()
                 sessions[session_id] = session
@@ -5733,6 +6138,8 @@ async def run_http_mode(port: int) -> None:
         return ws
 
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
+    http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)
+    http_app.router.add_get("/.well-known/agent-card.json", handle_well_known_a2a)
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)
     http_app.router.add_get("/health/aggregate", handle_health_aggregate)  # Phase 11.2
@@ -5793,6 +6200,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_set)
     http_app.router.add_post("/workflow/run/{session_id}/event", handle_workflow_run_event)
     http_app.router.add_get("/workflow/run/{session_id}/replay", handle_workflow_run_replay)
+    http_app.router.add_post("/a2a", handle_a2a_rpc)
+    http_app.router.add_get("/a2a/tasks/{session_id}/events", handle_a2a_task_events)
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
     http_app.router.add_get("/parity/scorecard", handle_parity_scorecard)
     http_app.router.add_get("/control/ai-coordinator/status", handle_ai_coordinator_status)
