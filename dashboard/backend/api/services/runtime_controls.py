@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import time
+import hashlib
 from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +118,35 @@ class OperatorAuditLog:
             return True
         return path.startswith("/api/deployments/search") or path.startswith("/api/deployments/graph")
 
+    def _seal_algorithm(self) -> str:
+        return "sha256-chain-v1"
+
+    def _canonical_json(self, payload: Dict[str, Any]) -> str:
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+    def _seal_hash(self, payload: Dict[str, Any]) -> str:
+        material = {key: value for key, value in payload.items() if key != "hash"}
+        return hashlib.sha256(self._canonical_json(material).encode("utf-8")).hexdigest()
+
+    def _entry_digest(self, payload: Dict[str, Any]) -> str:
+        existing_hash = str(payload.get("hash") or "").strip()
+        if existing_hash:
+            return existing_hash
+        return self._seal_hash(payload)
+
+    def _read_recent_unlocked(self, target: Path, limit: int = 100) -> List[Dict[str, Any]]:
+        if not target.exists():
+            return []
+        rows: List[Dict[str, Any]] = []
+        for raw in target.read_text(encoding="utf-8").splitlines()[-max(1, limit):]:
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                rows.append(parsed)
+        return rows
+
     def append(
         self,
         *,
@@ -130,36 +160,31 @@ class OperatorAuditLog:
     ) -> None:
         if not self._should_audit(path, method):
             return
-        payload = {
-            "ts": _utc_now_iso(),
-            "path": path,
-            "method": method.upper(),
-            "status_code": int(status_code),
-            "client_ip": client_ip,
-            "user_agent": user_agent[:160],
-            "query_keys": sorted({key for key in query_keys if key}),
-            "category": category,
-        }
         target = self.path()
         target.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(payload, sort_keys=True)
         with self._lock:
+            previous = self._read_recent_unlocked(target, limit=1)
+            previous_digest = self._entry_digest(previous[-1]) if previous else ""
+            payload = {
+                "ts": _utc_now_iso(),
+                "path": path,
+                "method": method.upper(),
+                "status_code": int(status_code),
+                "client_ip": client_ip,
+                "user_agent": user_agent[:160],
+                "query_keys": sorted({key for key in query_keys if key}),
+                "category": category,
+                "seal_alg": self._seal_algorithm(),
+                "prev_hash": previous_digest,
+            }
+            payload["hash"] = self._seal_hash(payload)
+            line = json.dumps(payload, sort_keys=True)
             with target.open("a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
 
     def read_recent(self, limit: int = 100) -> List[Dict[str, Any]]:
         target = self.path()
-        if not target.exists():
-            return []
-        rows: List[Dict[str, Any]] = []
-        for raw in target.read_text(encoding="utf-8").splitlines()[-max(1, limit):]:
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, dict):
-                rows.append(parsed)
-        return rows
+        return self._read_recent_unlocked(target, limit=limit)
 
     def query_events(
         self,
@@ -205,15 +230,70 @@ class OperatorAuditLog:
             filtered.append(row)
         return filtered[-max(1, limit):]
 
+    def integrity_status(self, limit: int = 500) -> Dict[str, Any]:
+        rows = self.read_recent(limit=limit)
+        if not rows:
+            return {
+                "available": False,
+                "path": str(self.path()),
+                "valid": True,
+                "seal_algorithm": self._seal_algorithm(),
+                "checked_events": 0,
+                "sealed_events": 0,
+                "legacy_events": 0,
+                "last_hash": "",
+            }
+
+        previous_digest = ""
+        sealed_events = 0
+        legacy_events = 0
+        first_invalid_index = None
+        invalid_reason = ""
+
+        for index, row in enumerate(rows, start=1):
+            current_hash = str(row.get("hash") or "").strip()
+            if current_hash:
+                sealed_events += 1
+                expected_hash = self._seal_hash(row)
+                if current_hash != expected_hash:
+                    first_invalid_index = index
+                    invalid_reason = "hash_mismatch"
+                    break
+                if str(row.get("prev_hash") or "") != previous_digest:
+                    first_invalid_index = index
+                    invalid_reason = "chain_mismatch"
+                    break
+                previous_digest = current_hash
+                continue
+
+            legacy_events += 1
+            previous_digest = self._entry_digest(row)
+
+        return {
+            "available": True,
+            "path": str(self.path()),
+            "valid": first_invalid_index is None,
+            "seal_algorithm": self._seal_algorithm(),
+            "checked_events": len(rows),
+            "sealed_events": sealed_events,
+            "legacy_events": legacy_events,
+            "fully_sealed": legacy_events == 0 and sealed_events == len(rows),
+            "first_invalid_index": first_invalid_index,
+            "invalid_reason": invalid_reason or None,
+            "last_hash": previous_digest,
+        }
+
     def summary(self, limit: int = 500) -> Dict[str, Any]:
         rows = self.read_recent(limit=limit)
         path_counts = Counter(str(row.get("path") or "") for row in rows)
         method_counts = Counter(str(row.get("method") or "") for row in rows)
         status_counts = Counter(str(row.get("status_code") or "") for row in rows)
         category_counts = Counter(str(row.get("category") or "") for row in rows)
+        integrity = self.integrity_status(limit=limit)
         return {
             "available": bool(rows),
             "append_only": True,
+            "tamper_evident": True,
             "path": str(self.path()),
             "total_events": len(rows),
             "last_event_at": rows[-1].get("ts") if rows else None,
@@ -221,6 +301,7 @@ class OperatorAuditLog:
             "methods": method_counts,
             "statuses": status_counts,
             "categories": category_counts,
+            "integrity": integrity,
         }
 
 

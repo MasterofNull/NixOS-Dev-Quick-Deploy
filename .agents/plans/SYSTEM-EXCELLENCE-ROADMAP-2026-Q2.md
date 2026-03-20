@@ -387,10 +387,11 @@ search_interactions("how to configure nixos modules")
 - Operator retrieval now also prunes weak secondary log units when one dominant runtime unit already explains the query.
 - Operator retrieval now suppresses low-value code/context tail for runtime-status queries when one dominant log unit already explains the issue.
 - Dominant runtime-status queries now collapse to a single primary runtime evidence block instead of mixing background retrieval context into the answer.
-- Dashboard/API hardening now includes baseline CSP and HTTP security headers on the operator web surface, starting direct execution against the open next-gen security roadmap work.
-- Dashboard/API hardening now also includes repo-landed HTTP rate limiting plus append-only operator audit trail routes, advancing the open next-gen security/compliance work without requiring live restarts yet.
+- Dashboard/API hardening now includes baseline CSP and HTTP security headers on the operator web surface, with live validation already completed on the running dashboard service.
+- Dashboard/API hardening now also includes HTTP rate limiting plus append-only operator audit trail routes, advancing the open next-gen security/compliance work on the real operator surface.
 - Dashboard/API insights now also expose a security/compliance posture summary endpoint built from the landed CSP, security headers, rate limiting, and operator audit controls.
 - Dashboard/API operator audit routes now support filtered forensic queries by path, method, status, category, and text, closing more of the open next-gen audit/compliance gap in repo.
+- Dashboard/API operator audit events are now tamper-evidently sealed with a hash chain, and the API exposes audit integrity verification for compliance checks.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---

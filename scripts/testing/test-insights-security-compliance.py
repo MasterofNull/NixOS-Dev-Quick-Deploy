@@ -47,7 +47,16 @@ def main() -> int:
             assert_true(data.get("controls", {}).get("content_security_policy") is True, "CSP control should be reported")
             assert_true(data.get("controls", {}).get("rate_limiting") is True, "rate limiting control should be reported")
             assert_true(data.get("controls", {}).get("operator_audit_log") is True, "audit log control should be reported")
+            assert_true(
+                data.get("controls", {}).get("tamper_evident_audit_sealing") is True,
+                "tamper-evident audit sealing should be reported",
+            )
             assert_true((data.get("audit") or {}).get("total_events", 0) >= 1, "audit summary should include events")
+            assert_true((data.get("audit_integrity") or {}).get("valid") is True, "audit integrity should validate")
+            assert_true(
+                "automated compliance report export still pending" in (data.get("gaps") or []),
+                "remaining compliance gap should still be reported",
+            )
 
         print("PASS: security compliance insights regression")
     return 0
