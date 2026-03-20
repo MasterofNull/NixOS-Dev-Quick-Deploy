@@ -151,6 +151,19 @@ _runtime_registry_lock = asyncio.Lock()
 _agent_lessons_lock = asyncio.Lock()
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
 _INTENT_DEPTH_EXPECTATIONS = {"minimum", "standard", "deep"}
+_ORCHESTRATION_LANES = {
+    "implementation",
+    "hardening",
+    "self-improvement",
+    "operations",
+    "diagnostics",
+    "research",
+    "reasoning",
+}
+_ORCHESTRATION_REVIEW_LANES = {"codex-review", "peer-review", "artifact-review"}
+_ORCHESTRATION_ESCALATION_LANES = {"remote-reasoning", "flagship-remote", "none"}
+_ORCHESTRATION_CONSENSUS_MODES = {"reviewer-gate", "evidence-review", "arbiter-review"}
+_ORCHESTRATION_SELECTION_STRATEGIES = {"orchestrator-first", "local-first", "evidence-first", "escalate-on-complexity"}
 _AQ_REPORT_LATEST_JSON = Path(
     os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
 )
@@ -1253,6 +1266,70 @@ def _coerce_orchestration_context(incoming: Any) -> Dict[str, Any]:
     return _ai_coordinator_coerce_orchestration_context(normalized)
 
 
+def _validate_orchestration_policy(policy: Any) -> Dict[str, Any]:
+    base = {
+        "ok": True,
+        "errors": [],
+        "normalized": {
+            "primary_lane": "implementation",
+            "reviewer_lane": "codex-review",
+            "escalation_lane": "remote-reasoning",
+            "consensus_mode": "reviewer-gate",
+            "selection_strategy": "orchestrator-first",
+            "allow_parallel_subagents": False,
+            "max_parallel_subagents": 1,
+        },
+    }
+    if policy is None:
+        return base
+    if not isinstance(policy, dict):
+        base["ok"] = False
+        base["errors"].append("orchestration_policy must be an object")
+        return base
+
+    normalized = dict(base["normalized"])
+    for key in ("primary_lane", "reviewer_lane", "escalation_lane", "consensus_mode", "selection_strategy"):
+        normalized[key] = str(policy.get(key, normalized[key]) or normalized[key]).strip().lower()
+    normalized["allow_parallel_subagents"] = bool(policy.get("allow_parallel_subagents", False))
+    try:
+        normalized["max_parallel_subagents"] = max(1, int(policy.get("max_parallel_subagents", 1) or 1))
+    except (TypeError, ValueError):
+        normalized["max_parallel_subagents"] = 1
+        base["ok"] = False
+        base["errors"].append("orchestration_policy.max_parallel_subagents must be an integer >= 1")
+
+    if normalized["primary_lane"] not in _ORCHESTRATION_LANES:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.primary_lane must be one of: " + ", ".join(sorted(_ORCHESTRATION_LANES))
+        )
+    if normalized["reviewer_lane"] not in _ORCHESTRATION_REVIEW_LANES:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.reviewer_lane must be one of: " + ", ".join(sorted(_ORCHESTRATION_REVIEW_LANES))
+        )
+    if normalized["escalation_lane"] not in _ORCHESTRATION_ESCALATION_LANES:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.escalation_lane must be one of: " + ", ".join(sorted(_ORCHESTRATION_ESCALATION_LANES))
+        )
+    if normalized["consensus_mode"] not in _ORCHESTRATION_CONSENSUS_MODES:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.consensus_mode must be one of: " + ", ".join(sorted(_ORCHESTRATION_CONSENSUS_MODES))
+        )
+    if normalized["selection_strategy"] not in _ORCHESTRATION_SELECTION_STRATEGIES:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.selection_strategy must be one of: "
+            + ", ".join(sorted(_ORCHESTRATION_SELECTION_STRATEGIES))
+        )
+    if not normalized["allow_parallel_subagents"]:
+        normalized["max_parallel_subagents"] = 1
+    base["normalized"] = normalized
+    return base
+
+
 def _load_and_validate_workflow_blueprints() -> Dict[str, Any]:
     """Load blueprint file and validate intent contract schema for each item."""
     path = _workflow_blueprints_path()
@@ -1287,11 +1364,18 @@ def _load_and_validate_workflow_blueprints() -> Dict[str, Any]:
         if not intent_validation["ok"]:
             joined = "; ".join(intent_validation["errors"])
             base["errors"].append(f"blueprint '{blueprint_id}' invalid intent_contract: {joined}")
+        policy_validation = _validate_orchestration_policy(item.get("orchestration_policy"))
+        if not policy_validation["ok"]:
+            joined = "; ".join(policy_validation["errors"])
+            base["errors"].append(f"blueprint '{blueprint_id}' invalid orchestration_policy: {joined}")
 
         normalized = dict(item)
         normalized["intent_contract"] = intent_validation["normalized"]
         normalized["intent_contract_valid"] = bool(intent_validation["ok"])
         normalized["intent_contract_errors"] = intent_validation["errors"]
+        normalized["orchestration_policy"] = policy_validation["normalized"]
+        normalized["orchestration_policy_valid"] = bool(policy_validation["ok"])
+        normalized["orchestration_policy_errors"] = policy_validation["errors"]
         base["blueprints"].append(normalized)
         base["blueprint_by_id"][blueprint_id] = normalized
     return base
@@ -1943,6 +2027,9 @@ def _build_workflow_run_session(
     if incoming_contract is None and selected_blueprint:
         incoming_contract = selected_blueprint.get("intent_contract", {})
     validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
+    policy_validation = _validate_orchestration_policy(
+        selected_blueprint.get("orchestration_policy", {}) if isinstance(selected_blueprint, dict) else None
+    )
     session_id = str(uuid4())
     plan = _build_workflow_plan(query)
     now = time.time()
@@ -1976,6 +2063,7 @@ def _build_workflow_run_session(
         ) or None,
         "intent_contract": validation["normalized"],
         "orchestration": orchestration,
+        "orchestration_policy": policy_validation["normalized"],
         "reviewer_gate": {
             "required": _blueprint_requires_reviewer_gate(selected_blueprint),
             "last_review": None,
@@ -2000,6 +2088,8 @@ def _build_workflow_run_session(
                 "requested_by": orchestration["requested_by"],
                 "delegate_via_coordinator_only": True,
                 "reviewer_gate_required": _blueprint_requires_reviewer_gate(selected_blueprint),
+                "primary_lane": policy_validation["normalized"]["primary_lane"],
+                "consensus_mode": policy_validation["normalized"]["consensus_mode"],
             }
         ],
     }
