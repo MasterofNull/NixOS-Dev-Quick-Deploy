@@ -883,6 +883,51 @@ class ContextStore:
                     break
         return results
 
+    @staticmethod
+    def _score_context_result(query_analysis: Dict[str, Any], item: Dict[str, Any]) -> int:
+        source = str(item.get("source") or item.get("event_type") or "")
+        explanation = item.get("explanation") or {}
+        matched_terms = explanation.get("matched_terms") or []
+        recommended_sources = set(query_analysis.get("recommended_sources") or [])
+        graph_view = str(query_analysis.get("recommended_graph_view") or "overview")
+
+        source_base = {
+            "logs": 50,
+            "config": 45,
+            "code": 40,
+            "keyword": 36,
+            "semantic": 24,
+            "deployment": 24,
+        }.get(source, 20)
+
+        if source in recommended_sources:
+            source_base += 18
+        if graph_view == "services" and source == "logs":
+            source_base += 12
+        if graph_view == "configs" and source == "config":
+            source_base += 12
+        if source == "semantic" and not matched_terms:
+            source_base -= 12
+
+        relevance_score = item.get("relevance_score")
+        relevance_bonus = 0
+        if isinstance(relevance_score, (int, float)):
+            if source in {"logs", "config", "code"}:
+                relevance_bonus += int(relevance_score) * 10
+            elif source == "keyword":
+                relevance_bonus += max(0, 25 - int(abs(relevance_score)))
+            elif source == "semantic":
+                distance = item.get("distance")
+                if isinstance(distance, (int, float)):
+                    relevance_bonus += max(0, int((1.5 - float(distance)) * 20))
+
+        matched_bonus = len(matched_terms) * 14
+        snippet = str(item.get("snippet") or "").lower()
+        message = str(item.get("message") or "").lower()
+        if query_analysis.get("focus") and query_analysis["focus"] in f"{message} {snippet}":
+            matched_bonus += 10
+        return source_base + relevance_bonus + matched_bonus
+
     def search_deployment_context(self, query: str, limit: int = 12, mode: str = "natural") -> Dict[str, Any]:
         query_analysis = self.analyze_deployment_query(query)
         effective_mode = query_analysis["recommended_mode"] if mode in {"auto", "natural"} else mode
@@ -914,12 +959,16 @@ class ContextStore:
             if key in seen:
                 continue
             seen.add(key)
+            item["rank_score"] = self._score_context_result(query_analysis, item)
+            explanation = item.get("explanation") or {}
+            explanation["rank_score"] = item["rank_score"]
+            item["explanation"] = explanation
             combined.append(item)
         combined = sorted(
             combined,
             key=lambda item: (
+                -int(item.get("rank_score") or 0),
                 source_priority.get(str(item.get("source") or ""), 9),
-                -(int(item.get("relevance_score") or 0) if item.get("relevance_score") is not None else 0),
                 str(item.get("message") or ""),
             ),
         )[:limit]
