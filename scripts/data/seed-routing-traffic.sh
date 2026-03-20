@@ -17,7 +17,7 @@ source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 PYTHON_BIN="${SEED_ROUTING_PYTHON_BIN:-${POST_DEPLOY_PYTHON_BIN:-python3}}"
 
 COUNT="${1:-}"
-QUERY_COUNT=6
+QUERY_COUNT=20
 REPLAY_COUNT=1
 INCLUDE_GAPS="${SEED_ROUTING_INCLUDE_GAPS:-true}"
 while [[ $# -gt 0 ]]; do
@@ -46,6 +46,7 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 fi
 
 BASE_QUERIES=(
+  # ===== Original Foundation Queries (NixOS + System Fundamentals) =====
   "what is lib.mkForce in NixOS"
   "NixOS flake configuration basics"
   "how to use lib.mkIf in NixOS modules"
@@ -54,6 +55,56 @@ BASE_QUERIES=(
   "NixOS systemd service options"
   "postgresql NixOS module setup"
   "how to write a NixOS home-manager module"
+
+  # ===== Deployment Troubleshooting (Phase 5.2: Operator patterns) =====
+  "why did deployment fail"
+  "deployment failed with status 1"
+  "service failed to start after deployment"
+  "deployment rollback procedure"
+  "how to check deployment logs"
+  "deployment stuck in progress"
+  "configuration syntax error in deployment"
+  "deployment timeout issues"
+
+  # ===== Service Health & Dependency Queries (Phase 3.2: Service graph) =====
+  "hybrid-coordinator service not responding"
+  "qdrant service health check"
+  "which services depend on postgresql"
+  "service dependency failures"
+  "service restart loop"
+  "systemd service activation failed"
+  "service port conflicts"
+  "service memory pressure"
+
+  # ===== Configuration Troubleshooting (Phase 3.2: Config graph) =====
+  "configuration validation failed"
+  "invalid nix syntax in config"
+  "config option not found"
+  "port configuration conflicts"
+  "environment variable configuration"
+  "config change impact on services"
+  "rollback configuration change"
+  "config diff between deployments"
+
+  # ===== Dashboard Operations (Actual operator usage patterns) =====
+  "show recent deployments"
+  "deployment history search"
+  "find failed deployments"
+  "deployment causality graph"
+  "service health timeline"
+  "config change history"
+  "similar deployment failures"
+  "deployment root cause analysis"
+
+  # ===== Error Investigation (Real operator patterns) =====
+  "systemd unit activation failed"
+  "connection refused on port 8003"
+  "database connection timeout"
+  "semantic search not working"
+  "vector index corruption"
+  "api rate limit exceeded"
+  "authentication failed"
+  "permission denied error"
 )
 
 declare -a DYNAMIC_GAP_QUERIES=()
