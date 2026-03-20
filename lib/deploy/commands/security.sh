@@ -29,6 +29,7 @@ OPTIONS:
   --component NAME        Audit specific component only
   --severity LEVEL        Minimum severity to report (low/medium/high/critical)
   --fix                   Auto-fix issues where possible
+  --plan                  Show non-destructive planning/report output where supported
   --report PATH           Generate report file
   --help                  Show this help
 
@@ -37,6 +38,7 @@ EXAMPLES:
   deploy security scan                 # Vulnerability scan
   deploy security firewall             # Audit firewall rules
   deploy security tls                  # Check TLS certificates
+  deploy security rotate-keys --plan   # Show secret rotation readiness/impact plan
   deploy security rotate-keys          # Rotate all API keys
   deploy security --fix                # Auto-fix issues
 
@@ -302,12 +304,16 @@ run_tls_management() {
 }
 
 run_key_rotation() {
+  local plan_only="${1:-0}"
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
   print_section "API Key Rotation"
 
-  if [[ -f "${script_dir}/scripts/security/rotate-api-key.sh" ]]; then
+  if [[ "${plan_only}" == "1" && -f "${script_dir}/scripts/security/secrets-rotation-plan.sh" ]]; then
+    bash "${script_dir}/scripts/security/secrets-rotation-plan.sh"
+    return $?
+  elif [[ -f "${script_dir}/scripts/security/rotate-api-key.sh" ]]; then
     log_warn "This will rotate all API keys and restart services"
 
     if ! confirm_action "Proceed with key rotation?"; then
@@ -370,6 +376,7 @@ cmd_security() {
   local component=""
   local severity="low"
   local auto_fix=0
+  local plan_only=0
   local report_path=""
 
   # Parse arguments
@@ -389,6 +396,10 @@ cmd_security() {
         ;;
       --fix)
         auto_fix=1
+        shift
+        ;;
+      --plan)
+        plan_only=1
         shift
         ;;
       --report)
@@ -437,7 +448,7 @@ cmd_security() {
       result=$?
       ;;
     rotate-keys)
-      run_key_rotation
+      run_key_rotation "${plan_only}"
       result=$?
       ;;
     penetration)
