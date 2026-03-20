@@ -82,6 +82,7 @@ in
         DASHBOARD_EXPOSE_HOSTNAME = "false";
         DASHBOARD_HOSTNAME_ALIAS = "local-node";
         DASHBOARD_FRONTEND_DIST = dashboardPublicDir;
+        DASHBOARD_CONTEXT_DB_PATH = "${cc.dataDir}/telemetry/deployments-context.db";
         AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
         HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
         RALPH_URL = "http://127.0.0.1:${toString mcp.ralphPort}";
