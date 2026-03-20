@@ -2,6 +2,41 @@
 
 Publishable SDK surfaces for workflow orchestration, branch/session management, reviewer gates, and harness evaluation.
 
+## A2A compatibility surface
+
+The hybrid coordinator now exposes a lightweight A2A-compatible facade over the
+existing workflow runtime. This is an interoperability layer, not a second
+orchestrator.
+
+Public discovery:
+- `GET /.well-known/agent.json`
+- `GET /.well-known/agent-card.json`
+
+JSON-RPC endpoint:
+- `POST /a2a`
+
+Task stream:
+- `GET /a2a/tasks/{id}/events`
+
+Implemented A2A-style methods:
+- `agent/getCard`
+- `message/send`
+- `tasks/get`
+- `tasks/list`
+- `tasks/cancel`
+
+Runtime mapping:
+- A2A task IDs map directly to persisted workflow run `session_id` values.
+- A2A task state is derived from workflow run `status`.
+- Task event streaming is replayed from workflow `trajectory`.
+- Safety mode, reviewer gate state, and replay URLs remain the underlying source of truth.
+
+Live smoke:
+
+```bash
+bash scripts/testing/smoke-a2a-compat.sh
+```
+
 ## Python SDK
 
 Path:
