@@ -576,6 +576,7 @@ RETURN path
 ### Batch 4.2: Query → Agent → Storage → Learning Flow
 **Priority:** HIGH
 **Effort:** Medium (3-4 days)
+**Status:** in_progress
 
 **Tasks:**
 - [ ] Validate query routing to appropriate agent
@@ -593,6 +594,10 @@ RETURN path
 - Query handled → stored in vector DB → patterns extracted → hints updated
 - Gap detected → remediation applied → playbook created → reused
 - Quality improves over time (measurable)
+
+**Current evidence:**
+- End-to-end smoke validation path:
+  [scripts/testing/smoke-query-agent-storage-learning.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-query-agent-storage-learning.sh)
 
 ### Batch 4.3: Security → Audit → Compliance Flow
 **Priority:** HIGH
