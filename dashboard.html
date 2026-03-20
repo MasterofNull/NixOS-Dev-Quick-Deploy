@@ -2348,6 +2348,31 @@
                             </div>
                         </div>
 
+                        <div class="status-grid" id="deploymentSearchStatusGrid" style="margin-top: 1rem; margin-bottom: 1rem;">
+                            <div class="status-item">
+                                <span class="status-label">Semantic Coverage</span>
+                                <span class="status-value" id="deploymentSearchCoverage">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Indexed Histories</span>
+                                <span class="status-value" id="deploymentSearchIndexed">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Search Errors</span>
+                                <span class="status-value" id="deploymentSearchErrors">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Semantic Project</span>
+                                <span class="status-value" id="deploymentSearchProject">--</span>
+                            </div>
+                        </div>
+                        <div class="data-list" id="deploymentSearchStatusList" style="margin-bottom: 1rem;">
+                            <div class="data-item">
+                                <span>Loading deployment search coverage...</span>
+                                <span class="data-meta">pending</span>
+                            </div>
+                        </div>
+
                         <div class="deployment-toolbar">
                             <input type="text" class="search-box" id="deploymentSearch" placeholder="Search deployment history or logs..." onkeydown="if (event.key === 'Enter') searchDeploymentHistory()">
                             <select id="deploymentSearchMode" class="search-box" style="max-width: 180px;">
@@ -5918,7 +5943,8 @@
         async function loadDeploymentOps() {
             await Promise.all([
                 loadActiveDeployments(),
-                loadDeploymentHistory()
+                loadDeploymentHistory(),
+                loadDeploymentSearchStatus()
             ]);
 
             if (deploymentState.selectedId) {
@@ -6013,6 +6039,42 @@
                 if (target) {
                     target.innerHTML = `<div class="data-item"><span>Deployment search unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
                 }
+            }
+        }
+
+        async function loadDeploymentSearchStatus() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/search/status?recent_limit=6`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(`deployment search status HTTP ${response.status}`);
+                const data = await response.json();
+                const summary = data.summary || {};
+                document.getElementById('deploymentSearchCoverage').textContent = `${Number(summary.recent_coverage_pct ?? 0).toFixed(1)}%`;
+                document.getElementById('deploymentSearchIndexed').textContent = `${summary.indexed_total ?? 0}`;
+                document.getElementById('deploymentSearchErrors').textContent = `${summary.error_total ?? 0}`;
+                document.getElementById('deploymentSearchProject').textContent = data.project || '--';
+
+                const list = document.getElementById('deploymentSearchStatusList');
+                const recent = Array.isArray(data.recent) ? data.recent : [];
+                if (recent.length) {
+                    list.innerHTML = recent.map((item) => `
+                        <div class="data-item">
+                            <div>
+                                <div>${escapeHtml(item.deployment_id || 'deployment')}</div>
+                                <div class="data-meta">${escapeHtml(item.command || 'unknown command')}</div>
+                            </div>
+                            <div class="data-meta ${item.semantic_state === 'indexed' ? 'status-online' : item.semantic_state === 'error' ? 'status-offline' : 'status-warning'}">${escapeHtml(item.semantic_state || 'pending')}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No semantic deployment history tracked yet</span><span class="data-meta">idle</span></div>';
+                }
+            } catch (error) {
+                console.error('Failed to load deployment search status:', error);
+                document.getElementById('deploymentSearchCoverage').textContent = '--';
+                document.getElementById('deploymentSearchIndexed').textContent = '--';
+                document.getElementById('deploymentSearchErrors').textContent = '--';
+                document.getElementById('deploymentSearchProject').textContent = 'unavailable';
+                document.getElementById('deploymentSearchStatusList').innerHTML = `<div class="data-item"><span>Deployment search coverage unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
             }
         }
 

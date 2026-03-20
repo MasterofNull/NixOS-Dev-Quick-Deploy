@@ -307,6 +307,12 @@ async def search_deployments(query: str, limit: int = 20, offset: int = 0, mode:
     }
 
 
+@router.get("/deployments/search/status")
+async def get_deployment_search_status(recent_limit: int = 8):
+    """Get operator-facing status for deployment semantic search coverage."""
+    return await asyncio.to_thread(context_store.get_deployment_search_status, recent_limit)
+
+
 @router.get("/deployments/{deployment_id}")
 async def get_deployment(deployment_id: str):
     """Get deployment details"""
