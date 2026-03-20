@@ -751,6 +751,18 @@ def _a2a_text_parts(text: str) -> List[Dict[str, Any]]:
     return [{"type": "text", "text": normalized}]
 
 
+def _a2a_message_payload(role: str, text: str, *, message_id: str = "", task_id: str = "") -> Dict[str, Any]:
+    message: Dict[str, Any] = {
+        "role": str(role or "agent").strip() or "agent",
+        "parts": _a2a_text_parts(text),
+    }
+    if message_id:
+        message["messageId"] = message_id
+    if task_id:
+        message["taskId"] = task_id
+    return message
+
+
 def _extract_a2a_text(message: Any) -> str:
     if not isinstance(message, dict):
         return ""
@@ -772,6 +784,19 @@ def _extract_a2a_text(message: Any) -> str:
     return "\n".join(texts).strip()
 
 
+def _a2a_latest_detail(session: Dict[str, Any]) -> str:
+    trajectory = session.get("trajectory", []) if isinstance(session, dict) else []
+    if not isinstance(trajectory, list):
+        return ""
+    for event in reversed(trajectory):
+        if not isinstance(event, dict):
+            continue
+        detail = str(event.get("detail", "") or "").strip()
+        if detail:
+            return detail
+    return ""
+
+
 def _a2a_task_state(session: Dict[str, Any]) -> str:
     status = str(session.get("status", "") or "").strip().lower()
     if status == "completed":
@@ -785,11 +810,131 @@ def _a2a_task_state(session: Dict[str, Any]) -> str:
     return "working"
 
 
+def _session_to_a2a_artifacts(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    session_id = str(session.get("session_id", "") or "").strip()
+    objective = str(session.get("objective", "") or "").strip()
+    latest_detail = _a2a_latest_detail(session)
+    artifacts: List[Dict[str, Any]] = []
+
+    summary_lines = [line for line in [objective, latest_detail] if line]
+    if summary_lines:
+        artifacts.append(
+            {
+                "artifactId": f"{session_id}:summary",
+                "name": "Workflow Summary",
+                "description": "Current workflow objective and latest recorded detail.",
+                "parts": _a2a_text_parts("\n\n".join(summary_lines)),
+                "metadata": {
+                    "workflow_session_id": session_id,
+                    "artifact_kind": "summary",
+                },
+            }
+        )
+
+    gate = session.get("reviewer_gate", {})
+    if isinstance(gate, dict):
+        last_review = gate.get("last_review", {})
+        if isinstance(last_review, dict) and last_review:
+            review_text = (
+                f"Reviewer gate status: {str(gate.get('status', 'pending_review') or 'pending_review').strip()}\n"
+                f"Reviewer: {str(last_review.get('reviewer', 'unknown') or 'unknown').strip()}\n"
+                f"Review type: {str(last_review.get('review_type', 'acceptance') or 'acceptance').strip()}\n"
+                f"Artifact kind: {str(last_review.get('artifact_kind', 'response') or 'response').strip()}\n"
+                f"Score: {last_review.get('score', 0)}"
+            )
+            artifacts.append(
+                {
+                    "artifactId": f"{session_id}:reviewer-gate",
+                    "name": "Reviewer Gate",
+                    "description": "Latest reviewer-gate decision for this workflow task.",
+                    "parts": _a2a_text_parts(review_text),
+                    "metadata": {
+                        "workflow_session_id": session_id,
+                        "artifact_kind": "reviewer_gate",
+                        "review_status": str(gate.get("status", "") or "").strip(),
+                    },
+                }
+            )
+
+    return artifacts
+
+
+def _session_history_to_a2a_messages(session: Dict[str, Any], limit: int = 10) -> List[Dict[str, Any]]:
+    session_id = str(session.get("session_id", "") or "").strip()
+    trajectory = session.get("trajectory", [])
+    if not isinstance(trajectory, list):
+        return []
+    messages: List[Dict[str, Any]] = []
+    start = max(0, len(trajectory) - max(1, limit))
+    for idx, event in enumerate(trajectory[start:], start=start):
+        if not isinstance(event, dict):
+            continue
+        detail = str(event.get("detail", "") or "").strip()
+        if not detail:
+            continue
+        messages.append(
+            _a2a_message_payload(
+                "agent",
+                detail,
+                message_id=f"{session_id}:history:{idx}",
+                task_id=session_id,
+            )
+        )
+    return messages
+
+
+def _session_to_a2a_status_event(
+    session: Dict[str, Any],
+    base_url: str,
+    *,
+    detail: str = "",
+    timestamp: Any = None,
+    final: Optional[bool] = None,
+) -> Dict[str, Any]:
+    task = _session_to_a2a_task(session, base_url)
+    session_id = str(task.get("id", "") or "").strip()
+    state = str(task.get("status", {}).get("state", "working") or "working").strip() or "working"
+    status_timestamp = _isoformat_epoch(timestamp if timestamp is not None else session.get("updated_at") or session.get("created_at"))
+    message_text = str(detail or _a2a_latest_detail(session) or f"Task is {state}.").strip()
+    if final is None:
+        final = state in {"completed", "failed", "canceled"}
+    return {
+        "kind": "status-update",
+        "taskId": session_id,
+        "contextId": session_id,
+        "status": {
+            "state": state,
+            "timestamp": status_timestamp,
+            "message": _a2a_message_payload(
+                "agent",
+                message_text,
+                message_id=f"{session_id}:status:{state}",
+                task_id=session_id,
+            ),
+        },
+        "final": bool(final),
+        "metadata": task.get("metadata", {}),
+    }
+
+
+def _artifact_to_a2a_update(task: Dict[str, Any], artifact: Dict[str, Any], *, last_chunk: bool = True) -> Dict[str, Any]:
+    session_id = str(task.get("id", "") or "").strip()
+    return {
+        "kind": "artifact-update",
+        "taskId": session_id,
+        "contextId": session_id,
+        "artifact": artifact,
+        "lastChunk": bool(last_chunk),
+    }
+
+
 def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, Any]:
     session_id = str(session.get("session_id", "") or "").strip()
     objective = str(session.get("objective", "") or "").strip()
     state = _a2a_task_state(session)
     updated_at = session.get("updated_at") or session.get("created_at")
+    latest_detail = _a2a_latest_detail(session)
+    artifacts = _session_to_a2a_artifacts(session)
     task: Dict[str, Any] = {
         "id": session_id,
         "kind": "task",
@@ -797,6 +942,12 @@ def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, An
         "status": {
             "state": state,
             "timestamp": _isoformat_epoch(updated_at),
+            "message": _a2a_message_payload(
+                "agent",
+                latest_detail or objective or f"Task is {state}.",
+                message_id=f"{session_id}:status",
+                task_id=session_id,
+            ),
         },
         "metadata": {
             "objective": objective,
@@ -810,12 +961,17 @@ def _session_to_a2a_task(session: Dict[str, Any], base_url: str) -> Dict[str, An
         "historyLength": len(session.get("trajectory", []) or []),
     }
     if objective:
-        task["message"] = {
-            "role": "agent",
-            "parts": _a2a_text_parts(objective),
-            "messageId": f"{session_id}:summary",
-            "taskId": session_id,
-        }
+        task["message"] = _a2a_message_payload(
+            "agent",
+            objective,
+            message_id=f"{session_id}:summary",
+            task_id=session_id,
+        )
+    history = _session_history_to_a2a_messages(session)
+    if history:
+        task["history"] = history
+    if artifacts:
+        task["artifacts"] = artifacts
     return task
 
 
@@ -2174,7 +2330,7 @@ async def run_http_mode(port: int) -> None:
         return web.json_response(_build_a2a_agent_card(base_url))
 
     async def handle_a2a_task_events(request: web.Request) -> web.StreamResponse:
-        """Replay task trajectory as a compact SSE stream for A2A clients."""
+        """Replay task state as an A2A-style SSE stream for clients."""
         session_id = request.match_info.get("session_id", "")
         try:
             since = max(0, int(request.rel_url.query.get("since", "0") or 0))
@@ -2198,23 +2354,48 @@ async def run_http_mode(port: int) -> None:
         await response.prepare(request)
         snapshot = _session_to_a2a_task(session, base_url)
         await response.write(
-            f"event: task.snapshot\ndata: {json.dumps(snapshot, separators=(',', ':'))}\n\n".encode("utf-8")
+            f"event: task\ndata: {json.dumps(snapshot, separators=(',', ':'))}\n\n".encode("utf-8")
         )
+        await response.write(
+            (
+                f"event: status-update\ndata: "
+                f"{json.dumps(_session_to_a2a_status_event(session, base_url, final=False), separators=(',', ':'))}\n\n"
+            ).encode("utf-8")
+        )
+        for artifact in snapshot.get("artifacts", []) or []:
+            if not isinstance(artifact, dict):
+                continue
+            await response.write(
+                (
+                    f"event: artifact-update\ndata: "
+                    f"{json.dumps(_artifact_to_a2a_update(snapshot, artifact), separators=(',', ':'))}\n\n"
+                ).encode("utf-8")
+            )
         trajectory = list(session.get("trajectory", []) or [])
         for idx, event in enumerate(trajectory[since:], start=since):
-            payload = {
-                "taskId": session_id,
+            payload = _session_to_a2a_status_event(
+                session,
+                base_url,
+                detail=str(event.get("detail", "") or str(event.get("event_type", "") or "workflow event")).strip(),
+                timestamp=event.get("ts"),
+                final=False,
+            )
+            payload["metadata"] = {
+                **(payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {}),
                 "index": idx,
-                "timestamp": _isoformat_epoch(event.get("ts")),
                 "eventType": str(event.get("event_type", "")).strip(),
                 "phaseId": str(event.get("phase_id", "")).strip(),
-                "detail": str(event.get("detail", "")).strip(),
                 "riskClass": str(event.get("risk_class", "")).strip(),
             }
             await response.write(
-                f"event: task.event\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n".encode("utf-8")
+                f"event: status-update\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n".encode("utf-8")
             )
-        await response.write(b"event: task.complete\ndata: {}\n\n")
+        await response.write(
+            (
+                f"event: status-update\ndata: "
+                f"{json.dumps(_session_to_a2a_status_event(session, base_url), separators=(',', ':'))}\n\n"
+            ).encode("utf-8")
+        )
         await response.write_eof()
         return response
 
@@ -2284,7 +2465,7 @@ async def run_http_mode(port: int) -> None:
                     await _save_workflow_sessions(sessions)
                 return web.json_response(_jsonrpc_success(request_id, _session_to_a2a_task(session, base_url)))
 
-            if method == "message/send":
+            if method in {"message/send", "message/stream"}:
                 message = params.get("message")
                 text = _extract_a2a_text(message)
                 if not text:
@@ -2374,6 +2555,45 @@ async def run_http_mode(port: int) -> None:
                 }
                 if lesson_refs:
                     result["active_lesson_refs"] = lesson_refs
+                if method == "message/stream":
+                    stream_response = web.StreamResponse(
+                        status=200,
+                        headers={
+                            "Content-Type": "text/event-stream",
+                            "Cache-Control": "no-cache",
+                            "Connection": "keep-alive",
+                        },
+                    )
+                    await stream_response.prepare(request)
+                    await stream_response.write(
+                        (
+                            f"event: task\ndata: "
+                            f"{json.dumps(_jsonrpc_success(request_id, task), separators=(',', ':'))}\n\n"
+                        ).encode("utf-8")
+                    )
+                    await stream_response.write(
+                        (
+                            f"event: status-update\ndata: "
+                            f"{json.dumps(_jsonrpc_success(request_id, _session_to_a2a_status_event(session, base_url, final=False)), separators=(',', ':'))}\n\n"
+                        ).encode("utf-8")
+                    )
+                    for artifact in task.get("artifacts", []) or []:
+                        if not isinstance(artifact, dict):
+                            continue
+                        await stream_response.write(
+                            (
+                                f"event: artifact-update\ndata: "
+                                f"{json.dumps(_jsonrpc_success(request_id, _artifact_to_a2a_update(task, artifact)), separators=(',', ':'))}\n\n"
+                            ).encode("utf-8")
+                        )
+                    await stream_response.write(
+                        (
+                            f"event: message\ndata: "
+                            f"{json.dumps(_jsonrpc_success(request_id, result.get('message', {})), separators=(',', ':'))}\n\n"
+                        ).encode("utf-8")
+                    )
+                    await stream_response.write_eof()
+                    return stream_response
                 return web.json_response(_jsonrpc_success(request_id, result))
 
             return web.json_response(_jsonrpc_error(request_id, -32601, "method not found"), status=404)

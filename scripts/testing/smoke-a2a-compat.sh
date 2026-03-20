@@ -72,6 +72,7 @@ fi
 task_id="$(jq -r '.result.task.id // empty' "${TMP_DIR}/send-resp.json")"
 [[ -n "$task_id" ]] || fail "message/send missing task id"
 jq -e '.result.stream.url | contains("/a2a/tasks/")' "${TMP_DIR}/send-resp.json" >/dev/null || fail "message/send missing stream url"
+jq -e '.result.task.artifacts | length >= 1' "${TMP_DIR}/send-resp.json" >/dev/null || fail "message/send missing task artifacts"
 pass "A2A message/send"
 
 cat > "${TMP_DIR}/get.json" <<EOF
@@ -86,6 +87,8 @@ EOF
 curl -fsS "${auth_hdr[@]}" -H 'Content-Type: application/json' -X POST "${HYB_URL}/a2a" \
   --data @"${TMP_DIR}/get.json" > "${TMP_DIR}/get-resp.json" || fail "tasks/get failed"
 jq -e --arg tid "$task_id" '.result.id == $tid' "${TMP_DIR}/get-resp.json" >/dev/null || fail "tasks/get task id mismatch"
+jq -e '.result.status.message.parts[0].text | length > 0' "${TMP_DIR}/get-resp.json" >/dev/null || fail "tasks/get missing status message"
+jq -e '.result.artifacts | length >= 1' "${TMP_DIR}/get-resp.json" >/dev/null || fail "tasks/get missing artifacts"
 pass "A2A tasks/get"
 
 cat > "${TMP_DIR}/list.json" <<'EOF'
@@ -103,9 +106,37 @@ jq -e --arg tid "$task_id" '.result.tasks | map(.id) | index($tid) != null' "${T
 pass "A2A tasks/list"
 
 curl -fsS "${auth_hdr[@]}" "${HYB_URL}/a2a/tasks/${task_id}/events" > "${TMP_DIR}/events.txt" || fail "task events stream failed"
-rg -q 'event: task.snapshot' "${TMP_DIR}/events.txt" || fail "task events missing snapshot"
-rg -q 'event: task.complete' "${TMP_DIR}/events.txt" || fail "task events missing completion marker"
+rg -q 'event: task' "${TMP_DIR}/events.txt" || fail "task events missing task snapshot"
+rg -q 'event: status-update' "${TMP_DIR}/events.txt" || fail "task events missing status update"
+rg -q 'event: artifact-update' "${TMP_DIR}/events.txt" || fail "task events missing artifact update"
+rg -q '"kind":"status-update"' "${TMP_DIR}/events.txt" || fail "task events missing A2A status payload"
+rg -q '"kind":"artifact-update"' "${TMP_DIR}/events.txt" || fail "task events missing A2A artifact payload"
 pass "A2A task events"
+
+cat > "${TMP_DIR}/stream.json" <<'EOF'
+{
+  "jsonrpc": "2.0",
+  "id": "stream-1",
+  "method": "message/stream",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {"type": "text", "text": "Stream the A2A task acceptance envelope with status and artifacts."}
+      ]
+    },
+    "safetyMode": "plan-readonly"
+  }
+}
+EOF
+
+curl -fsS "${auth_hdr[@]}" -H 'Content-Type: application/json' -X POST "${HYB_URL}/a2a" \
+  --data @"${TMP_DIR}/stream.json" > "${TMP_DIR}/message-stream.txt" || fail "message/stream failed"
+rg -q 'event: task' "${TMP_DIR}/message-stream.txt" || fail "message/stream missing task event"
+rg -q 'event: status-update' "${TMP_DIR}/message-stream.txt" || fail "message/stream missing status update"
+rg -q 'event: artifact-update' "${TMP_DIR}/message-stream.txt" || fail "message/stream missing artifact update"
+rg -q '"jsonrpc":"2.0"' "${TMP_DIR}/message-stream.txt" || fail "message/stream missing jsonrpc envelope"
+pass "A2A message/stream"
 
 cat > "${TMP_DIR}/cancel.json" <<EOF
 {
