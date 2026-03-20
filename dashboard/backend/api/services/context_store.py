@@ -10,6 +10,8 @@ import logging
 import hashlib
 import re
 import threading
+import subprocess
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
@@ -34,6 +36,12 @@ GRAPH_SERVICE_HINTS = {
     "hybrid-coordinator", "dashboard", "switchboard", "qdrant", "prometheus",
     "postgres", "redis", "embeddings", "llama", "nix", "nixos-rebuild",
     "command-center", "aidb", "ralph", "mindsdb", "grafana",
+}
+GRAPH_QUERY_STOPWORDS = {
+    "how", "why", "what", "when", "where", "which", "did", "does", "configure",
+    "configuring", "service", "services", "deployment", "deployments", "issue",
+    "issues", "error", "errors", "fail", "failed", "failure", "similar", "root",
+    "cause", "related",
 }
 
 
@@ -96,6 +104,10 @@ class ContextStore:
         fallback = str(repo_root / "data" / "dashboard" / "context.db")
         logger.warning("Context store falling back to default DB path without writability confirmation: %s", fallback)
         return fallback
+
+    @staticmethod
+    def _repo_root() -> Path:
+        return Path(__file__).resolve().parents[4]
 
     def _reconnect_to_writable_db(self) -> None:
         replacement = self._resolve_db_path()
@@ -645,10 +657,18 @@ class ContextStore:
             if token not in GRAPH_STOPWORDS and len(token) > 3
         ][:3]
         focus = focus_terms[0] if focus_terms else ""
+        recommended_sources = ["deployments"]
+        if recommended_graph_view == "configs":
+            recommended_sources.extend(["config", "code"])
+        elif recommended_graph_view in {"issues", "services"}:
+            recommended_sources.extend(["code"])
+        else:
+            recommended_sources.extend(["code", "config"])
         return {
             "intent": intent,
             "recommended_mode": recommended_mode,
             "recommended_graph_view": recommended_graph_view,
+            "recommended_sources": recommended_sources,
             "focus": focus,
             "tokens": tokens[:8],
         }
@@ -685,6 +705,160 @@ class ContextStore:
             "matched_terms": matched_terms,
             "source_reason": reason,
             "score_hint": score,
+        }
+
+    @staticmethod
+    def _build_repo_search_terms(query: str) -> List[str]:
+        terms = [
+            token for token in re.findall(r"[a-z0-9][a-z0-9._/-]{2,}", (query or "").lower())
+            if token not in GRAPH_STOPWORDS and token not in GRAPH_QUERY_STOPWORDS and len(token) > 2
+        ]
+        return list(dict.fromkeys(terms))[:5]
+
+    def search_repo_context(self, query: str, limit: int = 8, source_filter: str = "all") -> List[Dict[str, Any]]:
+        search_terms = self._build_repo_search_terms(query)
+        if not search_terms:
+            return []
+
+        repo_root = self._repo_root()
+        search_paths = ["config", "nix", "lib/deploy", "dashboard/backend", "docs", "ai-stack"]
+        if source_filter == "config":
+            search_paths = ["config", "nix", "lib/deploy", "dashboard/backend"]
+        elif source_filter == "code":
+            search_paths = ["dashboard/backend", "lib/deploy", "ai-stack", "docs"]
+        search_paths = [path for path in search_paths if (repo_root / path).exists()]
+        if not search_paths:
+            return []
+
+        pattern = "|".join(re.escape(term) for term in search_terms)
+        try:
+            if shutil.which("rg"):
+                command = [
+                    "rg",
+                    "-n",
+                    "-i",
+                    "-m",
+                    "1",
+                    "--no-heading",
+                    "--glob",
+                    "!*.lock",
+                    "--glob",
+                    "!*.db",
+                    pattern,
+                    *search_paths,
+                ]
+                proc = subprocess.run(
+                    command,
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=2,
+                )
+            else:
+                command = [
+                    "grep",
+                    "-RniE",
+                    pattern,
+                    *search_paths,
+                ]
+                proc = subprocess.run(
+                    command,
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=2,
+                )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("Repo context search failed: %s", exc)
+            return []
+
+        if proc.returncode not in {0, 1}:
+            logger.warning("Repo context search returned %s: %s", proc.returncode, proc.stderr.strip())
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for line in proc.stdout.splitlines():
+            if len(results) >= limit:
+                break
+            try:
+                file_path, line_no, snippet = line.split(":", 2)
+            except ValueError:
+                continue
+            source = "config" if file_path.startswith(("config/", "nix/")) or file_path.endswith((".nix", ".yaml", ".yml", ".json", ".toml", ".service")) else "code"
+            if source_filter in {"config", "code"} and source != source_filter:
+                continue
+            matched_terms = [term for term in search_terms if term in snippet.lower() or term in file_path.lower()]
+            results.append({
+                "id": f"{file_path}:{line_no}",
+                "deployment_id": "",
+                "event_type": source,
+                "message": file_path,
+                "timestamp": None,
+                "progress": None,
+                "metadata": {"file_path": file_path, "line_number": int(line_no)},
+                "relevance_score": len(matched_terms),
+                "snippet": snippet.strip(),
+                "source": source,
+                "explanation": {
+                    "summary": f"repo match; matched terms: {', '.join(matched_terms) if matched_terms else 'context'}",
+                    "matched_terms": matched_terms,
+                    "source_reason": "repo match",
+                    "score_hint": len(matched_terms),
+                },
+            })
+        return results
+
+    def search_deployment_context(self, query: str, limit: int = 12, mode: str = "natural") -> Dict[str, Any]:
+        query_analysis = self.analyze_deployment_query(query)
+        effective_mode = query_analysis["recommended_mode"] if mode in {"auto", "natural"} else mode
+        if effective_mode == "keyword":
+            deployment_results = self.search_deployments(query, limit=limit, offset=0)
+        elif effective_mode == "semantic":
+            deployment_results = self.search_deployments_semantic(query, limit=limit, offset=0)
+        else:
+            deployment_results = self.search_deployments_hybrid(query, limit=limit, offset=0)
+
+        deployment_results = [
+            {**dict(item), "explanation": self.explain_deployment_search_result(query, dict(item)), "source": item.get("source") or "deployment"}
+            for item in deployment_results
+        ]
+        if query_analysis.get("recommended_graph_view") == "configs":
+            source_filter = "config"
+        elif query_analysis.get("recommended_graph_view") == "services":
+            source_filter = "code"
+        else:
+            source_filter = "all"
+        repo_results = self.search_repo_context(query, limit=max(4, limit // 2), source_filter=source_filter)
+
+        source_priority = {"deployment": 0, "semantic": 0, "keyword": 1, "config": 2, "code": 3}
+        combined: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in deployment_results + repo_results:
+            key = str(item.get("id") or f"{item.get('message')}:{item.get('snippet')}")
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(item)
+        combined = sorted(
+            combined,
+            key=lambda item: (
+                source_priority.get(str(item.get("source") or ""), 9),
+                -(int(item.get("relevance_score") or 0) if item.get("relevance_score") is not None else 0),
+                str(item.get("message") or ""),
+            ),
+        )[:limit]
+        sources = {
+            "deployment": sum(1 for item in combined if item.get("source") in {"deployment", "semantic", "keyword"}),
+            "config": sum(1 for item in combined if item.get("source") == "config"),
+            "code": sum(1 for item in combined if item.get("source") == "code"),
+        }
+        return {
+            "results": combined,
+            "query_analysis": query_analysis,
+            "effective_mode": effective_mode,
+            "sources": sources,
         }
 
     def get_deployment_search_status(self, recent_limit: int = 8) -> Dict[str, Any]:

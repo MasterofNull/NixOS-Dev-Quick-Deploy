@@ -6099,7 +6099,10 @@
             }
 
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/deployments/search?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}`, { cache: 'no-store' });
+                const endpoint = (mode === 'natural' || mode === 'auto')
+                    ? `${FASTAPI_BASE}/api/deployments/search/context?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}`
+                    : `${FASTAPI_BASE}/api/deployments/search?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}`;
+                const response = await fetch(endpoint, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`deployment search HTTP ${response.status}`);
                 const data = await response.json();
                 deploymentState.searchResults = Array.isArray(data.results) ? data.results : [];
@@ -6107,6 +6110,7 @@
                     mode: data.mode || mode,
                     effectiveMode: data.effective_mode || mode,
                     queryAnalysis: data.query_analysis || {},
+                    sources: data.sources || null,
                 };
                 renderDeploymentSearchResults();
             } catch (error) {
@@ -6376,7 +6380,7 @@
                 <div class="data-item">
                     <div>
                         <div>${escapeHtml(`intent=${queryAnalysis.intent || 'retrieval'} | requested=${searchMeta.mode || 'hybrid'} | effective=${searchMeta.effectiveMode || searchMeta.mode || 'hybrid'}`)}</div>
-                        <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}`)}</div>
+                        <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}${searchMeta.sources ? ` | sources=d:${searchMeta.sources.deployment ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}` : ''}`)}</div>
                     </div>
                     <div class="data-meta">query analysis</div>
                 </div>
