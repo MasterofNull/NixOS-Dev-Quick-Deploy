@@ -938,13 +938,45 @@ def read_prompt_registry() -> List[dict]:
     )
     if not registry_path.exists():
         return []
+
+    def _minimal_prompt_registry_fallback(path: Path) -> List[dict]:
+        prompts: List[dict] = []
+        current: Optional[Dict[str, Any]] = None
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.rstrip()
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("- id:"):
+                if current and current.get("id"):
+                    prompts.append(current)
+                current = {"id": stripped.split(":", 1)[1].strip()}
+                continue
+            if current is None:
+                continue
+            if stripped.startswith("name:"):
+                current["name"] = stripped.split(":", 1)[1].strip()
+                continue
+            if stripped.startswith("mean_score:"):
+                value = stripped.split(":", 1)[1].strip()
+                try:
+                    current["mean_score"] = float(value)
+                except ValueError:
+                    current["mean_score"] = None
+        if current and current.get("id"):
+            prompts.append(current)
+        return prompts
+
     try:
         import yaml  # type: ignore[import-untyped]
         with registry_path.open(encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
         return data.get("prompts", []) if data else []
     except Exception:
-        return []
+        try:
+            return _minimal_prompt_registry_fallback(registry_path)
+        except Exception:
+            return []
 
 
 def prom_query(metric: str) -> Optional[float]:
