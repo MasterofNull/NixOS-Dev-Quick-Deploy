@@ -2612,6 +2612,34 @@
                             </div>
                         </div>
 
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">A2A Readiness</div>
+                            <div class="status-grid" id="a2aReadinessGrid">
+                                <div class="status-item">
+                                    <span class="status-label">Protocol Status</span>
+                                    <span class="status-value" id="a2aReadinessStatus">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Protocol Version</span>
+                                    <span class="status-value" id="a2aProtocolVersion">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Streaming</span>
+                                    <span class="status-value" id="a2aStreaming">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Push Notifications</span>
+                                    <span class="status-value" id="a2aPushNotifications">--</span>
+                                </div>
+                            </div>
+                            <div class="data-list" id="a2aMethodList" style="margin-top: 0.75rem;">
+                                <div class="data-item">
+                                    <span>Loading protocol methods...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Hint Effectiveness -->
                         <div>
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Hint Effectiveness</div>
@@ -5735,6 +5763,7 @@
                 loadToolPerformance(),
                 loadRoutingAnalytics(),
                 loadWorkflowCompliance(),
+                loadA2AReadiness(),
                 loadHintEffectiveness()
             ]);
         }
@@ -6225,6 +6254,50 @@
             } catch (err) {
                 console.error('Failed to load hint effectiveness:', err);
                 document.getElementById('hintEffectivenessList').innerHTML = '<div class="data-item"><span>Hint effectiveness</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        async function loadA2AReadiness() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/workflows/a2a-readiness`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('a2a readiness failed');
+                const data = await response.json();
+
+                const status = data.status || 'unknown';
+                const methods = (data.methods && Array.isArray(data.methods.implemented)) ? data.methods.implemented : [];
+                const features = data.features || {};
+                const badge = document.getElementById('insightsBadge');
+                if (badge) {
+                    badge.textContent = data.available ? 'Analytics + A2A' : 'Analytics';
+                }
+
+                document.getElementById('a2aReadinessStatus').textContent = status;
+                document.getElementById('a2aProtocolVersion').textContent = data.protocol_version || '--';
+                document.getElementById('a2aStreaming').textContent = data.streaming ? 'Enabled' : 'Disabled';
+                document.getElementById('a2aPushNotifications').textContent = data.push_notifications ? 'Enabled' : 'Disabled';
+
+                const methodList = document.getElementById('a2aMethodList');
+                const featureFlags = [
+                    features.message_stream ? 'message-stream' : null,
+                    features.task_artifacts ? 'artifacts' : null,
+                    features.status_messages ? 'status-messages' : null,
+                    features.task_events ? 'task-events' : null
+                ].filter(Boolean);
+                methodList.innerHTML = methods.length
+                    ? methods.map((method) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(method)}</span>
+                            <span class="data-meta">${escapeHtml(featureFlags.join(', ') || 'core method')}</span>
+                        </div>
+                    `).join('')
+                    : '<div class="data-item"><span>No A2A methods reported</span><span class="data-meta">unavailable</span></div>';
+            } catch (err) {
+                console.error('Failed to load A2A readiness:', err);
+                document.getElementById('a2aReadinessStatus').textContent = 'unavailable';
+                document.getElementById('a2aProtocolVersion').textContent = '--';
+                document.getElementById('a2aStreaming').textContent = '--';
+                document.getElementById('a2aPushNotifications').textContent = '--';
+                document.getElementById('a2aMethodList').innerHTML = '<div class="data-item"><span>A2A readiness</span><span class="data-meta status-offline">unavailable</span></div>';
             }
         }
 
