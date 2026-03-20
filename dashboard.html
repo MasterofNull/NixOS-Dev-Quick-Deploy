@@ -2412,6 +2412,10 @@
                                         <span class="status-label">Focus Matches</span>
                                         <span class="status-value" id="deploymentGraphFocusMatches">--</span>
                                     </div>
+                                    <div class="status-item">
+                                        <span class="status-label">Clusters</span>
+                                        <span class="status-value" id="deploymentGraphClusters">--</span>
+                                    </div>
                                 </div>
                                 <div class="data-list" id="deploymentGraphList">
                                     <div class="data-item">
@@ -6153,15 +6157,32 @@
                 document.getElementById('deploymentGraphScope').textContent = data.deployment_scope || 'recent';
                 document.getElementById('deploymentGraphViewState').textContent = data.view || view;
                 document.getElementById('deploymentGraphFocusMatches').textContent = `${data.focus_matches ?? 0}`;
+                document.getElementById('deploymentGraphClusters').textContent = `${data.cluster_count ?? 0}`;
 
                 const list = document.getElementById('deploymentGraphList');
                 const relationshipSummary = Array.isArray(data.top_relationships) ? data.top_relationships : [];
+                const clusters = Array.isArray(data.clusters) ? data.clusters : [];
                 const edges = Array.isArray(data.edges) ? data.edges : [];
                 if (edges.length || relationshipSummary.length) {
                     const summaryItems = relationshipSummary.slice(0, 4).map((item) => `
                         <div class="data-item">
                             <span>${escapeHtml(item.relation || 'relation')}</span>
                             <span class="data-meta">${escapeHtml(String(item.count ?? 0))} edges</span>
+                        </div>
+                    `).join('');
+                    const clusterItems = clusters.slice(0, 3).map((cluster) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(`${cluster.cluster_id}: ${cluster.deployment_ids.join(', ')}`)}</span>
+                            <span class="data-meta">${escapeHtml(`${cluster.size} deployment(s)`)}</span>
+                        </div>
+                        <div class="data-item">
+                            <span>${escapeHtml([
+                                cluster.shared_statuses?.length ? `status=${cluster.shared_statuses.join(',')}` : '',
+                                cluster.shared_services?.length ? `services=${cluster.shared_services.join(',')}` : '',
+                                cluster.shared_configs?.length ? `configs=${cluster.shared_configs.join(',')}` : '',
+                                cluster.shared_issues?.length ? `issues=${cluster.shared_issues.join(',')}` : '',
+                            ].filter(Boolean).join(' | ') || 'shared signals pending')}</span>
+                            <span class="data-meta">cluster summary</span>
                         </div>
                     `).join('');
                     const edgeItems = edges.slice(0, 8).map((edge) => `
@@ -6176,7 +6197,7 @@
                         </div>
                         ` : ''}
                     `).join('');
-                    list.innerHTML = `${summaryItems}${edgeItems}`;
+                    list.innerHTML = `${summaryItems}${clusterItems}${edgeItems}`;
                 } else {
                     list.innerHTML = '<div class="data-item"><span>No deployment graph edges available</span><span class="data-meta">empty</span></div>';
                 }
@@ -6188,6 +6209,7 @@
                 document.getElementById('deploymentGraphScope').textContent = '--';
                 document.getElementById('deploymentGraphViewState').textContent = '--';
                 document.getElementById('deploymentGraphFocusMatches').textContent = '--';
+                document.getElementById('deploymentGraphClusters').textContent = '--';
                 document.getElementById('deploymentGraphList').innerHTML = `<div class="data-item"><span>Deployment graph unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
             }
         }
