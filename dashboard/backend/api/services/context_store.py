@@ -7,13 +7,24 @@ import os
 import sqlite3
 import json
 import logging
+import hashlib
+import threading
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import asyncio
 from contextlib import asynccontextmanager
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+from api.config.service_endpoints import AIDB_URL
 
 logger = logging.getLogger(__name__)
+
+DEPLOYMENT_SEMANTIC_PROJECT = "dashboard-deployments"
+DEPLOYMENT_SEMANTIC_COLLECTION = "telemetry_patterns"
+DEFAULT_AIDB_KEY_FILE = "/run/secrets/aidb_api_key"
 
 
 class ContextStore:
@@ -41,6 +52,7 @@ class ContextStore:
 
         self.db_path = db_path
         self.conn = None
+        self._lock = threading.RLock()
         self._init_db()
 
     def _init_db(self):
@@ -126,11 +138,20 @@ class ContextStore:
                 size_after INTEGER
             );
 
+            CREATE TABLE IF NOT EXISTS deployment_semantic_index (
+                deployment_id TEXT PRIMARY KEY,
+                document_id INTEGER,
+                content_hash TEXT NOT NULL,
+                indexed_at DATETIME,
+                last_error TEXT
+            );
+
             -- Create indexes for performance
             CREATE INDEX IF NOT EXISTS idx_deployment_events_id ON deployment_events(deployment_id);
             CREATE INDEX IF NOT EXISTS idx_deployment_events_timestamp ON deployment_events(timestamp);
             CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status);
             CREATE INDEX IF NOT EXISTS idx_deployments_started ON deployments(started_at);
+            CREATE INDEX IF NOT EXISTS idx_deployment_semantic_document_id ON deployment_semantic_index(document_id);
         """)
 
         self.conn.commit()
@@ -262,6 +283,260 @@ class ContextStore:
         except Exception as e:
             logger.error(f"Search error: {e}")
             return []
+
+    @staticmethod
+    def _load_aidb_api_key() -> str:
+        direct = os.getenv("AIDB_API_KEY", "").strip()
+        if direct:
+            return direct
+        key_file = os.getenv("AIDB_API_KEY_FILE", "").strip() or DEFAULT_AIDB_KEY_FILE
+        try:
+            return Path(key_file).read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return ""
+        except OSError as exc:
+            logger.warning("Failed reading AIDB API key file %s: %s", key_file, exc)
+            return ""
+
+    def _aidb_headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        api_key = self._load_aidb_api_key()
+        if api_key:
+            headers["X-API-Key"] = api_key
+        return headers
+
+    def _aidb_request(
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        payload: Optional[Dict[str, Any]] = None,
+        query: Optional[Dict[str, Any]] = None,
+        timeout: float = 30.0,
+    ) -> Any:
+        url = f"{AIDB_URL.rstrip('/')}{path}"
+        if query:
+            encoded = urlencode({key: value for key, value in query.items() if value is not None})
+            if encoded:
+                url = f"{url}?{encoded}"
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        request = Request(url, data=data, method=method.upper(), headers=self._aidb_headers())
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"AIDB {method} {path} failed: HTTP {exc.code} {detail}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"AIDB {method} {path} failed: {exc.reason}") from exc
+
+    @staticmethod
+    def _deployment_relative_path(deployment_id: str) -> str:
+        return f"deployments/{deployment_id}.md"
+
+    def _build_deployment_semantic_content(self, deployment_id: str) -> Tuple[Optional[Dict[str, Any]], str]:
+        summary = self.get_deployment_summary(deployment_id)
+        if not summary:
+            return None, ""
+        timeline = self.get_deployment_timeline(deployment_id)
+        lines = [
+            f"# Deployment {deployment_id}",
+            "",
+            f"Command: {summary.get('command') or ''}",
+            f"Status: {summary.get('status') or ''}",
+            f"User: {summary.get('user') or ''}",
+            f"Started: {summary.get('started_at') or ''}",
+            f"Completed: {summary.get('completed_at') or ''}",
+            f"Progress: {summary.get('progress')}",
+            f"Exit Code: {summary.get('exit_code')}",
+            f"Duration Seconds: {summary.get('duration_seconds')}",
+            "",
+            "## Event Counts",
+        ]
+        for event_type, count in sorted((summary.get("event_counts") or {}).items()):
+            lines.append(f"- {event_type}: {count}")
+        lines.extend(["", "## Timeline"])
+        for event in timeline[-25:]:
+            lines.append(
+                f"- [{event.get('timestamp')}] {event.get('event_type')}: {event.get('message')} "
+                f"(progress={event.get('progress')})"
+            )
+        return summary, "\n".join(lines).strip()
+
+    def sync_deployment_to_semantic_index(self, deployment_id: str) -> Dict[str, Any]:
+        with self._lock:
+            summary, content = self._build_deployment_semantic_content(deployment_id)
+            if not summary or not content:
+                return {"status": "missing", "deployment_id": deployment_id}
+
+            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            current = self.conn.execute(
+                """
+                SELECT document_id, content_hash, indexed_at
+                FROM deployment_semantic_index
+                WHERE deployment_id = ?
+                """,
+                (deployment_id,),
+            ).fetchone()
+            if current and current["content_hash"] == content_hash and current["document_id"]:
+                return {
+                    "status": "unchanged",
+                    "deployment_id": deployment_id,
+                    "document_id": current["document_id"],
+                    "indexed_at": current["indexed_at"],
+                }
+
+            relative_path = self._deployment_relative_path(deployment_id)
+            metadata = {
+                "deployment_id": deployment_id,
+                "command": summary.get("command"),
+                "status": summary.get("status"),
+                "started_at": summary.get("started_at"),
+                "completed_at": summary.get("completed_at"),
+                "semantic_type": "deployment-history",
+            }
+            try:
+                self._aidb_request(
+                    "/documents",
+                    method="POST",
+                    payload={
+                        "project": DEPLOYMENT_SEMANTIC_PROJECT,
+                        "relative_path": relative_path,
+                        "title": f"Deployment {deployment_id}",
+                        "content_type": "text/markdown",
+                        "content": content,
+                        "status": "approved",
+                        "source_trust_level": "generated",
+                    },
+                )
+                docs = self._aidb_request(
+                    "/documents",
+                    query={"project": DEPLOYMENT_SEMANTIC_PROJECT, "limit": 1000},
+                )
+                matches = [
+                    item for item in (docs.get("documents") or [])
+                    if item.get("relative_path") == relative_path
+                ]
+                if not matches:
+                    raise RuntimeError(f"AIDB document not found after import for {deployment_id}")
+                document_id = int(matches[0]["id"])
+                self._aidb_request(
+                    "/vector/index",
+                    method="POST",
+                    payload={
+                        "items": [
+                            {
+                                "document_id": document_id,
+                                "chunk_id": "summary",
+                                "content": content,
+                                "metadata": metadata,
+                            }
+                        ]
+                    },
+                )
+                now = self._timestamp()
+                self.conn.execute(
+                    """
+                    INSERT INTO deployment_semantic_index (deployment_id, document_id, content_hash, indexed_at, last_error)
+                    VALUES (?, ?, ?, ?, NULL)
+                    ON CONFLICT(deployment_id) DO UPDATE SET
+                        document_id = excluded.document_id,
+                        content_hash = excluded.content_hash,
+                        indexed_at = excluded.indexed_at,
+                        last_error = NULL
+                    """,
+                    (deployment_id, document_id, content_hash, now),
+                )
+                self.conn.commit()
+                return {"status": "indexed", "deployment_id": deployment_id, "document_id": document_id, "indexed_at": now}
+            except Exception as exc:
+                self.conn.execute(
+                    """
+                    INSERT INTO deployment_semantic_index (deployment_id, document_id, content_hash, indexed_at, last_error)
+                    VALUES (?, NULL, ?, NULL, ?)
+                    ON CONFLICT(deployment_id) DO UPDATE SET
+                        content_hash = excluded.content_hash,
+                        indexed_at = NULL,
+                        last_error = excluded.last_error
+                    """,
+                    (deployment_id, content_hash, str(exc)),
+                )
+                self.conn.commit()
+                logger.warning("Deployment semantic sync failed for %s: %s", deployment_id, exc)
+                return {"status": "error", "deployment_id": deployment_id, "error": str(exc)}
+
+    def sync_recent_deployments(self, limit: int = 10) -> Dict[str, Any]:
+        deployments = self.get_recent_deployments(limit=limit)
+        results = [self.sync_deployment_to_semantic_index(item["deployment_id"]) for item in deployments]
+        return {
+            "synced": sum(1 for item in results if item.get("status") in {"indexed", "unchanged"}),
+            "failed": [item for item in results if item.get("status") == "error"],
+            "results": results,
+        }
+
+    def search_deployments_semantic(self, query: str, limit: int = 20, offset: int = 0) -> List[Dict]:
+        try:
+            data = self._aidb_request(
+                "/vector/search",
+                method="POST",
+                payload={
+                    "collection": DEPLOYMENT_SEMANTIC_COLLECTION,
+                    "project": DEPLOYMENT_SEMANTIC_PROJECT,
+                    "query": query,
+                    "limit": max(limit + offset, limit),
+                },
+            )
+        except Exception as exc:
+            logger.warning("Semantic deployment search failed: %s", exc)
+            return []
+
+        results = []
+        for item in (data.get("results") or [])[offset:offset + limit]:
+            metadata = item.get("metadata") or {}
+            deployment_id = metadata.get("deployment_id")
+            if not deployment_id:
+                relative_path = item.get("relative_path") or ""
+                if relative_path.startswith("deployments/") and relative_path.endswith(".md"):
+                    deployment_id = relative_path[len("deployments/"):-3]
+            if not deployment_id:
+                continue
+            summary = self.get_deployment_summary(str(deployment_id)) or {}
+            snippet = str(item.get("content") or "")
+            if len(snippet) > 220:
+                snippet = f"{snippet[:217]}..."
+            results.append({
+                "id": item.get("id"),
+                "deployment_id": str(deployment_id),
+                "event_type": "semantic",
+                "message": summary.get("command") or item.get("title") or f"Deployment {deployment_id}",
+                "timestamp": summary.get("started_at"),
+                "progress": summary.get("progress"),
+                "metadata": metadata,
+                "relevance_score": item.get("score"),
+                "distance": item.get("distance"),
+                "snippet": snippet,
+                "source": "semantic",
+            })
+        return results
+
+    def search_deployments_hybrid(self, query: str, limit: int = 20, offset: int = 0) -> List[Dict]:
+        semantic = self.search_deployments_semantic(query, limit=limit, offset=offset)
+        keyword = self.search_deployments(query, limit=limit, offset=offset)
+        combined: List[Dict] = []
+        seen: set[Tuple[str, str, str]] = set()
+        for item in semantic + keyword:
+            key = (
+                str(item.get("deployment_id") or ""),
+                str(item.get("event_type") or ""),
+                str(item.get("message") or item.get("snippet") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(item)
+            if len(combined) >= limit:
+                break
+        return combined
 
     def get_deployment_summary(self, deployment_id: str) -> Optional[Dict]:
         """Get context-efficient deployment summary (not full logs)"""

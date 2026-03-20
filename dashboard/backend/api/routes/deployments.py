@@ -279,16 +279,31 @@ async def get_deployment_history(
 
 
 @router.get("/deployments/search")
-async def search_deployments(query: str, limit: int = 20, offset: int = 0):
-    """Search deployment logs using FTS5 with BM25 ranking."""
-    results = context_store.search_deployments(query, limit=limit, offset=offset)
+async def search_deployments(query: str, limit: int = 20, offset: int = 0, mode: str = "hybrid"):
+    """Search deployment history using keyword, semantic, or hybrid retrieval."""
+    normalized_mode = (mode or "hybrid").strip().lower()
+    if normalized_mode not in {"keyword", "semantic", "hybrid"}:
+        raise HTTPException(status_code=400, detail="mode must be keyword, semantic, or hybrid")
+
+    semantic_sync = None
+    if normalized_mode in {"semantic", "hybrid"}:
+        semantic_sync = await asyncio.to_thread(context_store.sync_recent_deployments, 1)
+
+    if normalized_mode == "keyword":
+        results = context_store.search_deployments(query, limit=limit, offset=offset)
+    elif normalized_mode == "semantic":
+        results = context_store.search_deployments_semantic(query, limit=limit, offset=offset)
+    else:
+        results = context_store.search_deployments_hybrid(query, limit=limit, offset=offset)
 
     return {
         "results": results,
         "query": query,
+        "mode": normalized_mode,
         "count": len(results),
         "limit": limit,
-        "offset": offset
+        "offset": offset,
+        "semantic_sync": semantic_sync,
     }
 
 

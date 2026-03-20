@@ -15,11 +15,13 @@ REQUIRED_SNIPPETS = [
     'id="section-deployments"',
     'id="deploymentHistoryList"',
     'id="deploymentTimeline"',
+    'id="deploymentSearchMode"',
     'function loadDeploymentOps()',
     'function connectDeploymentWebSocket()',
     'function searchDeploymentHistory()',
     'function executeDeploymentRollback()',
     '/api/deployments/history?limit=12&include_timeline_preview=true',
+    '/api/deployments/search?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}',
     '/api/ws/deployments',
 ]
 
