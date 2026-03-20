@@ -2350,6 +2350,11 @@
 
                         <div class="deployment-toolbar">
                             <input type="text" class="search-box" id="deploymentSearch" placeholder="Search deployment history or logs..." onkeydown="if (event.key === 'Enter') searchDeploymentHistory()">
+                            <select id="deploymentSearchMode" class="search-box" style="max-width: 180px;">
+                                <option value="hybrid">Hybrid Search</option>
+                                <option value="semantic">Semantic Search</option>
+                                <option value="keyword">Keyword Search</option>
+                            </select>
                             <button class="export-btn" onclick="searchDeploymentHistory()">Search</button>
                             <button class="export-btn" onclick="loadDeploymentOps()">Refresh Deployments</button>
                             <div id="deploymentActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-secondary); min-height: 1.2em;"></div>
@@ -5986,6 +5991,7 @@
 
         async function searchDeploymentHistory() {
             const input = document.getElementById('deploymentSearch');
+            const mode = document.getElementById('deploymentSearchMode')?.value || 'hybrid';
             const query = input?.value?.trim();
             const target = document.getElementById('deploymentSearchResults');
             if (!query) {
@@ -5997,7 +6003,7 @@
             }
 
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/deployments/search?query=${encodeURIComponent(query)}&limit=8`, { cache: 'no-store' });
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/search?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}`, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`deployment search HTTP ${response.status}`);
                 const data = await response.json();
                 deploymentState.searchResults = Array.isArray(data.results) ? data.results : [];
@@ -6102,7 +6108,7 @@
                         <div>${escapeHtml(result.deployment_id)}</div>
                         <div class="data-meta">${escapeHtml(result.snippet || result.message || '')}</div>
                     </div>
-                    <div class="data-meta">${escapeHtml(result.event_type || 'event')}</div>
+                    <div class="data-meta">${escapeHtml(result.source || result.event_type || 'event')}</div>
                 </div>
             `).join('');
         }

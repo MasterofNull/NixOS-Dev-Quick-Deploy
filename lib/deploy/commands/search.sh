@@ -3,6 +3,10 @@
 # Deploy CLI - Search Command
 # Semantic search for deployments, logs, and code
 
+_search_cmd_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=config/service-endpoints.sh
+source "${_search_cmd_dir}/../../../config/service-endpoints.sh"
+
 # ============================================================================
 # Help Text
 # ============================================================================
@@ -18,6 +22,7 @@ USAGE:
 
 OPTIONS:
   --type TYPE             Search type (deployments/logs/code/all)
+  --mode MODE             Retrieval mode for deployments (hybrid/semantic/keyword)
   --limit N               Maximum results (default: 10)
   --format FORMAT         Output format (text/json)
   --since TIME            Search since timestamp (for logs)
@@ -26,6 +31,7 @@ OPTIONS:
 EXAMPLES:
   deploy search "mTLS configuration"       # Search all
   deploy search "failed deployment" --type logs
+  deploy search "similar rollback issue" --type deployments --mode semantic
   deploy search "nixos config" --type code
   deploy search "ai-stack" --limit 20
 
@@ -96,18 +102,39 @@ EOF
 search_deployments() {
   local query="$1"
   local limit="${2:-10}"
+  local mode="${3:-hybrid}"
 
   log_info "Searching deployment history for: $query"
+  local api_url="${DASHBOARD_API_URL%/}/api/deployments/search"
+  local encoded_query
+  local response
+  encoded_query="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$query")"
 
-  # Phase 1.2: Basic grep-based search
-  # Phase 3: Vector similarity search
+  if ! response="$(curl -fsS "${api_url}?query=${encoded_query}&limit=${limit}&mode=${mode}")"; then
+    log_warn "Dashboard deployment search unavailable, falling back to journal search"
+    if command -v journalctl >/dev/null 2>&1; then
+      journalctl -u nixos-rebuild.service --no-pager | grep -i "$query" | head -n "$limit"
+      return 0
+    fi
+    return 1
+  fi
 
-  if command -v journalctl >/dev/null 2>&1; then
-    log_info "Searching systemd journal for deployment-related entries..."
+  if [[ "${OUTPUT_JSON:-0}" == "1" || "${SEARCH_FORMAT:-text}" == "json" ]]; then
+    printf '%s\n' "$response"
+    return 0
+  fi
 
-    journalctl -u nixos-rebuild.service --no-pager | grep -i "$query" | head -n "$limit"
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$response" | jq -r '
+      if (.results | length) == 0 then
+        "No deployment matches"
+      else
+        .results[] |
+        "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")"
+      end
+    '
   else
-    log_warn "journalctl not available"
+    printf '%s\n' "$response"
   fi
 
   return 0
@@ -187,6 +214,7 @@ search_all() {
 cmd_search() {
   local query=""
   local search_type="all"
+  local search_mode="hybrid"
   local limit=10
   local format="text"
   local since="1 day ago"
@@ -200,6 +228,10 @@ cmd_search() {
         ;;
       --type)
         search_type="$2"
+        shift 2
+        ;;
+      --mode)
+        search_mode="$2"
         shift 2
         ;;
       --limit)
@@ -237,16 +269,17 @@ cmd_search() {
   fi
 
   print_header "Search: $query"
-
-  log_warn "Note: Phase 1.2 provides basic text search"
-  log_info "Full semantic search coming in Phase 3 (Weeks 5-6)"
+  SEARCH_FORMAT="$format"
+  if [[ "$search_type" == "deployments" || "$search_type" == "all" ]]; then
+    log_info "Deployment retrieval mode: $search_mode"
+  fi
 
   echo ""
 
   # Dispatch to search type
   case "$search_type" in
     deployments)
-      search_deployments "$query" "$limit"
+      search_deployments "$query" "$limit" "$search_mode"
       ;;
     logs)
       search_logs "$query" "$limit" "$since"
@@ -266,7 +299,7 @@ cmd_search() {
   esac
 
   echo ""
-  log_info "Phase 3 will add: vector search, semantic ranking, AI suggestions"
+  log_info "Deployment search uses dashboard-backed keyword and semantic retrieval when available"
 
   return 0
 }
