@@ -274,11 +274,11 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Template library
 
 ### Batch 4.4: Google ADK Parity, Integrations, and Implementation Discovery
-**Status:** pending
+**Status:** in_progress
 **Tasks:**
-- [ ] Compare the current harness against Google ADK core capabilities: multi-agent composition, session/state handling, tool integration patterns, evaluation, observability, and A2A alignment
-- [ ] Evaluate ADK integrations relevant to the stack, especially Qdrant-backed retrieval, GitHub/tooling surfaces, and observability/evaluation hooks such as AgentOps, Phoenix, and MLflow
-- [ ] Build prototype adapter plans where ADK patterns can validate or simplify existing harness components without replacing declarative Nix ownership
+- [x] Compare the current harness against Google ADK core capabilities: multi-agent composition, session/state handling, tool integration patterns, evaluation, observability, and A2A alignment
+- [x] Evaluate ADK integrations relevant to the stack, especially Qdrant-backed retrieval, GitHub/tooling surfaces, and observability/evaluation hooks such as AgentOps, Phoenix, and MLflow
+- [x] Build prototype adapter plans where ADK patterns can validate or simplify existing harness components without replacing declarative Nix ownership
 - [ ] Create an ADK-driven parity/eval suite so new harness work can be checked against documented ADK capabilities before roadmap acceptance
 - [ ] Add a recurring implementation-discovery review that feeds newly surfaced ADK features into Phase 4, Phase 6, and Phase 11 prioritization
 
@@ -287,6 +287,10 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Integration opportunity register with `adopt|adapt|defer` decisions
 - Prototype plan for highest-value ADK-aligned adapters or workflow patterns
 - ADK-informed eval checklist for reviewer-gate acceptance
+
+**Current evidence:**
+- Repo-grounded ADK parity matrix and integration decision note:
+  [docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md)
 
 ---
 
