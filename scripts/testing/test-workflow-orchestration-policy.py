@@ -40,7 +40,13 @@ if "mcp" not in sys.modules:
     sys.modules["mcp.types"] = mcp_types_module
 
 from ai_coordinator import coerce_orchestration_context  # noqa: E402
-from http_server import _apply_consensus_update, _build_workflow_run_session  # noqa: E402
+from http_server import (  # noqa: E402
+    _apply_consensus_update,
+    _build_workflow_run_session,
+    _default_agent_evaluations_registry,
+    _record_agent_consensus_event,
+    _record_agent_review_event,
+)
 
 BLUEPRINTS_PATH = ROOT / "config" / "workflow-blueprints.json"
 
@@ -105,6 +111,33 @@ def main() -> int:
     assert_true(updated.get("status") == "accepted", "accepted reviewer decision should accept consensus")
     assert_true(len(updated.get("history") or []) == 1, "consensus history should record the decision")
     assert_true(session.get("trajectory") and session["trajectory"][-1].get("event_type") == "consensus_update", "session trajectory should record consensus updates")
+
+    evaluation_registry = _default_agent_evaluations_registry()
+    evaluation_registry = _record_agent_review_event(
+        evaluation_registry,
+        agent="claude",
+        profile="remote-reasoning",
+        passed=True,
+        score=0.92,
+        reviewer="codex",
+        review_type="acceptance",
+        task_class="remote_reasoning_escalation",
+        ts=1,
+    )
+    evaluation_registry = _record_agent_consensus_event(
+        evaluation_registry,
+        agent="claude",
+        lane="reasoning",
+        selected_candidate_id="primary",
+        summary="selected for the reasoning lane",
+        ts=2,
+    )
+    claude = (evaluation_registry.get("agents") or {}).get("claude") or {}
+    reasoning = (claude.get("profiles") or {}).get("reasoning") or {}
+    remote_reasoning = (claude.get("profiles") or {}).get("remote-reasoning") or {}
+    assert_true(remote_reasoning.get("accepted_reviews") == 1, "review event should accumulate accepted reviews")
+    assert_true(reasoning.get("consensus_selected") == 1, "consensus event should accumulate selection counts")
+    assert_true((evaluation_registry.get("summary") or {}).get("agent_count") >= 1, "evaluation summary should track agent count")
 
     print("PASS: workflow orchestration defaults keep top-level agents as orchestrators and sub-agents bounded")
     return 0
