@@ -277,6 +277,9 @@ def _select_route_collections(
         profile = "continuation-code"
     elif continuation and task_shape == "reasoning":
         profile = "continuation-reasoning"
+    if continuation and has_memory and not generate_response and not wants_history:
+        max_collections = 1
+        profile = f"{profile}-memory-first" if not profile.endswith("-memory-first") else profile
 
     # Favor lower fan-out for retrieval-only queries. These requests do not
     # need broad synthesis context, so cap the collection set more aggressively.

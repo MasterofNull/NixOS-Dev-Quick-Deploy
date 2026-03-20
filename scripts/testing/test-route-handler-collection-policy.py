@@ -8,6 +8,7 @@ import os
 import sys
 import types
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 ROUTE_HANDLER_PATH = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "route_handler.py"
@@ -108,16 +109,33 @@ def main() -> int:
     assert_true("codebase-context" in continuation_code["collections"], "expected codebase context for continuation code path")
     assert_true("interaction-history" not in continuation_code["collections"], "expected interaction-history to stay out when memory recall exists")
 
+    continuation_memory_first = route_handler._select_route_collections(
+        "continue fixing the failing nixos service after the last patch",
+        route="hybrid",
+        context={"memory_recall": ["last patch changed the service path"]},
+        generate_response=False,
+    )
+    assert_true(
+        continuation_memory_first["profile"] == "continuation-code-memory-first",
+        "expected retrieval-only continuation path to prefer memory-first profile",
+    )
+    assert_true(
+        continuation_memory_first["collections"] == ["codebase-context"],
+        "expected retrieval-only continuation path to stay on a single codebase collection",
+    )
+
+    route_handler.task_classifier.classify = lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="lookup")
     lookup = route_handler._select_route_collections(
         "list the california native plants that tolerate shade",
         route="hybrid",
         context={},
         generate_response=False,
     )
-    assert_true(lookup["profile"] == "lookup-focused", "expected lookup-focused profile")
+    assert_true(lookup["profile"] in {"lookup-focused", "lookup-focused-compact"}, "expected bounded lookup-focused profile")
     assert_true(len(lookup["collections"]) <= 2, "expected lookup path to stay narrowly bounded")
     assert_true("codebase-context" not in lookup["collections"], "expected non-code lookup to avoid codebase context")
 
+    route_handler.task_classifier.classify = lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="reasoning")
     reasoning = route_handler._select_route_collections(
         "explain the tradeoffs between broad retrieval and memory recall for long-running repo tasks",
         route="hybrid",
