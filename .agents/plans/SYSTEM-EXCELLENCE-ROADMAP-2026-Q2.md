@@ -19,7 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, and queryable deployment graph views are live
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, queryable deployment graph views, and cross-deployment causality edges are live
 - ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
@@ -347,6 +347,7 @@ search_interactions("how to configure nixos modules")
 - 8c91b65: Expose deployment search coverage in dashboard
 - Add deployment graph API and dashboard view
 - Add deployment graph query views and writable-store recovery
+- Add deployment causality graph and related-deployment reasoning
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
@@ -355,6 +356,7 @@ search_interactions("how to configure nixos modules")
 - The deployment graph is intentionally lightweight today: deployments, commands, statuses, event types, and issue tokens derived from deployment telemetry.
 - The dashboard graph now supports operator query pivots for `overview`, `issues`, `services`, and `configs`, plus focus filtering for relationship inspection.
 - Context-store writes now self-heal onto a writable service path when runtime env drift would otherwise force a read-only DB fallback.
+- Cross-deployment graph edges now capture shared status, services, configs, and issue signals to explain why deployments are related.
 
 ---
 
@@ -381,6 +383,7 @@ search_interactions("how to configure nixos modules")
 - 8c91b65: Expose deployment search coverage in dashboard
 - Add deployment graph API and dashboard view
 - Add deployment graph query views and writable-store recovery
+- Add deployment causality graph and related-deployment reasoning
 
 ### Batch 3.2: Knowledge Graph Construction 🚧 IN PROGRESS
 **Priority:** HIGH
@@ -392,12 +395,14 @@ search_interactions("how to configure nixos modules")
 - [x] Extract deployment entities and issue tokens from deployment logs/events
 - [x] Build first-pass relationships between deployments, commands, statuses, events, and issue signals
 - [x] Implement initial relationship-focused query modes (`overview|issues|services|configs` + focus filter)
+- [x] Add cross-deployment causality/relatedness edges with “why related” summaries
 - [x] Create initial graph visualization in dashboard deployment operations
 
 **Deliverables:**
 - ✅ Lightweight deployment graph API from the dashboard context store
 - ✅ Initial graph visualization in dashboard deployment operations
 - ✅ Relationship-focused graph query views beyond raw nodes/edges
+- ✅ Cross-deployment causality edges and “why related” summaries
 - ✅ Writable-path recovery for deployment context storage during runtime drift
 - ⏳ Broader graph coverage for services, configs, and cross-deployment causality
 

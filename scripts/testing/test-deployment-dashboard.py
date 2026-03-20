@@ -137,6 +137,15 @@ class DeploymentDashboardTests:
                 return False
             graph = await response.json()
 
+        async with self.session.get(
+            f"{API_BASE_URL}/deployments/graph",
+            params={"recent_limit": 6, "view": "causality", "focus": "deploy system --fast"},
+        ) as response:
+            if response.status != 200:
+                self.log_test("Deployment Graph Causality", False, f"HTTP {response.status}")
+                return False
+            causality = await response.json()
+
         passed = (
             bool(logs.get("logs"))
             and isinstance(search.get("results"), list)
@@ -148,11 +157,13 @@ class DeploymentDashboardTests:
             and graph.get("view") == "issues"
             and graph.get("focus") == "dashboard"
             and isinstance(graph.get("top_relationships"), list)
+            and causality.get("view") == "causality"
+            and isinstance(causality.get("edges"), list)
         )
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, graph_view={graph.get('view')}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}",
         )
         return passed
 

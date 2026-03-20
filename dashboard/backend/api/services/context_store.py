@@ -733,7 +733,7 @@ class ContextStore:
             deployments = [item for item in deployments if item]
 
         normalized_view = (view or "overview").strip().lower()
-        if normalized_view not in {"overview", "issues", "services", "configs"}:
+        if normalized_view not in {"overview", "issues", "services", "configs", "causality"}:
             normalized_view = "overview"
 
         nodes: List[Dict[str, Any]] = []
@@ -742,6 +742,7 @@ class ContextStore:
         seen_edges: set[Tuple[str, str, str]] = set()
         relationship_counts: Dict[str, int] = {}
         focus_matches = 0
+        deployment_features: Dict[str, Dict[str, Any]] = {}
 
         def add_node(node_id: str, node_type: str, label: str, **extra: Any) -> None:
             if node_id in seen_nodes:
@@ -749,13 +750,13 @@ class ContextStore:
             seen_nodes.add(node_id)
             nodes.append({"id": node_id, "type": node_type, "label": label, **extra})
 
-        def add_edge(source: str, target: str, relation: str) -> None:
+        def add_edge(source: str, target: str, relation: str, **extra: Any) -> None:
             nonlocal focus_matches
             key = (source, target, relation)
             if key in seen_edges:
                 return
             seen_edges.add(key)
-            edges.append({"source": source, "target": target, "relation": relation})
+            edges.append({"source": source, "target": target, "relation": relation, **extra})
             relationship_counts[relation] = relationship_counts.get(relation, 0) + 1
             if focus and (
                 self._match_focus(source, focus)
@@ -801,23 +802,65 @@ class ContextStore:
                 if event_type in {"failed", "rollback", "progress", "log"}:
                     for token in self._extract_issue_tokens(str(event.get("message") or "")):
                         issue_counts[token] = issue_counts.get(token, 0) + 1
+
+            issue_tokens = set(sorted(issue_counts.keys()))
             for token, count in sorted(issue_counts.items(), key=lambda item: (-item[1], item[0]))[:4]:
                 issue_node = f"issue:{token}"
                 add_node(issue_node, "issue", token, occurrences=count)
                 if normalized_view in {"overview", "issues"}:
                     add_edge(dep_node, issue_node, "signals")
 
-            for service in self._extract_service_tokens(command, messages):
+            service_tokens = set(self._extract_service_tokens(command, messages))
+            for service in service_tokens:
                 service_node = f"service:{service}"
                 add_node(service_node, "service", service)
                 if normalized_view in {"overview", "services"}:
                     add_edge(dep_node, service_node, "touches_service")
 
-            for config_path in self._extract_config_paths(command, messages):
+            config_tokens = set(self._extract_config_paths(command, messages))
+            for config_path in config_tokens:
                 config_node = f"config:{config_path}"
                 add_node(config_node, "config", config_path)
                 if normalized_view in {"overview", "configs"}:
                     add_edge(dep_node, config_node, "references_config")
+
+            deployment_features[dep_id] = {
+                "status": status,
+                "issues": issue_tokens,
+                "services": service_tokens,
+                "configs": config_tokens,
+            }
+
+        deployment_ids = sorted(deployment_features.keys())
+        if len(deployment_ids) >= 2:
+            for index, left_id in enumerate(deployment_ids):
+                for right_id in deployment_ids[index + 1:]:
+                    left = deployment_features[left_id]
+                    right = deployment_features[right_id]
+                    reasons: List[str] = []
+                    shared_services = sorted(left["services"] & right["services"])
+                    shared_configs = sorted(left["configs"] & right["configs"])
+                    shared_issues = sorted(left["issues"] & right["issues"])
+                    if left["status"] == right["status"] and left["status"] in {"failed", "success", "running"}:
+                        reasons.append(f"shared_status:{left['status']}")
+                    if shared_services:
+                        reasons.append(f"shared_services:{','.join(shared_services[:3])}")
+                    if shared_configs:
+                        reasons.append(f"shared_configs:{','.join(shared_configs[:2])}")
+                    if shared_issues:
+                        reasons.append(f"shared_issues:{','.join(shared_issues[:3])}")
+                    if not reasons:
+                        continue
+                    left_node = f"deployment:{left_id}"
+                    right_node = f"deployment:{right_id}"
+                    if normalized_view in {"overview", "causality"}:
+                        add_edge(
+                            left_node,
+                            right_node,
+                            "related_to",
+                            weight=len(reasons),
+                            reasons=reasons,
+                        )
 
         if focus:
             filtered_edges = [
