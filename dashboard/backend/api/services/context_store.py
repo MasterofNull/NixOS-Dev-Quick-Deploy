@@ -846,10 +846,8 @@ class ContextStore:
             logger.warning("Repo context search returned %s: %s", proc.returncode, proc.stderr.strip())
             return []
 
-        results: List[Dict[str, Any]] = []
+        grouped: Dict[Tuple[str, str], Dict[str, Any]] = {}
         for line in proc.stdout.splitlines():
-            if len(results) >= limit:
-                break
             try:
                 file_path, line_no, snippet = line.split(":", 2)
             except ValueError:
@@ -858,25 +856,68 @@ class ContextStore:
             if source_filter in {"config", "code"} and source != source_filter:
                 continue
             matched_terms = [term for term in search_terms if term in snippet.lower() or term in file_path.lower()]
-            results.append({
-                "id": f"{file_path}:{line_no}",
-                "deployment_id": "",
-                "event_type": source,
-                "message": file_path,
-                "timestamp": None,
-                "progress": None,
-                "metadata": {"file_path": file_path, "line_number": int(line_no)},
-                "relevance_score": len(matched_terms),
-                "snippet": snippet.strip(),
-                "source": source,
-                "explanation": {
-                    "summary": f"repo match; matched terms: {', '.join(matched_terms) if matched_terms else 'context'}",
-                    "matched_terms": matched_terms,
-                    "source_reason": "repo match",
-                    "score_hint": len(matched_terms),
-                },
-            })
-        return results
+            key = (source, file_path)
+            entry = grouped.get(key)
+            if entry is None:
+                entry = {
+                    "id": file_path,
+                    "deployment_id": "",
+                    "event_type": source,
+                    "message": file_path,
+                    "timestamp": None,
+                    "progress": None,
+                    "metadata": {
+                        "file_path": file_path,
+                        "line_numbers": [],
+                        "match_count": 0,
+                        "snippets": [],
+                    },
+                    "relevance_score": 0,
+                    "snippet": "",
+                    "source": source,
+                    "explanation": {
+                        "summary": "repo match",
+                        "matched_terms": [],
+                        "source_reason": "repo match",
+                        "score_hint": 0,
+                    },
+                }
+                grouped[key] = entry
+
+            line_number = int(line_no)
+            if line_number not in entry["metadata"]["line_numbers"]:
+                entry["metadata"]["line_numbers"].append(line_number)
+            clean_snippet = snippet.strip()
+            if clean_snippet and clean_snippet not in entry["metadata"]["snippets"] and len(entry["metadata"]["snippets"]) < 3:
+                entry["metadata"]["snippets"].append(clean_snippet)
+            entry["metadata"]["match_count"] += 1
+            entry["relevance_score"] = max(int(entry["relevance_score"]), len(matched_terms))
+            existing_terms = set(entry["explanation"].get("matched_terms") or [])
+            entry["explanation"]["matched_terms"] = list(dict.fromkeys([*existing_terms, *matched_terms]))
+            entry["explanation"]["score_hint"] = entry["relevance_score"]
+
+        results: List[Dict[str, Any]] = []
+        for entry in grouped.values():
+            line_numbers = entry["metadata"]["line_numbers"]
+            snippets = entry["metadata"]["snippets"]
+            matched_terms = entry["explanation"].get("matched_terms") or []
+            entry["snippet"] = " | ".join(snippets[:2]) if snippets else entry["message"]
+            line_preview = ",".join(str(number) for number in line_numbers[:4])
+            entry["explanation"]["summary"] = (
+                f"repo file match; {entry['metadata']['match_count']} hits"
+                f"{f' @ lines {line_preview}' if line_preview else ''}"
+                f"; matched terms: {', '.join(matched_terms) if matched_terms else 'context'}"
+            )
+            results.append(entry)
+
+        results.sort(
+            key=lambda item: (
+                -int(item.get("relevance_score") or 0),
+                -int((item.get("metadata") or {}).get("match_count") or 0),
+                str(item.get("message") or ""),
+            )
+        )
+        return results[:limit]
 
     def search_log_context(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
         if not shutil.which("journalctl"):
@@ -951,6 +992,10 @@ class ContextStore:
         matched_terms = explanation.get("matched_terms") or []
         recommended_sources = set(query_analysis.get("recommended_sources") or [])
         graph_view = str(query_analysis.get("recommended_graph_view") or "overview")
+        metadata = item.get("metadata") or {}
+        file_path = str(metadata.get("file_path") or "")
+        intent = str(query_analysis.get("intent") or "retrieval")
+        query_tokens = set(query_analysis.get("tokens") or [])
 
         source_base = {
             "logs": 50,
@@ -971,6 +1016,12 @@ class ContextStore:
             source_base += 14
         if graph_view == "configs" and source == "logs":
             source_base -= 24
+        if file_path.startswith("docs/"):
+            source_base -= 22
+        if file_path.startswith("docs/archive/"):
+            source_base -= 12
+        if source == "logs" and query_tokens.intersection({"started", "successfully", "running", "status", "healthy", "active"}):
+            source_base += 18
         if source == "semantic" and not matched_terms:
             source_base -= 12
 
@@ -991,7 +1042,7 @@ class ContextStore:
         message = str(item.get("message") or "").lower()
         if query_analysis.get("focus") and query_analysis["focus"] in f"{message} {snippet}":
             matched_bonus += 10
-        if query_analysis.get("intent") == "configuration" and source == "logs" and len(matched_terms) < 2:
+        if intent == "configuration" and source == "logs" and len(matched_terms) < 2:
             matched_bonus -= 12
         return source_base + relevance_bonus + matched_bonus
 

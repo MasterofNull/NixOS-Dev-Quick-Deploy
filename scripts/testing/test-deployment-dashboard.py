@@ -196,6 +196,9 @@ class DeploymentDashboardTests:
             and config_context.get("operator_guidance", {}).get("recommended_graph_view") == "configs"
             and bool(config_context.get("results"))
             and config_context["results"][0].get("source") in {"config", "code"}
+            and isinstance((config_context["results"][0].get("metadata") or {}).get("match_count"), int)
+            and (config_context["results"][0].get("metadata") or {}).get("match_count", 0) >= 1
+            and sum(1 for item in (config_context.get("results") or []) if item.get("message") == config_context["results"][0].get("message")) == 1
             and isinstance(ranked_context.get("results"), list)
             and bool(ranked_context.get("results"))
             and ranked_context["results"][0].get("source") == "logs"
@@ -222,7 +225,7 @@ class DeploymentDashboardTests:
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, natural={len(natural_search.get('results') or [])}, context={len(context_search.get('results') or [])}, context_logs={context_search.get('sources', {}).get('logs', 0)}, context_graph={context_search.get('operator_guidance', {}).get('recommended_graph_view')}, config_top={config_context.get('results', [{}])[0].get('source') if config_context.get('results') else 'none'}, ranked_top={ranked_context.get('results', [{}])[0].get('source') if ranked_context.get('results') else 'none'}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, natural={len(natural_search.get('results') or [])}, context={len(context_search.get('results') or [])}, context_logs={context_search.get('sources', {}).get('logs', 0)}, context_graph={context_search.get('operator_guidance', {}).get('recommended_graph_view')}, config_top={config_context.get('results', [{}])[0].get('source') if config_context.get('results') else 'none'}, config_hits={(config_context.get('results', [{}])[0].get('metadata') or {}).get('match_count', 0) if config_context.get('results') else 0}, ranked_top={ranked_context.get('results', [{}])[0].get('source') if ranked_context.get('results') else 'none'}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
         )
         return passed
 

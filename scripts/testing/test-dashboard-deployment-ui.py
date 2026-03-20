@@ -41,6 +41,7 @@ REQUIRED_SNIPPETS = [
     'query analysis',
     'operatorGuidance.summary',
     'operatorGuidance.insight_target',
+    'result.metadata?.match_count',
     'Apply Graph Guidance',
     'Open Insight Follow-up',
     'function applyDeploymentSearchGuidance()',

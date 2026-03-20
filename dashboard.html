@@ -6399,6 +6399,7 @@
                     <div>
                         <div>${escapeHtml(result.deployment_id || result.message || result.source || 'context')}</div>
                         <div class="data-meta">${escapeHtml(result.snippet || result.message || '')}</div>
+                        ${result.metadata?.match_count ? `<div class="data-meta">${escapeHtml(`file hits=${result.metadata.match_count}`)}</div>` : ''}
                         <div class="data-meta">${escapeHtml(`${result.explanation?.summary || 'match'}${result.explanation?.rank_score ? ` | rank=${result.explanation.rank_score}` : ''}`)}</div>
                     </div>
                     <div class="data-meta">${escapeHtml(result.source || result.event_type || 'event')}</div>
