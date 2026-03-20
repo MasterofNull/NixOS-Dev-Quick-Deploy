@@ -241,6 +241,7 @@ class AIInsightsService:
         audit_log = get_operator_audit_log()
         rate_limiter = get_dashboard_rate_limiter()
         audit_summary = audit_log.summary(limit=500)
+        integrity = audit_summary.get("integrity") or {}
         csp = str(
             os.getenv(
                 "DASHBOARD_CSP",
@@ -255,6 +256,7 @@ class AIInsightsService:
                 "security_headers": True,
                 "rate_limiting": bool(rate_limiter.enabled()),
                 "operator_audit_log": bool(audit_summary.get("append_only")),
+                "tamper_evident_audit_sealing": bool(audit_summary.get("tamper_evident")),
             },
             "rate_limiting": {
                 "enabled": bool(rate_limiter.enabled()),
@@ -264,8 +266,8 @@ class AIInsightsService:
                 "search_rpm": int(os.getenv("DASHBOARD_RATE_LIMIT_SEARCH_RPM", "90") or 90),
             },
             "audit": audit_summary,
+            "audit_integrity": integrity,
             "gaps": [
-                "tamper-proof audit sealing not yet implemented",
                 "automated compliance report export still pending",
                 "live security scan automation still pending",
             ],
