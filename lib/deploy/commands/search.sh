@@ -149,6 +149,7 @@ search_deployments() {
           else ""
           end
         )" else empty end),
+        (if (.operator_guidance.recommended_next_step // "") != "" then "Recommended next step: \(.operator_guidance.recommended_next_step)" else empty end),
         (.results[] |
         "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")\(
           if (.explanation.rank_score // null) != null

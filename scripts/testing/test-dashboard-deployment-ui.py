@@ -40,6 +40,7 @@ REQUIRED_SNIPPETS = [
     'cluster evidence',
     'query analysis',
     'operatorGuidance.summary',
+    'operatorGuidance.recommended_next_step',
     'operatorGuidance.insight_target',
     'operatorGuidance.likely_fix_path',
     'result.metadata?.match_count',

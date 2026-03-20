@@ -6384,6 +6384,7 @@
                         <div>${escapeHtml(`intent=${queryAnalysis.intent || 'retrieval'} | requested=${searchMeta.mode || 'hybrid'} | effective=${searchMeta.effectiveMode || searchMeta.mode || 'hybrid'}`)}</div>
                         <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}${searchMeta.sources ? ` | sources=d:${searchMeta.sources.deployment ?? 0}/l:${searchMeta.sources.logs ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}` : ''}`)}</div>
                         <div class="data-meta">${escapeHtml(operatorGuidance.summary || 'operator guidance pending')}</div>
+                        ${operatorGuidance.recommended_next_step ? `<div class="data-meta">${escapeHtml(`next-step=${operatorGuidance.recommended_next_step}`)}</div>` : ''}
                         <div class="data-meta">${escapeHtml(`insight=${operatorGuidance.insight_target || 'full_report'}${Array.isArray(operatorGuidance.result_sources) && operatorGuidance.result_sources.length ? ` | result-sources=${operatorGuidance.result_sources.join(',')}` : ''}`)}</div>
                         ${operatorGuidance.likely_fix_path ? `<div class="data-meta">${escapeHtml(`likely-fix=${operatorGuidance.likely_fix_path}${operatorGuidance.likely_fix_reason ? ` | ${operatorGuidance.likely_fix_reason}` : ''}`)}</div>` : ''}
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.45rem; flex-wrap: wrap;">
