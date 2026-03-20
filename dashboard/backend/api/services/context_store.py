@@ -1187,6 +1187,26 @@ class ContextStore:
                     and str((item.get("metadata") or {}).get("file_path") or "").startswith("docs/")
                 )
             ]
+        strong_runtime_or_fix_match = any(
+            (
+                str(item.get("source") or "") == "logs"
+                and int((item.get("metadata") or {}).get("match_count") or 0) >= 2
+            )
+            or (
+                str(item.get("source") or "") in {"config", "code"}
+                and not str((item.get("metadata") or {}).get("file_path") or "").startswith("docs/")
+            )
+            for item in combined
+        )
+        if strong_runtime_or_fix_match:
+            combined = [
+                item for item in combined
+                if not (
+                    str(item.get("source") or "") == "semantic"
+                    and not ((item.get("explanation") or {}).get("matched_terms") or [])
+                    and int(item.get("rank_score") or 0) <= 20
+                )
+            ]
         combined = sorted(
             combined,
             key=lambda item: (
