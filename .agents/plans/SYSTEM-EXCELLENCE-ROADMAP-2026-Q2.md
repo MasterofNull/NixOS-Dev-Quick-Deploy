@@ -2,7 +2,7 @@
 
 **Generated:** 2026-03-15
 **Last Updated:** 2026-03-20
-**Status:** Active - Phase 1 COMPLETE, Phase 2 Batches 2.1-2.3 materially implemented, Phase 3 Batch 3.1 IN PROGRESS
+**Status:** Active - Phase 1 COMPLETE, Phase 2 Batches 2.1-2.3 materially implemented, Phase 3 Batches 3.1-3.2 IN PROGRESS
 **Owner:** AI Harness Team
 **Version:** 1.3.0
 **Objective:** Transform scattered capabilities into a seamless, production-ready, world-class AI development platform
@@ -19,8 +19,8 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search and coverage reporting are live
-- ⏳ Knowledge graph and broader multi-modal retrieval remain outstanding
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, and an initial deployment graph surface are live
+- ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
 - ✅ Single unified deployment entry point
@@ -345,11 +345,13 @@ search_interactions("how to configure nixos modules")
 **Commits:**
 - 70c25a7: Add hybrid semantic deployment search
 - 8c91b65: Expose deployment search coverage in dashboard
+- Add deployment graph API and dashboard view
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
 - Semantic-only retrieval is exposed but still subject to upstream embedding/vector latency.
-- Phase 3.2 should build on the same deployment/event store rather than introducing a separate graph silo.
+- Phase 3.2 is now building on the same deployment/event store rather than introducing a separate graph silo.
+- The deployment graph is intentionally lightweight today: deployments, commands, statuses, event types, and issue tokens derived from deployment telemetry.
 
 ---
 
@@ -374,23 +376,25 @@ search_interactions("how to configure nixos modules")
 - f9ee4af: Integrate deploy pipeline with dashboard tracking
 - 70c25a7: Add hybrid semantic deployment search
 - 8c91b65: Expose deployment search coverage in dashboard
+- Add deployment graph API and dashboard view
 
-### Batch 3.2: Knowledge Graph Construction
+### Batch 3.2: Knowledge Graph Construction 🚧 IN PROGRESS
 **Priority:** HIGH
 **Effort:** High (4-5 days)
+**Status:** 🚧 IN PROGRESS (2026-03-20)
 
 **Tasks:**
-- [ ] Design knowledge graph schema
-- [ ] Extract entities from deployment logs
-- [ ] Build relationships between services, configs, errors
-- [ ] Implement graph traversal queries
-- [ ] Create graph visualization
+- [x] Design initial lightweight deployment graph schema on top of the existing event store
+- [x] Extract deployment entities and issue tokens from deployment logs/events
+- [x] Build first-pass relationships between deployments, commands, statuses, events, and issue signals
+- [ ] Implement graph traversal and relationship-focused query modes
+- [x] Create initial graph visualization in dashboard deployment operations
 
 **Deliverables:**
-- Knowledge graph database (Neo4j/native)
-- Entity extraction pipeline
-- Graph query API
-- Graph visualization in dashboard
+- ✅ Lightweight deployment graph API from the dashboard context store
+- ✅ Initial graph visualization in dashboard deployment operations
+- ⏳ Relationship query/traversal API beyond raw nodes/edges
+- ⏳ Broader graph coverage for services, configs, and cross-deployment causality
 
 **Validation:**
 ```cypher
@@ -403,6 +407,9 @@ RETURN service
 MATCH path = (error:Error)-[:CAUSED_BY*]->(root:Error)
 RETURN path
 ```
+
+**Commits:**
+- Add deployment graph API and dashboard view
 
 ### Batch 3.3: AI-Powered Search & Retrieval
 **Priority:** HIGH

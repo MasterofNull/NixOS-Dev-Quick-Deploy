@@ -128,17 +128,28 @@ class DeploymentDashboardTests:
                 return False
             status = await response.json()
 
+        async with self.session.get(
+            f"{API_BASE_URL}/deployments/graph",
+            params={"deployment_id": self.deployment_id},
+        ) as response:
+            if response.status != 200:
+                self.log_test("Deployment Graph", False, f"HTTP {response.status}")
+                return False
+            graph = await response.json()
+
         passed = (
             bool(logs.get("logs"))
             and isinstance(search.get("results"), list)
             and search.get("mode") == "keyword"
             and isinstance(status.get("recent"), list)
             and "summary" in status
+            and isinstance(graph.get("nodes"), list)
+            and isinstance(graph.get("edges"), list)
         )
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, indexed_total={(status.get('summary') or {}).get('indexed_total')}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}",
         )
         return passed
 
