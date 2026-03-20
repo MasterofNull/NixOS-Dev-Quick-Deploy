@@ -742,6 +742,127 @@ class ContextStore:
             "tokens": tokens[:8],
         }
 
+    # ========================================================================
+    # Phase 3.3: Query Intent Detection for Service and Config Context
+    # ========================================================================
+
+    @staticmethod
+    def detect_service_intent(query: str) -> bool:
+        """Detect if query is service-focused (mentions services, failures, or health)"""
+        normalized = (query or "").lower()
+        service_keywords = ["service", "daemon", "process", "health", "status", "active", "inactive", "down", "systemd", ".service"]
+
+        # Check for service-specific keywords
+        if any(keyword in normalized for keyword in service_keywords):
+            return True
+
+        # Check for known service names from hints
+        known_services = ["hybrid-coordinator", "qdrant", "dashboard", "prometheus", "switchboard", "postgres", "redis"]
+        if any(service in normalized for service in known_services):
+            return True
+
+        return False
+
+    @staticmethod
+    def detect_config_intent(query: str) -> bool:
+        """Detect if query is configuration-focused (mentions configs, settings, parameters)"""
+        normalized = (query or "").lower()
+        config_keywords = ["config", "configuration", "setting", "settings", "parameter", "parameters", "port", "value", "nix", "yaml", "json"]
+        return any(keyword in normalized for keyword in config_keywords)
+
+    @staticmethod
+    def _extract_service_names_from_query(query: str) -> List[str]:
+        """Extract service names from query text"""
+        normalized = (query or "").lower()
+        known_services = ["hybrid-coordinator", "qdrant", "dashboard", "switchboard", "prometheus", "postgres", "redis", "embeddings", "aidb", "grafana"]
+        found_services = [service for service in known_services if service in normalized]
+        return list(dict.fromkeys(found_services))
+
+    @staticmethod
+    def _extract_config_keys_from_query(query: str) -> List[str]:
+        """Extract configuration keys or patterns from query text"""
+        normalized = (query or "").lower()
+        # Extract potential config keys: words that look like config paths or keys
+        tokens = re.findall(r"[a-z][a-z0-9_.-]{2,}", normalized)
+        config_tokens = [
+            token for token in tokens
+            if not token in GRAPH_STOPWORDS and not token in GRAPH_QUERY_STOPWORDS
+        ]
+        return list(dict.fromkeys(config_tokens))[:5]
+
+    @staticmethod
+    def _compact_identifier(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+    def _resolve_service_names_from_query(self, query: str) -> List[str]:
+        """Resolve service names from query text using both hints and stored graph data."""
+        normalized = (query or "").lower()
+        compact_query = self._compact_identifier(query)
+        query_tokens = set(re.findall(r"[a-z0-9][a-z0-9._/-]{1,}", normalized))
+        known_services = list(self._extract_service_names_from_query(query))
+
+        cursor = self.conn.execute(
+            """
+            SELECT DISTINCT service_name
+            FROM deployment_service_states
+            ORDER BY timestamp DESC
+            LIMIT 200
+            """
+        )
+        for row in cursor:
+            service_name = str(row["service_name"] or "").strip().lower()
+            if not service_name:
+                continue
+            compact_name = self._compact_identifier(service_name)
+            service_tokens = {
+                token for token in re.split(r"[^a-z0-9]+", service_name)
+                if len(token) >= 3 and token not in GRAPH_STOPWORDS
+            }
+            if (
+                service_name in normalized
+                or (compact_name and compact_name in compact_query)
+                or (service_tokens and service_tokens.issubset(query_tokens))
+                or len(service_tokens.intersection(query_tokens)) >= 2
+            ):
+                known_services.append(service_name)
+
+        return list(dict.fromkeys(known_services))
+
+    def _resolve_config_keys_from_query(self, query: str) -> List[str]:
+        """Resolve config keys from query text using both tokens and stored graph data."""
+        query_keys = list(self._extract_config_keys_from_query(query))
+        normalized = (query or "").lower()
+        compact_query = self._compact_identifier(query)
+        query_tokens = set(re.findall(r"[a-z0-9][a-z0-9._/-]{1,}", normalized))
+
+        cursor = self.conn.execute(
+            """
+            SELECT DISTINCT config_key
+            FROM deployment_config_changes
+            ORDER BY timestamp DESC
+            LIMIT 200
+            """
+        )
+        for row in cursor:
+            config_key = str(row["config_key"] or "").strip().lower()
+            if not config_key:
+                continue
+            compact_key = self._compact_identifier(config_key)
+            key_tokens = {
+                token for token in re.split(r"[^a-z0-9]+", config_key)
+                if len(token) >= 3 and token not in GRAPH_STOPWORDS and token not in GRAPH_QUERY_STOPWORDS
+            }
+            if (
+                config_key in normalized
+                or any(token in config_key for token in query_keys)
+                or (compact_key and any(token and token in compact_key for token in query_keys))
+                or (key_tokens and bool(key_tokens.intersection(query_tokens)))
+                or (compact_key and any(token and token in compact_query for token in key_tokens))
+            ):
+                query_keys.append(config_key)
+
+        return list(dict.fromkeys(query_keys))[:5]
+
     @staticmethod
     def build_operator_guidance(query: str, query_analysis: Dict[str, Any], results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         intent = str(query_analysis.get("intent") or "retrieval")
@@ -1175,6 +1296,16 @@ class ContextStore:
         if source == "semantic" and not matched_terms:
             source_base -= 12
 
+        # Phase 3.3: Service and Config Context Ranking Enhancements
+        if graph_view == "services" and source == "service":
+            source_base += 25
+        if graph_view == "services" and source == "service" and metadata.get("health_issue"):
+            source_base += 15
+        if graph_view == "configs" and source == "config":
+            source_base += 20
+        if graph_view == "configs" and source == "config" and metadata.get("validation_failed"):
+            source_base += 18
+
         relevance_score = item.get("relevance_score")
         relevance_bonus = 0
         if isinstance(relevance_score, (int, float)):
@@ -1196,8 +1327,103 @@ class ContextStore:
             matched_bonus -= 12
         return source_base + relevance_bonus + matched_bonus
 
+    # ========================================================================
+    # Phase 3.3: Service and Config Context Search Methods
+    # ========================================================================
+
+    def search_service_context(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+        """Search for service health context based on service names in query"""
+        service_names = self._resolve_service_names_from_query(query)
+        if not service_names:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for service_name in service_names[:3]:
+            timeline = self.query_service_health_timeline(service_name, limit=max(1, limit // len(service_names)))
+            for entry in timeline:
+                # Build result item from service health timeline
+                entry_metadata = entry.get("metadata") or {}
+                if not isinstance(entry_metadata, dict):
+                    entry_metadata = {}
+
+                result_item = {
+                    "id": f"service:{service_name}:{entry.get('timestamp', '')}",
+                    "deployment_id": entry.get("deployment_id", ""),
+                    "event_type": "service",
+                    "source": "service",
+                    "message": f"Service {service_name} status: {entry.get('status', 'unknown')}",
+                    "timestamp": entry.get("timestamp"),
+                    "snippet": f"Service: {service_name}, Status: {entry.get('status', 'unknown')}",
+                    "relevance_score": 1 if entry.get("status") in {"failed", "inactive", "error"} else 0,
+                    "metadata": {
+                        "service_name": service_name,
+                        "service_status": entry.get("status"),
+                        "deployment_id": entry.get("deployment_id"),
+                        "health_issue": entry.get("status") in {"failed", "inactive", "error"},
+                        **entry_metadata
+                    },
+                    "explanation": {
+                        "summary": f"Service health status from deployment {entry.get('deployment_id')}",
+                        "matched_terms": ["service", service_name],
+                        "source_reason": "service health timeline",
+                        "score_hint": 1 if entry.get("status") in {"failed", "inactive", "error"} else 0,
+                    }
+                }
+                results.append(result_item)
+
+        return results[:limit]
+
+    def search_config_context(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+        """Search for config impact context based on config keys in query"""
+        config_keys = self._resolve_config_keys_from_query(query)
+        if not config_keys:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for config_key in config_keys[:3]:
+            timeline = self.query_config_impact_timeline(config_key, limit=max(1, limit // len(config_keys)))
+            for entry in timeline:
+                # Build result item from config impact timeline
+                entry_metadata = entry.get("metadata") or {}
+                if not isinstance(entry_metadata, dict):
+                    entry_metadata = {}
+
+                result_item = {
+                    "id": f"config:{config_key}:{entry.get('timestamp', '')}",
+                    "deployment_id": entry.get("deployment_id", ""),
+                    "event_type": "config",
+                    "source": "config",
+                    "message": f"Config {config_key} changed: {entry.get('config_value', 'N/A')}",
+                    "timestamp": entry.get("timestamp"),
+                    "snippet": f"Config: {config_key}, Change Type: {entry.get('change_type', 'unknown')}, Value: {entry.get('config_value', 'N/A')[:50]}",
+                    "relevance_score": 1 if entry.get("change_type") in {"delete", "error"} else 0,
+                    "metadata": {
+                        "config_key": config_key,
+                        "config_value": entry.get("config_value"),
+                        "change_type": entry.get("change_type"),
+                        "deployment_id": entry.get("deployment_id"),
+                        "validation_failed": entry.get("change_type") == "error",
+                        **entry_metadata
+                    },
+                    "explanation": {
+                        "summary": f"Config change impact from deployment {entry.get('deployment_id')}",
+                        "matched_terms": ["config", config_key],
+                        "source_reason": "config impact timeline",
+                        "score_hint": 1 if entry.get("change_type") in {"delete", "error"} else 0,
+                    }
+                }
+                results.append(result_item)
+
+        return results[:limit]
+
     def search_deployment_context(self, query: str, limit: int = 12, mode: str = "natural") -> Dict[str, Any]:
         query_analysis = self.analyze_deployment_query(query)
+        if self.detect_service_intent(query):
+            query_analysis["recommended_graph_view"] = "services"
+            query_analysis["recommended_sources"] = list(dict.fromkeys(["deployments", "logs", "code", "service"]))
+        elif self.detect_config_intent(query):
+            query_analysis["recommended_graph_view"] = "configs"
+            query_analysis["recommended_sources"] = list(dict.fromkeys(["deployments", "config", "code"]))
         effective_mode = query_analysis["recommended_mode"] if mode in {"auto", "natural"} else mode
         if effective_mode == "keyword":
             deployment_results = self.search_deployments(query, limit=limit, offset=0)
@@ -1219,10 +1445,18 @@ class ContextStore:
         log_results = self.search_log_context(query, limit=max(4, limit // 2))
         repo_results = self.search_repo_context(query, limit=max(4, limit // 2), source_filter=source_filter)
 
-        source_priority = {"deployment": 0, "semantic": 0, "keyword": 1, "config": 2, "code": 3}
+        # Phase 3.3: Integrate Service and Config Context
+        service_results = []
+        config_results = []
+        if self.detect_service_intent(query):
+            service_results = self.search_service_context(query, limit=max(3, limit // 4))
+        if self.detect_config_intent(query):
+            config_results = self.search_config_context(query, limit=max(3, limit // 4))
+
+        source_priority = {"deployment": 0, "semantic": 0, "keyword": 1, "service": 2, "config": 2, "code": 3}
         combined: List[Dict[str, Any]] = []
         seen: set[str] = set()
-        for item in deployment_results + log_results + repo_results:
+        for item in deployment_results + log_results + repo_results + service_results + config_results:
             key = str(item.get("id") or f"{item.get('message')}:{item.get('snippet')}")
             if key in seen:
                 continue
@@ -1280,7 +1514,7 @@ class ContextStore:
                 )
             ]
         runtime_status_query = bool(query_analysis.get("tokens") and set(query_analysis.get("tokens") or []).intersection({"started", "successfully", "running", "status", "healthy", "active"}))
-        if dominant_log_hits >= 5 and runtime_status_query and query_analysis.get("recommended_graph_view") != "configs":
+        if dominant_log_hits >= 5 and runtime_status_query and query_analysis.get("recommended_graph_view") not in {"configs", "services"}:
             combined = [
                 item for item in combined
                 if not (
@@ -1288,7 +1522,7 @@ class ContextStore:
                     and int(item.get("rank_score") or 0) < int((dominant_log or {}).get("rank_score") or 0)
                 )
             ]
-        if dominant_log_hits >= 5 and runtime_status_query and query_analysis.get("recommended_graph_view") != "configs":
+        if dominant_log_hits >= 5 and runtime_status_query and query_analysis.get("recommended_graph_view") not in {"configs", "services"}:
             combined = [
                 item for item in combined
                 if str(item.get("source") or "") == "logs"
@@ -1302,9 +1536,11 @@ class ContextStore:
                 str(item.get("message") or ""),
             ),
         )[:limit]
+        # Phase 3.3: Updated source counting for services and configs
         sources = {
             "deployment": sum(1 for item in combined if item.get("source") in {"deployment", "semantic", "keyword"}),
             "logs": sum(1 for item in combined if item.get("source") == "logs"),
+            "service": sum(1 for item in combined if item.get("source") == "service"),
             "config": sum(1 for item in combined if item.get("source") == "config"),
             "code": sum(1 for item in combined if item.get("source") == "code"),
         }
