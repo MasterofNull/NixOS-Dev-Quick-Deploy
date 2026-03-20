@@ -538,6 +538,78 @@ class ContextStore:
                 break
         return combined
 
+    def get_deployment_search_status(self, recent_limit: int = 8) -> Dict[str, Any]:
+        """Summarize deployment semantic indexing health for operators."""
+        totals = self.conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_rows,
+                SUM(CASE WHEN indexed_at IS NOT NULL THEN 1 ELSE 0 END) AS indexed_rows,
+                SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS error_rows
+            FROM deployment_semantic_index
+            """
+        ).fetchone()
+        recent = self.conn.execute(
+            """
+            SELECT
+                d.deployment_id,
+                d.command,
+                d.status,
+                d.started_at,
+                d.progress,
+                s.document_id,
+                s.indexed_at,
+                s.last_error
+            FROM deployments d
+            LEFT JOIN deployment_semantic_index s ON s.deployment_id = d.deployment_id
+            ORDER BY d.started_at DESC
+            LIMIT ?
+            """,
+            (recent_limit,),
+        ).fetchall()
+
+        items = []
+        indexed_recent = 0
+        error_recent = 0
+        pending_recent = 0
+        for row in recent:
+            if row["last_error"]:
+                semantic_state = "error"
+                error_recent += 1
+            elif row["indexed_at"]:
+                semantic_state = "indexed"
+                indexed_recent += 1
+            else:
+                semantic_state = "pending"
+                pending_recent += 1
+            items.append({
+                "deployment_id": row["deployment_id"],
+                "command": row["command"],
+                "status": row["status"],
+                "started_at": row["started_at"],
+                "progress": row["progress"],
+                "semantic_state": semantic_state,
+                "document_id": row["document_id"],
+                "indexed_at": row["indexed_at"],
+                "last_error": row["last_error"],
+            })
+
+        latest_error = next((item for item in items if item["last_error"]), None)
+        total_recent = len(items)
+        return {
+            "project": DEPLOYMENT_SEMANTIC_PROJECT,
+            "collection": DEPLOYMENT_SEMANTIC_COLLECTION,
+            "summary": {
+                "tracked_deployments": self.count_deployments(),
+                "indexed_total": int(totals["indexed_rows"] or 0),
+                "error_total": int(totals["error_rows"] or 0),
+                "pending_recent": pending_recent,
+                "recent_coverage_pct": round((indexed_recent / total_recent) * 100, 1) if total_recent else 0.0,
+            },
+            "latest_error": latest_error,
+            "recent": items,
+        }
+
     def get_deployment_summary(self, deployment_id: str) -> Optional[Dict]:
         """Get context-efficient deployment summary (not full logs)"""
         cursor = self.conn.execute("""
