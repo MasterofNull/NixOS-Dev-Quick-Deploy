@@ -412,6 +412,7 @@ search_interactions("how to configure nixos modules")
 - TCK runner and mandatory-gap closure work
 - Dashboard visibility into A2A readiness and stream maturity
 - Workflow blueprints and run sessions now carry explicit orchestration-policy metadata for lane assignment, escalation, and reviewer consensus defaults
+- Workflow run sessions now also seed candidate evaluation snapshots and persist bounded consensus decisions, advancing the next-gen multi-agent orchestration foundation beyond metadata-only policy labels.
 
 **Recent coordination-relevant commits:**
 - bc232c2: Add A2A compatibility facade to hybrid coordinator
