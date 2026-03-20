@@ -6380,16 +6380,16 @@
                 <div class="data-item">
                     <div>
                         <div>${escapeHtml(`intent=${queryAnalysis.intent || 'retrieval'} | requested=${searchMeta.mode || 'hybrid'} | effective=${searchMeta.effectiveMode || searchMeta.mode || 'hybrid'}`)}</div>
-                        <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}${searchMeta.sources ? ` | sources=d:${searchMeta.sources.deployment ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}` : ''}`)}</div>
+                        <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}${searchMeta.sources ? ` | sources=d:${searchMeta.sources.deployment ?? 0}/l:${searchMeta.sources.logs ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}` : ''}`)}</div>
                     </div>
                     <div class="data-meta">query analysis</div>
                 </div>
             `;
 
             container.innerHTML = `${summaryItem}${deploymentState.searchResults.map((result) => `
-                <div class="data-item" style="cursor: pointer;" onclick="selectDeployment('${escapeHtml(result.deployment_id)}')">
+                <div class="data-item" style="cursor: ${result.deployment_id ? 'pointer' : 'default'};" ${result.deployment_id ? `onclick="selectDeployment('${escapeHtml(result.deployment_id)}')"` : ''}>
                     <div>
-                        <div>${escapeHtml(result.deployment_id)}</div>
+                        <div>${escapeHtml(result.deployment_id || result.message || result.source || 'context')}</div>
                         <div class="data-meta">${escapeHtml(result.snippet || result.message || '')}</div>
                         <div class="data-meta">${escapeHtml(result.explanation?.summary || 'match')}</div>
                     </div>

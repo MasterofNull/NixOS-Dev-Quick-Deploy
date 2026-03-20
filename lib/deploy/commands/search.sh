@@ -137,7 +137,7 @@ search_deployments() {
         "No deployment matches"
       else
         "Query intent: \(.query_analysis.intent // "retrieval") | requested mode: \(.mode) | effective mode: \(.effective_mode // .mode)",
-        (if .sources then "Sources: deployments=\(.sources.deployment // 0) config=\(.sources.config // 0) code=\(.sources.code // 0)" else empty end),
+        (if .sources then "Sources: deployments=\(.sources.deployment // 0) logs=\(.sources.logs // 0) config=\(.sources.config // 0) code=\(.sources.code // 0)" else empty end),
         (.results[] |
         "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")")
       end
