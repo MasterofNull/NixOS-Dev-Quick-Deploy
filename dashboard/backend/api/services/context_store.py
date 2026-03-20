@@ -396,6 +396,9 @@ class ContextStore:
         - BM25 relevance scoring
         - Smart snippet extraction
         """
+        fts_query = self._build_fts_query(query)
+        if not fts_query:
+            return []
         try:
             cursor = self.conn.execute("""
                 SELECT
@@ -413,7 +416,7 @@ class ContextStore:
                 WHERE deployment_events_fts MATCH ?
                 ORDER BY rank
                 LIMIT ? OFFSET ?
-            """, (query, limit, offset))
+            """, (fts_query, limit, offset))
 
             results = []
             for row in cursor:
@@ -429,11 +432,19 @@ class ContextStore:
                     "snippet": row["snippet"]
                 })
 
-            logger.info(f"Search '{query}' returned {len(results)} results")
+            logger.info("Search %r (fts=%r) returned %d results", query, fts_query, len(results))
             return results
         except Exception as e:
-            logger.error(f"Search error: {e}")
+            logger.error("Search error for query %r (fts=%r): %s", query, fts_query, e)
             return []
+
+    @staticmethod
+    def _build_fts_query(query: str) -> str:
+        """Normalize free-text operator queries into safe FTS5 AND terms."""
+        tokens = re.findall(r"[a-z0-9]+", (query or "").lower())
+        if not tokens:
+            return ""
+        return " ".join(dict.fromkeys(tokens))
 
     @staticmethod
     def _load_aidb_api_key() -> str:

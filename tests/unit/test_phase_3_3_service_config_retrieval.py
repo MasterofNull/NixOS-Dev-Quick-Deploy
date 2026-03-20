@@ -82,6 +82,12 @@ class TestPhase33QueryIntentDetection:
 class TestPhase33KeywordExtraction:
     """Test Phase 3.3 keyword/name extraction methods."""
 
+    def test_build_fts_query_normalizes_hyphenated_terms(self):
+        """FTS query builder should sanitize punctuation-heavy free-text queries."""
+        assert ContextStore._build_fts_query("hybrid-coordinator status") == "hybrid coordinator status"
+        assert ContextStore._build_fts_query("dashboard-api status") == "dashboard api status"
+        assert ContextStore._build_fts_query("database_url config") == "database url config"
+
     def test_extract_service_names_single(self):
         """Should extract single service name from query."""
         names = ContextStore._extract_service_names_from_query("hybrid-coordinator failing")
@@ -179,6 +185,21 @@ class TestPhase33ConfigContextSearch:
 
 class TestPhase33SearchDeploymentContextIntegration:
     """Test Phase 3.3 integration into search_deployment_context."""
+
+    def test_search_deployments_handles_hyphenated_query(self, context_store):
+        """search_deployments should not raise or silently fail on hyphenated service names."""
+        context_store.start_deployment("deploy-fts-test", "deploy hybrid-coordinator")
+        context_store.add_event(
+            "deploy-fts-test",
+            "info",
+            "hybrid-coordinator status active",
+            progress=10,
+        )
+
+        result = context_store.search_deployments("hybrid-coordinator status")
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert any("hybrid-coordinator" in str(item.get("message") or "") for item in result)
 
     def test_search_deployment_context_with_service_query(self, context_store):
         """search_deployment_context should include service results for service queries."""
