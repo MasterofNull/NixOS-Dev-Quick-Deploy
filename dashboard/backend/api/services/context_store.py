@@ -1221,6 +1221,15 @@ class ContextStore:
                     and int((item.get("metadata") or {}).get("match_count") or 0) < max(3, dominant_log_hits // 4)
                 )
             ]
+        runtime_status_query = bool(query_analysis.get("tokens") and set(query_analysis.get("tokens") or []).intersection({"started", "successfully", "running", "status", "healthy", "active"}))
+        if dominant_log_hits >= 5 and runtime_status_query and query_analysis.get("recommended_graph_view") != "configs":
+            combined = [
+                item for item in combined
+                if not (
+                    str(item.get("source") or "") in {"config", "code"}
+                    and int(item.get("rank_score") or 0) < int((dominant_log or {}).get("rank_score") or 0)
+                )
+            ]
         combined = sorted(
             combined,
             key=lambda item: (
