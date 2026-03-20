@@ -375,6 +375,7 @@ search_interactions("how to configure nixos modules")
 - Natural-language operator search now uses a context-aware retrieval path for deployments plus repo config/code context, which consolidates dashboard and harness troubleshooting around a single explainable contract.
 - Operator retrieval now includes live log context alongside deployments/config/code under the same query-analysis and explanation model, reducing the need to pivot between separate dashboard panels or CLI modes.
 - Multi-modal operator retrieval now includes source-aware ranking so actionable log/config/code matches can surface ahead of low-signal semantic deployment results when the query intent calls for it.
+- Deployment search now returns shared `operator_guidance` so dashboard and CLI can drive the same graph and insights follow-up actions from one retrieval contract.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -468,6 +469,7 @@ RETURN path
 - [x] Implement initial multi-modal search (logs + code + config)
 - [x] Add search results ranking with relevance scores and explanations
 - [x] Improve source-aware ranking for multi-modal operator retrieval
+- [x] Unify retrieval follow-up guidance across dashboard and CLI
 
 **Deliverables:**
 - ✅ `deploy search "<natural language query>"`
@@ -477,6 +479,7 @@ RETURN path
 - ✅ Context-aware retrieval across deployments + config/code
 - ✅ Initial multi-modal retrieval across deployments + logs + config + code
 - ✅ Source-aware ranking that boosts actionable logs/config/code when query intent favors them
+- ✅ Shared operator guidance contract linking retrieval to graph/insights follow-up in dashboard and CLI
 - ⏳ Broader context-aware retrieval beyond current operator sources
 
 **Validation:**
