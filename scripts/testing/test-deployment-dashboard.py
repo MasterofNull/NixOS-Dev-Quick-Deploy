@@ -162,6 +162,7 @@ class DeploymentDashboardTests:
             and isinstance(causality.get("clusters"), list)
             and causality.get("cluster_count", 0) >= 0
             and ("root_cluster" in causality)
+            and isinstance(causality.get("cluster_rankings"), list)
             and isinstance(causality.get("similar_failures"), list)
             and isinstance(causality.get("cause_factors"), list)
             and isinstance(causality.get("cause_chain"), list)
@@ -169,7 +170,7 @@ class DeploymentDashboardTests:
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
         )
         return passed
 

@@ -854,6 +854,38 @@ class ContextStore:
             steps.append(f"{factor['category']}:{factor['label']}")
         return steps
 
+    def _build_cluster_rankings(
+        self,
+        deployment_features: Dict[str, Dict[str, Any]],
+        clusters: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        rankings: List[Dict[str, Any]] = []
+        for cluster in clusters:
+            factors = self._build_cause_factors(deployment_features, cluster)
+            score_breakdown = {
+                "size": int(cluster.get("size", 0)) * 3,
+                "issues": len(cluster.get("shared_issues") or []) * 4,
+                "services": len(cluster.get("shared_services") or []) * 2,
+                "configs": len(cluster.get("shared_configs") or []) * 2,
+                "failed_status": 2 if "failed" in (cluster.get("shared_statuses") or []) else 0,
+            }
+            rankings.append({
+                "cluster_id": cluster.get("cluster_id"),
+                "root_score": int(cluster.get("root_score", 0)),
+                "deployment_ids": list(cluster.get("deployment_ids") or []),
+                "shared_statuses": list(cluster.get("shared_statuses") or []),
+                "score_breakdown": score_breakdown,
+                "top_factors": factors[:3],
+            })
+        return sorted(
+            rankings,
+            key=lambda item: (
+                -int(item.get("root_score", 0)),
+                -len(item.get("deployment_ids") or []),
+                str(item.get("cluster_id") or ""),
+            ),
+        )[:5]
+
     def get_deployment_graph(
         self,
         recent_limit: int = 8,
@@ -1050,6 +1082,7 @@ class ContextStore:
             )
         cause_factors = self._build_cause_factors(deployment_features, root_cluster)
         cause_chain = self._build_cause_chain(root_cluster, cause_factors)
+        cluster_rankings = self._build_cluster_rankings(deployment_features, filtered_clusters)
 
         top_relationships = [
             {"relation": relation, "count": count}
@@ -1067,6 +1100,7 @@ class ContextStore:
             "top_relationships": top_relationships,
             "cluster_count": len(filtered_clusters),
             "clusters": filtered_clusters,
+            "cluster_rankings": cluster_rankings,
             "root_cluster": root_cluster,
             "similar_failures": filtered_failures[:6],
             "cause_factors": cause_factors,

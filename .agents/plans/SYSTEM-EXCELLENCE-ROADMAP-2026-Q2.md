@@ -19,7 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, and ranked cause-chain summaries are live
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, and cluster score-breakdown rankings are live
 - ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
@@ -351,6 +351,7 @@ search_interactions("how to configure nixos modules")
 - Add deployment causality clusters and root-cluster summaries
 - Add root-cluster and similar-failure deployment queries
 - Add ranked deployment cause-chain summaries
+- Add ranked cluster score-breakdown summaries
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
@@ -363,6 +364,7 @@ search_interactions("how to configure nixos modules")
 - Causality responses now also summarize related deployment clusters so operators can spot likely root groups, not just pairwise edges.
 - Root-cluster and similar-failure summaries now make the deployment graph directly queryable for likely-problem groups instead of raw relationship inspection only.
 - Cause-factor and cause-chain summaries now rank shared services/configs/issues/status so operators can see a likely explanation path, not just related deployments.
+- Cluster rankings now expose score breakdowns and top factors so the chosen root cluster is inspectable rather than opaque.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -394,6 +396,7 @@ search_interactions("how to configure nixos modules")
 - Add deployment causality clusters and root-cluster summaries
 - Add root-cluster and similar-failure deployment queries
 - Add ranked deployment cause-chain summaries
+- Add ranked cluster score-breakdown summaries
 
 ### Batch 3.2: Knowledge Graph Construction 🚧 IN PROGRESS
 **Priority:** HIGH
@@ -409,6 +412,7 @@ search_interactions("how to configure nixos modules")
 - [x] Add deployment cluster summaries for likely root-cause group inspection
 - [x] Add root-cluster and similar-failure query summaries for operator triage
 - [x] Add ranked cause-factor and cause-chain summaries for likely explanation paths
+- [x] Add cluster score-breakdown rankings so root-cluster selection is explainable
 - [x] Create initial graph visualization in dashboard deployment operations
 
 **Deliverables:**
@@ -419,6 +423,7 @@ search_interactions("how to configure nixos modules")
 - ✅ Cluster-level causality summaries for related deployment groups
 - ✅ Root-cluster and similar-failure query summaries for operator triage
 - ✅ Ranked cause-factor and cause-chain summaries for likely explanation paths
+- ✅ Cluster score-breakdown rankings with top-factor summaries for explainable root-cluster selection
 - ✅ Writable-path recovery for deployment context storage during runtime drift
 - ⏳ Broader graph coverage for services, configs, and cross-deployment causality
 
