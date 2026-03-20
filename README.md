@@ -1,222 +1,207 @@
 # NixOS Dev Quick Deploy
 
-**Transform a fresh NixOS installation into a fully-configured AI development powerhouse in 20-40 minutes** (or 60-120 minutes if building from source).
+![NixOS](https://img.shields.io/badge/NixOS-declarative-5277C3?style=flat-square&logo=nixos&logoColor=white)
+![systemd](https://img.shields.io/badge/runtime-systemd-1E293B?style=flat-square)
+![Local AI](https://img.shields.io/badge/AI-local--first-0F766E?style=flat-square)
+![Operator UI](https://img.shields.io/badge/operator-command%20center-7C3AED?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-16A34A?style=flat-square)
 
----
+Build a NixOS workstation or server into a production-shaped local AI platform with declarative deployment, host-local model services, a unified operator dashboard, and a curated operations toolchain.
 
-## Current Runtime Model
+This repository is the top-level entry point for the system. It is designed to explain the platform quickly, show the main operating model, and then link you into the deeper implementation docs only where needed.
 
-- Canonical deployment path: `./nixos-quick-deploy.sh`
-- Authoritative dashboard/operator runtime: `command-center-dashboard-api.service`
-- Operator URL: `http://127.0.0.1:8889/`
-- Local dashboard development only: `cd dashboard && ./start-dashboard.sh`
+![System overview](./assets/readme/system-overview.svg)
 
-Notes:
-- The command center now serves both the operator UI and API from one runtime.
-- The AI stack runtime is declarative NixOS + systemd on host-local ports.
-- `scripts/deploy/deploy-clean.sh` is a compatibility shim that delegates to `./nixos-quick-deploy.sh`.
-- Legacy static dashboard surfaces such as `dashboard.html`, `dashboard/control-center.html`, and imperative helpers like `serve-dashboard.sh` are retained for historical/debug context only.
-- Dashboard mock data is disabled in normal production use and is available only in explicit demo mode.
-- Dashboard hostname exposure is redacted by default in the declarative runtime.
+| Jump to | Link |
+| --- | --- |
+| Quick start | [Deployment Paths](#deployment-paths) |
+| System model | [Architecture](#architecture) |
+| Docs | [Documentation Map](#documentation-map) |
+| Operations | [Operator Experience](#operator-experience) |
 
-See:
-- `docs/operations/reference/QUICK-REFERENCE.md`
-- `dashboard/README.md`
-- `.agents/plans/PROJECT-CLEANUP-EXECUTION-PASS.md`
+## Why This Exists
 
----
+Most AI dev environments degrade into a pile of one-off scripts, drifting ports, hidden secrets, and unclear runtime ownership. This project takes the opposite approach:
 
-## Canonical Deployment Path (Clean)
+- NixOS-first system provisioning
+- declarative service wiring
+- host-local AI runtime by default
+- operator-facing health and deployment surfaces
+- structured documentation for day-1 setup and day-2 operations
 
-Use the primary entrypoint:
+The result is a reproducible development system that can bootstrap a machine, run a local AI stack, expose a command center for operators, and provide a foundation for more advanced agentic workflows.
 
-```bash
-./nixos-quick-deploy.sh
+## Who This Is For
+
+- NixOS users who want one repository to provision and operate an AI-capable machine
+- developers who want local inference, retrieval, and orchestration infrastructure without stitching it together by hand
+- operators who want clearer health, deployment, and verification workflows
+- teams experimenting with agentic development patterns on top of a reproducible host
+
+## What It Feels Like
+
+```text
+Fresh NixOS host
+  -> one repo
+  -> one bootstrap path
+  -> one operator dashboard
+  -> one day-2 operations CLI
+  -> one doc tree for deeper implementation detail
 ```
 
-Common variants:
+## Visual Tour
 
-```bash
-./nixos-quick-deploy.sh --flake-first-profile ai-dev
-./nixos-quick-deploy.sh --dry-run --skip-switch
-./nixos-quick-deploy.sh --resume
+![Command Center demo](./assets/readme/command-center-demo.gif)
+
+| Overview | Host telemetry | AI stack status |
+| --- | --- | --- |
+| ![Command center hero](./assets/readme/command-center-hero.png) | ![Command center overview](./assets/readme/command-center-overview.png) | ![Command center services](./assets/readme/command-center-services.png) |
+
+## System At A Glance
+
+| Area | What you get |
+| --- | --- |
+| Operating model | Declarative NixOS + `systemd` runtime |
+| Primary bootstrap path | [`nixos-quick-deploy.sh`](./nixos-quick-deploy.sh) |
+| Day-2 operations CLI | [`deploy`](./deploy) |
+| Operator surface | Command Center dashboard + API on `127.0.0.1:8889` |
+| Local inference | `llama.cpp` inference + embeddings services |
+| Data layer | PostgreSQL, TimescaleDB, Qdrant, Redis |
+| AI coordination | AIDB, hybrid coordinator, Ralph Wiggum, switchboard-oriented tooling |
+| Configuration model | Typed Nix options + environment injection |
+| Secret handling | Runtime secret providers such as `/run/secrets/*` |
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[flake.nix + NixOS modules] --> B[nixos-quick-deploy.sh]
+    A --> C[deploy CLI]
+    B --> D[System build and activation]
+    D --> E[systemd services]
+    C --> E
+
+    E --> F[Command Center<br/>127.0.0.1:8889]
+    E --> G[llama.cpp<br/>127.0.0.1:8080]
+    E --> H[Embeddings<br/>127.0.0.1:8081]
+    E --> I[AIDB<br/>127.0.0.1:8002]
+    E --> J[Hybrid Coordinator<br/>127.0.0.1:8003]
+    E --> K[Qdrant / PostgreSQL / Redis]
+
+    F --> L[Operator UI]
+    F --> M[Health and metrics APIs]
+    J --> N[Routing, memory, orchestration]
+    I --> O[Knowledge and retrieval workflows]
 ```
 
-Compatibility note:
+![Operator flow](./assets/readme/operator-flow.svg)
 
-```bash
-./scripts/deploy/deploy-clean.sh
-```
+## Core Capabilities
 
-This wrapper now prints a deprecation notice and execs `./nixos-quick-deploy.sh`.
+| Capability | Outcome |
+| --- | --- |
+| Declarative deployment | Repeatable host setup, rebuilds, and updates |
+| Local AI runtime | Private, host-local inference and embeddings |
+| Retrieval stack | Search, memory, and vector-backed workflows |
+| Operator control plane | Browser-accessible health, visibility, and dashboard APIs |
+| Agent workflow support | Project scaffolding, plans, hints, and structured automation |
 
-See:
-- `docs/CLEAN-SETUP.md`
-- `docs/REPOSITORY-SCOPE-CONTRACT.md`
-- `docs/AQD-CLI-USAGE.md`
-- `docs/SKILL-BACKUP-POLICY.md`
-- `docs/SKILL-MINIMUM-STANDARD.md`
-- `docs/CONFIGURATION-REFERENCE.md`
-- `docs/AI-STACK-DATA-FLOWS.md`
-- `docs/AI-STACK-TROUBLESHOOTING-GUIDE.md`
-- `docs/DEVELOPER-ONBOARDING.md`
-- `docs/SECURITY-BEST-PRACTICES.md`
+### 1. Full-system NixOS deployment
 
----
+- Bootstrap a fresh or partially configured NixOS machine.
+- Apply system and Home Manager configuration from the same repo.
+- Run preflight checks, dry builds, health checks, and post-deploy convergence steps.
 
-## Agentic AI Layer Bootstrap (Empty Dir -> Ready)
+### 2. Local AI stack runtime
 
-Use the guided workflow to scaffold a low-token, progressive-disclosure AI layer:
+- OpenAI-compatible local inference via `llama.cpp`
+- dedicated embeddings service
+- host-local database and vector storage
+- hybrid coordination and memory endpoints
+- operator health visibility through the command center
 
-```bash
-scripts/ai/aqd workflows project-init \
-  --target /path/to/empty-dir \
-  --name "my-project" \
-  --goal "ship MVP safely" \
-  --stack "nix+python" \
-  --owner "team"
-```
+### 3. Unified operations surface
 
-Generated structure includes:
-- `.agent/` (PRD, rules, workflow artifacts)
-- `.claude/` (small always-read core + command specs)
-- `.agents/plans/` (slice/phase planning templates)
-- git secret guards (`.git/hooks/pre-commit`, `.git/hooks/pre-push`)
+- `deploy` provides a consolidated CLI for system, AI stack, health, testing, security, dashboard, config, search, and recovery flows.
+- The command center provides a browser-based operator interface with health and deployment visibility.
 
-Session continuation:
+### 4. Agent-oriented project scaffolding
 
-```bash
-scripts/ai/aqd workflows primer --target /path/to/repo --objective "resume work"
-```
+- Workflow bootstrapping via `scripts/ai/aqd`
+- progressive-disclosure agent context patterns
+- roadmap and plan artifacts under `.agents/`
+- support for sub-agent and reviewer-gate style workflows
 
-Brownfield improvement flow:
+## Main Implementations
 
-```bash
-scripts/ai/aqd workflows brownfield --target /path/to/repo
-```
+| Component | Implementation |
+| --- | --- |
+| System configuration | [`flake.nix`](./flake.nix), [`nix/`](./nix), [`config/`](./config) |
+| Deployment entrypoint | [`nixos-quick-deploy.sh`](./nixos-quick-deploy.sh) |
+| Unified operations CLI | [`deploy`](./deploy), [`lib/deploy/`](./lib/deploy) |
+| Dashboard and operator API | [`dashboard/`](./dashboard) |
+| AI services and MCP servers | [`ai-stack/`](./ai-stack), [`mcp-servers/`](./mcp-servers) |
+| Health, QA, and governance automation | [`scripts/`](./scripts), [`tests/`](./tests) |
+| Reference docs and runbooks | [`docs/`](./docs) |
 
-Reference runbook:
-- `docs/development/AGENTIC-WORKFLOW-BOOTSTRAP-2026-03-05.md`
+## Deployment Paths
 
----
+Choose the path that matches your stage:
 
-## 🚀 Quick Deploy (One Command)
+| If you need to... | Use |
+| --- | --- |
+| Provision or update the host itself | [`nixos-quick-deploy.sh`](./nixos-quick-deploy.sh) |
+| Run routine management tasks after deployment | [`deploy`](./deploy) |
+| Check runtime health and operator APIs | Command Center + health scripts |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/MasterofNull/NixOS-Dev-Quick-Deploy/main/nixos-quick-deploy.sh | bash
-```
+### First-time machine bootstrap
 
-Or clone and run locally:
+Use the flake-first deployment script when you are provisioning or updating the host itself.
 
 ```bash
 git clone https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy.git ~/NixOS-Dev-Quick-Deploy
 cd ~/NixOS-Dev-Quick-Deploy
 chmod +x nixos-quick-deploy.sh
-./nixos-quick-deploy.sh
+./nixos-quick-deploy.sh --host "$(hostname)" --profile ai-dev
 ```
 
-**That's it!** Answer the bootstrap prompts, choose your build acceleration mode, wait for the declarative rebuilds to complete, reboot, and verify the system with the built-in health checks.
-
-## 🧪 Quick-Deploy Script Modes
-
-`nixos-quick-deploy.sh` now uses the flake-first declarative path by default:
+Useful variants:
 
 ```bash
-./nixos-quick-deploy.sh --flake-first-profile ai-dev
+./nixos-quick-deploy.sh --help
+./nixos-quick-deploy.sh --analyze-only
+./nixos-quick-deploy.sh --build-only
+./nixos-quick-deploy.sh --boot
 ```
 
-Optional controls:
+What this does:
+
+- evaluates the flake target for the current host or selected host
+- runs deployment preflight and readiness checks
+- applies system and Home Manager changes
+- converges the local AI stack and operator runtime
+
+### Day-2 operations and system management
+
+Use `deploy` after the system is in place and you want a cleaner operations interface.
 
 ```bash
-# Dry-run output only
-./nixos-quick-deploy.sh --dry-run --skip-switch
-
-# Explicit output target
-./nixos-quick-deploy.sh --flake-first-target hyperd-gaming
-
-# Legacy 9-phase pipeline (maintenance mode)
-./nixos-quick-deploy.sh --legacy-phases
+./deploy --help
+./deploy health
+./deploy ai-stack
+./deploy dashboard
+./deploy test
+./deploy security
 ```
 
-Current state: use `./nixos-quick-deploy.sh` for standard operations.
-`scripts/deploy/deploy-clean.sh` remains only as a compatibility wrapper.
+What this is for:
 
-## Declarative AI Stack
+- recurring health and test runs
+- AI stack management and diagnostics
+- dashboard operations
+- security and recovery workflows
 
-The AI stack is a first-class declarative part of this repository and runs as host-local systemd services.
-
-### Quick AI Stack Deployment
-
-```bash
-./nixos-quick-deploy.sh
-```
-
-This single command gives you:
-
-- ✅ **AIDB MCP Server** - PostgreSQL + TimescaleDB + Qdrant vector database
-- ✅ **llama.cpp Inference** - Local model inference on `127.0.0.1:8080`
-- ✅ **Embeddings Service** - Dedicated llama.cpp embedding server on `127.0.0.1:8081`
-- ✅ **Hybrid Coordinator** - Local/remote routing with telemetry-driven pattern extraction
-- ✅ **Ralph Wiggum** - Loop orchestrator on `127.0.0.1:8004`
-- ✅ **AI Switchboard** - Routing proxy on `127.0.0.1:8085`
-- ✅ **Aider Wrapper** - Helper service on `127.0.0.1:8090`
-- ✅ **Command Center** - Unified operator UI/API on `127.0.0.1:8889`
-- ✅ **Shared Data** - Persistent data that survives reinstalls (`~/.local/share/nixos-ai-stack`)
-
-See:
-- `docs/operations/reference/QUICK-REFERENCE.md`
-- `dashboard/README.md`
-- `config/service-endpoints.sh`
-
----
-
----
-
-## 📋 What You Get
-
-### Complete System Setup
-
-- **COSMIC Desktop** - Modern, fast desktop environment from System76
-- **Hyprland Wayland Session** - Latest Hyprland compositor alongside COSMIC for tiling workflows
-- **Performance Kernel Track** - Prefers the tuned `linuxPackages_6_18` build, then falls back to TKG, XanMod, Liquorix, Zen, and finally `linuxPackages_latest`
-- **225+ Packages** - Development tools, CLI utilities, and applications
-- **Nix Flakes** - Enabled and configured for reproducible builds
-- **Declarative AI Stack** - Host-mode systemd services with typed ports and environment wiring
-- **Flatpak** - Sandboxed desktop applications with profile-aware provisioning and incremental updates
-- **Home Manager** - Declarative user environment configuration
-- **ZSH + Powerlevel10k** - Beautiful, fast terminal with auto-configuration
-
-### Integrated AI Development Stack
-
-**Current integrated components:**
-
-<br>
-
-| Component              | Location                        |   Status   | Purpose                                                                |
-| :--------------------- | :------------------------------ | :--------: | :--------------------------------------------------------------------- |
-| **AIDB MCP Server**    | `ai-stack/mcp-servers/aidb/`    | ✅ Active | PostgreSQL + TimescaleDB + Qdrant vector DB + FastAPI MCP server       |
-| **Embeddings Service** | `ai-stack/mcp-servers/`         | ✅ Active | llama.cpp embedding service                                             |
-| **Hybrid Coordinator** | `ai-stack/mcp-servers/`         | ✅ Active | Local/remote routing + telemetry-driven pattern extraction              |
-| **Ralph Wiggum**       | `ai-stack/mcp-servers/`         | ✅ Active | Loop orchestration and agent-chain execution                            |
-| **Aider Wrapper**      | `ai-stack/mcp-servers/`         | ✅ Active | Code-assistant execution wrapper                                        |
-| **NixOS Docs MCP**     | `ai-stack/mcp-servers/`         | ✅ Active | NixOS/Nix documentation search API                                     |
-| **Model Registry**     | `ai-stack/models/registry.json` | ✅ Active | Model catalog with metadata, VRAM, speed, quality scores               |
-| **Vector Database**    | PostgreSQL + Qdrant             | ✅ Active | Semantic search and document embeddings                                |
-| **Redis Cache**        | Redis                           | ✅ Active | High-performance caching layer                                         |
-
-**AI Development Tools:**
-
-| Tool            | Integration                      | Purpose                                                      |
-| --------------- | -------------------------------- | ------------------------------------------------------------ |
-| **Claude Code** | VSCodium extension + CLI wrapper | AI pair programming inside VSCodium                          |
-| **Cursor**      | Flatpak + launcher               | AI-assisted IDE with GPT-4/Claude                            |
-| **Continue**    | VSCodium extension               | In-editor AI completions                                     |
-| **Codeium**     | VSCodium extension               | Free AI autocomplete                                         |
-| **GPT CLI**     | Command-line tool                | Query OpenAI-compatible endpoints (local llama.cpp or remote) |
-| **Aider**       | CLI code assistant               | AI pair programming from terminal                            |
-| **LM Studio**   | Flatpak app                      | Desktop LLM manager                                          |
-
-**Core operator endpoints:**
+### Post-deploy verification
 
 ```bash
 curl http://127.0.0.1:8889/api/health
@@ -225,1467 +210,140 @@ bash scripts/health/system-health-check.sh --detailed
 bash scripts/ai/ai-stack-health.sh
 ```
 
-### Command Center
+## Operator Experience
 
-The current command center runtime is declarative and systemd-managed:
+The command center is the main operator-facing runtime surface:
 
-```bash
-systemctl status command-center-dashboard-api.service
-curl http://127.0.0.1:8889/api/health
-xdg-open http://127.0.0.1:8889/
-```
+![Command Center screenshot](./assets/readme/command-center-screenshot.png)
 
-For local dashboard development only:
+- Dashboard URL: `http://127.0.0.1:8889/`
+- API docs: `http://127.0.0.1:8889/docs`
+- health endpoint: `http://127.0.0.1:8889/api/health`
+- aggregate health: `http://127.0.0.1:8889/api/health/aggregate`
+
+For dashboard development only:
 
 ```bash
 cd dashboard
 ./start-dashboard.sh
 ```
 
-### AI Stack Security Considerations
+Typical operator checks:
 
-- **Host-local by default**: Core services bind to `127.0.0.1` ports defined in `config/service-endpoints.sh`.
-- **Authenticated hybrid endpoints**: Some hybrid-coordinator routes require `X-API-Key` from `/run/secrets/hybrid_coordinator_api_key`.
-- **Privileged self-heal**: The health monitor runs only under the `self-heal` profile (opt-in).
-
-### Security Features
-
-- **Secrets out of git and code paths**: Runtime credentials are expected under `/run/secrets/*` and should be managed through the repo secret-management tooling rather than hardcoded files.
-- **Per-service auth checks**: Protected AI routes reject unauthenticated access and can be revalidated with `scripts/testing/check-api-auth-hardening.sh`.
-- **Host-local service exposure**: The validated operator path keeps AI APIs on loopback addresses unless you deliberately reconfigure exposure.
-- **Declarative port ownership**: Ports and URLs should come from Nix options and injected environment, which reduces drift and accidental public bind regressions.
-- **Operational verification**: `aq-qa 0 --json`, `aq-qa 1 --json`, and `bash scripts/health/system-health-check.sh --detailed` are the current top-level health and security smoke checks.
-
-### Pre-Installed Development Tools
-
-**Languages & Runtimes:**
-
-- Python 3.13 with 60+ AI/ML packages (PyTorch, TensorFlow, LangChain, etc.) and `uv` installed as a drop-in replacement for `pip` (aliases for `pip`/`pip3` point to `uv pip`).  
-  <sub>Set `PYTHON_PREFER_PY314=1` before running the deployer to trial Python 3.14 once the compatibility mask is cleared.</sub>
-- Node.js 22, Go, Rust, Ruby
-
-**AI/ML Python Packages (Built-in):**
-
-- **Deep Learning:** PyTorch, TensorFlow, Transformers, Diffusers
-- **LLM Frameworks:** LangChain, LlamaIndex, OpenAI, Anthropic clients
-- **Vector DBs:** ChromaDB, Qdrant client, FAISS, Sentence Transformers
-- **Data Science:** Pandas, Polars, Dask, Jupyter Lab, Matplotlib
-- **Code Quality:** Black, Ruff, Mypy, Pylint
-- **Agent Ops & MCP:** LiteLLM, Tiktoken, FastAPI, Uvicorn, HTTPX, Pydantic, Typer, Rich, SQLAlchemy, DuckDB
-
-**Editors & IDEs:**
-
-- VSCodium Insiders (VS Code without telemetry, rolling build)
-- Neovim (modern Vim)
-- Cursor (AI-powered editor)
-
-**Version Control:**
-
-- Git, Git LFS, Lazygit
-- GitLens, Git Graph (VSCodium extensions)
-
-**Modern CLI Tools:**
-
-- `ripgrep`, `fd`, `fzf` - Fast search tools
-- `bat`, `eza` - Enhanced cat/ls with syntax highlighting
-- `jq`, `yq` - JSON/YAML processors
-- `htop`, `btop`, vendor-specific GPU monitors (e.g., `nvtop` when available) - System and GPU monitoring dashboards (AMD-specific tools auto-installed when detected)
-- `Glances`, `Grafana`, `Prometheus`, `Loki`, `Promtail`, `Vector`, `Cockpit` - Full observability and logging stack
-- `gnome-disk-utility`, `parted` - Disk formatting and partitioning
-- `lazygit` - Terminal UI for Git
-- `pnpm`, `biome`, `pixi`, `ast-grep`, `atuin`, `zellij`, `distrobox` - Faster package managers, JS formatter/linter, code-aware search, shell history sync, terminal multiplexing, and mutable container convenience
-- `nix-fast-build`, `lorri`, `cachix` - Nix build acceleration and cache tooling
-- `sccache`, `cargo-binstall`, `gofumpt`, `staticcheck` - Faster Rust/Go builds and linters
-
-**Nix Ecosystem:**
-
-- `nix-tree` - Visualize dependency trees
-- `nixpkgs-fmt`, `alejandra` - Nix code formatters
-- `statix` - Nix linter
-- `nix-index` - File search in nixpkgs
-
-**AI Services (Systemd):**
-
-- `ai-aidb.service`
-- `ai-hybrid-coordinator.service`
-- `ai-ralph-wiggum.service`
-- `ai-aider-wrapper.service`
-- `ai-switchboard.service`
-- `llama-cpp.service`
-- `llama-cpp-embed.service`
-- `qdrant.service`
-- `postgresql.service`
-- `redis-mcp.service`
-- `command-center-dashboard-api.service`
-- `prometheus.service`
-- `prometheus-node-exporter.service`
-
-### Flatpak Applications
-
-Pick the profile that matches your workflow during Phase 6:
-
-- **Core** – Balanced desktop with browsers, media tools, and developer essentials.
-- **AI Workstation** – Core profile plus Postman, DBeaver, VS Code, Bitwarden, and other data tooling.
-- **Minimal** – Lean recovery environment with Firefox, Obsidian, Flatseal.
-
-The installer records your selection in `$STATE_DIR/preferences/flatpak-profile.env` and only applies deltas on future runs, dramatically cutting repeat deployment time. You can switch profiles any time—state is cached in `$STATE_DIR/preferences/flatpak-profile-state.env` so already-installed apps are preserved when possible.
-
-**Need more?** Over 50 additional apps remain available on Flathub, and the provisioning service respects manual changes—only diverging packages in the active profile are synced.
-
----
-
-## ⚡ Quick Start Guide
-
-### Step 1: Run the Script
-
-```bash
-cd ~/NixOS-Dev-Quick-Deploy
-./nixos-quick-deploy.sh
-```
-
-### Step 2: Answer 4 Questions (plus build acceleration prompts)
-
-1. **GitHub username** → For git config
-2. **GitHub email** → For git config
-3. **Editor preference** → vim/neovim/vscodium (choose 1-3)
-4. **Replace config?** → Press Enter (yes)
-
-After the initial survey, Phase 1 now asks how you want to accelerate builds:
-
-1. **Binary caches** _(default)_ – Fastest path, uses NixOS/nix-community/CUDA caches.
-2. **Build locally** – Compile everything on the target host for maximal control.
-3. **Remote builders or private Cachix** – Layer SSH build farm(s) and/or authenticated Cachix caches on top of the binary caches option.
-
-If you choose option 3, be ready to paste builder strings (e.g., `ssh://nix@builder.example.com x86_64-linux - 4 1`) and any Cachix cache names/keys. Secrets are stored under `$STATE_DIR/preferences/remote-builders.env` for reuse later.
-
-### Step 3: Wait (20-35 minutes)
-
-The script automatically:
-
-- ✅ Updates NixOS system config (COSMIC, declarative AI stack, flakes)
-- ✅ Runs `sudo nixos-rebuild switch`
-- ✅ Creates home-manager configuration (~100 packages)
-- ✅ Runs `home-manager switch`
-- ✅ Installs Flatpak apps (Flathub remote + selected profile)
-- ✅ Builds flake development environment
-- ✅ Installs Claude Code CLI + wrapper
-- ✅ Configures VSCodium for AI development
-- ✅ Sets up Powerlevel10k theme
-- ✅ Verifies all packages are accessible
-
-**No manual intervention needed** - everything is fully automated.
-
-### Step 4: Reboot
-
-```bash
-sudo reboot
-```
-
-At login, select **"Cosmic"** from the session menu.
-
-### Step 5: First Terminal Launch
-
-When you open a terminal, **Powerlevel10k wizard runs automatically**:
-
-- Choose prompt style
-- Choose color scheme (High Contrast Dark recommended)
-- Choose what to show (time, icons, path)
-- Restart shell - beautiful prompt ready!
-
-### Step 6: Verify Everything Works
-
-Run the current declarative health checks:
-
-```bash
-cd ~/NixOS-Dev-Quick-Deploy
-bash scripts/health/system-health-check.sh --detailed
-bash scripts/ai/ai-stack-health.sh
-aq-qa 0 --json
-aq-qa 1 --json
-```
-
-The deploy path and QA tools can be rerun any time to confirm the current host-mode runtime.
-
-This will verify:
-
-- ✅ Declarative systemd units and operator surfaces
-- ✅ Dashboard API and aggregate health
-- ✅ AIDB, hybrid coordinator, Ralph, switchboard, llama.cpp, embeddings
-- ✅ Postgres, Redis, and Qdrant
-- ✅ Prometheus readiness and observability surfaces
-- ✅ Runtime/package/confinement loops via `aq-qa`
-
-### Runtime Verification
-
-**Verify manually:**
-
-```bash
-# Check core tools
-python3 --version
-node --version
-go version
-cargo --version
-
-# Check Nix tools
-home-manager --version
-nix flake --help
-
-# Check AI tools
-which claude-wrapper
-which gpt-codex-wrapper
-which codex-wrapper
-which openai-wrapper
-which gooseai-wrapper
-aider --version
-
-# Check editors
-codium --version
-code-cursor --help
-nvim --version
-
-# Check AI stack units
-systemctl --no-pager --type=service | rg 'ai-|llama-cpp|qdrant|redis-mcp|postgresql|command-center-dashboard'
-
-# Check key endpoints
-curl http://127.0.0.1:8889/api/health
-curl http://127.0.0.1:8002/health | jq .
-curl http://127.0.0.1:8003/health | jq .
-```
-
-**If any checks fail:**
-
-```bash
-# Declarative health
-bash scripts/health/system-health-check.sh --detailed
-
-# AI stack-focused health
-bash scripts/ai/ai-stack-health.sh
-
-# Runtime probes
-aq-qa 0 --json
-aq-qa 1 --json
-aq-qa 2 --json
-aq-qa 3 --json
-```
-
-**All done!** Everything is installed and ready to use.
-
----
-
-## 🛠️ Useful Commands
-
-### System Health & Diagnostics
-
-**Comprehensive health check for all packages and services:**
-
-```bash
-bash scripts/health/system-health-check.sh --detailed
-bash scripts/ai/ai-stack-health.sh
-aq-qa 0 --json
-aq-qa 1 --json
-```
-
-**Checks include:**
-
-- Programming languages (Python, Node.js, Go, Rust)
-- Nix ecosystem (home-manager, flakes)
-- AI tools (Claude Code, llama.cpp, Aider)
-- **60+ Python AI/ML packages** (PyTorch, TensorFlow, LangChain, etc.)
-- Editors and IDEs (VSCodium, Neovim, Cursor)
-- Shell configuration (ZSH, aliases, functions)
-- Flatpak applications (Firefox, Obsidian, DBeaver, etc.)
-- **AI systemd services** (AIDB, hybrid, Ralph, switchboard, llama.cpp, Qdrant, Redis, Postgres)
-- Environment variables and PATH configuration
-
-### System Management
-
-```bash
-nrs              # Alias for: sudo nixos-rebuild switch
-hms              # Alias for: home-manager switch
-nfu              # Alias for: nix flake update
-```
-
-**Flake Update Procedure:**
-```bash
-cd ~/.dotfiles/home-manager
-nix flake update                # or: nfu
-sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager#$(hostname)
-home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
-```
-
-### Development Environments
-
-```bash
-aidb-dev         # Enter flake dev environment with all tools
-aidb-shell       # Alternative way to enter dev environment
-aidb-info        # Show environment information
-aidb-update      # Update flake dependencies
-```
-
-**Note:** If `aidb-dev` is not found, reload your shell:
-
-```bash
-source ~/.zshrc  # Or: exec zsh
-```
-
-### AI Stack Management
-
-```bash
-systemctl status ai-stack.target
-systemctl status ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service
-systemctl restart ai-hybrid-coordinator.service
-systemctl restart command-center-dashboard-api.service
-python3 -m pytest tests/integration/test_mcp_contracts.py -v
-```
-
-### CPU/iGPU-first model defaults
-
-Quick Deploy defaults to CPU/iGPU-friendly models unless VRAM/RAM allow larger GGUFs.
-- Primary local model: `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
-- Single chat model for current validation: `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
-- Embeddings baseline: `sentence-transformers/all-MiniLM-L6-v2`
-
-Swap models at any time:
-
-```bash
-./scripts/swap-llama-cpp-model.sh Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-./scripts/swap-embeddings-model.sh BAAI/bge-small-en-v1.5
-```
-
-All orchestration described in this README refers to the declarative host-local runtime in this repository.
-
-**CLI Tools:**
-
-```bash
-# Query LLMs from command line
-gpt-cli "explain this code"
-
-# Run aider (AI coding assistant)
-aider
-
-# Start Jupyter Lab manually
-jupyter-lab
-
-# Install Obsidian AI plugins
-obsidian-ai-bootstrap
-```
-
-### AI Stack QA
-
-```bash
-aq-qa 0 --json
-aq-qa 1 --json
-aq-qa 2 --json
-aq-qa 3 --json
-bash scripts/testing/test-real-world-workflows.sh
-```
-
-### VSCodium / AI CLI wrappers
-
-**VSCodium Version Compatibility:**
-
-- VSCodium Insiders (rolling build; installed by this script)
-- Claude Code extension works with VSCodium and VS Code 1.85.0+
-- Smart wrappers ensure Node.js is found correctly for each CLI
-
-**Usage:**
-
-```bash
-# Launch VSCodium with Claude integration
-codium
-
-# Launch with environment debugging
-CODIUM_DEBUG=1 codium
-
-# Test wrappers directly
-~/.npm-global/bin/claude-wrapper --version
-~/.npm-global/bin/gpt-codex-wrapper --version
-~/.npm-global/bin/codex-wrapper --version
-~/.npm-global/bin/openai-wrapper --version
-~/.npm-global/bin/gooseai-wrapper --version
-goose --version
-
-# Launch Goose Desktop (search "Goose Desktop" in your application menu)
-# Provided by the declarative xdg.desktopEntries configuration
-
-# Debug Claude wrapper
-CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version
-# Debug GPT CodeX wrapper
-GPT_CODEX_DEBUG=1 ~/.npm-global/bin/gpt-codex-wrapper --version
-# Debug Codex wrapper
-CODEX_DEBUG=1 ~/.npm-global/bin/codex-wrapper --version
-# Debug OpenAI wrapper
-OPENAI_DEBUG=1 ~/.npm-global/bin/openai-wrapper --version
-# Debug GooseAI wrapper
-GOOSEAI_DEBUG=1 ~/.npm-global/bin/gooseai-wrapper --version
-```
-
-### Cursor IDE
-
-```bash
-# Launch Cursor (prefers Flatpak, falls back to native)
-code-cursor
-
-# Launch specific project
-code-cursor /path/to/project
-```
-
-**Note:** Cursor must be installed via Flatpak:
-
-```bash
-flatpak install flathub ai.cursor.Cursor
-```
-
----
-
-## 🔧 Configuration Files
-
-| File                                    | Description            | Managed By                                                                     |
-| --------------------------------------- | ---------------------- | ------------------------------------------------------------------------------ |
-| `/etc/nixos/configuration.nix`          | System configuration   | Script auto-updates                                                            |
-| `~/.dotfiles/home-manager/home.nix`     | User packages & config | Script auto-creates                                                            |
-| `~/.dotfiles/home-manager/flake.nix`    | Home-manager flake     | Script auto-creates                                                            |
-| `~/.config/VSCodium/User/settings.json` | VSCodium settings      | Home-manager (declarative)                                                     |
-| `~/.config/p10k/theme.sh`               | Powerlevel10k theme    | Wizard auto-generates                                                          |
-| `~/.zshrc`                              | ZSH configuration      | Home-manager (declarative)                                                     |
-| `~/.npmrc`                              | NPM configuration      | Script auto-creates                                                            |
-| `~/.npm-global/`                        | Global NPM packages    | AI CLI wrappers installed here (Claude, GPT CodeX, Codex IDE, OpenAI, GooseAI) |
-
----
-
-## 📁 Required Paths & Overrides
-
-These locations must be writable for a successful deploy. The script validates them at startup and will warn/fallback if overrides are unusable.
-
-| Path / Variable | Default | Purpose |
-| --- | --- | --- |
-| `XDG_CACHE_HOME` | `$HOME/.cache` | Base for quick-deploy cache + logs |
-| `XDG_STATE_HOME` | `$HOME/.local/state` | Base for AIDB runtime logs |
-| `XDG_DATA_HOME` | `$HOME/.local/share` | Base for AI stack persistent data |
-| `TMPDIR` | `/tmp` | Temporary files/logs during deploy & tooling |
-| `${XDG_CACHE_HOME:-$HOME/.cache}/nixos-quick-deploy` | (derived) | Deploy state + logs |
-| `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-ai-stack` | (derived) | AI stack data (Qdrant, Postgres, Redis, etc.) |
-| `${XDG_DATA_HOME:-$HOME/.local/share}/nixos-system-dashboard` | (derived) | Legacy static dashboard JSON cache |
-| `${XDG_STATE_HOME:-$HOME/.local/state}/nixos-ai-stack/aidb-mcp.log` | (derived) | AIDB MCP server log |
-
-Overrides:
-- Set `TMPDIR`, `XDG_CACHE_HOME`, `XDG_STATE_HOME`, or `XDG_DATA_HOME` before running the deploy script.
-- Use `./nixos-quick-deploy.sh --prefix /path/to/dotfiles` to relocate the generated Home Manager/NixOS config workspace.
-- For systemd templates that use `@PROJECT_ROOT@`/`@AI_STACK_DATA@`, run `scripts/governance/apply-project-root.sh` before installing.
-
----
-
-## 📁 Project Structure
-
-```
-NixOS-Dev-Quick-Deploy/
-├── nixos-quick-deploy.sh              # Main deployment entrypoint
-├── ai-stack/                          # MCP servers, agents, models, monitoring, data
-├── config/                            # Ports, endpoints, policy, and settings
-├── dashboard/                         # Command center dashboard code and local dev helpers
-├── docs/                              # Active operator/development documentation
-├── nix/                               # NixOS and Home Manager modules/hosts
-├── scripts/
-│   ├── ai/                            # AQD, QA, hints, and AI wrappers
-│   ├── automation/                    # Acceptance/regression/PRSI orchestration
-│   ├── deploy/                        # Deployment helpers and compatibility wrappers
-│   ├── governance/                    # Repo and policy enforcement
-│   ├── health/system-health-check.sh  # Declarative stack health check
-│   └── testing/                       # Smoke, workflow, and regression tests
-├── templates/                         # Bootstrap templates and compatibility assets
-├── README.md                          # This file
-└── LICENSE                            # MIT License
-```
-
----
-
-## 🎯 What Happens Step-by-Step
-
-<details>
-<summary><b>Click to expand detailed execution flow</b></summary>
-
-### 1. Prerequisites Check
-
-```
-✓ Running as user (not root)
-✓ NixOS detected
-✓ Internet connection available
-✓ sudo access confirmed
-```
-
-### 2. User Information Gathering
-
-```
-→ GitHub username: yourusername
-→ GitHub email: you@example.com
-→ Editor preference: 3 (vscodium)
-```
-
-### 3. System Configuration Update
-
-```
-✓ Backing up /etc/nixos/configuration.nix
-✓ Adding COSMIC desktop configuration
-✓ Adding declarative AI stack services and typed ports
-✓ Enabling Nix flakes
-✓ Allowing unfree packages
-Running: sudo nixos-rebuild switch
-✓ NixOS system configuration applied!
-```
-
-### 4. Home-Manager Setup
-
-```
-✓ Creating ~/.dotfiles/home-manager/
-✓ Writing home.nix with ~150 packages
-✓ Writing flake.nix
-✓ Creating flake.lock
-Running: home-manager switch
-✓ Home-manager configuration applied!
-✓ Updating current shell environment
-✓ Verifying package installation
-  ✓ python3 found at ~/.nix-profile/bin/python3
-  ✓ All critical packages in PATH!
-```
-
-### 5. Flatpak Setup
-
-```
-✓ Flathub remote added
-✓ Installing Firefox
-✓ Installing Obsidian
-✓ Installing Cursor
-✓ Installing LM Studio
-✓ Installing 7 more apps...
-✓ All Flatpak applications installed!
-```
-
-Flatpak provisioning is now state-aware. The deployer inspects `~/.local/share/flatpak` before touching anything, keeps existing repositories intact, and only installs packages that are missing from your selected profile or the project’s core Flatpak set. To force a clean slate, pass `--flatpak-reinstall`; otherwise the run simply layers the new defaults onto your current desktop. If you need to force model cache re-downloads during deploy, use `--force-hf-download`.
-
-Need Qalculate? It now ships from `pkgs.qalculate-qt` in the declarative package set, so the Flatpak profile stays lean even when Flathub temporarily removes the app. Goose CLI/Desktop are likewise provided by `pkgs.goose-cli`, eliminating the brittle `.deb` download in Phase 6.
-
-### 6. Flake Development Environment
-
-```
-✓ Nix flakes enabled
-Building flake development environment...
-✓ Flake built and cached
-✓ Created aidb-dev-env activation script
-✓ Added AIDB flake aliases to .zshrc
-```
-
-### 7. AI CLI Integration
-
-```
-✓ Installing Claude Code via native installer (https://claude.ai/install.sh)
-✓ Installing @openai/codex (GPT CodeX CLI) via npm
-✓ Installing openai via npm
-✓ Goose CLI detected via nixpkgs (goose-cli)
-✓ Claude Code native binary installed
-✓ GPT CodeX wrapper created from @openai/codex
-✓ OpenAI CLI npm package installed
-ℹ Registering Goose Desktop launcher
-✓ Goose Desktop launcher available via application menu
-✓ Created smart Node.js wrapper at ~/.npm-global/bin/claude-wrapper
-✓ Created smart Node.js wrapper at ~/.npm-global/bin/gpt-codex-wrapper
-✓ Created smart Node.js wrapper at ~/.npm-global/bin/codex-wrapper
-✓ Created smart Node.js wrapper at ~/.npm-global/bin/openai-wrapper
-✓ Created smart Node.js wrapper at ~/.npm-global/bin/gooseai-wrapper
-✓ Testing wrappers succeeded
-✓ VSCodium wrapper configuration updated
-✓ Claude Code configured in VSCodium
-```
-
-### 8. VSCodium Extensions
-
-```
-Installing Claude Code extension...
-✓ Anthropic.claude-code installed
-Installing additional extensions...
-⚠ GPT CodeX and GooseAI extensions are not published on Open VSX (install from the VS Marketplace if you need them)
-✓ Python, Pylance, Black Formatter
-✓ Jupyter, Continue, Codeium
-✓ GitLens, Git Graph, Error Lens
-✓ Go, Rust Analyzer, YAML, TOML
-✓ Docker, Terraform
-✓ Remaining extensions installed!
-```
-
-### 9. Completion
-
-```
-============================================
-✓ NixOS Quick Deploy COMPLETE!
-============================================
-
-Next steps:
-  1. Reboot: sudo reboot
-  2. Select "Cosmic" at login
-  3. Open terminal (P10k wizard auto-runs)
-  4. Verify: codium, claude --version, claude-wrapper --version, gpt-codex-wrapper --version, codex-wrapper --version, openai-wrapper --version, gooseai-wrapper --version, goose --version
-```
-
-</details>
-
----
-
-## 🐛 Troubleshooting
-
-### Claude Code Error 127 in VSCodium
-
-**Symptom:** VSCodium shows "Error 127" when trying to use Claude Code
-
-**Cause:** Claude wrapper can't find Node.js executable
-
-**Solutions:**
-
-1. **Run the diagnostic wrapper:**
-
-   ```bash
-   CLAUDE_DEBUG=1 ~/.npm-global/bin/claude-wrapper --version
-   ```
-
-   This shows exactly where it's searching for Node.js.
-
-2. **Verify Node.js is installed:**
-
-   ```bash
-   which node
-   node --version
-   ```
-
-   If this fails, Node.js wasn't installed properly.
-
-3. **Restart your shell to refresh PATH:**
-
-   ```bash
-   exec zsh
-   ```
-
-4. **Re-apply home-manager config:**
-
-   ```bash
-   home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
-   ```
-
-5. **Reinstall Claude Code (native installer):**
-
-   ```bash
-   curl -fsSL --max-time 30 --connect-timeout 5 https://claude.ai/install.sh | bash
-   ```
-
-6. **Check VSCodium settings:**
-
-   ```bash
-   cat ~/.config/VSCodium/User/settings.json | grep -A5 "claude-code"
-   ```
-
-### Command center dashboard unavailable
-
-**Symptom:** `http://127.0.0.1:8889/` or `/api/health` is unavailable.
-
-**Fix:**
 ```bash
 systemctl status command-center-dashboard-api.service
-systemctl restart command-center-dashboard-api.service
-bash scripts/health/system-health-check.sh --detailed
+curl http://127.0.0.1:8889/api/health
+curl http://127.0.0.1:8889/api/health/aggregate | jq '.overall_status'
 ```
 
-### Nix channel update fails with max-jobs=0
+## Security And Reliability Defaults
 
-**Symptom:** `nix-channel --update` fails with “Unable to start any build”.
+- Secrets are expected from runtime providers such as `/run/secrets/*`.
+- Core services are intended to remain on host-local interfaces unless deliberately reconfigured.
+- Ports and URLs should come from Nix options and injected environment, not hardcoded literals.
+- Validation gates and health checks are part of the intended workflow, not optional polish.
 
-**Fix:**
-```bash
-NIX_CONFIG="max-jobs = 1" nix-channel --update
-```
-Then set `nix.settings.max-jobs = "auto"` in the generated configs.
+## Project Positioning
 
-   Should show `executablePath` pointing to `~/.npm-global/bin/claude-wrapper`
+This is not just a shell script collection. It is a NixOS-centered platform repo that combines:
 
-7. **Verify no Flatpak overrides exist:**
-   ```bash
-   flatpak info com.visualstudio.code 2>/dev/null || echo "No conflicting Flatpak"
-   ```
-   Remove any `com.visualstudio.code*` or `com.vscodium.codium*` Flatpak apps—they replace the declarative `programs.vscode` package and undo the managed settings/extensions.
+- host provisioning
+- AI runtime composition
+- operator visibility
+- automation and governance gates
+- roadmap-driven agent workflow development
 
-### Claude Code "Prompt is too long" in VSCodium
+The root README stays intentionally high level. It should help someone understand the system, trust the operating model, and find the right deeper document quickly.
 
-**Symptom:** Claude Code stops with "Prompt is too long"
+## Repository Map
 
-**Cause:** Context sharing can send too much workspace data or MCP context for the model window.
+| Path | Purpose |
+| --- | --- |
+| [`nix/`](./nix) | NixOS modules, roles, and system configuration |
+| [`config/`](./config) | Endpoint definitions and deployment config |
+| [`dashboard/`](./dashboard) | Command center backend and dashboard development assets |
+| [`ai-stack/`](./ai-stack) | AI stack services, agents, and MCP implementations |
+| [`scripts/`](./scripts) | Deployment, governance, health, QA, and automation tooling |
+| [`tests/`](./tests) | Integration, chaos, and validation coverage |
+| [`.agents/`](./.agents) | Plans, designs, and agent workflow artifacts |
+| [`docs/`](./docs) | Runbooks, architecture, references, and roadmap material |
 
-**Fix (default templates):** The templates now disable context sharing by default. Re-run deploy or update your settings:
+## Documentation Map
 
-```bash
-rg '"claudeCode.enableContextSharing"' ~/.config/VSCodium/User/settings.json
-```
+Start here:
 
-Set it to `false`, then restart VSCodium.
+- [Quick Start](./docs/QUICK_START.md)
+- [System Overview](./docs/agent-guides/00-SYSTEM-OVERVIEW.md)
+- [Operator Runbook](./docs/operations/OPERATOR-RUNBOOK.md)
+- [Quick Reference](./docs/operations/reference/QUICK-REFERENCE.md)
 
-### VSCodium Git Initialization Error
+Architecture and implementation:
 
-**Symptom:** VSCodium notifications show:
+- [AI Stack Architecture](./docs/architecture/AI-STACK-ARCHITECTURE.md)
+- [Configuration Reference](./docs/CONFIGURATION-REFERENCE.md)
+- [Available Tools](./docs/AVAILABLE_TOOLS.md)
+- [Skills and MCP Inventory](./docs/SKILLS-AND-MCP-INVENTORY.md)
 
-```
-Unable to initialize Git; AggregateError(2)
-    Error: Unable to find git
-    Error: Unable to find git
-```
+Deployment and operations:
 
-**Cause:** GUI launches of VSCodium sometimes miss `~/.nix-profile/bin` on `PATH`, so the editor cannot locate the Git binary that Home Manager installs. Without explicit configuration, the built-in Git extension immediately fails.
+- [Clean Setup](./docs/CLEAN-SETUP.md)
+- [AQD CLI Usage](./docs/AQD-CLI-USAGE.md)
+- [AI Stack Runbook](./docs/operations/procedures/AI-STACK-RUNBOOK.md)
+- [Credential Management Procedures](./docs/operations/procedures/CREDENTIAL-MANAGEMENT-PROCEDURES.md)
 
-**Fix (v4.2.0+):** The declarative settings now set `"git.path"` to the exact derivation path of `config.programs.git.package`. Re-run the deploy script or `home-manager switch` so `~/.config/VSCodium/User/settings.json` picks up that value.
+Roadmaps and active direction:
 
-**Manual verification:**
+- [System Excellence Roadmap](./.agents/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md)
+- [Next-Generation Agentic Roadmap](./.agents/plans/NEXT-GEN-AGENTIC-ROADMAP-2026-03.md)
 
-1. Confirm Git works in a terminal:
-   ```bash
-   git --version
-   ```
-2. Inspect the VSCodium settings file and ensure the stored path matches your `git` derivation:
-   ```bash
-   rg '"git.path"' ~/.config/VSCodium/User/settings.json
-   ```
-3. Relaunch VSCodium. The Git panel should populate without the AggregateError message.
+## Implementation Snapshot
 
-### Flatpak Repository Creation Error
+```text
+System layer
+  flake.nix
+  nix/modules/*
+  config/*
 
-**Symptom:** Phase 6 logs show repeated errors when adding Flathub, for example:
+Runtime layer
+  systemd services
+  dashboard backend
+  AI stack services
+  databases and vector store
 
-```
-ℹ Adding Flathub Flatpak remote...
-    → error: Unable to create repository at $HOME/.local/share/flatpak/repo (Creating repo: mkdirat: No such file or directory)
-```
+Operations layer
+  nixos-quick-deploy.sh
+  deploy
+  scripts/health/*
+  scripts/governance/*
 
-**Cause:** When Phase 6 runs on its own (or after a cleanup flag), the user-level Flatpak directories may be missing or the repo path may be an empty placeholder without the expected `objects/` tree. In both cases `flatpak remote-add` fails before it can download anything.
-
-**Fix (v4.2.1+):** The Flatpak automation now recreates `~/.local/share/flatpak` and `~/.config/flatpak`, verifies ownership, and removes empty repo stubs so Flatpak can bootstrap a fresh OSTree repository. Re-run the deploy script or restart Phase 6 and the remote should be added cleanly.
-
-**Manual verification:**
-
-1. Confirm the directories exist:
-   ```bash
-   ls -ld ~/.local/share/flatpak ~/.local/share/flatpak/repo ~/.config/flatpak
-   ```
-2. If you previously created `~/.local/share/flatpak/repo` manually and it’s missing the `objects/` directory, remove the empty stub and rerun Phase 6:
-   ```bash
-   rm -rf ~/.local/share/flatpak/repo
-   ```
-3. Retry the add manually if needed:
-   ```bash
-   flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-   ```
-
-### VSCodium Settings Read-Only Error
-
-**Symptom:** VSCodium shows error when trying to save settings:
-
-```
-Failed to save 'settings.json': Unable to write file (EROFS: read-only file system)
+Knowledge layer
+  docs/*
+  .agents/plans/*
+  agent guides and runbooks
 ```
 
-**Cause:** Home Manager renders `settings.json` inside `/nix/store` so it can symlink the file into `~/.config/VSCodium`. Editors therefore see a read-only filesystem and refuse to save.
+## Design Principles
 
-**Fix (v4.0.0+):** The deployment now snapshots `~/.config/VSCodium/User/settings.json` before each Home Manager switch, reapplies the snapshot afterwards, and ensures the final file is a writable copy stored in:
+- Declarative first
+- local-first runtime
+- strong operator visibility
+- security without hardcoded secrets
+- one documented source of truth per operational concern
 
-```
-~/.config/VSCodium/User/settings.json
-~/.local/share/nixos-quick-deploy/state/vscodium/settings.json  # backup copy
-```
+## Validation Gate
 
-VSCodium can now edit `settings.json` normally and your changes persist across rebuilds because the activation hook restores the snapshot after Home Manager finishes linking.
-
-**Need reproducible settings?**
-
-You can still keep long-term configuration in `templates/home.nix → programs.vscode.profiles.default.userSettings`. The declarative defaults are written into the store, and the activation hook will seed your mutable copy with those defaults whenever the backup is missing. A suggested workflow:
-
-1. Make quick edits directly inside VSCodium (they land in the mutable file).
-2. Periodically copy the keys you care about back into `templates/home.nix` so future machines inherit them.
-3. Rerun the deploy script so the declarative defaults and your mutable copy stay in sync.
-
-### Packages Not in PATH
-
-
-**Solution:**
+Before commit:
 
 ```bash
-# Reload shell environment
-exec zsh
-
-# Or manually source session vars
-source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
-
-# Verify common commands
-which home-manager
-which claude-wrapper
-which codex-wrapper
-which aider
+scripts/governance/tier0-validation-gate.sh --pre-commit
 ```
 
-### Boot Fails With "Root Account Is Locked" / Emergency Mode Loop
-
-**Symptom:** System drops into emergency mode with messages such as:
-
-```
-
-[FAILED] Failed to start Virtual Console Setup.
-[FAILED] Failed to start Switch Root.
-Cannot open access to console, the root account is locked.
-See sulogin(8) man page for more details.
-Press Enter to continue.
-
-````
-
-The system gets stuck in an endless "Press Enter to continue" loop.
-
-**Cause:** The NixOS configuration did not define a root user password. When the system encounters boot issues and drops to emergency mode, it requires root access via `sulogin`. Without a root password configured, `sulogin` cannot provide a shell.
-
-Additionally, the console font (`Lat2-Terminus16`) requires the `terminus_font` package, and without `console.earlySetup = true`, the Virtual Console Setup service fails during initrd.
-
-**Fix (for existing installations):**
-
-1. Boot from a NixOS live USB/ISO
-2. Mount your root filesystem:
-   ```bash
-   sudo mount /dev/nvme0n1p2 /mnt  # Adjust device as needed
-   sudo mount /dev/nvme0n1p1 /mnt/boot  # EFI partition
-```
-
-3. Enter a chroot environment:
-   ```bash
-   sudo nixos-enter --root /mnt
-   ```
-4. Set a root password:
-   ```bash
-   passwd root
-   ```
-5. Regenerate and rebuild:
-   ```bash
-   cd /path/to/NixOS-Dev-Quick-Deploy
-   ./nixos-quick-deploy.sh --resume
-   sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager#$(hostname)
-   ```
-
-**Prevention:** The deployment script now automatically syncs the root password with the primary user and configures the console with `earlySetup = true` and the required `terminus_font` package.
-
----
-
-### Boot Fails With "Failed to mount /var/lib/containers/storage/overlay/..."
-
-**Symptom:** System drops into emergency mode during boot with messages such as:
-
-```
-[FAILED] Failed to mount /var/lib/containers/storage/overlay/df4bd49...
-[DEPEND] Dependency failed for Local File Systems
-```
-
-**Cause:** Older container-era deployments could leave stale storage configuration behind. The current host-mode runtime should not reference legacy `/var/lib/containers` mounts. If you still see container storage mount failures, it usually means an old unit or mount is still enabled.
-
-**Fix:** Re-run Quick Deploy with `--reset-state`, then rebuild:
-```bash
-cd ~/NixOS-Dev-Quick-Deploy
-./nixos-quick-deploy.sh --reset-state
-sudo nixos-rebuild switch --flake ~/.dotfiles/home-manager
-```
-
-If the error persists, check for lingering units:
-```bash
-systemctl list-units | rg -i "containers"
-```
-
-### COSMIC Desktop Not Appearing
-
-**Issue:** Only GNOME/KDE shows at login screen
-
-**Solution:**
+Before deploy:
 
 ```bash
-# Verify COSMIC is in system config
-grep -i cosmic /etc/nixos/configuration.nix
-
-# Should show: services.desktopManager.cosmic.enable = true;
-
-# If missing, rebuild
-sudo nixos-rebuild switch
-sudo reboot
+scripts/governance/tier0-validation-gate.sh --pre-deploy
 ```
 
-### Home-Manager Conflicts
+## License
 
-**Issue:** `home-manager switch` fails with "existing file conflicts"
-
-**Solution:**
-
-```bash
-# Script automatically backs up conflicts to:
-ls -la ~/.config-backups/
-
-# If manual intervention needed, move conflicting files
-mv ~/.config/problematic-file ~/.config-backups/
-home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
-```
-
-### Flatpak Apps Not Launching
-
-**Issue:** Flatpak app installed but won't start
-
-**Solution:**
-
-```bash
-# Check if app is actually installed
-flatpak list --user | grep -i appname
-
-# Try running from command line to see errors
-flatpak run org.mozilla.firefox
-
-# Reinstall if needed
-flatpak uninstall org.mozilla.firefox
-flatpak install flathub org.mozilla.firefox
-```
-
-### OpenSkills Custom Tooling Hook
-
-Phase 6 now installs the upstream OpenSkills automation toolkit directly from `https://github.com/numman-ali/openskills.git` (via `npm install -g openskills`). After the CLI is installed or updated, the deployer runs `~/.config/openskills/install.sh` automatically so you can layer project-specific helpers on top.
-
-**Note:** The deployer still creates `~/.config/openskills/install.sh` as an executable placeholder. Edit that file with the commands you want run during Phase 6 and keep your workflows reproducible.
-
-### Flatpak Packages Removed Before Switch
-
-**Issue:** Pre-switch cleanup wipes Flatpak apps (the directories under `.local/share/flatpak` or `.var/app` get deleted before `home-manager switch`).  
-**Fix:** The deployer now preserves user Flatpak directories whenever it detects installed apps, cached profile state, or existing Flatpak data. Cleanup only happens if you explicitly opt in.
-
-**Solution:**
-
-```bash
-# Default behavior: nothing to do, rerun the deployer and Flatpaks stay intact
-./nixos-quick-deploy.sh
-
-# Need a full reset? Opt in before running the deployer:
-#   (1) CLI flag:
-./nixos-quick-deploy.sh --flatpak-reinstall
-
-# Force a clean model cache download during deploy
-./nixos-quick-deploy.sh --force-hf-download
-#   (2) Or environment variable:
-RESET_FLATPAK_STATE_BEFORE_SWITCH=true ./nixos-quick-deploy.sh
-```
-
-### Multiple Flatpak Platform Runtimes
-
-**Issue:** `flatpak list --user` shows multiple versions of Freedesktop Platform (24.08, 25.08, etc.)
-
-**This is NORMAL!** Different Flatpak applications depend on different runtime versions. For example:
-
-- Firefox might need Platform 24.08
-- Cursor might need Platform 25.08
-- Some apps need both stable and extra codecs
-
-**Cleanup unused runtimes:**
-
-```bash
-# See what would be removed (safe, dry-run)
-flatpak uninstall --unused
-
-# Actually remove unused runtimes
-flatpak uninstall --unused -y
-```
-
-**Note:** Only runtimes not needed by any installed app will be removed.
-
-### Powerlevel10k Prompt Hard to Read
-
-**Issue:** Text blends with background colors
-
-**Solution:**
-
-```bash
-# Re-run wizard
-rm ~/.config/p10k/.configured
-exec zsh
-
-# Choose option 1: High Contrast Dark
-# Or option 7: Custom High Contrast
-```
-
-### MangoHud Overlay Appears Everywhere
-
-**Issue:** MangoHud injects into every GUI/terminal session, covering windows you do not want to benchmark, including COSMIC desktop applets and system windows.
-
-**Fix:** The shipped MangoHud presets now include the `no_display=1` option for the desktop profile and blacklist COSMIC system applications (Files, Terminal, Settings, Store, launcher, panel, etc.) for all other profiles. This prevents overlays from appearing on desktop utilities.
-
-**Solution:** Fresh deployments now default to profile **4) desktop**, which keeps MangoHud inside the mangoapp desktop window so no other applications are wrapped. You only need the selector if you want to change this default.
-
-**For existing systems with the overlay bug:** Run the fix script to update your MangoHud configuration:
-
-```bash
-./scripts/deploy/fix-mangohud-config.sh
-# Then re-run the deployment to regenerate your configs with the corrected settings
-./nixos-quick-deploy.sh
-```
-
-If you want to change the MangoHud profile:
-
-```bash
-# Run the interactive selector and pick the overlay mode you prefer
-./scripts/deploy/mangohud-profile.sh
-
-# Re-apply your Home Manager config so the new preference is enforced
-cd ~/.dotfiles/home-manager
-home-manager switch -b backup --flake .
-```
-
-- `1) disabled` removes MangoHud from every app.
-- `2) light` and `3) full` keep the classic per-application overlays.
-- `4) desktop` launches a transparent, movable mangoapp window so stats stay on the desktop instead of stacking on top of apps. (Default)
-- `5) desktop-hybrid` auto-starts the mangoapp desktop window while still injecting MangoHud into supported games/apps.
-
-The selected profile is cached at `~/.cache/nixos-quick-deploy/preferences/mangohud-profile.env`, so future deploy runs reuse your preference automatically.
-
-> **Need a lean workstation build instead?** Set `ENABLE_GAMING_STACK=false` before running the deploy script to skip Gamemode, Gamescope, Steam, and the auxiliary tuning (zram overrides, `/etc/gamemode.ini`, etc.). The default `true` value keeps the full GLF gaming stack enabled so MangoHud, Steam, and Gamescope are ready immediately after install.
-
-### GPU control with LACT
-
-- `ENABLE_LACT=auto` (default) enables [LACT](https://github.com/ilya-zlobintsev/LACT) automatically when the hardware probe finds an AMD, Nvidia, or Intel GPU. Set the variable to `true` to force installation, or `false` to skip it entirely.
-- When enabled, the generated configuration sets `services.lact.enable = true;`, which installs the GTK application and its system daemon. Launch **LACT** from the desktop to tune clocks, voltage offsets, or fan curves. The first time you save settings, the daemon writes `/etc/lact/config.yaml`; future tweaks can be made through the GUI or by editing that file.
-- AMD users who plan to overclock/undervolt should also keep `hardware.amdgpu.overdrive.enable = true;` (already emitted when RDNA GPUs are detected) so LACT can apply the requested limits. See the upstream FAQ if you need additional kernel parameters for your card.
-
----
-
-## 🚀 Advanced Usage
-
-### Enable Additional Flatpak Apps
-
-Edit your home-manager config:
-
-```bash
-nvim ~/.dotfiles/home-manager/home.nix
-```
-
-Find the `services.flatpak.packages` section and uncomment apps you want:
-
-```nix
-services.flatpak.packages = [
-  # Uncomment to enable:
-  # "org.libreoffice.LibreOffice"
-  # "org.gimp.GIMP"
-  # "org.inkscape.Inkscape"
-  # "org.blender.Blender"
-  "com.obsproject.Studio"    # OBS Studio (screen recording/streaming)
-  # "com.discordapp.Discord"
-  # "com.slack.Slack"
-];
-```
-
-Apply changes:
-
-```bash
-home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
-```
-
-### Customize Powerlevel10k Later
-
-```bash
-# Remove configuration marker
-rm ~/.config/p10k/.configured
-
-# Restart shell to trigger wizard
-exec zsh
-```
-
-### Add Your Own Packages
-
-Edit home-manager config:
-
-```bash
-nvim ~/.dotfiles/home-manager/home.nix
-```
-
-Add packages to `home.packages`:
-
-```nix
-home.packages = with pkgs; [
-  # ... existing packages ...
-
-  # Add your packages here:
-  terraform
-  k9s
-];
-```
-
-Apply:
-
-```bash
-hms  # Alias for home-manager switch
-```
-
-### Enable Automatic Home Manager Updates
-
-The deployment configures an optional auto-upgrade service that can automatically update your Home Manager configuration on a schedule.
-
-To enable it, edit your home-manager config:
-
-```bash
-nvim ~/.dotfiles/home-manager/home.nix
-```
-
-Find the `services.home-manager.autoUpgrade` section and enable it:
-
-```nix
-services.home-manager.autoUpgrade = {
-  enable = true;  # Change from false to true
-  frequency = "daily";  # Options: "daily", "weekly", "monthly"
-  useFlake = true;
-  flakeDir = "${config.home.homeDirectory}/.config/home-manager";
-};
-```
-
-Apply changes:
-
-```bash
-hms  # Alias for home-manager switch
-```
-
-The service will:
-
-- Run daily at 03:00 by default
-- Pull updates from your `~/.config/home-manager` flake
-- Automatically rebuild your home environment
-- Log output to systemd journal: `journalctl --user -u home-manager-autoUpgrade.service`
-
-To check status:
-
-```bash
-systemctl --user status home-manager-autoUpgrade.timer
-systemctl --user status home-manager-autoUpgrade.service
-```
-
-### Skip Certain Steps (Advanced)
-
-Edit the main script:
-
-```bash
-nvim ~/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh
-```
-
-Find the `main()` function and comment out steps:
-
-```bash
-main() {
-    check_prerequisites
-    gather_user_info
-
-    # update_nixos_system_config  # Skip NixOS rebuild
-    create_home_manager_config
-    apply_home_manager_config
-    # setup_flake_environment      # Skip flake setup
-    install_claude_code
-    configure_vscodium_for_claude
-    install_vscodium_extensions
-
-    print_post_install
-}
-```
-
----
-
-## 💡 Pro Tips
-
-### 1. Use Aliases for Common Tasks
-
-Already configured in your `.zshrc`:
-
-```bash
-nrs    # sudo nixos-rebuild switch
-hms    # home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
-nfu    # nix flake update
-lg     # lazygit
-```
-
-### 2. Quick AI Stack Checks
-
-```bash
-# Check status
-bash scripts/ai/ai-stack-health.sh
-
-# Access Open WebUI at http://localhost:3001
-# Access llama.cpp at http://localhost:8080
-# Access AIDB at http://localhost:8002
-# Access Hybrid at http://localhost:8003
-# Access Dashboard at http://localhost:8889
-```
-
-### 3. VSCodium vs Cursor - When to Use Each
-
-- **VSCodium**: General development, Claude Code integration, Continue AI
-- **Cursor**: Heavy AI pair programming, GPT-4 integration, AI-first workflows
-
-### 4. Manage Node.js Packages Globally
-
-```bash
-# Always set NPM prefix before installing global packages
-export NPM_CONFIG_PREFIX=~/.npm-global
-npm install -g <package-name>
-
-# Or add to ~/.npmrc (already done by script):
-# prefix=$HOME/.npm-global
-```
-
-### 5. Keep Your System Up to Date
-
-```bash
-# Update NixOS system
-sudo nixos-rebuild switch --upgrade
-
-# Update home-manager packages
-nix flake update ~/.dotfiles/home-manager
-home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)
-
-# Update Flatpak apps
-flatpak update
-```
-
----
-
-## 🧭 Command Cheat Sheet
-
-### Deployment & Maintenance
-
-- `./nixos-quick-deploy.sh --resume` &mdash; continue the multi-phase installer from the last checkpoint.
-- `./nixos-quick-deploy.sh --resume --phase 5` &mdash; rerun the declarative deployment phase after editing templates.
-- `./nixos-quick-deploy.sh --rollback` &mdash; rollback to the last recorded generation (uses `rollback-info.json`).
-- `./nixos-quick-deploy.sh --test-rollback` &mdash; run a rollback + restore validation cycle after deployment.
-- `nrs` (`sudo nixos-rebuild switch`) &mdash; manual system rebuild; the deployer coordinates managed services when it runs this step.
-- `hms` (`home-manager switch --flake ~/.dotfiles/home-manager#$(whoami)`) &mdash; apply user environment changes.
-- `nfu` (`nix flake update`) &mdash; refresh flake inputs before rebuilding.
-
-### AI Runtime Orchestration
-
-- `bash scripts/ai/ai-stack-health.sh` &mdash; declarative AI stack health check
-- `aq-qa 0 --json` &mdash; service and port smoke
-- `aq-qa 1 --json` &mdash; infra and API smoke
-- `aq-qa 2 --json` &mdash; runtime/package/confinement loop
-- `aq-qa 3 --json` &mdash; AppArmor/confinement loop
-- `python3 -m pytest tests/integration/test_mcp_contracts.py -v` &mdash; hybrid contract suite
-
-### Diagnostics & Recovery
-
-- **Rollback (manual):**
-  - System: `sudo nixos-rebuild switch --rollback`
-  - User: `home-manager --rollback` (or use the generation path stored in `~/.cache/nixos-quick-deploy/rollback-info.json`)
-  - Boot fallback: select a previous generation from the boot menu
-
-> ℹ️ **Automation note:** During Phase&nbsp;5 the deployer coordinates managed services, applies `nixos-rebuild switch`, and restores the runtime state it changed. You do not need to stop the AI stack manually before a normal rebuild.
-
----
-
-## 🌟 World-Class NixOS Dev Environment Suggestions
-
-### Additional Packages to Consider
-
-**Database Tools:**
-
-```nix
-postgresql      # PostgreSQL database
-redis           # Redis key-value store
-mongodb         # MongoDB database
-dbeaver         # Universal database IDE
-```
-
-**Cloud & Infrastructure:**
-
-```nix
-terraform       # Infrastructure as code
-awscli2         # AWS command line
-google-cloud-sdk  # Google Cloud CLI
-azure-cli       # Azure command line
-```
-
-**Performance & Debugging:**
-
-```nix
-valgrind        # Memory debugging
-gdb             # GNU debugger
-lldb            # LLVM debugger
-strace          # System call tracer
-perf            # Linux profiling
-```
-
-**Documentation & Diagramming:**
-
-```nix
-graphviz        # Graph visualization
-plantuml        # UML diagrams
-mermaid-cli     # Mermaid diagrams from CLI
-```
-
-**Security Tools:**
-
-```nix
-nmap            # Network scanner
-zenmap          # GUI frontend for nmap scans
-wireshark       # Network protocol analyzer
-hashcat         # Password cracker
-john            # John the Ripper
-```
-
-### Recommended Flatpak Additions
-
-**Creative Tools:**
-
-- `org.blender.Blender` - 3D creation suite
-- `org.inkscape.Inkscape` - Vector graphics
-- `org.gimp.GIMP` - Image editor
-- `org.kde.kdenlive` - Video editor
-
-**Communication:**
-
-- `com.discordapp.Discord` - Team chat
-- `com.slack.Slack` - Team collaboration
-- `org.telegram.desktop` - Messaging
-
-**Productivity:**
-
-- `org.libreoffice.LibreOffice` - Office suite
-- `md.obsidian.Obsidian` - Note-taking (already included!)
-- `com.notion.Notion` - Workspace
-
-### VSCodium Extension Recommendations
-
-Already installed but worth highlighting:
-
-- **Claude Code** - AI pair programming
-- **Continue** - In-editor AI completions
-- **Codeium** - Free AI autocomplete
-- **GitLens** - Supercharged Git
-- **Error Lens** - Inline error highlighting
-- **Todo Tree** - TODO comment tracking
-- **Prettier** - Code formatter
-- **Nix IDE** - Nix language support
-
-### Environment Integrations
-
-**Gitea AI Workflow** (already configured):
-
-- Repository task runners
-- Cursor integration for AI code generation
-- Aider integration for AI code review
-- GPT CLI for commit message generation
-
-**Obsidian AI Plugins** (install with `obsidian-ai-bootstrap`):
-
-- Smart Connections
-- Text Generator
-- Copilot
-- AI Assistant
-
----
-
-## 📚 Documentation & Resources
-
-### This Repository
-
-### Agent Docs Index
-
-- [AGENTS.md](AGENTS.md) - Canonical agent onboarding and rules
-- [docs/AGENTS.md](docs/AGENTS.md) - Mirror for quick reference
-- [docs/agent-guides/00-SYSTEM-OVERVIEW.md](docs/agent-guides/00-SYSTEM-OVERVIEW.md) - System map for agents
-- [docs/agent-guides/01-QUICK-START.md](docs/agent-guides/01-QUICK-START.md) - Task-ready checklist
-- [ai-stack/agents/skills/AGENTS.md](ai-stack/agents/skills/AGENTS.md) - Skill usage and sync rules
-
-### AI Stack Documentation (NEW in v6.0.0)
-
-- [AI Stack Integration Guide](docs/AI-STACK-FULL-INTEGRATION.md) - Complete architecture and migration
-- [AI Stack Overview](docs/AI-STACK-FULL-INTEGRATION.md) - AI stack overview and quick start
-- [AIDB MCP Server](ai-stack/mcp-servers/aidb/README.md) - AIDB server documentation
-- [Agent Skills](ai-stack/agents/README.md) - 29 specialized AI agent skills
-- [AI Stack Architecture](docs/AI-STACK-RAG-IMPLEMENTATION.md) - Technical architecture details
-- [Agent Workflows](AGENTS.md) - Canonical AI agent onboarding and standards
-- [MCP Servers Guide](docs/SKILLS-AND-MCP-INVENTORY.md) - Model Context Protocol server docs
-
-- [Build Optimization Guide](docs/BUILD_OPTIMIZATION.md) - Choose between binary caches (20-40 min) or source builds (60-120 min)
-- [AIDB Setup Guide](docs/SYSTEM-READY-FOR-AIDB.md) - Complete AIDB configuration walkthrough
-- [AI Integration Guide](docs/HAND-IN-GLOVE-INTEGRATION.md) - Sync docs and leverage AI tooling
-- [Local AI Starter Toolkit](docs/LOCAL-AI-STARTER.md) - Scaffold local agents/OpenSkills/MCP servers without private repos
-- [Agent Workflows](AGENTS.md) - AI agent integration documentation
-- [Troubleshooting Guide](docs/agent-guides/12-DEBUGGING.md) - Common issues and solutions
-- [Code Review Guide](docs/archive/deprecated/CODE_REVIEW.md) - Code quality and review process
-- [Safe Improvements](docs/archive/deprecated/SAFE_IMPROVEMENTS.md) - Guidelines for safe changes
-- [System Health Check](scripts/health/system-health-check.sh) - Verify and fix installation
-
-### Official Docs
-
-- [NixOS Manual](https://nixos.org/manual/nixos/stable/)
-- [Home Manager Manual](https://nix-community.github.io/home-manager/)
-- [Nix Package Search](https://search.nixos.org/packages)
-- [COSMIC Desktop](https://system76.com/cosmic)
-
-### AI Tools
-
-- [Claude Code Docs](https://docs.anthropic.com/claude/docs)
-- [Cursor Docs](https://docs.cursor.sh/)
-- [Continue Docs](https://continue.dev/docs)
-- [Aider Docs](https://aider.chat/)
-- [llama.cpp Docs](https://github.com/ggerganov/llama.cpp)
-
-### Learning Resources
-
-- [Zero to Nix](https://zero-to-nix.com/) - Beginner-friendly Nix tutorial
-- [Nix Pills](https://nixos.org/guides/nix-pills/) - Deep dive into Nix
-- [NixOS & Flakes Book](https://nixos-and-flakes.thiscute.world/) - Modern Nix
-
----
-
-## 🤝 Contributing
-
-Found a bug or have a suggestion? Please open an issue or submit a pull request!
-
-### Reporting Issues
-
-When reporting problems, please include:
-
-- NixOS version: `nixos-version`
-- Script output or error messages
-- Relevant logs from `${TMPDIR:-/tmp}/nixos-quick-deploy.log`
-
----
-
-## Known Limitations
-
-- **Host-local runtime only**: The validated operator path is declarative NixOS + systemd on host-local ports. Older K3s/container-era docs still exist in archive and stale docs but are not the authoritative runtime.
-- **Hardware requirements**: The full AI stack (with local LLM inference) still benefits from at least 16 GB RAM and 50 GB free disk. Larger local models benefit from more RAM/VRAM.
-- **Continuous learning is partial**: The Hybrid Coordinator collects interaction telemetry and extracts patterns, but automated model retraining and behavioral adaptation from feedback are not yet implemented.
-- **Agent skills are pre-packaged**: Skills are static definitions plus local scripts; they do not autonomously learn or update themselves.
-- **NixOS only**: This project targets NixOS exclusively. It will not work on other Linux distributions, macOS, or WSL.
-- **Build times**: First deployment with source builds (no binary cache) can take 60-120 minutes depending on hardware.
-- **Python package overrides**: Some Python packages require Nix build overrides to compile. Updating nixpkgs may break overrides until they are re-adjusted.
-- **Auth-sensitive endpoints**: Some hybrid/AIDB routes require local secrets under `/run/secrets/*` and will return `401` without the expected API key.
-
----
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) file for details.
-
----
-
-## ⭐ Acknowledgments
-
-Built with these amazing technologies:
-
-- [NixOS](https://nixos.org/) - Reproducible Linux distribution
-- [Home Manager](https://github.com/nix-community/home-manager) - Declarative dotfile management
-- [COSMIC](https://system76.com/cosmic) - Modern desktop environment
-- [Anthropic Claude](https://anthropic.com/) - AI assistant
-- [Cursor](https://cursor.sh/) - AI-powered code editor
-- [Powerlevel10k](https://github.com/romkatv/powerlevel10k) - Beautiful ZSH theme
-
----
-
-**Ready to deploy?**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MasterofNull/NixOS-Dev-Quick-Deploy/main/nixos-quick-deploy.sh | bash
-```
-
-Happy coding! 🚀
+[MIT](./LICENSE)

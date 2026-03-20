@@ -1,0 +1,35 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="520" rx="28" fill="#09111F"/>
+  <rect x="32" y="32" width="1136" height="456" rx="24" fill="#111827" stroke="#334155"/>
+
+  <text x="72" y="92" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="34" font-weight="700">Operator flow</text>
+  <text x="72" y="126" fill="#93C5FD" font-family="Arial, sans-serif" font-size="20">From host deployment to day-2 verification</text>
+
+  <rect x="72" y="184" width="224" height="190" rx="22" fill="#172554" stroke="#60A5FA"/>
+  <text x="100" y="232" fill="#DBEAFE" font-family="Arial, sans-serif" font-size="27" font-weight="700">1. Bootstrap</text>
+  <text x="100" y="272" fill="#BFDBFE" font-family="Arial, sans-serif" font-size="19">Run the flake-first</text>
+  <text x="100" y="298" fill="#BFDBFE" font-family="Arial, sans-serif" font-size="19">system deployment path.</text>
+  <text x="100" y="338" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="18">`./nixos-quick-deploy.sh`</text>
+
+  <rect x="346" y="184" width="224" height="190" rx="22" fill="#3F1D2E" stroke="#F472B6"/>
+  <text x="374" y="232" fill="#FCE7F3" font-family="Arial, sans-serif" font-size="27" font-weight="700">2. Converge</text>
+  <text x="374" y="272" fill="#FBCFE8" font-family="Arial, sans-serif" font-size="19">Activate services,</text>
+  <text x="374" y="298" fill="#FBCFE8" font-family="Arial, sans-serif" font-size="19">user config, and runtime.</text>
+  <text x="374" y="338" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="18">systemd + Home Manager</text>
+
+  <rect x="620" y="184" width="224" height="190" rx="22" fill="#1F2937" stroke="#34D399"/>
+  <text x="648" y="232" fill="#D1FAE5" font-family="Arial, sans-serif" font-size="27" font-weight="700">3. Operate</text>
+  <text x="648" y="272" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="19">Use one CLI and one</text>
+  <text x="648" y="298" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="19">dashboard for routine work.</text>
+  <text x="648" y="338" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="18">`./deploy` + command center</text>
+
+  <rect x="894" y="184" width="224" height="190" rx="22" fill="#3A2A12" stroke="#F59E0B"/>
+  <text x="922" y="232" fill="#FEF3C7" font-family="Arial, sans-serif" font-size="27" font-weight="700">4. Verify</text>
+  <text x="922" y="272" fill="#FDE68A" font-family="Arial, sans-serif" font-size="19">Run health, QA,</text>
+  <text x="922" y="298" fill="#FDE68A" font-family="Arial, sans-serif" font-size="19">security, and governance gates.</text>
+  <text x="922" y="338" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="18">health scripts + Tier 0</text>
+
+  <path d="M296 278H346" stroke="#60A5FA" stroke-width="5" stroke-linecap="round"/>
+  <path d="M570 278H620" stroke="#F472B6" stroke-width="5" stroke-linecap="round"/>
+  <path d="M844 278H894" stroke="#34D399" stroke-width="5" stroke-linecap="round"/>
+</svg>
