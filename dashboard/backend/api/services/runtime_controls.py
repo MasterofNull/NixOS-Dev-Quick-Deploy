@@ -114,6 +114,10 @@ class OperatorAuditLog:
             return False
         if path.startswith("/api/metrics") or path.startswith("/api/health/services"):
             return False
+        if path.startswith("/api/security/") or path.startswith("/api/audit/operator/"):
+            return True
+        if path == "/api/insights/security/compliance":
+            return True
         if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
             return True
         return path.startswith("/api/deployments/search") or path.startswith("/api/deployments/graph")
