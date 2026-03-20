@@ -729,6 +729,7 @@ class ContextStore:
 
         likely_fix_path = ""
         likely_fix_reason = ""
+        recommended_next_step = ""
         if results:
             for item in results:
                 source = str(item.get("source") or item.get("event_type") or "")
@@ -736,6 +737,7 @@ class ContextStore:
                 if source in {"config", "code"} and metadata.get("file_path"):
                     likely_fix_path = str(metadata["file_path"])
                     likely_fix_reason = str((item.get("explanation") or {}).get("action_hint") or "Most actionable file result")
+                    recommended_next_step = f"Open {likely_fix_path} and apply the suggested config/code change path first."
                     next_actions.append({
                         "label": "fix_path",
                         "target": likely_fix_path,
@@ -745,6 +747,7 @@ class ContextStore:
                 if source == "logs" and metadata.get("unit"):
                     likely_fix_path = str(metadata["unit"])
                     likely_fix_reason = "Inspect the live service unit and recent runtime events first"
+                    recommended_next_step = f"Inspect recent logs and runtime state for {likely_fix_path} before changing files."
                     next_actions.append({
                         "label": "runtime_unit",
                         "target": likely_fix_path,
@@ -752,8 +755,19 @@ class ContextStore:
                     })
                     break
 
+        if not recommended_next_step:
+            if graph_view == "causality":
+                recommended_next_step = "Open the causality graph view and inspect the top-ranked related cluster first."
+            elif graph_view == "configs":
+                recommended_next_step = "Inspect the top-ranked configuration/code result first, then validate endpoint or service wiring."
+            elif graph_view == "services":
+                recommended_next_step = "Inspect the service-focused graph and live unit state before changing configuration."
+            else:
+                recommended_next_step = "Review the top-ranked retrieval result first, then pivot into the recommended graph and insight views."
+
         return {
             "summary": summary,
+            "recommended_next_step": recommended_next_step,
             "recommended_graph_view": graph_view,
             "focus": focus,
             "insight_target": insight_target,

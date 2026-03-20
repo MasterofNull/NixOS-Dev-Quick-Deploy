@@ -379,6 +379,7 @@ search_interactions("how to configure nixos modules")
 - Configuration-intent natural queries now bias toward config/code evidence and suppress noisy single-term log matches, which makes the operator search path more useful for real fix-oriented troubleshooting.
 - Repo-context retrieval now collapses repeated line matches into file-level summaries with hit counts, which materially cleans up the dashboard operator search panel.
 - Operator retrieval now emits likely-fix path guidance and file/runtime action hints so the dashboard and CLI can move from evidence to the next likely remediation target.
+- Operator retrieval now also emits a single recommended next step so the dashboard search panel can answer with one concise operator action before showing supporting evidence.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -476,6 +477,7 @@ RETURN path
 - [x] Bias configuration-intent retrieval toward config/code over noisy log matches
 - [x] Collapse duplicate repo-context results into file-level summaries
 - [x] Add likely-fix path and action hints to operator retrieval
+- [x] Add recommended next-step summaries to operator retrieval guidance
 
 **Deliverables:**
 - ✅ `deploy search "<natural language query>"`
@@ -489,6 +491,7 @@ RETURN path
 - ✅ Configuration-intent retrieval that prefers config/code evidence for fix-oriented queries
 - ✅ File-level repo-context summaries with hit counts for cleaner operator search output
 - ✅ Likely-fix path and per-result action hints in shared operator retrieval guidance
+- ✅ Recommended next-step summaries in shared operator retrieval guidance
 - ⏳ Broader context-aware retrieval beyond current operator sources
 
 **Validation:**
