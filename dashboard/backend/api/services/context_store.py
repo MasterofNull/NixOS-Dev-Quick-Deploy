@@ -1144,6 +1144,19 @@ class ContextStore:
             explanation["rank_score"] = item["rank_score"]
             item["explanation"] = explanation
             combined.append(item)
+        actionable_repo_match = any(
+            str(item.get("source") or "") in {"config", "code"}
+            and not str((item.get("metadata") or {}).get("file_path") or "").startswith("docs/")
+            for item in combined
+        )
+        if actionable_repo_match:
+            combined = [
+                item for item in combined
+                if not (
+                    str(item.get("source") or "") in {"config", "code"}
+                    and str((item.get("metadata") or {}).get("file_path") or "").startswith("docs/")
+                )
+            ]
         combined = sorted(
             combined,
             key=lambda item: (
