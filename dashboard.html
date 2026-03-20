@@ -6385,6 +6385,7 @@
                         <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}${searchMeta.sources ? ` | sources=d:${searchMeta.sources.deployment ?? 0}/l:${searchMeta.sources.logs ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}` : ''}`)}</div>
                         <div class="data-meta">${escapeHtml(operatorGuidance.summary || 'operator guidance pending')}</div>
                         <div class="data-meta">${escapeHtml(`insight=${operatorGuidance.insight_target || 'full_report'}${Array.isArray(operatorGuidance.result_sources) && operatorGuidance.result_sources.length ? ` | result-sources=${operatorGuidance.result_sources.join(',')}` : ''}`)}</div>
+                        ${operatorGuidance.likely_fix_path ? `<div class="data-meta">${escapeHtml(`likely-fix=${operatorGuidance.likely_fix_path}${operatorGuidance.likely_fix_reason ? ` | ${operatorGuidance.likely_fix_reason}` : ''}`)}</div>` : ''}
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.45rem; flex-wrap: wrap;">
                             <button class="export-btn" onclick="applyDeploymentSearchGuidance()">Apply Graph Guidance</button>
                             <button class="export-btn" onclick="openDeploymentSearchInsight()">Open Insight Follow-up</button>
@@ -6401,6 +6402,7 @@
                         <div class="data-meta">${escapeHtml(result.snippet || result.message || '')}</div>
                         ${result.metadata?.match_count ? `<div class="data-meta">${escapeHtml(`file hits=${result.metadata.match_count}`)}</div>` : ''}
                         <div class="data-meta">${escapeHtml(`${result.explanation?.summary || 'match'}${result.explanation?.rank_score ? ` | rank=${result.explanation.rank_score}` : ''}`)}</div>
+                        ${result.explanation?.action_hint ? `<div class="data-meta">${escapeHtml(result.explanation.action_hint)}</div>` : ''}
                     </div>
                     <div class="data-meta">${escapeHtml(result.source || result.event_type || 'event')}</div>
                 </div>
