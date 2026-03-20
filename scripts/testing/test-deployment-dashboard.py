@@ -219,6 +219,7 @@ class DeploymentDashboardTests:
             and isinstance((ranked_context["results"][0].get("explanation") or {}).get("action_hint"), str)
             and isinstance((ranked_context["results"][0].get("metadata") or {}).get("match_count"), int)
             and (ranked_context["results"][0].get("metadata") or {}).get("match_count", 0) >= 1
+            and len(ranked_context.get("results") or []) == 1
             and sum(1 for item in (ranked_context.get("results") or []) if item.get("message") == ranked_context["results"][0].get("message")) == 1
             and sum(1 for item in (ranked_context.get("results") or []) if item.get("source") == "logs") == 1
             and not any(item.get("source") in {"config", "code"} for item in (ranked_context.get("results") or []))

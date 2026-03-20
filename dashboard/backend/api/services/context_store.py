@@ -1230,6 +1230,12 @@ class ContextStore:
                     and int(item.get("rank_score") or 0) < int((dominant_log or {}).get("rank_score") or 0)
                 )
             ]
+        if dominant_log_hits >= 5 and runtime_status_query and query_analysis.get("recommended_graph_view") != "configs":
+            combined = [
+                item for item in combined
+                if str(item.get("source") or "") == "logs"
+                and str(item.get("message") or "") == str((dominant_log or {}).get("message") or "")
+            ]
         combined = sorted(
             combined,
             key=lambda item: (
