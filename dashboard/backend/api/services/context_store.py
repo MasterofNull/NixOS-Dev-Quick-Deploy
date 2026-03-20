@@ -636,9 +636,13 @@ class ContextStore:
         normalized = (query or "").strip().lower()
         tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{2,}", normalized)
         has_question = any(word in normalized for word in ("why", "how", "what", "which", "when"))
+        config_cues = {"config", "configure", "configured", "configuration", "nix", "yaml", "json", "toml", "module", "option", "setting", "settings"}
         semantic_cues = {"why", "how", "similar", "root", "cause", "explain", "related", "configure", "pattern"}
         keyword_cues = {"exact", "literal", "grep", "match", "log", "journal"}
-        if has_question or any(token in semantic_cues for token in tokens):
+        if any(token in config_cues for token in tokens):
+            intent = "configuration"
+            recommended_mode = "hybrid"
+        elif has_question or any(token in semantic_cues for token in tokens):
             intent = "diagnostic"
             recommended_mode = "hybrid"
         elif any(token in keyword_cues for token in tokens):
@@ -648,12 +652,12 @@ class ContextStore:
             intent = "retrieval"
             recommended_mode = "hybrid"
 
-        if any(token in normalized for token in ("root", "cause", "related", "cluster", "similar")):
+        if any(token in normalized for token in ("config", "configure", "configuration", "nix", "yaml", "json", "toml", "module", "option")):
+            recommended_graph_view = "configs"
+        elif any(token in normalized for token in ("root", "cause", "related", "cluster", "similar")):
             recommended_graph_view = "causality"
         elif any(token in normalized for token in ("service", "systemd", ".service")):
             recommended_graph_view = "services"
-        elif any(token in normalized for token in ("config", "nix", "yaml", "json", "toml")):
-            recommended_graph_view = "configs"
         elif any(token in normalized for token in ("fail", "error", "issue", "rollback")):
             recommended_graph_view = "issues"
         else:
@@ -661,7 +665,7 @@ class ContextStore:
 
         focus_terms = [
             token for token in tokens
-            if token not in GRAPH_STOPWORDS and len(token) > 3
+            if token not in GRAPH_STOPWORDS and token not in GRAPH_QUERY_STOPWORDS and len(token) > 3
         ][:3]
         focus = focus_terms[0] if focus_terms else ""
         recommended_sources = ["deployments"]
@@ -801,6 +805,8 @@ class ContextStore:
                     "1",
                     "--no-heading",
                     "--glob",
+                    "!**/__pycache__/**",
+                    "--glob",
                     "!*.lock",
                     "--glob",
                     "!*.db",
@@ -818,7 +824,9 @@ class ContextStore:
             else:
                 command = [
                     "grep",
-                    "-RniE",
+                    "-RniI",
+                    "-s",
+                    "-E",
                     pattern,
                     *search_paths,
                 ]
@@ -834,7 +842,7 @@ class ContextStore:
             logger.warning("Repo context search failed: %s", exc)
             return []
 
-        if proc.returncode not in {0, 1}:
+        if proc.returncode not in {0, 1} and not proc.stdout.strip():
             logger.warning("Repo context search returned %s: %s", proc.returncode, proc.stderr.strip())
             return []
 
@@ -958,7 +966,11 @@ class ContextStore:
         if graph_view == "services" and source == "logs":
             source_base += 12
         if graph_view == "configs" and source == "config":
-            source_base += 12
+            source_base += 22
+        if graph_view == "configs" and source == "code":
+            source_base += 14
+        if graph_view == "configs" and source == "logs":
+            source_base -= 24
         if source == "semantic" and not matched_terms:
             source_base -= 12
 
@@ -979,6 +991,8 @@ class ContextStore:
         message = str(item.get("message") or "").lower()
         if query_analysis.get("focus") and query_analysis["focus"] in f"{message} {snippet}":
             matched_bonus += 10
+        if query_analysis.get("intent") == "configuration" and source == "logs" and len(matched_terms) < 2:
+            matched_bonus -= 12
         return source_base + relevance_bonus + matched_bonus
 
     def search_deployment_context(self, query: str, limit: int = 12, mode: str = "natural") -> Dict[str, Any]:
@@ -996,7 +1010,7 @@ class ContextStore:
             for item in deployment_results
         ]
         if query_analysis.get("recommended_graph_view") == "configs":
-            source_filter = "config"
+            source_filter = "all"
         elif query_analysis.get("recommended_graph_view") == "services":
             source_filter = "code"
         else:
