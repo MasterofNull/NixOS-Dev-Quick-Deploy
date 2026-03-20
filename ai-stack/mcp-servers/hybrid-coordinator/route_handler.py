@@ -32,6 +32,7 @@ import os
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
@@ -102,6 +103,52 @@ class CollectionLatencyMetrics:
     adaptive_timeout_applications: int = 0  # Count of adaptive timeout uses
 
 _collection_metrics = CollectionLatencyMetrics()
+
+# Phase 5.2 Optimization 2: Backend selection caching
+@dataclass
+class BackendSelectionCache:
+    """LRU-style cache for backend selection decisions."""
+    cache: Dict[str, str] = field(default_factory=dict)
+    max_size: int = 1000
+    access_count: int = 0
+    hit_count: int = 0
+
+_backend_selection_cache = BackendSelectionCache()
+
+
+@lru_cache(maxsize=1000)
+def _cached_backend_key(query_hash: str, score_str: str, prefer_local: bool) -> str:
+    """Generate a deterministic cache key for backend selection."""
+    return f"{query_hash[:16]}:{score_str}:{prefer_local}"
+
+
+def _get_cached_backend_selection(query: str, score: float, prefer_local: bool) -> Optional[str]:
+    """Check cache for previously computed backend selection."""
+    global _backend_selection_cache
+    _backend_selection_cache.access_count += 1
+
+    query_hash = hashlib.sha256(query.encode()).hexdigest()
+    score_str = f"{int(score*100)}"
+    cache_key = _cached_backend_key(query_hash, score_str, prefer_local)
+
+    if cache_key in _backend_selection_cache.cache:
+        _backend_selection_cache.hit_count += 1
+        return _backend_selection_cache.cache[cache_key]
+    return None
+
+
+def _cache_backend_selection(query: str, score: float, prefer_local: bool, backend: str) -> None:
+    """Store backend selection decision in cache."""
+    global _backend_selection_cache
+
+    # Simple eviction: clear cache if it exceeds max_size
+    if len(_backend_selection_cache.cache) >= _backend_selection_cache.max_size:
+        _backend_selection_cache.cache.clear()
+
+    query_hash = hashlib.sha256(query.encode()).hexdigest()
+    score_str = f"{int(score*100)}"
+    cache_key = _cached_backend_key(query_hash, score_str, prefer_local)
+    _backend_selection_cache.cache[cache_key] = backend
 
 
 def _should_track_query_gap(query: str, best_score: float, results_count: int, threshold: float) -> bool:
@@ -380,6 +427,12 @@ async def route_search(
     # Phase 7.1.2 — LLM query expansion on semantic/hybrid routes
     _working_query = query
     _expansion_count = 1
+
+    # Phase 5.2 Optimization 1: Parallelize LLM expansion and capability discovery
+    # These are independent operations that can run concurrently
+    expansion_task = None
+    discovery_task = None
+
     if (
         Config.AI_LLM_EXPANSION_ENABLED
         and _query_expander is not None
@@ -387,16 +440,12 @@ async def route_search(
     ):
         try:
             # Batch 2.2: Use adaptive timeout instead of fixed config value
-            _expanded = await asyncio.wait_for(
+            expansion_task = asyncio.create_task(asyncio.wait_for(
                 _query_expander.expand_with_llm(query, max_expansions=3),
                 timeout=min(adaptive_timeout, Config.AI_LLM_EXPANSION_TIMEOUT_S),
-            )
-            if len(_expanded) > 1:
-                _working_query = _expanded[0]  # primary expansion for the main search
-                _expansion_count = len(_expanded)
-                logger.info("query_expansions", extra={"count": _expansion_count, "route": route})
-        except (asyncio.TimeoutError, Exception) as _exp_err:
-            logger.debug("llm_expansion_skipped", extra={"reason": str(_exp_err)})
+            ))
+        except Exception as _exp_err:
+            logger.debug("llm_expansion_task_creation_failed", extra={"reason": str(_exp_err)})
 
     results: Dict[str, Any] = {}
     response_text = ""
@@ -415,8 +464,27 @@ async def route_search(
             generate_response=generate_response,
         )
         target_collections = retrieval_profile["collections"]
+
+        # Phase 5.2 Optimization 1: Start capability discovery in parallel
         if Config.AI_CAPABILITY_DISCOVERY_ON_QUERY:
-            _cap_disc = await capability_discovery.discover(query)
+            discovery_task = asyncio.create_task(capability_discovery.discover(query))
+
+        # Phase 5.2 Optimization 1: Await both tasks concurrently instead of sequentially
+        if expansion_task is not None:
+            try:
+                _expanded = await expansion_task
+                if len(_expanded) > 1:
+                    _working_query = _expanded[0]  # primary expansion for the main search
+                    _expansion_count = len(_expanded)
+                    logger.info("query_expansions", extra={"count": _expansion_count, "route": route})
+            except (asyncio.TimeoutError, Exception) as _exp_err:
+                logger.debug("llm_expansion_skipped", extra={"reason": str(_exp_err)})
+
+        if discovery_task is not None:
+            try:
+                _cap_disc = await discovery_task
+            except Exception as _disc_err:
+                logger.debug("capability_discovery_failed", extra={"reason": str(_disc_err)})
 
         if route == "sql":
             response_text = (
@@ -424,33 +492,69 @@ async def route_search(
                 "Set HYBRID_ALLOW_SQL_EXECUTION=true to enable read-only queries."
             )
         elif route == "keyword":
-            hybrid_results = await _hybrid_search(
-                query=query, collections=target_collections,
-                limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
-            )
-            results = {"keyword_results": hybrid_results["keyword_results"]}
-            response_text = _summarize(hybrid_results["keyword_results"])
+            # Phase 5.2 Optimization 3: Wrap search calls with adaptive timeout guards
+            try:
+                hybrid_results = await asyncio.wait_for(
+                    _hybrid_search(
+                        query=query, collections=target_collections,
+                        limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
+                    ),
+                    timeout=adaptive_timeout,
+                )
+                results = {"keyword_results": hybrid_results["keyword_results"]}
+                response_text = _summarize(hybrid_results["keyword_results"])
+            except asyncio.TimeoutError:
+                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                results = {"keyword_results": []}
+                response_text = ""
+
         elif route == "semantic":
-            hybrid_results = await _hybrid_search(
-                query=_working_query, collections=target_collections,
-                limit=limit, keyword_limit=0, score_threshold=score_threshold,
-            )
-            results = {"semantic_results": hybrid_results["semantic_results"]}
-            response_text = _summarize(hybrid_results["semantic_results"])
+            try:
+                hybrid_results = await asyncio.wait_for(
+                    _hybrid_search(
+                        query=_working_query, collections=target_collections,
+                        limit=limit, keyword_limit=0, score_threshold=score_threshold,
+                    ),
+                    timeout=adaptive_timeout,
+                )
+                results = {"semantic_results": hybrid_results["semantic_results"]}
+                response_text = _summarize(hybrid_results["semantic_results"])
+            except asyncio.TimeoutError:
+                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                results = {"semantic_results": []}
+                response_text = ""
+
         elif route == "tree":
-            tree_results = await _tree_search(
-                query=query, collections=target_collections,
-                limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
-            )
-            results = tree_results
-            response_text = _summarize(tree_results["combined_results"])
-        else:
-            hybrid_results = await _hybrid_search(
-                query=_working_query, collections=target_collections,
-                limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
-            )
-            results = hybrid_results
-            response_text = _summarize(hybrid_results["combined_results"])
+            try:
+                tree_results = await asyncio.wait_for(
+                    _tree_search(
+                        query=query, collections=target_collections,
+                        limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
+                    ),
+                    timeout=adaptive_timeout,
+                )
+                results = tree_results
+                response_text = _summarize(tree_results["combined_results"])
+            except asyncio.TimeoutError:
+                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                results = {"combined_results": []}
+                response_text = ""
+
+        else:  # hybrid route
+            try:
+                hybrid_results = await asyncio.wait_for(
+                    _hybrid_search(
+                        query=_working_query, collections=target_collections,
+                        limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
+                    ),
+                    timeout=adaptive_timeout,
+                )
+                results = hybrid_results
+                response_text = _summarize(hybrid_results["combined_results"])
+            except asyncio.TimeoutError:
+                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                results = {"combined_results": []}
+                response_text = ""
 
         # Task 15.1.2 — Prompt injection filtering on retrieved chunks
         _all_combined = (
@@ -489,17 +593,25 @@ async def route_search(
                 score=_best_score, collection=_collections_hit,
             ))
 
-        # Emit backend-selection decisions even when callers request retrieval-only
-        # mode (generate_response=false), so routing split telemetry stays useful.
-        if not generate_response and route != "sql" and _select_backend is not None:
+        # Phase 5.2 Optimization 4: Only compute backend selection when actually needed
+        # Skip expensive backend selection for retrieval-only queries
+        if generate_response and route != "sql" and _select_backend is not None:
             try:
-                selected_backend = await _select_backend(
-                    query,
-                    _best_score,
-                    force_local=prefer_local,
-                    force_remote=False,
-                    requires_structured_output=False,
-                )
+                # Phase 5.2 Optimization 2: Check backend selection cache first
+                cached_backend = _get_cached_backend_selection(query, _best_score, prefer_local)
+                if cached_backend is not None:
+                    selected_backend = cached_backend
+                    logger.debug("backend_selection_cache_hit")
+                else:
+                    selected_backend = await _select_backend(
+                        query,
+                        _best_score,
+                        force_local=prefer_local,
+                        force_remote=False,
+                        requires_structured_output=False,
+                    )
+                    # Cache the result for future queries
+                    _cache_backend_selection(query, _best_score, prefer_local, selected_backend)
             except Exception as exc:
                 logger.debug("backend_selection_inference_failed error=%s", exc)
 
@@ -825,6 +937,24 @@ def track_collection_search_latency(collections: List[str], latency_ms: float) -
         _collection_metrics.collection_latencies[collection].append(latency_ms)
 
 
+def get_backend_selection_cache_stats() -> Dict[str, Any]:
+    """Get backend selection cache performance statistics."""
+    global _backend_selection_cache
+    cache_size = len(_backend_selection_cache.cache)
+    hit_rate = (
+        (_backend_selection_cache.hit_count / _backend_selection_cache.access_count * 100)
+        if _backend_selection_cache.access_count > 0
+        else 0.0
+    )
+    return {
+        "cache_size": cache_size,
+        "max_size": _backend_selection_cache.max_size,
+        "access_count": _backend_selection_cache.access_count,
+        "hit_count": _backend_selection_cache.hit_count,
+        "hit_rate_percent": round(hit_rate, 1),
+    }
+
+
 def get_route_search_metrics() -> Dict[str, Any]:
     """
     Get route search optimization metrics.
@@ -851,10 +981,13 @@ def get_route_search_metrics() -> Dict[str, Any]:
                 "search_count": len(latencies_list),
             }
 
+    backend_cache_stats = get_backend_selection_cache_stats()
+
     return {
         "total_searches": metrics.total_searches,
         "simple_query_optimizations": metrics.simple_query_optimizations,
         "adaptive_timeout_applications": metrics.adaptive_timeout_applications,
         "collection_stats": collection_stats,
+        "backend_selection_cache": backend_cache_stats,
         "active": True,
     }
