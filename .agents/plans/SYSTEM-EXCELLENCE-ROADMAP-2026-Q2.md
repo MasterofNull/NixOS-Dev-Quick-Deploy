@@ -602,6 +602,7 @@ RETURN path
 ### Batch 4.3: Security → Audit → Compliance Flow
 **Priority:** HIGH
 **Effort:** Medium (2-3 days)
+**Status:** in_progress
 
 **Tasks:**
 - [ ] Integrate security scans into deployment pipeline
@@ -620,6 +621,10 @@ RETURN path
 - All API calls logged with full context
 - Compliance status visible in dashboard
 - Security incidents trigger automated response
+
+**Current evidence:**
+- End-to-end smoke validation path:
+  [scripts/testing/smoke-security-audit-compliance.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-security-audit-compliance.sh)
 
 ### Batch 4.4: Google ADK Integration, Parity Check & Discovery
 **Priority:** HIGH
