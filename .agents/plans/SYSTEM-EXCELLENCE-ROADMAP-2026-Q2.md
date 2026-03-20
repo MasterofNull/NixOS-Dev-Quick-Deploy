@@ -550,6 +550,7 @@ RETURN path
 ### Batch 4.1: Deployment → Monitoring → Alerting Flow
 **Priority:** CRITICAL
 **Effort:** Medium (3-4 days)
+**Status:** in_progress
 
 **Tasks:**
 - [ ] Validate deployment triggers monitoring setup
@@ -567,6 +568,10 @@ RETURN path
 - Deploy change → metrics update → alert fires → remediation runs → resolved
 - All steps visible in dashboard timeline
 - No manual intervention required for common issues
+
+**Current evidence:**
+- End-to-end smoke validation path:
+  [scripts/testing/smoke-deployment-monitoring-alerting.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/smoke-deployment-monitoring-alerting.sh)
 
 ### Batch 4.2: Query → Agent → Storage → Learning Flow
 **Priority:** HIGH

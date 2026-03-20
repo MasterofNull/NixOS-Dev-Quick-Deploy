@@ -8,8 +8,13 @@ from typing import List, Optional
 import logging
 import asyncio
 import json
+import os
+from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from api.services.ai_service_health import get_health_monitor
+from api.config.service_endpoints import HYBRID_URL
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +26,43 @@ health_lock = asyncio.Lock()
 
 # Background task for broadcasting health updates
 _broadcast_task: Optional[asyncio.Task] = None
+
+
+def _load_hybrid_api_key() -> str:
+    direct = os.getenv("HYBRID_API_KEY", "").strip()
+    if direct:
+        return direct
+    key_file = os.getenv("HYBRID_API_KEY_FILE", "").strip()
+    if not key_file:
+        return ""
+    try:
+        return Path(key_file).read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        logger.warning("Hybrid API key file not found: %s", key_file)
+        return ""
+    except OSError as exc:
+        logger.warning("Failed reading hybrid API key file %s: %s", key_file, exc)
+        return ""
+
+
+def _hybrid_request(path: str, *, method: str = "GET", payload: Optional[dict] = None, query: Optional[dict] = None) -> dict:
+    base = HYBRID_URL.rstrip("/")
+    url = f"{base}{path}"
+    if query:
+        encoded = urlencode({key: value for key, value in query.items() if value not in {None, ""}})
+        if encoded:
+            url = f"{url}?{encoded}"
+    headers = {"Accept": "application/json"}
+    api_key = _load_hybrid_api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+    data = None
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(payload).encode("utf-8")
+    request = Request(url, data=data, method=method.upper(), headers=headers)
+    with urlopen(request, timeout=10.0) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 # ============================================================================
@@ -197,24 +239,28 @@ async def _health_broadcast_loop():
 @router.get("/alerts")
 async def get_alerts():
     """Get current system alerts."""
-    # Placeholder - will integrate with actual alert system
-    return {
-        "alerts": [],
-        "count": 0,
-        "severity_counts": {
-            "critical": 0,
-            "warning": 0,
-            "info": 0,
-        },
-    }
+    try:
+        return await asyncio.to_thread(_hybrid_request, "/alerts")
+    except Exception as e:
+        logger.error(f"Failed to get alerts: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch alerts: {e}")
 
 
 @router.post("/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(alert_id: str):
     """Acknowledge an alert."""
-    # Placeholder - will integrate with actual alert system
-    return {
-        "alert_id": alert_id,
-        "acknowledged": True,
-        "timestamp": "2026-03-15T00:00:00Z",
-    }
+    try:
+        return await asyncio.to_thread(_hybrid_request, f"/alerts/{alert_id}/acknowledge", method="POST", payload={})
+    except Exception as e:
+        logger.error(f"Failed to acknowledge alert %s: %s", alert_id, e)
+        raise HTTPException(status_code=502, detail=f"Failed to acknowledge alert: {e}")
+
+
+@router.post("/alerts/{alert_id}/resolve")
+async def resolve_alert(alert_id: str):
+    """Resolve an alert."""
+    try:
+        return await asyncio.to_thread(_hybrid_request, f"/alerts/{alert_id}/resolve", method="POST", payload={})
+    except Exception as e:
+        logger.error(f"Failed to resolve alert %s: %s", alert_id, e)
+        raise HTTPException(status_code=502, detail=f"Failed to resolve alert: {e}")
