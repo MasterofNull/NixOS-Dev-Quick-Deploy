@@ -278,6 +278,21 @@ def _select_route_collections(
     elif continuation and task_shape == "reasoning":
         profile = "continuation-reasoning"
 
+    # Favor lower fan-out for retrieval-only queries. These requests do not
+    # need broad synthesis context, so cap the collection set more aggressively.
+    if (
+        not generate_response
+        and not continuation
+        and not wants_history
+        and route in {"keyword", "semantic", "hybrid"}
+        and token_count <= 12
+    ):
+        max_collections = min(max_collections, 2)
+        if profile == "standard":
+            profile = "latency-optimized"
+        elif not profile.endswith("-compact") and not profile.endswith("-optimized"):
+            profile = f"{profile}-compact"
+
     # Batch 2.2: Reduce fan-out for very simple queries (≤3 tokens)
     if token_count <= 3 and not continuation and not generate_response:
         max_collections = 1
