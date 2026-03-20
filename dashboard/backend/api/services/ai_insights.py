@@ -8,12 +8,14 @@ import asyncio
 import subprocess
 import json
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 from api.config.service_endpoints import HYBRID_URL
+from api.services.runtime_controls import get_dashboard_rate_limiter, get_operator_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +234,41 @@ class AIInsightsService:
                 "implemented": required_methods,
                 "count": len(required_methods),
             },
+        }
+
+    async def get_security_compliance_summary(self) -> Dict[str, Any]:
+        """Summarize dashboard/operator security and compliance controls."""
+        audit_log = get_operator_audit_log()
+        rate_limiter = get_dashboard_rate_limiter()
+        audit_summary = audit_log.summary(limit=500)
+        csp = str(
+            os.getenv(
+                "DASHBOARD_CSP",
+                "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'",
+            )
+        )
+        return {
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "in_progress",
+            "controls": {
+                "content_security_policy": bool(csp),
+                "security_headers": True,
+                "rate_limiting": bool(rate_limiter.enabled()),
+                "operator_audit_log": bool(audit_summary.get("append_only")),
+            },
+            "rate_limiting": {
+                "enabled": bool(rate_limiter.enabled()),
+                "window_seconds": int(os.getenv("DASHBOARD_RATE_LIMIT_WINDOW_SECONDS", "60") or 60),
+                "default_rpm": int(os.getenv("DASHBOARD_RATE_LIMIT_DEFAULT_RPM", "240") or 240),
+                "operator_write_rpm": int(os.getenv("DASHBOARD_RATE_LIMIT_OPERATOR_WRITE_RPM", "30") or 30),
+                "search_rpm": int(os.getenv("DASHBOARD_RATE_LIMIT_SEARCH_RPM", "90") or 90),
+            },
+            "audit": audit_summary,
+            "gaps": [
+                "tamper-proof audit sealing not yet implemented",
+                "automated compliance report export still pending",
+                "live security scan automation still pending",
+            ],
         }
 
     async def get_query_complexity_analysis(self) -> Dict[str, Any]:

@@ -388,6 +388,9 @@ search_interactions("how to configure nixos modules")
 - Operator retrieval now suppresses low-value code/context tail for runtime-status queries when one dominant log unit already explains the issue.
 - Dominant runtime-status queries now collapse to a single primary runtime evidence block instead of mixing background retrieval context into the answer.
 - Dashboard/API hardening now includes baseline CSP and HTTP security headers on the operator web surface, starting direct execution against the open next-gen security roadmap work.
+- Dashboard/API hardening now also includes repo-landed HTTP rate limiting plus append-only operator audit trail routes, advancing the open next-gen security/compliance work without requiring live restarts yet.
+- Dashboard/API insights now also expose a security/compliance posture summary endpoint built from the landed CSP, security headers, rate limiting, and operator audit controls.
+- Dashboard/API operator audit routes now support filtered forensic queries by path, method, status, category, and text, closing more of the open next-gen audit/compliance gap in repo.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -405,6 +408,7 @@ search_interactions("how to configure nixos modules")
 - SDK surfaces for A2A methods
 - TCK runner and mandatory-gap closure work
 - Dashboard visibility into A2A readiness and stream maturity
+- Workflow blueprints and run sessions now carry explicit orchestration-policy metadata for lane assignment, escalation, and reviewer consensus defaults
 
 **Recent coordination-relevant commits:**
 - bc232c2: Add A2A compatibility facade to hybrid coordinator

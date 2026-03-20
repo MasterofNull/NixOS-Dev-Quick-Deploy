@@ -24,7 +24,9 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
-- Dashboard/API security hardening is now moving into the open Batch 2.2 work with baseline CSP and HTTP security headers on the operator web surface.
+- Workflow blueprints and run sessions now carry explicit orchestration policy metadata for lane assignment, escalation, and reviewer consensus defaults.
+- Dashboard/API security hardening is now moving into the open Batch 2.2 work with baseline CSP, HTTP security headers, and repo-landed HTTP rate limiting on the operator web surface.
+- Operator audit/compliance plumbing is now moving into Batch 2.3 with an append-only dashboard audit trail, summary/report routes, and filtered forensic query support landed in repo.
 - Deployment and operator telemetry now also has natural-language deployment retrieval with query analysis/explanations, context-aware retrieval across deployments/logs/config/code, queryable graph views, cross-deployment relatedness reasoning, cluster summaries, root-cluster/failure-family queries, ranked cause chains, cluster score-breakdown rankings, per-cluster evidence drilldowns, shared operator-guidance follow-up actions that connect retrieval results back into graph/insights surfaces, stronger configuration-intent ranking so fix-oriented queries prefer config/code evidence over noisy logs, file-level repo-context aggregation so repeated line hits do not overwhelm the operator surface, likely-fix path hints so retrieval can point agents toward the next probable remediation target, recommended next-step summaries so operators and sub-agents can act on one concise instruction first, compact insight digests so the operator answer can carry lightweight analytics context without a second panel load, low-value doc pruning when a stronger actionable fix path already exists, unit-level log aggregation so runtime context stays compact when one service dominates the evidence, weak semantic tail pruning when stronger runtime or fix-path evidence is already present, weak secondary log-unit pruning when one dominant runtime unit already explains the operator query, low-value code/context tail suppression for dominant runtime-status queries, and dominant runtime-answer collapse so status-style searches resolve to one primary runtime block when that is the clearest answer.
 - The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
 - Roadmap coordination should assume:
@@ -123,7 +125,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [ ] Run comprehensive security scan (OWASP ZAP, Nessus)
 - [x] Implement baseline Content Security Policy for dashboard/operator web interfaces
-- [ ] Add rate limiting and DDoS protection
+- [x] Add baseline HTTP rate limiting to dashboard/operator API surface
 - [ ] Implement secrets rotation automation
 - [x] Add baseline security headers to the dashboard/operator HTTP surface
 
@@ -131,19 +133,22 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ⏳ Security scan report
 - ⏳ Hardening recommendations implemented
 - ✅ Dashboard/operator CSP + HTTP security headers
+- ✅ Dashboard/operator HTTP rate limiting
 - Automated secrets rotation
 
 ### Batch 2.3: Audit Trail & Compliance
-**Status:** pending
+**Status:** in progress
 **Tasks:**
-- [ ] Implement comprehensive audit logging
+- [x] Implement append-only operator audit logging for dashboard API activity
 - [ ] Add tamper-proof audit trail (blockchain or append-only log)
-- [ ] Create compliance reporting (SOC 2, GDPR if applicable)
-- [ ] Implement user action tracking
-- [ ] Add forensic analysis tools
+- [x] Create initial compliance posture reporting endpoint for dashboard/operator controls
+- [x] Implement operator action/search tracking on the dashboard API surface
+- [x] Add initial forensic analysis query tools for dashboard operator audit events
 
 **Deliverables:**
-- Audit log infrastructure
+- ✅ Audit log infrastructure for dashboard operator activity
+- ✅ Security/compliance posture summary endpoint for dashboard/operator controls
+- ✅ Filtered forensic query interface for operator audit events
 - Compliance reports
 - Forensic query interface
 
@@ -228,11 +233,12 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - [x] Create standards-facing task/event transport for agent collaboration
 - [ ] Implement consensus mechanisms for agent decisions
 - [ ] Add agent performance evaluation and selection
-- [ ] Add first-class orchestration policies for sub-agent lane assignment and escalation
+- [x] Add first-class orchestration policies for sub-agent lane assignment and escalation
 
 **Deliverables:**
 - ⏳ Full multi-agent orchestration framework
 - ✅ A2A-compatible agent communication/runtime surface
+- ✅ Workflow orchestration policy contract for lane assignment, escalation, and reviewer consensus defaults
 - ⏳ Team formation engine
 
 **Implemented foundation:**
@@ -246,7 +252,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Dynamic agent team formation and role routing
 - Native consensus/arbiter flows
 - Agent selection/evaluation feedback loop
-- Richer orchestration policies across multiple live sub-agents
+- Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
 
 ### Batch 4.3: Agentic Workflow Automation
 **Status:** pending

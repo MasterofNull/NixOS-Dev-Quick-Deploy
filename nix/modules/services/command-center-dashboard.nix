@@ -83,6 +83,14 @@ in
         DASHBOARD_HOSTNAME_ALIAS = "local-node";
         DASHBOARD_FRONTEND_DIST = dashboardPublicDir;
         DASHBOARD_CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";
+        DASHBOARD_RATE_LIMIT_ENABLED = "true";
+        DASHBOARD_RATE_LIMIT_WINDOW_SECONDS = "60";
+        DASHBOARD_RATE_LIMIT_DEFAULT_RPM = "240";
+        DASHBOARD_RATE_LIMIT_HEALTH_RPM = "120";
+        DASHBOARD_RATE_LIMIT_SEARCH_RPM = "90";
+        DASHBOARD_RATE_LIMIT_OPERATOR_WRITE_RPM = "30";
+        DASHBOARD_OPERATOR_AUDIT_LOG_PATH = "${cc.dataDir}/telemetry/operator-audit.jsonl";
+        DASHBOARD_DATA_DIR = "${cc.dataDir}";
         DASHBOARD_CONTEXT_DB_PATH = "${cc.dataDir}/telemetry/deployments-context.db";
         AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
         HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";

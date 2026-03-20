@@ -15,8 +15,9 @@ import os
 from typing import Dict, List
 from pathlib import Path
 
-from api.routes import metrics, services, containers, config, websockets, actions, aistack, deployments, health, insights
+from api.routes import metrics, services, containers, config, websockets, actions, aistack, audit, deployments, health, insights
 from api.services.metrics_collector import MetricsCollector
+from api.services.runtime_controls import get_dashboard_rate_limiter, get_operator_audit_log
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +31,8 @@ active_connections: List[WebSocket] = []
 connections_lock = asyncio.Lock()  # Protect against race conditions
 metrics_collector: MetricsCollector = None
 METRICS_BROADCAST_INTERVAL_SECONDS = float(os.getenv("DASHBOARD_METRICS_INTERVAL_SECONDS", "1.0"))
+rate_limiter = get_dashboard_rate_limiter()
+operator_audit = get_operator_audit_log()
 
 
 def _default_content_security_policy() -> str:
@@ -133,6 +136,55 @@ async def security_headers_middleware(request: Request, call_next):
         response.headers.setdefault(name, value)
     return response
 
+
+@app.middleware("http")
+async def runtime_controls_middleware(request: Request, call_next):
+    """Apply rate limiting and audit logging to dashboard API traffic."""
+    client_ip = getattr(request.client, "host", None) or "unknown"
+    if rate_limiter.enabled():
+        decision = rate_limiter.check(client_ip, request.url.path, request.method)
+        if not decision["allowed"]:
+            response = JSONResponse(
+                {
+                    "detail": "rate limit exceeded",
+                    "category": decision["category"],
+                    "retry_after_seconds": decision["retry_after"],
+                },
+                status_code=429,
+            )
+            response.headers["Retry-After"] = str(decision["retry_after"])
+            response.headers["X-RateLimit-Limit"] = str(decision["limit"])
+            response.headers["X-RateLimit-Remaining"] = str(decision["remaining"])
+            response.headers["X-RateLimit-Category"] = decision["category"]
+            operator_audit.append(
+                path=request.url.path,
+                method=request.method,
+                status_code=429,
+                client_ip=client_ip,
+                user_agent=request.headers.get("user-agent", ""),
+                query_keys=list(request.query_params.keys()),
+                category=decision["category"],
+            )
+            return response
+    else:
+        decision = {"category": "disabled", "limit": 0, "remaining": 0}
+
+    response = await call_next(request)
+    response.headers.setdefault("X-RateLimit-Category", str(decision["category"]))
+    if decision["limit"]:
+        response.headers.setdefault("X-RateLimit-Limit", str(decision["limit"]))
+        response.headers.setdefault("X-RateLimit-Remaining", str(decision["remaining"]))
+    operator_audit.append(
+        path=request.url.path,
+        method=request.method,
+        status_code=response.status_code,
+        client_ip=client_ip,
+        user_agent=request.headers.get("user-agent", ""),
+        query_keys=list(request.query_params.keys()),
+        category=str(decision["category"]),
+    )
+    return response
+
 # Include routers
 app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(services.router, prefix="/api/services", tags=["services"])
@@ -140,6 +192,7 @@ app.include_router(containers.router, prefix="/api/containers", tags=["container
 app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(aistack.router, prefix="/api", tags=["aistack"])
+app.include_router(audit.router, prefix="/api", tags=["audit"])
 app.include_router(deployments.router, prefix="/api", tags=["deployments"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
