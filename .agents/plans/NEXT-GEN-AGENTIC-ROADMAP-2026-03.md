@@ -245,6 +245,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ✅ Agent-selection feedback loop now biases future candidate scoring from prior review/consensus history
 - ✅ Native arbiter-review workflow path now persists arbiter decisions, trajectory events, and task artifacts
 - ✅ Initial dynamic team-formation contract for workflow sessions and client inspection
+- ✅ Runtime outcome events now roll into agent evaluation history and future candidate scoring
 
 **Implemented foundation:**
 - Agent card discovery and public capability advertisement
