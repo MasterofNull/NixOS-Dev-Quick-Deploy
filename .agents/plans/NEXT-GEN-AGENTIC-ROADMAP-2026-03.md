@@ -25,6 +25,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
 - Workflow blueprints and run sessions now carry explicit orchestration policy metadata for lane assignment, escalation, reviewer consensus defaults, seeded candidate evaluation, persisted consensus snapshots, longitudinal agent evaluation rollups, and feedback-weighted future candidate scoring.
+- Google ADK comparison is not yet formalized; the harness has adjacent capabilities, but no repo-grounded parity matrix, integration evaluation loop, or ADK-specific gap tracker exists yet.
 - Dashboard/API security hardening now includes baseline CSP, HTTP security headers, HTTP rate limiting, lightweight dashboard/operator security scan automation, and non-destructive secrets rotation planning/reporting on the operator web surface.
 - Operator audit/compliance plumbing now includes an append-only dashboard audit trail, summary/report routes, filtered forensic query support, and tamper-evident hash-chain sealing for operator audit events.
 - Deployment and operator telemetry now also has natural-language deployment retrieval with query analysis/explanations, context-aware retrieval across deployments/logs/config/code, queryable graph views, cross-deployment relatedness reasoning, cluster summaries, root-cluster/failure-family queries, ranked cause chains, cluster score-breakdown rankings, per-cluster evidence drilldowns, shared operator-guidance follow-up actions that connect retrieval results back into graph/insights surfaces, stronger configuration-intent ranking so fix-oriented queries prefer config/code evidence over noisy logs, file-level repo-context aggregation so repeated line hits do not overwhelm the operator surface, likely-fix path hints so retrieval can point agents toward the next probable remediation target, recommended next-step summaries so operators and sub-agents can act on one concise instruction first, compact insight digests so the operator answer can carry lightweight analytics context without a second panel load, low-value doc pruning when a stronger actionable fix path already exists, unit-level log aggregation so runtime context stays compact when one service dominates the evidence, weak semantic tail pruning when stronger runtime or fix-path evidence is already present, weak secondary log-unit pruning when one dominant runtime unit already explains the operator query, low-value code/context tail suppression for dominant runtime-status queries, and dominant runtime-answer collapse so status-style searches resolve to one primary runtime block when that is the clearest answer.
@@ -209,7 +210,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 **Objective:** Rapidly integrate cutting-edge agentic AI patterns and capabilities.
 
-**Gate:** New patterns integrated within 7 days of publication, automated testing validates integration
+**Gate:** New patterns integrated within 7 days of publication, automated testing validates integration, and Google ADK parity is measured continuously
 
 ### Batch 4.1: Agentic Pattern Library
 **Status:** pending
@@ -271,6 +272,21 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Workflow generation engine
 - Workflow optimization
 - Template library
+
+### Batch 4.4: Google ADK Parity, Integrations, and Implementation Discovery
+**Status:** pending
+**Tasks:**
+- [ ] Compare the current harness against Google ADK core capabilities: multi-agent composition, session/state handling, tool integration patterns, evaluation, observability, and A2A alignment
+- [ ] Evaluate ADK integrations relevant to the stack, especially Qdrant-backed retrieval, GitHub/tooling surfaces, and observability/evaluation hooks such as AgentOps, Phoenix, and MLflow
+- [ ] Build prototype adapter plans where ADK patterns can validate or simplify existing harness components without replacing declarative Nix ownership
+- [ ] Create an ADK-driven parity/eval suite so new harness work can be checked against documented ADK capabilities before roadmap acceptance
+- [ ] Add a recurring implementation-discovery review that feeds newly surfaced ADK features into Phase 4, Phase 6, and Phase 11 prioritization
+
+**Deliverables:**
+- ADK parity matrix with scored capability coverage
+- Integration opportunity register with `adopt|adapt|defer` decisions
+- Prototype plan for highest-value ADK-aligned adapters or workflow patterns
+- ADK-informed eval checklist for reviewer-gate acceptance
 
 ---
 
@@ -690,7 +706,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 3. **Phase 7: Token Efficiency** - Immediate cost savings
 
 ### Short-Term (Week 3-6)
-4. **Phase 4: Agentic Capabilities** - Competitive advantage
+4. **Phase 4: Agentic Capabilities + ADK parity** - Competitive advantage and external standards check
 5. **Phase 6: Remote Offloading** - Cost optimization
 6. **Phase 8: Progressive Disclosure** - Efficiency gains
 7. **Phase 11: Local Agent Agentic** - LOCAL AGENT AUTONOMY (HIGH PRIORITY)
@@ -712,7 +728,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 | Phase 1 | Monitoring coverage | 100% of services |
 | Phase 2 | Security scan score | 0 critical, <5 high |
 | Phase 3 | Auto-improvements/week | ≥3 |
-| Phase 4 | New patterns integrated | ≥2/month |
+| Phase 4 | New patterns integrated + ADK parity coverage | ≥2/month and 85%+ coverage of prioritized ADK capabilities |
 | Phase 5 | Local model parity | 85%+ vs flagship |
 | Phase 6 | Free agent utilization | 70%+ |
 | Phase 7 | Token usage reduction | 50% |
@@ -743,6 +759,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 |---------|------|---------|
 | 1.0.0 | 2026-03-15 | Initial next-generation roadmap creation |
 | 1.1.0 | 2026-03-15 | Added Phase 11: Local Agent Agentic Capabilities (OpenClaw-like) |
+| 1.2.0 | 2026-03-20 | Added Google ADK parity, integration evaluation, and implementation-discovery roadmap work |
 
 ---
 

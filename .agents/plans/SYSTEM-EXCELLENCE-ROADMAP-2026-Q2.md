@@ -19,6 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
+- ⏳ Google ADK alignment is not yet systematized: the stack has overlapping capabilities, but no formal parity scorecard, integration review, or implementation-discovery loop against ADK primitives/integrations
 - ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, natural-language deployment retrieval with result explanations, context-aware retrieval across deployments/logs/config/code, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, cluster score-breakdown rankings, and per-cluster evidence drilldowns are live
 - ⏳ Broader knowledge graph extraction depth remains outstanding; initial multi-modal retrieval is now live
 
@@ -26,6 +27,7 @@
 - ✅ Single unified deployment entry point
 - ✅ Dashboard fully integrated - real-time monitoring & deployment
 - ✅ All features seamlessly integrated - zero bolt-ons
+- ✅ Google ADK parity scorecard and implementation-discovery loop operational
 - ✅ Agentic storage throughout (vector DB, semantic search, knowledge graphs)
 - ✅ Complete end-to-end validated workflows
 - ✅ Production-ready with comprehensive documentation
@@ -36,6 +38,7 @@
 - Script count: 1 primary entry point (from 306)
 - Dashboard coverage: 100% of services (from ~40%)
 - Integration score: 95%+ (from ~60%)
+- External framework parity: ADK scorecard published with adopt/adapt/defer decision for top relevant integrations
 - Test coverage: 90%+ (from ~70%)
 - Documentation completeness: 100% (from ~65%)
 
@@ -542,7 +545,7 @@ RETURN path
 
 **Objective:** Ensure all features work seamlessly together, remove all bolt-ons
 
-**Gate:** Complete workflows validated, zero optional features
+**Gate:** Complete workflows validated, zero optional features, Google ADK parity evidence published
 
 ### Batch 4.1: Deployment → Monitoring → Alerting Flow
 **Priority:** CRITICAL
@@ -608,7 +611,30 @@ RETURN path
 - Compliance status visible in dashboard
 - Security incidents trigger automated response
 
-### Batch 4.4: Remove Bolt-On Features
+### Batch 4.4: Google ADK Integration, Parity Check & Discovery
+**Priority:** HIGH
+**Effort:** Medium (3-4 days)
+
+**Tasks:**
+- [ ] Map current stack capabilities against Google ADK primitives: agents, multi-agent workflows, tool adapters, sessions/state, evaluation, observability, and A2A
+- [ ] Review ADK integrations relevant to this repo and classify each as `adopt`, `adapt`, `defer`, or `not applicable`
+- [ ] Build an ADK parity scorecard covering existing harness features, missing capabilities, overlap, and implementation risk
+- [ ] Add a recurring implementation-discovery workflow so new ADK features feed roadmap/backlog updates instead of one-off review notes
+- [ ] Define declarative-first wiring requirements for any adopted ADK-aligned integration, including Nix option ownership and env injection with no hardcoded ports/URLs
+
+**Deliverables:**
+- ADK parity matrix and gap register
+- Prioritized adoption/discovery backlog for AI stack and operator dashboard
+- Integration decision record with rollback notes for any proposed ADK-aligned component
+- Validation checklist tying ADK parity review into harness QA/reviewer gate workflow
+
+**Validation:**
+- Scorecard covers current harness against ADK docs and integrations catalog
+- Each relevant ADK integration has an explicit adopt/adapt/defer rationale
+- Newly discovered gaps are assigned to a roadmap batch or backlog entry
+- No proposed integration bypasses Nix options/env injection policy
+
+### Batch 4.5: Remove Bolt-On Features
 **Priority:** CRITICAL
 **Effort:** High (4-5 days)
 
