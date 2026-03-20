@@ -797,6 +797,17 @@ def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
     return registry
 
 
+def _load_agent_evaluations_registry_sync() -> Dict[str, Any]:
+    path = _agent_evaluations_registry_path()
+    if not path.exists():
+        return _default_agent_evaluations_registry()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _default_agent_evaluations_registry()
+    return _normalize_agent_evaluations_registry(data)
+
+
 async def _load_agent_evaluations_registry() -> Dict[str, Any]:
     path = _agent_evaluations_registry_path()
     if not path.exists():
@@ -2230,15 +2241,45 @@ def _default_usage() -> Dict[str, int]:
     return {"tokens_used": 0, "tool_calls_used": 0}
 
 
+def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str) -> Dict[str, float]:
+    agents = registry.get("agents") if isinstance(registry, dict) else {}
+    if not isinstance(agents, dict):
+        return {"review_score": 0.0, "selection_score": 0.0}
+    agent_row = agents.get(str(agent or "").strip())
+    if not isinstance(agent_row, dict):
+        return {"review_score": 0.0, "selection_score": 0.0}
+    profiles = agent_row.get("profiles")
+    if not isinstance(profiles, dict):
+        return {"review_score": 0.0, "selection_score": 0.0}
+    profile_row = profiles.get(str(profile or "").strip())
+    if not isinstance(profile_row, dict):
+        return {"review_score": 0.0, "selection_score": 0.0}
+
+    review_events = max(0, int(profile_row.get("review_events", 0) or 0))
+    avg_review_score = max(0.0, min(1.0, float(profile_row.get("average_review_score", 0.0) or 0.0)))
+    consensus_selected = max(0, int(profile_row.get("consensus_selected", 0) or 0))
+    review_weight = min(1.0, review_events / 5.0)
+    selection_weight = min(1.0, consensus_selected / 5.0)
+    return {
+        "review_score": round(avg_review_score * review_weight, 4),
+        "selection_score": round(selection_weight, 4),
+    }
+
+
 def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]) -> Dict[str, Any]:
     strategy = str(policy.get("selection_strategy", "orchestrator-first") or "orchestrator-first").strip()
     consensus_mode = str(policy.get("consensus_mode", "reviewer-gate") or "reviewer-gate").strip()
     requested_by = str(orchestration.get("requested_by", "human") or "human").strip() or "human"
     requester_role = str(orchestration.get("requester_role", "orchestrator") or "orchestrator").strip() or "orchestrator"
+    evaluation_registry = _load_agent_evaluations_registry_sync()
 
     candidates: List[Dict[str, Any]] = []
 
     def _add_candidate(candidate_id: str, lane: str, agent: str, role: str, components: Dict[str, float], basis: str) -> None:
+        history = _evaluation_history_bias(evaluation_registry, agent, lane)
+        components = dict(components)
+        components["historical_review"] = history["review_score"]
+        components["historical_selection"] = history["selection_score"]
         score = round(sum(float(value) for value in components.values()), 4)
         candidates.append(
             {
@@ -2249,6 +2290,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
                 "basis": basis,
                 "score": score,
                 "score_components": {key: round(float(value), 4) for key, value in components.items()},
+                "history_bias": history,
             }
         )
 
