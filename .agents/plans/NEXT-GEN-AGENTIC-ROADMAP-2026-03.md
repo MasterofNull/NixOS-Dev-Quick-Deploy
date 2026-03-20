@@ -2,9 +2,10 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active
+**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; deeper orchestration still pending
 **Created:** 2026-03-15
-**Version:** 1.0.0
+**Last Updated:** 2026-03-20
+**Version:** 1.1.0
 
 ---
 
@@ -18,6 +19,16 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 5. Maintains fortress-level security posture
 6. Operates with minimal human intervention
 7. Continuously learns from every interaction
+
+## Current Harness Status (2026-03-20)
+
+- A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
+- The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
+- The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
+- Roadmap coordination should assume:
+  - `codex` = orchestration/integration/reviewer gate
+  - sub-agents = scoped execution slices
+  - A2A = interoperability/runtime contract for continued harness evolution
 
 ---
 
@@ -206,18 +217,32 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Constitutional AI policies
 
 ### Batch 4.2: Multi-Agent Orchestration
-**Status:** pending
+**Status:** in progress (foundation landed, orchestration layer incomplete)
 **Tasks:**
 - [ ] Implement agent team formation (dynamic role assignment)
-- [ ] Add inter-agent communication protocol
-- [ ] Create agent collaboration patterns
+- [x] Add inter-agent communication protocol foundation via A2A-compatible coordinator surface
+- [x] Create standards-facing task/event transport for agent collaboration
 - [ ] Implement consensus mechanisms for agent decisions
 - [ ] Add agent performance evaluation and selection
+- [ ] Add first-class orchestration policies for sub-agent lane assignment and escalation
 
 **Deliverables:**
-- Multi-agent orchestration framework
-- Agent communication protocol
-- Team formation engine
+- ⏳ Full multi-agent orchestration framework
+- ✅ A2A-compatible agent communication/runtime surface
+- ⏳ Team formation engine
+
+**Implemented foundation:**
+- Agent card discovery and public capability advertisement
+- A2A JSON-RPC task methods and task event streaming
+- SDK surfaces for A2A task operations
+- Dashboard readiness/maturity reporting for the A2A surface
+- Mandatory TCK-aligned protocol repair work
+
+**Still missing for roadmap completion:**
+- Dynamic agent team formation and role routing
+- Native consensus/arbiter flows
+- Agent selection/evaluation feedback loop
+- Richer orchestration policies across multiple live sub-agents
 
 ### Batch 4.3: Agentic Workflow Automation
 **Status:** pending
