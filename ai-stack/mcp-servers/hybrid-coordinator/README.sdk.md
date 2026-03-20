@@ -25,6 +25,11 @@ Implemented A2A-style methods:
 - `tasks/list`
 - `tasks/cancel`
 
+Explicit boundary:
+- `pushNotifications` remains `false` for now.
+- The supported streaming path is SSE replay via `GET /a2a/tasks/{id}/events`.
+- We are intentionally not claiming webhook/push delivery until there is a declarative, validated runtime contract for it.
+
 Runtime mapping:
 - A2A task IDs map directly to persisted workflow run `session_id` values.
 - A2A task state is derived from workflow run `status`.

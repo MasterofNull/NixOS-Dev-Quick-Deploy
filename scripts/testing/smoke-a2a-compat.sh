@@ -88,9 +88,40 @@ curl -fsS "${auth_hdr[@]}" -H 'Content-Type: application/json' -X POST "${HYB_UR
 jq -e --arg tid "$task_id" '.result.id == $tid' "${TMP_DIR}/get-resp.json" >/dev/null || fail "tasks/get task id mismatch"
 pass "A2A tasks/get"
 
+cat > "${TMP_DIR}/list.json" <<'EOF'
+{
+  "jsonrpc": "2.0",
+  "id": "list-1",
+  "method": "tasks/list",
+  "params": { "limit": 10 }
+}
+EOF
+
+curl -fsS "${auth_hdr[@]}" -H 'Content-Type: application/json' -X POST "${HYB_URL}/a2a" \
+  --data @"${TMP_DIR}/list.json" > "${TMP_DIR}/list-resp.json" || fail "tasks/list failed"
+jq -e --arg tid "$task_id" '.result.tasks | map(.id) | index($tid) != null' "${TMP_DIR}/list-resp.json" >/dev/null || fail "tasks/list missing created task"
+pass "A2A tasks/list"
+
 curl -fsS "${auth_hdr[@]}" "${HYB_URL}/a2a/tasks/${task_id}/events" > "${TMP_DIR}/events.txt" || fail "task events stream failed"
 rg -q 'event: task.snapshot' "${TMP_DIR}/events.txt" || fail "task events missing snapshot"
 rg -q 'event: task.complete' "${TMP_DIR}/events.txt" || fail "task events missing completion marker"
 pass "A2A task events"
+
+cat > "${TMP_DIR}/cancel.json" <<EOF
+{
+  "jsonrpc": "2.0",
+  "id": "cancel-1",
+  "method": "tasks/cancel",
+  "params": {
+    "id": "${task_id}",
+    "reason": "smoke cancel verification"
+  }
+}
+EOF
+
+curl -fsS "${auth_hdr[@]}" -H 'Content-Type: application/json' -X POST "${HYB_URL}/a2a" \
+  --data @"${TMP_DIR}/cancel.json" > "${TMP_DIR}/cancel-resp.json" || fail "tasks/cancel failed"
+jq -e '.result.status.state == "canceled"' "${TMP_DIR}/cancel-resp.json" >/dev/null || fail "tasks/cancel did not mark task canceled"
+pass "A2A tasks/cancel"
 
 printf '\nAll A2A compatibility smoke checks passed.\n'

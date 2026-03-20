@@ -6,6 +6,13 @@ Do not edit manually.
 ## Python (`harness_sdk.py`)
 
 - `plan(query)`
+- `a2a_agent_card()`
+- `a2a_get_card()`
+- `a2a_send_message(text)`
+- `a2a_get_task(task_id)`
+- `a2a_list_tasks(limit=10)`
+- `a2a_cancel_task(task_id, reason='')`
+- `query(query)`
 - `tooling_manifest(query, runtime='python', max_tools=None, max_result_chars=None)`
 - `start_session(query)`
 - `get_session(session_id)`
@@ -16,7 +23,8 @@ Do not edit manually.
 - `fork_session(session_id, note='forked session')`
 - `review_acceptance(response, query='', criteria=None, expected_keywords=None, min_criteria_ratio=0.7, min_keyword_ratio=0.6, run_harness_eval=False)`
 - `harness_eval(query, expected_keywords=None, mode='auto', max_latency_ms=None)`
-- `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40, intent_contract=None)`
+- `qa_check(phase='0', output_format='json', timeout_seconds=60, include_sudo=False)`
+- `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40, intent_contract=None, requesting_agent='human', requester_role='orchestrator')`
 - `run_get(session_id, replay=False)`
 - `run_set_mode(session_id, safety_mode, confirm=False)`
 - `run_get_isolation(session_id)`
@@ -33,10 +41,23 @@ Do not edit manually.
 - `runtime_rollback(runtime_id, to_deployment_id, reason='')`
 - `runtime_schedule_policy()`
 - `runtime_schedule(objective, runtime_class='', transport='', tags=None, strategy='weighted', include_degraded=False)`
+- `ai_coordinator_status()`
+- `ai_coordinator_skills(limit=25)`
+- `ai_coordinator_delegate(task)`
+- `web_research_fetch(urls)`
+- `curated_research_fetch(workflow)`
+- `browser_research_fetch(urls)`
 
 ## TypeScript (`harness_sdk.ts`)
 
 - `plan(query: string)`
+- `a2aAgentCard()`
+- `a2aGetCard()`
+- `a2aSendMessage(text: string, opts: {, taskId?: string;, safetyMode?: "plan-readonly" | "execute-mutating";, intentContract?: RunStartRequest["intent_contract"];, } = {})`
+- `a2aGetTask(taskId: string)`
+- `a2aListTasks(limit = 10)`
+- `a2aCancelTask(taskId: string, reason = "")`
+- `query(query: string, opts: {, agentType?: string;, preferLocal?: boolean;, generateResponse?: boolean;, mode?: string;, context?: Json;, limit?: number;, keywordLimit?: number;, scoreThreshold?: number;, } = {})`
 - `toolingManifest(query: string, runtime: "python" | "typescript" = "python", maxTools?: number, maxResultChars?: number)`
 - `startSession(query: string)`
 - `getSession(sessionId: string)`
@@ -47,6 +68,7 @@ Do not edit manually.
 - `advanceSession(sessionId: string, action: "pass" | "fail" | "skip" | "note", note = "")`
 - `reviewAcceptance(payload: ReviewAcceptanceRequest)`
 - `harnessEval(query: string, expectedKeywords: string[] = [], mode = "auto")`
+- `qaCheck(phase = "0", format: "json" | "text" = "json", timeoutSeconds = 60, includeSudo = false)`
 - `runStart(payload: RunStartRequest)`
 - `runGet(sessionId: string, replay = false)`
 - `runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm = false)`
@@ -67,6 +89,10 @@ Do not edit manually.
 
 ## Covered Endpoints
 
+- `GET /.well-known/agent.json`
+- `GET /.well-known/agent-card.json`
+- `POST /a2a` for `agent/getCard`, `message/send`, `tasks/get`, `tasks/list`, and `tasks/cancel`
+- `GET /a2a/tasks/{id}/events`
 - `POST /workflow/plan`
 - `POST /workflow/tooling-manifest`
 - `POST /workflow/session/start`
@@ -78,4 +104,10 @@ Do not edit manually.
 - `POST /workflow/session/{id}/advance`
 - `POST /review/acceptance`
 - `POST /harness/eval`
+
+## A2A Support Boundary
+
+- Agent-card discovery, JSON-RPC task methods, and SSE task replay are supported.
+- Push notifications are intentionally unsupported in the current runtime (`pushNotifications=false`).
+- Workflow sessions remain the source of truth behind all A2A task objects.
 

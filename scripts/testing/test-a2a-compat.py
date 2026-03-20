@@ -30,6 +30,8 @@ def main() -> int:
     assert_contains(source, 'if method == "tasks/get":', "missing A2A tasks/get handler")
     assert_contains(source, 'if method == "tasks/list":', "missing A2A tasks/list handler")
     assert_contains(source, 'if method == "tasks/cancel":', "missing A2A tasks/cancel handler")
+    assert_contains(source, '"pushNotifications": False', "push notification boundary must stay explicit")
+    assert_contains(source, '"taskEvents": f"{origin}/a2a/tasks/{{taskId}}/events"', "agent card should expose task events endpoint")
 
     assert_contains(source, 'event: task.snapshot', "missing task snapshot SSE event")
     assert_contains(source, 'event: task.event', "missing task event SSE event")
