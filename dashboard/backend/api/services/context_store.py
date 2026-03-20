@@ -717,6 +717,52 @@ class ContextStore:
             return True
         return focus.lower() in (value or "").lower()
 
+    @staticmethod
+    def _build_deployment_clusters(
+        deployment_features: Dict[str, Dict[str, Any]],
+        causality_edges: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        adjacency: Dict[str, set[str]] = {dep_id: set() for dep_id in deployment_features}
+        for edge in causality_edges:
+            if edge.get("relation") != "related_to":
+                continue
+            left = str(edge.get("source", "")).removeprefix("deployment:")
+            right = str(edge.get("target", "")).removeprefix("deployment:")
+            if left in adjacency and right in adjacency:
+                adjacency[left].add(right)
+                adjacency[right].add(left)
+
+        clusters: List[Dict[str, Any]] = []
+        visited: set[str] = set()
+        for dep_id in sorted(adjacency):
+            if dep_id in visited or not adjacency[dep_id]:
+                continue
+            stack = [dep_id]
+            component: List[str] = []
+            while stack:
+                current = stack.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                component.append(current)
+                stack.extend(sorted(adjacency[current] - visited))
+
+            shared_services = set.intersection(*(deployment_features[item]["services"] for item in component))
+            shared_configs = set.intersection(*(deployment_features[item]["configs"] for item in component))
+            shared_issues = set.intersection(*(deployment_features[item]["issues"] for item in component))
+            statuses = sorted({deployment_features[item]["status"] for item in component})
+            clusters.append({
+                "cluster_id": f"cluster-{len(clusters) + 1}",
+                "deployment_ids": sorted(component),
+                "size": len(component),
+                "shared_statuses": statuses,
+                "shared_services": sorted(shared_services)[:4],
+                "shared_configs": sorted(shared_configs)[:4],
+                "shared_issues": sorted(shared_issues)[:4],
+            })
+
+        return clusters
+
     def get_deployment_graph(
         self,
         recent_limit: int = 8,
@@ -862,6 +908,9 @@ class ContextStore:
                             reasons=reasons,
                         )
 
+        causality_edges = [edge for edge in edges if edge.get("relation") == "related_to"]
+        clusters = self._build_deployment_clusters(deployment_features, causality_edges)
+
         if focus:
             filtered_edges = [
                 edge for edge in edges
@@ -874,6 +923,18 @@ class ContextStore:
         else:
             filtered_nodes = nodes
             filtered_edges = edges
+
+        if focus:
+            filtered_clusters = [
+                cluster for cluster in clusters
+                if any(self._match_focus(dep_id, focus) for dep_id in cluster["deployment_ids"])
+                or any(self._match_focus(value, focus) for value in cluster["shared_services"])
+                or any(self._match_focus(value, focus) for value in cluster["shared_configs"])
+                or any(self._match_focus(value, focus) for value in cluster["shared_issues"])
+                or any(self._match_focus(value, focus) for value in cluster["shared_statuses"])
+            ]
+        else:
+            filtered_clusters = clusters
 
         top_relationships = [
             {"relation": relation, "count": count}
@@ -889,6 +950,8 @@ class ContextStore:
             "node_count": len(filtered_nodes),
             "edge_count": len(filtered_edges),
             "top_relationships": top_relationships,
+            "cluster_count": len(filtered_clusters),
+            "clusters": filtered_clusters,
             "nodes": filtered_nodes,
             "edges": filtered_edges,
         }

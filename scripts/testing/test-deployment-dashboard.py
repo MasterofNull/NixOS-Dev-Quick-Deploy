@@ -159,11 +159,13 @@ class DeploymentDashboardTests:
             and isinstance(graph.get("top_relationships"), list)
             and causality.get("view") == "causality"
             and isinstance(causality.get("edges"), list)
+            and isinstance(causality.get("clusters"), list)
+            and causality.get("cluster_count", 0) >= 0
         )
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}",
         )
         return passed
 
