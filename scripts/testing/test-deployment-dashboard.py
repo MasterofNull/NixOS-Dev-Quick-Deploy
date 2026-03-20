@@ -210,6 +210,7 @@ class DeploymentDashboardTests:
             and (config_context["results"][0].get("metadata") or {}).get("match_count", 0) >= 1
             and isinstance((config_context["results"][0].get("explanation") or {}).get("action_hint"), str)
             and sum(1 for item in (config_context.get("results") or []) if item.get("message") == config_context["results"][0].get("message")) == 1
+            and not any(str((item.get("metadata") or {}).get("file_path") or "").startswith("docs/") for item in (config_context.get("results") or []))
             and isinstance(ranked_context.get("results"), list)
             and bool(ranked_context.get("results"))
             and ranked_context["results"][0].get("source") == "logs"
