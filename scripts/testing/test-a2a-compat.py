@@ -31,6 +31,7 @@ def main() -> int:
     assert_contains(source, 'if method == "tasks/list":', "missing A2A tasks/list handler")
     assert_contains(source, 'if method == "tasks/cancel":', "missing A2A tasks/cancel handler")
     assert_contains(source, '"pushNotifications": False', "push notification boundary must stay explicit")
+    assert_contains(source, '"endpoint": f"{origin}/"', "agent card should expose root JSON-RPC endpoint")
     assert_contains(source, '"taskEvents": f"{origin}/a2a/tasks/{{taskId}}/events"', "agent card should expose task events endpoint")
     assert_contains(source, 'def _session_to_a2a_artifacts(session: Dict[str, Any]) -> List[Dict[str, Any]]:', "missing task artifact projection helper")
     assert_contains(source, '"kind": "artifact-update"', "missing artifact update payload")
