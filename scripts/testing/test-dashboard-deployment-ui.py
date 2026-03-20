@@ -40,6 +40,7 @@ REQUIRED_SNIPPETS = [
     'cluster evidence',
     'query analysis',
     'operatorGuidance.summary',
+    'operatorGuidance.insight_target',
     'Apply Graph Guidance',
     'Open Insight Follow-up',
     'function applyDeploymentSearchGuidance()',
