@@ -1161,6 +1161,7 @@ restart_repo_backed_ai_services_if_needed() {
     "ai-ralph-wiggum.service"
     "ai-aider-wrapper.service"
     "ai-nixos-docs.service"
+    "command-center-dashboard-api.service"
   )
   local -a restart_units=()
   local unit=""
