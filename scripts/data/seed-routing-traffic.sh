@@ -14,6 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../config/service-endpoints.sh"
 
+PYTHON_BIN="${SEED_ROUTING_PYTHON_BIN:-${POST_DEPLOY_PYTHON_BIN:-python3}}"
+
 COUNT="${1:-}"
 QUERY_COUNT=6
 REPLAY_COUNT=1
@@ -36,6 +38,10 @@ else
 fi
 if [[ -z "$HYBRID_KEY" ]]; then
   printf 'seed-routing-traffic: SKIP — no hybrid API key (set HYBRID_API_KEY)\n' >&2
+  exit 0
+fi
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+  printf 'seed-routing-traffic: SKIP — python runtime not found (%s)\n' "${PYTHON_BIN}" >&2
   exit 0
 fi
 
@@ -93,7 +99,7 @@ for ((r=1; r<=REPLAY_COUNT; r++)); do
       -X POST "${HYBRID_URL%/}/query" \
       -H "Content-Type: application/json" \
       -H "X-API-Key: ${HYBRID_KEY}" \
-      -d "{\"query\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
+      -d "{\"query\":$("${PYTHON_BIN}" -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
       2>/dev/null || true)"
     [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
     if [[ "$HTTP_CODE" =~ ^2 ]]; then
