@@ -330,6 +330,36 @@ async def get_deployment_search_status(recent_limit: int = 8):
     return await asyncio.to_thread(context_store.get_deployment_search_status, recent_limit)
 
 
+@router.get("/deployments/search/context")
+async def search_deployment_context(query: str, limit: int = 12, mode: str = "natural"):
+    """Search deployment-related context across deployments, config, and code."""
+    normalized_mode = (mode or "natural").strip().lower()
+    if normalized_mode not in {"keyword", "semantic", "hybrid", "auto", "natural"}:
+        raise HTTPException(status_code=400, detail="mode must be keyword, semantic, hybrid, auto, or natural")
+
+    semantic_sync = None
+    query_analysis = context_store.analyze_deployment_query(query)
+    effective_mode = query_analysis["recommended_mode"] if normalized_mode in {"auto", "natural"} else normalized_mode
+    if effective_mode in {"semantic", "hybrid"}:
+        try:
+            semantic_sync = await asyncio.wait_for(
+                asyncio.to_thread(context_store.sync_recent_deployments, 1),
+                timeout=1.5,
+            )
+        except asyncio.TimeoutError:
+            semantic_sync = {"status": "timed_out", "synced": 0, "failed": []}
+
+    result = await asyncio.to_thread(context_store.search_deployment_context, query, limit, normalized_mode)
+    return {
+        **result,
+        "query": query,
+        "mode": normalized_mode,
+        "semantic_sync": semantic_sync,
+        "count": len(result.get("results") or []),
+        "limit": limit,
+    }
+
+
 @router.get("/deployments/graph")
 async def get_deployment_graph(
     recent_limit: int = 8,

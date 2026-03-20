@@ -129,6 +129,15 @@ class DeploymentDashboardTests:
             natural_search = await response.json()
 
         async with self.session.get(
+            f"{API_BASE_URL}/deployments/search/context",
+            params={"query": "how to configure nixos dashboard service", "limit": 6, "mode": "natural"},
+        ) as response:
+            if response.status != 200:
+                self.log_test("Deployment Context Search", False, f"HTTP {response.status}")
+                return False
+            context_search = await response.json()
+
+        async with self.session.get(
             f"{API_BASE_URL}/deployments/search/status",
             params={"recent_limit": 5},
         ) as response:
@@ -163,6 +172,11 @@ class DeploymentDashboardTests:
             and natural_search.get("effective_mode") in {"semantic", "hybrid", "keyword"}
             and isinstance(natural_search.get("query_analysis"), dict)
             and all(isinstance(item.get("explanation"), dict) for item in (natural_search.get("results") or []))
+            and context_search.get("mode") == "natural"
+            and isinstance(context_search.get("query_analysis"), dict)
+            and isinstance(context_search.get("sources"), dict)
+            and isinstance(context_search.get("results"), list)
+            and any(item.get("source") in {"config", "code", "semantic", "keyword", "deployment"} for item in (context_search.get("results") or []))
             and isinstance(status.get("recent"), list)
             and "summary" in status
             and isinstance(graph.get("nodes"), list)
@@ -184,7 +198,7 @@ class DeploymentDashboardTests:
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, natural={len(natural_search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, natural={len(natural_search.get('results') or [])}, context={len(context_search.get('results') or [])}, graph_edges={len(graph.get('edges') or [])}, causality_edges={len(causality.get('edges') or [])}, clusters={len(causality.get('clusters') or [])}, cluster_rankings={len(causality.get('cluster_rankings') or [])}, similar_failures={len(causality.get('similar_failures') or [])}, cause_factors={len(causality.get('cause_factors') or [])}",
         )
         return passed
 

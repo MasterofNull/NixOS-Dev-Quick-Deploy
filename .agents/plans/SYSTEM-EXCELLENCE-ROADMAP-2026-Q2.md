@@ -19,7 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, natural-language deployment retrieval with result explanations, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, cluster score-breakdown rankings, and per-cluster evidence drilldowns are live
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, natural-language deployment retrieval with result explanations, context-aware retrieval across deployments/config/code, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, cluster score-breakdown rankings, and per-cluster evidence drilldowns are live
 - ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
@@ -354,6 +354,7 @@ search_interactions("how to configure nixos modules")
 - Add ranked cluster score-breakdown summaries
 - Add per-cluster evidence drilldowns
 - Add natural-language deployment search with query analysis and explanations
+- Add context-aware retrieval across deployments, config, and code
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
@@ -369,6 +370,7 @@ search_interactions("how to configure nixos modules")
 - Cluster rankings now expose score breakdowns and top factors so the chosen root cluster is inspectable rather than opaque.
 - Ranked clusters now include grouped evidence drilldowns for statuses, issues, services, and config references so operators can inspect the underlying signals directly in the dashboard.
 - Deployment search now supports `natural` and `auto` modes with query intent analysis, recommended graph focus, and per-result explanation summaries in both dashboard and CLI.
+- Natural-language operator search now uses a context-aware retrieval path for deployments plus repo config/code context, which consolidates dashboard and harness troubleshooting around a single explainable contract.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -458,6 +460,7 @@ RETURN path
 - [x] Implement semantic search CLI
 - [x] Add natural language query interface
 - [ ] Create context-aware retrieval
+- [x] Create context-aware retrieval for deployments + config/code
 - [ ] Implement multi-modal search (logs + code + config)
 - [x] Add search results ranking with relevance scores and explanations
 
@@ -466,6 +469,7 @@ RETURN path
 - ✅ Semantic search API endpoint with `auto|natural|hybrid|semantic|keyword`
 - ✅ Search results with explanations
 - ✅ Query intent analysis with recommended graph view/focus
+- ✅ Context-aware retrieval across deployments + config/code
 - ⏳ Broader context-aware retrieval beyond deployments
 
 **Validation:**
