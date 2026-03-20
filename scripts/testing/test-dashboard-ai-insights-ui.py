@@ -15,6 +15,8 @@ REQUIRED_SNIPPETS = [
     'id="queryComplexityGrid"',
     'id="structuredRecommendationsList"',
     'id="agentLessonsGrid"',
+    'id="routingProfileList"',
+    'id="workflowComplianceSummary"',
     'function loadQueryComplexityInsights()',
     'function loadStructuredRecommendations()',
     'function loadAgentLessonsInsights()',

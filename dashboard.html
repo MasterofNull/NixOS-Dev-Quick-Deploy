@@ -2599,11 +2599,35 @@
                                     <span class="status-value" id="routingFallback">--</span>
                                 </div>
                             </div>
+                            <div class="data-list" id="routingProfileList" style="margin-top: 0.75rem;">
+                                <div class="data-item">
+                                    <span>Loading model profile utilization...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Workflow Compliance -->
                         <div style="margin-bottom: 1.5rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Workflow Compliance</div>
+                            <div class="status-grid" id="workflowComplianceSummary" style="margin-bottom: 0.75rem;">
+                                <div class="status-item">
+                                    <span class="status-label">Contract Coverage</span>
+                                    <span class="status-value" id="workflowCoveragePct">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Accepted Reviews</span>
+                                    <span class="status-value" id="workflowAcceptedReviews">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Pending Reviews</span>
+                                    <span class="status-value" id="workflowPendingReviews">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Task Tooling Success</span>
+                                    <span class="status-value" id="workflowTaskToolingPct">--</span>
+                                </div>
+                            </div>
                             <div class="data-list" id="workflowComplianceList">
                                 <div class="data-item">
                                     <span>Loading...</span>
@@ -6268,15 +6292,32 @@
                 const response = await fetch(`${FASTAPI_BASE}/api/insights/routing/analytics`, { cache: 'no-store' });
                 if (!response.ok) throw new Error('routing analytics failed');
                 const data = await response.json();
+                const current = data.current || {};
+                const remoteWindows = data.remote_profile_utilization?.windows || {};
+                const remote7d = remoteWindows["7d"] || {};
+                const topProfiles = Array.isArray(remote7d.top_profiles) ? remote7d.top_profiles : [];
 
-                document.getElementById('routingLocalCount').textContent = String(data.local_n || 0);
-                document.getElementById('routingRemoteCount').textContent = String(data.remote_n || 0);
-                document.getElementById('routingLocalPct').textContent = `${(data.local_pct || 0).toFixed(1)}%`;
-                document.getElementById('routingFallback').textContent = data.fallback_used ? 'Yes' : 'No';
-                document.getElementById('routingFallback').className = `status-value status-${data.fallback_used ? 'warning' : 'online'}`;
+                document.getElementById('routingLocalCount').textContent = String(current.local_n || 0);
+                document.getElementById('routingRemoteCount').textContent = String(current.remote_n || 0);
+                document.getElementById('routingLocalPct').textContent = `${Number(current.local_pct || 0).toFixed(1)}%`;
+                document.getElementById('routingFallback').textContent = current.fallback_used ? 'Yes' : 'No';
+                document.getElementById('routingFallback').className = `status-value status-${current.fallback_used ? 'warning' : 'online'}`;
+
+                const profileList = document.getElementById('routingProfileList');
+                if (topProfiles.length) {
+                    profileList.innerHTML = topProfiles.slice(0, 5).map(([profile, calls]) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(profile)}</span>
+                            <span class="data-meta">${escapeHtml(`${calls} calls | success ${Number(remote7d.success_pct || 0).toFixed(1)}% | handoff ${remote7d.handoff_requested || 0}`)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    profileList.innerHTML = '<div class="data-item"><span>No remote model usage in the sampled window</span><span class="data-meta">local only</span></div>';
+                }
             } catch (err) {
                 console.error('Failed to load routing analytics:', err);
                 document.getElementById('routingLocalCount').textContent = 'N/A';
+                document.getElementById('routingProfileList').innerHTML = '<div class="data-item"><span>Routing profiles</span><span class="data-meta status-offline">unavailable</span></div>';
             }
         }
 
@@ -6285,13 +6326,25 @@
                 const response = await fetch(`${FASTAPI_BASE}/api/insights/workflows/compliance`, { cache: 'no-store' });
                 if (!response.ok) throw new Error('workflow compliance failed');
                 const data = await response.json();
+                const intent = data.intent_contract || {};
+                const taskTooling = data.task_tooling || {};
+                const acceptedReviews = Number(intent.accepted_reviews || 0);
+                const pendingReviews = Number(intent.pending_reviews || 0);
+                const coveragePct = Number(intent.contract_coverage_pct || 0);
+                const toolingPct = Number(taskTooling.success_pct || 0);
+
+                document.getElementById('workflowCoveragePct').textContent = `${coveragePct.toFixed(1)}%`;
+                document.getElementById('workflowAcceptedReviews').textContent = `${acceptedReviews}`;
+                document.getElementById('workflowPendingReviews').textContent = `${pendingReviews}`;
+                document.getElementById('workflowTaskToolingPct').textContent = Number.isFinite(toolingPct) ? `${toolingPct.toFixed(1)}%` : '--';
 
                 const list = document.getElementById('workflowComplianceList');
-                if (data.workflows && Object.keys(data.workflows).length > 0) {
-                    list.innerHTML = Object.entries(data.workflows).map(([name, info]) => `
+                const blueprintRows = Array.isArray(intent.accepted_blueprints) ? intent.accepted_blueprints : [];
+                if (blueprintRows.length > 0) {
+                    list.innerHTML = blueprintRows.slice(0, 6).map(([name, runs]) => `
                         <div class="data-item">
-                            <span>${name}</span>
-                            <span class="data-meta">${info.compliance_pct?.toFixed(1) || 0}% compliant (${info.runs || 0} runs)</span>
+                            <span>${escapeHtml(name)}</span>
+                            <span class="data-meta">${escapeHtml(`${runs} accepted runs | reviewer-gate ${intent.reviewer_gate_required_runs || 0} required | reviews ${acceptedReviews}/${acceptedReviews + pendingReviews}`)}</span>
                         </div>
                     `).join('');
                 } else {
@@ -6299,6 +6352,10 @@
                 }
             } catch (err) {
                 console.error('Failed to load workflow compliance:', err);
+                document.getElementById('workflowCoveragePct').textContent = '--';
+                document.getElementById('workflowAcceptedReviews').textContent = '--';
+                document.getElementById('workflowPendingReviews').textContent = '--';
+                document.getElementById('workflowTaskToolingPct').textContent = '--';
                 document.getElementById('workflowComplianceList').innerHTML = '<div class="data-item"><span>Workflow compliance</span><span class="data-meta status-offline">unavailable</span></div>';
             }
         }
