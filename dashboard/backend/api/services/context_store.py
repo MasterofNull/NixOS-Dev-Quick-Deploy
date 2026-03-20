@@ -681,6 +681,59 @@ class ContextStore:
         }
 
     @staticmethod
+    def build_operator_guidance(query: str, query_analysis: Dict[str, Any], results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        intent = str(query_analysis.get("intent") or "retrieval")
+        graph_view = str(query_analysis.get("recommended_graph_view") or "overview")
+        focus = str(query_analysis.get("focus") or "").strip()
+        recommended_sources = [str(source) for source in (query_analysis.get("recommended_sources") or []) if source]
+        result_sources = []
+        if results:
+            result_sources = list(
+                dict.fromkeys(str(item.get("source") or item.get("event_type") or "deployment") for item in results)
+            )
+
+        lowered_query = (query or "").lower()
+        if intent == "diagnostic":
+            insight_target = "query_complexity"
+            summary = "Use ranked retrieval first, then inspect causality and query-complexity signals for incident analysis."
+        elif any(token in lowered_query for token in ("a2a", "agent", "coordinator", "workflow")):
+            insight_target = "a2a_readiness"
+            summary = "Check coordination readiness, then inspect deployment and log context for supporting evidence."
+        else:
+            insight_target = "full_report"
+            summary = "Use ranked retrieval first, then pivot into graph and full insights for broader operator context."
+
+        next_actions = [
+            {
+                "label": "graph",
+                "target": graph_view,
+                "focus": focus,
+                "reason": f"Recommended for {intent} queries",
+            },
+            {
+                "label": "insight",
+                "target": insight_target,
+                "reason": "Suggested follow-up insights surface",
+            },
+        ]
+        if result_sources:
+            next_actions.append({
+                "label": "sources",
+                "target": ",".join(result_sources[:3]),
+                "reason": "Highest-signal evidence sources returned",
+            })
+
+        return {
+            "summary": summary,
+            "recommended_graph_view": graph_view,
+            "focus": focus,
+            "insight_target": insight_target,
+            "recommended_sources": recommended_sources,
+            "result_sources": result_sources,
+            "next_actions": next_actions,
+        }
+
+    @staticmethod
     def explain_deployment_search_result(query: str, result: Dict[str, Any]) -> Dict[str, Any]:
         normalized_query = (query or "").lower()
         query_terms = [
@@ -981,6 +1034,7 @@ class ContextStore:
         return {
             "results": combined,
             "query_analysis": query_analysis,
+            "operator_guidance": self.build_operator_guidance(query, query_analysis, combined),
             "effective_mode": effective_mode,
             "sources": sources,
         }
