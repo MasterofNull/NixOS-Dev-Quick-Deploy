@@ -145,6 +145,18 @@ async def get_query_complexity():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/performance/hotspots")
+async def get_performance_hotspots():
+    """Get the current highest-signal performance hotspots for Phase 5 work."""
+    try:
+        service = get_insights_service()
+        hotspots = await service.get_performance_hotspots()
+        return hotspots
+    except Exception as e:
+        logger.error(f"Failed to get performance hotspots: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # Cache Analytics Endpoints
 # ============================================================================
