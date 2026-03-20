@@ -35,6 +35,7 @@ REQUIRED_SNIPPETS = [
     'score ${item.score} / count ${item.count}',
     'cluster score breakdown',
     'ranked cause factors',
+    'cluster evidence',
     'function loadDeploymentOps()',
     'function connectDeploymentWebSocket()',
     'function searchDeploymentHistory()',

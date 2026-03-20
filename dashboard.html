@@ -6234,6 +6234,15 @@
                             <span>${escapeHtml((Array.isArray(item.top_factors) ? item.top_factors : []).map((factor) => `${factor.category}:${factor.label}`).join(' | ') || 'top factors pending')}</span>
                             <span class="data-meta">ranked cause factors</span>
                         </div>
+                        <div class="data-item">
+                            <span>${escapeHtml([
+                                Array.isArray(item.evidence?.statuses) && item.evidence.statuses.length ? `statuses=${item.evidence.statuses.map((entry) => `${entry.label}(${entry.count})`).join(',')}` : '',
+                                Array.isArray(item.evidence?.issues) && item.evidence.issues.length ? `issues=${item.evidence.issues.map((entry) => `${entry.label}(${entry.count})`).join(',')}` : '',
+                                Array.isArray(item.evidence?.services) && item.evidence.services.length ? `services=${item.evidence.services.map((entry) => `${entry.label}(${entry.count})`).join(',')}` : '',
+                                Array.isArray(item.evidence?.configs) && item.evidence.configs.length ? `configs=${item.evidence.configs.map((entry) => `${entry.label}(${entry.count})`).join(',')}` : '',
+                            ].filter(Boolean).join(' | ') || 'evidence pending')}</span>
+                            <span class="data-meta">cluster evidence</span>
+                        </div>
                     `).join('');
                     const edgeItems = edges.slice(0, 8).map((edge) => `
                         <div class="data-item">

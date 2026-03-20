@@ -869,6 +869,24 @@ class ContextStore:
                 "configs": len(cluster.get("shared_configs") or []) * 2,
                 "failed_status": 2 if "failed" in (cluster.get("shared_statuses") or []) else 0,
             }
+            evidence = {
+                "statuses": [
+                    {"label": status, "count": sum(1 for dep_id in cluster.get("deployment_ids") or [] if deployment_features.get(dep_id, {}).get("status") == status)}
+                    for status in (cluster.get("shared_statuses") or [])
+                ],
+                "issues": [
+                    {"label": issue, "count": sum(1 for dep_id in cluster.get("deployment_ids") or [] if issue in deployment_features.get(dep_id, {}).get("issues", set()))}
+                    for issue in (cluster.get("shared_issues") or [])
+                ],
+                "services": [
+                    {"label": service, "count": sum(1 for dep_id in cluster.get("deployment_ids") or [] if service in deployment_features.get(dep_id, {}).get("services", set()))}
+                    for service in (cluster.get("shared_services") or [])
+                ],
+                "configs": [
+                    {"label": config_path, "count": sum(1 for dep_id in cluster.get("deployment_ids") or [] if config_path in deployment_features.get(dep_id, {}).get("configs", set()))}
+                    for config_path in (cluster.get("shared_configs") or [])
+                ],
+            }
             rankings.append({
                 "cluster_id": cluster.get("cluster_id"),
                 "root_score": int(cluster.get("root_score", 0)),
@@ -876,6 +894,7 @@ class ContextStore:
                 "shared_statuses": list(cluster.get("shared_statuses") or []),
                 "score_breakdown": score_breakdown,
                 "top_factors": factors[:3],
+                "evidence": evidence,
             })
         return sorted(
             rankings,
