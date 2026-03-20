@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,7 +14,33 @@ os.environ.setdefault("AI_STRICT_ENV", "false")
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
 
+
+class _DummyLogger:
+    def bind(self, **kwargs):
+        return self
+
+    def __getattr__(self, _name):
+        return lambda *args, **kwargs: None
+
+
+if "structlog" not in sys.modules:
+    sys.modules["structlog"] = types.SimpleNamespace(get_logger=lambda *args, **kwargs: _DummyLogger())
+if "mcp" not in sys.modules:
+    mcp_module = types.ModuleType("mcp")
+    mcp_types_module = types.ModuleType("mcp.types")
+    class _DummyMcpType:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    mcp_types_module.TextContent = _DummyMcpType
+    mcp_types_module.Tool = _DummyMcpType
+    mcp_module.types = mcp_types_module
+    sys.modules["mcp"] = mcp_module
+    sys.modules["mcp.types"] = mcp_types_module
+
 from ai_coordinator import coerce_orchestration_context  # noqa: E402
+from http_server import _apply_consensus_update, _build_workflow_run_session  # noqa: E402
 
 BLUEPRINTS_PATH = ROOT / "config" / "workflow-blueprints.json"
 
@@ -48,6 +75,36 @@ def main() -> int:
     hardening_policy = (blueprints.get("nixos-service-hardening") or {}).get("orchestration_policy") or {}
     assert_true(hardening_policy.get("primary_lane") == "hardening", "hardening blueprint should expose hardening lane")
     assert_true(hardening_policy.get("consensus_mode") == "reviewer-gate", "hardening blueprint should stay reviewer-gated")
+
+    session = _build_workflow_run_session(
+        query="Validate orchestrated consensus behavior",
+        data={"blueprint_id": "remote-reasoning-escalation"},
+        selected_blueprint=blueprints.get("remote-reasoning-escalation"),
+        orchestration=default_ctx,
+        lesson_refs=[],
+    )
+    consensus = session.get("consensus") or {}
+    candidates = consensus.get("candidates") or []
+    assert_true(consensus.get("status") == "pending", "new sessions should seed pending consensus state")
+    assert_true(len(candidates) >= 2, "session consensus should seed multiple candidates")
+    assert_true(bool(consensus.get("selected_candidate_id")), "session consensus should select an initial candidate")
+
+    updated = _apply_consensus_update(
+        session,
+        selected_candidate_id=str(consensus.get("selected_candidate_id") or ""),
+        decisions=[
+            {
+                "candidate_id": str(consensus.get("selected_candidate_id") or ""),
+                "reviewer": "codex",
+                "verdict": "accept",
+                "rationale": "best fit for the requested workflow",
+            }
+        ],
+        summary="reviewer accepted the seeded primary candidate",
+    )
+    assert_true(updated.get("status") == "accepted", "accepted reviewer decision should accept consensus")
+    assert_true(len(updated.get("history") or []) == 1, "consensus history should record the decision")
+    assert_true(session.get("trajectory") and session["trajectory"][-1].get("event_type") == "consensus_update", "session trajectory should record consensus updates")
 
     print("PASS: workflow orchestration defaults keep top-level agents as orchestrators and sub-agents bounded")
     return 0
