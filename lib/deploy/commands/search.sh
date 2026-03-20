@@ -139,7 +139,12 @@ search_deployments() {
         "Query intent: \(.query_analysis.intent // "retrieval") | requested mode: \(.mode) | effective mode: \(.effective_mode // .mode)",
         (if .sources then "Sources: deployments=\(.sources.deployment // 0) logs=\(.sources.logs // 0) config=\(.sources.config // 0) code=\(.sources.code // 0)" else empty end),
         (.results[] |
-        "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")")
+        "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")\(
+          if (.explanation.rank_score // null) != null
+          then " | rank: \(.explanation.rank_score)"
+          else ""
+          end
+        )")
       end
     '
   else
