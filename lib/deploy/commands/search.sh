@@ -22,7 +22,7 @@ USAGE:
 
 OPTIONS:
   --type TYPE             Search type (deployments/logs/code/all)
-  --mode MODE             Retrieval mode for deployments (hybrid/semantic/keyword)
+  --mode MODE             Retrieval mode for deployments (hybrid/semantic/keyword/auto/natural)
   --limit N               Maximum results (default: 10)
   --format FORMAT         Output format (text/json)
   --since TIME            Search since timestamp (for logs)
@@ -32,6 +32,7 @@ EXAMPLES:
   deploy search "mTLS configuration"       # Search all
   deploy search "failed deployment" --type logs
   deploy search "similar rollback issue" --type deployments --mode semantic
+  deploy search "why did deployment fail last night" --type deployments --mode natural
   deploy search "nixos config" --type code
   deploy search "ai-stack" --limit 20
 
@@ -129,8 +130,9 @@ search_deployments() {
       if (.results | length) == 0 then
         "No deployment matches"
       else
-        .results[] |
-        "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")"
+        "Query intent: \(.query_analysis.intent // "retrieval") | requested mode: \(.mode) | effective mode: \(.effective_mode // .mode)",
+        (.results[] |
+        "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")")
       end
     '
   else

@@ -2441,6 +2441,8 @@
                         <div class="deployment-toolbar">
                             <input type="text" class="search-box" id="deploymentSearch" placeholder="Search deployment history or logs..." onkeydown="if (event.key === 'Enter') searchDeploymentHistory()">
                             <select id="deploymentSearchMode" class="search-box" style="max-width: 180px;">
+                                <option value="natural">Natural Language</option>
+                                <option value="auto">Auto Route</option>
                                 <option value="hybrid">Hybrid Search</option>
                                 <option value="semantic">Semantic Search</option>
                                 <option value="keyword">Keyword Search</option>
@@ -2982,6 +2984,7 @@
             active: [],
             history: [],
             searchResults: [],
+            searchMeta: null,
             selectedId: null,
             selectedDetail: null,
             selectedLogs: [],
@@ -6100,6 +6103,11 @@
                 if (!response.ok) throw new Error(`deployment search HTTP ${response.status}`);
                 const data = await response.json();
                 deploymentState.searchResults = Array.isArray(data.results) ? data.results : [];
+                deploymentState.searchMeta = {
+                    mode: data.mode || mode,
+                    effectiveMode: data.effective_mode || mode,
+                    queryAnalysis: data.query_analysis || {},
+                };
                 renderDeploymentSearchResults();
             } catch (error) {
                 console.error('Failed to search deployment history:', error);
@@ -6353,6 +6361,8 @@
         function renderDeploymentSearchResults() {
             const container = document.getElementById('deploymentSearchResults');
             if (!container) return;
+            const searchMeta = deploymentState.searchMeta || {};
+            const queryAnalysis = searchMeta.queryAnalysis || {};
 
             if (!deploymentState.searchResults.length) {
                 const query = document.getElementById('deploymentSearch')?.value?.trim();
@@ -6362,15 +6372,26 @@
                 return;
             }
 
-            container.innerHTML = deploymentState.searchResults.map((result) => `
+            const summaryItem = `
+                <div class="data-item">
+                    <div>
+                        <div>${escapeHtml(`intent=${queryAnalysis.intent || 'retrieval'} | requested=${searchMeta.mode || 'hybrid'} | effective=${searchMeta.effectiveMode || searchMeta.mode || 'hybrid'}`)}</div>
+                        <div class="data-meta">${escapeHtml(`graph=${queryAnalysis.recommended_graph_view || 'overview'}${queryAnalysis.focus ? ` | focus=${queryAnalysis.focus}` : ''}`)}</div>
+                    </div>
+                    <div class="data-meta">query analysis</div>
+                </div>
+            `;
+
+            container.innerHTML = `${summaryItem}${deploymentState.searchResults.map((result) => `
                 <div class="data-item" style="cursor: pointer;" onclick="selectDeployment('${escapeHtml(result.deployment_id)}')">
                     <div>
                         <div>${escapeHtml(result.deployment_id)}</div>
                         <div class="data-meta">${escapeHtml(result.snippet || result.message || '')}</div>
+                        <div class="data-meta">${escapeHtml(result.explanation?.summary || 'match')}</div>
                     </div>
                     <div class="data-meta">${escapeHtml(result.source || result.event_type || 'event')}</div>
                 </div>
-            `).join('');
+            `).join('')}`;
         }
 
         function renderDeploymentDetail() {
