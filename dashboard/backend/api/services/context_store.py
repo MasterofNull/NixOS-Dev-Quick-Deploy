@@ -231,12 +231,70 @@ class ContextStore:
                 last_error TEXT
             );
 
+            -- Service-level coverage tables (Phase 3.2)
+            CREATE TABLE IF NOT EXISTS deployment_service_states (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deployment_id TEXT NOT NULL,
+                service_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                metadata TEXT,
+                UNIQUE(deployment_id, service_name, timestamp)
+            );
+
+            CREATE TABLE IF NOT EXISTS service_dependencies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_name TEXT NOT NULL,
+                depends_on_service TEXT NOT NULL,
+                dependency_type TEXT,
+                metadata TEXT,
+                UNIQUE(service_name, depends_on_service)
+            );
+
+            -- Config-level coverage tables (Phase 3.2)
+            CREATE TABLE IF NOT EXISTS deployment_config_changes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deployment_id TEXT NOT NULL,
+                config_key TEXT NOT NULL,
+                config_value TEXT,
+                change_type TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                metadata TEXT,
+                UNIQUE(deployment_id, config_key, timestamp)
+            );
+
+            CREATE TABLE IF NOT EXISTS config_validation_state (
+                config_key TEXT PRIMARY KEY,
+                validation_status TEXT NOT NULL,
+                last_validated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                metadata TEXT
+            );
+
+            -- Enhanced causality table (Phase 3.2)
+            CREATE TABLE IF NOT EXISTS deployment_relationships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deployment_id_1 TEXT NOT NULL,
+                deployment_id_2 TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,
+                metadata TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(deployment_id_1, deployment_id_2, relationship_type)
+            );
+
             -- Create indexes for performance
             CREATE INDEX IF NOT EXISTS idx_deployment_events_id ON deployment_events(deployment_id);
             CREATE INDEX IF NOT EXISTS idx_deployment_events_timestamp ON deployment_events(timestamp);
             CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status);
             CREATE INDEX IF NOT EXISTS idx_deployments_started ON deployments(started_at);
             CREATE INDEX IF NOT EXISTS idx_deployment_semantic_document_id ON deployment_semantic_index(document_id);
+            CREATE INDEX IF NOT EXISTS idx_service_states_deployment ON deployment_service_states(deployment_id);
+            CREATE INDEX IF NOT EXISTS idx_service_states_service ON deployment_service_states(service_name);
+            CREATE INDEX IF NOT EXISTS idx_service_deps_service ON service_dependencies(service_name);
+            CREATE INDEX IF NOT EXISTS idx_service_deps_depends_on ON service_dependencies(depends_on_service);
+            CREATE INDEX IF NOT EXISTS idx_config_changes_deployment ON deployment_config_changes(deployment_id);
+            CREATE INDEX IF NOT EXISTS idx_config_changes_key ON deployment_config_changes(config_key);
+            CREATE INDEX IF NOT EXISTS idx_relationships_deployment_1 ON deployment_relationships(deployment_id_1);
+            CREATE INDEX IF NOT EXISTS idx_relationships_deployment_2 ON deployment_relationships(deployment_id_2);
         """)
 
         self.conn.commit()
@@ -1923,6 +1981,284 @@ class ContextStore:
             return cursor.lastrowid
 
         return self._execute_write("track_file_edit", write)
+
+    # ========================================================================
+    # Phase 3.2: Service-Level Coverage
+    # ========================================================================
+
+    def add_service_state(self, deployment_id: str, service_name: str,
+                         status: str, metadata: dict = None) -> int:
+        """Track service state for a deployment"""
+        def write() -> int:
+            metadata_json = json.dumps(metadata) if metadata else None
+            now = self._timestamp()
+
+            cursor = self.conn.execute("""
+                INSERT INTO deployment_service_states
+                (deployment_id, service_name, status, timestamp, metadata)
+                VALUES (?, ?, ?, ?, ?)
+            """, (deployment_id, service_name, status, now, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_service_state", write)
+
+    def add_service_dependency(self, service_name: str, depends_on_service: str,
+                              dep_type: str = "required", metadata: dict = None) -> int:
+        """Track service dependency relationship"""
+        def write() -> int:
+            metadata_json = json.dumps(metadata) if metadata else None
+
+            cursor = self.conn.execute("""
+                INSERT OR REPLACE INTO service_dependencies
+                (service_name, depends_on_service, dependency_type, metadata)
+                VALUES (?, ?, ?, ?)
+            """, (service_name, depends_on_service, dep_type, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_service_dependency", write)
+
+    def query_services_by_deployment(self, deployment_id: str) -> List[Dict[str, Any]]:
+        """Get all services tracked for a deployment with their latest states"""
+        cursor = self.conn.execute("""
+            SELECT DISTINCT
+                service_name,
+                status,
+                MAX(timestamp) as last_updated,
+                metadata
+            FROM deployment_service_states
+            WHERE deployment_id = ?
+            GROUP BY service_name, status
+            ORDER BY last_updated DESC
+        """, (deployment_id,))
+
+        results = []
+        for row in cursor:
+            item = dict(row)
+            if item.get("metadata"):
+                try:
+                    item["metadata"] = json.loads(item["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    item["metadata"] = {}
+            results.append(item)
+        return results
+
+    def query_service_health_timeline(self, service_name: str,
+                                     limit: int = 100) -> List[Dict[str, Any]]:
+        """Get health timeline for a specific service across all deployments"""
+        cursor = self.conn.execute("""
+            SELECT
+                deployment_id,
+                service_name,
+                status,
+                timestamp,
+                metadata
+            FROM deployment_service_states
+            WHERE service_name = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (service_name, limit))
+
+        results = []
+        for row in cursor:
+            item = dict(row)
+            if item.get("metadata"):
+                try:
+                    item["metadata"] = json.loads(item["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    item["metadata"] = {}
+            results.append(item)
+        return results
+
+    # ========================================================================
+    # Phase 3.2: Config-Level Coverage
+    # ========================================================================
+
+    def add_config_change(self, deployment_id: str, config_key: str,
+                         config_value: str, change_type: str = "update",
+                         metadata: dict = None) -> int:
+        """Track configuration change for a deployment"""
+        def write() -> int:
+            metadata_json = json.dumps(metadata) if metadata else None
+            now = self._timestamp()
+
+            cursor = self.conn.execute("""
+                INSERT INTO deployment_config_changes
+                (deployment_id, config_key, config_value, change_type, timestamp, metadata)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (deployment_id, config_key, config_value, change_type, now, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_config_change", write)
+
+    def add_config_validation(self, config_key: str, validation_status: str,
+                             metadata: dict = None) -> int:
+        """Track configuration validation state"""
+        def write() -> int:
+            metadata_json = json.dumps(metadata) if metadata else None
+            now = self._timestamp()
+
+            cursor = self.conn.execute("""
+                INSERT OR REPLACE INTO config_validation_state
+                (config_key, validation_status, last_validated, metadata)
+                VALUES (?, ?, ?, ?)
+            """, (config_key, validation_status, now, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_config_validation", write)
+
+    def query_configs_by_deployment(self, deployment_id: str) -> List[Dict[str, Any]]:
+        """Get all config changes for a specific deployment"""
+        cursor = self.conn.execute("""
+            SELECT
+                config_key,
+                config_value,
+                change_type,
+                MAX(timestamp) as last_changed,
+                metadata
+            FROM deployment_config_changes
+            WHERE deployment_id = ?
+            GROUP BY config_key, change_type
+            ORDER BY last_changed DESC
+        """, (deployment_id,))
+
+        results = []
+        for row in cursor:
+            item = dict(row)
+            if item.get("metadata"):
+                try:
+                    item["metadata"] = json.loads(item["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    item["metadata"] = {}
+            results.append(item)
+        return results
+
+    def query_config_impact_timeline(self, config_key: str,
+                                    limit: int = 100) -> List[Dict[str, Any]]:
+        """Get impact timeline of a config key across all deployments"""
+        cursor = self.conn.execute("""
+            SELECT
+                deployment_id,
+                config_key,
+                config_value,
+                change_type,
+                timestamp,
+                metadata
+            FROM deployment_config_changes
+            WHERE config_key = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (config_key, limit))
+
+        results = []
+        for row in cursor:
+            item = dict(row)
+            if item.get("metadata"):
+                try:
+                    item["metadata"] = json.loads(item["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    item["metadata"] = {}
+            results.append(item)
+        return results
+
+    # ========================================================================
+    # Phase 3.2: Enhanced Causality
+    # ========================================================================
+
+    def add_temporal_edge(self, deployment_id_1: str, deployment_id_2: str,
+                         time_delta_seconds: int = 0, metadata: dict = None) -> int:
+        """Add temporal causality edge between deployments"""
+        def write() -> int:
+            metadata_dict = metadata or {}
+            metadata_dict["time_delta_seconds"] = time_delta_seconds
+            metadata_json = json.dumps(metadata_dict)
+
+            cursor = self.conn.execute("""
+                INSERT OR REPLACE INTO deployment_relationships
+                (deployment_id_1, deployment_id_2, relationship_type, metadata)
+                VALUES (?, ?, 'preceded_by', ?)
+            """, (deployment_id_1, deployment_id_2, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_temporal_edge", write)
+
+    def add_cascading_failure(self, source_deployment_id: str,
+                             target_deployment_id: str,
+                             propagation_metadata: dict = None) -> int:
+        """Add cascading failure relationship between deployments"""
+        def write() -> int:
+            metadata_dict = propagation_metadata or {}
+            metadata_dict["failure_propagation"] = True
+            metadata_json = json.dumps(metadata_dict)
+
+            cursor = self.conn.execute("""
+                INSERT OR REPLACE INTO deployment_relationships
+                (deployment_id_1, deployment_id_2, relationship_type, metadata)
+                VALUES (?, ?, 'cascaded_to', ?)
+            """, (source_deployment_id, target_deployment_id, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_cascading_failure", write)
+
+    def find_root_cause_group(self, deployment_id: str) -> Dict[str, Any]:
+        """Find all deployments with the same root cause"""
+        # Get deployment details
+        summary = self.get_deployment_summary(deployment_id)
+        if not summary:
+            return {"deployment_id": deployment_id, "root_cause_group": []}
+
+        # Get all related deployments through relationship table
+        cursor = self.conn.execute("""
+            SELECT DISTINCT deployment_id_2 FROM deployment_relationships
+            WHERE deployment_id_1 = ? AND relationship_type IN ('same_root_cause', 'related_to')
+            UNION
+            SELECT DISTINCT deployment_id_1 FROM deployment_relationships
+            WHERE deployment_id_2 = ? AND relationship_type IN ('same_root_cause', 'related_to')
+        """, (deployment_id, deployment_id))
+
+        related_ids = [row[0] for row in cursor]
+
+        # Get summaries for related deployments
+        related_summaries = []
+        for related_id in related_ids:
+            related_summary = self.get_deployment_summary(related_id)
+            if related_summary:
+                related_summaries.append(related_summary)
+
+        return {
+            "deployment_id": deployment_id,
+            "root_cause_group": related_summaries,
+            "group_size": len(related_summaries) + 1,
+        }
+
+    def add_root_cause_edge(self, deployment_id_1: str, deployment_id_2: str,
+                           root_cause_info: dict = None) -> int:
+        """Add same root cause relationship between deployments"""
+        def write() -> int:
+            metadata_dict = root_cause_info or {}
+            metadata_json = json.dumps(metadata_dict)
+
+            cursor = self.conn.execute("""
+                INSERT OR REPLACE INTO deployment_relationships
+                (deployment_id_1, deployment_id_2, relationship_type, metadata)
+                VALUES (?, ?, 'same_root_cause', ?)
+            """, (deployment_id_1, deployment_id_2, metadata_json))
+
+            self.conn.commit()
+            return cursor.lastrowid
+
+        return self._execute_write("add_root_cause_edge", write)
 
     # ========================================================================
     # Cleanup and Maintenance

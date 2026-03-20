@@ -523,3 +523,85 @@ async def rollback_deployment(deployment_id: str, request: DeploymentRollbackReq
         "returncode": result.returncode,
         "output": output,
     }
+
+
+# ============================================================================
+# Phase 3.2: Service-Level Knowledge Graph Endpoints
+# ============================================================================
+
+@router.get("/deployments/{deployment_id}/services")
+async def get_deployment_services(deployment_id: str):
+    """Get service states for a deployment"""
+    summary = context_store.get_deployment_summary(deployment_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+
+    services = context_store.query_services_by_deployment(deployment_id)
+    return {
+        "deployment_id": deployment_id,
+        "services": services,
+        "count": len(services),
+    }
+
+
+@router.get("/deployments/{deployment_id}/configs")
+async def get_deployment_configs(deployment_id: str):
+    """Get configuration changes for a deployment"""
+    summary = context_store.get_deployment_summary(deployment_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+
+    configs = context_store.query_configs_by_deployment(deployment_id)
+    return {
+        "deployment_id": deployment_id,
+        "configs": configs,
+        "count": len(configs),
+    }
+
+
+@router.get("/deployments/{deployment_id}/causality")
+async def get_deployment_causality(deployment_id: str):
+    """Get causality relationships for a deployment"""
+    summary = context_store.get_deployment_summary(deployment_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+
+    root_cause_group = context_store.find_root_cause_group(deployment_id)
+    return {
+        "deployment_id": deployment_id,
+        "root_cause_group": root_cause_group,
+    }
+
+
+# ============================================================================
+# Phase 3.2: Service Health Timeline Endpoints
+# ============================================================================
+
+@router.get("/services/{service_name}/health-timeline")
+async def get_service_health_timeline(service_name: str, limit: int = 100):
+    """Get health timeline for a specific service across all deployments"""
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+
+    timeline = context_store.query_service_health_timeline(service_name, limit=limit)
+    return {
+        "service_name": service_name,
+        "timeline": timeline,
+        "count": len(timeline),
+        "limit": limit,
+    }
+
+
+@router.get("/configs/{config_key}/impact-timeline")
+async def get_config_impact_timeline(config_key: str, limit: int = 100):
+    """Get impact timeline of a config key across all deployments"""
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+
+    timeline = context_store.query_config_impact_timeline(config_key, limit=limit)
+    return {
+        "config_key": config_key,
+        "timeline": timeline,
+        "count": len(timeline),
+        "limit": limit,
+    }
