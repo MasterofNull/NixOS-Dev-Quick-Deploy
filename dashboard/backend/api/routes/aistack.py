@@ -2518,6 +2518,7 @@ async def get_security_audit() -> Dict[str, Any]:
     latest_report = audit_dir / "latest-security-audit.json"
     high_alert = audit_dir / "latest-high-cve-alert.json"
     dashboard_scan = audit_dir / "latest-dashboard-security-scan.json"
+    secrets_rotation = audit_dir / "latest-secrets-rotation-plan.json"
     npm_dir = Path(os.getenv("AI_NPM_SECURITY_DIR", str(audit_dir / "npm")))
     npm_latest_report = npm_dir / "latest-npm-security.json"
     npm_quarantine = npm_dir / "quarantine-state.json"
@@ -2622,6 +2623,21 @@ async def get_security_audit() -> Dict[str, Any]:
         payload["dashboard_operator"] = {
             "status": "no_report",
             "report_path": str(dashboard_scan),
+        }
+    if secrets_rotation.exists():
+        try:
+            with open(secrets_rotation) as f:
+                payload["secrets_rotation"] = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            payload["secrets_rotation"] = {
+                "status": "error",
+                "report_path": str(secrets_rotation),
+                "message": f"Failed to parse secrets rotation report: {str(e)}",
+            }
+    else:
+        payload["secrets_rotation"] = {
+            "status": "no_report",
+            "report_path": str(secrets_rotation),
         }
     if message:
         payload["message"] = message

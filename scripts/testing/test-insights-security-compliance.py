@@ -55,11 +55,19 @@ def main() -> int:
                 data.get("controls", {}).get("dashboard_security_scan_automation") is True,
                 "dashboard security scan automation should be reported",
             )
+            assert_true(
+                data.get("controls", {}).get("secrets_rotation_planning") is True,
+                "secrets rotation planning should be reported",
+            )
             assert_true((data.get("audit") or {}).get("total_events", 0) >= 1, "audit summary should include events")
             assert_true((data.get("audit_integrity") or {}).get("valid") is True, "audit integrity should validate")
             assert_true(
                 "external security scan automation still pending" in (data.get("gaps") or []),
                 "remaining external scan gap should still be reported",
+            )
+            assert_true(
+                "live secrets rotation execution still requires explicit operator approval" in (data.get("gaps") or []),
+                "rotation execution boundary should still be reported",
             )
 
         print("PASS: security compliance insights regression")
