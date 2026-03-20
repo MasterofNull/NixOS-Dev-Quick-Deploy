@@ -6,6 +6,7 @@ OUTPUT_DIR="${AI_SECURITY_AUDIT_DIR:-${HOME}/.local/share/nixos-ai-stack/securit
 HIGH_CVSS_THRESHOLD="${AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD:-7.0}"
 NOTIFY_USER="${AI_SECURITY_AUDIT_NOTIFY_USER:-}"
 DASHBOARD_SCAN_SCRIPT="${REPO_ROOT}/scripts/security/dashboard-security-scan.sh"
+SECRETS_ROTATION_PLAN_SCRIPT="${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh"
 
 usage() {
   cat <<'EOF'
@@ -157,9 +158,29 @@ if [[ -x "${DASHBOARD_SCAN_SCRIPT}" ]]; then
   fi
 fi
 
+secrets_rotation_report="${OUTPUT_DIR}/latest-secrets-rotation-plan.json"
+secrets_rotation_status="unavailable"
+if [[ -x "${SECRETS_ROTATION_PLAN_SCRIPT}" ]]; then
+  set +e
+  "${SECRETS_ROTATION_PLAN_SCRIPT}" --output "${secrets_rotation_report}" >"${tmp_root}/secrets-plan.stdout" 2>"${tmp_root}/secrets-plan.stderr"
+  secrets_plan_rc=$?
+  set -e
+  if [[ ${secrets_plan_rc} -eq 0 && -f "${secrets_rotation_report}" ]]; then
+    secrets_rotation_status="$(jq -r 'if .rotation_ready then "ready" else "planning_required" end' "${secrets_rotation_report}")"
+  else
+    jq -n \
+      --arg generated_at "${timestamp}" \
+      --arg status "error" \
+      --arg error "$(cat "${tmp_root}/secrets-plan.stderr" 2>/dev/null)" \
+      '{generated_at: $generated_at, status: $status, error: $error}' \
+      > "${secrets_rotation_report}"
+    secrets_rotation_status="error"
+  fi
+fi
+
 high_or_critical=$((npm_total_high + npm_total_critical))
 overall_status="ok"
-if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" ]]; then
+if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
   overall_status="findings"
 fi
 
@@ -177,6 +198,8 @@ jq -n \
   --argjson npm_available "$( [[ "${npm_available}" == true ]] && echo true || echo false )" \
   --arg dashboard_scan_status "${dashboard_scan_status}" \
   --arg dashboard_scan_report "${dashboard_scan_report}" \
+  --arg secrets_rotation_status "${secrets_rotation_status}" \
+  --arg secrets_rotation_report "${secrets_rotation_report}" \
   --argjson pip_reports "$(find "${pip_results_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
   --argjson npm_reports "$(find "${npm_results_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
   '{
@@ -199,12 +222,17 @@ jq -n \
       dashboard_operator: {
         status: $dashboard_scan_status,
         report_path: $dashboard_scan_report
+      },
+      secrets_rotation: {
+        status: $secrets_rotation_status,
+        report_path: $secrets_rotation_report
       }
     },
     reports: {
       pip: $pip_reports,
       npm: $npm_reports,
-      dashboard_operator: $dashboard_scan_report
+      dashboard_operator: $dashboard_scan_report,
+      secrets_rotation: $secrets_rotation_report
     }
   }' > "${report_file}"
 

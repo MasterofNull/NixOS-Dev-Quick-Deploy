@@ -258,6 +258,7 @@ class AIInsightsService:
                 "operator_audit_log": bool(audit_summary.get("append_only")),
                 "tamper_evident_audit_sealing": bool(audit_summary.get("tamper_evident")),
                 "dashboard_security_scan_automation": True,
+                "secrets_rotation_planning": True,
             },
             "rate_limiting": {
                 "enabled": bool(rate_limiter.enabled()),
@@ -271,6 +272,7 @@ class AIInsightsService:
             "gaps": [
                 "automated compliance report export still pending",
                 "external security scan automation still pending",
+                "live secrets rotation execution still requires explicit operator approval",
             ],
         }
 

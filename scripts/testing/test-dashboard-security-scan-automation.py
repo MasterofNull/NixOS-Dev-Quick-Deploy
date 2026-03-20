@@ -133,6 +133,22 @@ def main() -> int:
                 report_path.read_text(encoding="utf-8"),
                 encoding="utf-8",
             )
+            (audit_dir / "latest-secrets-rotation-plan.json").write_text(
+                json.dumps(
+                    {
+                        "rotation_ready": True,
+                        "summary": {"total_managed_secrets": 3, "missing_secrets": 1},
+                        "secrets": [
+                            {
+                                "name": "hybrid_coordinator_api_key",
+                                "restart_groups": ["ai-hybrid-coordinator.service"],
+                                "disruption": "high",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             os.environ["AI_SECURITY_AUDIT_DIR"] = str(audit_dir)
             import importlib
@@ -148,6 +164,10 @@ def main() -> int:
                 assert_true(
                     payload.get("dashboard_operator", {}).get("summary", {}).get("audit_integrity_valid") is True,
                     "dashboard operator report should preserve integrity summary",
+                )
+                assert_true(
+                    payload.get("secrets_rotation", {}).get("rotation_ready") is True,
+                    "secrets rotation plan should be exposed",
                 )
 
         finally:
