@@ -2421,6 +2421,10 @@
                                         <span class="status-value" id="deploymentGraphRootCluster">--</span>
                                     </div>
                                     <div class="status-item">
+                                        <span class="status-label">Ranked Clusters</span>
+                                        <span class="status-value" id="deploymentGraphRankedClusters">--</span>
+                                    </div>
+                                    <div class="status-item">
                                         <span class="status-label">Cause Chain</span>
                                         <span class="status-value" id="deploymentGraphCauseChain">--</span>
                                     </div>
@@ -6167,6 +6171,7 @@
                 document.getElementById('deploymentGraphFocusMatches').textContent = `${data.focus_matches ?? 0}`;
                 document.getElementById('deploymentGraphClusters').textContent = `${data.cluster_count ?? 0}`;
                 document.getElementById('deploymentGraphRootCluster').textContent = data.root_cluster?.cluster_id || '--';
+                document.getElementById('deploymentGraphRankedClusters').textContent = `${(Array.isArray(data.cluster_rankings) ? data.cluster_rankings.length : 0)}`;
                 document.getElementById('deploymentGraphCauseChain').textContent = Array.isArray(data.cause_chain) && data.cause_chain.length
                     ? data.cause_chain.slice(0, 2).join(' -> ')
                     : '--';
@@ -6174,6 +6179,7 @@
                 const list = document.getElementById('deploymentGraphList');
                 const relationshipSummary = Array.isArray(data.top_relationships) ? data.top_relationships : [];
                 const clusters = Array.isArray(data.clusters) ? data.clusters : [];
+                const clusterRankings = Array.isArray(data.cluster_rankings) ? data.cluster_rankings : [];
                 const similarFailures = Array.isArray(data.similar_failures) ? data.similar_failures : [];
                 const causeFactors = Array.isArray(data.cause_factors) ? data.cause_factors : [];
                 const edges = Array.isArray(data.edges) ? data.edges : [];
@@ -6215,6 +6221,20 @@
                             <span class="data-meta">${escapeHtml(`score ${item.score} / count ${item.count}`)}</span>
                         </div>
                     `).join('');
+                    const rankingItems = clusterRankings.slice(0, 3).map((item) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(`${item.cluster_id}: ${item.deployment_ids.join(', ')}`)}</span>
+                            <span class="data-meta">${escapeHtml(`root score ${item.root_score}`)}</span>
+                        </div>
+                        <div class="data-item">
+                            <span>${escapeHtml(`size=${item.score_breakdown?.size ?? 0} | issues=${item.score_breakdown?.issues ?? 0} | services=${item.score_breakdown?.services ?? 0} | configs=${item.score_breakdown?.configs ?? 0} | failed=${item.score_breakdown?.failed_status ?? 0}`)}</span>
+                            <span class="data-meta">cluster score breakdown</span>
+                        </div>
+                        <div class="data-item">
+                            <span>${escapeHtml((Array.isArray(item.top_factors) ? item.top_factors : []).map((factor) => `${factor.category}:${factor.label}`).join(' | ') || 'top factors pending')}</span>
+                            <span class="data-meta">ranked cause factors</span>
+                        </div>
+                    `).join('');
                     const edgeItems = edges.slice(0, 8).map((edge) => `
                         <div class="data-item">
                             <span>${escapeHtml(`${edge.source} -> ${edge.target}`)}</span>
@@ -6227,7 +6247,7 @@
                         </div>
                         ` : ''}
                     `).join('');
-                    list.innerHTML = `${summaryItems}${clusterItems}${failureItems}${causeItems}${edgeItems}`;
+                    list.innerHTML = `${summaryItems}${clusterItems}${rankingItems}${failureItems}${causeItems}${edgeItems}`;
                 } else {
                     list.innerHTML = '<div class="data-item"><span>No deployment graph edges available</span><span class="data-meta">empty</span></div>';
                 }
@@ -6241,6 +6261,7 @@
                 document.getElementById('deploymentGraphFocusMatches').textContent = '--';
                 document.getElementById('deploymentGraphClusters').textContent = '--';
                 document.getElementById('deploymentGraphRootCluster').textContent = '--';
+                document.getElementById('deploymentGraphRankedClusters').textContent = '--';
                 document.getElementById('deploymentGraphCauseChain').textContent = '--';
                 document.getElementById('deploymentGraphList').innerHTML = `<div class="data-item"><span>Deployment graph unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
             }
