@@ -2640,6 +2640,72 @@
                             </div>
                         </div>
 
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Query Complexity Analysis</div>
+                            <div class="status-grid" id="queryComplexityGrid">
+                                <div class="status-item">
+                                    <span class="status-label">Route Calls</span>
+                                    <span class="status-value" id="queryComplexityCalls">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Overall P95</span>
+                                    <span class="status-value" id="queryComplexityP95">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Gap Count</span>
+                                    <span class="status-value" id="queryComplexityGaps">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">RAG Posture</span>
+                                    <span class="status-value" id="queryComplexityPosture">--</span>
+                                </div>
+                            </div>
+                            <div class="data-list" id="queryComplexityBreakdown" style="margin-top: 0.75rem;">
+                                <div class="data-item">
+                                    <span>Loading complexity trends...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Structured Recommendations</div>
+                            <div class="data-list" id="structuredRecommendationsList">
+                                <div class="data-item">
+                                    <span>Loading operator recommendations...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Agent Lessons</div>
+                            <div class="status-grid" id="agentLessonsGrid">
+                                <div class="status-item">
+                                    <span class="status-label">Lesson Events</span>
+                                    <span class="status-value" id="agentLessonsTotal">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Registry Entries</span>
+                                    <span class="status-value" id="agentLessonsRegistryTotal">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Promoted Lessons</span>
+                                    <span class="status-value" id="agentLessonsPromoted">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Registry Writes</span>
+                                    <span class="status-value" id="agentLessonsWriteState">--</span>
+                                </div>
+                            </div>
+                            <div class="data-list" id="agentLessonsList" style="margin-top: 0.75rem;">
+                                <div class="data-item">
+                                    <span>Loading lesson registry...</span>
+                                    <span class="data-meta">--</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Hint Effectiveness -->
                         <div>
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Hint Effectiveness</div>
@@ -5764,6 +5830,9 @@
                 loadRoutingAnalytics(),
                 loadWorkflowCompliance(),
                 loadA2AReadiness(),
+                loadQueryComplexityInsights(),
+                loadStructuredRecommendations(),
+                loadAgentLessonsInsights(),
                 loadHintEffectiveness()
             ]);
         }
@@ -6298,6 +6367,109 @@
                 document.getElementById('a2aStreaming').textContent = '--';
                 document.getElementById('a2aPushNotifications').textContent = '--';
                 document.getElementById('a2aMethodList').innerHTML = '<div class="data-item"><span>A2A readiness</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        async function loadQueryComplexityInsights() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/queries/complexity`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('query complexity failed');
+                const data = await response.json();
+                const latency = data.latency_breakdown || {};
+                const breakdown = Array.isArray(latency.breakdown) ? latency.breakdown : [];
+                const ragPosture = data.rag_posture || {};
+
+                document.getElementById('queryComplexityCalls').textContent = `${latency.total_calls ?? '--'}`;
+                document.getElementById('queryComplexityP95').textContent = Number.isFinite(Number(latency.overall_p95_ms))
+                    ? `${Number(latency.overall_p95_ms).toFixed(0)}ms`
+                    : '--';
+                document.getElementById('queryComplexityGaps').textContent = `${(data.query_gaps || []).length}`;
+                document.getElementById('queryComplexityPosture').textContent = ragPosture.status || 'unknown';
+
+                const list = document.getElementById('queryComplexityBreakdown');
+                if (breakdown.length) {
+                    list.innerHTML = breakdown.slice(0, 6).map((entry) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(entry.label || 'segment')}</span>
+                            <span class="data-meta">${escapeHtml(`${entry.calls || 0} calls | p95 ${Number(entry.p95_ms || 0).toFixed(0)}ms | success ${Number(entry.success_pct || 0).toFixed(1)}%`)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No complexity breakdown available</span><span class="data-meta">--</span></div>';
+                }
+            } catch (err) {
+                console.error('Failed to load query complexity insights:', err);
+                document.getElementById('queryComplexityCalls').textContent = '--';
+                document.getElementById('queryComplexityP95').textContent = '--';
+                document.getElementById('queryComplexityGaps').textContent = '--';
+                document.getElementById('queryComplexityPosture').textContent = 'unavailable';
+                document.getElementById('queryComplexityBreakdown').innerHTML = '<div class="data-item"><span>Query complexity</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        async function loadStructuredRecommendations() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/actions/recommendations`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('structured recommendations failed');
+                const data = await response.json();
+                const actions = Array.isArray(data.actions) ? data.actions : [];
+                const list = document.getElementById('structuredRecommendationsList');
+                if (actions.length) {
+                    list.innerHTML = actions.slice(0, 6).map((action) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(`${action.type || 'action'}:${action.action || 'unknown'}`)}</span>
+                            <span class="data-meta">${escapeHtml(`${action.reason || 'no reason'} | confidence ${Number(action.confidence || 0).toFixed(2)} | ${action.safe ? 'safe' : 'review'}`)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No structured recommendations available</span><span class="data-meta">0 actions</span></div>';
+                }
+            } catch (err) {
+                console.error('Failed to load structured recommendations:', err);
+                document.getElementById('structuredRecommendationsList').innerHTML = '<div class="data-item"><span>Structured recommendations</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        async function loadAgentLessonsInsights() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/agents/lessons`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('agent lessons failed');
+                const data = await response.json();
+                const lessons = data.lessons || {};
+                const registry = lessons.registry || {};
+                const counts = registry.counts || {};
+                const candidates = Array.isArray(lessons.candidates) ? lessons.candidates : [];
+
+                document.getElementById('agentLessonsTotal').textContent = `${lessons.total_events ?? '--'}`;
+                document.getElementById('agentLessonsRegistryTotal').textContent = `${counts.total ?? 0}`;
+                document.getElementById('agentLessonsPromoted').textContent = `${counts.promoted ?? 0}`;
+                document.getElementById('agentLessonsWriteState').textContent = registry.write_failed ? 'degraded' : 'healthy';
+
+                const list = document.getElementById('agentLessonsList');
+                if (candidates.length) {
+                    list.innerHTML = candidates.slice(0, 5).map((lesson) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(`${lesson.agent || 'agent'}:${lesson.hint_id || lesson.lesson_key || 'lesson'}`)}</span>
+                            <span class="data-meta">${escapeHtml(`${lesson.state || 'unknown'} | ${lesson.event_count || 0} events | confidence ${Number(lesson.confidence || 0).toFixed(2)}`)}</span>
+                        </div>
+                    `).join('');
+                } else if (Array.isArray(registry.entries) && registry.entries.length) {
+                    list.innerHTML = registry.entries.slice(0, 5).map((lesson) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(lesson.lesson_key || 'lesson')}</span>
+                            <span class="data-meta">${escapeHtml(`${lesson.state || 'unknown'} | updated ${formatAbsoluteTime(lesson.updated_at)}`)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<div class="data-item"><span>No lesson candidates available</span><span class="data-meta">empty</span></div>';
+                }
+            } catch (err) {
+                console.error('Failed to load agent lessons insights:', err);
+                document.getElementById('agentLessonsTotal').textContent = '--';
+                document.getElementById('agentLessonsRegistryTotal').textContent = '--';
+                document.getElementById('agentLessonsPromoted').textContent = '--';
+                document.getElementById('agentLessonsWriteState').textContent = 'unavailable';
+                document.getElementById('agentLessonsList').innerHTML = '<div class="data-item"><span>Agent lessons</span><span class="data-meta status-offline">unavailable</span></div>';
             }
         }
 
