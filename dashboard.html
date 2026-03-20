@@ -2382,6 +2382,7 @@
                                         <option value="issues">Issue Signals</option>
                                         <option value="services">Service Touches</option>
                                         <option value="configs">Config References</option>
+                                        <option value="causality">Causality</option>
                                     </select>
                                     <input type="text" class="search-box" id="deploymentGraphFocus" placeholder="Filter graph focus..." onkeydown="if (event.key === 'Enter') loadDeploymentGraph()">
                                     <button class="export-btn" onclick="loadDeploymentGraph()">Query Graph</button>
@@ -6166,8 +6167,14 @@
                     const edgeItems = edges.slice(0, 8).map((edge) => `
                         <div class="data-item">
                             <span>${escapeHtml(`${edge.source} -> ${edge.target}`)}</span>
-                            <span class="data-meta">${escapeHtml(edge.relation || 'related')}</span>
+                            <span class="data-meta">${escapeHtml(edge.relation || 'related')}${edge.weight ? ` (${escapeHtml(String(edge.weight))})` : ''}</span>
                         </div>
+                        ${(Array.isArray(edge.reasons) && edge.reasons.length) ? `
+                        <div class="data-item">
+                            <span>${escapeHtml(edge.reasons.join(' | '))}</span>
+                            <span class="data-meta">why related</span>
+                        </div>
+                        ` : ''}
                     `).join('');
                     list.innerHTML = `${summaryItems}${edgeItems}`;
                 } else {
