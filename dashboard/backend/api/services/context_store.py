@@ -43,6 +43,13 @@ GRAPH_QUERY_STOPWORDS = {
     "issues", "error", "errors", "fail", "failed", "failure", "similar", "root",
     "cause", "related",
 }
+LOG_UNIT_HINTS = (
+    "command-center-dashboard-api.service",
+    "ai-hybrid-coordinator.service",
+    "switchboard.service",
+    "prometheus.service",
+    "nixos-rebuild.service",
+)
 
 
 class ContextStore:
@@ -661,9 +668,9 @@ class ContextStore:
         if recommended_graph_view == "configs":
             recommended_sources.extend(["config", "code"])
         elif recommended_graph_view in {"issues", "services"}:
-            recommended_sources.extend(["code"])
+            recommended_sources.extend(["logs", "code"])
         else:
-            recommended_sources.extend(["code", "config"])
+            recommended_sources.extend(["logs", "code", "config"])
         return {
             "intent": intent,
             "recommended_mode": recommended_mode,
@@ -810,6 +817,72 @@ class ContextStore:
             })
         return results
 
+    def search_log_context(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+        if not shutil.which("journalctl"):
+            return []
+        search_terms = self._build_repo_search_terms(query)
+        if not search_terms:
+            return []
+
+        query_analysis = self.analyze_deployment_query(query)
+        unit_hints = list(LOG_UNIT_HINTS)
+        if query_analysis.get("recommended_graph_view") == "services":
+            if "dashboard" in query.lower():
+                unit_hints.insert(0, "command-center-dashboard-api.service")
+            if "hybrid" in query.lower() or "coordinator" in query.lower():
+                unit_hints.insert(0, "ai-hybrid-coordinator.service")
+
+        results: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for unit in dict.fromkeys(unit_hints):
+            if len(results) >= limit:
+                break
+            try:
+                proc = subprocess.run(
+                    ["journalctl", "-u", unit, "--since", "7 days ago", "--no-pager", "-n", "200"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=2,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                logger.warning("Log context search failed for %s: %s", unit, exc)
+                continue
+
+            if proc.returncode not in {0, 1}:
+                continue
+
+            for line in proc.stdout.splitlines():
+                lowered = line.lower()
+                matched_terms = [term for term in search_terms if term in lowered]
+                if not matched_terms:
+                    continue
+                key = f"{unit}:{line}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "id": f"log:{unit}:{len(results)+1}",
+                    "deployment_id": "",
+                    "event_type": "log",
+                    "message": unit,
+                    "timestamp": None,
+                    "progress": None,
+                    "metadata": {"unit": unit},
+                    "relevance_score": len(matched_terms),
+                    "snippet": line.strip()[:240],
+                    "source": "logs",
+                    "explanation": {
+                        "summary": f"log match; matched terms: {', '.join(matched_terms)}",
+                        "matched_terms": matched_terms,
+                        "source_reason": "log match",
+                        "score_hint": len(matched_terms),
+                    },
+                })
+                if len(results) >= limit:
+                    break
+        return results
+
     def search_deployment_context(self, query: str, limit: int = 12, mode: str = "natural") -> Dict[str, Any]:
         query_analysis = self.analyze_deployment_query(query)
         effective_mode = query_analysis["recommended_mode"] if mode in {"auto", "natural"} else mode
@@ -830,12 +903,13 @@ class ContextStore:
             source_filter = "code"
         else:
             source_filter = "all"
+        log_results = self.search_log_context(query, limit=max(4, limit // 2))
         repo_results = self.search_repo_context(query, limit=max(4, limit // 2), source_filter=source_filter)
 
         source_priority = {"deployment": 0, "semantic": 0, "keyword": 1, "config": 2, "code": 3}
         combined: List[Dict[str, Any]] = []
         seen: set[str] = set()
-        for item in deployment_results + repo_results:
+        for item in deployment_results + log_results + repo_results:
             key = str(item.get("id") or f"{item.get('message')}:{item.get('snippet')}")
             if key in seen:
                 continue
@@ -851,6 +925,7 @@ class ContextStore:
         )[:limit]
         sources = {
             "deployment": sum(1 for item in combined if item.get("source") in {"deployment", "semantic", "keyword"}),
+            "logs": sum(1 for item in combined if item.get("source") == "logs"),
             "config": sum(1 for item in combined if item.get("source") == "config"),
             "code": sum(1 for item in combined if item.get("source") == "code"),
         }

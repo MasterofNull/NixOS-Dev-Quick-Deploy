@@ -41,7 +41,7 @@ REQUIRED_SNIPPETS = [
     'query analysis',
     'result.explanation?.summary',
     '/api/deployments/search/context?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}',
-    'sources=d:${searchMeta.sources.deployment ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}',
+    'sources=d:${searchMeta.sources.deployment ?? 0}/l:${searchMeta.sources.logs ?? 0}/c:${searchMeta.sources.config ?? 0}/code:${searchMeta.sources.code ?? 0}',
     'function loadDeploymentOps()',
     'function connectDeploymentWebSocket()',
     'function searchDeploymentHistory()',
