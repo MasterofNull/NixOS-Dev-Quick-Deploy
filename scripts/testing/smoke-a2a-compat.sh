@@ -38,7 +38,8 @@ fi
 
 curl -fsS "${HYB_URL}/.well-known/agent.json" > "${TMP_DIR}/agent.json" || fail "agent card endpoint failed"
 jq -e '.protocolVersion == "0.3.0"' "${TMP_DIR}/agent.json" >/dev/null || fail "agent card protocol version mismatch"
-jq -e '.endpoints.rpc | endswith("/a2a")' "${TMP_DIR}/agent.json" >/dev/null || fail "agent card missing rpc endpoint"
+jq -e '.endpoint | test("^http://localhost:[0-9]+/$")' "${TMP_DIR}/agent.json" >/dev/null || fail "agent card missing root rpc endpoint"
+jq -e '.endpoints.taskEvents | contains("/a2a/tasks/")' "${TMP_DIR}/agent.json" >/dev/null || fail "agent card missing task events endpoint"
 pass "A2A agent card"
 
 cat > "${TMP_DIR}/send.json" <<'EOF'
@@ -152,7 +153,7 @@ EOF
 
 curl -fsS "${auth_hdr[@]}" -H 'Content-Type: application/json' -X POST "${HYB_URL}/a2a" \
   --data @"${TMP_DIR}/cancel.json" > "${TMP_DIR}/cancel-resp.json" || fail "tasks/cancel failed"
-jq -e '.result.status.state == "canceled"' "${TMP_DIR}/cancel-resp.json" >/dev/null || fail "tasks/cancel did not mark task canceled"
+jq -e '.result.status.state == "TASK_STATE_CANCELED"' "${TMP_DIR}/cancel-resp.json" >/dev/null || fail "tasks/cancel did not mark task canceled"
 pass "A2A tasks/cancel"
 
 printf '\nAll A2A compatibility smoke checks passed.\n'
