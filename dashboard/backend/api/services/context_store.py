@@ -1207,6 +1207,20 @@ class ContextStore:
                     and int(item.get("rank_score") or 0) <= 20
                 )
             ]
+        log_items = [item for item in combined if str(item.get("source") or "") == "logs"]
+        dominant_log = None
+        if log_items:
+            dominant_log = max(log_items, key=lambda item: int((item.get("metadata") or {}).get("match_count") or 0))
+        dominant_log_hits = int((dominant_log or {}).get("metadata", {}).get("match_count") or 0)
+        if dominant_log_hits >= 5:
+            combined = [
+                item for item in combined
+                if not (
+                    str(item.get("source") or "") == "logs"
+                    and str(item.get("message") or "") != str((dominant_log or {}).get("message") or "")
+                    and int((item.get("metadata") or {}).get("match_count") or 0) < max(3, dominant_log_hits // 4)
+                )
+            ]
         combined = sorted(
             combined,
             key=lambda item: (
