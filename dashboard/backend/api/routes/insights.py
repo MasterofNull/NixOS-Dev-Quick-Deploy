@@ -93,6 +93,18 @@ async def get_workflow_compliance():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/workflows/phase-4-acceptance")
+async def get_phase_4_acceptance():
+    """Get the latest consolidated Phase 4 workflow acceptance report."""
+    try:
+        service = get_insights_service()
+        acceptance = await service.get_phase4_acceptance_summary()
+        return acceptance
+    except Exception as e:
+        logger.error(f"Failed to get Phase 4 acceptance summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/workflows/a2a-readiness")
 async def get_a2a_readiness():
     """Get A2A compatibility readiness for the hybrid coordinator."""
