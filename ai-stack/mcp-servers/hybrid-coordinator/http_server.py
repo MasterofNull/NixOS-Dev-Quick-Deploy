@@ -7700,6 +7700,105 @@ async def run_http_mode(port: int) -> None:
         middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
     )
     # Phase 1: WebSocket alert handler
+    async def handle_alerts_list(request: web.Request) -> web.Response:
+        """Return active alert-engine alerts for dashboard and validation clients."""
+        try:
+            alert_engine = _get_alert_engine()
+            severity = str(request.query.get("severity", "") or "").strip().lower()
+            component = str(request.query.get("component", "") or "").strip()
+            severity_filter = None
+            if severity:
+                try:
+                    severity_filter = AlertSeverity(severity)
+                except ValueError:
+                    return web.json_response({"error": "invalid severity"}, status=400)
+            alerts = alert_engine.get_active_alerts(severity=severity_filter, component=component or None)
+            return web.json_response(
+                {
+                    "alerts": [alert.to_dict() for alert in alerts],
+                    "count": len(alerts),
+                    "severity_counts": {
+                        level.value: sum(1 for alert in alerts if alert.severity == level)
+                        for level in AlertSeverity
+                    },
+                    "stats": alert_engine.get_stats(),
+                }
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_alert_acknowledge(request: web.Request) -> web.Response:
+        """Acknowledge an alert via HTTP for dashboard integration."""
+        try:
+            alert_id = str(request.match_info.get("alert_id", "") or "").strip()
+            if not alert_id:
+                return web.json_response({"error": "alert_id required"}, status=400)
+            alert_engine = _get_alert_engine()
+            acknowledged = await alert_engine.acknowledge_alert(alert_id)
+            status = 200 if acknowledged else 404
+            return web.json_response(
+                {
+                    "alert_id": alert_id,
+                    "acknowledged": acknowledged,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                status=status,
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_alert_resolve(request: web.Request) -> web.Response:
+        """Resolve an alert via HTTP for validation cleanup and operator actions."""
+        try:
+            alert_id = str(request.match_info.get("alert_id", "") or "").strip()
+            if not alert_id:
+                return web.json_response({"error": "alert_id required"}, status=400)
+            alert_engine = _get_alert_engine()
+            resolved = await alert_engine.resolve_alert(alert_id)
+            status = 200 if resolved else 404
+            return web.json_response(
+                {
+                    "alert_id": alert_id,
+                    "resolved": resolved,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                status=status,
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_alert_test_create(request: web.Request) -> web.Response:
+        """Create a bounded test alert for smoke validation and dashboard wiring checks."""
+        try:
+            data = await request.json() if request.can_read_body else {}
+            severity_raw = str(data.get("severity", "warning") or "warning").strip().lower()
+            try:
+                severity = AlertSeverity(severity_raw)
+            except ValueError:
+                return web.json_response({"error": "invalid severity"}, status=400)
+            title = str(data.get("title") or "Phase 4.1 validation alert").strip()[:120] or "Phase 4.1 validation alert"
+            message = str(data.get("message") or "Synthetic deployment-monitoring-alerting validation alert").strip()[:500]
+            source = str(data.get("source") or "phase-4-1-smoke").strip()[:64] or "phase-4-1-smoke"
+            component = str(data.get("component") or "deployment-monitoring").strip()[:64] or "deployment-monitoring"
+            metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+            alert = await _get_alert_engine().create_alert(
+                title=title,
+                message=message,
+                severity=severity,
+                source=source,
+                component=component,
+                metadata=metadata,
+            )
+            return web.json_response(
+                {
+                    "status": "created",
+                    "alert": alert.to_dict(),
+                },
+                status=201,
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_alerts_websocket(request):
         """
         WebSocket endpoint for real-time browser alert notifications.
@@ -7763,6 +7862,10 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)
     http_app.router.add_get("/health/aggregate", handle_health_aggregate)  # Phase 11.2
+    http_app.router.add_get("/alerts", handle_alerts_list)
+    http_app.router.add_post("/alerts/test", handle_alert_test_create)
+    http_app.router.add_post("/alerts/{alert_id}/acknowledge", handle_alert_acknowledge)
+    http_app.router.add_post("/alerts/{alert_id}/resolve", handle_alert_resolve)
     http_app.router.add_get("/status", handle_status)
     http_app.router.add_get("/stats", handle_stats)
     http_app.router.add_post("/augment_query", handle_augment_query)
