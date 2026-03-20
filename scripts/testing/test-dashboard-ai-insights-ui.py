@@ -17,12 +17,18 @@ REQUIRED_SNIPPETS = [
     'id="agentLessonsGrid"',
     'id="routingProfileList"',
     'id="workflowComplianceSummary"',
+    'id="fullInsightsReportSummary"',
+    'id="strategyLeaderboardList"',
+    'id="reportGapWatchlist"',
     'function loadQueryComplexityInsights()',
     'function loadStructuredRecommendations()',
     'function loadAgentLessonsInsights()',
+    'function loadFullInsightsReport()',
+    'function openFullInsightsReport()',
     '/api/insights/queries/complexity',
     '/api/insights/actions/recommendations',
     '/api/insights/agents/lessons',
+    '/api/insights/report/full',
 ]
 
 
