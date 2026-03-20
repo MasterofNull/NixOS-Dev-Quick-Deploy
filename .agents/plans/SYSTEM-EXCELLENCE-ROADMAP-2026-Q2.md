@@ -416,6 +416,7 @@ search_interactions("how to configure nixos modules")
 - Review and consensus events now also roll into a persistent agent-evaluation registry, giving the harness a first longitudinal selection-feedback surface across runs.
 - Candidate scoring for workflow sessions now reads that longitudinal evaluation registry back in, so prior accepted reviews and prior selections can influence future lane/agent choice.
 - Remote-reasoning workflow runs now support a live arbiter-review path with persisted arbiter decisions, trajectory events, and A2A-visible arbiter artifacts.
+- Workflow run sessions now also expose an initial dynamic team-formation contract, so clients can inspect bounded primary/reviewer/escalation role assignment directly from the coordinator.
 
 **Recent coordination-relevant commits:**
 - bc232c2: Add A2A compatibility facade to hybrid coordinator

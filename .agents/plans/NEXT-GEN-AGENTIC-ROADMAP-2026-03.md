@@ -229,7 +229,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 ### Batch 4.2: Multi-Agent Orchestration
 **Status:** in progress (foundation landed, orchestration layer incomplete)
 **Tasks:**
-- [ ] Implement agent team formation (dynamic role assignment)
+- [x] Implement initial agent team formation (dynamic role assignment)
 - [x] Add inter-agent communication protocol foundation via A2A-compatible coordinator surface
 - [x] Create standards-facing task/event transport for agent collaboration
 - [x] Implement initial consensus mechanisms for agent decisions inside workflow sessions
@@ -244,7 +244,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ✅ Longitudinal agent evaluation registry with review and consensus rollups
 - ✅ Agent-selection feedback loop now biases future candidate scoring from prior review/consensus history
 - ✅ Native arbiter-review workflow path now persists arbiter decisions, trajectory events, and task artifacts
-- ⏳ Team formation engine
+- ✅ Initial dynamic team-formation contract for workflow sessions and client inspection
 
 **Implemented foundation:**
 - Agent card discovery and public capability advertisement
@@ -254,7 +254,6 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Mandatory TCK-aligned protocol repair work
 
 **Still missing for roadmap completion:**
-- Dynamic agent team formation and role routing
 - Richer multi-agent selection/evaluation feedback loop weighting runtime quality over longer history windows and across multiple agent roles
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
 

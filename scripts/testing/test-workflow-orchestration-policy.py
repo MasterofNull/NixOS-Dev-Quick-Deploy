@@ -44,6 +44,7 @@ from ai_coordinator import coerce_orchestration_context  # noqa: E402
 from http_server import (  # noqa: E402
     _apply_arbiter_update,
     _apply_consensus_update,
+    _build_orchestration_team,
     _build_workflow_run_session,
     _default_agent_evaluations_registry,
     _load_agent_evaluations_registry_sync,
@@ -100,6 +101,11 @@ def main() -> int:
     assert_true(consensus.get("status") == "pending", "new sessions should seed pending consensus state")
     assert_true(len(candidates) >= 2, "session consensus should seed multiple candidates")
     assert_true(bool(consensus.get("selected_candidate_id")), "session consensus should select an initial candidate")
+    team = arbiter_session.get("team") or {}
+    assert_true(team.get("formation_mode") == "dynamic-role-assignment", "arbiter session should seed dynamic team assignment")
+    assert_true("primary" in (team.get("active_slots") or []), "team should include a primary slot")
+    assert_true("reviewer" in (team.get("active_slots") or []), "team should include a reviewer slot")
+    assert_true("escalation" in (team.get("active_slots") or []), "arbiter-review team should include the escalation slot")
     arbiter_state = consensus.get("arbiter") or {}
     assert_true(arbiter_state.get("required") is True, "arbiter-review sessions should require arbiter input")
     assert_true(arbiter_state.get("status") == "pending", "arbiter-review sessions should start pending arbiter state")
@@ -155,6 +161,8 @@ def main() -> int:
     assert_true(updated.get("status") == "accepted", "accepted reviewer decision should accept consensus")
     assert_true(len(updated.get("history") or []) == 1, "consensus history should record the decision")
     assert_true(reviewer_session.get("trajectory") and reviewer_session["trajectory"][-1].get("event_type") == "consensus_update", "session trajectory should record consensus updates")
+    reviewer_team = _build_orchestration_team(hardening_policy, default_ctx, reviewer_consensus)
+    assert_true(reviewer_team.get("active_slots") == ["primary", "reviewer"], "reviewer-gated team should stay local and bounded")
 
     evaluation_registry = _default_agent_evaluations_registry()
     evaluation_registry = _record_agent_review_event(
