@@ -1735,6 +1735,163 @@
                 </div>
             </div>
 
+            <!-- Orchestration Visibility -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AI Orchestration</h2>
+                        </div>
+                        <span class="card-badge">Team Formation</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Session Selector -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <label for="sessionIdInput" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">
+                                Enter Session ID to Inspect:
+                            </label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input
+                                    type="text"
+                                    id="sessionIdInput"
+                                    placeholder="session-id-here"
+                                    style="flex: 1; padding: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary); border-radius: 4px; font-family: 'JetBrains Mono', monospace;"
+                                >
+                                <button
+                                    onclick="loadOrchestrationDetails()"
+                                    style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-weight: 600;">
+                                    Load
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Team Formation Display -->
+                        <div class="metrics-grid" id="orchestrationTeamGrid" style="margin-bottom: 1.5rem;">
+                            <div class="metric">
+                                <div class="metric-label">Session ID</div>
+                                <div class="metric-value" id="orchSessionId">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Consensus Mode</div>
+                                <div class="metric-value" id="orchConsensusMode">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Selection Strategy</div>
+                                <div class="metric-value" id="orchSelectionStrategy">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Active Slots</div>
+                                <div class="metric-value" id="orchActiveSlots">--</div>
+                            </div>
+                        </div>
+
+                        <!-- Team Members Table -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Team Members</h3>
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                    <thead>
+                                        <tr style="border-bottom: 2px solid var(--border-primary);">
+                                            <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Slot</th>
+                                            <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Agent</th>
+                                            <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Lane</th>
+                                            <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Role</th>
+                                            <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Score</th>
+                                            <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Activation Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="teamMembersTable">
+                                        <tr><td colspan="6" style="text-align: center; padding: 1rem; color: var(--text-muted);">No active session</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Candidate Scoring Breakdown -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Candidate Scoring Breakdown</h3>
+                            <div id="candidateScoringList">
+                                <div style="color: var(--text-muted); font-size: 0.85rem;">Select a session to view scoring details</div>
+                            </div>
+                        </div>
+
+                        <!-- Arbiter Decisions (conditional) -->
+                        <div id="arbiterSection" style="display: none; margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Arbiter Decision History</h3>
+                            <div id="arbiterHistoryList">
+                                <div style="color: var(--text-muted); font-size: 0.85rem;">No arbiter decisions recorded</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Evaluation Trends -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Agent Evaluation Trends</h2>
+                        </div>
+                        <span class="card-badge">Performance Metrics</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Summary Metrics -->
+                        <div class="metrics-grid" id="agentTrendsGrid" style="margin-bottom: 1.5rem;">
+                            <div class="metric">
+                                <div class="metric-label">Tracked Agents</div>
+                                <div class="metric-value" id="trendsAgentCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Total Review Events</div>
+                                <div class="metric-value" id="trendsTotalReviews">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Total Selections</div>
+                                <div class="metric-value" id="trendsTotalSelections">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Total Runtime Events</div>
+                                <div class="metric-value" id="trendsTotalRuntime">--</div>
+                            </div>
+                        </div>
+
+                        <!-- Agent Performance Table -->
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid var(--border-primary);">
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Agent</th>
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Reviews</th>
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Avg Review Score</th>
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Selections</th>
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Runtime Events</th>
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Avg Runtime Score</th>
+                                        <th style="padding: 0.5rem; text-align: left; color: var(--text-secondary);">Profiles</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="agentTrendsTable">
+                                    <tr><td colspan="7" style="text-align: center; padding: 1rem; color: var(--text-muted);">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Historical Bias Explanation -->
+                        <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 4px; border-left: 3px solid var(--accent-cyan);">
+                            <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--accent-cyan);">Historical Bias Components</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;">
+                                <strong>Review Score:</strong> Weighted by review events (up to 5), capped at 1.0<br>
+                                <strong>Selection Score:</strong> Weighted by consensus selections (up to 5), capped at 1.0<br>
+                                <strong>Runtime Score:</strong> Weighted by runtime events (up to 6), capped at 1.0<br>
+                                These components are added to candidate base scores during team formation.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Discovery Signals -->
             <div class="dashboard-section">
                 <div class="card">
@@ -7688,6 +7845,180 @@
             updateConfigurationInputs();
         }
 
+        // ====================================================================
+        // AI Orchestration Functions
+        // ====================================================================
+
+        async function loadOrchestrationDetails() {
+            const sessionId = document.getElementById('sessionIdInput').value.trim();
+            if (!sessionId) {
+                alert('Please enter a session ID');
+                return;
+            }
+
+            try {
+                const teamResp = await fetch(`/api/aistack/orchestration/team/${sessionId}`);
+                if (teamResp.status === 404) {
+                    alert('Session not found');
+                    return;
+                }
+                const teamData = await teamResp.json();
+                renderOrchestrationTeam(teamData);
+
+                if (teamData.consensus_mode === 'arbiter-review') {
+                    const arbiterResp = await fetch(`/api/aistack/orchestration/arbiter/${sessionId}`);
+                    const arbiterData = await arbiterResp.json();
+                    renderArbiterHistory(arbiterData);
+                } else {
+                    document.getElementById('arbiterSection').style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Failed to load orchestration details:', err);
+                alert('Failed to load orchestration details. Check console for details.');
+            }
+        }
+
+        function renderOrchestrationTeam(data) {
+            document.getElementById('orchSessionId').textContent = data.session_id || '--';
+            document.getElementById('orchConsensusMode').textContent = data.consensus_mode || '--';
+            document.getElementById('orchSelectionStrategy').textContent = data.selection_strategy || '--';
+            document.getElementById('orchActiveSlots').textContent = (data.active_slots || []).join(', ') || '--';
+
+            const tbody = document.getElementById('teamMembersTable');
+            if (!data.team_members || data.team_members.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 1rem; color: var(--text-muted);">No team members</td></tr>';
+            } else {
+                tbody.innerHTML = data.team_members.map(member => `
+                    <tr style="border-bottom: 1px solid var(--border-primary);">
+                        <td style="padding: 0.5rem;"><span style="color: var(--accent-cyan); font-weight: 600;">${member.slot}</span></td>
+                        <td style="padding: 0.5rem;">${member.agent}</td>
+                        <td style="padding: 0.5rem;"><code style="font-size: 0.8rem; background: var(--bg-secondary); padding: 0.2rem 0.4rem; border-radius: 2px;">${member.lane}</code></td>
+                        <td style="padding: 0.5rem;">${member.role}</td>
+                        <td style="padding: 0.5rem;"><span style="color: var(--accent-yellow); font-weight: 600;">${member.score.toFixed(4)}</span></td>
+                        <td style="padding: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">${member.activation_reason}</td>
+                    </tr>
+                `).join('');
+            }
+
+            const scoringList = document.getElementById('candidateScoringList');
+            if (!data.candidates || data.candidates.length === 0) {
+                scoringList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No candidates available</div>';
+            } else {
+                scoringList.innerHTML = data.candidates.map(candidate => {
+                    const isSelected = candidate.candidate_id === data.selected_candidate_id;
+                    const components = candidate.score_components || {};
+                    const history = candidate.history_bias || {};
+
+                    return `
+                        <div style="padding: 1rem; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 0.75rem; border-left: 3px solid ${isSelected ? 'var(--accent-cyan)' : 'var(--border-primary)'};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <div>
+                                    <span style="font-weight: 600; color: var(--text-primary);">${candidate.agent}</span>
+                                    <span style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">(${candidate.lane})</span>
+                                    ${isSelected ? '<span style="margin-left: 0.5rem; color: var(--accent-cyan); font-weight: 600;">SELECTED</span>' : ''}
+                                </div>
+                                <div style="font-size: 1.2rem; font-weight: 600; color: var(--accent-yellow);">${candidate.score.toFixed(4)}</div>
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">${candidate.basis || ''}</div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-top: 0.75rem;">
+                                ${Object.entries(components).map(([key, value]) => `
+                                    <div style="padding: 0.4rem; background: var(--bg-tertiary); border-radius: 3px;">
+                                        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">${key.replace(/_/g, ' ')}</div>
+                                        <div style="font-weight: 600; color: ${key.startsWith('historical') ? 'var(--accent-magenta)' : 'var(--text-primary)'};">${value.toFixed(4)}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-primary); font-size: 0.8rem; color: var(--text-secondary);">
+                                <strong>History Bias:</strong>
+                                Review: ${history.review_score?.toFixed(4) || '0.0000'} |
+                                Selection: ${history.selection_score?.toFixed(4) || '0.0000'} |
+                                Runtime: ${history.runtime_score?.toFixed(4) || '0.0000'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function renderArbiterHistory(data) {
+            const section = document.getElementById('arbiterSection');
+            const list = document.getElementById('arbiterHistoryList');
+
+            if (!data.arbiter_active || !data.history || data.history.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+
+            list.innerHTML = data.history.map(decision => {
+                const date = new Date(decision.ts * 1000);
+                const verdictColor = decision.verdict === 'accept' ? 'var(--status-online)' :
+                                    decision.verdict === 'reject' ? 'var(--status-error)' :
+                                    'var(--accent-yellow)';
+
+                return `
+                    <div style="padding: 1rem; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 0.75rem; border-left: 3px solid ${verdictColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                            <div>
+                                <span style="font-weight: 600; color: var(--text-primary);">${decision.arbiter}</span>
+                                <span style="margin-left: 0.5rem; padding: 0.2rem 0.5rem; background: ${verdictColor}20; color: ${verdictColor}; border-radius: 3px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">${decision.verdict}</span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${date.toLocaleString()}</div>
+                        </div>
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong style="color: var(--text-secondary);">Selected:</strong>
+                            <span style="color: var(--accent-cyan);">${decision.selected_agent}</span>
+                            <span style="color: var(--text-muted);"> (${decision.selected_lane})</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">
+                            <strong>Rationale:</strong> ${decision.rationale}
+                        </div>
+                        ${decision.summary && decision.summary !== decision.rationale ? `
+                            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">
+                                <strong>Summary:</strong> ${decision.summary}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadAgentEvaluationTrends() {
+            try {
+                const resp = await fetch('/api/aistack/orchestration/evaluations/trends');
+                const data = await resp.json();
+                renderAgentTrends(data);
+            } catch (err) {
+                console.error('Failed to load agent evaluation trends:', err);
+            }
+        }
+
+        function renderAgentTrends(data) {
+            const summary = data.summary || {};
+            document.getElementById('trendsAgentCount').textContent = data.agent_count || 0;
+            document.getElementById('trendsTotalReviews').textContent = summary.review_events || 0;
+            document.getElementById('trendsTotalSelections').textContent = summary.consensus_events || 0;
+            document.getElementById('trendsTotalRuntime').textContent = summary.runtime_events || 0;
+
+            const tbody = document.getElementById('agentTrendsTable');
+            if (!data.trends || data.trends.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 1rem; color: var(--text-muted);">No evaluation data available</td></tr>';
+            } else {
+                tbody.innerHTML = data.trends.map(agent => `
+                    <tr style="border-bottom: 1px solid var(--border-primary);">
+                        <td style="padding: 0.5rem;"><span style="font-weight: 600; color: var(--accent-cyan);">${agent.agent}</span></td>
+                        <td style="padding: 0.5rem;">${agent.total_review_events}</td>
+                        <td style="padding: 0.5rem;"><span style="color: ${agent.average_review_score > 0.7 ? 'var(--status-online)' : agent.average_review_score > 0.5 ? 'var(--accent-yellow)' : 'var(--status-error)'}; font-weight: 600;">${agent.average_review_score.toFixed(3)}</span></td>
+                        <td style="padding: 0.5rem;">${agent.total_consensus_selected}</td>
+                        <td style="padding: 0.5rem;">${agent.total_runtime_events}</td>
+                        <td style="padding: 0.5rem;"><span style="color: ${agent.average_runtime_score > 0.7 ? 'var(--status-online)' : agent.average_runtime_score > 0.5 ? 'var(--accent-yellow)' : 'var(--status-error)'}; font-weight: 600;">${agent.average_runtime_score.toFixed(3)}</span></td>
+                        <td style="padding: 0.5rem;">${agent.profile_count}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
         // Auto-refresh all monitoring data
         function startAutoRefresh() {
             // Refresh learning stats every 30 seconds
@@ -7695,6 +8026,10 @@
 
             // Refresh circuit breakers every 30 seconds
             setInterval(refreshCircuitBreakers, 30000);
+
+            // Refresh agent evaluation trends every 30 seconds
+            setInterval(loadAgentEvaluationTrends, 30000);
+            loadAgentEvaluationTrends(); // Initial load
 
             // Initial load after 3 seconds
             setTimeout(() => {

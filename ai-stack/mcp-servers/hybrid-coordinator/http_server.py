@@ -6038,6 +6038,77 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_workflow_run_team_detailed(request: web.Request) -> web.Response:
+        """Return detailed team formation with scoring breakdown and historical bias."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+
+            _ensure_session_runtime_fields(session)
+            consensus = session.get("consensus", {})
+            team = session.get("team", {})
+
+            # Extract candidates with full scoring breakdown
+            candidates = consensus.get("candidates", [])
+            selected_id = consensus.get("selected_candidate_id", "")
+
+            # Build detailed team view
+            team_details = {
+                "session_id": session_id,
+                "consensus_mode": consensus.get("consensus_mode", ""),
+                "selection_strategy": team.get("selection_strategy", ""),
+                "team_members": team.get("members", []),
+                "active_slots": team.get("active_slots", []),
+                "candidates": candidates,
+                "selected_candidate_id": selected_id,
+                "formation_mode": team.get("formation_mode", ""),
+            }
+
+            return web.json_response(team_details)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_workflow_run_arbiter_history(request: web.Request) -> web.Response:
+        """Return arbiter decision history for a workflow run."""
+        try:
+            session_id = request.match_info.get("session_id", "")
+            limit = int(request.rel_url.query.get("limit", "10"))
+            limit = max(1, min(50, limit))
+
+            async with _workflow_sessions_lock:
+                sessions = await _load_workflow_sessions()
+                session = sessions.get(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+
+            consensus = session.get("consensus", {})
+            arbiter_state = consensus.get("arbiter", {})
+
+            if consensus.get("consensus_mode") != "arbiter-review":
+                return web.json_response({
+                    "session_id": session_id,
+                    "arbiter_active": False,
+                    "history": [],
+                    "message": "arbiter mode not active"
+                })
+
+            history = arbiter_state.get("history", [])[-limit:]
+
+            return web.json_response({
+                "session_id": session_id,
+                "arbiter_active": True,
+                "arbiter": arbiter_state.get("arbiter", ""),
+                "current_status": arbiter_state.get("status", ""),
+                "history": history,
+                "history_count": len(arbiter_state.get("history", []))
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_workflow_run_mode(request: web.Request) -> web.Response:
         """Switch run safety mode; moving to execute-mutating requires confirm=true."""
         try:
@@ -6456,6 +6527,53 @@ async def run_http_mode(port: int) -> None:
                     "active_lesson_refs": lesson_refs,
                 }
             )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_ai_coordinator_evaluation_trends(_request: web.Request) -> web.Response:
+        """Expose agent evaluation trends over time for operator analysis."""
+        try:
+            async with _agent_evaluations_lock:
+                registry = await _load_agent_evaluations_registry()
+
+            agents = registry.get("agents", {})
+            trends = []
+
+            for agent_name, agent_data in agents.items():
+                profiles = agent_data.get("profiles", {})
+                totals = agent_data.get("totals", {})
+
+                trends.append({
+                    "agent": agent_name,
+                    "total_review_events": totals.get("review_events", 0),
+                    "total_consensus_selected": totals.get("consensus_selected", 0),
+                    "total_runtime_events": totals.get("runtime_events", 0),
+                    "average_review_score": totals.get("average_review_score", 0.0),
+                    "average_runtime_score": totals.get("average_runtime_score", 0.0),
+                    "profile_count": len(profiles),
+                    "last_event_at": agent_data.get("last_event_at"),
+                    "profiles": {
+                        profile_name: {
+                            "review_events": profile_data.get("review_events", 0),
+                            "consensus_selected": profile_data.get("consensus_selected", 0),
+                            "runtime_events": profile_data.get("runtime_events", 0),
+                            "average_review_score": profile_data.get("average_review_score", 0.0),
+                            "average_runtime_score": profile_data.get("average_runtime_score", 0.0),
+                        }
+                        for profile_name, profile_data in profiles.items()
+                    }
+                })
+
+            # Sort by total activity
+            trends.sort(key=lambda x: x["total_review_events"] + x["total_consensus_selected"], reverse=True)
+
+            return web.json_response({
+                "status": "ok",
+                "agent_count": len(trends),
+                "trends": trends,
+                "summary": registry.get("summary", {}),
+                "recent_events": registry.get("recent_events", [])[-10:]
+            })
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
@@ -7698,6 +7816,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/workflow/run/start", handle_workflow_run_start)
     http_app.router.add_get("/workflow/run/{session_id}", handle_workflow_run_get)
     http_app.router.add_get("/workflow/run/{session_id}/team", handle_workflow_run_team)
+    http_app.router.add_get("/workflow/run/{session_id}/team/detailed", handle_workflow_run_team_detailed)
+    http_app.router.add_get("/workflow/run/{session_id}/arbiter/history", handle_workflow_run_arbiter_history)
     http_app.router.add_post("/workflow/run/{session_id}/consensus", handle_workflow_run_consensus)
     http_app.router.add_post("/workflow/run/{session_id}/arbiter", handle_workflow_run_arbiter)
     http_app.router.add_post("/workflow/run/{session_id}/mode", handle_workflow_run_mode)
@@ -7714,6 +7834,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/ai-coordinator/lessons", handle_ai_coordinator_lessons)
     http_app.router.add_post("/control/ai-coordinator/lessons/review", handle_ai_coordinator_lessons_review)
     http_app.router.add_get("/control/ai-coordinator/evaluations", handle_ai_coordinator_evaluations)
+    http_app.router.add_get("/control/ai-coordinator/evaluations/trends", handle_ai_coordinator_evaluation_trends)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
     # Batch 5.2 — Skill Usage Tracking and Recommendations

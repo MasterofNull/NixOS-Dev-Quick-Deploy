@@ -2642,3 +2642,102 @@ async def get_security_audit() -> Dict[str, Any]:
     if message:
         payload["message"] = message
     return payload
+
+
+# Orchestration Visibility Endpoints (Operator Dashboard)
+@router.get("/orchestration/sessions")
+async def get_orchestration_sessions() -> Dict[str, Any]:
+    """Get list of recent workflow orchestration sessions.
+
+    Note: Currently placeholder - requires session listing endpoint in hybrid coordinator.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Query hybrid coordinator for recent sessions
+            # This would require adding a list endpoint to hybrid coordinator
+            # For now, return placeholder structure
+            return {
+                "status": "ok",
+                "sessions": [],
+                "message": "session listing requires hybrid coordinator list endpoint"
+            }
+    except Exception as e:
+        logger.error(f"Failed to fetch orchestration sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/orchestration/team/{session_id}")
+async def get_orchestration_team(session_id: str) -> Dict[str, Any]:
+    """Get detailed team formation for a workflow session.
+
+    Returns full team composition including:
+    - Team members with roles, agents, lanes, scores
+    - Candidates with full scoring breakdown
+    - Score components (strategy_fit, locality, review_alignment, etc.)
+    - Historical bias values (review_score, selection_score, runtime_score)
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/team/detailed"
+            async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+                if resp.status == 404:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch team details: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch team details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/orchestration/arbiter/{session_id}")
+async def get_arbiter_history(session_id: str, limit: int = 10) -> Dict[str, Any]:
+    """Get arbiter decision history for a workflow session.
+
+    Only applicable for sessions using "arbiter-review" consensus mode.
+
+    Returns:
+    - arbiter_active: Whether arbiter mode is enabled
+    - history: List of arbiter decisions with verdicts, rationale, timestamps
+    - current_status: Current arbiter state
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/arbiter/history?limit={limit}"
+            async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+                if resp.status == 404:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch arbiter history: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch arbiter history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/orchestration/evaluations/trends")
+async def get_evaluation_trends() -> Dict[str, Any]:
+    """Get agent evaluation trends over time.
+
+    Returns longitudinal performance metrics:
+    - Per-agent review scores, consensus selections, runtime quality
+    - Profile-level breakdowns
+    - Recent evaluation events
+    - Aggregated summary statistics
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/evaluations/trends"
+            async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch evaluation trends: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch evaluation trends: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
