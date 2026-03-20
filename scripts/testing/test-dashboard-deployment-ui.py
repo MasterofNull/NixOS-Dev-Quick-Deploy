@@ -16,12 +16,16 @@ REQUIRED_SNIPPETS = [
     'id="deploymentHistoryList"',
     'id="deploymentTimeline"',
     'id="deploymentSearchMode"',
+    'id="deploymentSearchStatusGrid"',
+    'id="deploymentSearchStatusList"',
     'function loadDeploymentOps()',
     'function connectDeploymentWebSocket()',
     'function searchDeploymentHistory()',
+    'function loadDeploymentSearchStatus()',
     'function executeDeploymentRollback()',
     '/api/deployments/history?limit=12&include_timeline_preview=true',
     '/api/deployments/search?query=${encodeURIComponent(query)}&limit=8&mode=${encodeURIComponent(mode)}',
+    '/api/deployments/search/status?recent_limit=6',
     '/api/ws/deployments',
 ]
 

@@ -112,22 +112,33 @@ class DeploymentDashboardTests:
 
         async with self.session.get(
             f"{API_BASE_URL}/deployments/search",
-            params={"query": "building generation", "limit": 5, "mode": "hybrid"},
+            params={"query": "building generation", "limit": 5, "mode": "keyword"},
         ) as response:
             if response.status != 200:
                 self.log_test("Deployment Search", False, f"HTTP {response.status}")
                 return False
             search = await response.json()
 
+        async with self.session.get(
+            f"{API_BASE_URL}/deployments/search/status",
+            params={"recent_limit": 5},
+        ) as response:
+            if response.status != 200:
+                self.log_test("Deployment Search Status", False, f"HTTP {response.status}")
+                return False
+            status = await response.json()
+
         passed = (
             bool(logs.get("logs"))
             and isinstance(search.get("results"), list)
-            and search.get("mode") == "hybrid"
+            and search.get("mode") == "keyword"
+            and isinstance(status.get("recent"), list)
+            and "summary" in status
         )
         self.log_test(
             "Search And Logs",
             passed,
-            f"logs={len(logs.get('logs') or [])}, hybrid={len(search.get('results') or [])}",
+            f"logs={len(logs.get('logs') or [])}, keyword={len(search.get('results') or [])}, indexed_total={(status.get('summary') or {}).get('indexed_total')}",
         )
         return passed
 
