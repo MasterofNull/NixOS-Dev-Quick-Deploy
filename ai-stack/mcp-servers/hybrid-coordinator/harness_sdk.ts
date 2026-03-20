@@ -393,6 +393,28 @@ export class HarnessClient {
     });
   }
 
+  runArbiter(
+    sessionId: string,
+    selectedCandidateId: string,
+    arbiter: string,
+    verdict: "accept" | "reject" | "prefer",
+    rationale: string,
+    summary = "",
+    supportingDecisions: Json[] = [],
+  ): Promise<Json> {
+    return this.request(`/workflow/run/${sessionId}/arbiter`, {
+      method: "POST",
+      body: JSON.stringify({
+        selected_candidate_id: selectedCandidateId,
+        arbiter,
+        verdict,
+        rationale,
+        summary,
+        supporting_decisions: supportingDecisions,
+      }),
+    });
+  }
+
   runGetIsolation(sessionId: string): Promise<Json> {
     return this.request(`/workflow/run/${sessionId}/isolation`, { method: "GET" });
   }

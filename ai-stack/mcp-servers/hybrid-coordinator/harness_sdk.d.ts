@@ -110,6 +110,15 @@ export declare class HarnessClient {
   runStart(payload: RunStartRequest): Promise<Json>;
   runGet(sessionId: string, replay?: boolean): Promise<Json>;
   runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm?: boolean): Promise<Json>;
+  runArbiter(
+    sessionId: string,
+    selectedCandidateId: string,
+    arbiter: string,
+    verdict: "accept" | "reject" | "prefer",
+    rationale: string,
+    summary?: string,
+    supportingDecisions?: Json[],
+  ): Promise<Json>;
   runGetIsolation(sessionId: string): Promise<Json>;
   runSetIsolation(sessionId: string, profile?: string, workspaceRoot?: string, networkPolicy?: string): Promise<Json>;
   runEvent(

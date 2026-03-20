@@ -132,6 +132,7 @@ Both SDKs cover:
 - `POST /workflow/run/start`
 - `GET /workflow/run/{id}`
 - `POST /workflow/run/{id}/mode`
+- `POST /workflow/run/{id}/arbiter`
 - `GET /workflow/run/{id}/isolation`
 - `POST /workflow/run/{id}/isolation`
 - `POST /workflow/run/{id}/event`

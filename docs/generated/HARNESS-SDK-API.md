@@ -28,6 +28,7 @@ Do not edit manually.
 - `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40, intent_contract=None, requesting_agent='human', requester_role='orchestrator')`
 - `run_get(session_id, replay=False)`
 - `run_set_mode(session_id, safety_mode, confirm=False)`
+- `run_arbiter(session_id, selected_candidate_id, arbiter, verdict, rationale, summary='', supporting_decisions=None)`
 - `run_get_isolation(session_id)`
 - `run_set_isolation(session_id, profile='', workspace_root='', network_policy='')`
 - `run_event(session_id, event_type, risk_class='safe', approved=False, token_delta=0, tool_call_delta=0, detail='')`
@@ -74,6 +75,7 @@ Do not edit manually.
 - `runStart(payload: RunStartRequest)`
 - `runGet(sessionId: string, replay = false)`
 - `runSetMode(sessionId: string, safetyMode: "plan-readonly" | "execute-mutating", confirm = false)`
+- `runArbiter(sessionId: string, selectedCandidateId: string, arbiter: string, verdict: "accept" | "reject" | "prefer", rationale: string, summary = "", supportingDecisions: Json[] = [])`
 - `runGetIsolation(sessionId: string)`
 - `runSetIsolation(sessionId: string, profile = "", workspaceRoot = "", networkPolicy = "")`
 - `runEvent(sessionId: string, eventType: string, riskClass: "safe" | "review-required" | "blocked" = "safe", approved = false, tokenDelta = 0, toolCallDelta = 0, detail = "")`

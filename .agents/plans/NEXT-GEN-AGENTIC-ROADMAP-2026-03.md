@@ -243,6 +243,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ✅ Seeded candidate evaluation and persisted consensus snapshots in workflow sessions
 - ✅ Longitudinal agent evaluation registry with review and consensus rollups
 - ✅ Agent-selection feedback loop now biases future candidate scoring from prior review/consensus history
+- ✅ Native arbiter-review workflow path now persists arbiter decisions, trajectory events, and task artifacts
 - ⏳ Team formation engine
 
 **Implemented foundation:**
@@ -254,7 +255,6 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 **Still missing for roadmap completion:**
 - Dynamic agent team formation and role routing
-- Native multi-agent arbiter flows beyond workflow-session consensus snapshots
 - Richer multi-agent selection/evaluation feedback loop weighting runtime quality over longer history windows and across multiple agent roles
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
 
