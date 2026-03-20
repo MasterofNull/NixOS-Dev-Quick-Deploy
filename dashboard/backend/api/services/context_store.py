@@ -727,6 +727,31 @@ class ContextStore:
                 "reason": "Highest-signal evidence sources returned",
             })
 
+        likely_fix_path = ""
+        likely_fix_reason = ""
+        if results:
+            for item in results:
+                source = str(item.get("source") or item.get("event_type") or "")
+                metadata = item.get("metadata") or {}
+                if source in {"config", "code"} and metadata.get("file_path"):
+                    likely_fix_path = str(metadata["file_path"])
+                    likely_fix_reason = str((item.get("explanation") or {}).get("action_hint") or "Most actionable file result")
+                    next_actions.append({
+                        "label": "fix_path",
+                        "target": likely_fix_path,
+                        "reason": likely_fix_reason,
+                    })
+                    break
+                if source == "logs" and metadata.get("unit"):
+                    likely_fix_path = str(metadata["unit"])
+                    likely_fix_reason = "Inspect the live service unit and recent runtime events first"
+                    next_actions.append({
+                        "label": "runtime_unit",
+                        "target": likely_fix_path,
+                        "reason": likely_fix_reason,
+                    })
+                    break
+
         return {
             "summary": summary,
             "recommended_graph_view": graph_view,
@@ -734,6 +759,8 @@ class ContextStore:
             "insight_target": insight_target,
             "recommended_sources": recommended_sources,
             "result_sources": result_sources,
+            "likely_fix_path": likely_fix_path,
+            "likely_fix_reason": likely_fix_reason,
             "next_actions": next_actions,
         }
 
@@ -908,6 +935,7 @@ class ContextStore:
                 f"{f' @ lines {line_preview}' if line_preview else ''}"
                 f"; matched terms: {', '.join(matched_terms) if matched_terms else 'context'}"
             )
+            entry["explanation"]["action_hint"] = self._build_repo_action_hint(entry["message"], source_filter)
             results.append(entry)
 
         results.sort(
@@ -918,6 +946,25 @@ class ContextStore:
             )
         )
         return results[:limit]
+
+    @staticmethod
+    def _build_repo_action_hint(file_path: str, source_filter: str = "all") -> str:
+        path = str(file_path or "")
+        if path == "config/service-endpoints.sh":
+            return "Adjust canonical dashboard/service endpoint wiring here first"
+        if path.startswith("nix/"):
+            return "Review declarative Nix service/module settings here first"
+        if path.startswith("config/"):
+            return "Check runtime configuration and endpoint defaults here first"
+        if path.startswith("lib/deploy/"):
+            return "Inspect deploy command behavior and operator workflow wiring here first"
+        if path.startswith("dashboard/backend/"):
+            return "Inspect dashboard API behavior and route handling here first"
+        if path.startswith("dashboard.html"):
+            return "Inspect dashboard operator UI wiring here first"
+        if path.startswith("docs/"):
+            return "Reference documentation context only; prefer config or code before docs for fixes"
+        return "Inspect this file first for the most likely fix path"
 
     def search_log_context(self, query: str, limit: int = 8) -> List[Dict[str, Any]]:
         if not shutil.which("journalctl"):
@@ -979,6 +1026,7 @@ class ContextStore:
                         "matched_terms": matched_terms,
                         "source_reason": "log match",
                         "score_hint": len(matched_terms),
+                        "action_hint": "Inspect live runtime logs for this unit before changing config or code",
                     },
                 })
                 if len(results) >= limit:

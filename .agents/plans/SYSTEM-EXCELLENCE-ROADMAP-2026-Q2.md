@@ -378,6 +378,7 @@ search_interactions("how to configure nixos modules")
 - Deployment search now returns shared `operator_guidance` so dashboard and CLI can drive the same graph and insights follow-up actions from one retrieval contract.
 - Configuration-intent natural queries now bias toward config/code evidence and suppress noisy single-term log matches, which makes the operator search path more useful for real fix-oriented troubleshooting.
 - Repo-context retrieval now collapses repeated line matches into file-level summaries with hit counts, which materially cleans up the dashboard operator search panel.
+- Operator retrieval now emits likely-fix path guidance and file/runtime action hints so the dashboard and CLI can move from evidence to the next likely remediation target.
 - Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
@@ -474,6 +475,7 @@ RETURN path
 - [x] Unify retrieval follow-up guidance across dashboard and CLI
 - [x] Bias configuration-intent retrieval toward config/code over noisy log matches
 - [x] Collapse duplicate repo-context results into file-level summaries
+- [x] Add likely-fix path and action hints to operator retrieval
 
 **Deliverables:**
 - ✅ `deploy search "<natural language query>"`
@@ -486,6 +488,7 @@ RETURN path
 - ✅ Shared operator guidance contract linking retrieval to graph/insights follow-up in dashboard and CLI
 - ✅ Configuration-intent retrieval that prefers config/code evidence for fix-oriented queries
 - ✅ File-level repo-context summaries with hit counts for cleaner operator search output
+- ✅ Likely-fix path and per-result action hints in shared operator retrieval guidance
 - ⏳ Broader context-aware retrieval beyond current operator sources
 
 **Validation:**

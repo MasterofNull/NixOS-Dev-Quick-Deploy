@@ -143,11 +143,21 @@ search_deployments() {
           then " | focus=\(.operator_guidance.focus)"
           else ""
           end
-        ) | insight=\(.operator_guidance.insight_target // "full_report")" else empty end),
+        ) | insight=\(.operator_guidance.insight_target // "full_report")\(
+          if (.operator_guidance.likely_fix_path // "") != ""
+          then " | fix-path=\(.operator_guidance.likely_fix_path)"
+          else ""
+          end
+        )" else empty end),
         (.results[] |
         "- \(.deployment_id) [\(.source // .event_type // "event")] \(.message // "")\n  \(.snippet // "")\n  reason: \(.explanation.summary // "match")\(
           if (.explanation.rank_score // null) != null
           then " | rank: \(.explanation.rank_score)"
+          else ""
+          end
+        )\(
+          if (.explanation.action_hint // "") != ""
+          then "\n  action: \(.explanation.action_hint)"
           else ""
           end
         )")
