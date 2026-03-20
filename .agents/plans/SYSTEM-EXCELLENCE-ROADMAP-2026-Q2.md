@@ -19,7 +19,7 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
-- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, queryable deployment graph views, cross-deployment causality edges, and cluster summaries are live
+- ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, queryable deployment graph views, cross-deployment causality edges, cluster summaries, and root-cluster/failure-family queries are live
 - ⏳ Broader knowledge graph extraction depth and multi-modal retrieval remain outstanding
 
 **Target State (End of Q2):**
@@ -349,6 +349,7 @@ search_interactions("how to configure nixos modules")
 - Add deployment graph query views and writable-store recovery
 - Add deployment causality graph and related-deployment reasoning
 - Add deployment causality clusters and root-cluster summaries
+- Add root-cluster and similar-failure deployment queries
 
 **Current Notes:**
 - Hybrid deployment retrieval is the reliable operator path today.
@@ -359,7 +360,8 @@ search_interactions("how to configure nixos modules")
 - Context-store writes now self-heal onto a writable service path when runtime env drift would otherwise force a read-only DB fallback.
 - Cross-deployment graph edges now capture shared status, services, configs, and issue signals to explain why deployments are related.
 - Causality responses now also summarize related deployment clusters so operators can spot likely root groups, not just pairwise edges.
-- Runtime note: the repo/runtime feature validation is green, but `command-center-dashboard-api.service` still needs explicit service recovery; recent live checks used a temporary local uvicorn process on `127.0.0.1:8889`.
+- Root-cluster and similar-failure summaries now make the deployment graph directly queryable for likely-problem groups instead of raw relationship inspection only.
+- Runtime note: `command-center-dashboard-api.service` has been restored and current live validation is back on the real systemd service.
 
 ---
 
@@ -388,6 +390,7 @@ search_interactions("how to configure nixos modules")
 - Add deployment graph query views and writable-store recovery
 - Add deployment causality graph and related-deployment reasoning
 - Add deployment causality clusters and root-cluster summaries
+- Add root-cluster and similar-failure deployment queries
 
 ### Batch 3.2: Knowledge Graph Construction 🚧 IN PROGRESS
 **Priority:** HIGH
@@ -401,6 +404,7 @@ search_interactions("how to configure nixos modules")
 - [x] Implement initial relationship-focused query modes (`overview|issues|services|configs` + focus filter)
 - [x] Add cross-deployment causality/relatedness edges with “why related” summaries
 - [x] Add deployment cluster summaries for likely root-cause group inspection
+- [x] Add root-cluster and similar-failure query summaries for operator triage
 - [x] Create initial graph visualization in dashboard deployment operations
 
 **Deliverables:**
@@ -409,6 +413,7 @@ search_interactions("how to configure nixos modules")
 - ✅ Relationship-focused graph query views beyond raw nodes/edges
 - ✅ Cross-deployment causality edges and “why related” summaries
 - ✅ Cluster-level causality summaries for related deployment groups
+- ✅ Root-cluster and similar-failure query summaries for operator triage
 - ✅ Writable-path recovery for deployment context storage during runtime drift
 - ⏳ Broader graph coverage for services, configs, and cross-deployment causality
 
