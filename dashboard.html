@@ -2420,6 +2420,10 @@
                                         <span class="status-label">Root Cluster</span>
                                         <span class="status-value" id="deploymentGraphRootCluster">--</span>
                                     </div>
+                                    <div class="status-item">
+                                        <span class="status-label">Cause Chain</span>
+                                        <span class="status-value" id="deploymentGraphCauseChain">--</span>
+                                    </div>
                                 </div>
                                 <div class="data-list" id="deploymentGraphList">
                                     <div class="data-item">
@@ -6163,11 +6167,15 @@
                 document.getElementById('deploymentGraphFocusMatches').textContent = `${data.focus_matches ?? 0}`;
                 document.getElementById('deploymentGraphClusters').textContent = `${data.cluster_count ?? 0}`;
                 document.getElementById('deploymentGraphRootCluster').textContent = data.root_cluster?.cluster_id || '--';
+                document.getElementById('deploymentGraphCauseChain').textContent = Array.isArray(data.cause_chain) && data.cause_chain.length
+                    ? data.cause_chain.slice(0, 2).join(' -> ')
+                    : '--';
 
                 const list = document.getElementById('deploymentGraphList');
                 const relationshipSummary = Array.isArray(data.top_relationships) ? data.top_relationships : [];
                 const clusters = Array.isArray(data.clusters) ? data.clusters : [];
                 const similarFailures = Array.isArray(data.similar_failures) ? data.similar_failures : [];
+                const causeFactors = Array.isArray(data.cause_factors) ? data.cause_factors : [];
                 const edges = Array.isArray(data.edges) ? data.edges : [];
                 if (edges.length || relationshipSummary.length) {
                     const summaryItems = relationshipSummary.slice(0, 4).map((item) => `
@@ -6201,6 +6209,12 @@
                             <span class="data-meta">similar failure family</span>
                         </div>
                     `).join('');
+                    const causeItems = causeFactors.slice(0, 4).map((item) => `
+                        <div class="data-item">
+                            <span>${escapeHtml(`${item.category}:${item.label}`)}</span>
+                            <span class="data-meta">${escapeHtml(`score ${item.score} / count ${item.count}`)}</span>
+                        </div>
+                    `).join('');
                     const edgeItems = edges.slice(0, 8).map((edge) => `
                         <div class="data-item">
                             <span>${escapeHtml(`${edge.source} -> ${edge.target}`)}</span>
@@ -6213,7 +6227,7 @@
                         </div>
                         ` : ''}
                     `).join('');
-                    list.innerHTML = `${summaryItems}${clusterItems}${failureItems}${edgeItems}`;
+                    list.innerHTML = `${summaryItems}${clusterItems}${failureItems}${causeItems}${edgeItems}`;
                 } else {
                     list.innerHTML = '<div class="data-item"><span>No deployment graph edges available</span><span class="data-meta">empty</span></div>';
                 }
@@ -6227,6 +6241,7 @@
                 document.getElementById('deploymentGraphFocusMatches').textContent = '--';
                 document.getElementById('deploymentGraphClusters').textContent = '--';
                 document.getElementById('deploymentGraphRootCluster').textContent = '--';
+                document.getElementById('deploymentGraphCauseChain').textContent = '--';
                 document.getElementById('deploymentGraphList').innerHTML = `<div class="data-item"><span>Deployment graph unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
             }
         }
