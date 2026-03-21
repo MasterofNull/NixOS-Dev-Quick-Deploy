@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Test Suite: Causality Edge Creation and Scoring (Phase 3.2 Knowledge Graph)
 
