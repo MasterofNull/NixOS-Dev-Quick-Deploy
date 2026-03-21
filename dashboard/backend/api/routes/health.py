@@ -233,34 +233,230 @@ async def _health_broadcast_loop():
 
 
 # ============================================================================
-# Alert Endpoints (Placeholder for Phase 2.2.4)
+# Alert Endpoints (Phase 4.1 - Deployment -> Monitoring -> Alerting)
 # ============================================================================
 
 @router.get("/alerts")
 async def get_alerts():
-    """Get current system alerts."""
+    """Get current system alerts with full metadata and status."""
     try:
-        return await asyncio.to_thread(_hybrid_request, "/alerts")
+        result = await asyncio.to_thread(_hybrid_request, "/alerts")
+        # Enhance response with dashboard context
+        return {
+            "alerts": result.get("alerts", []),
+            "summary": {
+                "total": len(result.get("alerts", [])),
+                "by_severity": {
+                    "critical": len([a for a in result.get("alerts", []) if a.get("severity") == "critical"]),
+                    "warning": len([a for a in result.get("alerts", []) if a.get("severity") == "warning"]),
+                    "info": len([a for a in result.get("alerts", []) if a.get("severity") == "info"]),
+                },
+                "acknowledged": len([a for a in result.get("alerts", []) if a.get("acknowledged")]),
+            },
+            "timestamp": asyncio.get_event_loop().time(),
+        }
     except Exception as e:
         logger.error(f"Failed to get alerts: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to fetch alerts: {e}")
 
 
+@router.get("/alerts/history")
+async def get_alert_history(limit: int = 100, offset: int = 0):
+    """Get alert history with pagination."""
+    try:
+        result = await asyncio.to_thread(
+            _hybrid_request,
+            "/alerts/history",
+            query={"limit": limit, "offset": offset}
+        )
+        return result
+    except Exception as e:
+        logger.warning(f"Alert history unavailable: {e}")
+        return {
+            "alerts": [],
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+        }
+
+
+@router.get("/alerts/by-severity/{severity}")
+async def get_alerts_by_severity(severity: str):
+    """Get alerts filtered by severity level."""
+    try:
+        all_alerts = await asyncio.to_thread(_hybrid_request, "/alerts")
+        filtered = [
+            a for a in all_alerts.get("alerts", [])
+            if a.get("severity") == severity.lower()
+        ]
+        return {
+            "severity": severity,
+            "alerts": filtered,
+            "count": len(filtered),
+        }
+    except Exception as e:
+        logger.error(f"Failed to get alerts by severity {severity}: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch alerts: {e}")
+
+
 @router.post("/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(alert_id: str):
-    """Acknowledge an alert."""
+    """Acknowledge an alert and mark as acknowledged."""
     try:
-        return await asyncio.to_thread(_hybrid_request, f"/alerts/{alert_id}/acknowledge", method="POST", payload={})
+        result = await asyncio.to_thread(
+            _hybrid_request,
+            f"/alerts/{alert_id}/acknowledge",
+            method="POST",
+            payload={"acknowledged_at": asyncio.get_event_loop().time()}
+        )
+        logger.info(f"Alert acknowledged: {alert_id}")
+        return {
+            "alert_id": alert_id,
+            "acknowledged": True,
+            "timestamp": asyncio.get_event_loop().time(),
+        }
     except Exception as e:
-        logger.error(f"Failed to acknowledge alert %s: %s", alert_id, e)
+        logger.error(f"Failed to acknowledge alert {alert_id}: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to acknowledge alert: {e}")
 
 
 @router.post("/alerts/{alert_id}/resolve")
 async def resolve_alert(alert_id: str):
-    """Resolve an alert."""
+    """Resolve an alert and remove from active list."""
     try:
-        return await asyncio.to_thread(_hybrid_request, f"/alerts/{alert_id}/resolve", method="POST", payload={})
+        result = await asyncio.to_thread(
+            _hybrid_request,
+            f"/alerts/{alert_id}/resolve",
+            method="POST",
+            payload={"resolved_at": asyncio.get_event_loop().time()}
+        )
+        logger.info(f"Alert resolved: {alert_id}")
+        return {
+            "alert_id": alert_id,
+            "resolved": True,
+            "timestamp": asyncio.get_event_loop().time(),
+        }
     except Exception as e:
-        logger.error(f"Failed to resolve alert %s: %s", alert_id, e)
+        logger.error(f"Failed to resolve alert {alert_id}: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to resolve alert: {e}")
+
+
+@router.post("/alerts/{alert_id}/suppress")
+async def suppress_alert(alert_id: str, duration_seconds: int = 300):
+    """Suppress an alert temporarily during maintenance or deployment."""
+    try:
+        result = await asyncio.to_thread(
+            _hybrid_request,
+            f"/alerts/{alert_id}/suppress",
+            method="POST",
+            payload={"duration_seconds": duration_seconds}
+        )
+        logger.info(f"Alert suppressed for {duration_seconds}s: {alert_id}")
+        return {
+            "alert_id": alert_id,
+            "suppressed": True,
+            "duration_seconds": duration_seconds,
+            "expires_at": asyncio.get_event_loop().time() + duration_seconds,
+        }
+    except Exception as e:
+        logger.warning(f"Could not suppress alert {alert_id}, continuing: {e}")
+        return {
+            "alert_id": alert_id,
+            "suppressed": False,
+            "reason": str(e),
+        }
+
+
+@router.get("/alerts/config")
+async def get_alert_configuration():
+    """Get current alert configuration including rules and thresholds."""
+    try:
+        config = await asyncio.to_thread(_hybrid_request, "/alerts/config")
+        return {
+            "rules": config.get("rules", []),
+            "thresholds": config.get("thresholds", {}),
+            "channels": config.get("notification_channels", []),
+            "remediation_enabled": config.get("remediation_enabled", True),
+        }
+    except Exception as e:
+        logger.warning(f"Alert configuration unavailable: {e}")
+        return {
+            "rules": [],
+            "thresholds": {},
+            "channels": [],
+            "remediation_enabled": True,
+        }
+
+
+@router.post("/alerts/config/threshold")
+async def update_threshold(service: str, metric: str, threshold: float, severity: str):
+    """Update alert threshold for a service metric."""
+    try:
+        payload = {
+            "service": service,
+            "metric": metric,
+            "threshold": threshold,
+            "severity": severity,
+        }
+        result = await asyncio.to_thread(
+            _hybrid_request,
+            "/alerts/config/threshold",
+            method="POST",
+            payload=payload
+        )
+        logger.info(f"Threshold updated: {service}.{metric} = {threshold} ({severity})")
+        return {
+            "updated": True,
+            "service": service,
+            "metric": metric,
+            "threshold": threshold,
+            "severity": severity,
+        }
+    except Exception as e:
+        logger.error(f"Failed to update threshold: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to update threshold: {e}")
+
+
+@router.get("/alerts/remediation-status/{alert_id}")
+async def get_remediation_status(alert_id: str):
+    """Get remediation status for an alert."""
+    try:
+        status = await asyncio.to_thread(
+            _hybrid_request,
+            f"/alerts/{alert_id}/remediation-status"
+        )
+        return {
+            "alert_id": alert_id,
+            "remediation_status": status.get("status", "pending"),
+            "remediation_details": status.get("details", {}),
+            "last_updated": status.get("last_updated"),
+        }
+    except Exception as e:
+        logger.warning(f"Remediation status unavailable for {alert_id}: {e}")
+        return {
+            "alert_id": alert_id,
+            "remediation_status": "unknown",
+            "remediation_details": {},
+        }
+
+
+@router.post("/alerts/{alert_id}/remediate")
+async def trigger_remediation(alert_id: str, playbook: str = "auto"):
+    """Trigger manual or automated remediation for an alert."""
+    try:
+        result = await asyncio.to_thread(
+            _hybrid_request,
+            f"/alerts/{alert_id}/remediate",
+            method="POST",
+            payload={"playbook": playbook}
+        )
+        logger.info(f"Remediation triggered for alert {alert_id} with playbook: {playbook}")
+        return {
+            "alert_id": alert_id,
+            "remediation_triggered": True,
+            "playbook": playbook,
+            "started_at": asyncio.get_event_loop().time(),
+        }
+    except Exception as e:
+        logger.error(f"Failed to trigger remediation for alert {alert_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to trigger remediation: {e}")
