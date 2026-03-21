@@ -848,6 +848,466 @@
             box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
         }
 
+        /* ====================================================================== */
+        /* PHASE 6.2: USER EXPERIENCE POLISH - NEW UX IMPROVEMENTS */
+        /* ====================================================================== */
+
+        /* Empty States */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            padding: 2rem;
+            color: var(--text-muted);
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px dashed var(--border-primary);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-state-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .empty-state-message {
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            max-width: 400px;
+        }
+
+        .empty-state-action {
+            background: var(--border-glow);
+            color: var(--bg-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .empty-state-action:hover {
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        /* Success Messages */
+        .success-toast {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--status-online);
+            color: var(--status-online);
+            padding: 1rem 1.5rem;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideInRight 0.3s ease;
+            max-width: 400px;
+        }
+
+        .success-toast.show {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .success-toast::before {
+            content: '✓';
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        /* Warning/Error Toasts */
+        .error-toast {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            background: rgba(255, 0, 110, 0.1);
+            border: 1px solid var(--status-error);
+            color: var(--status-error);
+            padding: 1rem 1.5rem;
+            border-radius: 4px;
+            z-index: 10000;
+            animation: slideInRight 0.3s ease;
+            max-width: 400px;
+        }
+
+        .error-toast.show {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .error-toast::before {
+            content: '✕';
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Enhanced Loading States */
+        .loading-skeleton {
+            background: linear-gradient(
+                90deg,
+                var(--bg-tertiary) 0%,
+                var(--bg-card) 50%,
+                var(--bg-tertiary) 100%
+            );
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes skeleton-loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Keyboard Shortcuts Help */
+        .keyboard-shortcuts-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-primary);
+            border: 2px solid var(--border-glow);
+            border-radius: 8px;
+            padding: 2rem;
+            z-index: 10001;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        .keyboard-shortcuts-modal.active {
+            display: block;
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -45%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .keyboard-shortcuts-modal h2 {
+            color: var(--accent-cyan);
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        .shortcut-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .shortcut-group-title {
+            color: var(--accent-magenta);
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border-primary);
+            font-size: 0.85rem;
+        }
+
+        .shortcut-key {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            padding: 0.3rem 0.6rem;
+            border-radius: 3px;
+            font-family: monospace;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .keyboard-shortcuts-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            display: none;
+        }
+
+        .keyboard-shortcuts-overlay.active {
+            display: block;
+        }
+
+        /* Context Help Tooltips */
+        .help-tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+            border-bottom: 1px dotted var(--accent-cyan);
+        }
+
+        .help-tooltip .tooltip-text {
+            visibility: hidden;
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            text-align: left;
+            border-radius: 4px;
+            padding: 0.75rem;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 0;
+            white-space: nowrap;
+            border: 1px solid var(--border-glow);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            font-size: 0.85rem;
+        }
+
+        .help-tooltip .tooltip-text::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 10px;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: var(--bg-tertiary) transparent transparent transparent;
+        }
+
+        .help-tooltip:hover .tooltip-text {
+            visibility: visible;
+        }
+
+        /* Progress Indicator for Operations */
+        .operation-progress {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            padding: 1rem;
+            margin: 1rem 0;
+            border: 1px solid var(--border-primary);
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .progress-bar-wrapper {
+            background: var(--bg-primary);
+            border-radius: 2px;
+            height: 24px;
+            overflow: hidden;
+            border: 1px solid var(--border-primary);
+        }
+
+        .progress-bar-fill {
+            background: linear-gradient(
+                90deg,
+                var(--accent-cyan),
+                var(--accent-magenta)
+            );
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-primary);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* First-time User Welcome Banner */
+        .welcome-banner {
+            background: linear-gradient(
+                135deg,
+                var(--border-glow) 0%,
+                var(--accent-magenta) 100%
+            );
+            color: var(--bg-primary);
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .welcome-banner h2 {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .welcome-banner p {
+            margin-bottom: 1rem;
+            opacity: 0.95;
+        }
+
+        .welcome-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .welcome-btn {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-primary);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .welcome-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Onboarding Steps */
+        .onboarding-step {
+            display: flex;
+            gap: 1rem;
+            padding: 1.5rem;
+            background: var(--bg-tertiary);
+            border-left: 4px solid var(--border-glow);
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            align-items: flex-start;
+        }
+
+        .onboarding-step.completed {
+            border-left-color: var(--status-online);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .onboarding-step.active {
+            border-left-color: var(--accent-yellow);
+            background: rgba(255, 190, 11, 0.05);
+        }
+
+        .step-number {
+            min-width: 32px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--border-glow);
+            color: var(--bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .onboarding-step.completed .step-number {
+            background: var(--status-online);
+        }
+
+        .step-content h3 {
+            color: var(--accent-cyan);
+            margin-bottom: 0.3rem;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .step-action {
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            background: var(--border-glow);
+            color: var(--bg-primary);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: none;
+            margin-top: 0.5rem;
+            transition: all 0.2s ease;
+        }
+
+        .step-action:hover {
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+        }
+
+        /* Dismissible Info Panels */
+        .dismissible-panel {
+            position: relative;
+            padding: 1.5rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-left: 4px solid var(--accent-cyan);
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+
+        .dismissible-panel.hidden {
+            display: none;
+        }
+
+        .dismiss-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.5rem;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s ease;
+        }
+
+        .dismiss-btn:hover {
+            color: var(--accent-cyan);
+        }
+
         /* Container list */
         .container-item {
             background: var(--bg-secondary);
@@ -8573,6 +9033,348 @@
             console.log('Dashboard reloaded');
         }
 
+        // ====================================================================
+        // PHASE 6.2: USER EXPERIENCE POLISH - UX FUNCTIONS
+        // ====================================================================
+
+        // Toast notification system
+        class NotificationManager {
+            static show(message, type = 'success', duration = 3000) {
+                const toastId = `toast-${Date.now()}`;
+                const toastClass = type === 'error' ? 'error-toast' : 'success-toast';
+                const toast = document.createElement('div');
+                toast.id = toastId;
+                toast.className = `${toastClass} show`;
+                toast.textContent = message;
+                toast.style.animation = 'slideInRight 0.3s ease';
+
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.animation = 'slideInRight 0.3s ease reverse';
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+
+            static success(message) { this.show(message, 'success'); }
+            static error(message) { this.show(message, 'error'); }
+        }
+
+        // Empty state rendering
+        function renderEmptyState(container, title, message, actionText = null, actionCallback = null) {
+            const emptyHtml = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">∅</div>
+                    <div class="empty-state-title">${title}</div>
+                    <div class="empty-state-message">${message}</div>
+                    ${actionText ? `<button class="empty-state-action" onclick="if(typeof arguments[0]==='function') arguments[0]();">${actionText}</button>` : ''}
+                </div>
+            `;
+            if (typeof container === 'string') {
+                document.getElementById(container).innerHTML = emptyHtml;
+            } else {
+                container.innerHTML = emptyHtml;
+            }
+        }
+
+        // Contextual error messages with guidance
+        class ErrorHandler {
+            static createContextualError(errorCode, details = {}) {
+                const errorMessages = {
+                    'E001': {
+                        title: 'Configuration Error',
+                        message: 'Required configuration is missing. Check your config file and ensure all required fields are present.',
+                        action: 'Review Configuration'
+                    },
+                    'E101': {
+                        title: 'Connection Failed',
+                        message: 'Unable to reach AI Coordinator. Ensure it is running: sudo systemctl start ai-hybrid-coordinator',
+                        action: 'Start Service'
+                    },
+                    'E102': {
+                        title: 'Network Timeout',
+                        message: 'The request took too long to complete. Check your network connection and try again.',
+                        action: 'Retry'
+                    },
+                    'E201': {
+                        title: 'Permission Denied',
+                        message: 'You do not have sufficient permissions for this operation. Run with elevated privileges or check file ownership.',
+                        action: 'Run as Administrator'
+                    },
+                    'E301': {
+                        title: 'Resource Not Found',
+                        message: 'The requested resource does not exist. Verify the resource ID and try again.',
+                        action: 'Go Back'
+                    },
+                    'E401': {
+                        title: 'API Error',
+                        message: 'An unexpected error occurred. Check the system logs for more details.',
+                        action: 'View Logs'
+                    }
+                };
+
+                return errorMessages[errorCode] || {
+                    title: 'Unknown Error',
+                    message: 'An unexpected error occurred. Please try again or contact support.',
+                    action: 'Retry'
+                };
+            }
+
+            static displayError(errorCode, container) {
+                const error = this.createContextualError(errorCode);
+                const errorHtml = `
+                    <div class="error" style="padding: 1.5rem;">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--status-error);">${error.title}</div>
+                        <div style="margin-bottom: 1rem; color: var(--text-secondary);">${error.message}</div>
+                        <button class="empty-state-action" style="background: var(--status-error); font-size: 0.85rem; padding: 0.4rem 0.8rem;">${error.action}</button>
+                    </div>
+                `;
+                if (typeof container === 'string') {
+                    document.getElementById(container).innerHTML = errorHtml;
+                } else {
+                    container.innerHTML = errorHtml;
+                }
+            }
+        }
+
+        // Keyboard shortcuts system
+        class KeyboardShortcutsManager {
+            static shortcuts = {
+                'r': { description: 'Refresh current view', action: () => window.location.reload() },
+                's': { description: 'Focus search box', action: () => {
+                    const searchBox = document.querySelector('.search-box');
+                    if (searchBox) searchBox.focus();
+                } },
+                'Escape': { description: 'Close modals/clear search', action: () => {
+                    const searchBox = document.querySelector('.search-box');
+                    if (searchBox) searchBox.value = '';
+                    document.querySelectorAll('.keyboard-shortcuts-modal').forEach(m => m.classList.remove('active'));
+                    document.querySelector('.keyboard-shortcuts-overlay')?.classList.remove('active');
+                } },
+                '?': { description: 'Show keyboard shortcuts', action: () => KeyboardShortcutsManager.show() }
+            };
+
+            static init() {
+                document.addEventListener('keydown', (e) => {
+                    // Prevent triggering shortcuts when typing in inputs
+                    if (e.target.matches('input, textarea, select')) return;
+
+                    const key = e.key;
+                    if (this.shortcuts[key]) {
+                        e.preventDefault();
+                        this.shortcuts[key].action();
+                    }
+                });
+            }
+
+            static show() {
+                const modal = document.querySelector('.keyboard-shortcuts-modal');
+                const overlay = document.querySelector('.keyboard-shortcuts-overlay');
+
+                if (!modal) this.createModal();
+                const newModal = document.querySelector('.keyboard-shortcuts-modal');
+                const newOverlay = document.querySelector('.keyboard-shortcuts-overlay');
+
+                newModal.classList.add('active');
+                newOverlay.classList.add('active');
+
+                newOverlay.addEventListener('click', () => {
+                    newModal.classList.remove('active');
+                    newOverlay.classList.remove('active');
+                });
+            }
+
+            static createModal() {
+                const overlay = document.createElement('div');
+                overlay.className = 'keyboard-shortcuts-overlay';
+                document.body.appendChild(overlay);
+
+                const modal = document.createElement('div');
+                modal.className = 'keyboard-shortcuts-modal';
+                modal.innerHTML = `
+                    <h2>Keyboard Shortcuts</h2>
+                    <div class="shortcut-group">
+                        <div class="shortcut-group-title">Navigation</div>
+                        ${Object.entries(this.shortcuts).map(([key, data]) => `
+                            <div class="shortcut-item">
+                                <span>${data.description}</span>
+                                <span class="shortcut-key">${key}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-muted);">Press <span class="shortcut-key">Esc</span> to close</p>
+                `;
+                document.body.appendChild(modal);
+            }
+        }
+
+        // Progress tracker for long operations
+        class ProgressTracker {
+            static create(label, container) {
+                const progressId = `progress-${Date.now()}`;
+                const progressHtml = `
+                    <div class="operation-progress" id="${progressId}">
+                        <div class="progress-label">
+                            <span>${label}</span>
+                            <span id="${progressId}-percent">0%</span>
+                        </div>
+                        <div class="progress-bar-wrapper">
+                            <div class="progress-bar-fill" id="${progressId}-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                `;
+                if (typeof container === 'string') {
+                    document.getElementById(container).appendChild(this.htmlToElement(progressHtml));
+                } else {
+                    container.appendChild(this.htmlToElement(progressHtml));
+                }
+                return progressId;
+            }
+
+            static update(progressId, percent) {
+                const fill = document.getElementById(`${progressId}-fill`);
+                const percentSpan = document.getElementById(`${progressId}-percent`);
+                if (fill) fill.style.width = `${percent}%`;
+                if (percentSpan) percentSpan.textContent = `${Math.round(percent)}%`;
+            }
+
+            static remove(progressId) {
+                document.getElementById(progressId)?.remove();
+            }
+
+            static htmlToElement(html) {
+                const template = document.createElement('template');
+                template.innerHTML = html.trim();
+                return template.content.firstChild;
+            }
+        }
+
+        // First-time user detection and onboarding
+        class OnboardingManager {
+            static isFirstTime() {
+                return !localStorage.getItem('dashboard-visited');
+            }
+
+            static markVisited() {
+                localStorage.setItem('dashboard-visited', new Date().toISOString());
+            }
+
+            static showWelcome() {
+                if (!this.isFirstTime()) return;
+
+                const welcomeBanner = document.createElement('div');
+                welcomeBanner.className = 'welcome-banner';
+                welcomeBanner.innerHTML = `
+                    <h2>Welcome to NixOS System Command Center</h2>
+                    <p>Your operational dashboard for AI stack management</p>
+                    <div class="welcome-buttons">
+                        <button class="welcome-btn" onclick="OnboardingManager.showTour()">Take Tour</button>
+                        <button class="welcome-btn" onclick="OnboardingManager.skipTour()">Skip for Now</button>
+                    </div>
+                `;
+
+                const container = document.querySelector('.container');
+                if (container && container.firstChild) {
+                    container.insertBefore(welcomeBanner, container.firstChild);
+                }
+
+                this.markVisited();
+            }
+
+            static showTour() {
+                const tourSteps = [
+                    {
+                        title: 'System Metrics',
+                        description: 'Monitor CPU, memory, disk, and network usage in real-time'
+                    },
+                    {
+                        title: 'AI Stack Status',
+                        description: 'View health status of all AI services and orchestration components'
+                    },
+                    {
+                        title: 'Deployment Operations',
+                        description: 'Manage and monitor your deployment history and operations'
+                    },
+                    {
+                        title: 'Use Keyboard Shortcuts',
+                        description: 'Press ? to see available keyboard shortcuts for faster navigation'
+                    }
+                ];
+
+                let stepIndex = 0;
+                const tourContainer = document.createElement('div');
+                tourContainer.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-card); border: 2px solid var(--accent-cyan); border-radius: 8px; padding: 2rem; z-index: 10002; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);';
+
+                const updateTour = () => {
+                    const step = tourSteps[stepIndex];
+                    tourContainer.innerHTML = `
+                        <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">${step.title}</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">${step.description}</p>
+                        <div style="display: flex; gap: 1rem; justify-content: space-between;">
+                            <button class="welcome-btn" onclick="if(arguments.callee.prev)arguments.callee.prev();" style="visibility: ${stepIndex > 0 ? 'visible' : 'hidden'};">← Previous</button>
+                            <span style="color: var(--text-muted); align-self: center;">${stepIndex + 1} / ${tourSteps.length}</span>
+                            <button class="welcome-btn" onclick="if(arguments.callee.next)arguments.callee.next();">${stepIndex < tourSteps.length - 1 ? 'Next →' : 'Done'}</button>
+                        </div>
+                    `;
+                };
+
+                updateTour();
+                document.body.appendChild(tourContainer);
+
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10001;';
+                document.body.appendChild(overlay);
+            }
+
+            static skipTour() {
+                document.querySelectorAll('[style*="position: fixed"]').forEach(el => {
+                    if (el.style.zIndex === '10002' || el.style.zIndex === '10001') el.remove();
+                });
+            }
+        }
+
+        // Help tooltip system
+        function addHelpTooltip(element, helpText) {
+            if (typeof element === 'string') {
+                element = document.getElementById(element);
+            }
+            if (!element) return;
+
+            element.className += ' help-tooltip';
+            const tooltip = document.createElement('span');
+            tooltip.className = 'tooltip-text';
+            tooltip.textContent = helpText;
+            element.appendChild(tooltip);
+        }
+
+        // Data refresh with feedback
+        async function refreshDataWithFeedback(fetchFn, container, loadingMessage = 'Refreshing...') {
+            const originalContent = container.innerHTML;
+            container.innerHTML = `<div class="loading"><div class="spinner"></div> ${loadingMessage}</div>`;
+
+            try {
+                await fetchFn();
+                NotificationManager.success('Data refreshed successfully');
+            } catch (error) {
+                console.error('Refresh failed:', error);
+                container.innerHTML = originalContent;
+                NotificationManager.error('Failed to refresh data');
+            }
+        }
+
+        // Initialize UX improvements
+        function initializeUXImprovements() {
+            // Initialize keyboard shortcuts
+            KeyboardShortcutsManager.init();
+
+            // Show welcome for first-time users
+            OnboardingManager.showWelcome();
+
+            // Add help tooltips to key elements
+            addHelpTooltip('llmStatus', 'Real-time status of AI services and components');
+            addHelpTooltip('section-system-metrics', 'Monitor system resources and performance');
+        }
+
         // Initial load when page loads
         document.addEventListener('DOMContentLoaded', function() {
             // Delay initial health check by 2 seconds to let other services load first
@@ -8583,6 +9385,9 @@
 
             // Start auto-refresh for monitoring data
             startAutoRefresh();
+
+            // Initialize UX improvements
+            initializeUXImprovements();
 
             // Log performance report after initial load
             setTimeout(() => {
