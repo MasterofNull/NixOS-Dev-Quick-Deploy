@@ -35,8 +35,9 @@ severity_mapping:
   info: 0.0       # Any anomaly → Info
 
 # Auto-remediation policies
+# Always enabled - part of integrated monitoring system
 auto_remediation:
-  enabled: true
+  enabled: true  # Always enabled - configuration for thresholds only
   minimum_severity: 0.7  # Only remediate critical+ anomalies
 
   # Metric-specific workflows
@@ -135,10 +136,12 @@ monitoring:
   report_interval_seconds: 3600  # Hourly statistics
 
 # Environment variable overrides
-# Set these to customize behavior:
+# Set these to customize behavior (all features enabled by default):
 #
 # ANOMALY_Z_SCORE_THRESHOLD - Z-score threshold (default: 3.0)
 # ANOMALY_IQR_MULTIPLIER - IQR multiplier (default: 1.5)
 # ANOMALY_BASELINE_WINDOW - Baseline window size (default: 1000)
-# ANOMALY_AUTO_REMEDIATE - Enable auto-remediation (default: true)
+# ANOMALY_AUTO_REMEDIATE - Auto-remediation (always enabled, default: true)
 # ANOMALY_MIN_SEVERITY - Minimum severity for remediation (default: 0.7)
+#
+# Note: Anomaly detection is always enabled. These variables are for customization only.
