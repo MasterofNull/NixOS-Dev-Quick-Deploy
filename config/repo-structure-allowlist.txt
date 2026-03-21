@@ -121,6 +121,10 @@ docs/VLLM-MODEL-SELECTION.md
 docs/initial-passwords.md
 docs/skill-dependency-lock.md
 
+# Phase 6.2: User Experience Polish - New user-facing guides
+docs/user-guides/quick-start.md
+docs/user-guides/keyboard-shortcuts.md
+
 # scripts root-file exceptions
 scripts/ai/ai-env-summary.sh
 scripts/ai/ai-metrics-auto-updater.sh
