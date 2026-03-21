@@ -1,0 +1,324 @@
+# Workflow Automation Configuration
+# Configuration for intelligent workflow generation, optimization, and execution
+
+# Workflow Generator Settings
+generator:
+  # LLM model for goal parsing (if using external LLM)
+  llm_model: "claude-sonnet-4-5"
+  llm_endpoint: null  # Set if using external endpoint
+
+  # Task decomposition constraints
+  max_tasks_per_workflow: 50
+  min_tasks_per_workflow: 1
+
+  # Default task durations (minutes)
+  default_durations:
+    code: 30
+    test: 15
+    build: 10
+    deploy: 20
+    monitor: 5
+    analyze: 25
+    document: 20
+    review: 15
+    validate: 10
+    configure: 15
+    investigate: 30
+    fix: 25
+    optimize: 40
+    plan: 20
+
+  # Validation settings
+  validate_on_generation: true
+  allow_circular_dependencies: false
+
+# Workflow Optimizer Settings
+optimizer:
+  # Minimum executions required for optimization
+  min_executions_for_optimization: 3
+
+  # Bottleneck detection thresholds
+  bottleneck_thresholds:
+    slow_task_multiplier: 2.0  # Task is slow if >2x average
+    high_failure_rate: 0.2  # >20% failure rate
+    high_retry_rate: 1.0  # >1 retry on average
+
+  # Optimization strategies
+  strategies:
+    parallelization: true
+    resource_optimization: true
+    dependency_removal: true
+    agent_reassignment: true
+    timeout_adjustment: true
+
+  # Projected improvement calculation
+  improvement_estimation:
+    bottleneck_fix_impact: 0.1  # 10% improvement per bottleneck
+    parallelization_impact: 0.15  # 15% improvement from parallelization
+    max_improvement: 0.5  # Cap at 50% improvement
+
+# Template Manager Settings
+templates:
+  # Storage location
+  storage_path: "/tmp/workflow-templates"
+
+  # Template quality scoring
+  quality_weights:
+    success_rate: 0.7  # 70% weight on success rate
+    duration: 0.3  # 30% weight on duration
+
+  # Template categorization
+  categories:
+    - deployment
+    - development
+    - operations
+    - testing
+    - monitoring
+    - general
+
+  # Template versioning
+  versioning_enabled: true
+  max_versions_per_template: 5
+
+  # Template recommendation
+  recommendation:
+    max_recommendations: 5
+    min_similarity_score: 0.5
+    include_quality_boost: true
+
+# Workflow Adapter Settings
+adapter:
+  # Similarity detection
+  similarity:
+    goal_similarity_weight: 0.6
+    keyword_overlap_weight: 0.4
+    min_similarity_threshold: 0.5
+
+  # Parameter binding
+  parameter_binding:
+    extract_from_goal: true
+    require_explicit_required: false
+    allow_placeholders: true
+
+  # Workflow customization
+  customization:
+    allow_task_addition: true
+    allow_task_removal: true
+    allow_task_modification: true
+
+  # Validation after adaptation
+  validate_after_adaptation: true
+
+# Success Predictor Settings
+predictor:
+  # Model settings
+  model_path: "/tmp/workflow-success-model.pkl"
+  use_ml_model: false  # Use heuristic model by default
+
+  # Risk identification thresholds
+  risk_thresholds:
+    high_complexity_tasks: 20
+    high_dependencies: 5
+    long_critical_path: 10
+    low_parallelism: 0.3
+    long_duration_minutes: 120
+    high_resource_intensity: 0.7
+
+  # Prediction confidence
+  confidence:
+    base_confidence: 0.5
+    complexity_penalty: 0.1
+
+  # Alternative suggestions
+  alternatives:
+    suggest_when_prob_below: 0.7
+    max_alternatives: 3
+
+# Workflow Executor Settings
+executor:
+  # State management
+  state_dir: "/tmp/workflow-state"
+  save_state_after_batch: true
+  persist_telemetry: true
+
+  # Execution constraints
+  max_parallel_tasks: 5
+  default_timeout_seconds: 3600  # 1 hour
+  task_timeout_multiplier: 2.0  # Task timeout = estimated_duration * multiplier
+
+  # Retry policy
+  retry:
+    max_retries: 3
+    backoff_multiplier: 2.0
+    retry_on_timeout: true
+    retry_on_failure: true
+
+  # Agent dispatch
+  agent_dispatch:
+    selection_strategy: "round_robin"  # round_robin, least_loaded, capability_match
+    agent_timeout_seconds: 60
+
+  # Progress tracking
+  progress:
+    update_interval_seconds: 5
+    broadcast_progress: true
+
+  # Error handling
+  error_handling:
+    stop_on_task_failure: true
+    allow_partial_completion: false
+    collect_error_telemetry: true
+
+# Workflow Store Settings
+store:
+  # Database
+  db_path: "/tmp/workflow-store.db"
+  db_type: "sqlite"  # sqlite or postgresql
+
+  # Retention policies
+  retention:
+    workflow_executions_days: 90
+    telemetry_days: 30
+    task_executions_days: 90
+
+  # Cleanup
+  cleanup:
+    enabled: true
+    schedule: "0 2 * * *"  # 2 AM daily
+    dry_run: false
+
+  # Query limits
+  query_limits:
+    max_results: 1000
+    default_limit: 100
+    max_offset: 10000
+
+# Telemetry Collection Settings
+telemetry:
+  # Collection
+  enabled: true
+  collect_task_metrics: true
+  collect_workflow_metrics: true
+  collect_resource_usage: true
+
+  # Events to collect
+  events:
+    - workflow_start
+    - workflow_end
+    - task_start
+    - task_end
+    - task_retry
+    - task_failure
+    - agent_dispatch
+
+  # Storage
+  storage_backend: "sqlite"  # sqlite, prometheus, influxdb
+  batch_size: 100
+  flush_interval_seconds: 60
+
+# Dashboard Integration Settings
+dashboard:
+  # API settings
+  api_enabled: true
+  api_prefix: "/api/workflows"
+
+  # UI features
+  ui_features:
+    workflow_generation: true
+    workflow_optimization: true
+    template_browser: true
+    execution_tracking: true
+    success_prediction: true
+    workflow_adaptation: true
+
+  # Visualization
+  visualization:
+    show_dag_graph: true
+    show_execution_timeline: true
+    show_resource_usage: true
+    show_optimization_suggestions: true
+
+  # Refresh intervals (seconds)
+  refresh_intervals:
+    execution_status: 2
+    workflow_list: 10
+    template_list: 30
+    statistics: 5
+
+# Security Settings
+security:
+  # Authentication (placeholder for future implementation)
+  require_auth: false
+  auth_provider: null
+
+  # Authorization
+  require_workflow_approval: false
+  allowed_roles:
+    - admin
+    - operator
+    - developer
+
+  # Input validation
+  validation:
+    max_goal_length: 500
+    max_workflow_name_length: 100
+    sanitize_inputs: true
+
+  # Rate limiting
+  rate_limiting:
+    enabled: false
+    requests_per_minute: 60
+    burst_size: 10
+
+# Logging Settings
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log files
+  files:
+    workflow_generator: "/tmp/logs/workflow-generator.log"
+    workflow_executor: "/tmp/logs/workflow-executor.log"
+    workflow_optimizer: "/tmp/logs/workflow-optimizer.log"
+
+  # Log rotation
+  rotation:
+    enabled: true
+    max_size_mb: 100
+    backup_count: 5
+
+# Feature Flags
+features:
+  # Experimental features
+  experimental:
+    llm_powered_generation: false
+    distributed_execution: false
+    workflow_versioning: false
+    collaborative_workflows: false
+
+  # Beta features
+  beta:
+    advanced_optimization: true
+    ml_success_prediction: false
+    workflow_templates: true
+    workflow_adaptation: true
+
+# Performance Settings
+performance:
+  # Caching
+  cache:
+    enabled: true
+    template_cache_ttl_seconds: 3600
+    workflow_cache_ttl_seconds: 1800
+
+  # Connection pooling
+  db_pool:
+    min_connections: 1
+    max_connections: 10
+    connection_timeout_seconds: 30
+
+  # Resource limits
+  limits:
+    max_concurrent_executions: 10
+    max_workflow_size_mb: 10
+    max_telemetry_events_per_batch: 1000
