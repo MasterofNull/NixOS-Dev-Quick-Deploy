@@ -15,7 +15,7 @@ import os
 from typing import Dict, List
 from pathlib import Path
 
-from api.routes import metrics, services, containers, config, websockets, actions, aistack, audit, deployments, health, insights, workflows
+from api.routes import metrics, services, containers, config, websockets, actions, aistack, audit, deployments, health, insights, workflows, collaboration
 from api.services.metrics_collector import MetricsCollector
 from api.services.runtime_controls import get_dashboard_rate_limiter, get_operator_audit_log
 
@@ -197,6 +197,7 @@ app.include_router(deployments.router, prefix="/api", tags=["deployments"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 app.include_router(workflows.router, prefix="/api", tags=["workflows"])
+app.include_router(collaboration.router, prefix="/api", tags=["collaboration"])
 
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────

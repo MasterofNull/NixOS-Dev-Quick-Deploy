@@ -1,0 +1,346 @@
+# Multi-Agent Collaboration Configuration
+#
+# This file configures the multi-agent collaboration system including team
+# formation, communication, planning, consensus, and performance tracking.
+
+# Team Formation Settings
+team_formation:
+  # Optimal team size range (research-backed: 2-5 agents)
+  min_team_size: 1
+  max_team_size: 5
+  optimal_team_size_range: [2, 5]
+
+  # Team formation timeout (seconds)
+  formation_timeout: 1.0
+
+  # Agent selection criteria weights
+  selection_weights:
+    capability_match: 0.5
+    performance_history: 0.3
+    availability: 0.2
+
+  # Coordination pattern selection
+  coordination_patterns:
+    peer:
+      min_agents: 1
+      max_agents: 3
+      suitable_for: ["simple_tasks", "creative_tasks"]
+
+    hub:
+      min_agents: 2
+      max_agents: 5
+      suitable_for: ["moderate_complexity", "coordination_required"]
+
+    hierarchical:
+      min_agents: 3
+      max_agents: 10
+      suitable_for: ["high_complexity", "large_scale"]
+
+    pipeline:
+      min_agents: 2
+      max_agents: 6
+      suitable_for: ["sequential_workflow", "staged_execution"]
+
+  # Caching settings
+  cache_teams: true
+  cache_ttl_seconds: 3600
+  cache_max_size: 100
+
+# Communication Protocol Settings
+communication:
+  # Message queue settings
+  queue_max_size: 1000
+  message_retention_seconds: 3600
+
+  # Message timeouts
+  default_timeout_seconds: 300
+  urgent_timeout_seconds: 60
+  critical_timeout_seconds: 30
+
+  # Priority levels configuration
+  priorities:
+    low: 1
+    normal: 2
+    high: 3
+    urgent: 4
+    critical: 5
+
+  # Broadcast settings
+  broadcast_enabled: true
+  broadcast_rate_limit: 100  # messages per second
+
+  # Shared context settings
+  context_versioning: true
+  conflict_detection: true
+  conflict_resolution: "consensus"  # consensus | last_write_wins | expert_override
+
+  # Communication metrics
+  track_latency: true
+  latency_sla_ms: 50
+  log_all_messages: false  # Enable for debugging
+
+# Collaborative Planning Settings
+planning:
+  # Planning modes
+  default_mode: "parallel"  # parallel | sequential | hierarchical
+
+  # Planning timeouts
+  contribution_timeout_seconds: 300
+  synthesis_timeout_seconds: 60
+  validation_timeout_seconds: 30
+
+  # Plan quality thresholds
+  quality_thresholds:
+    min_feasibility: 0.7
+    min_completeness: 0.8
+    min_coherence: 0.7
+
+  # Phase types and defaults
+  default_phases:
+    - type: "design"
+      estimated_duration_seconds: 600
+    - type: "implementation"
+      estimated_duration_seconds: 1800
+    - type: "testing"
+      estimated_duration_seconds: 900
+    - type: "review"
+      estimated_duration_seconds: 300
+
+  # Plan versioning
+  enable_versioning: true
+  max_versions: 10
+
+  # Risk management
+  track_risks: true
+  risk_escalation_threshold: 3  # Number of critical risks
+
+# Quality Consensus Settings
+consensus:
+  # Consensus thresholds
+  default_threshold: "simple_majority"  # simple_majority | supermajority | unanimous | weighted_majority
+
+  thresholds:
+    simple_majority: 0.51
+    supermajority: 0.66
+    unanimous: 1.0
+    weighted_majority: 0.51  # Of weighted votes
+
+  # Reviewer settings
+  min_reviewers: 3
+  max_reviewers: 7
+  optimal_reviewers: 5
+
+  # Review timeouts
+  review_timeout_seconds: 300
+  consensus_evaluation_timeout_seconds: 60
+
+  # Weighting configuration
+  reviewer_weights:
+    base_weight: 1.0
+    max_capability_bonus: 0.25
+    max_performance_bonus: 0.25
+
+  # Escalation settings
+  enable_escalation: true
+  escalation_conditions:
+    - "no_consensus"
+    - "tie"
+    - "insufficient_votes"
+
+  # Tie-breaking
+  enable_tie_breaking: true
+  tie_breaking_strategy: "expert_override"  # expert_override | highest_weight | orchestrator
+
+  # Performance tracking
+  track_reviewer_accuracy: true
+  accuracy_window_tasks: 100
+
+# Collaboration Patterns Settings
+patterns:
+  # Pattern configurations
+  parallel:
+    min_agents: 2
+    max_agents: 10
+    timeout_seconds: 3600
+    retry_on_failure: true
+    max_retries: 2
+    parallelization_factor: 0.7  # Speed improvement per additional agent
+
+  sequential:
+    min_agents: 4  # orchestrator, planner, executor(s), reviewer
+    max_agents: 6
+    timeout_seconds: 3600
+    retry_on_failure: true
+    max_retries: 1
+    stage_timeouts:
+      planning: 600
+      execution: 1800
+      review: 600
+      approval: 300
+
+  consensus:
+    min_agents: 3
+    max_agents: 7
+    timeout_seconds: 600
+    retry_on_failure: false
+    consensus_threshold: 0.66
+
+  expert_override:
+    min_agents: 2  # At least 1 general + 1 expert
+    max_agents: 5
+    timeout_seconds: 1800
+    retry_on_failure: true
+    max_retries: 1
+    expert_weight_multiplier: 2.0
+
+  # Pattern selection heuristics
+  selection_rules:
+    - characteristics: ["independent_subtasks"]
+      pattern: "parallel"
+      confidence: 0.9
+
+    - characteristics: ["sequential_dependencies"]
+      pattern: "sequential"
+      confidence: 0.9
+
+    - characteristics: ["high_stakes"]
+      pattern: "consensus"
+      confidence: 0.85
+
+    - characteristics: ["domain_specific"]
+      pattern: "expert_override"
+      confidence: 0.85
+
+  # Performance tracking
+  track_pattern_performance: true
+  adaptive_selection: true  # Learn from past performance
+
+# Team Performance Metrics Settings
+metrics:
+  # Metric collection
+  enable_metrics: true
+  real_time_tracking: true
+
+  # Data retention
+  history_retention_days: 90
+  max_history_entries: 10000
+
+  # Performance comparison
+  comparison_window_days: 30
+  min_samples_for_comparison: 10
+
+  # Cost model
+  cost_model:
+    individual_base_cost: 1.0
+    coordination_overhead_cost_per_agent: 0.2
+    communication_cost_per_message: 0.01
+
+  # Quality scoring
+  quality_metrics:
+    - "correctness"
+    - "completeness"
+    - "efficiency"
+    - "maintainability"
+
+  quality_weights:
+    correctness: 0.4
+    completeness: 0.3
+    efficiency: 0.2
+    maintainability: 0.1
+
+  # Regression detection
+  enable_regression_detection: true
+  regression_threshold: 0.05  # 5% drop
+  regression_window_days: 7
+
+  # Alerts
+  alert_on_regression: true
+  alert_on_low_efficiency: true
+  efficiency_threshold: 0.5
+
+# Circuit Breakers and Limits
+circuit_breakers:
+  # Team formation limits
+  max_teams_per_minute: 100
+  max_concurrent_teams: 50
+
+  # Communication limits
+  max_messages_per_second: 1000
+  max_broadcast_size: 100  # agents
+  max_context_size_kb: 1024
+
+  # Planning limits
+  max_concurrent_plans: 20
+  max_contributions_per_plan: 50
+  max_phases_per_plan: 20
+
+  # Consensus limits
+  max_concurrent_consensus_sessions: 30
+  max_reviews_per_session: 10
+
+  # Pattern execution limits
+  max_concurrent_executions: 10
+  max_execution_duration_seconds: 7200  # 2 hours
+
+# Monitoring and Observability
+monitoring:
+  # Telemetry
+  enable_telemetry: true
+  telemetry_export_interval_seconds: 60
+
+  # Metrics to track
+  track_metrics:
+    - "team_formation_time"
+    - "team_formation_success_rate"
+    - "message_latency"
+    - "message_throughput"
+    - "context_conflicts"
+    - "plan_quality_scores"
+    - "consensus_rate"
+    - "pattern_execution_time"
+    - "team_vs_individual_performance"
+
+  # Logging
+  log_level: "INFO"  # DEBUG | INFO | WARNING | ERROR
+  log_all_teams: false
+  log_all_messages: false
+  log_all_plans: false
+  log_all_consensus: false
+
+  # Health checks
+  health_check_interval_seconds: 30
+  health_thresholds:
+    max_queue_size: 900
+    max_latency_ms: 100
+    min_success_rate: 0.8
+
+# Feature Flags
+features:
+  enable_team_formation: true
+  enable_communication: true
+  enable_planning: true
+  enable_consensus: true
+  enable_patterns: true
+  enable_metrics: true
+  enable_caching: true
+  enable_adaptive_selection: true
+
+# Integration Settings
+integration:
+  # Workflow integration
+  integrate_with_workflow_engine: true
+  workflow_callback_timeout_seconds: 300
+
+  # LLM integration for synthesis
+  llm_provider: "anthropic"  # anthropic | openai | local
+  llm_model: "claude-sonnet-4"
+  llm_timeout_seconds: 30
+  llm_max_retries: 2
+
+  # Vector DB for similarity matching
+  vector_db_enabled: false
+  vector_db_provider: "chromadb"
+
+  # External systems
+  telemetry_backend: "prometheus"
+  logging_backend: "structured_logs"
