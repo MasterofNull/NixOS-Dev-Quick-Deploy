@@ -1,0 +1,239 @@
+# Query & Retrieval Performance Optimization Configuration
+# Phase 5.2: SYSTEM-EXCELLENCE-ROADMAP-2026-Q2
+#
+# This file configures all query performance optimization components including
+# vector search, caching, batching, embeddings, lazy loading, and profiling.
+
+# ==============================================================================
+# Vector Search Optimization
+# ==============================================================================
+vector_search:
+  # HNSW Index Parameters
+  hnsw:
+    m: 16  # Number of edges per node (higher = better recall, more memory)
+    ef_construct: 100  # Build-time candidate list size (higher = better quality)
+    ef_search: 128  # Search-time candidate list size (higher = better recall)
+
+  # Query Vector Caching
+  query_cache:
+    enabled: true
+    size: 1000  # Number of query vectors to cache
+    ttl_seconds: 3600  # 1 hour
+
+  # Batch Operations
+  batch_size: 50  # Optimal batch size for vector operations
+
+  # Pre-filtering
+  prefiltering:
+    enabled: true
+    threshold: 0.5  # Minimum similarity score
+
+  # PCA Dimensionality Reduction (experimental)
+  pca:
+    enabled: false
+    target_dimensions: 256
+
+  # Index Warming
+  index_warming:
+    enabled: true
+    num_queries: 100  # Number of random warm-up queries
+
+  # Memory Optimization
+  memmap_threshold: 100000  # Use mmap for collections larger than this
+
+  # Profiling
+  profiling:
+    enabled: true
+    slow_query_threshold_ms: 100.0
+
+# ==============================================================================
+# Query Result Caching
+# ==============================================================================
+query_cache:
+  # In-Memory L1 Cache
+  memory:
+    size: 1000  # Number of cached query results
+    ttl_seconds: 300  # 5 minutes
+
+  # Redis L2 Cache
+  redis:
+    enabled: true
+    url: "redis://localhost:6379"
+    ttl_seconds: 3600  # 1 hour
+    key_prefix: "query_cache:"
+
+  # Partial Result Caching
+  partial_cache:
+    enabled: true
+    min_result_size: 5  # Cache if at least this many results
+
+  # Cache Warming
+  warming:
+    enabled: true
+    common_queries_file: null  # Path to common queries JSON file
+
+  # Eviction Policy
+  lru_eviction: true
+
+# ==============================================================================
+# Query Batching
+# ==============================================================================
+query_batching:
+  # Batch Sizing
+  min_batch_size: 5
+  max_batch_size: 50
+  optimal_batch_size: 20
+
+  # Timing Windows
+  max_wait_ms: 50.0  # Maximum wait for non-urgent queries
+  urgent_wait_ms: 5.0  # Maximum wait for urgent queries
+  batch_interval_ms: 10.0  # Batch processing interval
+
+  # Auto-tuning
+  auto_tune:
+    enabled: true
+    target_latency_ms: 100.0
+    tune_interval_seconds: 60
+
+  # Metrics
+  enable_metrics: true
+
+# ==============================================================================
+# Embedding Generation Optimization
+# ==============================================================================
+embeddings:
+  # Model Configuration
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  embedding_dim: 384
+
+  # Batching
+  batch_size: 32
+  max_token_length: 512
+
+  # Caching
+  cache:
+    enabled: true
+    size: 10000  # Number of cached embeddings
+    ttl_seconds: 3600  # 1 hour
+
+  # Performance
+  use_gpu: true  # Use GPU if available
+  quantization: false  # Enable quantization for faster inference
+
+  # Model Warm-up
+  warm_up_queries: 50
+
+  # Optimization
+  normalize_embeddings: true
+  pooling_strategy: "mean"
+
+# ==============================================================================
+# Lazy Loading & Pagination
+# ==============================================================================
+lazy_loading:
+  # Pagination
+  page_size: 20  # Results per page
+  max_cached_pages: 10  # Maximum pages to cache
+
+  # Prefetching
+  prefetch:
+    enabled: true
+    prefetch_pages: 2  # Number of pages to prefetch ahead
+
+  # Virtual Scrolling
+  virtual_scroll:
+    enabled: true
+    buffer_size: 5  # Pages to keep in buffer
+
+# ==============================================================================
+# Query Performance Profiling
+# ==============================================================================
+profiling:
+  # Slow Query Detection
+  slow_query_threshold_ms: 500.0  # Queries slower than this are logged
+
+  # Regression Detection
+  regression_detection:
+    enabled: true
+    baseline_window_size: 100  # Number of queries to use for baseline
+    regression_threshold_pct: 50.0  # % slower = regression
+
+  # Metrics Export
+  prometheus:
+    enabled: true
+    namespace: "query_performance"
+
+  # Component Tracking
+  track_components:
+    - embedding_generation
+    - vector_search
+    - result_filtering
+    - cache_lookup
+    - total_query_time
+
+# ==============================================================================
+# Performance Targets
+# ==============================================================================
+targets:
+  # Latency Targets (P95)
+  vector_search_p95_ms: 100
+  query_routing_p95_ms: 500
+  hint_generation_ms: 200
+  overall_query_p95_ms: 500
+
+  # Throughput Targets
+  queries_per_second: 100
+  embeddings_per_second: 100
+
+  # Cache Targets
+  cache_hit_ratio: 0.60  # 60% cache hit rate for common queries
+
+  # Batch Targets
+  batch_efficiency: 0.75  # 75% batch efficiency
+
+  # Resource Limits
+  max_memory_increase_mb: 500
+  max_cpu_usage_pct: 80
+
+# ==============================================================================
+# Feature Toggles (A/B Testing)
+# ==============================================================================
+features:
+  enable_vector_optimization: true
+  enable_query_caching: true
+  enable_query_batching: true
+  enable_embedding_optimization: true
+  enable_lazy_loading: true
+  enable_profiling: true
+
+# ==============================================================================
+# Monitoring & Alerting
+# ==============================================================================
+monitoring:
+  # Metric Collection
+  collect_metrics: true
+  metrics_interval_seconds: 10
+
+  # Alerts
+  alerts:
+    - name: "high_p95_latency"
+      condition: "p95_latency_ms > 600"
+      severity: "warning"
+
+    - name: "low_cache_hit_rate"
+      condition: "cache_hit_rate < 0.40"
+      severity: "warning"
+
+    - name: "high_slow_query_rate"
+      condition: "slow_query_rate > 0.10"
+      severity: "critical"
+
+    - name: "regression_detected"
+      condition: "regressions_per_hour > 5"
+      severity: "warning"
+
+# ==============================================================================
+# Environment Overrides
+# ==============================================================================
+# Environment-specific settings can override defaults above
+# Example: QUERY_PERF_VECTOR_SEARCH_HNSW_M=32
