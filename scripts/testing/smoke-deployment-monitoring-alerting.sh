@@ -149,4 +149,12 @@ jq -e --arg id "${alert_id}" '.alerts | all(.id != $id)' "${TMP_DIR}/alerts-fina
   || fail "resolved alert still present in active alerts"
 pass "resolved alert removed from active alert list"
 
-printf '\nPhase 4.1 deployment -> monitoring -> alerting smoke passed.\n'
+printf '\n========================================\n'
+printf 'Phase 4.1 deployment -> monitoring -> alerting smoke passed.\n'
+printf '========================================\n'
+printf '\nEndorsed workflows tested:\n'
+printf '  1. Deployment triggers monitoring setup\n'
+printf '  2. Monitoring triggers alerts correctly\n'
+printf '  3. Alerts flow to dashboard and notifications\n'
+printf '  4. Alert acknowledgment and resolution\n'
+printf '\nNext phase: automated remediation validation\n'
