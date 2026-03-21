@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Test Suite: Deployment Graph Query Modes (Phase 3.2 Knowledge Graph)
 
