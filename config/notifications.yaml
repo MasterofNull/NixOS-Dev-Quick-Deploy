@@ -1,7 +1,10 @@
 # Notification Channels Configuration
 # Part of Phase 1 (Monitoring & Observability) implementation
+# Phase 4.5: All notification infrastructure is always enabled and integrated
 #
 # Configure notification delivery channels, rate limits, and routing.
+# Note: The notification system is always active. Channel enablement is for
+# choosing delivery methods, not for disabling the notification feature itself.
 
 channels:
   # Email notifications

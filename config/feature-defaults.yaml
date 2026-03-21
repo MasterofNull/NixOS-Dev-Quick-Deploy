@@ -1,0 +1,433 @@
+# Feature Defaults Configuration
+# Phase 4.5: Zero Bolt-On Features
+#
+# This file defines the default state and configuration for all features.
+# All features are ENABLED by default unless explicitly noted as experimental.
+# Configuration options control customization, NOT enabling/disabling.
+
+version: "1.0.0"
+description: "Centralized feature defaults - all features integrated and auto-enabled"
+updated: "2026-03-20"
+
+# Philosophy: Everything Integrated
+# - No feature flags for enabling/disabling core functionality
+# - Configuration is for customization only (performance tuning, resource limits)
+# - All services auto-start on deployment
+# - All dashboard cards auto-load
+# - No manual intervention required
+
+# ============================================================================
+# CATEGORY A: Core Features (Always Enabled)
+# ============================================================================
+# These features are fundamental to the system and always active.
+# They cannot be disabled without breaking core functionality.
+
+core_features:
+  # AI Harness Framework
+  ai_harness:
+    enabled: true  # Always enabled - core framework
+    description: "Core agent harness enabling memory, eval, task classification"
+    customization:
+      eval_interval_seconds: 300
+      memory_retention_days: 30
+      task_classification_threshold: 0.7
+
+  # Context Compression
+  context_compression:
+    enabled: true  # Always enabled - reduces token overhead
+    description: "Token-efficient summarization for local LLM inference"
+    customization:
+      compression_ratio_target: 0.35  # 35% of original size
+      min_context_length: 500  # Only compress if longer than this
+
+  # Memory System
+  memory:
+    enabled: true  # Always enabled - critical for learning
+    description: "Tiered agent memory (episodic, semantic, procedural)"
+    customization:
+      episodic_retention_days: 7
+      semantic_collection_size: 10000
+      procedural_max_patterns: 1000
+
+  # Tree Search
+  tree_search:
+    enabled: true  # Always enabled - improves recall
+    description: "Branching retrieval expansion for semantic search"
+    customization:
+      activation_threshold_tokens: 20
+      max_branches: 3
+      max_depth: 2
+
+  # Evaluation
+  evaluation:
+    enabled: true  # Always enabled - quality monitoring
+    description: "Response scoring against SLO targets"
+    customization:
+      latency_slo_ms: 2000
+      quality_score_threshold: 0.7
+      token_efficiency_target: 0.8
+
+  # Capability Discovery
+  capability_discovery:
+    enabled: true  # Always enabled - dynamic tool discovery
+    description: "MCP tool discovery and capability indexing"
+    customization:
+      cache_ttl_seconds: 3600
+      discovery_timeout_ms: 500
+
+  # Prompt Caching
+  prompt_caching:
+    enabled: true  # Always enabled - performance optimization
+    description: "Prefix caching for repetitive prompts"
+    customization:
+      cache_size_mb: 100
+      prefix_min_length: 50
+
+  # Task Classification
+  task_classification:
+    enabled: true  # Always enabled - optimal routing
+    description: "Classify queries for routing (simple/complex/tool-calling)"
+    customization:
+      simple_threshold: 0.8
+      complex_threshold: 0.6
+      tool_calling_threshold: 0.7
+
+# ============================================================================
+# Research & Information Gathering
+# ============================================================================
+
+research:
+  # Web Research
+  web_research:
+    enabled: true  # Enabled by default - respects robots.txt
+    description: "Bounded web scraping for current information"
+    customization:
+      timeout_seconds: 12
+      max_concurrent_requests: 3
+      user_agent: "NixOS-AI-Stack-Research/1.0"
+      respect_robots_txt: true
+    opt_out:
+      # Set AI_WEB_RESEARCH_ENABLED=false for air-gapped deployments
+      environment_variable: "AI_WEB_RESEARCH_ENABLED"
+
+  # Browser Research
+  browser_research:
+    enabled: true  # Enabled by default - for JS-heavy sites
+    description: "Headless browser automation fallback"
+    customization:
+      timeout_seconds: 18
+      headless: true
+      disable_images: true  # Faster loading
+    opt_out:
+      # Set AI_BROWSER_RESEARCH_ENABLED=false for minimal deployments
+      environment_variable: "AI_BROWSER_RESEARCH_ENABLED"
+
+# ============================================================================
+# Monitoring & Observability
+# ============================================================================
+
+observability:
+  # Rate Limiting
+  rate_limiting:
+    enabled: true  # Always enabled - DoS protection
+    description: "HTTP request rate limiting"
+    customization:
+      requests_per_minute: 60
+      burst_size: 10
+
+  # OpenTelemetry Tracing
+  otel_tracing:
+    enabled: true  # Enabled by default - observability
+    description: "Distributed tracing export"
+    customization:
+      sample_rate: 0.1  # 10% of requests
+      export_timeout_ms: 5000
+    fallback:
+      # Falls back to local logging if exporter unavailable
+      description: "Local logging if OTEL_EXPORTER_OTLP_ENDPOINT not set"
+
+  # Telemetry
+  telemetry:
+    enabled: true  # Enabled by default - system health
+    description: "Aggregate system telemetry (response times, errors, usage)"
+    customization:
+      batch_size: 100
+      flush_interval_seconds: 60
+    privacy:
+      anonymize_queries: true
+      no_user_data: true
+    opt_out:
+      # Set AI_TELEMETRY_ENABLED=false to disable
+      environment_variable: "AI_TELEMETRY_ENABLED"
+
+# ============================================================================
+# Continuous Learning & Optimization
+# ============================================================================
+
+learning:
+  # Continuous Learning
+  continuous_learning:
+    enabled: true  # Enabled by default - auto-tuning
+    description: "Gap detection and automatic optimization"
+    customization:
+      check_interval_seconds: 3600
+      min_samples_for_tuning: 100
+    opt_out:
+      # Set CONTINUOUS_LEARNING_ENABLED=false for ephemeral deployments
+      environment_variable: "CONTINUOUS_LEARNING_ENABLED"
+
+  # Optimization Proposals
+  optimization_proposals:
+    enabled: true  # Enabled by default - improvement suggestions
+    description: "Generate optimization proposals from experiments"
+    customization:
+      confidence_threshold: 0.8
+      max_proposals_per_cycle: 5
+
+  # Auto-Apply Proposals
+  auto_apply_proposals:
+    enabled: true  # Enabled by default - auto-tuning
+    description: "Auto-apply validated optimization proposals"
+    customization:
+      require_human_approval: false  # Reversible changes
+      max_changes_per_hour: 3
+    notes:
+      - "All changes are tracked and reversible"
+      - "Proposal history maintained in database"
+
+  # Hint Feedback Database
+  hint_feedback_db:
+    enabled: true  # Enabled by default - hint quality tracking
+    description: "Store hint feedback in PostgreSQL"
+    customization:
+      retention_days: 90
+    opt_out:
+      # Set AI_HINT_FEEDBACK_DB_ENABLED=false for minimal deployments
+      environment_variable: "AI_HINT_FEEDBACK_DB_ENABLED"
+
+  # Hint Bandit Algorithm
+  hint_bandit:
+    enabled: true  # Enabled by default - hint optimization
+    description: "Thompson sampling for hint selection"
+    customization:
+      exploration_rate: 0.1
+      min_warmup_samples: 10
+
+# ============================================================================
+# Security
+# ============================================================================
+
+security:
+  # Tool Security Audit
+  tool_security_audit:
+    enabled: true  # Always enabled - security gate
+    description: "Audit tool calls for security violations"
+    customization:
+      strict_mode: true
+      block_on_violation: true
+      audit_log_retention_days: 90
+    notes:
+      - "Required for production deployments"
+      - "Protects against malicious tools"
+
+# ============================================================================
+# CATEGORY D: Conditional Features (Auto-Enable Based on Environment)
+# ============================================================================
+# These features auto-enable when system capabilities are detected.
+
+conditional_features:
+  # Speculative Decoding
+  speculative_decoding:
+    enabled: conditional  # Auto-enable if conditions met
+    description: "Speculative decoding with draft model"
+    conditions:
+      - "Model family is Qwen2.5-Coder or DeepSeek-v2"
+      - "System has >= 16GB RAM"
+      - "Hardware acceleration enabled (CUDA/Vulkan)"
+    customization:
+      draft_model_size: "3B"
+      acceptance_threshold: 0.7
+    auto_enable_logic: "See lib/deploy/auto-enable-features.sh"
+
+  # LLM Query Expansion
+  llm_expansion:
+    enabled: conditional  # Auto-enable if opted-in + resources
+    description: "LLM-based query rewriting for better retrieval"
+    conditions:
+      - "System has >= 4 CPU cores"
+      - "User opted in via AI_LLM_EXPANSION_OPT_IN=true"
+    customization:
+      expansion_model: "local"
+      max_expansions: 3
+      timeout_ms: 500
+    performance_impact:
+      latency_overhead_ms: 300
+      recall_improvement_pct: 12
+    auto_enable_logic: "See lib/deploy/auto-enable-features.sh"
+
+  # Cross-Encoder Reranking
+  cross_encoder:
+    enabled: conditional  # Auto-enable if opted-in + resources
+    description: "Cross-encoder model for result reranking"
+    conditions:
+      - "User opted in via AI_CROSS_ENCODER_OPT_IN=true"
+      - "System has >= 8GB RAM"
+    customization:
+      model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+      batch_size: 32
+    performance_impact:
+      latency_overhead_ms: 500
+      precision_improvement_pct: 8
+
+# ============================================================================
+# CATEGORY B: Experimental Features (Manual Opt-In Required)
+# ============================================================================
+# These features remain disabled by default due to experimental status
+# or specific resource requirements. Clear documentation for opt-in.
+
+experimental_features:
+  # Query Expansion (Synonym-based)
+  query_expansion:
+    enabled: false  # Experimental - manual opt-in
+    description: "Expand queries with semantic synonyms"
+    opt_in_instructions: "Set QUERY_EXPANSION_ENABLED=true"
+    limitations:
+      - "Can amplify noise in specific queries"
+      - "Best for short/ambiguous queries only"
+      - "Limited test coverage"
+    performance_impact:
+      latency_overhead_ms: 250
+
+  # Remote LLM Feedback
+  remote_llm_feedback:
+    enabled: false  # Requires API key + budget
+    description: "Send local outputs to remote LLM for feedback"
+    opt_in_instructions: |
+      1. Set REMOTE_LLM_FEEDBACK_ENABLED=true
+      2. Configure ANTHROPIC_API_KEY or OPENAI_API_KEY
+      3. Be aware of API costs
+    requirements:
+      - "Valid API key"
+      - "API budget allocation"
+    performance_impact:
+      latency_overhead_ms: 750
+      api_cost_per_eval: "$0.001-$0.01"
+
+  # Multi-Turn Query Expansion
+  multi_turn_expansion:
+    enabled: false  # Incomplete implementation
+    description: "Maintain conversation context across turns"
+    opt_in_instructions: "Not recommended - requires schema migration"
+    limitations:
+      - "Partially implemented"
+      - "Requires conversation state persistence"
+      - "No dedicated tests"
+    roadmap: "Phase 5.3 conversation memory redesign"
+
+  # Pattern Extraction
+  pattern_extraction:
+    enabled: false  # Research/training only
+    description: "Extract structured patterns from interactions"
+    opt_in_instructions: "Set PATTERN_EXTRACTION_ENABLED=true (research environments)"
+    use_cases:
+      - "Knowledge distillation"
+      - "Training data collection"
+      - "Research analysis"
+    performance_impact:
+      latency_overhead_ms: 40
+
+# ============================================================================
+# Dashboard & UI
+# ============================================================================
+
+dashboard:
+  # All cards auto-load - no toggles for core features
+  cards:
+    auto_load_all: true
+    collapsible: true  # Can collapse, but all load by default
+    refresh_interval_seconds: 30
+
+  # Real-time updates
+  websocket:
+    enabled: true
+    reconnect_interval_ms: 5000
+
+# ============================================================================
+# Deployment
+# ============================================================================
+
+deployment:
+  # All services auto-start
+  auto_start_services: true
+
+  # Feature validation on startup
+  validate_on_startup: true
+  strict_validation: false  # Warnings only, not errors
+
+  # Auto-enable features script
+  run_auto_enable_script: true
+  auto_enable_script_path: "lib/deploy/auto-enable-features.sh"
+
+# ============================================================================
+# Configuration Override Mechanism
+# ============================================================================
+
+overrides:
+  description: |
+    All features can be customized via environment variables or Nix configuration.
+    This is for CUSTOMIZATION, not for enabling/disabling core features.
+
+  environment_variables:
+    # Core features (customization only)
+    - "AI_EVAL_INTERVAL_SECONDS - Evaluation check interval (default: 300)"
+    - "AI_MEMORY_RETENTION_DAYS - Memory retention period (default: 30)"
+    - "AI_COMPRESSION_RATIO_TARGET - Context compression target (default: 0.35)"
+
+    # Opt-out for specific deployments
+    - "AI_WEB_RESEARCH_ENABLED - Disable for air-gapped (default: true)"
+    - "AI_TELEMETRY_ENABLED - Disable telemetry (default: true)"
+    - "CONTINUOUS_LEARNING_ENABLED - Disable for ephemeral (default: true)"
+
+    # Opt-in for experimental
+    - "QUERY_EXPANSION_ENABLED - Enable experimental query expansion (default: false)"
+    - "REMOTE_LLM_FEEDBACK_ENABLED - Enable remote feedback (default: false)"
+
+    # Conditional auto-enable
+    - "AI_LLM_EXPANSION_OPT_IN - Opt into LLM expansion if resources sufficient (default: false)"
+    - "AI_CROSS_ENCODER_OPT_IN - Opt into cross-encoder reranking (default: false)"
+
+  nix_configuration:
+    example: |
+      # In nix/modules configuration:
+      mySystem.aiHarness = {
+        enable = true;  # Always enabled when aiStack enabled
+        memory.retentionDays = 30;
+        eval.intervalSeconds = 300;
+        retrieval.compressionRatio = 0.35;
+      };
+
+# ============================================================================
+# Migration Notes
+# ============================================================================
+
+migration:
+  from_previous_versions: |
+    If upgrading from a version with feature flags:
+    - All previously optional features are now auto-enabled
+    - Configuration moved from enabled: true/false to customization parameters
+    - No action required for standard deployments
+    - Review experimental features if you had custom opt-ins
+
+  backwards_compatibility: |
+    Existing environment variable overrides are respected.
+    Old-style FEATURE_ENABLED=false still works for opt-out where applicable.
+
+# ============================================================================
+# Documentation References
+# ============================================================================
+
+documentation:
+  integration_model: "docs/architecture/integration-model.md"
+  feature_customization: "docs/operations/feature-customization.md"
+  experimental_features: "docs/operations/experimental-features.md"
+  auto_enable_logic: "lib/deploy/auto-enable-features.sh"
