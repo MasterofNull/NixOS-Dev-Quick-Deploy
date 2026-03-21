@@ -1828,7 +1828,7 @@
             </div>
 
             <!-- Agent Evaluation Trends -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-card-id="agent-trends" data-load-fn="loadAgentEvaluationTrends">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -1893,7 +1893,7 @@
             </div>
 
             <!-- Discovery Signals -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-card-id="discovery-signals" data-load-fn="loadDiscoverySignals">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3151,6 +3151,383 @@
 
         // Data directory (update this path if needed)
         const DATA_DIR = `${window.location.origin}/data`;
+
+        // ====================================================================
+        // PERFORMANCE OPTIMIZATION: CLIENT-SIDE CACHING MODULE
+        // ====================================================================
+        // Implements LRU cache with TTL for frequently accessed data
+        const dashboardCache = {
+            store: new Map(),
+            stats: { hits: 0, misses: 0, evictions: 0 },
+            config: {
+                maxSize: 100,
+                defaultTTL: 60000, // 60 seconds
+                bufferSize: 10
+            },
+
+            // Generate cache key from request parameters
+            generateKey(endpoint, params = {}) {
+                return `${endpoint}:${JSON.stringify(params)}`;
+            },
+
+            // Get value from cache if not expired
+            get(endpoint, params = {}) {
+                const key = this.generateKey(endpoint, params);
+                const item = this.store.get(key);
+                if (!item) {
+                    this.stats.misses++;
+                    return null;
+                }
+                if (Date.now() > item.expiry) {
+                    this.store.delete(key);
+                    this.stats.misses++;
+                    return null;
+                }
+                // Move to end (LRU)
+                this.store.delete(key);
+                this.store.set(key, item);
+                this.stats.hits++;
+                return item.value;
+            },
+
+            // Set value in cache with TTL
+            set(endpoint, data, params = {}, ttl = this.config.defaultTTL) {
+                const key = this.generateKey(endpoint, params);
+                if (this.store.has(key)) {
+                    this.store.delete(key);
+                }
+                this.store.set(key, {
+                    value: data,
+                    expiry: Date.now() + ttl,
+                    timestamp: new Date().toISOString()
+                });
+                // Evict oldest if over capacity
+                if (this.store.size > this.config.maxSize) {
+                    const firstKey = this.store.keys().next().value;
+                    this.store.delete(firstKey);
+                    this.stats.evictions++;
+                }
+            },
+
+            // Invalidate cache for specific endpoint
+            invalidate(endpoint) {
+                for (let key of this.store.keys()) {
+                    if (key.startsWith(endpoint)) {
+                        this.store.delete(key);
+                    }
+                }
+            },
+
+            // Clear all cache
+            clear() {
+                this.store.clear();
+                this.stats = { hits: 0, misses: 0, evictions: 0 };
+            },
+
+            // Get cache statistics
+            getStats() {
+                const total = this.stats.hits + this.stats.misses;
+                return {
+                    entries: this.store.size,
+                    hits: this.stats.hits,
+                    misses: this.stats.misses,
+                    hitRate: total > 0 ? (this.stats.hits / total * 100).toFixed(1) + '%' : 'N/A',
+                    evictions: this.stats.evictions,
+                    maxSize: this.config.maxSize
+                };
+            }
+        };
+
+        // ====================================================================
+        // PERFORMANCE OPTIMIZATION: VIRTUAL SCROLLING MODULE
+        // ====================================================================
+        // Implements virtual scrolling for large deployment lists
+        const virtualScroll = {
+            config: {
+                bufferSize: 10, // rows to render above/below viewport
+                rowHeight: 60, // estimated row height in pixels
+                enabled: true
+            },
+            state: {
+                container: null,
+                scrollTop: 0,
+                visibleStart: 0,
+                visibleEnd: 0,
+                totalItems: 0,
+                renderedItems: []
+            },
+
+            // Initialize virtual scroller
+            init(container, allItems, rowHeight = 60) {
+                this.state.container = container;
+                this.state.totalItems = allItems.length;
+                this.config.rowHeight = rowHeight;
+
+                if (allItems.length < 50) {
+                    // Disable virtual scrolling for small lists
+                    this.config.enabled = false;
+                    return allItems;
+                }
+
+                // Attach scroll listener
+                container.addEventListener('scroll', () => this.onScroll(container, allItems));
+                return this.getVisibleItems(container, allItems);
+            },
+
+            // Calculate visible items based on scroll position
+            getVisibleItems(container, allItems) {
+                const scrollTop = container.scrollTop;
+                const viewportHeight = container.clientHeight;
+
+                const visibleStart = Math.max(0, Math.floor(scrollTop / this.config.rowHeight) - this.config.bufferSize);
+                const visibleEnd = Math.min(
+                    allItems.length,
+                    Math.ceil((scrollTop + viewportHeight) / this.config.rowHeight) + this.config.bufferSize
+                );
+
+                this.state.visibleStart = visibleStart;
+                this.state.visibleEnd = visibleEnd;
+                this.state.scrollTop = scrollTop;
+
+                return {
+                    items: allItems.slice(visibleStart, visibleEnd),
+                    startIndex: visibleStart,
+                    endIndex: visibleEnd,
+                    totalCount: allItems.length,
+                    renderedCount: visibleEnd - visibleStart,
+                    spacerTop: visibleStart * this.config.rowHeight,
+                    spacerBottom: (allItems.length - visibleEnd) * this.config.rowHeight
+                };
+            },
+
+            // Handle scroll events
+            onScroll(container, allItems) {
+                const result = this.getVisibleItems(container, allItems);
+                // Trigger re-render if significant change
+                if (Math.abs(this.state.visibleStart - result.startIndex) >= this.config.bufferSize / 2) {
+                    window.dispatchEvent(new CustomEvent('virtualScroll', { detail: result }));
+                }
+            },
+
+            // Get performance metrics
+            getMetrics() {
+                return {
+                    enabled: this.config.enabled,
+                    bufferSize: this.config.bufferSize,
+                    rowHeight: this.config.rowHeight,
+                    totalItems: this.state.totalItems,
+                    visibleStart: this.state.visibleStart,
+                    visibleEnd: this.state.visibleEnd,
+                    renderedCount: this.state.visibleEnd - this.state.visibleStart,
+                    reduction: this.state.totalItems > 0
+                        ? ((1 - (this.state.visibleEnd - this.state.visibleStart) / this.state.totalItems) * 100).toFixed(1) + '%'
+                        : 'N/A'
+                };
+            }
+        };
+
+        // ====================================================================
+        // PERFORMANCE OPTIMIZATION: PAGINATION MODULE
+        // ====================================================================
+        // Implements pagination for large datasets
+        const paginationManager = {
+            state: {
+                currentPage: 1,
+                pageSize: 25,
+                totalItems: 0,
+                totalPages: 0,
+                containerSelector: null
+            },
+            config: {
+                pageSizes: [10, 25, 50, 100],
+                defaultPageSize: 25
+            },
+
+            // Initialize pagination
+            init(totalItems, pageSize = this.config.defaultPageSize) {
+                this.state.totalItems = totalItems;
+                this.state.pageSize = pageSize;
+                this.state.totalPages = Math.ceil(totalItems / pageSize);
+                this.state.currentPage = 1;
+                return this.getPaginationInfo();
+            },
+
+            // Get paginated items
+            getPageItems(allItems) {
+                const start = (this.state.currentPage - 1) * this.state.pageSize;
+                const end = start + this.state.pageSize;
+                return allItems.slice(start, end);
+            },
+
+            // Get pagination info
+            getPaginationInfo() {
+                return {
+                    currentPage: this.state.currentPage,
+                    pageSize: this.state.pageSize,
+                    totalItems: this.state.totalItems,
+                    totalPages: this.state.totalPages,
+                    hasNext: this.state.currentPage < this.state.totalPages,
+                    hasPrev: this.state.currentPage > 1,
+                    startIndex: (this.state.currentPage - 1) * this.state.pageSize + 1,
+                    endIndex: Math.min(this.state.currentPage * this.state.pageSize, this.state.totalItems)
+                };
+            },
+
+            // Go to page
+            goToPage(pageNum) {
+                if (pageNum >= 1 && pageNum <= this.state.totalPages) {
+                    this.state.currentPage = pageNum;
+                    return true;
+                }
+                return false;
+            },
+
+            // Next/Previous
+            nextPage() { return this.goToPage(this.state.currentPage + 1); },
+            prevPage() { return this.goToPage(this.state.currentPage - 1); },
+
+            // Change page size
+            setPageSize(size) {
+                if (this.config.pageSizes.includes(size)) {
+                    this.state.pageSize = size;
+                    this.state.totalPages = Math.ceil(this.state.totalItems / size);
+                    this.state.currentPage = 1;
+                    return true;
+                }
+                return false;
+            },
+
+            // Render pagination controls
+            renderControls(containerId) {
+                const info = this.getPaginationInfo();
+                const container = document.getElementById(containerId);
+                if (!container) return;
+
+                const pageSizeOptions = this.config.pageSizes
+                    .map(size => `<option value="${size}" ${size === this.state.pageSize ? 'selected' : ''}>
+                        ${size} items</option>`)
+                    .join('');
+
+                container.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem; padding: 1rem;
+                                background: var(--bg-secondary); border-radius: 4px; border: 1px solid var(--border-primary);">
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button onclick="paginationManager.prevPage(); renderDeploymentHistory();"
+                                    style="padding: 0.5rem 1rem; background: var(--border-primary); color: var(--text-primary);
+                                           border: none; border-radius: 3px; cursor: pointer; ${!info.hasPrev ? 'opacity: 0.5; cursor: not-allowed;' : ''}"
+                                    ${!info.hasPrev ? 'disabled' : ''}>← Previous</button>
+                            <button onclick="paginationManager.nextPage(); renderDeploymentHistory();"
+                                    style="padding: 0.5rem 1rem; background: var(--border-primary); color: var(--text-primary);
+                                           border: none; border-radius: 3px; cursor: pointer; ${!info.hasNext ? 'opacity: 0.5; cursor: not-allowed;' : ''}"
+                                    ${!info.hasNext ? 'disabled' : ''}>Next →</button>
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 0.9rem;">
+                            Page <strong>${info.currentPage}</strong> of <strong>${info.totalPages}</strong>
+                            (${info.startIndex}-${info.endIndex} of ${info.totalItems})
+                        </div>
+                        <select onchange="paginationManager.setPageSize(parseInt(this.value)); paginationManager.goToPage(1); renderDeploymentHistory();"
+                                style="padding: 0.5rem; background: var(--bg-primary); color: var(--text-primary);
+                                       border: 1px solid var(--border-primary); border-radius: 3px; cursor: pointer;">
+                            ${pageSizeOptions}
+                        </select>
+                    </div>
+                `;
+            }
+        };
+
+        // ====================================================================
+        // PERFORMANCE OPTIMIZATION: LAZY LOADING MODULE
+        // ====================================================================
+        // Implements lazy loading for dashboard cards using Intersection Observer
+        const lazyLoadManager = {
+            observer: null,
+            loadedCards: new Set(),
+            state: {
+                threshold: 0.1,
+                rootMargin: '50px'
+            },
+
+            // Initialize lazy loading
+            init() {
+                if (!('IntersectionObserver' in window)) {
+                    console.warn('IntersectionObserver not supported; lazy loading disabled');
+                    return;
+                }
+
+                this.observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const card = entry.target;
+                            const loadFn = card.getAttribute('data-load-fn');
+                            const cardId = card.getAttribute('data-card-id');
+
+                            if (loadFn && !this.loadedCards.has(cardId)) {
+                                console.log(`Lazy loading card: ${cardId}`);
+                                this.loadedCards.add(cardId);
+                                window[loadFn]?.call(window);
+                                this.observer.unobserve(card);
+                            }
+                        }
+                    });
+                }, {
+                    threshold: this.state.threshold,
+                    rootMargin: this.state.rootMargin
+                });
+            },
+
+            // Register card for lazy loading
+            registerCard(cardId, loadFnName) {
+                const card = document.querySelector(`[data-card-id="${cardId}"]`);
+                if (card && this.observer) {
+                    card.setAttribute('data-load-fn', loadFnName);
+                    this.observer.observe(card);
+                }
+            },
+
+            // Unregister card
+            unregisterCard(cardId) {
+                const card = document.querySelector(`[data-card-id="${cardId}"]`);
+                if (card && this.observer) {
+                    this.observer.unobserve(card);
+                }
+            },
+
+            // Force load card immediately
+            forceLoad(cardId) {
+                const card = document.querySelector(`[data-card-id="${cardId}"]`);
+                if (card) {
+                    const loadFn = card.getAttribute('data-load-fn');
+                    if (loadFn) {
+                        window[loadFn]?.call(window);
+                        this.loadedCards.add(cardId);
+                        if (this.observer) this.observer.unobserve(card);
+                    }
+                }
+            },
+
+            // Add loading spinner
+            showLoadingSpinner(cardId) {
+                const card = document.querySelector(`[data-card-id="${cardId}"]`);
+                if (card) {
+                    card.innerHTML = '<div class="loading" style="padding: 2rem;"><div class="spinner"></div></div>';
+                }
+            },
+
+            // Get loading status
+            getStatus() {
+                return {
+                    observerSupported: 'IntersectionObserver' in window,
+                    cardsLoaded: this.loadedCards.size,
+                    threshold: this.state.threshold,
+                    rootMargin: this.state.rootMargin
+                };
+            }
+        };
+
+        // Initialize lazy loading on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            lazyLoadManager.init();
+        });
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -5384,6 +5761,18 @@
             }
         }
 
+        // Lazy loading wrapper for Discovery Signals
+        async function loadDiscoverySignals() {
+            try {
+                const response = await fetch(`${DATA_DIR}/keyword-signals.json`);
+                const data = response.ok ? await response.json() : null;
+                updateDiscoverySignals(data);
+            } catch (err) {
+                console.error('Failed to load discovery signals:', err);
+                updateDiscoverySignals(null);
+            }
+        }
+
         function updateDiscoverySignals(data) {
             const badge = document.getElementById('discoveryBadge');
             const candidatesEl = document.getElementById('discoveryCandidates');
@@ -6201,9 +6590,28 @@
 
         async function loadDeploymentHistory() {
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/deployments/history?limit=12&include_timeline_preview=true`, { cache: 'no-store' });
+                const endpoint = '/api/deployments/history';
+                const params = { limit: 50, include_timeline_preview: true };
+
+                // Check cache first
+                const cacheKey = `${endpoint}:${JSON.stringify(params)}`;
+                let cachedData = dashboardCache.get(endpoint, params);
+                if (cachedData) {
+                    console.log('Using cached deployment history');
+                    deploymentState.history = Array.isArray(cachedData.deployments) ? cachedData.deployments : [];
+                    renderDeploymentUI();
+                    return;
+                }
+
+                // Fetch from API if not cached
+                const url = `${FASTAPI_BASE}${endpoint}?limit=${params.limit}&include_timeline_preview=${params.include_timeline_preview}`;
+                const response = await fetch(url, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`deployment history HTTP ${response.status}`);
                 const data = await response.json();
+
+                // Cache the result
+                dashboardCache.set(endpoint, data, params, 30000); // 30 second cache
+
                 deploymentState.history = Array.isArray(data.deployments) ? data.deployments : [];
                 renderDeploymentUI();
             } catch (error) {
@@ -6216,13 +6624,22 @@
         async function loadDeploymentDetail(deploymentId) {
             if (!deploymentId) return;
             try {
-                const [detailResponse, logsResponse] = await Promise.all([
-                    fetch(`${FASTAPI_BASE}/api/deployments/${encodeURIComponent(deploymentId)}`, { cache: 'no-store' }),
-                    fetch(`${FASTAPI_BASE}/api/deployments/${encodeURIComponent(deploymentId)}/logs`, { cache: 'no-store' })
-                ]);
-                if (!detailResponse.ok) throw new Error(`deployment detail HTTP ${detailResponse.status}`);
-                const detail = await detailResponse.json();
-                const logs = logsResponse.ok ? await logsResponse.json() : { logs: [] };
+                // Check cache for detail
+                let detail = dashboardCache.get('/api/deployments/:id', { id: deploymentId });
+                let logs = null;
+
+                if (!detail) {
+                    // Fetch detail if not cached
+                    const detailResponse = await fetch(`${FASTAPI_BASE}/api/deployments/${encodeURIComponent(deploymentId)}`, { cache: 'no-store' });
+                    if (!detailResponse.ok) throw new Error(`deployment detail HTTP ${detailResponse.status}`);
+                    detail = await detailResponse.json();
+                    dashboardCache.set('/api/deployments/:id', detail, { id: deploymentId }, 60000); // 60 second cache
+                }
+
+                // Fetch logs separately (shorter cache)
+                const logsResponse = await fetch(`${FASTAPI_BASE}/api/deployments/${encodeURIComponent(deploymentId)}/logs`, { cache: 'no-store' });
+                logs = logsResponse.ok ? await logsResponse.json() : { logs: [] };
+
                 deploymentState.selectedId = deploymentId;
                 deploymentState.selectedDetail = detail;
                 deploymentState.selectedLogs = Array.isArray(logs.logs) ? logs.logs : [];
@@ -6500,7 +6917,12 @@
                 return;
             }
 
-            container.innerHTML = deploymentState.history.map((deployment) => {
+            // Initialize pagination for deployment history
+            paginationManager.init(deploymentState.history.length);
+            const pageItems = paginationManager.getPageItems(deploymentState.history);
+
+            // Render paginated items
+            const itemsHtml = pageItems.map((deployment) => {
                 const selected = deploymentState.selectedId === deployment.deployment_id;
                 const timelinePreview = Array.isArray(deployment.timeline_preview) ? deployment.timeline_preview.length : 0;
                 const statusClass = deployment.status === 'success'
@@ -6518,6 +6940,19 @@
                     </div>
                 `;
             }).join('');
+
+            container.innerHTML = itemsHtml;
+
+            // Render pagination controls
+            const paginationContainer = document.getElementById('deploymentHistoryPagination');
+            if (!paginationContainer && deploymentState.history.length > 10) {
+                const controlsDiv = document.createElement('div');
+                controlsDiv.id = 'deploymentHistoryPagination';
+                container.parentNode.insertBefore(controlsDiv, container.nextSibling);
+            }
+            if (paginationContainer) {
+                paginationManager.renderControls('deploymentHistoryPagination');
+            }
         }
 
         function renderDeploymentSearchResults() {
@@ -6736,6 +7171,9 @@
                         : `Rollback ${payload.status}`;
                     statusEl.style.color = payload.status === 'failed' ? 'var(--status-error)' : 'var(--status-online)';
                 }
+                // Invalidate deployment caches on successful mutation
+                dashboardCache.invalidate('/api/deployments/history');
+                dashboardCache.invalidate('/api/deployments/:id');
                 await loadDeploymentOps();
             } catch (error) {
                 console.error('Rollback request failed:', error);
@@ -8038,6 +8476,103 @@
             }, 3000);
         }
 
+        // ====================================================================
+        // PERFORMANCE DIAGNOSTICS & MONITORING
+        // ====================================================================
+        // Expose performance metrics for debugging and monitoring
+
+        // Log cache performance
+        function logCacheStats() {
+            const stats = dashboardCache.getStats();
+            console.group('Dashboard Cache Statistics');
+            console.log('Entries:', stats.entries);
+            console.log('Hits:', stats.hits);
+            console.log('Misses:', stats.misses);
+            console.log('Hit Rate:', stats.hitRate);
+            console.log('Evictions:', stats.evictions);
+            console.log('Max Size:', stats.maxSize);
+            console.groupEnd();
+            return stats;
+        }
+
+        // Log virtual scroll metrics
+        function logVirtualScrollMetrics() {
+            const metrics = virtualScroll.getMetrics();
+            console.group('Virtual Scroll Metrics');
+            console.log('Enabled:', metrics.enabled);
+            console.log('Buffer Size:', metrics.bufferSize);
+            console.log('Row Height:', metrics.rowHeight);
+            console.log('Total Items:', metrics.totalItems);
+            console.log('Visible Start:', metrics.visibleStart);
+            console.log('Visible End:', metrics.visibleEnd);
+            console.log('Rendered Count:', metrics.renderedCount);
+            console.log('Rendering Reduction:', metrics.reduction);
+            console.groupEnd();
+            return metrics;
+        }
+
+        // Log pagination status
+        function logPaginationStatus() {
+            const info = paginationManager.getPaginationInfo();
+            console.group('Pagination Status');
+            console.log('Current Page:', info.currentPage);
+            console.log('Page Size:', info.pageSize);
+            console.log('Total Items:', info.totalItems);
+            console.log('Total Pages:', info.totalPages);
+            console.log('Has Next:', info.hasNext);
+            console.log('Has Previous:', info.hasPrev);
+            console.log('Range:', `${info.startIndex}-${info.endIndex}`);
+            console.groupEnd();
+            return info;
+        }
+
+        // Log lazy loading status
+        function logLazyLoadStatus() {
+            const status = lazyLoadManager.getStatus();
+            console.group('Lazy Load Status');
+            console.log('Observer Supported:', status.observerSupported);
+            console.log('Cards Loaded:', status.cardsLoaded);
+            console.log('Threshold:', status.threshold);
+            console.log('Root Margin:', status.rootMargin);
+            console.groupEnd();
+            return status;
+        }
+
+        // Comprehensive performance report
+        function generatePerformanceReport() {
+            const report = {
+                timestamp: new Date().toISOString(),
+                cache: dashboardCache.getStats(),
+                virtualScroll: virtualScroll.getMetrics(),
+                pagination: paginationManager.getPaginationInfo(),
+                lazyLoad: lazyLoadManager.getStatus(),
+                deployments: {
+                    historyCount: deploymentState.history.length,
+                    selectedId: deploymentState.selectedId,
+                    selectedDetail: deploymentState.selectedDetail ? 'loaded' : 'none'
+                }
+            };
+            console.log('=== DASHBOARD PERFORMANCE REPORT ===');
+            console.table(report);
+            return report;
+        }
+
+        // Clear cache manually
+        function clearDashboardCache() {
+            dashboardCache.clear();
+            console.log('Dashboard cache cleared');
+        }
+
+        // Force reload all data
+        async function forceReloadDashboard() {
+            console.log('Force reloading dashboard...');
+            dashboardCache.clear();
+            await loadData();
+            await loadDeploymentOps();
+            await loadStackHealth();
+            console.log('Dashboard reloaded');
+        }
+
         // Initial load when page loads
         document.addEventListener('DOMContentLoaded', function() {
             // Delay initial health check by 2 seconds to let other services load first
@@ -8048,6 +8583,12 @@
 
             // Start auto-refresh for monitoring data
             startAutoRefresh();
+
+            // Log performance report after initial load
+            setTimeout(() => {
+                console.log('Initial page load completed - performance report:');
+                generatePerformanceReport();
+            }, 5000);
         });
     </script>
 </body>
