@@ -1,0 +1,166 @@
+# AI Model Caching Configuration
+# Defines model sources, paths, and download strategies
+# Used by optimize-model-downloads.sh
+
+version: "1.0"
+description: "AI model caching and prefetching configuration"
+created: "2026-03-20"
+
+# Model cache locations
+cache:
+  root_directory: "/var/lib/llama-cpp"
+  models_subdirectory: "models"
+  backups_subdirectory: "backups"
+  temp_directory: "/tmp/model-download"
+
+# Model definitions
+models:
+  # Llama language model
+  llama:
+    name: "Llama Model"
+    enabled: true
+    priority: "critical"
+    paths:
+      cache: "/var/lib/llama-cpp/models/llama.gguf"
+      backup: "/var/lib/llama-cpp/models/llama.gguf.backup"
+      temp: "/tmp/llama-download.gguf"
+
+    # Download configuration
+    download:
+      method: "systemd-service"  # Can be: systemd-service, curl, parallel
+      service_name: "llama-cpp-model-fetch.service"
+      timeout_seconds: 600
+      max_retries: 3
+      retry_delay: 10
+
+    # Verification
+    verification:
+      enabled: true
+      checksum_method: "md5"  # Can be: none, md5, sha256
+
+    # Optimization hints
+    optimization:
+      parallel_chunks: 4
+      chunk_size_mb: 100
+      compress_transfer: true
+
+  # Embedding model
+  embedding:
+    name: "Embedding Model"
+    enabled: true
+    priority: "critical"
+    paths:
+      cache: "/var/lib/llama-cpp/models/embeddings.gguf"
+      backup: "/var/lib/llama-cpp/models/embeddings.gguf.backup"
+      temp: "/tmp/embeddings-download.gguf"
+
+    download:
+      method: "systemd-service"
+      service_name: "llama-cpp-embed-model-fetch.service"
+      timeout_seconds: 600
+      max_retries: 3
+      retry_delay: 10
+
+    verification:
+      enabled: true
+      checksum_method: "md5"
+
+    optimization:
+      parallel_chunks: 4
+      chunk_size_mb: 100
+      compress_transfer: true
+
+# Prefetching strategy
+prefetching:
+  enabled: true
+  auto_prefetch_on_startup: false
+  prefetch_on_deploy: true
+
+  # When to trigger prefetching
+  triggers:
+    - "deploy system"
+    - "deploy ai-stack"
+    - "periodic"  # Can be run periodically via timer
+
+  # Background download configuration
+  background:
+    enabled: true
+    nice_level: 15  # Low priority
+    max_bandwidth_mbps: 50
+    stagger_delay_seconds: 2
+
+# Cache management
+cache_management:
+  # Automatic cleanup
+  cleanup:
+    enabled: false
+    max_age_days: 90
+    min_free_space_gb: 5
+
+  # Backup strategy
+  backup:
+    enabled: true
+    keep_backups: 2
+    backup_on_update: true
+
+  # Size limits
+  limits:
+    max_cache_size_gb: 50
+    warn_at_gb: 40
+
+# Fallback strategies
+fallback:
+  # If cache miss, what to do
+  on_miss: "download"  # Can be: download, skip, fail
+
+  # HTTP mirrors/CDNs
+  mirrors:
+    - name: "Primary"
+      enabled: true
+      priority: 1
+      # URL pattern: {model_name}, {size}, {checksum}
+      url_pattern: "https://models.example.com/{model_name}.gguf"
+
+    - name: "Fallback HuggingFace"
+      enabled: true
+      priority: 2
+      url_pattern: "https://huggingface.co/models/{model_name}/resolve/main/{model_name}.gguf"
+
+# Performance targets
+performance:
+  target_deployment_time_minutes: 5
+  model_download_target_seconds: 30
+
+  # Timeout overrides per situation
+  timeouts:
+    fast_deployment: 60    # --fast flag
+    normal_deployment: 180 # default
+    full_deployment: 600   # --full flag
+
+# Logging and monitoring
+logging:
+  level: "info"  # Can be: debug, info, warn, error
+  file: "/var/log/model-cache.log"
+  max_size_mb: 50
+  keep_files: 10
+
+monitoring:
+  enabled: true
+  track_download_speed: true
+  track_cache_hits: true
+  report_metrics: true
+
+# Feature flags
+features:
+  parallel_downloads: true
+  incremental_updates: true
+  delta_sync: true
+  compression: true
+  resume_interrupted: true
+
+# Deployment integration
+deployment:
+  skip_models_if_cached: true
+  verify_after_download: true
+  backup_before_update: true
+  atomic_updates: true
