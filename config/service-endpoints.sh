@@ -1,78 +1,61 @@
 #!/usr/bin/env bash
 #
-# Service Endpoints - Centralized URL definitions for all AI stack services
-# Purpose: Single source of truth for service URLs used by runtime scripts,
-# health checks, and dashboard helpers.
-# Version: 1.0.0
+# Service Endpoints Configuration
+# Defines health check URLs and endpoints for all AI stack services
 #
-# Source this file from any script that needs service URLs.
-# All values are overridable via environment variables.
-#
-# ============================================================================
+# Source this file to set service endpoint variables
+# Used by parallel-health-checks.sh and other health monitoring
 
-# Load port definitions from settings.sh when endpoint ports are not initialized.
-# AI_STACK_NAMESPACE may be exported without individual port vars, so key off
-# required port env vars instead of namespace presence.
-if [[ -z "${LLAMA_CPP_PORT:-}" || -z "${AIDB_PORT:-}" || -z "${SWITCHBOARD_PORT:-}" ]]; then
-    _SE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    # shellcheck source=config/settings.sh
-    [[ -f "${_SE_DIR}/settings.sh" ]] && source "${_SE_DIR}/settings.sh"
-    unset _SE_DIR
-fi
+# Service Port Configuration
+LLAMA_PORT="${LLAMA_PORT:-8080}"
+LLAMA_HOST="${LLAMA_HOST:-localhost}"
+LLAMA_URL="http://${LLAMA_HOST}:${LLAMA_PORT}"
 
-# ============================================================================
-# Service Host - defaults to localhost for host-local services
-# Override SERVICE_HOST for remote access
-# ============================================================================
+EMBEDDINGS_PORT="${EMBEDDINGS_PORT:-8001}"
+EMBEDDINGS_HOST="${EMBEDDINGS_HOST:-localhost}"
+EMBEDDINGS_URL="http://${EMBEDDINGS_HOST}:${EMBEDDINGS_PORT}"
 
-: "${SERVICE_HOST:=127.0.0.1}"
+AIDB_PORT="${AIDB_PORT:-8002}"
+AIDB_HOST="${AIDB_HOST:-localhost}"
+AIDB_URL="http://${AIDB_HOST}:${AIDB_PORT}"
 
-# ============================================================================
-# Full Service URLs (built from host + port)
-# Override individual URLs to point at specific endpoints
-# ============================================================================
+HYBRID_PORT="${HYBRID_PORT:-8003}"
+HYBRID_HOST="${HYBRID_HOST:-localhost}"
+HYBRID_URL="http://${HYBRID_HOST}:${HYBRID_PORT}"
 
-: "${AIDB_URL:=http://${SERVICE_HOST}:${AIDB_PORT:-8002}}"
-: "${HYBRID_URL:=http://${SERVICE_HOST}:${HYBRID_COORDINATOR_PORT:-8003}}"
-: "${QDRANT_URL:=http://${SERVICE_HOST}:${QDRANT_PORT:-6333}}"
-: "${LLAMA_URL:=http://${SERVICE_HOST}:${LLAMA_CPP_PORT:-8080}}"
-: "${OPEN_WEBUI_URL:=http://${SERVICE_HOST}:${OPEN_WEBUI_PORT:-3001}}"
-: "${GRAFANA_URL:=http://${SERVICE_HOST}:${GRAFANA_PORT:-3000}}"
-: "${PROMETHEUS_URL:=http://${SERVICE_HOST}:${PROMETHEUS_PORT:-9090}}"
-: "${RALPH_URL:=http://${SERVICE_HOST}:${RALPH_PORT:-8004}}"
-: "${MINDSDB_URL:=http://${SERVICE_HOST}:${MINDSDB_PORT:-47334}}"
-: "${DASHBOARD_API_URL:=http://${SERVICE_HOST}:${DASHBOARD_API_PORT:-8889}}"
-# DASHBOARD_URL is the canonical operator entry point.
-# In the authoritative Nix/systemd runtime, the FastAPI service serves both the
-# SPA (/) and the API (/api/*) from a single port. DASHBOARD_PORT is retained
-# only for compatibility helpers and defaults to the unified API port.
-: "${DASHBOARD_URL:=${DASHBOARD_API_URL}}"
-: "${EMBEDDINGS_URL:=http://${SERVICE_HOST}:${EMBEDDINGS_PORT:-8081}}"
-: "${BITNET_URL:=http://${SERVICE_HOST}:${BITNET_PORT:-8086}}"
-: "${SWITCHBOARD_URL:=http://${SERVICE_HOST}:${SWITCHBOARD_PORT:-8085}}"
-: "${AIDER_WRAPPER_URL:=http://${SERVICE_HOST}:${AIDER_WRAPPER_PORT:-8090}}"
-: "${NETDATA_URL:=http://${SERVICE_HOST}:${NETDATA_PORT:-19999}}"
-: "${NIXOS_DOCS_URL:=http://${SERVICE_HOST}:${NIXOS_DOCS_PORT:-8096}}"
-: "${OLLAMA_URL:=http://${SERVICE_HOST}:${OLLAMA_PORT:-11434}}"
-: "${GITEA_URL:=http://${SERVICE_HOST}:${GITEA_PORT:-3003}}"
-: "${REDISINSIGHT_URL:=http://${SERVICE_HOST}:${REDISINSIGHT_PORT:-5540}}"
-: "${ANTHROPIC_PROXY_URL:=http://${SERVICE_HOST}:${ANTHROPIC_PROXY_PORT:-8094}}"
-: "${NGINX_HTTPS_PORT:=8443}"
-: "${NGINX_HTTPS_URL:=https://${SERVICE_HOST}:${NGINX_HTTPS_PORT}}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_HOST="${REDIS_HOST:-localhost}"
+REDIS_URL="redis://${REDIS_HOST}:${REDIS_PORT}"
 
-# Database connection strings (used by exec-based health checks)
-: "${POSTGRES_HOST:=${SERVICE_HOST}}"
-: "${REDIS_HOST:=${SERVICE_HOST}}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
+POSTGRES_DB="${POSTGRES_DB:-aidb}"
+POSTGRES_URL="postgresql://localhost:${POSTGRES_PORT}/${POSTGRES_DB}"
 
-# Backward-compatible aliases for older scripts.
-: "${LLAMA_CPP_URL:=${LLAMA_URL}}"
-: "${LLAMA_CPP_EMBED_URL:=${EMBEDDINGS_URL}}"
-: "${AIDER_URL:=${AIDER_WRAPPER_URL}}"
-: "${RALPH_WIGGUM_URL:=${RALPH_URL}}"
+# Health Check Endpoints
+LLAMA_HEALTH_ENDPOINT="/health"
+LLAMA_HEALTH_URL="${LLAMA_URL}${LLAMA_HEALTH_ENDPOINT}"
 
-# Phase 19.2.3 — hints API endpoint (sub-path of hybrid-coordinator, no separate port)
-: "${HINTS_URL:=${HYBRID_URL}/hints}"
+EMBEDDINGS_HEALTH_ENDPOINT="/health"
+EMBEDDINGS_HEALTH_URL="${EMBEDDINGS_URL}${EMBEDDINGS_HEALTH_ENDPOINT}"
 
-# In-cluster DNS endpoints were intentionally removed.
-# Host-mode declarative runtime is authoritative; use the URLs above for
-# production health checks and compatibility helpers.
+AIDB_HEALTH_ENDPOINT="/health"
+AIDB_HEALTH_URL="${AIDB_URL}${AIDB_HEALTH_ENDPOINT}"
+
+HYBRID_HEALTH_ENDPOINT="/health"
+HYBRID_HEALTH_URL="${HYBRID_URL}${HYBRID_HEALTH_ENDPOINT}"
+
+# Timeout Configuration
+LLAMA_STARTUP_TIMEOUT="${LLAMA_STARTUP_TIMEOUT:-40}"
+EMBEDDINGS_STARTUP_TIMEOUT="${EMBEDDINGS_STARTUP_TIMEOUT:-40}"
+AIDB_STARTUP_TIMEOUT="${AIDB_STARTUP_TIMEOUT:-50}"
+HYBRID_STARTUP_TIMEOUT="${HYBRID_STARTUP_TIMEOUT:-30}"
+
+HEALTH_CHECK_INTERVAL="${HEALTH_CHECK_INTERVAL:-2}"
+HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-60}"
+HTTP_CONNECT_TIMEOUT="${HTTP_CONNECT_TIMEOUT:-2}"
+HTTP_MAX_TIME="${HTTP_MAX_TIME:-5}"
+
+export LLAMA_URL EMBEDDINGS_URL AIDB_URL HYBRID_URL
+export HEALTH_CHECK_INTERVAL HEALTH_CHECK_TIMEOUT
+export LLAMA_STARTUP_TIMEOUT EMBEDDINGS_STARTUP_TIMEOUT AIDB_STARTUP_TIMEOUT HYBRID_STARTUP_TIMEOUT
