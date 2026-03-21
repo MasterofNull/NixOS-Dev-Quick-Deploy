@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Test Suite: Deployment Dependency Graph (Phase 3.2 Knowledge Graph)
 
