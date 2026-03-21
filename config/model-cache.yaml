@@ -71,10 +71,11 @@ models:
       compress_transfer: true
 
 # Prefetching strategy
+# Always enabled - part of integrated deployment
 prefetching:
-  enabled: true
-  auto_prefetch_on_startup: false
-  prefetch_on_deploy: true
+  enabled: true  # Always enabled - configuration for timing only
+  auto_prefetch_on_startup: false  # Customization: when to prefetch
+  prefetch_on_deploy: true  # Customization: prefetch during deployment
 
   # When to trigger prefetching
   triggers:
@@ -150,13 +151,14 @@ monitoring:
   track_cache_hits: true
   report_metrics: true
 
-# Feature flags
+# Feature flags (Phase 4.5: All features enabled by default)
+# These are always enabled - configuration controls behavior, not enablement
 features:
-  parallel_downloads: true
-  incremental_updates: true
-  delta_sync: true
-  compression: true
-  resume_interrupted: true
+  parallel_downloads: true  # Always enabled for performance
+  incremental_updates: true  # Always enabled for efficiency
+  delta_sync: true  # Always enabled for bandwidth savings
+  compression: true  # Always enabled for faster transfers
+  resume_interrupted: true  # Always enabled for reliability
 
 # Deployment integration
 deployment:

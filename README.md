@@ -132,6 +132,27 @@ flowchart TD
 - roadmap and plan artifacts under `.agents/`
 - support for sub-agent and reviewer-gate style workflows
 
+### 5. Zero Bolt-On Integration (Phase 4.5)
+
+**Everything works out-of-box. No manual feature enabling required.**
+
+This system follows an "everything integrated" philosophy:
+
+- **All core features auto-enable** on deployment
+- **All services auto-start** when appropriate
+- **All dashboard cards auto-load** with no toggles
+- **Configuration is for customization only**, not for enabling/disabling features
+
+| Feature Category | Behavior | Example |
+| --- | --- | --- |
+| Core features | Always enabled | Memory, eval, tree search, compression |
+| Conditional features | Auto-enable if resources available | Speculative decoding (if GPU + 16GB RAM) |
+| Experimental features | Explicit opt-in required | Query expansion, remote LLM feedback |
+
+**Philosophy:** If it's mature and tested, it's integrated. If it's experimental, it's opt-in. No bolt-ons.
+
+See [Integration Model Architecture](./docs/architecture/integration-model.md) for details.
+
 ## Main Implementations
 
 | Component | Implementation |
