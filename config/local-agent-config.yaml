@@ -1,0 +1,324 @@
+# Local Agent Agentic Capabilities Configuration
+# Phase 11 - Production Configuration
+
+# Service Endpoints
+endpoints:
+  llama_cpp: "http://127.0.0.1:8080"
+  hybrid_coordinator: "http://127.0.0.1:8003"
+  aidb: "http://127.0.0.1:8002"
+
+# Tool Registry
+tool_registry:
+  database_path: "~/.local/share/nixos-ai-stack/local-agents/tool_audit.db"
+  enabled: true
+  
+  # Rate Limits (default for all tools)
+  rate_limits:
+    max_calls_per_minute: 60
+    max_calls_per_hour: 1000
+
+# Agent Executor
+agent_executor:
+  enable_fallback: true
+  fallback_endpoint: "${endpoints.hybrid_coordinator}"
+  max_tool_calls_per_task: 10
+
+# Task Router
+task_router:
+  # Routing thresholds
+  local_success_threshold: 0.75  # Fallback if local success < 75%
+  complexity_threshold: 0.6      # Route to remote if complexity > 0.6
+  default_to_local: true         # Prefer local by default
+
+  # Model routing preferences
+  preferences:
+    simple_tasks: "local"      # complexity < 0.3
+    medium_tasks: "local"      # 0.3 <= complexity < 0.6
+    complex_tasks: "remote"    # complexity >= 0.6
+    latency_critical: "local"
+    quality_critical: "remote"
+    flagship_required: "remote"
+
+# Monitoring Agent
+monitoring:
+  enabled: true
+  check_interval_seconds: 60  # Health check every minute
+  
+  # Health check configuration
+  health_checks:
+    - name: "llama-cpp"
+      type: "http"
+      url: "${endpoints.llama_cpp}/health"
+      timeout: 5
+    
+    - name: "hybrid-coordinator"
+      type: "http"
+      url: "${endpoints.hybrid_coordinator}/health"
+      timeout: 5
+    
+    - name: "aidb"
+      type: "http"
+      url: "${endpoints.aidb}/health"
+      timeout: 5
+    
+    - name: "memory"
+      type: "system"
+      metric: "memory_percent"
+      warning_threshold: 80
+      critical_threshold: 90
+    
+    - name: "disk"
+      type: "system"
+      metric: "disk_percent"
+      warning_threshold: 85
+      critical_threshold: 95
+    
+    - name: "agent-performance"
+      type: "agent"
+      metric: "success_rate"
+      warning_threshold: 0.75
+      critical_threshold: 0.60
+
+  # Auto-remediation
+  auto_remediation:
+    enabled: true
+    max_retries: 3
+    retry_delay_seconds: 10
+
+# Self-Improvement Engine
+self_improvement:
+  enabled: true
+  database_path: "~/.local/share/nixos-ai-stack/local-agents/improvement.db"
+  
+  # Quality scoring weights
+  quality_weights:
+    correctness: 0.4
+    completeness: 0.3
+    efficiency: 0.1
+    tool_usage: 0.1
+    error_handling: 0.1
+
+  # Performance analysis
+  analysis:
+    time_window_days: 7
+    min_samples: 10
+
+  # Benchmarking
+  benchmarks:
+    - name: "file_operations_suite"
+      enabled: true
+    - name: "code_execution_suite"
+      enabled: true
+    - name: "system_monitoring_suite"
+      enabled: true
+
+# Code Executor
+code_executor:
+  # Resource limits
+  limits:
+    timeout_seconds: 30
+    cpu_time_seconds: 30
+    memory_bytes: 268435456  # 256 MB
+    max_processes: 10
+    max_file_size_bytes: 10485760  # 10 MB
+    max_output_bytes: 1048576  # 1 MB
+
+  # Security
+  allow_network: false
+  security_scanning: true
+  skip_security_scan: false  # Never skip!
+
+  # Execution environment
+  temp_dir: "/tmp"
+  
+  # Supported languages
+  languages:
+    python:
+      enabled: true
+      interpreter: ["python3", "-u"]
+    bash:
+      enabled: true
+      interpreter: ["bash", "-e"]
+    javascript:
+      enabled: true
+      interpreter: ["node"]
+
+# Safety Policies
+safety:
+  # Policy configurations
+  policies:
+    read_only:
+      requires_confirmation: false
+      audit: true
+    
+    write_safe:
+      requires_confirmation: false
+      audit: true
+    
+    write_data:
+      requires_confirmation: true  # First time only
+      audit: true
+    
+    system_modify:
+      requires_confirmation: true  # Always
+      audit: true
+      confirmation_delay_seconds: 3
+    
+    destructive:
+      requires_confirmation: true  # Always with delay
+      audit: true
+      confirmation_delay_seconds: 5
+
+  # Audit configuration
+  audit:
+    enabled: true
+    retention_days: 90
+    database_path: "${tool_registry.database_path}"
+
+# Tool Configurations
+tools:
+  # File operations
+  file_operations:
+    enabled: true
+    safe_directories:
+      - "/tmp"
+      - "/var/log"
+      - "/home/${USER}/.local/share/nixos-ai-stack"
+    
+    restricted_paths:
+      - "/etc/shadow"
+      - "/etc/passwd"
+      - "/root"
+
+  # Shell commands
+  shell:
+    enabled: true
+    allowed_commands:
+      - "df"
+      - "du"
+      - "ps"
+      - "systemctl status"
+      - "journalctl"
+    
+    blocked_commands:
+      - "rm -rf /"
+      - "dd if=/dev/zero"
+      - "mkfs"
+      - "format"
+
+  # Computer use
+  computer_use:
+    enabled: true
+    rate_limit_actions_per_minute: 30
+    screen_boundaries_check: true
+    require_confirmation_for_clicks: false  # Usually safe
+
+  # Code execution
+  code_execution:
+    enabled: true
+    # Uses code_executor config above
+
+  # AI coordination
+  ai_coordination:
+    enabled: true
+    remote_endpoints:
+      claude: "${endpoints.hybrid_coordinator}"
+      codex: "${endpoints.hybrid_coordinator}"
+      qwen: "${endpoints.hybrid_coordinator}"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log files
+  files:
+    tool_registry: "~/.local/share/nixos-ai-stack/logs/tool_registry.log"
+    agent_executor: "~/.local/share/nixos-ai-stack/logs/agent_executor.log"
+    monitoring: "~/.local/share/nixos-ai-stack/logs/monitoring.log"
+    code_executor: "~/.local/share/nixos-ai-stack/logs/code_executor.log"
+
+  # Log rotation
+  rotation:
+    max_bytes: 10485760  # 10 MB
+    backup_count: 5
+
+# Performance Tuning
+performance:
+  # Caching
+  cache:
+    enabled: true
+    tool_results_ttl_seconds: 300  # 5 minutes
+    max_cache_size_mb: 100
+
+  # Parallelization
+  parallel:
+    enabled: false  # Future feature
+    max_concurrent_tool_calls: 5
+
+  # Optimization
+  optimize:
+    reduce_tool_overhead: true
+    batch_similar_operations: false  # Future feature
+
+# Feature Flags
+features:
+  vision_model: false  # Not yet implemented
+  fine_tuning: false  # Not yet implemented
+  ab_testing: false  # Not yet implemented
+  web_browsing: false  # Not yet implemented
+  multi_agent_collaboration: false  # Future
+
+# Alerts Integration
+alerts:
+  enabled: true
+  alert_engine_endpoint: "${endpoints.hybrid_coordinator}/alerts"
+  
+  # Alert severities
+  severity_mapping:
+    healthy: null  # No alert
+    degraded: "WARNING"
+    unhealthy: "CRITICAL"
+    critical: "EMERGENCY"
+
+# Metrics & Observability
+metrics:
+  enabled: true
+  export_interval_seconds: 60
+  
+  # Prometheus metrics (future)
+  prometheus:
+    enabled: false
+    port: 9100
+
+  # Grafana dashboards (future)
+  grafana:
+    enabled: false
+
+---
+# Environment-specific overrides
+
+development:
+  monitoring:
+    check_interval_seconds: 300  # 5 minutes in dev
+  logging:
+    level: "DEBUG"
+  code_executor:
+    limits:
+      timeout_seconds: 60  # More lenient in dev
+
+staging:
+  monitoring:
+    check_interval_seconds: 120  # 2 minutes in staging
+  task_router:
+    default_to_local: false  # Test remote more in staging
+
+production:
+  monitoring:
+    check_interval_seconds: 60  # 1 minute in production
+  logging:
+    level: "INFO"
+  safety:
+    policies:
+      system_modify:
+        confirmation_delay_seconds: 5  # Extra delay in prod
