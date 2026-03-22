@@ -118,6 +118,53 @@ sudo systemctl start ai-hybrid-coordinator
 
 ---
 
+### AI Gap Import Service Failing
+
+**Symptom**: The `ai-gap-import.service` systemd unit fails with exit code 127. Logs show `env: 'bash': No such file or directory`.
+
+**Root Causes**:
+- Systemd service PATH does not include `/run/current-system/sw/bin` where bash is located
+- Script uses `#!/usr/bin/env bash` shebang which depends on PATH resolution
+- Service runs in a restricted environment without standard NixOS PATH
+
+**Diagnosis**:
+
+```bash
+# Check service status and logs
+systemctl status ai-gap-import.service
+journalctl -u ai-gap-import.service -n 50 --no-pager
+
+# Verify error message shows bash not found
+journalctl -u ai-gap-import.service | grep "No such file"
+
+# Check if bash exists in NixOS
+ls -la /run/current-system/sw/bin/bash
+```
+
+**Remediation**:
+
+1. **Fix applied in nix/modules/roles/ai-stack.nix**: The service now uses:
+   - `path = [ pkgs.bash pkgs.coreutils ... ]` to add tools to PATH
+   - `ExecStart = "${pkgs.bash}/bin/bash ${script}"` for explicit bash path
+
+2. **Rebuild NixOS to apply fix**:
+   ```bash
+   sudo nixos-rebuild switch
+   ```
+
+3. **Verify service works**:
+   ```bash
+   sudo systemctl start ai-gap-import.service
+   systemctl status ai-gap-import.service
+   ```
+
+**Prevention**:
+- Always use explicit Nix paths in systemd service ExecStart
+- Use `path = [ ... ]` in NixOS systemd service definitions for script dependencies
+- Test systemd services after NixOS module changes
+
+---
+
 ### Dashboard API Not Responding
 
 **Symptom**: Dashboard API service is running but responds with errors (500, connection refused, timeout). Requests to `http://localhost:8001/health` fail or timeout.
