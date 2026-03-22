@@ -1112,11 +1112,13 @@ in {
         description = "AI gap knowledge auto-import (PRSI gap closure)";
         after = ["network-online.target" "ai-aidb.service"];
         wants = ["network-online.target"];
+        # PATH must include bash and common tools for the script's shebang
+        path = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.curl pkgs.jq ];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-import";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-import";
           StandardOutput = "journal";
           StandardError  = "journal";
           NoNewPrivileges = true;
