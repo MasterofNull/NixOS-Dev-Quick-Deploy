@@ -45,3 +45,62 @@ Purpose:
 3. Claude native/external classification with stronger validation
 4. pi agent declarative packaging or scaffold downgrade until hashes/runtime are fixed
 5. OpenRouter multi-agent/tool-calling profile validation through the local harness
+
+## AI Harness CLI Tools (aq-*)
+
+### System PATH Installed (via NixOS module)
+
+These tools are available globally via `/run/current-system/sw/bin/`:
+
+| Tool | Purpose | Validation |
+|------|---------|------------|
+| `aq-hints` | Ranked AI workflow hints from hybrid-coordinator | `aq-hints "query"` |
+| `aq-qa` | AI stack QA phase runner | `aq-qa 0 --json` |
+| `aq-report` | AI stack health and metrics reporting | `aq-report` |
+| `aqd` | Main workflow CLI wrapper | `aqd workflows list` |
+| `harness-rpc` | Node.js harness RPC bridge | `harness-rpc --help` |
+| `project-init` | Initialize new AI-enabled projects | `project-init --help` |
+| `workflow-primer` | Read-only session priming | `workflow-primer --help` |
+
+### Repo-local Scripts (via /opt/nixos-quick-deploy/scripts/ai/)
+
+These are available via PATH when shell profile is sourced, or directly at repo path:
+
+| Tool | Purpose | Invocation |
+|------|---------|------------|
+| `aq-context-bootstrap` | Repo-local context and workflow selection | `python3 scripts/ai/aq-context-bootstrap --task "..." --format json` |
+| `aq-capability-gap` | Check for missing capabilities | `python3 scripts/ai/aq-capability-gap --tool <name>` |
+| `aq-capability-plan` | Plan capability remediation | `python3 scripts/ai/aq-capability-plan --tool <name>` |
+| `aq-gap-import` | Auto-import knowledge for recurring gaps | `bash scripts/ai/aq-gap-import` |
+| `aq-llama-debug` | Debug llama-cpp inference issues | `bash scripts/ai/aq-llama-debug` |
+| `aq-runtime-diagnose` | Runtime diagnosis workflow | `python3 scripts/ai/aq-runtime-diagnose` |
+| `aq-system-act` | System-level capability actions | `python3 scripts/ai/aq-system-act --task "..."` |
+
+### Tool Discovery
+
+```bash
+# List all installed aq-* system tools
+ls /run/current-system/sw/bin/aq-*
+
+# List all repo-local aq-* scripts
+ls /opt/nixos-quick-deploy/scripts/ai/aq-*
+
+# Interactive tool discovery function
+ai_stack_tools
+```
+
+### Adding New Tools to System PATH
+
+To add a repo-local script to system PATH, update `nix/modules/roles/ai-stack.nix`:
+
+```nix
+aiHarnessCliWrappers = pkgs.symlinkJoin {
+  name = "ai-harness-cli-wrappers";
+  paths = [
+    # ... existing tools ...
+    (pkgs.writeShellScriptBin "aq-new-tool" ''
+      exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-new-tool" "$@"
+    '')
+  ];
+};
+```
