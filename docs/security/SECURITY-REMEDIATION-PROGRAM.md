@@ -76,21 +76,21 @@ Local command run on 2026-03-23:
 bash scripts/security/security-audit.sh
 ```
 
-Observed baseline from `/home/hyperd/.local/share/nixos-ai-stack/security/audit-2026-03-23.json`:
-- overall status: `findings`
-- `pip-audit` unavailable locally
-- Python lockfiles scanned: `0`
+Current baseline after local remediation on 2026-03-23:
+- overall status: `ok`
+- `pip-audit` available locally and through the service-backed audit path
+- Python lockfiles scanned: `4`
 - npm audit available
 - npm package roots scanned: `1`
 - npm high findings: `0`
 - npm critical findings: `0`
-- dashboard security scan status: `error`
+- dashboard security scan status: `ok`
 - secrets rotation planning status: `ready`
 
 Implication:
-- local scanner coverage is incomplete today,
-- dashboard/operator security scan path needs repair,
-- Python dependency auditing must be made reliably available before the repo backlog can be trusted.
+- local scanner coverage is now reliable enough to gate fast lint,
+- dashboard/operator security scan path is healthy,
+- hosted backlog triage can proceed without local baseline ambiguity.
 
 ### 4.3 Existing repo security machinery
 
@@ -114,16 +114,35 @@ Current posture issue:
 
 ### 4.4 Issue intake blockers
 
-Observed local blockers on 2026-03-23:
-- `gh auth status` failed because GitHub CLI is not logged in on this machine.
-- user-reported GitHub backlog count (`595` open issues/warnings) is therefore unverified from this shell.
-- `python3 scripts/governance/list-issues.py --limit 5` failed with `ModuleNotFoundError: No module named 'asyncpg'`.
-- `scripts/governance/list-issues.py` also contains insecure/non-production defaults that should not become the long-term path:
-  - default DB password literal,
-  - missing resilience around local dependency availability.
+Current intake status on 2026-03-23:
+- `gh auth status` succeeds for account `MasterofNull`
+- `scripts/security/export-github-code-scanning-alerts.sh` exports the hosted backlog locally
+- `python3 scripts/governance/list-issues.py --limit 20` works without `asyncpg`
+- local issue tracker currently has no open items
+
+Hosted backlog snapshot from `/home/hyperd/.local/share/nixos-ai-stack/security/github-code-scanning-alerts.json`:
+- total open alerts: `592`
+- tools:
+  - `Gitleaks`: `2`
+  - `Trivy`: `590`
+- severities:
+  - `critical`: `29`
+  - `high`: `156`
+  - `medium`: `347`
+  - `low`: `58`
+  - `warning`: `2`
+- top Trivy paths:
+  - `usr/local/bin/gosu`: `83`
+  - `library/nginx`: `66`
+  - `qdrant/qdrant`: `59`
+  - `grafana/grafana`: `58`
+  - `usr/share/grafana/bin/grafana`: `51`
+  - `Node.js`: `42`
 
 Implication:
-- we need a reliable local issue ingestion and normalization lane before trying to burn down the full hosted backlog.
+- hosted intake is operational now,
+- the remaining backlog is dominated by Trivy findings in base images and bundled binaries,
+- repo-local secret-shaped alerts should be removed first, then Trivy work should be grouped by shared component/image rather than individual alert count.
 
 ## 5. Priority Model
 
