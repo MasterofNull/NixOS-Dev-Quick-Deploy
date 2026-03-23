@@ -70,6 +70,7 @@ gh auth status >/dev/null
 
 head_sha="$(git -C "${ROOT_DIR}" rev-parse "${REF}")"
 started_epoch="$(date +%s)"
+started_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo "Dispatching ${WORKFLOW_FILE} on ref ${REF} (${head_sha})"
 gh workflow run "${WORKFLOW_FILE}" --ref "${REF}"
@@ -90,7 +91,11 @@ while (( "$(date +%s)" < deadline )); do
       --limit 20 \
       --json databaseId,headSha,event,status,createdAt \
       --jq '
-        map(select(.event == "workflow_dispatch" and .headSha == "'"${head_sha}"'"))
+        map(select(
+          .event == "workflow_dispatch"
+          and .headSha == "'"${head_sha}"'"
+          and .createdAt >= "'"${started_at_utc}"'"
+        ))
         | sort_by(.createdAt)
         | reverse
         | .[0].databaseId // empty
@@ -108,8 +113,39 @@ done
 }
 
 echo "Watching workflow run ${run_id}"
-gh run watch "${run_id}" --exit-status
+watch_exit=0
+if ! gh run watch "${run_id}" --exit-status; then
+  watch_exit=$?
+fi
+
+run_view_json="$(gh run view "${run_id}" --json status,conclusion,jobs)"
+run_status="$(jq -r '.status // "unknown"' <<<"${run_view_json}")"
+run_conclusion="$(jq -r '.conclusion // "unknown"' <<<"${run_view_json}")"
+failed_jobs="$(
+  jq -r '
+    .jobs[]
+    | select(
+        .conclusion == "failure"
+        or .conclusion == "cancelled"
+        or .conclusion == "timed_out"
+        or .conclusion == "startup_failure"
+        or .conclusion == "action_required"
+      )
+    | "- \(.name): \(.conclusion)"
+  ' <<<"${run_view_json}"
+)"
+
+echo "Workflow run ${run_id} finished with status=${run_status} conclusion=${run_conclusion}"
 
 echo "Refreshing local hosted backlog export"
 bash "${ROOT_DIR}/scripts/security/export-github-code-scanning-alerts.sh"
 bash "${ROOT_DIR}/scripts/security/summarize-github-code-scanning-alerts.sh"
+
+if [[ -n "${failed_jobs}" ]]; then
+  echo "Failed jobs for run ${run_id}:" >&2
+  echo "${failed_jobs}" >&2
+fi
+
+if [[ "${run_conclusion}" != "success" ]]; then
+  exit "${watch_exit:-1}"
+fi
