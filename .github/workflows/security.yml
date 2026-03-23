@@ -81,12 +81,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: postgres:17-alpine
-            sarif: trivy-postgres-17-alpine.sarif
-            category: trivy-postgres-17-alpine
-          - image: redis:7.4-alpine
-            sarif: trivy-redis-7.4-alpine.sarif
-            category: trivy-redis-7.4-alpine
+          - image: postgres:17.9-alpine3.23
+            sarif: trivy-postgres-17.9-alpine3.23.sarif
+            category: trivy-postgres-17.9-alpine3.23
+          - image: redis:7.4.8-alpine3.21
+            sarif: trivy-redis-7.4.8-alpine3.21.sarif
+            category: trivy-redis-7.4.8-alpine3.21
           - image: qdrant/qdrant:v1.17.0
             sarif: trivy-qdrant-v1.17.0.sarif
             category: trivy-qdrant-v1.17.0
