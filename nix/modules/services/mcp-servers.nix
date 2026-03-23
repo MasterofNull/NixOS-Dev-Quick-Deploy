@@ -1159,12 +1159,23 @@ in
         description = "AI Stack security vulnerability audit (pip-audit + npm audit)";
         after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
-        path = [ pkgs.bash pkgs.coreutils pkgs.curl pkgs.findutils pkgs.jq pkgs.nodejs pkgs.pip-audit pkgs.python3 ];
+        path = [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.curl
+          pkgs.findutils
+          pkgs.jq
+          pkgs.nodejs
+          pkgs.pip-audit
+          pkgs.python3
+          pkgs.rage
+          pkgs.sops
+        ];
         serviceConfig = {
           Type = "oneshot";
           User = svcUser;
           Group = svcGroup;
-          WorkingDirectory = mcp.repoPath;
+          WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
             "${mcp.repoPath}/scripts/security/security-audit.sh"
@@ -1175,7 +1186,7 @@ in
           ReadOnlyPaths = [ "/" ];
           ReadWritePaths = [ "${dataDir}/security" ];
           PrivateTmp = true;
-          ProtectHome = true;
+          ProtectHome = "read-only";
           ProtectSystem = "strict";
           NoNewPrivileges = true;
           # Allow network access for vulnerability database lookups

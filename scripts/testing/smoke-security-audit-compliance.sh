@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MAX_AGE_SECONDS="${SECURITY_AUDIT_MAX_AGE_SECONDS:-900}"
 # shellcheck source=../../config/service-endpoints.sh
 source "${ROOT_DIR}/config/service-endpoints.sh"
 
@@ -42,11 +43,18 @@ pass "dashboard serves /index.html"
 get_json "${DASHBOARD_API_URL%/}/api/security/audit" "${TMP_DIR}/security-audit.json"
 jq -e '
   .status != null
+  and .generated_at != null
   and .report_path != null
   and .dashboard_operator != null
   and .secrets_rotation != null
 ' "${TMP_DIR}/security-audit.json" >/dev/null \
   || fail "security audit endpoint missing expected report fields"
+generated_at="$(jq -r '.generated_at' "${TMP_DIR}/security-audit.json")"
+generated_epoch="$(date -d "${generated_at}" +%s 2>/dev/null || true)"
+now_epoch="$(date +%s)"
+if [[ -z "${generated_epoch}" ]] || (( now_epoch - generated_epoch > MAX_AGE_SECONDS )); then
+  fail "security audit endpoint returned stale or invalid generated_at: ${generated_at}"
+fi
 pass "security audit report is available"
 
 get_json "${DASHBOARD_API_URL%/}/api/insights/security/compliance" "${TMP_DIR}/compliance.json"
