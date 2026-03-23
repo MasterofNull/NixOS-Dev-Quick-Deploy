@@ -867,7 +867,7 @@ executor = get_executor()
 # Step 1: Plan (use planner)
 plan_task = Task(
     id="plan-001",
-    objective="Break down: Build REST API",
+    objective="Break down: Build HTTP service",
     complexity=0.6
 )
 
