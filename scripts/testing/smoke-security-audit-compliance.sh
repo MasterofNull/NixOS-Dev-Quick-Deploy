@@ -18,6 +18,16 @@ fail() {
   exit 1
 }
 
+is_fresh_generated_at() {
+  local generated_at="$1"
+  local generated_epoch
+  local now_epoch
+
+  generated_epoch="$(date -d "${generated_at}" +%s 2>/dev/null || true)"
+  now_epoch="$(date +%s)"
+  [[ -n "${generated_epoch}" ]] && (( now_epoch - generated_epoch <= MAX_AGE_SECONDS ))
+}
+
 get_json() {
   local url="$1"
   local output="$2"
@@ -37,10 +47,35 @@ post_json() {
     || fail "request failed: ${url}"
 }
 
+refresh_security_audit_if_stale() {
+  local audit_url="${DASHBOARD_API_URL%/}/api/security/audit"
+  local generated_at
+
+  get_json "${audit_url}" "${TMP_DIR}/security-audit.json"
+  generated_at="$(jq -r '.generated_at // empty' "${TMP_DIR}/security-audit.json")"
+  if is_fresh_generated_at "${generated_at}"; then
+    return 0
+  fi
+
+  sudo -n systemctl start ai-security-audit.service \
+    || fail "security audit report is stale and ai-security-audit.service could not be started"
+
+  for _ in {1..12}; do
+    sleep 2
+    get_json "${audit_url}" "${TMP_DIR}/security-audit.json"
+    generated_at="$(jq -r '.generated_at // empty' "${TMP_DIR}/security-audit.json")"
+    if is_fresh_generated_at "${generated_at}"; then
+      return 0
+    fi
+  done
+
+  fail "security audit endpoint remained stale after ai-security-audit.service refresh"
+}
+
 get_json "${DASHBOARD_URL%/}/index.html" "${TMP_DIR}/index.json"
 pass "dashboard serves /index.html"
 
-get_json "${DASHBOARD_API_URL%/}/api/security/audit" "${TMP_DIR}/security-audit.json"
+refresh_security_audit_if_stale
 jq -e '
   .status != null
   and .generated_at != null
@@ -50,9 +85,7 @@ jq -e '
 ' "${TMP_DIR}/security-audit.json" >/dev/null \
   || fail "security audit endpoint missing expected report fields"
 generated_at="$(jq -r '.generated_at' "${TMP_DIR}/security-audit.json")"
-generated_epoch="$(date -d "${generated_at}" +%s 2>/dev/null || true)"
-now_epoch="$(date +%s)"
-if [[ -z "${generated_epoch}" ]] || (( now_epoch - generated_epoch > MAX_AGE_SECONDS )); then
+if ! is_fresh_generated_at "${generated_at}"; then
   fail "security audit endpoint returned stale or invalid generated_at: ${generated_at}"
 fi
 pass "security audit report is available"
