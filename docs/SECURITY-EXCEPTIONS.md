@@ -12,6 +12,8 @@ remediation plan.
 | Image | HIGH | CRITICAL | Decision |
 | --- | --- | --- | --- |
 | `docker.io/library/nginx:1.28.2-alpine` | pending | pending | Remediate (core entrypoint) |
+| `docker.io/library/postgres:17.9-alpine3.23` | pending | pending | Remediate (`gosu` hotspot family) |
+| `docker.io/library/redis:7.4.8-alpine3.21` | pending | pending | Remediate (`gosu` hotspot family) |
 | `localhost:5000/ai-stack-aidb:dev` | 0 | 1 | Remediate (core) |
 | `docker.io/pgvector/pgvector:0.8.1-pg18` | 2 | 0 | Remediate (core) |
 | `docker.io/prom/prometheus:v3.10.0` | pending | pending | Remediate (observability) |
@@ -43,3 +45,4 @@ remediation plan.
 - Re-run `scripts/security/security-scan.sh` after upgrades and refresh this file.
 - Hosted backlog intake now comes from `scripts/security/export-github-code-scanning-alerts.sh`.
 - Current open hosted backlog is dominated by Trivy image findings rather than repo-local secret findings.
+- Current `gosu` hotspot family maps to the hosted `postgres` and `redis` Trivy scan categories.
