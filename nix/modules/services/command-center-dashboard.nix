@@ -34,9 +34,10 @@ in
       "d ${cc.dataDir} 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/cache 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
-      # Dashboard needs /run/sudo/ts for sudo -n systemctl operations
+      # Dashboard needs the sudo timestamp hierarchy present, but sudo itself
+      # expects /run/sudo/ts to remain root-owned.
       "d /run/sudo 0711 root root -"
-      "d /run/sudo/ts 0700 ${svcUser} ${svcGroup} -"
+      "d /run/sudo/ts 0700 root root -"
     ];
 
     # ── API + dashboard serving ────────────────────────────────────────────────
@@ -119,6 +120,7 @@ in
         AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";
         AI_NPM_SECURITY_DIR = "${mcp.dataDir}/security/npm";
       } // lib.optionalAttrs sec.enable {
+        AIDER_WRAPPER_API_KEY_FILE = secretPath sec.names.aiderWrapperApiKey;
         HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
         POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;
       };

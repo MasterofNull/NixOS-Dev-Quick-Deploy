@@ -192,6 +192,9 @@ app.include_router(containers.router, prefix="/api/containers", tags=["container
 app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(aistack.router, prefix="/api", tags=["aistack"])
+# Preserve the legacy /api/aistack/* route family used by the static dashboard
+# and older tests while the normalized /api/* endpoints remain primary.
+app.include_router(aistack.router, prefix="/api/aistack", tags=["aistack-legacy"])
 app.include_router(audit.router, prefix="/api", tags=["audit"])
 app.include_router(deployments.router, prefix="/api", tags=["deployments"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
