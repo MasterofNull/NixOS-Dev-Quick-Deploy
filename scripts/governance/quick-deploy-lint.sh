@@ -94,9 +94,9 @@ done
   exit 2
 }
 
-TOTAL=19
+TOTAL=20
 if [[ "${MODE}" == "full" ]]; then
-  TOTAL=21
+  TOTAL=22
 fi
 STEP=0
 
@@ -185,6 +185,9 @@ run_step "Deprecated docs location" \
 
 run_step "npm security monitor smoke" \
   bash scripts/testing/check-npm-security-monitor-smoke.sh
+
+run_step "Security audit compliance smoke" \
+  bash scripts/testing/smoke-security-audit-compliance.sh
 
 if [[ "${MODE}" == "full" ]]; then
   run_step "NixOS dry build" \
