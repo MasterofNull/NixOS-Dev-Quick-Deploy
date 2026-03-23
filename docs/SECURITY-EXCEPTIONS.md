@@ -1,5 +1,5 @@
 # Security Exceptions & Triage
-**Updated:** 2026-01-09
+**Updated:** 2026-03-23
 
 ## Scope
 
@@ -11,12 +11,13 @@ remediation plan.
 
 | Image | HIGH | CRITICAL | Decision |
 | --- | --- | --- | --- |
-| `docker.io/library/nginx:1.27-alpine` | 7 | 2 | Remediate (core entrypoint) |
+| `docker.io/library/nginx:1.28.2-alpine` | pending | pending | Remediate (core entrypoint) |
 | `localhost:5000/ai-stack-aidb:dev` | 0 | 1 | Remediate (core) |
 | `docker.io/pgvector/pgvector:0.8.1-pg18` | 2 | 0 | Remediate (core) |
-| `docker.io/prom/prometheus:v2.54.0` | 7 | 2 | Remediate (observability) |
-| `docker.io/jaegertracing/all-in-one:1.60` | 5 | 1 | Remediate (observability) |
-| `docker.io/grafana/grafana:11.2.0` | 4 | 0 | Remediate (observability) |
+| `docker.io/prom/prometheus:v3.10.0` | pending | pending | Remediate (observability) |
+| `docker.io/jaegertracing/all-in-one:2.16.0` | pending | pending | Remediate (observability) |
+| `docker.io/grafana/grafana:12.4.1` | pending | pending | Remediate (observability) |
+| `docker.io/qdrant/qdrant:v1.17.0` | pending | pending | Remediate (vector store) |
 | `ghcr.io/open-webui/open-webui:main` | 1 | 1 | Exempt in dev only (optional) |
 | `docker.io/mindsdb/mindsdb:latest` | 5 | 1 | Exempt in dev only (optional) |
 | `docker.io/paulgauthier/aider:latest` | 8 | 0 | Exempt in dev only (optional) |
@@ -40,3 +41,5 @@ remediation plan.
 
 - Core services must reach **CRITICAL = 0** before production.
 - Re-run `scripts/security/security-scan.sh` after upgrades and refresh this file.
+- Hosted backlog intake now comes from `scripts/security/export-github-code-scanning-alerts.sh`.
+- Current open hosted backlog is dominated by Trivy image findings rather than repo-local secret findings.

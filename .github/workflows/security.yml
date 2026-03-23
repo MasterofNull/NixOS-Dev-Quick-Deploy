@@ -83,19 +83,20 @@ jobs:
         image:
           - postgres:17-alpine
           - redis:7.4-alpine
-          - qdrant/qdrant:v1.12.5
-          - nginx:1.27-alpine
-          - grafana/grafana:11.4.0
-          - prom/prometheus:v3.1.0
-          - jaegertracing/all-in-one:1.64.0
+          - qdrant/qdrant:v1.17.0
+          - nginx:1.28.2-alpine
+          - grafana/grafana:12.4.1
+          - prom/prometheus:v3.10.0
+          - jaegertracing/all-in-one:2.16.0
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ matrix.image }}
+          version: 'v0.68.2'
           format: 'sarif'
           output: 'trivy-results-${{ hashFiles(matrix.image) }}.sarif'
           severity: 'CRITICAL,HIGH'
@@ -110,9 +111,10 @@ jobs:
           category: trivy-${{ matrix.image }}
 
       - name: Run Trivy scanner (table output)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ matrix.image }}
+          version: 'v0.68.2'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
@@ -146,9 +148,10 @@ jobs:
           echo "image=local/${{ matrix.service }}:scan" >> $GITHUB_OUTPUT
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ steps.build.outputs.image }}
+          version: 'v0.68.2'
           format: 'sarif'
           output: 'trivy-${{ matrix.service }}.sarif'
           severity: 'CRITICAL,HIGH'
@@ -163,10 +166,11 @@ jobs:
           category: trivy-custom-${{ matrix.service }}
 
       - name: Run Trivy scanner (table output)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         if: always()
         with:
           image-ref: ${{ steps.build.outputs.image }}
+          version: 'v0.68.2'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
