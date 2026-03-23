@@ -118,31 +118,36 @@ Current intake status on 2026-03-23:
 - `gh auth status` succeeds for account `MasterofNull`
 - `scripts/security/export-github-code-scanning-alerts.sh` exports the hosted backlog locally
 - `python3 scripts/governance/list-issues.py --limit 20` works without `asyncpg`
-- local issue tracker currently has no open items
+- local issue tracker currently has `3` open hosted hotspot items
 
 Hosted backlog snapshot from `/home/hyperd/.local/share/nixos-ai-stack/security/github-code-scanning-alerts.json`:
-- total open alerts: `592`
+- generated at: `2026-03-23T16:32:58-07:00`
+- total open alerts: `616`
 - tools:
-  - `Gitleaks`: `2`
-  - `Trivy`: `590`
+  - `Trivy`: `616`
 - severities:
-  - `critical`: `29`
-  - `high`: `156`
-  - `medium`: `347`
-  - `low`: `58`
-  - `warning`: `2`
+  - `critical`: `30`
+  - `high`: `169`
+  - `medium`: `356`
+  - `low`: `60`
+  - `note`: `1`
 - top Trivy paths:
   - `usr/local/bin/gosu`: `83`
-  - `library/nginx`: `66`
-  - `qdrant/qdrant`: `59`
-  - `grafana/grafana`: `58`
+  - `library/nginx`: `68`
+  - `qdrant/qdrant`: `67`
+  - `grafana/grafana`: `60`
   - `usr/share/grafana/bin/grafana`: `51`
-  - `Node.js`: `42`
+  - `Node.js`: `45`
+
+Current hotspot tracker items:
+- `e1cd85a5-1d48-40db-9f60-11f31a174755`: `gosu` binary family
+- `78e763da-7636-4ff7-9c54-80464d2f81d0`: observability image family
+- `33a0565d-5131-4fcd-bf18-8b5bc55628de`: Node.js runtime family
 
 Implication:
 - hosted intake is operational now,
-- the remaining backlog is dominated by Trivy findings in base images and bundled binaries,
-- repo-local secret-shaped alerts should be removed first, then Trivy work should be grouped by shared component/image rather than individual alert count.
+- the remaining backlog is entirely dominated by Trivy findings in base images and bundled binaries,
+- repo-local Gitleaks cleanup is complete, and Trivy work should be grouped by shared component/image rather than individual alert count.
 
 ## 5. Priority Model
 
