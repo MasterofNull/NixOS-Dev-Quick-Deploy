@@ -94,9 +94,9 @@ done
   exit 2
 }
 
-TOTAL=20
+TOTAL=21
 if [[ "${MODE}" == "full" ]]; then
-  TOTAL=22
+  TOTAL=23
 fi
 STEP=0
 
@@ -185,6 +185,9 @@ run_step "Deprecated docs location" \
 
 run_step "npm security monitor smoke" \
   bash scripts/testing/check-npm-security-monitor-smoke.sh
+
+run_step "Security audit producer smoke" \
+  bash scripts/testing/smoke-security-audit-producer.sh
 
 run_step "Security audit compliance smoke" \
   bash scripts/testing/smoke-security-audit-compliance.sh
