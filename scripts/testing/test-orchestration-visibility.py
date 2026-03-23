@@ -4,16 +4,42 @@ Integration test for orchestration visibility endpoints.
 Tests that new endpoints are accessible and return valid structure.
 """
 
+import os
 import requests
 import sys
 from pathlib import Path
 
-DASHBOARD_URL = "http://localhost:8889"
-HYBRID_URL = "http://localhost:8003"
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:8889")
+HYBRID_URL = os.getenv("HYBRID_URL", "http://localhost:8003")
+
+
+def _read_secret(*candidates: str | None) -> str:
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.is_file():
+            return path.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def _hybrid_headers() -> dict[str, str]:
+    api_key = (
+        os.getenv("HYBRID_API_KEY", "").strip()
+        or _read_secret(
+            os.getenv("HYBRID_API_KEY_FILE"),
+            "/run/secrets/hybrid_api_key",
+        )
+    )
+    if not api_key:
+        return {}
+    return {"Authorization": f"Bearer {api_key}"}
 
 def test_endpoints():
     """Test that new endpoints are accessible and return valid structure."""
     failures = []
+    hybrid_headers = _hybrid_headers()
+    hybrid_auth_configured = bool(hybrid_headers)
 
     # Test evaluation trends endpoint
     print("Testing evaluation trends endpoint...")
@@ -33,11 +59,17 @@ def test_endpoints():
     # Test hybrid coordinator endpoints directly
     print("Testing hybrid coordinator endpoints...")
     try:
-        resp = requests.get(f"{HYBRID_URL}/control/ai-coordinator/evaluations/trends", timeout=5)
-        if resp.status_code != 200:
-            failures.append(f"Hybrid trends endpoint returned {resp.status_code}")
-        else:
+        resp = requests.get(
+            f"{HYBRID_URL}/control/ai-coordinator/evaluations/trends",
+            headers=hybrid_headers,
+            timeout=5,
+        )
+        if resp.status_code == 200:
             print(f"  ✓ Hybrid coordinator trends endpoint accessible")
+        elif resp.status_code == 401 and not hybrid_auth_configured:
+            print("  ✓ Hybrid coordinator trends endpoint is protected when no auth is configured")
+        else:
+            failures.append(f"Hybrid trends endpoint returned {resp.status_code}")
     except Exception as e:
         failures.append(f"Hybrid trends endpoint failed: {e}")
 
@@ -45,9 +77,15 @@ def test_endpoints():
     print("Testing team detailed endpoint structure...")
     try:
         # This should 404 since we don't have a valid session ID
-        resp = requests.get(f"{HYBRID_URL}/workflow/run/test-session-id/team/detailed", timeout=5)
+        resp = requests.get(
+            f"{HYBRID_URL}/workflow/run/test-session-id/team/detailed",
+            headers=hybrid_headers,
+            timeout=5,
+        )
         if resp.status_code == 404:
             print(f"  ✓ Team detailed endpoint responds correctly to invalid session")
+        elif resp.status_code == 401 and not hybrid_auth_configured:
+            print("  ✓ Team detailed endpoint is protected when no auth is configured")
         else:
             print(f"  ℹ Team detailed endpoint returned {resp.status_code} (expected 404)")
     except Exception as e:
@@ -57,9 +95,15 @@ def test_endpoints():
     print("Testing arbiter history endpoint structure...")
     try:
         # This should 404 since we don't have a valid session ID
-        resp = requests.get(f"{HYBRID_URL}/workflow/run/test-session-id/arbiter/history", timeout=5)
+        resp = requests.get(
+            f"{HYBRID_URL}/workflow/run/test-session-id/arbiter/history",
+            headers=hybrid_headers,
+            timeout=5,
+        )
         if resp.status_code == 404:
             print(f"  ✓ Arbiter history endpoint responds correctly to invalid session")
+        elif resp.status_code == 401 and not hybrid_auth_configured:
+            print("  ✓ Arbiter history endpoint is protected when no auth is configured")
         else:
             print(f"  ℹ Arbiter history endpoint returned {resp.status_code} (expected 404)")
     except Exception as e:

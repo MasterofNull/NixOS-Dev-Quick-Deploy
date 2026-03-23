@@ -145,7 +145,7 @@ def _print_issues(issues: list[dict[str, object]]) -> None:
         print()
 
     print(f"{'=' * 100}")
-    print('\nTo resolve an issue: ./scripts/resolve-issue.py <issue_id> "Resolution description"')
+    print('\nTo resolve an issue: ./scripts/governance/resolve-issue.py <issue_id> "Resolution description"')
     print("To analyze patterns: ./scripts/governance/analyze-issues.py")
 
 

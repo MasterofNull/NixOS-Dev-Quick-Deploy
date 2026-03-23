@@ -107,6 +107,36 @@ async def close_http_session():
         await _http_session.close()
 
 
+def _load_secret_from_file(env_var: str) -> str:
+    """Load a runtime secret from the file path referenced by an env var."""
+    secret_file = os.getenv(env_var, "").strip()
+    if not secret_file:
+        return ""
+    try:
+        return Path(secret_file).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _aider_wrapper_auth_headers() -> Dict[str, str]:
+    """Return aider-wrapper auth headers when the service is protected by an API key."""
+    api_key = (
+        os.getenv("AIDER_WRAPPER_API_KEY", "").strip()
+        or _load_secret_from_file("AIDER_WRAPPER_API_KEY_FILE")
+    )
+    if not api_key:
+        return {}
+    return {"x-api-key": api_key}
+
+
+def _hybrid_auth_headers() -> Dict[str, str]:
+    """Return hybrid coordinator auth headers when an API key is configured."""
+    api_key = _load_hybrid_api_key()
+    if not api_key:
+        return {}
+    return {"Authorization": f"Bearer {api_key}"}
+
+
 async def fetch_with_fallback(
     url: str,
     fallback: Any = None,
@@ -1192,7 +1222,11 @@ async def _fetch_discovery_trends(hybrid_health: Dict[str, Any]) -> Dict[str, An
 
 async def _aider_wrapper_task_summary() -> Dict[str, Any]:
     """Fetch queue depth and last terminal task state from aider-wrapper."""
-    summary = await fetch_with_fallback(f"{SERVICES['aider_wrapper']}/tasks/summary", None)
+    summary = await fetch_with_fallback(
+        f"{SERVICES['aider_wrapper']}/tasks/summary",
+        None,
+        headers=_aider_wrapper_auth_headers(),
+    )
     if not isinstance(summary, dict):
         return {"active_tasks": 0, "last_task_status": "unknown", "last_task_id": None}
     return {
@@ -2679,7 +2713,7 @@ async def get_orchestration_team(session_id: str) -> Dict[str, Any]:
     try:
         async with aiohttp.ClientSession() as session:
             url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/team/detailed"
-            async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
                 if resp.status == 404:
                     raise HTTPException(status_code=404, detail="Session not found")
                 resp.raise_for_status()
@@ -2706,7 +2740,7 @@ async def get_arbiter_history(session_id: str, limit: int = 10) -> Dict[str, Any
     try:
         async with aiohttp.ClientSession() as session:
             url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/arbiter/history?limit={limit}"
-            async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
                 if resp.status == 404:
                     raise HTTPException(status_code=404, detail="Session not found")
                 resp.raise_for_status()
@@ -2732,7 +2766,7 @@ async def get_evaluation_trends() -> Dict[str, Any]:
     try:
         async with aiohttp.ClientSession() as session:
             url = f"{SERVICES['hybrid']}/control/ai-coordinator/evaluations/trends"
-            async with session.get(url, timeout=REQUEST_TIMEOUT) as resp:
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
                 resp.raise_for_status()
                 return await resp.json()
     except aiohttp.ClientError as e:
