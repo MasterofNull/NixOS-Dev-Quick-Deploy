@@ -25,10 +25,37 @@ PASS=0
 FAIL=0
 FOUND=0
 MAX_CONTENT_CHARS="${IMPORT_MAX_CONTENT_CHARS:-50000}"
+PYTHON3_BIN="${PYTHON3_BIN:-}"
+
+resolve_python3() {
+    local candidate=""
+    if [[ -n "${PYTHON3_BIN}" ]]; then
+        candidate="${PYTHON3_BIN}"
+    else
+        candidate="$(command -v python3 2>/dev/null || true)"
+        if [[ -z "${candidate}" ]]; then
+            for candidate in /run/current-system/sw/bin/python3 /usr/bin/python3; do
+                if [[ -x "${candidate}" ]]; then
+                    break
+                fi
+                candidate=""
+            done
+        fi
+    fi
+
+    if [[ -z "${candidate}" || ! -x "${candidate}" ]]; then
+        printf 'import-agent-instructions: python3 not found; set PYTHON3_BIN or provide python3 on PATH\n' >&2
+        exit 127
+    fi
+
+    PYTHON3_BIN="${candidate}"
+}
+
+resolve_python3
 
 _build_chunks_json() {
     local file="$1"
-    python3 - "$file" "$MAX_CONTENT_CHARS" <<'PY'
+    "${PYTHON3_BIN}" - "$file" "$MAX_CONTENT_CHARS" <<'PY'
 import json, re, sys
 from pathlib import Path
 

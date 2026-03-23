@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${ROOT_DIR}/config/service-endpoints.sh"
 
 OUTPUT_DIR="${AI_SECURITY_AUDIT_DIR:-${HOME}/.local/share/nixos-ai-stack/security}"
-DASHBOARD_SCAN_URL="${DASHBOARD_SCAN_URL:-${DASHBOARD_URL}}"
+DASHBOARD_SCAN_URL="${DASHBOARD_SCAN_URL:-${DASHBOARD_API_URL:-${DASHBOARD_URL:-http://127.0.0.1:8889}}}"
 REPORT_PATH="${DASHBOARD_SECURITY_SCAN_REPORT_PATH:-${OUTPUT_DIR}/latest-dashboard-security-scan.json}"
 TIMESTAMP="$(date -Iseconds)"
 

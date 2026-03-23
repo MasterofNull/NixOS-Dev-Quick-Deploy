@@ -32,6 +32,7 @@ in
   config = lib.mkIf (mon.enable && cc.enable) {
     systemd.tmpfiles.rules = [
       "d ${cc.dataDir} 0750 ${svcUser} ${svcGroup} -"
+      "d ${cc.dataDir}/cache 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
       # Dashboard needs /run/sudo/ts for sudo -n systemctl operations
       "d /run/sudo 0711 root root -"
@@ -92,6 +93,7 @@ in
         DASHBOARD_OPERATOR_AUDIT_LOG_PATH = "${cc.dataDir}/telemetry/operator-audit.jsonl";
         DASHBOARD_DATA_DIR = "${cc.dataDir}";
         DASHBOARD_CONTEXT_DB_PATH = "${cc.dataDir}/telemetry/deployments-context.db";
+        XDG_CACHE_HOME = "${cc.dataDir}/cache";
         AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
         HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
         RALPH_URL = "http://127.0.0.1:${toString mcp.ralphPort}";
