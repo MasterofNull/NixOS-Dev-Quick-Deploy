@@ -18,11 +18,18 @@ fi
 for script in \
   "${ROOT_DIR}/nixos-quick-deploy.sh" \
   "${ROOT_DIR}/scripts/security/npm-security-monitor.sh" \
-  "${ROOT_DIR}/scripts/testing/validate-runtime-declarative.sh"
+  "${ROOT_DIR}/scripts/testing/validate-runtime-declarative.sh" \
+  "${ROOT_DIR}/scripts/governance/check-unattended-sudo-readiness.sh" \
+  "${ROOT_DIR}/scripts/governance/remediate-unattended-sudo-readiness.sh"
 do
   if [[ -f "${script}" ]]; then
     bash -n "${script}"
   fi
 done
+
+if ! bash "${ROOT_DIR}/scripts/governance/check-unattended-sudo-readiness.sh" >/dev/null 2>&1; then
+  echo "[preflight-remediate] Unattended sudo readiness is degraded."
+  bash "${ROOT_DIR}/scripts/governance/remediate-unattended-sudo-readiness.sh" --print-repair || true
+fi
 
 echo "[preflight-remediate] Completed (no destructive actions taken)."
