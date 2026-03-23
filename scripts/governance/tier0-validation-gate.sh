@@ -176,6 +176,16 @@ gate_deploy_batch_size() {
   fi
 }
 
+gate_unattended_sudo_readiness() {
+  log "Checking unattended sudo readiness..."
+  if bash "${SCRIPT_DIR}/check-unattended-sudo-readiness.sh" >/dev/null 2>&1; then
+    pass "Unattended sudo readiness valid"
+  else
+    fail "Unattended sudo readiness failed"
+    return 1
+  fi
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -192,6 +202,7 @@ gate_qa_phase0 || true
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then
   gate_deploy_batch_size || true
+  gate_unattended_sudo_readiness || true
 fi
 
 log ""
