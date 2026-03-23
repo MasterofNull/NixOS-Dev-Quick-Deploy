@@ -80,14 +80,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image:
-          - postgres:17-alpine
-          - redis:7.4-alpine
-          - qdrant/qdrant:v1.17.0
-          - nginx:1.28.2-alpine
-          - grafana/grafana:12.4.1
-          - prom/prometheus:v3.10.0
-          - jaegertracing/all-in-one:2.16.0
+        include:
+          - image: postgres:17-alpine
+            sarif: trivy-postgres-17-alpine.sarif
+            category: trivy-postgres-17-alpine
+          - image: redis:7.4-alpine
+            sarif: trivy-redis-7.4-alpine.sarif
+            category: trivy-redis-7.4-alpine
+          - image: qdrant/qdrant:v1.17.0
+            sarif: trivy-qdrant-v1.17.0.sarif
+            category: trivy-qdrant-v1.17.0
+          - image: nginx:1.28.2-alpine
+            sarif: trivy-nginx-1.28.2-alpine.sarif
+            category: trivy-nginx-1.28.2-alpine
+          - image: grafana/grafana:12.4.1
+            sarif: trivy-grafana-12.4.1.sarif
+            category: trivy-grafana-12.4.1
+          - image: prom/prometheus:v3.10.0
+            sarif: trivy-prometheus-v3.10.0.sarif
+            category: trivy-prometheus-v3.10.0
+          - image: jaegertracing/all-in-one:2.16.0
+            sarif: trivy-jaeger-2.16.0.sarif
+            category: trivy-jaeger-2.16.0
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -96,25 +110,25 @@ jobs:
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ matrix.image }}
-          version: 'v0.68.2'
+          version: 'v0.69.3'
           format: 'sarif'
-          output: 'trivy-results-${{ hashFiles(matrix.image) }}.sarif'
+          output: ${{ matrix.sarif }}
           severity: 'CRITICAL,HIGH'
           exit-code: '0'  # Don't fail on vulnerabilities in base images
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles(format('trivy-results-{0}.sarif', hashFiles(matrix.image))) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        if: always() && hashFiles(matrix.sarif) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
         with:
-          sarif_file: 'trivy-results-${{ hashFiles(matrix.image) }}.sarif'
-          category: trivy-${{ matrix.image }}
+          sarif_file: ${{ matrix.sarif }}
+          category: ${{ matrix.category }}
 
       - name: Run Trivy scanner (table output)
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ matrix.image }}
-          version: 'v0.68.2'
+          version: 'v0.69.3'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
@@ -151,7 +165,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ steps.build.outputs.image }}
-          version: 'v0.68.2'
+          version: 'v0.69.3'
           format: 'sarif'
           output: 'trivy-${{ matrix.service }}.sarif'
           severity: 'CRITICAL,HIGH'
@@ -170,7 +184,7 @@ jobs:
         if: always()
         with:
           image-ref: ${{ steps.build.outputs.image }}
-          version: 'v0.68.2'
+          version: 'v0.69.3'
           format: 'table'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
