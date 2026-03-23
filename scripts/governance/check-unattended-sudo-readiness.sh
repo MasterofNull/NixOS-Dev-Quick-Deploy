@@ -24,18 +24,27 @@ check_dir_owner() {
   echo "[sudo-readiness] PASS: ${path} owner ${actual}"
 }
 
+check_sudo_command() {
+  local label="$1"
+  shift
+
+  if sudo -n "$@" >/dev/null 2>&1; then
+    echo "[sudo-readiness] PASS: ${label}"
+    return 0
+  fi
+
+  echo "[sudo-readiness] FAIL: ${label}" >&2
+  return 1
+}
+
 main() {
   local failed=0
 
   check_dir_owner "/run/sudo" "root" "root" || failed=1
   check_dir_owner "/run/sudo/ts" "root" "root" || failed=1
 
-  if sudo -n true >/dev/null 2>&1; then
-    echo "[sudo-readiness] PASS: sudo -n is currently usable"
-  else
-    echo "[sudo-readiness] FAIL: sudo -n is not currently usable" >&2
-    failed=1
-  fi
+  check_sudo_command "sudo -n nixos-rebuild is usable" /run/current-system/sw/bin/nixos-rebuild --help || failed=1
+  check_sudo_command "sudo -n systemctl is usable" /run/current-system/sw/bin/systemctl is-system-running || failed=1
 
   if [[ $failed -ne 0 ]]; then
     exit 1
