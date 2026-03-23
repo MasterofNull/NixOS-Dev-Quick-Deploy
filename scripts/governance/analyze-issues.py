@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -25,7 +26,7 @@ async def analyze_issues_cli():
         "--db-host", default="localhost", help="Database host"
     )
     parser.add_argument(
-        "--db-port", type=int, default=int(os.getenv("POSTGRES_PORT", "0")), help="Database port"
+        "--db-port", type=int, default=int(os.getenv("POSTGRES_PORT", "5432")), help="Database port"
     )
     parser.add_argument(
         "--db-name", default="aidb", help="Database name"
@@ -34,7 +35,7 @@ async def analyze_issues_cli():
         "--db-user", default="aidb", help="Database user"
     )
     parser.add_argument(
-        "--db-password", default="aidb_password", help="Database password"
+        "--db-password", default=os.getenv("POSTGRES_PASSWORD", ""), help="Database password"
     )
 
     args = parser.parse_args()

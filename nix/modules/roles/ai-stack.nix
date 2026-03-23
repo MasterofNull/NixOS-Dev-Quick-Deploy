@@ -1078,6 +1078,7 @@ in {
         description = "Import agent instruction files (CLAUDE.md, AGENTS.md, registry) into AIDB";
         after = ["network-online.target" "ai-aidb.service"];
         wants = ["network-online.target"];
+        path = [ pkgs.bash pkgs.coreutils pkgs.curl pkgs.jq pkgs.python3 ];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;

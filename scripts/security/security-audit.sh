@@ -59,8 +59,13 @@ require_cmd python3
 
 pip_audit_available=false
 npm_available=false
+pip_audit_cmd=()
 if has_cmd pip-audit; then
   pip_audit_available=true
+  pip_audit_cmd=(pip-audit)
+elif has_cmd nix; then
+  pip_audit_available=true
+  pip_audit_cmd=(nix shell nixpkgs#pip-audit --command pip-audit)
 fi
 if has_cmd npm; then
   npm_available=true
@@ -92,7 +97,7 @@ if [[ "${pip_audit_available}" == true ]]; then
     base="$(echo "${lockfile#"${REPO_ROOT}/"}" | tr '/' '_')"
     out_json="${pip_results_dir}/${base}.json"
     set +e
-    pip-audit -r "${lockfile}" --format json > "${out_json}" 2>"${out_json}.stderr"
+    "${pip_audit_cmd[@]}" -r "${lockfile}" --format json > "${out_json}" 2>"${out_json}.stderr"
     rc=$?
     set -e
     if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
