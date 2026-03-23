@@ -1159,6 +1159,7 @@ in
         description = "AI Stack security vulnerability audit (pip-audit + npm audit)";
         after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
+        path = [ pkgs.bash pkgs.coreutils pkgs.curl pkgs.findutils pkgs.jq pkgs.nodejs pkgs.pip-audit pkgs.python3 ];
         serviceConfig = {
           Type = "oneshot";
           User = svcUser;

@@ -34,24 +34,37 @@ Components:
 __version__ = "4.4.0"
 __author__ = "AI Harness Team"
 
-# Import core classes for convenience
+# Import core classes for convenience.
+# Keep each group isolated so missing legacy modules do not suppress active ones.
 try:
     from .interaction_storage import (
         Interaction,
         InteractionStatus,
         InteractionStorageSystem,
     )
+except ImportError:
+    pass
+
+try:
     from .pattern_extractor import (
         Pattern,
         PatternType,
         PatternExtractor,
     )
+except ImportError:
+    pass
+
+try:
     from .learning_loop import (
         Hint,
         HintType,
         GapDetection,
         LearningLoopEngine,
     )
+except ImportError:
+    pass
+
+try:
     from .dynamic_team_formation import (
         AgentRole,
         CoordinationPattern,
@@ -62,6 +75,10 @@ try:
         DynamicTeamFormation,
         create_default_agents,
     )
+except ImportError:
+    pass
+
+try:
     from .agent_communication_protocol import (
         MessageType,
         MessagePriority,
@@ -69,6 +86,10 @@ try:
         SharedContext,
         AgentCommunicationProtocol,
     )
+except ImportError:
+    pass
+
+try:
     from .collaborative_planning import (
         PlanningMode,
         PhaseType,
@@ -77,6 +98,10 @@ try:
         CollaborativePlan,
         CollaborativePlanning,
     )
+except ImportError:
+    pass
+
+try:
     from .quality_consensus import (
         ConsensusThreshold,
         VoteType,
@@ -84,6 +109,10 @@ try:
         ConsensusResult,
         QualityConsensus,
     )
+except ImportError:
+    pass
+
+try:
     from .collaboration_patterns import (
         PatternType as CollaborationPatternType,
         TaskCharacteristic,
@@ -91,14 +120,17 @@ try:
         PatternExecution,
         CollaborationPatterns,
     )
+except ImportError:
+    pass
+
+try:
     from .team_performance_metrics import (
         IndividualPerformance,
         TeamPerformance,
         ComparisonResult,
         TeamPerformanceMetrics,
     )
-except ImportError as e:
-    # Allow module to be imported even if some dependencies are missing
+except ImportError:
     pass
 
 __all__ = [
