@@ -15,7 +15,7 @@ remediation plan.
 | `localhost:5000/ai-stack-aidb:dev` | 0 | 1 | Remediate (core) |
 | `docker.io/pgvector/pgvector:0.8.1-pg18` | 2 | 0 | Remediate (core) |
 | `docker.io/prom/prometheus:v3.10.0` | pending | pending | Remediate (observability) |
-| `docker.io/jaegertracing/all-in-one:2.16.0` | pending | pending | Remediate (observability) |
+| `cr.jaegertracing.io/jaegertracing/jaeger:2.16.0` | pending | pending | Remediate (observability) |
 | `docker.io/grafana/grafana:12.4.1` | pending | pending | Remediate (observability) |
 | `docker.io/qdrant/qdrant:v1.17.0` | pending | pending | Remediate (vector store) |
 | `ghcr.io/open-webui/open-webui:main` | 1 | 1 | Exempt in dev only (optional) |
