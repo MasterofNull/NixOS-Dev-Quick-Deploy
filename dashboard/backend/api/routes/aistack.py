@@ -31,6 +31,7 @@ _POSTGRES_QUERY_OK_GAUGE: float = 0.0
 _AQ_REPORT_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": {}}
 _AI_METRICS_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _QDRANT_POINTS_CACHE: Dict[str, Any] = {"ts": 0.0, "collections": tuple(), "payload": {}}
+_MODEL_INVENTORY_WARNINGS: set[tuple[str, str]] = set()
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -135,6 +136,15 @@ def _hybrid_auth_headers() -> Dict[str, str]:
     if not api_key:
         return {}
     return {"Authorization": f"Bearer {api_key}"}
+
+
+def _log_model_inventory_degraded_once(stage: str, model_dir: Path, exc: OSError) -> None:
+    """Log model inventory access problems once per failure class and directory."""
+    error_key = (stage, f"{type(exc).__name__}:{model_dir}")
+    if error_key in _MODEL_INVENTORY_WARNINGS:
+        return
+    _MODEL_INVENTORY_WARNINGS.add(error_key)
+    logger.info("model_inventory_degraded stage=%s dir=%s error=%s", stage, model_dir, exc)
 
 
 async def fetch_with_fallback(
@@ -1047,7 +1057,7 @@ def _list_model_inventory() -> Dict[str, Any]:
             inventory["error"] = "missing"
             return inventory
     except OSError as exc:
-        logger.warning("model_inventory_exists_check_failed dir=%s error=%s", model_dir, exc)
+        _log_model_inventory_degraded_once("exists_check", model_dir, exc)
         inventory["error"] = f"{type(exc).__name__}: {exc}"
         return inventory
 
@@ -1062,7 +1072,7 @@ def _list_model_inventory() -> Dict[str, Any]:
                 inventory["llama_cpp"].append(name)
         inventory["available"] = True
     except OSError as exc:
-        logger.warning("model_inventory_scan_failed dir=%s error=%s", model_dir, exc)
+        _log_model_inventory_degraded_once("scan", model_dir, exc)
         inventory["error"] = f"{type(exc).__name__}: {exc}"
 
     return inventory
