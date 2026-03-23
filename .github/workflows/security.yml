@@ -99,9 +99,9 @@ jobs:
           - image: prom/prometheus:v3.10.0
             sarif: trivy-prometheus-v3.10.0.sarif
             category: trivy-prometheus-v3.10.0
-          - image: jaegertracing/all-in-one:2.16.0
-            sarif: trivy-jaeger-2.16.0.sarif
-            category: trivy-jaeger-2.16.0
+          - image: cr.jaegertracing.io/jaegertracing/jaeger:2.16.0
+            sarif: trivy-jaeger-v2.16.0.sarif
+            category: trivy-jaeger-v2.16.0
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
