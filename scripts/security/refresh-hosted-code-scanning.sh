@@ -140,6 +140,10 @@ echo "Workflow run ${run_id} finished with status=${run_status} conclusion=${run
 echo "Refreshing local hosted backlog export"
 bash "${ROOT_DIR}/scripts/security/export-github-code-scanning-alerts.sh"
 bash "${ROOT_DIR}/scripts/security/summarize-github-code-scanning-alerts.sh"
+if [[ -x "${ROOT_DIR}/scripts/security/compare-github-code-scanning-alerts.sh" ]]; then
+  echo "Comparing latest hosted backlog snapshots"
+  bash "${ROOT_DIR}/scripts/security/compare-github-code-scanning-alerts.sh" || true
+fi
 
 if [[ -n "${failed_jobs}" ]]; then
   echo "Failed jobs for run ${run_id}:" >&2
