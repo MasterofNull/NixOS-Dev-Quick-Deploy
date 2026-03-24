@@ -9,6 +9,7 @@ WAIT_FOR_RUN=true
 TIMEOUT_SECONDS=1800
 POLL_INTERVAL=10
 RECONCILE_MODE="off"
+RECONCILE_SETTLE_SECONDS=60
 
 usage() {
   cat <<'EOF'
@@ -24,6 +25,8 @@ Options:
   --poll seconds       Poll interval while locating the new workflow run (default: 10)
   --reconcile          Run hosted code scanning reconciliation after export (dry-run only)
   --reconcile-apply    Run hosted code scanning reconciliation and delete stale analyses
+  --reconcile-settle-seconds s
+                      Wait before the post-reconcile export (default: 60)
   -h, --help           Show this help text
 EOF
 }
@@ -53,6 +56,10 @@ while [[ $# -gt 0 ]]; do
     --reconcile-apply)
       RECONCILE_MODE="apply"
       shift
+      ;;
+    --reconcile-settle-seconds)
+      RECONCILE_SETTLE_SECONDS="${2:?missing value for --reconcile-settle-seconds}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -165,6 +172,7 @@ if [[ "${RECONCILE_MODE}" != "off" && -x "${ROOT_DIR}/scripts/security/reconcile
   if [[ "${RECONCILE_MODE}" == "apply" ]]; then
     reconcile_args+=(--apply)
   fi
+  reconcile_args+=(--ref "refs/heads/${REF}" --settle-seconds "${RECONCILE_SETTLE_SECONDS}")
   bash "${ROOT_DIR}/scripts/security/reconcile-github-code-scanning.sh" "${reconcile_args[@]}"
 fi
 
