@@ -4,6 +4,13 @@ FROM docker.io/library/python:3.11-slim
 
 WORKDIR /app
 
+# Refresh packaging tooling before installing runtime dependencies so the
+# image does not retain known vulnerable pip/wheel/setuptools artifacts.
+RUN python -m pip install --no-cache-dir --upgrade \
+    pip==25.3 \
+    setuptools==82.0.1 \
+    wheel==0.46.2
+
 # Install dependencies
 # Install PyTorch from CPU-only index
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
