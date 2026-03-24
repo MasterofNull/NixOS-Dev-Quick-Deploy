@@ -8,6 +8,7 @@ REF="$(git -C "${ROOT_DIR}" rev-parse --abbrev-ref HEAD)"
 WAIT_FOR_RUN=true
 TIMEOUT_SECONDS=1800
 POLL_INTERVAL=10
+RECONCILE_MODE="off"
 
 usage() {
   cat <<'EOF'
@@ -21,6 +22,8 @@ Options:
   --no-wait            Dispatch only; do not wait for workflow completion
   --timeout seconds    Maximum wait time when --wait is enabled (default: 1800)
   --poll seconds       Poll interval while locating the new workflow run (default: 10)
+  --reconcile          Run hosted code scanning reconciliation after export (dry-run only)
+  --reconcile-apply    Run hosted code scanning reconciliation and delete stale analyses
   -h, --help           Show this help text
 EOF
 }
@@ -42,6 +45,14 @@ while [[ $# -gt 0 ]]; do
     --poll)
       POLL_INTERVAL="${2:?missing value for --poll}"
       shift 2
+      ;;
+    --reconcile)
+      RECONCILE_MODE="dry-run"
+      shift
+      ;;
+    --reconcile-apply)
+      RECONCILE_MODE="apply"
+      shift
       ;;
     -h|--help)
       usage
@@ -143,6 +154,14 @@ bash "${ROOT_DIR}/scripts/security/summarize-github-code-scanning-alerts.sh"
 if [[ -x "${ROOT_DIR}/scripts/security/compare-github-code-scanning-alerts.sh" ]]; then
   echo "Comparing latest hosted backlog snapshots"
   bash "${ROOT_DIR}/scripts/security/compare-github-code-scanning-alerts.sh" || true
+fi
+if [[ "${RECONCILE_MODE}" != "off" && -x "${ROOT_DIR}/scripts/security/reconcile-github-code-scanning.sh" ]]; then
+  echo "Reconciling hosted code scanning analyses (${RECONCILE_MODE})"
+  reconcile_args=()
+  if [[ "${RECONCILE_MODE}" == "apply" ]]; then
+    reconcile_args+=(--apply)
+  fi
+  bash "${ROOT_DIR}/scripts/security/reconcile-github-code-scanning.sh" "${reconcile_args[@]}"
 fi
 
 if [[ -n "${failed_jobs}" ]]; then
