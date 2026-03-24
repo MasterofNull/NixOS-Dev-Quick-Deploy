@@ -10,5 +10,6 @@
     ./switchboard.nix
     ./autonomous-improvement.nix
     ./meta-optimization.nix
+    ./crowdsec.nix
   ];
 }
