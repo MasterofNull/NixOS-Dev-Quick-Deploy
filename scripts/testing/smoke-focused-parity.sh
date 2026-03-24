@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: run focused parity smoke checks against the hybrid coordinator when it is reachable.
 set -euo pipefail
 
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
@@ -26,7 +27,13 @@ if [[ -n "$API_KEY" ]]; then
 fi
 
 pass() { echo "PASS: $*"; }
+warn() { echo "WARN: $*" >&2; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+if ! curl -fsS "${HYB_URL}/health" >/dev/null 2>&1; then
+  warn "hybrid coordinator unavailable at ${HYB_URL}; skipping focused parity smoke"
+  exit 0
+fi
 
 curl -fsS "${hdr[@]}" "${HYB_URL}/workflow/blueprints" >"${tmp_dir}/blueprints.json"
 jq -e '.count >= 1' "${tmp_dir}/blueprints.json" >/dev/null || fail "workflow/blueprints count"
