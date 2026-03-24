@@ -9,6 +9,8 @@ STATE="open"
 PER_PAGE=100
 MAX_PAGES=10
 OUTPUT_PATH=""
+ARCHIVE_HISTORY=true
+ARCHIVE_DIR=""
 
 usage() {
   cat <<'EOF'
@@ -22,6 +24,8 @@ Options:
   --per-page n        Alerts per page (default: 100)
   --max-pages n       Maximum pages to fetch (default: 10)
   --output path       Output JSON path (default: $AI_SECURITY_AUDIT_DIR/github-code-scanning-alerts.json)
+  --archive-dir path  Write a timestamped copy into this directory
+  --no-archive        Do not write a timestamped history snapshot
 
 Auth:
   Provide one of:
@@ -52,6 +56,14 @@ while [[ $# -gt 0 ]]; do
     --output)
       OUTPUT_PATH="${2:?missing value for --output}"
       shift 2
+      ;;
+    --archive-dir)
+      ARCHIVE_DIR="${2:?missing value for --archive-dir}"
+      shift 2
+      ;;
+    --no-archive)
+      ARCHIVE_HISTORY=false
+      shift
       ;;
     -h|--help)
       usage
@@ -120,6 +132,9 @@ mkdir -p "${OUTPUT_DIR}"
 if [[ -z "${OUTPUT_PATH}" ]]; then
   OUTPUT_PATH="${OUTPUT_DIR}/github-code-scanning-alerts.json"
 fi
+if [[ -z "${ARCHIVE_DIR}" ]]; then
+  ARCHIVE_DIR="${OUTPUT_DIR}/history"
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
@@ -183,3 +198,11 @@ jq -s \
   }' "${alerts_file}" > "${OUTPUT_PATH}"
 
 echo "GitHub code scanning export written: ${OUTPUT_PATH}"
+
+if [[ "${ARCHIVE_HISTORY}" == true ]]; then
+  mkdir -p "${ARCHIVE_DIR}"
+  archive_stamp="$(jq -r '.generated_at' "${OUTPUT_PATH}" | tr ':+' '__' | tr -d '\n')"
+  archive_path="${ARCHIVE_DIR}/github-code-scanning-alerts-${archive_stamp}.json"
+  cp "${OUTPUT_PATH}" "${archive_path}"
+  echo "GitHub code scanning snapshot archived: ${archive_path}"
+fi
