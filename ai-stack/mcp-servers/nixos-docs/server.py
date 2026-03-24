@@ -697,9 +697,11 @@ async def clear_cache():
 
 if __name__ == "__main__":
     import uvicorn
+    # Security: bind to HOST env var, default to localhost
+    bind_host = os.getenv("HOST", "127.0.0.1")
     uvicorn.run(
         app,
-        host="0.0.0.0",
+        host=bind_host,
         port=int(os.getenv("NIXOS_DOCS_PORT", "8096")),
         log_level="info",
         log_config=None,

@@ -583,5 +583,7 @@ async def openai_embeddings(body: OpenAIEmbedRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("Starting Embeddings Service port=%d model=%s", PORT, MODEL_NAME)
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    # Security: bind to HOST env var, default to localhost
+    bind_host = os.getenv("HOST", "127.0.0.1")
+    logger.info("Starting Embeddings Service host=%s port=%d model=%s", bind_host, PORT, MODEL_NAME)
+    uvicorn.run(app, host=bind_host, port=PORT)

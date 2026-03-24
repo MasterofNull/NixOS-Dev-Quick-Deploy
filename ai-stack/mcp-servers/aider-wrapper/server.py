@@ -1280,4 +1280,6 @@ async def get_task_summary(auth: str = Depends(require_auth)):
 
 if __name__ == "__main__":
     port = int(os.getenv("AIDER_WRAPPER_PORT", "8090"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # Security: bind to HOST env var, default to localhost
+    bind_host = os.getenv("HOST", "127.0.0.1")
+    uvicorn.run(app, host=bind_host, port=port)

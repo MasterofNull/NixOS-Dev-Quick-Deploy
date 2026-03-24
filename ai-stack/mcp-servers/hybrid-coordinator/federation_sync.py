@@ -551,10 +551,12 @@ async def run_federation_server(manager: FederationSyncManager, port: int):
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
+    # Security: bind to HOST env var, default to localhost
+    bind_host = os.getenv("HOST", "127.0.0.1")
+    site = web.TCPSite(runner, bind_host, port)
     await site.start()
 
-    logger.info(f"Federation server running on port {port}")
+    logger.info(f"Federation server running on {bind_host}:{port}")
 
 
 # ============================================================================
