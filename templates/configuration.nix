@@ -1154,7 +1154,8 @@ in
       analytics.reporting_enabled = false;
       security = {
         admin_user = "admin";
-        admin_password = "changeme";  # Change this!
+        # SECURITY: Replace with sops secret in production
+        # admin_password = builtins.readFile config.sops.secrets.grafana_admin_password.path;
       };
     };
     provision = {
