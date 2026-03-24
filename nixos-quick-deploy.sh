@@ -24,6 +24,8 @@
 
 set -Eeuo pipefail
 
+readonly SCRIPT_VERSION="5.0.0"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "${SCRIPT_DIR}/flake.nix" && -d "${SCRIPT_DIR}/nix" ]]; then
   REPO_ROOT="${SCRIPT_DIR}"
@@ -179,6 +181,8 @@ Options:
                           Delay between failed preflight passes (default: 2)
   --skip-roadmap-verification
                           Skip flake-first roadmap completion verification preflight
+  --list-phases           Print the declarative phase inventory and exit
+  --version               Print script version and exit
   --restore-generated-files
                           Restore generated host files on exit (temporary run projection)
   --persist-generated-files
@@ -253,6 +257,21 @@ Environment overrides:
                             true: always restore generated files on exit
                             false: persist generated files after run
 USAGE
+}
+
+print_version() {
+  printf 'nixos-quick-deploy.sh %s\n' "${SCRIPT_VERSION}"
+}
+
+list_phases() {
+  local phases_dir="${REPO_ROOT}/phases"
+  if [[ ! -d "${phases_dir}" ]]; then
+    printf 'No phases directory found at %s\n' "${phases_dir}" >&2
+    return 1
+  fi
+
+  printf 'Declarative phase inventory:\n'
+  find "${phases_dir}" -maxdepth 1 -type f -name 'phase-*.sh' -printf '%f\n' | sort
 }
 
 log() {
@@ -2784,6 +2803,14 @@ while [[ $# -gt 0 ]]; do
     --skip-roadmap-verification)
       SKIP_ROADMAP_VERIFICATION=true
       shift
+      ;;
+    --list-phases)
+      list_phases
+      exit 0
+      ;;
+    --version|-V|version)
+      print_version
+      exit 0
       ;;
     --restore-generated-files)
       RESTORE_GENERATED_REPO_FILES=true
