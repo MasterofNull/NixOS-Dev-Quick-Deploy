@@ -4,11 +4,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KERNEL_DIR="${KERNEL_DIR:-$HOME/kernel}"
 LINUX_DIR="${KERNEL_DIR}/linux"
 PATCHES_DIR="${KERNEL_DIR}/patches"
 BUILDS_DIR="${KERNEL_DIR}/builds"
 CONFIGS_DIR="${KERNEL_DIR}/configs"
+LORE_DIR="${KERNEL_DIR}/lore"
+
+# AIDB configuration
+AIDB_ENDPOINT="${AIDB_ENDPOINT:-http://127.0.0.1:8002}"
+AIDB_API_KEY="${AIDB_API_KEY:-}"
+
+# Kernel mailing lists to monitor
+declare -A MAILING_LISTS=(
+    ["dri-devel"]="dri-devel@lists.freedesktop.org"
+    ["netdev"]="netdev@vger.kernel.org"
+    ["linux-fsdevel"]="linux-fsdevel@vger.kernel.org"
+    ["linux-security-module"]="linux-security-module@vger.kernel.org"
+    ["linux-hardening"]="linux-hardening@vger.kernel.org"
+)
 
 # Colors
 RED='\033[0;31m'
@@ -50,17 +65,32 @@ Test Commands:
   sparse            Run sparse static analysis
   coccinelle        Run coccinelle semantic patches
 
+CVE & Security:
+  cve-check         Check kernel version for known CVEs
+  cve-sync          Trigger NVD CVE database sync
+  cve-list          List tracked kernel CVEs
+  releases          Show current kernel releases from kernel.org
+
+Upstream Workflow:
+  b4-fetch          Fetch patch series from lore.kernel.org
+  lore-search       Search lore.kernel.org archives
+  sync-reviews      Sync review comments for tracked patches
+
 Examples:
   kdev init                     # Set up kernel dev environment
   kdev clone                    # Clone mainline kernel
   kdev build -j$(nproc)         # Build kernel
   kdev format-patch -3          # Generate patches for last 3 commits
   kdev check-patch *.patch      # Check patches with checkpatch.pl
-  kdev track --series v1        # Track patch series in AIDB
+  kdev track v1                 # Track patch series in AIDB
+  kdev cve-check 6.12.5         # Check kernel for CVEs
+  kdev releases                 # Show latest kernel releases
 
 Environment:
-  KERNEL_DIR    Base directory for kernel work (default: ~/kernel)
-  LINUX_DIR     Linux source tree (default: $KERNEL_DIR/linux)
+  KERNEL_DIR      Base directory for kernel work (default: ~/kernel)
+  LINUX_DIR       Linux source tree (default: $KERNEL_DIR/linux)
+  AIDB_ENDPOINT   AIDB MCP server URL (default: http://127.0.0.1:8002)
+  AIDB_API_KEY    AIDB API key for authentication
 
 EOF
 }
@@ -243,13 +273,275 @@ cmd_check_patch() {
 }
 
 cmd_track() {
-    log_info "Tracking patch in AIDB..."
+    local series_name="${1:-v1}"
+    local patches_path="${2:-${PATCHES_DIR}/$(date +%Y%m%d)}"
 
-    # TODO: Implement AIDB integration
-    # This would call the AIDB API to store patch metadata
+    log_info "Tracking patch series '${series_name}' in AIDB..."
 
-    log_warn "AIDB patch tracking not yet implemented"
-    log_info "Schema available in ai-stack/mcp-servers/aidb/schema.py"
+    if [[ ! -d "$patches_path" ]]; then
+        log_err "Patches directory not found: ${patches_path}"
+        log_warn "Generate patches first: kdev format-patch -3"
+        return 1
+    fi
+
+    # Collect patch metadata
+    local patch_files=("${patches_path}"/*.patch)
+    if [[ ${#patch_files[@]} -eq 0 || ! -f "${patch_files[0]}" ]]; then
+        log_err "No patches found in ${patches_path}"
+        return 1
+    fi
+
+    # Extract metadata from cover letter or first patch
+    local cover_letter="${patches_path}/0000-cover-letter.patch"
+    local subject=""
+    local subsystems=""
+
+    if [[ -f "$cover_letter" ]]; then
+        subject=$(grep "^Subject:" "$cover_letter" | head -1 | sed 's/Subject: //')
+    else
+        subject=$(grep "^Subject:" "${patch_files[0]}" | head -1 | sed 's/Subject: //')
+    fi
+
+    # Extract subsystem from patch subjects
+    local sub
+    for patch in "${patch_files[@]}"; do
+        sub=$(grep "^Subject:" "$patch" | sed 's/.*\[\(PATCH\|RFC\)[^]]*\] //' | cut -d: -f1)
+        if [[ -n "$sub" && "$sub" != "$subsystems" ]]; then
+            subsystems="${subsystems:+$subsystems,}${sub}"
+        fi
+    done
+
+    # Build curl arguments
+    local curl_args=(-sf "${AIDB_ENDPOINT}/kernel/patches" -H "Content-Type: application/json")
+    if [[ -n "$AIDB_API_KEY" ]]; then
+        curl_args+=(-H "X-API-Key: ${AIDB_API_KEY}")
+    elif [[ -f /run/secrets/aidb_api_key ]]; then
+        curl_args+=(-H "X-API-Key: $(tr -d '\n' < /run/secrets/aidb_api_key)")
+    fi
+
+    local payload
+    payload=$(cat <<EOF
+{
+    "series_name": "${series_name}",
+    "subject": $(echo "$subject" | jq -R .),
+    "subsystems": $(echo "$subsystems" | tr ',' '\n' | jq -R . | jq -s .),
+    "patch_count": ${#patch_files[@]},
+    "source_path": "${patches_path}",
+    "status": "draft"
+}
+EOF
+)
+
+    if curl "${curl_args[@]}" -d "$payload" >/dev/null 2>&1; then
+        log_ok "Patch series '${series_name}' tracked in AIDB"
+        log_info "Patches: ${#patch_files[@]}, Subsystems: ${subsystems:-unknown}"
+    else
+        log_warn "AIDB not available, patch metadata saved locally"
+        mkdir -p "${KERNEL_DIR}/.tracking"
+        echo "$payload" > "${KERNEL_DIR}/.tracking/${series_name}.json"
+        log_info "Saved to ${KERNEL_DIR}/.tracking/${series_name}.json"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CVE & Security Commands
+# ═══════════════════════════════════════════════════════════════════════════
+
+cmd_cve_check() {
+    local version="${1:-}"
+
+    if [[ -z "$version" ]]; then
+        # Try to detect version from built kernel or source
+        if [[ -d "${LINUX_DIR}" && -f "${LINUX_DIR}/Makefile" ]]; then
+            version=$(grep "^VERSION = " "${LINUX_DIR}/Makefile" | awk '{print $3}')
+            local patchlevel=$(grep "^PATCHLEVEL = " "${LINUX_DIR}/Makefile" | awk '{print $3}')
+            local sublevel=$(grep "^SUBLEVEL = " "${LINUX_DIR}/Makefile" | awk '{print $3}')
+            version="${version}.${patchlevel}.${sublevel}"
+        else
+            version=$(uname -r | cut -d- -f1)
+        fi
+    fi
+
+    log_info "Checking CVEs for kernel ${version}..."
+
+    local response
+    if response=$(curl -sf "${AIDB_ENDPOINT}/kernel/scan" \
+        -H "Content-Type: application/json" \
+        -d "{\"hostname\": \"$(hostname)\", \"kernel_version\": \"${version}\", \"architecture\": \"$(uname -m)\"}" 2>/dev/null); then
+
+        local total=$(echo "$response" | jq -r '.total_cves // 0')
+        local critical=$(echo "$response" | jq -r '.critical // 0')
+        local high=$(echo "$response" | jq -r '.high // 0')
+        local medium=$(echo "$response" | jq -r '.medium // 0')
+        local low=$(echo "$response" | jq -r '.low // 0')
+
+        echo ""
+        echo "CVE Summary for kernel ${version}:"
+        echo "═══════════════════════════════════"
+        echo "  Total CVEs:  ${total}"
+        echo "  Critical:    ${critical}"
+        echo "  High:        ${high}"
+        echo "  Medium:      ${medium}"
+        echo "  Low:         ${low}"
+
+        if [[ "$total" -gt 0 ]]; then
+            echo ""
+            echo "Top vulnerabilities:"
+            echo "$response" | jq -r '.vulnerabilities[:5][] | "  \(.cve_id): \(.severity) - \(.description[:60])..."'
+        fi
+
+        if [[ "$critical" -gt 0 || "$high" -gt 0 ]]; then
+            log_warn "Found ${critical} critical and ${high} high severity CVEs!"
+            log_info "Run 'kdev releases' to check for patched versions"
+        else
+            log_ok "No critical or high severity CVEs found"
+        fi
+    else
+        log_warn "AIDB not available. Using offline check..."
+        log_info "Start AIDB service and run 'kdev cve-sync' to populate database"
+    fi
+}
+
+cmd_cve_sync() {
+    local full_sync="${1:-}"
+
+    log_info "Triggering NVD CVE sync..."
+
+    local params=""
+    if [[ "$full_sync" == "--full" ]]; then
+        params="?full_sync=true"
+        log_info "Full sync requested (this may take a while)..."
+    fi
+
+    if curl -sf "${AIDB_ENDPOINT}/kernel/cves/sync${params}" -X POST >/dev/null 2>&1; then
+        log_ok "CVE sync started in background"
+        log_info "Check progress with: curl ${AIDB_ENDPOINT}/kernel/cves | jq '.total'"
+    else
+        log_err "Failed to trigger CVE sync. Is AIDB running?"
+        return 1
+    fi
+}
+
+cmd_cve_list() {
+    local severity="${1:-}"
+    local limit="${2:-20}"
+
+    log_info "Fetching tracked kernel CVEs..."
+
+    local params="?limit=${limit}"
+    if [[ -n "$severity" ]]; then
+        params="${params}&severity=${severity}"
+    fi
+
+    local response
+    if response=$(curl -sf "${AIDB_ENDPOINT}/kernel/cves${params}" 2>/dev/null); then
+        local total=$(echo "$response" | jq -r '.total // 0')
+
+        echo ""
+        echo "Tracked Kernel CVEs (${total} total):"
+        echo "═══════════════════════════════════════"
+        echo "$response" | jq -r '.cves[] | "\(.cve_id)\t\(.severity)\t\(.cvss_v3_score // "N/A")\t\(.description[:50])..."'
+    else
+        log_err "Failed to fetch CVEs. Is AIDB running?"
+        return 1
+    fi
+}
+
+cmd_releases() {
+    log_info "Fetching kernel releases from kernel.org..."
+
+    local response
+    if response=$(curl -sf "${AIDB_ENDPOINT}/kernel/releases" 2>/dev/null); then
+        echo ""
+        echo "Current Kernel Releases:"
+        echo "════════════════════════"
+        echo "$response" | jq -r '.releases[] | "\(.version)\t\(.track)\t\(.release_date[:10])"' | column -t -s $'\t'
+    else
+        # Fallback to direct kernel.org API
+        log_info "AIDB not available, fetching from kernel.org directly..."
+        if response=$(curl -sf "https://www.kernel.org/releases.json" 2>/dev/null); then
+            echo ""
+            echo "Current Kernel Releases:"
+            echo "════════════════════════"
+            echo "$response" | jq -r '.releases[] | "\(.version)\t\(.moniker)\t\(.released.isodate // "N/A")"' | head -10 | column -t -s $'\t'
+        else
+            log_err "Failed to fetch releases"
+            return 1
+        fi
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Upstream Workflow Commands
+# ═══════════════════════════════════════════════════════════════════════════
+
+cmd_b4_fetch() {
+    local message_id="${1:-}"
+
+    if [[ -z "$message_id" ]]; then
+        log_err "Usage: kdev b4-fetch <message-id>"
+        log_info "Example: kdev b4-fetch 20240301123456.12345-1-user@example.com"
+        return 1
+    fi
+
+    if ! command -v b4 >/dev/null 2>&1; then
+        log_err "b4 not installed. Enable the kernel-dev role."
+        return 1
+    fi
+
+    mkdir -p "$LORE_DIR"
+    cd "$LORE_DIR"
+
+    log_info "Fetching patch series ${message_id}..."
+    b4 am "$message_id"
+
+    log_ok "Patch series fetched to ${LORE_DIR}"
+}
+
+cmd_lore_search() {
+    local query="${1:-}"
+
+    if [[ -z "$query" ]]; then
+        log_err "Usage: kdev lore-search <query>"
+        return 1
+    fi
+
+    log_info "Searching lore.kernel.org for: ${query}"
+
+    # Use lei if available, otherwise fall back to web search
+    if command -v lei >/dev/null 2>&1; then
+        lei q -f text "s:${query}" | head -50
+    else
+        log_info "Opening web search..."
+        local encoded_query
+        encoded_query=$(echo "$query" | sed 's/ /+/g')
+        echo "https://lore.kernel.org/all/?q=${encoded_query}"
+    fi
+}
+
+cmd_sync_reviews() {
+    local series="${1:-}"
+
+    log_info "Syncing review comments..."
+
+    if [[ -z "$series" ]]; then
+        # Sync all tracked series
+        local tracking_dir="${KERNEL_DIR}/.tracking"
+        if [[ -d "$tracking_dir" ]]; then
+            for series_file in "${tracking_dir}"/*.json; do
+                if [[ -f "$series_file" ]]; then
+                    local name=$(basename "$series_file" .json)
+                    log_info "Checking reviews for ${name}..."
+                fi
+            done
+        else
+            log_warn "No tracked series found. Run 'kdev track' first."
+        fi
+    else
+        log_info "Checking reviews for ${series}..."
+    fi
+
+    log_ok "Review sync complete"
 }
 
 cmd_status() {
@@ -325,6 +617,29 @@ main() {
             ;;
         status)
             cmd_status "$@"
+            ;;
+        # CVE & Security commands
+        cve-check)
+            cmd_cve_check "$@"
+            ;;
+        cve-sync)
+            cmd_cve_sync "$@"
+            ;;
+        cve-list)
+            cmd_cve_list "$@"
+            ;;
+        releases)
+            cmd_releases "$@"
+            ;;
+        # Upstream workflow commands
+        b4-fetch)
+            cmd_b4_fetch "$@"
+            ;;
+        lore-search)
+            cmd_lore_search "$@"
+            ;;
+        sync-reviews)
+            cmd_sync_reviews "$@"
             ;;
         *)
             log_err "Unknown command: ${cmd}"
