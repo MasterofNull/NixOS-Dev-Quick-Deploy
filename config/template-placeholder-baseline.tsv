@@ -1,5 +1,11 @@
 # count<TAB>path
 4	templates/agentic-workflow/README.md
+1	templates/agentic-workflow/.agent/workflows/intent-contract.json.tmpl
+4	templates/agentic-workflow/.agent/PROJECT-PRD.md.tmpl
+2	templates/agentic-workflow/.agent/workflows/phase-01-foundation.md.tmpl
+1	templates/agentic-workflow/.agents/README.md.tmpl
+4	templates/agentic-workflow/.claude/CLAUDE.md.tmpl
+1	templates/agentic-workflow/.claude/commands/prime.md.tmpl
 48	templates/configuration.nix
 8	templates/home.nix
 3	templates/nixos-improvements/ai-stack-autostart.nix
