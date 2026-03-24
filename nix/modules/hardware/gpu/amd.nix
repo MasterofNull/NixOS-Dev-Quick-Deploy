@@ -77,6 +77,13 @@ in
     # Set it per-application rather than globally to preserve APU as default display.
   };
 
+  # ---------------------------------------------------------------------------
+  # AMD GPU Overdrive: enables ppfeaturemask for overclocking/undervolting.
+  # Available since NixOS 24.05+. Uses safer default 0xfffd7fff (less flicker).
+  # Only enabled for discrete AMD GPUs; APU-only systems skip this.
+  # ---------------------------------------------------------------------------
+  hardware.amdgpu.overdrive.enable = lib.mkIf isAmd (lib.mkDefault true);
+
   # LACT: AMD GPU fan control, power limit, and OC daemon (26.05+ only).
   services.lact.enable = lib.mkIf (isAmd && hasLact) (lib.mkDefault true);
 }
