@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --index-url https://download.pytorch.org/whl/cpu \
     --timeout 300 \
     --retries 5 \
-    torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1
+    torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0
 
 # Then install remaining dependencies (will use already-installed PyTorch CPU)
 # Cache mount reuses previously downloaded packages
