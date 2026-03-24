@@ -1,0 +1,11 @@
+# Files temporarily allowed to use direct pip installation commands.
+# Keep this list small and remove entries as uv migrations land.
+
+.github/workflows/harness-sdk-release.yml
+.github/workflows/security.yml
+.github/workflows/test.yml
+.github/workflows/tests.yml
+scripts/ai/aqd
+scripts/data/import-tool-recommendations.py
+scripts/data/sync-knowledge-sources
+scripts/testing/run-a2a-tck.sh
