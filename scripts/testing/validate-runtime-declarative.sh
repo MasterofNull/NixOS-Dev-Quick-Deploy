@@ -7,6 +7,16 @@ ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 pass() { echo "PASS: $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+search_fixed_pattern() {
+  local path="$1"
+  local pattern="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -n --fixed-strings "$pattern" "$path" >/dev/null
+  else
+    grep -nF -- "$pattern" "$path" >/dev/null
+  fi
+}
+
 need_file() {
   local path="$1"
   [[ -f "$path" ]] || fail "missing file: $path"
@@ -15,7 +25,7 @@ need_file() {
 need_pattern() {
   local path="$1"
   local pattern="$2"
-  rg -n --fixed-strings "$pattern" "$path" >/dev/null || fail "missing pattern '$pattern' in $path"
+  search_fixed_pattern "$path" "$pattern" || fail "missing pattern '$pattern' in $path"
 }
 
 need_file "${ROOT}/nix/modules/core/options.nix"
