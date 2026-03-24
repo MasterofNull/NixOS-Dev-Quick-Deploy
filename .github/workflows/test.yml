@@ -652,10 +652,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install jq
+      - name: Install advanced parity dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y jq
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml
 
       - name: Run advanced parity suite
         run: |
