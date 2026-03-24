@@ -49,7 +49,8 @@ def _parse_size(value: str) -> int:
 
 
 class Settings(BaseModel):
-    server_host: str = "0.0.0.0"
+    # Security: default to localhost to prevent LAN exposure
+    server_host: str = "127.0.0.1"
     server_port: int = 8791
     api_port: int = 8091
     worker_count: int = 1
@@ -339,7 +340,8 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     telemetry_path.parent.mkdir(parents=True, exist_ok=True)
 
     return Settings(
-        server_host=server_cfg.get("host", "0.0.0.0"),
+        # Security: default to localhost to prevent LAN exposure
+        server_host=server_cfg.get("host", "127.0.0.1"),
         server_port=server_cfg.get("port", 8791),
         api_port=server_cfg.get("api_port", 8091),
         worker_count=server_cfg.get("workers", 1),
