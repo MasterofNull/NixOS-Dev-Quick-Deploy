@@ -362,6 +362,8 @@ in
     services.prometheus = {
       enable = true;
       port = mon.prometheusPort;
+      # Security: bind to localhost unless explicitly exposing on LAN
+      listenAddress = if mon.listenOnLan then "0.0.0.0" else "127.0.0.1";
       scrapeConfigs = [
         {
           job_name = "node";
@@ -397,6 +399,8 @@ in
     services.prometheus.exporters.node = {
       enable = true;
       port = mon.nodeExporterPort;
+      # Security: bind to localhost unless explicitly exposing on LAN
+      listenAddress = if mon.listenOnLan then "0.0.0.0" else "127.0.0.1";
       enabledCollectors = [
         "cpu"
         "diskstats"
