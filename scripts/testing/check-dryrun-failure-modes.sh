@@ -67,8 +67,10 @@ assert_prefix() {
 assert_file_in_execstart() {
   local execstart="$1"
   local wanted="$2"
-  [[ " ${execstart} " == *" ${wanted} "* ]] || die "ExecStart missing expected script path: ${wanted}"
+  local wanted_suffix="${wanted#${ROOT_DIR}/}"
   [[ -f "${wanted}" ]] || die "missing script referenced by ExecStart: ${wanted}"
+  [[ "${execstart}" == *" ${wanted} "* || "${execstart}" == *" ${wanted}" || "${execstart}" == *"/${wanted_suffix} "* || "${execstart}" == *"/${wanted_suffix}" ]] \
+    || die "ExecStart missing expected script path suffix: ${wanted_suffix}"
 }
 
 assert_path_contains_pkg() {
