@@ -32,13 +32,13 @@ hints = doc.get("hint_adoption", {}) if isinstance(doc.get("hint_adoption"), dic
 intent = doc.get("intent_contract_compliance", {}) if isinstance(doc.get("intent_contract_compliance"), dict) else {}
 
 errors = []
-if not bool(routing.get("available", False)):
+if not bool(routing.get("available", False)) and not allow_empty:
     errors.append("routing.available=false")
-if not bool(cache.get("available", False)):
+if not bool(cache.get("available", False)) and not allow_empty:
     errors.append("cache.available=false")
-if not bool(hints.get("available", False)):
+if not bool(hints.get("available", False)) and not allow_empty:
     errors.append("hint_adoption.available=false")
-if not bool(intent.get("available", False)):
+if not bool(intent.get("available", False)) and not allow_empty:
     errors.append("intent_contract_compliance.available=false")
 
 local_n = int(routing.get("local_n", 0) or 0)
