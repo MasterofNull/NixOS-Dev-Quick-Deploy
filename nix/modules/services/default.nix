@@ -11,5 +11,6 @@
     ./autonomous-improvement.nix
     ./meta-optimization.nix
     ./crowdsec.nix
+    ./lore-sync.nix
   ];
 }
