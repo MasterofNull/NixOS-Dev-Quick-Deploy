@@ -232,3 +232,74 @@ KERNEL_REVIEW_COMMENTS = sa.Table(
     sa.Column("action_taken", sa.Boolean, nullable=False, server_default=sa.text("false")),
     sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
 )
+
+
+# ---------------------------------------------------------------------------
+# Kernel CVE Tracking Tables (Phase 30.2: Vulnerability Management)
+# ---------------------------------------------------------------------------
+
+KERNEL_CVES = sa.Table(
+    "kernel_cves",
+    METADATA,
+    sa.Column("cve_id", sa.String(20), primary_key=True),  # CVE-2026-12345
+    sa.Column("nvd_id", sa.String(64), nullable=True),
+    sa.Column("description", sa.Text, nullable=False),
+    sa.Column("severity", sa.String(16), nullable=False),  # low, medium, high, critical
+    sa.Column("cvss_v3_score", sa.Float, nullable=True),
+    sa.Column("cvss_v3_vector", sa.String(128), nullable=True),
+    sa.Column("affected_versions", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("fixed_in_version", sa.String(32), nullable=True),
+    sa.Column("subsystems", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("cwe_ids", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("references", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("exploit_available", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("cisa_kev", sa.Boolean, nullable=False, server_default=sa.text("false")),  # Known Exploited Vuln
+    sa.Column("local_status", sa.String(32), nullable=False, server_default=sa.text("'open'")),
+    # local_status: open, patched_locally, patched_upstream, not_applicable, mitigated
+    sa.Column("local_patch_id", sa.Integer, sa.ForeignKey("kernel_patches.id", ondelete="SET NULL"), nullable=True),
+    sa.Column("published_date", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("last_modified", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+)
+
+KERNEL_CVE_HOSTS = sa.Table(
+    "kernel_cve_hosts",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("cve_id", sa.String(20), sa.ForeignKey("kernel_cves.cve_id", ondelete="CASCADE"), nullable=False),
+    sa.Column("hostname", sa.String(256), nullable=False),
+    sa.Column("kernel_version", sa.String(64), nullable=False),
+    sa.Column("architecture", sa.String(32), nullable=True),  # x86_64, aarch64, etc.
+    sa.Column("status", sa.String(32), nullable=False),  # vulnerable, mitigated, patched, not_applicable
+    sa.Column("mitigation_notes", sa.Text, nullable=True),
+    sa.Column("scanned_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    sa.UniqueConstraint("cve_id", "hostname", name="uq_kernel_cve_host"),
+)
+
+KERNEL_RELEASES = sa.Table(
+    "kernel_releases",
+    METADATA,
+    sa.Column("version", sa.String(32), primary_key=True),  # 6.12.5
+    sa.Column("release_date", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("eol_date", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("track", sa.String(32), nullable=False),  # mainline, stable, longterm
+    sa.Column("tarball_url", sa.Text, nullable=False),
+    sa.Column("pgp_signature_url", sa.Text, nullable=True),
+    sa.Column("changelog_url", sa.Text, nullable=True),
+    sa.Column("git_sha", sa.String(40), nullable=True),
+    sa.Column("security_fixes", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("rust_version_required", sa.String(32), nullable=True),  # For Rust-for-Linux builds
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+)
+
+KERNEL_SUBSYSTEM_CVES = sa.Table(
+    "kernel_subsystem_cves",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("subsystem", sa.String(64), nullable=False),  # drm, net, fs, security
+    sa.Column("cve_id", sa.String(20), sa.ForeignKey("kernel_cves.cve_id", ondelete="CASCADE"), nullable=False),
+    sa.Column("component", sa.String(128), nullable=True),  # e.g., drivers/gpu/drm/amd
+    sa.Column("mailing_list", sa.String(256), nullable=True),  # dri-devel@lists.freedesktop.org
+    sa.UniqueConstraint("subsystem", "cve_id", name="uq_subsystem_cve"),
+)
