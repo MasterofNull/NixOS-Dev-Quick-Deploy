@@ -140,3 +140,95 @@ def document_embeddings_table(metadata: sa.MetaData, embedding_dimension: int) -
         sa.UniqueConstraint("document_id", "chunk_id", name="uq_document_embeddings_chunk"),
         extend_existing=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Kernel Patch Tracking Tables (Phase 30: Upstream Kernel Development)
+# ---------------------------------------------------------------------------
+
+KERNEL_PATCH_SERIES = sa.Table(
+    "kernel_patch_series",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("message_id", sa.String(256), nullable=False, unique=True),
+    sa.Column("subject", sa.Text, nullable=False),
+    sa.Column("author_name", sa.String(256), nullable=False),
+    sa.Column("author_email", sa.String(256), nullable=False),
+    sa.Column("subsystem", sa.String(128), nullable=True),
+    sa.Column("version", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("patch_count", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("cover_letter", sa.Text, nullable=True),
+    sa.Column("status", sa.String(32), nullable=False, server_default=sa.text("'draft'")),
+    # Status: draft, sent, review, accepted, rejected, superseded
+    sa.Column("lore_url", sa.Text, nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+    sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+)
+
+KERNEL_PATCHES = sa.Table(
+    "kernel_patches",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("series_id", sa.Integer, sa.ForeignKey("kernel_patch_series.id", ondelete="CASCADE"), nullable=True),
+    sa.Column("message_id", sa.String(256), nullable=False, unique=True),
+    sa.Column("commit_hash", sa.String(40), nullable=True),
+    sa.Column("patch_number", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("subject", sa.Text, nullable=False),
+    sa.Column("author_name", sa.String(256), nullable=False),
+    sa.Column("author_email", sa.String(256), nullable=False),
+    sa.Column("commit_message", sa.Text, nullable=False),
+    sa.Column("diff_stat", sa.Text, nullable=True),
+    sa.Column("files_changed", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("insertions", sa.Integer, nullable=True),
+    sa.Column("deletions", sa.Integer, nullable=True),
+    sa.Column("subsystem", sa.String(128), nullable=True),
+    sa.Column("signed_off_by", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("reviewed_by", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("acked_by", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+)
+
+KERNEL_TEST_RESULTS = sa.Table(
+    "kernel_test_results",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("patch_id", sa.Integer, sa.ForeignKey("kernel_patches.id", ondelete="CASCADE"), nullable=True),
+    sa.Column("series_id", sa.Integer, sa.ForeignKey("kernel_patch_series.id", ondelete="CASCADE"), nullable=True),
+    sa.Column("commit_hash", sa.String(40), nullable=True),
+    sa.Column("test_name", sa.String(256), nullable=False),
+    sa.Column("test_type", sa.String(64), nullable=False),
+    # test_type: build, boot, unit, integration, performance, static_analysis
+    sa.Column("architecture", sa.String(32), nullable=True),
+    sa.Column("config", sa.String(128), nullable=True),  # defconfig, allmodconfig, etc.
+    sa.Column("result", sa.String(32), nullable=False),
+    # result: pass, fail, skip, error, timeout
+    sa.Column("duration_seconds", sa.Float, nullable=True),
+    sa.Column("log_summary", sa.Text, nullable=True),
+    sa.Column("log_url", sa.Text, nullable=True),
+    sa.Column("warnings", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("errors", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    sa.Column("metadata", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+)
+
+KERNEL_REVIEW_COMMENTS = sa.Table(
+    "kernel_review_comments",
+    METADATA,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("patch_id", sa.Integer, sa.ForeignKey("kernel_patches.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("message_id", sa.String(256), nullable=True),
+    sa.Column("reviewer_name", sa.String(256), nullable=False),
+    sa.Column("reviewer_email", sa.String(256), nullable=False),
+    sa.Column("comment_type", sa.String(32), nullable=False),
+    # comment_type: inline, general, ack, reviewed-by, nack, question
+    sa.Column("file_path", sa.Text, nullable=True),
+    sa.Column("line_number", sa.Integer, nullable=True),
+    sa.Column("content", sa.Text, nullable=False),
+    sa.Column("sentiment", sa.String(16), nullable=True),
+    # sentiment: positive, neutral, negative, question
+    sa.Column("requires_action", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("action_taken", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+)
