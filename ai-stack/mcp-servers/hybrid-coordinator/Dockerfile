@@ -23,7 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.timeout 300 && \
     pip config set global.retries 5 && \
-    pip install --upgrade pip wheel setuptools
+    pip install --upgrade \
+      pip==26.0 \
+      wheel==0.46.3 \
+      setuptools==82.0.1
 
 # Copy requirements and install Python dependencies
 # Use --prefix to install to /build/.local instead of /root/.local
