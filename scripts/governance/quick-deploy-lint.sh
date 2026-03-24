@@ -94,9 +94,9 @@ done
   exit 2
 }
 
-TOTAL=21
+TOTAL=22
 if [[ "${MODE}" == "full" ]]; then
-  TOTAL=23
+  TOTAL=24
 fi
 STEP=0
 
@@ -157,6 +157,9 @@ run_step "Doc metadata standards" \
 
 run_step "Doc script-path migration" \
   bash scripts/governance/check-doc-script-path-migration.sh
+
+run_step "Python tooling policy" \
+  bash scripts/governance/check-python-tooling-policy.sh
 
 script_header_cmd=(bash scripts/governance/check-script-header-standards.sh --all)
 if [[ "${SCRIPT_HEADER_SCOPE}" == "changed" ]]; then

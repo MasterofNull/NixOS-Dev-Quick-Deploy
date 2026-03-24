@@ -40,9 +40,11 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: 3.13
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v6
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
+        uv pip install -r requirements.txt
     - name: Run API contract tests
       run: |
         python -m pytest ai-stack/tests/test_api_contracts.py -v
