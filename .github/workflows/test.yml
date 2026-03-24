@@ -194,7 +194,7 @@ jobs:
 
       - name: Upload flake validation report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: flake-validation-report
           path: .reports/flake-validation-report.*
@@ -276,7 +276,7 @@ jobs:
 
       - name: Upload shellcheck results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: shellcheck-results
           path: shellcheck.log
@@ -758,7 +758,7 @@ jobs:
           cat nixos-dev-quick-deploy-${{ github.ref_name }}.tar.gz.sha256
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-package
           path: |
