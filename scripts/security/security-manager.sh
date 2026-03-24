@@ -153,7 +153,9 @@ subcmd_enable_monitoring() {
   services.grafana = {
     enable = true;
     settings.server.http_port = ${GRAFANA_PORT:-3000};
-    settings.security.admin_password = "changeme";  # CHANGE THIS!
+    # SECURITY: Use sops secret or set via environment variable
+    # settings.security.admin_password = lib.mkDefault (builtins.readFile /run/secrets/grafana_admin_password);
+    settings.security.admin_user = "admin";
   };
 
   # Enable Fail2ban
