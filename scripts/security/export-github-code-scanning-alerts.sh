@@ -170,8 +170,10 @@ while (( page <= MAX_PAGES )); do
   page=$((page + 1))
 done
 
+generated_at="$(date -Iseconds)"
+output_tmp="${tmp_dir}/github-code-scanning-alerts.json"
 jq -s \
-  --arg generated_at "$(date -Iseconds)" \
+  --arg generated_at "${generated_at}" \
   --arg repo "${REPO_SLUG}" \
   --arg state "${STATE}" \
   '
@@ -195,14 +197,23 @@ jq -s \
       )
     ),
     alerts: .
-  }' "${alerts_file}" > "${OUTPUT_PATH}"
+  }' "${alerts_file}" > "${output_tmp}"
+
+mv "${output_tmp}" "${OUTPUT_PATH}"
 
 echo "GitHub code scanning export written: ${OUTPUT_PATH}"
 
 if [[ "${ARCHIVE_HISTORY}" == true ]]; then
   mkdir -p "${ARCHIVE_DIR}"
-  archive_stamp="$(jq -r '.generated_at' "${OUTPUT_PATH}" | tr ':+' '__' | tr -d '\n')"
+  archive_stamp="$(printf '%s' "${generated_at}" | tr ':+' '__')"
   archive_path="${ARCHIVE_DIR}/github-code-scanning-alerts-${archive_stamp}.json"
+  if [[ -e "${archive_path}" ]]; then
+    suffix=1
+    while [[ -e "${ARCHIVE_DIR}/github-code-scanning-alerts-${archive_stamp}-${suffix}.json" ]]; do
+      suffix=$((suffix + 1))
+    done
+    archive_path="${ARCHIVE_DIR}/github-code-scanning-alerts-${archive_stamp}-${suffix}.json"
+  fi
   cp "${OUTPUT_PATH}" "${archive_path}"
   echo "GitHub code scanning snapshot archived: ${archive_path}"
 fi
