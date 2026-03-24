@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reconcile hosted GitHub code scanning by exporting, removing stale analyses, and exporting again.
+# Reconcile hosted GitHub code scanning by exporting, reporting residuals, removing stale analyses, and exporting again.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -12,9 +12,10 @@ Usage: scripts/security/reconcile-github-code-scanning.sh [options]
 
 Reconcile hosted GitHub code scanning after a workflow run by:
 1. exporting the current backlog snapshot,
-2. deleting stale deletable analyses whose categories no longer exist,
-3. exporting a fresh snapshot again,
-4. printing summary and delta output.
+2. reporting residual open categories versus current workflow categories,
+3. deleting stale deletable analyses whose categories no longer exist,
+4. exporting a fresh snapshot again,
+5. printing summary, residuals, and delta output.
 
 Options:
   --apply       Delete stale analyses instead of dry-run only
@@ -57,6 +58,9 @@ require_cmd bash
 echo "Exporting pre-reconciliation snapshot"
 bash "${ROOT_DIR}/scripts/security/export-github-code-scanning-alerts.sh"
 
+echo "Reporting pre-reconciliation residual categories"
+bash "${ROOT_DIR}/scripts/security/report-github-code-scanning-residuals.sh"
+
 cleanup_args=()
 if [[ "${APPLY}" == true ]]; then
   cleanup_args+=(--apply)
@@ -70,5 +74,6 @@ bash "${ROOT_DIR}/scripts/security/export-github-code-scanning-alerts.sh"
 
 if [[ "${SHOW_SUMMARY}" == true ]]; then
   bash "${ROOT_DIR}/scripts/security/summarize-github-code-scanning-alerts.sh"
+  bash "${ROOT_DIR}/scripts/security/report-github-code-scanning-residuals.sh"
   bash "${ROOT_DIR}/scripts/security/compare-github-code-scanning-alerts.sh"
 fi
