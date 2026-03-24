@@ -366,3 +366,6 @@ scripts/testing/verify-flake-first-roadmap-completion.sh
 scripts/testing/verify-local-llm-feedback.sh
 scripts/testing/verify-model-safety.sh
 scripts/testing/verify-skill-registry.sh
+
+# Phase 30: Kernel development scripts
+scripts/kernel/kdev

@@ -6,5 +6,6 @@
     ./gaming.nix
     ./server.nix
     ./virtualization.nix
+    ./kernel-dev.nix
   ];
 }
