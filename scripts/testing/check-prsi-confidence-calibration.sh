@@ -4,8 +4,28 @@ set -euo pipefail
 ROOT_DIR="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 POLICY_FILE="${ROOT_DIR}/config/prsi/confidence-calibration-policy.json"
 OUT_FILE="${ROOT_DIR}/data/prsi-artifacts/confidence-calibration-latest.json"
+RUNS_DIR="${ROOT_DIR}/data/prsi-artifacts/runs"
+BOOTSTRAP_DIR=""
 
-python3 - "$ROOT_DIR" "$POLICY_FILE" "$OUT_FILE" <<'PY'
+cleanup() {
+  if [[ -n "${BOOTSTRAP_DIR}" && -d "${BOOTSTRAP_DIR}" ]]; then
+    rm -rf "${BOOTSTRAP_DIR}"
+  fi
+}
+trap cleanup EXIT
+
+tracked_run_count=0
+if command -v git >/dev/null 2>&1; then
+  tracked_run_count="$(git -C "${ROOT_DIR}" ls-files 'data/prsi-artifacts/runs/cycle_outcome*.json' | wc -l | tr -d ' ')"
+fi
+
+if [[ "${tracked_run_count}" == "0" ]]; then
+  BOOTSTRAP_DIR="$(mktemp -d)"
+  PRSI_CONF_SAMPLE_OUT_DIR="${BOOTSTRAP_DIR}" PRSI_CONF_SAMPLE_COUNT=20 \
+    bash "${ROOT_DIR}/scripts/data/bootstrap-prsi-confidence-samples.sh" >/dev/null
+fi
+
+python3 - "$ROOT_DIR" "$POLICY_FILE" "$OUT_FILE" "$RUNS_DIR" "${BOOTSTRAP_DIR}" <<'PY'
 import json
 import math
 import sys
@@ -14,6 +34,8 @@ from pathlib import Path
 root = Path(sys.argv[1])
 policy = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 out_file = Path(sys.argv[3])
+runs_dir = Path(sys.argv[4])
+bootstrap_dir = Path(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else None
 
 min_samples = int(policy.get("minimum_samples", 20))
 max_ece = float(policy.get("max_expected_calibration_error", 0.15))
@@ -24,11 +46,19 @@ outcomes = []
 example = root / "data/prsi-artifacts/examples/cycle_outcome.json"
 if example.exists():
     outcomes.append(json.loads(example.read_text(encoding="utf-8")))
-for p in sorted((root / "data/prsi-artifacts/runs").glob("cycle_outcome*.json")):
-    try:
-        outcomes.append(json.loads(p.read_text(encoding="utf-8")))
-    except Exception:
-        pass
+
+sample_dirs = [runs_dir]
+if bootstrap_dir is not None:
+    sample_dirs.append(bootstrap_dir)
+
+for sample_dir in sample_dirs:
+    if not sample_dir.exists():
+        continue
+    for p in sorted(sample_dir.glob("cycle_outcome*.json")):
+        try:
+            outcomes.append(json.loads(p.read_text(encoding="utf-8")))
+        except Exception:
+            pass
 
 samples = []
 for o in outcomes:
