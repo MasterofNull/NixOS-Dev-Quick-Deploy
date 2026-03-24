@@ -162,6 +162,11 @@ run_syntax_check() {
         fi
         ;;
       *.nix)
+        # Skip templates/ directory - they contain @PLACEHOLDER@ syntax
+        # that's processed by substitution scripts, not valid Nix directly
+        if [[ "$file" == templates/* ]]; then
+          continue
+        fi
         if command -v nix-instantiate >/dev/null 2>&1; then
           if ! nix-instantiate --parse "$file" >/dev/null 2>&1; then
             echo "pre-commit: nix parse error in '${file}'" >&2
