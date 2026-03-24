@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 GENERATOR="${PROJECT_ROOT}/scripts/data/generate-package-counts.sh"
 BASELINE_PATH="${PROJECT_ROOT}/config/package-count-baseline.json"
 FLAKE_REF="path:${PROJECT_ROOT}"

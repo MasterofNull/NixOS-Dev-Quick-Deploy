@@ -33,6 +33,8 @@ Config.AI_TREE_SEARCH_ENABLED = True
 Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS = 20
 Config.AI_LLM_EXPANSION_TIMEOUT_S = 5.0
 Config.AI_TASK_CLASSIFICATION_ENABLED = False
+Config.AI_PROMPT_CACHE_POLICY_ENABLED = False
+Config.AI_PROMPT_CACHE_STATIC_PREFIX = ""
 Config.LLAMA_CPP_URL = "http://localhost:8000"
 sys.modules['config'].Config = Config
 
@@ -43,7 +45,10 @@ import route_handler
 class TestParallelization:
     """Test parallel LLM expansion and capability discovery."""
 
-    async def test_parallel_expansion_and_discovery(self):
+    def test_parallel_expansion_and_discovery(self):
+        asyncio.run(self._run_parallel_expansion_and_discovery())
+
+    async def _run_parallel_expansion_and_discovery(self):
         """Verify that expansion and discovery tasks run in parallel."""
         print("Test 1: Parallel LLM Expansion and Discovery")
 
@@ -93,19 +98,20 @@ class TestParallelization:
                                 with patch.object(route_handler, '_record_telemetry', MagicMock()):
                                     with patch.object(route_handler, '_postgres_client_ref', return_value=None):
                                         with patch.object(route_handler, '_llama_cpp_client_ref', return_value=None):
-                                            with patch.object(route_handler, 'ROUTE_DECISIONS', MagicMock()):
-                                                with patch.object(route_handler, 'ROUTE_ERRORS', MagicMock()):
-                                                    with patch.object(route_handler, 'sanitize_query', lambda x: x):
-                                                        with patch.object(route_handler, '_injection_scanner', MagicMock()):
-                                                            route_handler._injection_scanner.filter_results = MagicMock(return_value=([], 0))
+                                            with patch.object(route_handler, '_context_compressor_ref', return_value=None):
+                                                with patch.object(route_handler, 'ROUTE_DECISIONS', MagicMock()):
+                                                    with patch.object(route_handler, 'ROUTE_ERRORS', MagicMock()):
+                                                        with patch.object(route_handler, 'sanitize_query', lambda x: x):
+                                                            with patch.object(route_handler, '_injection_scanner', MagicMock()):
+                                                                route_handler._injection_scanner.filter_results = MagicMock(return_value=([], 0))
 
-                                                            # Run the search
-                                                            start = time.time()
-                                                            result = await route_handler.route_search(
-                                                                query="test query",
-                                                                mode="hybrid",
-                                                            )
-                                                            total_time = time.time() - start
+                                                                # Run the search
+                                                                start = time.time()
+                                                                result = await route_handler.route_search(
+                                                                    query="test query",
+                                                                    mode="hybrid",
+                                                                )
+                                                                total_time = time.time() - start
 
         # Verify parallel execution
         if expansion_times and discovery_times:
@@ -119,11 +125,8 @@ class TestParallelization:
 
             if max_time < (sequential_time * 0.9):
                 print("  ✓ PASS: Operations ran in parallel")
-                return True
             else:
-                print("  ✗ FAIL: Operations did not run in parallel")
-                return False
-        return True
+                raise AssertionError("Operations did not run in parallel")
 
 
 class TestBackendSelectionCache:
@@ -143,7 +146,6 @@ class TestBackendSelectionCache:
         assert key1 != key4, "Different prefer_local should produce different keys"
         print(f"  Sample key: {key1}")
         print("  ✓ PASS: Cache keys generated correctly")
-        return True
 
     def test_cache_hit_miss(self):
         """Test cache hit/miss tracking."""
@@ -177,7 +179,6 @@ class TestBackendSelectionCache:
 
         assert stats['hit_rate_percent'] == 50.0, "Hit rate should be 50% (1 hit, 2 accesses)"
         print("  ✓ PASS: Cache hit/miss tracking works correctly")
-        return True
 
     def test_cache_eviction(self):
         """Test that cache evicts when full."""
@@ -203,13 +204,15 @@ class TestBackendSelectionCache:
 
         # Reset to default size
         route_handler._backend_selection_cache.max_size = 1000
-        return True
 
 
 class TestTimeoutGuards:
     """Test collection timeout guards."""
 
-    async def test_search_timeout(self):
+    def test_search_timeout(self):
+        asyncio.run(self._run_search_timeout())
+
+    async def _run_search_timeout(self):
         """Test that search operations timeout correctly."""
         print("\nTest 5: Collection Timeout Guards")
 
@@ -219,19 +222,20 @@ class TestTimeoutGuards:
 
         # Test with short timeout
         try:
-            result = await asyncio.wait_for(slow_search(), timeout=1.0)
-            print("  ✗ FAIL: Should have timed out")
-            return False
+            await asyncio.wait_for(slow_search(), timeout=1.0)
+            raise AssertionError("Search should have timed out")
         except asyncio.TimeoutError:
             print("  Slow search timed out as expected")
             print("  ✓ PASS: Timeout guards work correctly")
-            return True
 
 
 class TestSkipBackendSelection:
     """Test that backend selection is skipped when not generating response."""
 
-    async def test_backend_selection_skipped_on_retrieval_only(self):
+    def test_backend_selection_skipped_on_retrieval_only(self):
+        asyncio.run(self._run_backend_selection_skipped_on_retrieval_only())
+
+    async def _run_backend_selection_skipped_on_retrieval_only(self):
         """Test that backend selection is not called for retrieval-only queries."""
         print("\nTest 6: Skip Backend Selection for Retrieval-Only Queries")
 
@@ -247,35 +251,45 @@ class TestSkipBackendSelection:
             "combined_results": [],
         })
         summarize_fn = MagicMock(return_value="test response")
+        capability_discover = AsyncMock(return_value={
+            "decision": "skipped",
+            "reason": "test",
+            "cache_hit": False,
+            "intent_tags": [],
+            "tools": [],
+            "skills": [],
+            "servers": [],
+            "datasets": [],
+        })
 
         with patch.object(route_handler, '_select_backend', mock_select_backend):
             with patch.object(route_handler, '_hybrid_search', hybrid_search_fn):
                 with patch.object(route_handler, '_summarize', summarize_fn):
-                    with patch.object(route_handler, '_normalize_tokens', return_value=['test']):
-                        with patch.object(route_handler, '_looks_like_sql', return_value=False):
-                            with patch.object(route_handler, '_record_telemetry', MagicMock()):
-                                with patch.object(route_handler, '_postgres_client_ref', return_value=None):
-                                    with patch.object(route_handler, '_llama_cpp_client_ref', return_value=None):
-                                        with patch.object(route_handler, 'ROUTE_DECISIONS', MagicMock()):
-                                            with patch.object(route_handler, 'ROUTE_ERRORS', MagicMock()):
-                                                with patch.object(route_handler, 'sanitize_query', lambda x: x):
-                                                    with patch.object(route_handler, '_injection_scanner', MagicMock()):
-                                                        route_handler._injection_scanner.filter_results = MagicMock(return_value=([], 0))
+                    with patch('capability_discovery.discover', capability_discover):
+                        with patch.object(route_handler, '_normalize_tokens', return_value=['test']):
+                            with patch.object(route_handler, '_looks_like_sql', return_value=False):
+                                with patch.object(route_handler, '_record_telemetry', MagicMock()):
+                                    with patch.object(route_handler, '_postgres_client_ref', return_value=None):
+                                        with patch.object(route_handler, '_llama_cpp_client_ref', return_value=None):
+                                            with patch.object(route_handler, '_context_compressor_ref', return_value=None):
+                                                with patch.object(route_handler, 'ROUTE_DECISIONS', MagicMock()):
+                                                    with patch.object(route_handler, 'ROUTE_ERRORS', MagicMock()):
+                                                        with patch.object(route_handler, 'sanitize_query', lambda x: x):
+                                                            with patch.object(route_handler, '_injection_scanner', MagicMock()):
+                                                                route_handler._injection_scanner.filter_results = MagicMock(return_value=([], 0))
 
-                                                        # Run search without generation
-                                                        await route_handler.route_search(
-                                                            query="test query",
-                                                            mode="keyword",
-                                                            generate_response=False,
-                                                        )
+                                                                # Run search without generation
+                                                                await route_handler.route_search(
+                                                                    query="test query",
+                                                                    mode="keyword",
+                                                                    generate_response=False,
+                                                                )
 
         if len(select_backend_calls) == 0:
             print("  Backend selection was skipped for retrieval-only query")
             print("  ✓ PASS: Backend selection correctly skipped")
-            return True
         else:
-            print(f"  ✗ FAIL: Backend selection was called {len(select_backend_calls)} times")
-            return False
+            raise AssertionError(f"Backend selection was called {len(select_backend_calls)} times")
 
 
 async def run_async_tests():
