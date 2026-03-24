@@ -138,6 +138,20 @@ Hosted backlog snapshot from `/home/hyperd/.local/share/nixos-ai-stack/security/
   - `grafana/grafana`: `60`
   - `usr/share/grafana/bin/grafana`: `51`
   - `Node.js`: `45`
+- residual historical category report on 2026-03-23 shows:
+  - `457` alerts are in categories no longer emitted by the current workflow
+  - `159` alerts are in current workflow-backed categories
+  - largest residual historical categories are:
+    - `trivy-grafana/grafana:11.4.0`: `162`
+    - `trivy-qdrant/qdrant:v1.12.5`: `89`
+    - `trivy-jaegertracing/all-in-one:1.64.0`: `76`
+    - `trivy-prom/prometheus:v3.1.0`: `67`
+    - `trivy-nginx:1.27-alpine`: `63`
+  - current workflow-backed open categories are led by:
+    - `trivy-redis`: `83`
+    - `trivy-qdrant`: `27`
+    - `trivy-custom-nixos-docs`: `13`
+    - `trivy-prometheus`: `12`
 
 Current hotspot tracker items:
 - `e1cd85a5-1d48-40db-9f60-11f31a174755`: `gosu` binary family
@@ -147,6 +161,7 @@ Current hotspot tracker items:
 Implication:
 - hosted intake is operational now,
 - the remaining backlog is entirely dominated by Trivy findings in base images and bundled binaries,
+- GitHub-retained historical categories still account for most of the visible open backlog,
 - repo-local Gitleaks cleanup is complete, and Trivy work should be grouped by shared component/image rather than individual alert count.
 
 ## 5. Priority Model
