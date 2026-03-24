@@ -7976,10 +7976,12 @@ async def run_http_mode(port: int) -> None:
         access_log_format=access_log_format,
     )
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
+    # Security: bind to HOST env var, default to localhost to prevent LAN exposure
+    bind_host = os.getenv("HOST", "127.0.0.1")
+    site = web.TCPSite(runner, bind_host, port)
     await site.start()
 
-    logger.info("✓ Hybrid Coordinator HTTP server running on http://0.0.0.0:%d", port)
+    logger.info("✓ Hybrid Coordinator HTTP server running on http://%s:%d", bind_host, port)
 
     # Keep server running
     await asyncio.Event().wait()
