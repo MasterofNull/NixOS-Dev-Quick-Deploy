@@ -83,25 +83,25 @@ jobs:
         include:
           - image: postgres:17.9-alpine3.23
             sarif: trivy-postgres-17.9-alpine3.23.sarif
-            category: trivy-postgres-17.9-alpine3.23
+            category: trivy-postgres
           - image: redis:7.4.8-alpine3.21
             sarif: trivy-redis-7.4.8-alpine3.21.sarif
-            category: trivy-redis-7.4.8-alpine3.21
+            category: trivy-redis
           - image: qdrant/qdrant:v1.17.0
             sarif: trivy-qdrant-v1.17.0.sarif
-            category: trivy-qdrant-v1.17.0
+            category: trivy-qdrant
           - image: nginx:1.28.2-alpine
             sarif: trivy-nginx-1.28.2-alpine.sarif
-            category: trivy-nginx-1.28.2-alpine
+            category: trivy-nginx
           - image: grafana/grafana:12.4.1
             sarif: trivy-grafana-12.4.1.sarif
-            category: trivy-grafana-12.4.1
+            category: trivy-grafana
           - image: prom/prometheus:v3.10.0
             sarif: trivy-prometheus-v3.10.0.sarif
-            category: trivy-prometheus-v3.10.0
+            category: trivy-prometheus
           - image: cr.jaegertracing.io/jaegertracing/jaeger:2.16.0
             sarif: trivy-jaeger-v2.16.0.sarif
-            category: trivy-jaeger-v2.16.0
+            category: trivy-jaeger
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

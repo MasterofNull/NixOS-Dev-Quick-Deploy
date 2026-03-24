@@ -115,3 +115,45 @@ print_table \
   | .[:'"${TOP_N}"'][]
   | "  \(.count)\t\(.key)"
   '
+
+print_table \
+  "Top Trivy images:" \
+  '
+  .alerts
+  | map(select(.tool.name == "Trivy"))
+  | map(. + {
+      trivy_environment: (
+        .most_recent_instance.environment
+        | if type == "string" then (fromjson? // {}) else {} end
+      )
+    })
+  | group_by(.trivy_environment.image // "unknown")
+  | map({
+      key: (.[0].trivy_environment.image // "unknown"),
+      count: length
+    })
+  | sort_by(-.count, .key)
+  | .[:'"${TOP_N}"'][]
+  | "  \(.count)\t\(.key)"
+  '
+
+print_table \
+  "Top Trivy categories:" \
+  '
+  .alerts
+  | map(select(.tool.name == "Trivy"))
+  | map(. + {
+      trivy_environment: (
+        .most_recent_instance.environment
+        | if type == "string" then (fromjson? // {}) else {} end
+      )
+    })
+  | group_by(.trivy_environment.category // .most_recent_instance.category // "unknown")
+  | map({
+      key: (.[0].trivy_environment.category // .[0].most_recent_instance.category // "unknown"),
+      count: length
+    })
+  | sort_by(-.count, .key)
+  | .[:'"${TOP_N}"'][]
+  | "  \(.count)\t\(.key)"
+  '
