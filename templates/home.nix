@@ -2997,7 +2997,9 @@ EOF
           services.grafana = {
             enable = true;
             settings.server.http_port = 3001;
-            settings.security.admin_password = "changeme";  # CHANGE THIS!
+            # SECURITY: Set password via sops secret
+            # settings.security.admin_password = builtins.readFile /run/secrets/grafana_password;
+            settings.security.admin_user = "admin";
           };
         
           # Enable Fail2ban
