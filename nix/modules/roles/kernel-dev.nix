@@ -84,11 +84,27 @@ let
     ++ kernelTestTools
     ++ kernelGitTools
     ++ (lib.optionals kdev.enableRust (with pkgs; [
+      # Core Rust toolchain
       rustc
       cargo
       rustfmt
       clippy
       rust-bindgen           # Rust FFI bindings generator
+
+      # Rust analyzer for IDE support
+      rust-analyzer
+
+      # LLVM/Clang toolchain (required for Rust kernel builds)
+      llvmPackages_latest.clang
+      llvmPackages_latest.llvm
+      llvmPackages_latest.lld
+      llvmPackages_latest.libclang
+
+      # Additional Rust development tools
+      cargo-watch            # Auto-rebuild on changes
+      cargo-audit            # Security vulnerability checker
+      cargo-expand           # Macro expansion viewer
+      cargo-outdated         # Dependency update checker
     ]));
 in
 {
@@ -107,7 +123,39 @@ in
     enableRust = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Include Rust toolchain for Rust-for-Linux development.";
+      description = ''
+        Include Rust toolchain for Rust-for-Linux development.
+
+        Rust is permanently adopted in the Linux kernel (600K+ lines as of 2026).
+        Required for:
+        - DRM/Graphics drivers (Rust-only mandate starting 2027)
+        - New filesystem drivers
+        - Network device drivers
+        - Security modules
+
+        67% of kernel CVEs are memory-safety bugs that Rust prevents.
+      '';
+    };
+
+    rustVersion = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "1.78.0";
+      description = ''
+        Specific Rust version for kernel compatibility.
+        null = use system default (recommended for most cases).
+        Check kernel Makefile for RUST_VERSION_MIN requirement.
+      '';
+    };
+
+    enableLLVM = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Use LLVM/Clang toolchain for kernel builds.
+        Required for Rust kernel modules (CONFIG_RUST=y).
+        Enables LTO and CFI for enhanced security.
+      '';
     };
 
     enableVirtme = lib.mkOption {
@@ -200,6 +248,15 @@ in
         value = "524288";
       }
     ];
+
+    # Environment variables for LLVM/Rust kernel builds
+    environment.sessionVariables = lib.mkIf kdev.enableLLVM {
+      # Point to LLVM toolchain for kernel builds
+      LLVM = "1";
+      LLVM_IAS = "1";
+      # Rust bindgen needs libclang
+      LIBCLANG_PATH = "${pkgs.llvmPackages_latest.libclang.lib}/lib";
+    };
 
     # Git config for kernel workflow
     programs.git.config = {
