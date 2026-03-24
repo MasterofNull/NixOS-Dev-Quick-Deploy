@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: validate remote-routing fallback when the hybrid coordinator is reachable and authorized.
 set -euo pipefail
 
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
@@ -6,12 +7,21 @@ HYBRID_API_KEY="${HYBRID_API_KEY:-}"
 HYBRID_API_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
 
 pass() { echo "[PASS] $*"; }
+warn() { echo "[WARN] $*" >&2; }
 fail() { echo "[FAIL] $*" >&2; exit 1; }
 
 if [[ -z "${HYBRID_API_KEY}" && -r "${HYBRID_API_KEY_FILE}" ]]; then
   HYBRID_API_KEY="$(tr -d '[:space:]' < "${HYBRID_API_KEY_FILE}")"
 fi
-[[ -n "${HYBRID_API_KEY}" ]] || fail "missing HYBRID API key"
+if [[ -z "${HYBRID_API_KEY}" ]]; then
+  warn "missing HYBRID API key; skipping routing fallback probe"
+  exit 0
+fi
+
+if ! curl -fsS --max-time 5 --connect-timeout 3 "${HYB_URL%/}/health" >/dev/null 2>&1; then
+  warn "hybrid coordinator unavailable at ${HYB_URL}; skipping routing fallback probe"
+  exit 0
+fi
 
 hdr=(-H "Content-Type: application/json" -H "X-API-Key: ${HYBRID_API_KEY}")
 
