@@ -1,0 +1,116 @@
+{ lib, config, pkgs, ... }:
+let
+  cfg = config.mySystem;
+  cs = cfg.security.crowdsec;
+in
+{
+  # ---------------------------------------------------------------------------
+  # Crowdsec IPS: behavior-based intrusion prevention system.
+  # Watches logs for malicious patterns, shares threat intel, and blocks IPs.
+  # Available in NixOS 24.05+.
+  # ---------------------------------------------------------------------------
+
+  options.mySystem.security.crowdsec = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Enable Crowdsec intrusion prevention system.";
+    };
+
+    enableFirewallBouncer = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Enable Crowdsec firewall bouncer to auto-ban IPs via nftables.";
+    };
+
+    watchNginx = lib.mkOption {
+      type = lib.types.bool;
+      default = config.services.nginx.enable;
+      description = "Watch Nginx access logs for malicious requests.";
+    };
+
+    watchSshd = lib.mkOption {
+      type = lib.types.bool;
+      default = config.services.openssh.enable;
+      description = "Watch SSH auth logs for brute-force attempts.";
+    };
+
+    apiKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "Path to file containing Crowdsec bouncer API key (sops secret).";
+    };
+  };
+
+  config = lib.mkIf cs.enable {
+    assertions = [
+      {
+        assertion = cs.enableFirewallBouncer -> cs.apiKeyFile != null;
+        message = "mySystem.security.crowdsec.enableFirewallBouncer requires apiKeyFile.";
+      }
+    ];
+
+    services.crowdsec = {
+      enable = true;
+
+      # Local API server for bouncers to connect to
+      settings.general.api.server = {
+        enable = true;
+        listen_uri = "127.0.0.1:8088";
+      };
+
+      # Acquisitions: which log sources to monitor
+      localConfig.acquisitions = lib.optionals cs.watchSshd [
+        {
+          source = "journalctl";
+          journalctl_filter = [ "_SYSTEMD_UNIT=sshd.service" ];
+          labels.type = "syslog";
+        }
+      ] ++ lib.optionals cs.watchNginx [
+        {
+          source = "file";
+          filenames = [ "/var/log/nginx/access.log" ];
+          labels.type = "nginx";
+        }
+        {
+          source = "file";
+          filenames = [ "/var/log/nginx/error.log" ];
+          labels.type = "nginx";
+        }
+      ];
+    };
+
+    # Firewall bouncer: block malicious IPs at the firewall level
+    services.crowdsec-firewall-bouncer = lib.mkIf cs.enableFirewallBouncer {
+      enable = true;
+      settings = {
+        api_url = "http://127.0.0.1:8088";
+        api_key = lib.mkIf (cs.apiKeyFile != null) "file:${cs.apiKeyFile}";
+        mode = "nftables";
+        nftables = {
+          ipv4.table = "crowdsec";
+          ipv4.chain = "crowdsec-chain";
+          ipv6.table = "crowdsec6";
+          ipv6.chain = "crowdsec6-chain";
+        };
+      };
+    };
+
+    # Systemd hardening for crowdsec services
+    systemd.services.crowdsec = {
+      serviceConfig = {
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        NoNewPrivileges = true;
+        ReadWritePaths = [ "/var/lib/crowdsec" "/var/log/crowdsec" ];
+      };
+    };
+
+    # Open firewall for local API only (bouncer communication)
+    networking.firewall.interfaces."lo".allowedTCPPorts = [ 8088 ];
+
+    # Install crowdsec CLI for management
+    environment.systemPackages = [ pkgs.crowdsec ];
+  };
+}
