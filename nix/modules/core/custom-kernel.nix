@@ -357,41 +357,46 @@ in
     };
   };
 
-  config = lib.mkIf customCfg.enable {
-    # Use custom kernel packages
-    boot.kernelPackages = lib.mkForce selectedKernelPackages;
+  config = lib.mkMerge [
+    # Hardening config applies independently (works with any kernel)
+    (lib.mkIf hardeningCfg.enable {
+      # Add kernel mitigations to boot parameters
+      boot.kernelParams =
+        lib.optionals hardeningCfg.mitigations.spectre [ "spectre_v2=on" "spectre_v1=on" ]
+        ++ lib.optionals hardeningCfg.mitigations.meltdown [ "pti=on" ]
+        ++ lib.optionals hardeningCfg.mitigations.mds [ "mds=full" ]
+        ++ lib.optionals hardeningCfg.mitigations.srso [ "spec_rstack_overflow=safe-ret" ];
+    })
 
-    # Ensure Rust toolchain is available for Rust kernel builds
-    environment.systemPackages = lib.mkIf customCfg.rustSupport (with pkgs; [
-      rustc
-      cargo
-      rust-bindgen
-      llvmPackages_latest.clang
-      llvmPackages_latest.llvm
-    ]);
+    # Custom kernel build config
+    (lib.mkIf customCfg.enable {
+      # Use custom kernel packages
+      boot.kernelPackages = lib.mkForce selectedKernelPackages;
 
-    # Add kernel mitigations to boot parameters
-    boot.kernelParams = lib.mkIf hardeningCfg.enable (
-      lib.optionals hardeningCfg.mitigations.spectre [ "spectre_v2=on" "spectre_v1=on" ]
-      ++ lib.optionals hardeningCfg.mitigations.meltdown [ "pti=on" ]
-      ++ lib.optionals hardeningCfg.mitigations.mds [ "mds=full" ]
-      ++ lib.optionals hardeningCfg.mitigations.srso [ "spec_rstack_overflow=safe-ret" ]
-    );
+      # Ensure Rust toolchain is available for Rust kernel builds
+      environment.systemPackages = lib.mkIf customCfg.rustSupport (with pkgs; [
+        rustc
+        cargo
+        rust-bindgen
+        llvmPackages_latest.clang
+        llvmPackages_latest.llvm
+      ]);
 
-    # Warning assertions
-    warnings = lib.mkIf (customCfg.enable && customCfg.sourceSha256 == "" && customCfg.source != "local") [
-      "mySystem.kernel.customBuild: sourceSha256 is empty but source is '${customCfg.source}'. Build will fail."
-    ];
+      # Warning assertions
+      warnings = lib.mkIf (customCfg.sourceSha256 == "" && customCfg.source != "local") [
+        "mySystem.kernel.customBuild: sourceSha256 is empty but source is '${customCfg.source}'. Build will fail."
+      ];
 
-    assertions = [
-      {
-        assertion = !customCfg.enable || customCfg.source != "local" || customCfg.localSourcePath != null;
-        message = "mySystem.kernel.customBuild: localSourcePath must be set when source = 'local'.";
-      }
-      {
-        assertion = !customCfg.enable || !customCfg.rustSupport || pkgs ? rustc;
-        message = "mySystem.kernel.customBuild: Rust support requires rustc in pkgs.";
-      }
-    ];
-  };
+      assertions = [
+        {
+          assertion = customCfg.source != "local" || customCfg.localSourcePath != null;
+          message = "mySystem.kernel.customBuild: localSourcePath must be set when source = 'local'.";
+        }
+        {
+          assertion = !customCfg.rustSupport || pkgs ? rustc;
+          message = "mySystem.kernel.customBuild: Rust support requires rustc in pkgs.";
+        }
+      ];
+    })
+  ];
 }
