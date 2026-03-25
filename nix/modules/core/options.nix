@@ -161,11 +161,13 @@
 
     kernel = {
       track = lib.mkOption {
-        type = lib.types.enum [ "latest-stable" "default" ];
+        type = lib.types.enum [ "latest-stable" "6.19-latest" "6.18-lts" "default" ];
         default = "latest-stable";
         description = ''
           Kernel package selection policy.
           - latest-stable: use pkgs.linuxPackages_latest when available.
+          - 6.19-latest: Linux 6.19 with AMD GPU boost, HDR, ext4 improvements.
+          - 6.18-lts: Linux 6.18 LTS with Apple Silicon, XFS online fsck.
           - default: use pkgs.linuxPackages (board/vendor defaults).
           This is generated from local hardware facts during deployment.
         '';

@@ -5,7 +5,11 @@ let
   bootFsType = lib.attrByPath [ "fileSystems" "/boot" "fsType" ] null config;
   useSystemdBoot = (!cfg.secureboot.enable) && (cfg.hardware.firmwareType == "efi" || bootFsType == "vfat");
   selectedKernelPackages =
-    if cfg.kernel.track == "latest-stable" && pkgs ? linuxPackages_latest then
+    if cfg.kernel.track == "6.19-latest" && pkgs ? linuxPackages_6_19 then
+      pkgs.linuxPackages_6_19
+    else if cfg.kernel.track == "6.18-lts" && pkgs ? linuxPackages_6_18 then
+      pkgs.linuxPackages_6_18
+    else if cfg.kernel.track == "latest-stable" && pkgs ? linuxPackages_latest then
       pkgs.linuxPackages_latest
     else
       pkgs.linuxPackages;
