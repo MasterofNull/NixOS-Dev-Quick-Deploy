@@ -1,0 +1,548 @@
+#!/usr/bin/env bash
+# Upstream Development Workflow
+#
+# Manages fork-based development for upstream contributions to:
+# - NixOS/nixpkgs
+# - System76 COSMIC desktop
+# - Linux kernel
+#
+# Workflow:
+#   1. dev setup nixpkgs         # Fork and clone
+#   2. dev branch nixpkgs feat   # Create feature branch
+#   3. [make changes]
+#   4. dev test nixpkgs          # Build with overlay
+#   5. dev validate              # Full system test
+#   6. dev submit nixpkgs        # Create upstream PR
+#
+# Usage:
+#   dev setup <repo>             # Fork and clone upstream repo
+#   dev branch <repo> <name>     # Create feature branch
+#   dev test <repo>              # Build system with forked repo
+#   dev validate                 # Full validation suite
+#   dev diff <repo>              # Show changes vs upstream
+#   dev submit <repo>            # Create PR to upstream
+#   dev sync <repo>              # Sync fork with upstream
+#   dev status                   # Show all fork status
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+FORKS_DIR="${REPO_ROOT}/.forks"
+OVERLAYS_DIR="${REPO_ROOT}/nix/overlays"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}[info]${NC} $*"; }
+log_ok()    { echo -e "${GREEN}[ok]${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}[warn]${NC} $*"; }
+log_error() { echo -e "${RED}[error]${NC} $*" >&2; }
+
+ensure_gh() {
+    if ! command -v gh &>/dev/null; then
+        log_error "GitHub CLI (gh) required. Install: nix shell nixpkgs#gh"
+        exit 1
+    fi
+    if ! gh auth status &>/dev/null; then
+        log_error "GitHub CLI not authenticated. Run: gh auth login"
+        exit 1
+    fi
+}
+
+ensure_forks_dir() {
+    mkdir -p "$FORKS_DIR"
+
+    # Add to .gitignore if not present
+    if ! grep -q "^\.forks" "$REPO_ROOT/.gitignore" 2>/dev/null; then
+        echo ".forks/" >> "$REPO_ROOT/.gitignore"
+        log_info "Added .forks/ to .gitignore"
+    fi
+}
+
+# Repository configurations
+declare -A REPOS=(
+    ["nixpkgs"]="NixOS/nixpkgs"
+    ["cosmic-comp"]="pop-os/cosmic-comp"
+    ["cosmic-panel"]="pop-os/cosmic-panel"
+    ["cosmic-applets"]="pop-os/cosmic-applets"
+    ["cosmic-settings"]="pop-os/cosmic-settings"
+    ["cosmic-term"]="pop-os/cosmic-term"
+    ["cosmic-files"]="pop-os/cosmic-files"
+    ["linux"]="torvalds/linux"
+)
+
+get_upstream() {
+    local repo="$1"
+    echo "${REPOS[$repo]:-}"
+}
+
+get_fork_path() {
+    local repo="$1"
+    echo "$FORKS_DIR/$repo"
+}
+
+#=============================================================================
+# SETUP - Fork and clone upstream repos
+#=============================================================================
+
+cmd_setup() {
+    local repo="${1:-}"
+
+    if [[ -z "$repo" ]]; then
+        echo "Usage: dev setup <repo>"
+        echo ""
+        echo "Available repos:"
+        for r in "${!REPOS[@]}"; do
+            echo "  $r -> ${REPOS[$r]}"
+        done
+        exit 1
+    fi
+
+    local upstream="${REPOS[$repo]:-}"
+    if [[ -z "$upstream" ]]; then
+        log_error "Unknown repo: $repo"
+        echo "Available: ${!REPOS[*]}"
+        exit 1
+    fi
+
+    ensure_gh
+    ensure_forks_dir
+
+    local fork_path
+    fork_path=$(get_fork_path "$repo")
+
+    if [[ -d "$fork_path" ]]; then
+        log_warn "Fork already exists: $fork_path"
+        echo "Use 'dev sync $repo' to update from upstream"
+        return 0
+    fi
+
+    log_info "Setting up fork for $upstream..."
+
+    # Fork if not already forked
+    if ! gh repo view "$upstream" --json isFork -q '.isFork' &>/dev/null; then
+        log_info "Forking $upstream..."
+        gh repo fork "$upstream" --clone=false || true
+    fi
+
+    # Get fork name
+    local gh_user
+    gh_user=$(gh api user -q '.login')
+    local fork_repo="$gh_user/$repo"
+
+    # Clone fork
+    log_info "Cloning fork to $fork_path..."
+    gh repo clone "$fork_repo" "$fork_path" -- --depth=1
+
+    # Add upstream remote
+    cd "$fork_path"
+    git remote add upstream "https://github.com/$upstream.git" 2>/dev/null || true
+
+    log_ok "Fork ready: $fork_path"
+    echo ""
+    echo "Next steps:"
+    echo "  dev branch $repo <feature-name>  # Create feature branch"
+    echo "  cd $fork_path                    # Navigate to fork"
+}
+
+#=============================================================================
+# BRANCH - Create feature branch
+#=============================================================================
+
+cmd_branch() {
+    local repo="${1:-}"
+    local branch_name="${2:-}"
+
+    if [[ -z "$repo" ]] || [[ -z "$branch_name" ]]; then
+        echo "Usage: dev branch <repo> <branch-name>"
+        exit 1
+    fi
+
+    local fork_path
+    fork_path=$(get_fork_path "$repo")
+
+    if [[ ! -d "$fork_path" ]]; then
+        log_error "Fork not found. Run: dev setup $repo"
+        exit 1
+    fi
+
+    cd "$fork_path"
+
+    # Fetch upstream
+    log_info "Fetching upstream..."
+    git fetch upstream --depth=1 2>/dev/null || git fetch origin --depth=1
+
+    # Determine base branch
+    local base_branch="main"
+    if git rev-parse --verify upstream/master &>/dev/null; then
+        base_branch="master"
+    fi
+
+    # Create branch from upstream
+    log_info "Creating branch '$branch_name' from upstream/$base_branch..."
+    git checkout -B "$branch_name" "upstream/$base_branch" 2>/dev/null || \
+        git checkout -B "$branch_name" "origin/$base_branch"
+
+    log_ok "Branch created: $branch_name"
+    echo ""
+    echo "You are now in: $fork_path"
+    echo "Branch: $branch_name"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Make your changes"
+    echo "  2. dev test $repo       # Test with NixOS"
+    echo "  3. git commit -m '...'  # Commit changes"
+    echo "  4. dev submit $repo     # Create PR"
+}
+
+#=============================================================================
+# TEST - Build system with forked repo overlay
+#=============================================================================
+
+cmd_test() {
+    local repo="${1:-}"
+
+    if [[ -z "$repo" ]]; then
+        echo "Usage: dev test <repo>"
+        echo ""
+        echo "Builds NixOS with overlay pointing to your fork."
+        exit 1
+    fi
+
+    local fork_path
+    fork_path=$(get_fork_path "$repo")
+
+    if [[ ! -d "$fork_path" ]]; then
+        log_error "Fork not found. Run: dev setup $repo"
+        exit 1
+    fi
+
+    case "$repo" in
+        nixpkgs)
+            cmd_test_nixpkgs "$fork_path"
+            ;;
+        cosmic-*)
+            cmd_test_cosmic "$repo" "$fork_path"
+            ;;
+        linux)
+            cmd_test_kernel "$fork_path"
+            ;;
+        *)
+            log_error "No test workflow defined for: $repo"
+            exit 1
+            ;;
+    esac
+}
+
+cmd_test_nixpkgs() {
+    local fork_path="$1"
+
+    log_info "Testing NixOS build with forked nixpkgs..."
+
+    # Build with local nixpkgs
+    cd "$REPO_ROOT"
+
+    log_info "Building system with local nixpkgs..."
+    nix build \
+        --override-input nixpkgs "path:$fork_path" \
+        ".#nixosConfigurations.$(hostname)-ai-dev.config.system.build.toplevel" \
+        --no-link \
+        --print-out-paths
+
+    log_ok "Build successful with forked nixpkgs"
+    echo ""
+    echo "To deploy for full testing:"
+    echo "  sudo nixos-rebuild switch --flake . --override-input nixpkgs path:$fork_path"
+}
+
+cmd_test_cosmic() {
+    local repo="$1"
+    local fork_path="$2"
+
+    log_info "Testing COSMIC component: $repo"
+
+    cd "$fork_path"
+
+    # Build with cargo
+    log_info "Building with cargo..."
+    cargo build --release
+
+    log_ok "Build successful: $fork_path/target/release/"
+    echo ""
+    echo "To test:"
+    echo "  1. Stop cosmic-session"
+    echo "  2. Replace binary temporarily"
+    echo "  3. Start cosmic-session"
+}
+
+cmd_test_kernel() {
+    local fork_path="$1"
+
+    log_info "Testing kernel build..."
+
+    # Use ktest if available
+    if [[ -x "$REPO_ROOT/scripts/kernel/ktest" ]]; then
+        "$REPO_ROOT/scripts/kernel/ktest" build "$fork_path"
+    else
+        cd "$fork_path"
+        make defconfig
+        make -j"$(nproc)" bzImage
+    fi
+
+    log_ok "Kernel build successful"
+}
+
+#=============================================================================
+# VALIDATE - Full system validation
+#=============================================================================
+
+cmd_validate() {
+    log_info "Running full validation suite..."
+
+    cd "$REPO_ROOT"
+
+    # Flake check
+    log_info "Checking flake..."
+    nix flake check --no-build
+
+    # Repo structure lint
+    log_info "Checking repo structure..."
+    scripts/governance/repo-structure-lint.sh --staged || true
+
+    # Build test
+    log_info "Building system..."
+    nix build ".#nixosConfigurations.$(hostname)-ai-dev.config.system.build.toplevel" \
+        --no-link
+
+    log_ok "Validation passed"
+}
+
+#=============================================================================
+# DIFF - Show changes vs upstream
+#=============================================================================
+
+cmd_diff() {
+    local repo="${1:-}"
+
+    if [[ -z "$repo" ]]; then
+        echo "Usage: dev diff <repo>"
+        exit 1
+    fi
+
+    local fork_path
+    fork_path=$(get_fork_path "$repo")
+
+    if [[ ! -d "$fork_path" ]]; then
+        log_error "Fork not found. Run: dev setup $repo"
+        exit 1
+    fi
+
+    cd "$fork_path"
+
+    # Fetch upstream
+    git fetch upstream --depth=100 2>/dev/null || git fetch origin --depth=100
+
+    # Show diff
+    local base_branch="main"
+    git rev-parse --verify upstream/master &>/dev/null && base_branch="master"
+
+    echo -e "${CYAN}═══ Changes vs upstream/$base_branch ═══${NC}"
+    git log --oneline "upstream/$base_branch..HEAD" 2>/dev/null || \
+        git log --oneline "origin/$base_branch..HEAD"
+
+    echo ""
+    git diff --stat "upstream/$base_branch..HEAD" 2>/dev/null || \
+        git diff --stat "origin/$base_branch..HEAD"
+}
+
+#=============================================================================
+# SUBMIT - Create PR to upstream
+#=============================================================================
+
+cmd_submit() {
+    local repo="${1:-}"
+
+    if [[ -z "$repo" ]]; then
+        echo "Usage: dev submit <repo>"
+        exit 1
+    fi
+
+    local fork_path
+    fork_path=$(get_fork_path "$repo")
+
+    if [[ ! -d "$fork_path" ]]; then
+        log_error "Fork not found"
+        exit 1
+    fi
+
+    ensure_gh
+
+    cd "$fork_path"
+
+    local current_branch
+    current_branch=$(git branch --show-current)
+
+    if [[ "$current_branch" == "main" ]] || [[ "$current_branch" == "master" ]]; then
+        log_error "Cannot submit from main/master branch"
+        echo "Create a feature branch: dev branch $repo <name>"
+        exit 1
+    fi
+
+    # Push branch to fork
+    log_info "Pushing branch to fork..."
+    git push -u origin "$current_branch"
+
+    # Get upstream repo
+    local upstream="${REPOS[$repo]}"
+
+    # Create PR
+    log_info "Creating PR to $upstream..."
+
+    # Generate PR body from template
+    local pr_template="$REPO_ROOT/.upstream/proposals/${repo}-pr-description.md"
+    local pr_body=""
+    if [[ -f "$pr_template" ]]; then
+        pr_body=$(cat "$pr_template")
+    fi
+
+    if [[ -n "$pr_body" ]]; then
+        gh pr create \
+            --repo "$upstream" \
+            --title "$(git log -1 --format=%s)" \
+            --body "$pr_body"
+    else
+        gh pr create \
+            --repo "$upstream" \
+            --fill
+    fi
+
+    log_ok "PR created!"
+}
+
+#=============================================================================
+# SYNC - Sync fork with upstream
+#=============================================================================
+
+cmd_sync() {
+    local repo="${1:-}"
+
+    if [[ -z "$repo" ]]; then
+        echo "Usage: dev sync <repo>"
+        exit 1
+    fi
+
+    local fork_path
+    fork_path=$(get_fork_path "$repo")
+
+    if [[ ! -d "$fork_path" ]]; then
+        log_error "Fork not found"
+        exit 1
+    fi
+
+    cd "$fork_path"
+
+    log_info "Syncing $repo with upstream..."
+
+    git fetch upstream --depth=100 2>/dev/null || {
+        log_warn "No upstream remote, using origin"
+        git fetch origin --depth=100
+    }
+
+    local base_branch="main"
+    git rev-parse --verify upstream/master &>/dev/null && base_branch="master"
+
+    git checkout "$base_branch" 2>/dev/null || git checkout -b "$base_branch"
+    git merge "upstream/$base_branch" --ff-only 2>/dev/null || \
+        git merge "origin/$base_branch" --ff-only
+
+    log_ok "Fork synced with upstream"
+}
+
+#=============================================================================
+# STATUS - Show all fork status
+#=============================================================================
+
+cmd_status() {
+    ensure_forks_dir
+
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║           Upstream Development Status                 ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    echo -e "${YELLOW}Configured Forks:${NC}"
+    for repo in "${!REPOS[@]}"; do
+        local fork_path
+        fork_path=$(get_fork_path "$repo")
+        local upstream="${REPOS[$repo]}"
+
+        if [[ -d "$fork_path" ]]; then
+            local branch
+            branch=$(cd "$fork_path" && git branch --show-current 2>/dev/null || echo "?")
+            local commits
+            commits=$(cd "$fork_path" && git rev-list --count HEAD 2>/dev/null || echo "?")
+            echo -e "  ${GREEN}✓${NC} $repo -> $upstream"
+            echo "      Branch: $branch | Commits: $commits"
+        else
+            echo -e "  ${RED}✗${NC} $repo -> $upstream (not cloned)"
+        fi
+    done
+
+    echo ""
+    echo "Commands:"
+    echo "  dev setup <repo>          # Fork and clone"
+    echo "  dev branch <repo> <name>  # Create feature branch"
+    echo "  dev test <repo>           # Build with overlay"
+    echo "  dev diff <repo>           # Show changes"
+    echo "  dev submit <repo>         # Create PR"
+}
+
+#=============================================================================
+# MAIN
+#=============================================================================
+
+main() {
+    local cmd="${1:-status}"
+    shift || true
+
+    case "$cmd" in
+        setup)    cmd_setup "$@" ;;
+        branch)   cmd_branch "$@" ;;
+        test)     cmd_test "$@" ;;
+        validate) cmd_validate "$@" ;;
+        diff)     cmd_diff "$@" ;;
+        submit)   cmd_submit "$@" ;;
+        sync)     cmd_sync "$@" ;;
+        status)   cmd_status ;;
+        -h|--help|help)
+            echo "Upstream Development Workflow"
+            echo ""
+            echo "Usage: dev <command> [options]"
+            echo ""
+            echo "Commands:"
+            echo "  setup <repo>            Fork and clone upstream repo"
+            echo "  branch <repo> <name>    Create feature branch"
+            echo "  test <repo>             Build system with forked repo"
+            echo "  validate                Full validation suite"
+            echo "  diff <repo>             Show changes vs upstream"
+            echo "  submit <repo>           Create PR to upstream"
+            echo "  sync <repo>             Sync fork with upstream"
+            echo "  status                  Show all fork status"
+            echo ""
+            echo "Repos: ${!REPOS[*]}"
+            ;;
+        *)
+            log_error "Unknown command: $cmd"
+            echo "Run 'dev --help' for usage"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
