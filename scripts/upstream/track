@@ -1,0 +1,588 @@
+#!/usr/bin/env bash
+# Upstream Contribution Tracker
+#
+# Track, investigate, and manage upstream contributions to:
+# - NixOS/nixpkgs
+# - System76 COSMIC desktop
+# - Linux kernel
+# - AI/ML ecosystem
+#
+# Usage:
+#   track status                    # Show tracked upstream items
+#   track nixpkgs search <query>    # Search nixpkgs issues/PRs
+#   track nixpkgs watch <number>    # Watch a nixpkgs issue/PR
+#   track cosmic status             # Show COSMIC epoch progress
+#   track cosmic issues             # List COSMIC issues we can help with
+#   track kernel cves               # Show relevant kernel CVEs
+#   track propose <area> <title>    # Create improvement proposal targeting upstream
+#   track extract <module>          # Extract module for nixpkgs PR
+#   track pr-template <type>        # Generate PR description template
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TRACK_DIR="${REPO_ROOT}/.upstream"
+AIDB_ENDPOINT="${AIDB_ENDPOINT:-http://127.0.0.1:8002}"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log_info()  { echo -e "${BLUE}[info]${NC} $*"; }
+log_ok()    { echo -e "${GREEN}[ok]${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}[warn]${NC} $*"; }
+log_error() { echo -e "${RED}[error]${NC} $*" >&2; }
+
+ensure_gh() {
+    if ! command -v gh &>/dev/null; then
+        log_error "GitHub CLI (gh) not found. Install with: nix shell nixpkgs#gh"
+        exit 1
+    fi
+    if ! gh auth status &>/dev/null; then
+        log_warn "GitHub CLI not authenticated. Run: gh auth login"
+    fi
+}
+
+ensure_track_dir() {
+    mkdir -p "$TRACK_DIR"/{nixpkgs,cosmic,kernel,proposals,extracted}
+}
+
+#=============================================================================
+# NIXPKGS TRACKING
+#=============================================================================
+
+cmd_nixpkgs_search() {
+    local query="${1:-}"
+    if [[ -z "$query" ]]; then
+        echo "Usage: track nixpkgs search <query>"
+        echo "Examples:"
+        echo "  track nixpkgs search 'crowdsec'"
+        echo "  track nixpkgs search 'cosmic-comp'"
+        echo "  track nixpkgs search 'kernel 6.19'"
+        exit 1
+    fi
+
+    ensure_gh
+    log_info "Searching nixpkgs for: $query"
+
+    echo -e "\n${CYAN}═══ Open Issues ═══${NC}"
+    gh search issues --repo NixOS/nixpkgs --state open "$query" \
+        --json number,title,labels,updatedAt \
+        --jq '.[] | "  #\(.number) \(.title) [\(.labels | map(.name) | join(","))]"' \
+        2>/dev/null | head -20 || echo "  No issues found"
+
+    echo -e "\n${CYAN}═══ Recent PRs ═══${NC}"
+    gh search prs --repo NixOS/nixpkgs --state open "$query" \
+        --json number,title,isDraft,updatedAt \
+        --jq '.[] | "  #\(.number) \(if .isDraft then "[DRAFT] " else "" end)\(.title)"' \
+        2>/dev/null | head -20 || echo "  No PRs found"
+}
+
+cmd_nixpkgs_watch() {
+    local number="${1:-}"
+    if [[ -z "$number" ]]; then
+        echo "Usage: track nixpkgs watch <issue-or-pr-number>"
+        exit 1
+    fi
+
+    ensure_gh
+    ensure_track_dir
+
+    local watch_file="$TRACK_DIR/nixpkgs/$number.json"
+
+    # Fetch issue/PR details
+    if gh pr view "$number" --repo NixOS/nixpkgs --json number,title,state,body &>/dev/null; then
+        gh pr view "$number" --repo NixOS/nixpkgs --json number,title,state,body,url > "$watch_file"
+        log_ok "Watching PR #$number"
+    else
+        gh issue view "$number" --repo NixOS/nixpkgs --json number,title,state,body,url > "$watch_file"
+        log_ok "Watching issue #$number"
+    fi
+
+    # Show summary
+    jq -r '"Title: \(.title)\nState: \(.state)\nURL: \(.url)"' "$watch_file"
+}
+
+cmd_nixpkgs_status() {
+    ensure_track_dir
+
+    echo -e "${CYAN}═══ Watched NixOS/nixpkgs Items ═══${NC}\n"
+
+    local count=0
+    shopt -s nullglob
+    for f in "$TRACK_DIR/nixpkgs"/*.json; do
+        [[ -f "$f" ]] || continue
+        count=$((count + 1))
+        jq -r '"  #\(.number) [\(.state)] \(.title)"' "$f"
+    done
+    shopt -u nullglob
+
+    if [[ $count -eq 0 ]]; then
+        echo "  No items being watched."
+        echo "  Use: track nixpkgs watch <number>"
+    fi
+}
+
+#=============================================================================
+# COSMIC DESKTOP TRACKING
+#=============================================================================
+
+COSMIC_REPOS=(
+    "pop-os/cosmic-epoch"
+    "pop-os/cosmic-comp"
+    "pop-os/cosmic-panel"
+    "pop-os/cosmic-applets"
+    "pop-os/cosmic-settings"
+    "pop-os/cosmic-term"
+    "pop-os/cosmic-files"
+    "pop-os/cosmic-edit"
+)
+
+cmd_cosmic_status() {
+    ensure_gh
+
+    echo -e "${CYAN}═══ COSMIC Desktop Status ═══${NC}\n"
+
+    # Check cosmic-epoch milestones
+    log_info "Checking cosmic-epoch milestones..."
+    gh api repos/pop-os/cosmic-epoch/milestones \
+        --jq '.[] | "  \(.title): \(.open_issues) open, \(.closed_issues) closed"' \
+        2>/dev/null || echo "  Unable to fetch milestones"
+
+    echo ""
+
+    # Recent activity across repos
+    log_info "Recent commits (last 7 days):"
+    for repo in cosmic-comp cosmic-panel cosmic-applets; do
+        local count
+        count=$(gh api "repos/pop-os/$repo/commits?since=$(date -d '7 days ago' -Iseconds 2>/dev/null || date -v-7d -Iseconds)" \
+            --jq 'length' 2>/dev/null || echo "0")
+        echo "  pop-os/$repo: $count commits"
+    done
+}
+
+cmd_cosmic_issues() {
+    ensure_gh
+
+    echo -e "${CYAN}═══ COSMIC Issues We Can Help With ═══${NC}\n"
+
+    # Good first issues
+    log_info "Good first issues:"
+    for repo in "${COSMIC_REPOS[@]}"; do
+        gh search issues --repo "$repo" --label "good first issue" --state open \
+            --json number,title,repository \
+            --jq '.[] | "  \(.repository.name)#\(.number): \(.title)"' \
+            2>/dev/null || true
+    done | head -15
+
+    echo ""
+
+    # Help wanted
+    log_info "Help wanted:"
+    for repo in "${COSMIC_REPOS[@]}"; do
+        gh search issues --repo "$repo" --label "help wanted" --state open \
+            --json number,title,repository \
+            --jq '.[] | "  \(.repository.name)#\(.number): \(.title)"' \
+            2>/dev/null || true
+    done | head -15
+}
+
+#=============================================================================
+# KERNEL TRACKING (integrates with kdev)
+#=============================================================================
+
+cmd_kernel_cves() {
+    # Delegate to kdev if available
+    if [[ -x "$REPO_ROOT/scripts/kernel/kdev" ]]; then
+        exec "$REPO_ROOT/scripts/kernel/kdev" cve-list "$@"
+    fi
+
+    # Fallback: check AIDB
+    if curl -sf "$AIDB_ENDPOINT/health" &>/dev/null; then
+        log_info "Fetching CVEs from AIDB..."
+        curl -sf "$AIDB_ENDPOINT/kernel/cves?status=open&limit=20" | \
+            jq -r '.cves[] | "  \(.cve_id): \(.description | .[0:80])..."' 2>/dev/null || \
+            echo "  No CVEs found"
+    else
+        log_warn "AIDB not available. Start AI stack or use: kdev cve-list"
+    fi
+}
+
+#=============================================================================
+# PROPOSAL MANAGEMENT
+#=============================================================================
+
+cmd_propose() {
+    local area="${1:-}"
+    local title="${2:-}"
+
+    if [[ -z "$area" ]] || [[ -z "$title" ]]; then
+        echo "Usage: track propose <area> <title>"
+        echo ""
+        echo "Areas:"
+        echo "  nixpkgs   - NixOS/nixpkgs module or package"
+        echo "  cosmic    - COSMIC desktop contribution"
+        echo "  kernel    - Linux kernel patch or module"
+        echo "  harness   - AI harness improvement"
+        echo ""
+        echo "Example:"
+        echo "  track propose nixpkgs 'Add crowdsec module with nftables bouncer'"
+        exit 1
+    fi
+
+    ensure_track_dir
+
+    local date_str
+    date_str=$(date +%Y-%m-%d)
+    local slug
+    slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
+    local proposal_file="$TRACK_DIR/proposals/${date_str}-${area}-${slug}.md"
+
+    cat > "$proposal_file" << EOF
+# Upstream Proposal: $title
+
+**Area:** $area
+**Created:** $date_str
+**Status:** Draft
+
+## Summary
+
+<!-- Brief description of the improvement -->
+
+## Motivation
+
+<!-- Why is this needed? What problem does it solve? -->
+
+## Target Upstream
+
+<!-- Which repo/project will this be contributed to? -->
+- [ ] NixOS/nixpkgs PR
+- [ ] System76 COSMIC PR
+- [ ] Linux kernel patch
+- [ ] Other: ___
+
+## Implementation Plan
+
+1. <!-- Step 1 -->
+2. <!-- Step 2 -->
+3. <!-- Step 3 -->
+
+## Local Testing
+
+\`\`\`bash
+# Commands to test locally
+\`\`\`
+
+## Files to Extract/Modify
+
+| File | Action | Notes |
+|------|--------|-------|
+| | | |
+
+## Upstream PR Checklist
+
+- [ ] Code follows upstream style guide
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] Changelog entry (if required)
+- [ ] Signed-off-by added (kernel patches)
+
+## References
+
+-
+EOF
+
+    log_ok "Created proposal: $proposal_file"
+    echo ""
+    echo "Edit the proposal, then use:"
+    echo "  track extract <module>     # Extract module for PR"
+    echo "  track pr-template nixpkgs  # Generate PR description"
+}
+
+cmd_proposals() {
+    ensure_track_dir
+
+    echo -e "${CYAN}═══ Active Proposals ═══${NC}\n"
+
+    local count=0
+    shopt -s nullglob
+    for f in "$TRACK_DIR/proposals"/*.md; do
+        [[ -f "$f" ]] || continue
+        count=$((count + 1))
+        local basename
+        basename=$(basename "$f" .md)
+        local status
+        status=$(grep -m1 "^\*\*Status:\*\*" "$f" | sed 's/.*: //' || echo "Unknown")
+        echo "  $basename [$status]"
+    done
+    shopt -u nullglob
+
+    if [[ $count -eq 0 ]]; then
+        echo "  No active proposals."
+        echo "  Create one: track propose <area> <title>"
+    fi
+}
+
+#=============================================================================
+# MODULE EXTRACTION
+#=============================================================================
+
+cmd_extract() {
+    local module="${1:-}"
+
+    if [[ -z "$module" ]]; then
+        echo "Usage: track extract <module-name>"
+        echo ""
+        echo "Extracts a local module to a standalone file ready for nixpkgs PR."
+        echo ""
+        echo "Available modules:"
+        find "$REPO_ROOT/nix/modules/services" -name "*.nix" -exec basename {} .nix \; | \
+            grep -v default | sort | sed 's/^/  /'
+        exit 1
+    fi
+
+    local module_file="$REPO_ROOT/nix/modules/services/${module}.nix"
+    if [[ ! -f "$module_file" ]]; then
+        log_error "Module not found: $module_file"
+        exit 1
+    fi
+
+    ensure_track_dir
+    local out_dir="$TRACK_DIR/extracted"
+    mkdir -p "$out_dir"
+
+    local out_file="$out_dir/${module}.nix"
+
+    log_info "Extracting $module for nixpkgs..."
+
+    # Copy and transform for nixpkgs style
+    # - Remove mySystem. prefix
+    # - Adjust paths
+    # - Add nixpkgs-style header
+
+    cat > "$out_file" << 'HEADER'
+# This module was extracted from NixOS-Dev-Quick-Deploy for upstream contribution
+# Original: https://github.com/your-org/NixOS-Dev-Quick-Deploy
+#
+# TODO before PR:
+# 1. Remove this header
+# 2. Review option names (follow nixpkgs conventions)
+# 3. Add to nixos/modules/module-list.nix
+# 4. Add documentation in nixos/doc/
+# 5. Test with: nix-build -A nixosTests.<module>
+
+HEADER
+
+    cat "$module_file" >> "$out_file"
+
+    log_ok "Extracted to: $out_file"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Review and edit: $out_file"
+    echo "  2. Clone nixpkgs: git clone https://github.com/NixOS/nixpkgs"
+    echo "  3. Copy to: nixpkgs/nixos/modules/services/<category>/${module}.nix"
+    echo "  4. Generate PR: track pr-template nixpkgs"
+}
+
+#=============================================================================
+# PR TEMPLATES
+#=============================================================================
+
+cmd_pr_template() {
+    local type="${1:-nixpkgs}"
+
+    case "$type" in
+        nixpkgs)
+            cat << 'EOF'
+## Description
+
+<!-- What does this PR do? -->
+
+## Motivation
+
+<!-- Why is this change needed? -->
+
+## Checklist
+
+- [ ] `nix-build -A <package>` succeeds
+- [ ] `nix flake check` passes
+- [ ] Documentation added/updated
+- [ ] Tests added (if applicable)
+- [ ] Tested on NixOS (version: ___)
+
+## Testing
+
+```bash
+# Commands used to test
+```
+
+## Related Issues
+
+<!-- Fixes #XXX or relates to #XXX -->
+
+---
+_This module was developed in [NixOS-Dev-Quick-Deploy](https://github.com/your-org/NixOS-Dev-Quick-Deploy) and extracted for upstream contribution._
+EOF
+            ;;
+        cosmic)
+            cat << 'EOF'
+## Description
+
+<!-- What does this PR do? -->
+
+## Screenshots (if applicable)
+
+## Testing
+
+- [ ] Built with `cargo build --release`
+- [ ] Tested on NixOS with cosmic-session
+- [ ] No regressions observed
+
+## Checklist
+
+- [ ] Code follows Rust style guidelines
+- [ ] Documentation updated
+- [ ] CHANGELOG.md updated (if applicable)
+EOF
+            ;;
+        kernel)
+            cat << 'EOF'
+Subject: [PATCH] <subsystem>: <brief description>
+
+<Detailed description of the change>
+
+Signed-off-by: Your Name <your.email@example.com>
+---
+ <file> | <+/- lines>
+ 1 file changed, X insertions(+), Y deletions(-)
+
+<diff>
+EOF
+            ;;
+        *)
+            log_error "Unknown template type: $type"
+            echo "Available: nixpkgs, cosmic, kernel"
+            exit 1
+            ;;
+    esac
+}
+
+#=============================================================================
+# STATUS OVERVIEW
+#=============================================================================
+
+cmd_status() {
+    ensure_track_dir
+
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║         Upstream Contribution Tracker                 ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Proposals
+    local proposal_count
+    proposal_count=$(find "$TRACK_DIR/proposals" -name "*.md" 2>/dev/null | wc -l || echo 0)
+    echo -e "${YELLOW}Proposals:${NC} $proposal_count active"
+
+    # Watched nixpkgs items
+    local nixpkgs_count
+    nixpkgs_count=$(find "$TRACK_DIR/nixpkgs" -name "*.json" 2>/dev/null | wc -l || echo 0)
+    echo -e "${YELLOW}Nixpkgs:${NC} $nixpkgs_count items watched"
+
+    # Extracted modules
+    local extracted_count
+    extracted_count=$(find "$TRACK_DIR/extracted" -name "*.nix" 2>/dev/null | wc -l || echo 0)
+    echo -e "${YELLOW}Extracted:${NC} $extracted_count modules ready for PR"
+
+    echo ""
+    echo "Commands:"
+    echo "  track nixpkgs search <query>  # Find nixpkgs issues"
+    echo "  track cosmic status           # COSMIC epoch progress"
+    echo "  track kernel cves             # Relevant CVEs"
+    echo "  track propose <area> <title>  # New proposal"
+    echo "  track proposals               # List proposals"
+    echo "  track extract <module>        # Extract for PR"
+}
+
+#=============================================================================
+# MAIN
+#=============================================================================
+
+main() {
+    local cmd="${1:-status}"
+    shift || true
+
+    case "$cmd" in
+        status)
+            cmd_status
+            ;;
+        nixpkgs)
+            local subcmd="${1:-status}"
+            shift || true
+            case "$subcmd" in
+                search) cmd_nixpkgs_search "$@" ;;
+                watch)  cmd_nixpkgs_watch "$@" ;;
+                status) cmd_nixpkgs_status ;;
+                *)      log_error "Unknown nixpkgs command: $subcmd" ;;
+            esac
+            ;;
+        cosmic)
+            local subcmd="${1:-status}"
+            shift || true
+            case "$subcmd" in
+                status) cmd_cosmic_status ;;
+                issues) cmd_cosmic_issues ;;
+                *)      log_error "Unknown cosmic command: $subcmd" ;;
+            esac
+            ;;
+        kernel)
+            local subcmd="${1:-cves}"
+            shift || true
+            case "$subcmd" in
+                cves) cmd_kernel_cves "$@" ;;
+                *)    log_error "Unknown kernel command: $subcmd" ;;
+            esac
+            ;;
+        propose)
+            cmd_propose "$@"
+            ;;
+        proposals)
+            cmd_proposals
+            ;;
+        extract)
+            cmd_extract "$@"
+            ;;
+        pr-template)
+            cmd_pr_template "$@"
+            ;;
+        -h|--help|help)
+            echo "Upstream Contribution Tracker"
+            echo ""
+            echo "Usage: track <command> [options]"
+            echo ""
+            echo "Commands:"
+            echo "  status                      Show overview"
+            echo "  nixpkgs search <query>      Search nixpkgs issues/PRs"
+            echo "  nixpkgs watch <number>      Watch a nixpkgs item"
+            echo "  cosmic status               COSMIC epoch progress"
+            echo "  cosmic issues               Good first issues"
+            echo "  kernel cves                 Relevant CVEs"
+            echo "  propose <area> <title>      Create proposal"
+            echo "  proposals                   List proposals"
+            echo "  extract <module>            Extract for nixpkgs PR"
+            echo "  pr-template <type>          Generate PR template"
+            ;;
+        *)
+            log_error "Unknown command: $cmd"
+            echo "Run 'track --help' for usage"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
