@@ -40,6 +40,7 @@ fi
 declare -A COMMANDS=(
   [system]="Deploy/manage entire NixOS system"
   [ai-stack]="Deploy/manage AI stack services"
+  [upstream]="Manage upstream contributions (nixpkgs, COSMIC, kernel)"
   [test]="Run test suites"
   [health]="Health checks and diagnostics"
   [security]="Security operations and audits"
@@ -109,10 +110,12 @@ EXAMPLES:
   deploy system                    # Deploy entire system
   deploy system --dry-run          # Preview system changes
   deploy ai-stack                  # Deploy all AI services
+  deploy upstream status           # Check contribution status
+  deploy upstream validate         # Validate before submitting
   deploy test --suite=smoke        # Run smoke tests
   deploy health                    # Quick health check
   deploy search "configure mTLS"   # Semantic search
-  deploy help system               # Detailed help for 'system' command
+  deploy help upstream             # Detailed help for 'upstream' command
 
 For detailed help on a command:
   deploy COMMAND --help
