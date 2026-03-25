@@ -54,6 +54,7 @@ from query_validator import VectorSearchRequest, PaginatedResponse, rate_limiter
 from health_check import HealthChecker, create_health_endpoints
 from llm_parallel import run_parallel_inference
 from discovery_endpoints import register_discovery_routes
+from cve_endpoints import register_cve_routes
 from settings_loader import Settings, load_settings
 from rag import RAGPipeline, RAGConfig
 from shared.tool_audit import write_audit_entry
@@ -1302,6 +1303,7 @@ class MonitoringServer:
         self.app.include_router(registry_api.router)
         self.app.include_router(vscode_telemetry.router)  # VSCode extension telemetry
         register_discovery_routes(self.app, self.mcp_server)
+        register_cve_routes(self.app, self.mcp_server)
 
         # Initialize comprehensive health checker
         self.health_checker = None  # Will be initialized after mcp_server is fully set up
