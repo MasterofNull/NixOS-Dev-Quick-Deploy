@@ -369,6 +369,18 @@ in {
           # model weights are fetched by a separate dedicated download service.
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
+          # Security hardening
+          PrivateTmp = true;
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          RestrictNamespaces = true;
+          RestrictSUIDSGID = true;
+          # GPU access requires /dev access
+          PrivateDevices = false;
           # Phase 21.2 — Enable Prometheus metrics endpoint on /metrics.
           # Exposes token throughput, latency histograms, slot utilization, KV cache stats.
           ExecStart = lib.concatStringsSep " " ([
@@ -720,6 +732,17 @@ in {
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
           Environment = gpuEnvList;
+          # Security hardening
+          PrivateTmp = true;
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          RestrictNamespaces = true;
+          RestrictSUIDSGID = true;
+          PrivateDevices = false;
           # Phase 21.2 — Enable Prometheus metrics endpoint on /metrics.
           ExecStart = lib.concatStringsSep " " ([
               "${pkgs.llama-cpp}/bin/llama-server"
