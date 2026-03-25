@@ -12,5 +12,6 @@
     ./meta-optimization.nix
     ./crowdsec.nix
     ./lore-sync.nix
+    ./nvd-sync.nix
   ];
 }
