@@ -33,19 +33,6 @@
     };
     secureboot.enable = false;
 
-    # Secrets configuration - required for AI stack
-    secrets = {
-      enable = true;
-      sopsFile = "/home/hyperd/.local/share/nixos-quick-deploy/secrets/hyperd/secrets.sops.yaml";
-      ageKeyFile = "/home/hyperd/.config/sops/age/keys.txt";
-    };
-
-    # MCP servers configuration
-    mcpServers = {
-      enable = true;
-      repoPath = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy";
-    };
-
     # Role enables — profiles set desktop/gaming/aiStack via lib.mkDefault.
     # Override any of these in nix/hosts/<host>/default.nix with lib.mkForce.
     roles.aiStack.enable         = true;
