@@ -73,7 +73,7 @@ let
         lei q -o "$LORE_DIR/${subsystem}" \
           --threads \
           -f mboxrd \
-          "l:${mailingLists.${subsystem}.email} AND dt:${cfg.lookbackDays}d.." \
+          "l:${mailingLists.${subsystem}.email} AND dt:${toString cfg.lookbackDays}d.." \
           2>&1 | tee -a "$LOG_FILE" || true
       else
         # Fallback: fetch recent Atom feed

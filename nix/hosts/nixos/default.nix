@@ -1,49 +1,31 @@
-{ lib, pkgs, config, ... }:
+{ lib, config, ... }:
 {
   imports =
     [ ./facts.nix ]
     ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
 
-  # Keep Steam available on this ai-dev workstation while still using the
-  # flake-first role model (drivers + 32-bit graphics from roles/gaming.nix).
+  # ── Host-Specific Configuration ───────────────────────────────────────────────
+  # Profile-level features (kernel, hardening, security, fonts, libinput, etc.)
+  # are now in nix/modules/profiles/ai-dev.nix. This file only contains
+  # host-specific overrides.
+
+  # Keep Steam available on this workstation (override profile default)
   mySystem.roles.gaming.enable = lib.mkForce true;
-  mySystem.localhostIsolation.enable = lib.mkDefault true;
-  # Pin prometheus GID so localhost-isolation.nix can auto-whitelist it in the
-  # nftables loopback filter (the filter blocks connections from unknown GIDs to
-  # AI service ports 8002/8003/etc).  Without a pinned GID the auto-assign
-  # happens at activation time, which is invisible to Nix evaluation.
+
+  # Pin prometheus GID for localhost-isolation nftables rules
   users.groups.prometheus.gid = lib.mkDefault 255;
+
+  # Force vector DB on for this host (override facts.nix default)
   mySystem.aiStack.vectorDb.enable = lib.mkForce true;
+
+  # MCP servers repo path - host-specific due to username
   mySystem.mcpServers.repoPath =
     lib.mkDefault "/home/${config.mySystem.primaryUser}/Documents/NixOS-Dev-Quick-Deploy";
 
-  # ── ThinkPad P14s ClickPad — libinput tuning ─────────────────────────────
-  # Problem 1: two-finger scroll triggers middle-click → X11 PRIMARY paste.
-  #   Fix: middleEmulation=false + clickMethod=clickfinger (finger count
-  #   determines button, not pad zones — eliminates accidental middle clicks).
-  # Problem 2: touchpad glitchy / imprecise during fast gestures.
-  #   Fix: disableWhileTyping prevents mis-clicks when typing.
-  services.libinput.touchpad = {
-    middleEmulation   = lib.mkDefault false;
-    clickMethod       = lib.mkDefault "clickfinger";
-    disableWhileTyping = lib.mkDefault true;
-    tapping           = lib.mkDefault true;
-    scrollMethod      = lib.mkDefault "twofinger";
-    naturalScrolling  = lib.mkDefault false;
-  };
-
-  # ── Host-level font baseline: keep popular Nerd Fonts available system-wide
-  # for COSMIC Terminal font picker and prompt glyph rendering.
-  fonts = {
-    fontconfig.enable = true;
-    fontDir.enable = true;
-    packages = with pkgs; [
-      nerd-fonts.meslo-lg
-      nerd-fonts.jetbrains-mono
-      nerd-fonts.fira-code
-      nerd-fonts.hack
-      noto-fonts
-      noto-fonts-color-emoji
-    ];
-  };
+  # ── AMD Cezanne APU stability fixes ──────────────────────────────────────────
+  # DMCUB firmware errors on boot can cause system freezes. These kernel
+  # parameters improve stability on Ryzen 5000 mobile (Cezanne) APUs.
+  boot.kernelParams = lib.mkAfter [
+    "amdgpu.dcdebugmask=0x10"
+  ];
 }
