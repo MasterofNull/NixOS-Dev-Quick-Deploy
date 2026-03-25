@@ -81,11 +81,12 @@ in
     };
 
     # Firewall bouncer: block malicious IPs at the firewall level
-    services.crowdsec-firewall-bouncer = lib.mkIf cs.enableFirewallBouncer {
+    # Only enabled when both enableFirewallBouncer=true AND apiKeyFile is set
+    services.crowdsec-firewall-bouncer = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
       enable = true;
       settings = {
         api_url = "http://127.0.0.1:8088";
-        api_key = lib.mkIf (cs.apiKeyFile != null) "file:${cs.apiKeyFile}";
+        api_key = "file:${cs.apiKeyFile}";
         mode = "nftables";
         nftables = {
           ipv4.table = "crowdsec";
