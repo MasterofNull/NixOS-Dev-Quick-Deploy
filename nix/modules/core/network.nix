@@ -28,6 +28,7 @@
     ];
     extraConfig = lib.mkDefault ''
       MulticastDNS=no
+      LLMNR=no
       Cache=yes
       DNSStubListener=yes
     '';
