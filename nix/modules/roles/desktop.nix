@@ -75,6 +75,11 @@ in
       # via /etc/profile.d/flatpak.sh.  Hardcoding it here caused both paths
       # to be inserted TWICE, making every Flatpak app appear twice in the
       # COSMIC launcher (NIX-ISSUE: fix-duplicate-flatpaks-whq2y).
+
+      # HDR support (Linux 6.19+ with DRM Color Pipeline API)
+      # Enables hardware HDR for games and video; COSMIC Epoch 2 will use this.
+      ENABLE_HDR_WSI              = lib.mkDefault "1";
+      DXVK_HDR                    = lib.mkDefault "1";
     };
 
     # ---- Audio -------------------------------------------------------------

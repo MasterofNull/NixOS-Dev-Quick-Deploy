@@ -8,6 +8,47 @@
   mySystem.mcpServers.repoPath =
     lib.mkDefault "/home/${config.mySystem.primaryUser}/Documents/NixOS-Dev-Quick-Deploy";
 
+  # ── System Improvement Plan March 2026 ─────────────────────────────────────
+  # Kernel: 6.19-latest for AMD GPU boost (+30%), HDR, ext4 improvements
+  mySystem.kernel.track = lib.mkDefault "6.19-latest";
+
+  # Security: Maximum kernel hardening (CFI, shadow call stack, lockdown)
+  mySystem.kernel.hardening = {
+    enable = lib.mkDefault true;
+    level = lib.mkDefault "maximum";
+    mitigations = {
+      spectre = lib.mkDefault true;
+      meltdown = lib.mkDefault true;
+      mds = lib.mkDefault true;
+      srso = lib.mkDefault true;  # AMD Zen specific
+    };
+  };
+
+  # Security: CrowdSec IPS - community threat intelligence
+  mySystem.security.crowdsec = {
+    enable = lib.mkDefault true;
+    watchSshd = lib.mkDefault true;
+    watchNginx = lib.mkDefault true;
+    enableFirewallBouncer = lib.mkDefault true;
+  };
+
+  # Security: Secure Boot via lanzaboote
+  mySystem.secureboot.enable = lib.mkDefault true;
+
+  # CVE tracking: daily NVD sync
+  services.nvd-sync = {
+    enable = lib.mkDefault true;
+    interval = lib.mkDefault "daily";
+    onBoot = lib.mkDefault true;
+  };
+
+  # Kernel development: lore.kernel.org patch monitoring
+  services.lore-sync = {
+    enable = lib.mkDefault true;
+    subsystems = lib.mkDefault [ "dri-devel" "netdev" "linux-hardening" "rust-for-linux" ];
+    interval = lib.mkDefault "6h";
+  };
+
   # ── ThinkPad P14s ClickPad — libinput tuning ─────────────────────────────
   # Problem 1: two-finger scroll triggers middle-click → X11 PRIMARY paste.
   #   Fix: middleEmulation=false + clickMethod=clickfinger (finger count
