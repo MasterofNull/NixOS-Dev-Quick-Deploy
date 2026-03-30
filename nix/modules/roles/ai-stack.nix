@@ -1055,6 +1055,8 @@ in {
           OnCalendar = "Sun 08:00:00";
           Persistent = true;
           RandomizedDelaySec = "15min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
     })
@@ -1091,6 +1093,8 @@ in {
           OnCalendar     = "Wed 02:00:00";
           Persistent     = true;
           RandomizedDelaySec = "30min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
     })
@@ -1124,6 +1128,8 @@ in {
           OnCalendar     = "Mon 00:03:00";
           Persistent     = true;
           RandomizedDelaySec = "10min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
     })
@@ -1167,6 +1173,8 @@ in {
           OnCalendar     = "Sat 03:00:00";
           Persistent     = true;
           RandomizedDelaySec = "30min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1209,6 +1217,8 @@ in {
           OnCalendar          = "*-*-* 06:00:00";
           Persistent          = true;
           RandomizedDelaySec  = "15min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1248,6 +1258,8 @@ in {
           OnCalendar          = "daily";
           Persistent          = true;
           RandomizedDelaySec  = "15min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1288,6 +1300,8 @@ in {
           OnCalendar = "hourly";
           Persistent = true;
           RandomizedDelaySec = "10min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1338,6 +1352,8 @@ in {
           OnCalendar = "*-*-* *:0/${toString ai.aiHarness.runtime.cachePrewarm.intervalMinutes}:00";
           Persistent = true;
           RandomizedDelaySec = "5min";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
     })

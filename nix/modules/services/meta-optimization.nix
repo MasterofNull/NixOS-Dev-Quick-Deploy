@@ -204,6 +204,8 @@ asyncio.run(main())
         OnCalendar = "daily";
         Persistent = true;
         RandomizedDelaySec = "15m";
+      } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+        DeferReactivation = true;
       };
     };
 
