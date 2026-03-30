@@ -1147,6 +1147,8 @@ in
           RandomizedDelaySec = "1h";
           Persistent = true;
           Unit = "ai-sync-knowledge-sources.service";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1215,6 +1217,8 @@ in
           RandomizedDelaySec = "2h";
           Persistent = true;
           Unit = "ai-security-audit.service";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1478,6 +1482,8 @@ in
           RandomizedDelaySec = "5m";
           Persistent         = true;
           Unit               = "ai-mcp-integrity-check.service";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
 
@@ -1518,6 +1524,8 @@ in
           RandomizedDelaySec = "60s";
           Persistent         = true;
           Unit               = "ai-mcp-process-watch.service";
+        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          DeferReactivation = true;
         };
       };
     })
