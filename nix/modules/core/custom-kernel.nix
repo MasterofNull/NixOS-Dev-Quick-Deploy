@@ -368,6 +368,63 @@ in
         ++ lib.optionals hardeningCfg.mitigations.srso [ "spec_rstack_overflow=safe-ret" ];
     })
 
+    # CVE tracking: auto-scan kernel on boot
+    (lib.mkIf (cfg.cveTracking.enable && cfg.cveTracking.autoScan) {
+      systemd.services.kernel-cve-scan = {
+        description = "Scan running kernel for known CVEs";
+        after = [ "network-online.target" "aidb-mcp-server.service" ];
+        wants = [ "network-online.target" ];
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = pkgs.writeShellScript "kernel-cve-scan" ''
+            set -euo pipefail
+            KERNEL_VERSION=$(${pkgs.coreutils}/bin/uname -r)
+            HOSTNAME=$(${pkgs.nettools}/bin/hostname)
+            AIDB="${cfg.cveTracking.aidbEndpoint}"
+
+            echo "Scanning kernel $KERNEL_VERSION for CVEs..."
+
+            # Check if AIDB is available
+            if ! ${pkgs.curl}/bin/curl -sf "$AIDB/health" >/dev/null 2>&1; then
+              echo "AIDB not available, skipping CVE scan"
+              exit 0
+            fi
+
+            # Submit scan request
+            RESULT=$(${pkgs.curl}/bin/curl -sf "$AIDB/kernel/scan" \
+              -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"hostname\": \"$HOSTNAME\", \"kernel_version\": \"$KERNEL_VERSION\"}" \
+              2>&1) || {
+              echo "CVE scan request failed: $RESULT"
+              exit 0  # Don't fail boot on scan failure
+            }
+
+            # Parse and report results
+            TOTAL=$(echo "$RESULT" | ${pkgs.jq}/bin/jq -r '.total_cves // 0')
+            CRITICAL=$(echo "$RESULT" | ${pkgs.jq}/bin/jq -r '.critical // 0')
+            HIGH=$(echo "$RESULT" | ${pkgs.jq}/bin/jq -r '.high // 0')
+
+            echo "CVE scan complete: $TOTAL total ($CRITICAL critical, $HIGH high)"
+
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "WARNING: Critical CVEs detected! Review with: curl $AIDB/kernel/hosts/$HOSTNAME/vulnerabilities"
+            fi
+          '';
+
+          # Hardening
+          PrivateTmp = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+        };
+      };
+    })
+
     # Custom kernel build config
     (lib.mkIf customCfg.enable {
       # Use custom kernel packages
