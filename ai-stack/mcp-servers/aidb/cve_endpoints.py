@@ -21,12 +21,20 @@ import sqlalchemy as sa
 from fastapi import BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
-from .schema import (
-    KERNEL_CVES,
-    KERNEL_CVE_HOSTS,
-    KERNEL_RELEASES,
-    KERNEL_SUBSYSTEM_CVES,
-)
+try:
+    from .schema import (
+        KERNEL_CVES,
+        KERNEL_CVE_HOSTS,
+        KERNEL_RELEASES,
+        KERNEL_SUBSYSTEM_CVES,
+    )
+except ImportError:
+    from schema import (
+        KERNEL_CVES,
+        KERNEL_CVE_HOSTS,
+        KERNEL_RELEASES,
+        KERNEL_SUBSYSTEM_CVES,
+    )
 
 LOGGER = logging.getLogger(__name__)
 
@@ -194,7 +202,10 @@ def register_cve_routes(app, mcp_server):
         severity: Optional[str] = Query(None, description="Only sync this severity"),
     ):
         """Trigger NVD CVE sync (runs in background)."""
-        from .nvd_client import NVDClient
+        try:
+            from .nvd_client import NVDClient
+        except ImportError:
+            from nvd_client import NVDClient
 
         async def do_sync():
             client = NVDClient()

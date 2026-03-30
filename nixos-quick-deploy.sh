@@ -3260,12 +3260,13 @@ wait_for_ai_services() {
     printf '%s\t%s\n' "llama-cpp-embed.service" "${EMBEDDINGS_URL%/}/health"
     printf '%s\t%s\n' "ai-aidb.service" "${AIDB_URL%/}/health"
     printf '%s\t%s\n' "ai-hybrid-coordinator.service" "${HYBRID_URL%/}/health"
+    printf '%s\t%s\n' "ai-switchboard.service" "${SWITCHBOARD_URL%/}/health"
     printf '%s\t%s\n' "llama-cpp.service" "${LLAMA_URL%/}/health"
   }
 
   while IFS=$'\t' read -r service_name health_url; do
     [[ -n "${service_name}" && -n "${health_url}" ]] || continue
-    if systemctl is-enabled --quiet "${service_name}" 2>/dev/null; then
+    if systemd_unit_enabled_or_running "${service_name}"; then
       _wait_http_health "${service_name}" "${health_url}" || true
     fi
   done < <(ai_service_health_targets)

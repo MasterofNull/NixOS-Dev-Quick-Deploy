@@ -27,6 +27,21 @@ let
     aiohttp
     asyncpg
   ]);
+  dashboardPathPackages = [
+    pkgs.bash
+    pkgs.coreutils
+    pkgs.crowdsec
+    pkgs.curl
+    pkgs.findutils
+    pkgs.gawk
+    pkgs.gnugrep
+    pkgs.iproute2
+    pkgs.iptables
+    pkgs.nftables
+    pkgs.procps
+    pkgs.sudo
+    pkgs.systemd
+  ];
 in
 {
   config = lib.mkIf (mon.enable && cc.enable) {
@@ -75,6 +90,7 @@ in
     systemd.services.command-center-dashboard-api = {
       description = "NixOS Command Center Dashboard API";
       wantedBy = [ "multi-user.target" ];
+      path = dashboardPathPackages;
       after = [ "network-online.target" "prometheus.service" ]
         ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
       wants = [ "network-online.target" "prometheus.service" ]
@@ -146,6 +162,11 @@ in
         OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
         AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";
         AI_NPM_SECURITY_DIR = "${mcp.dataDir}/security/npm";
+        SUDO_BIN = "/run/wrappers/bin/sudo";
+        SYSTEMCTL_BIN = "${pkgs.systemd}/bin/systemctl";
+        NFT_BIN = "${pkgs.nftables}/bin/nft";
+        CSCLI_BIN = "${pkgs.crowdsec}/bin/cscli";
+        IPTABLES_BIN = "${pkgs.iptables}/bin/iptables";
       } // lib.optionalAttrs sec.enable {
         AIDER_WRAPPER_API_KEY_FILE = secretPath sec.names.aiderWrapperApiKey;
         HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;

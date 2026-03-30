@@ -104,6 +104,11 @@
         lib.nixosSystem {
           system = system';
           modules = [
+            # Layering contract:
+            # 1. facts.nix: discovered machine facts only
+            # 2. core/roles/services/profiles: reusable policy
+            # 3. host-classes/: reusable machine-family overlays
+            # 4. nix/hosts/<host>/*.nix: host-only exceptions
             ({ lib, ... }: {
               mySystem.nixpkgsTrack = lib.mkDefault nixpkgsTrack;
               nixpkgs.pkgs = mkPkgs selectedNixpkgs system';
@@ -126,6 +131,7 @@
             ./nix/modules/services/default.nix
             ./nix/modules/profiles/minimal.nix
             ./nix/modules/profiles/ai-dev.nix
+            ./nix/modules/host-classes/p14s-amd-ai-workstation.nix
             ./nix/modules/profiles/gaming.nix
             ./nix/modules/hardware/default.nix
             ./nix/modules/disk/default.nix
@@ -224,7 +230,10 @@
           selectedNixpkgs = nixpkgsForTrack nixpkgsTrack;
           hostUser = resolveHostUser hostName;
           hostModules =
-            [ ./nix/home/base.nix ]
+            # Home layering mirrors the system side:
+            # 1. nix/home/*.nix: shared Home Manager defaults
+            # 2. nix/hosts/<host>/home.nix: host-specific HM behavior
+            [ ./nix/home/base.nix ./nix/home/deploy-common.nix ]
             ++ lib.optionals (builtins.pathExists (hostHomePath hostName)) [ (hostHomePath hostName) ]
             ++ lib.optionals (builtins.pathExists (hostHomeDeployOptionsPath hostName)) [ (hostHomeDeployOptionsPath hostName) ]
             ++ [
