@@ -10,6 +10,7 @@
 #   - SSH client defaults
 #   - VSCodium: declarative extensions, settings, wrapper, Continue.dev config
 #
+# Shared Home Manager overlays live in nix/home/*.nix.
 # Per-host customisation goes in nix/hosts/<host>/home.nix.
 # ---------------------------------------------------------------------------
 let

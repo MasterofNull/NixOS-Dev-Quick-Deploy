@@ -124,6 +124,73 @@ in
       };
     };
 
+    # When the bouncer API key comes from a secret provider, CrowdSec still
+    # needs that key registered in its local database. Reconcile the local
+    # bouncer record to the runtime secret before the bouncer starts so deploys
+    # do not fail with "API error: access forbidden".
+    systemd.services.crowdsec-firewall-bouncer-key-sync = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
+      description = "Sync CrowdSec firewall bouncer API key from secret";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "crowdsec.service" ];
+      wants = [ "crowdsec.service" ];
+      before = [ "crowdsec-firewall-bouncer.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = config.services.crowdsec.user;
+        Group = config.services.crowdsec.group;
+        LoadCredential = [ "API_KEY_FILE:${toString cs.apiKeyFile}" ];
+        StateDirectory = "crowdsec-firewall-bouncer-key-sync";
+        ReadWritePaths = [ "/var/lib/crowdsec" ];
+        DynamicUser = true;
+        LockPersonality = true;
+        PrivateDevices = true;
+        ProcSubset = "pid";
+        ProtectClock = true;
+        ProtectControlGroups = true;
+        ProtectHome = true;
+        ProtectHostname = true;
+        ProtectKernelLogs = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectProc = "invisible";
+        RestrictNamespaces = true;
+        RestrictRealtime = true;
+        RestrictAddressFamilies = [ "AF_UNIX" ];
+        CapabilityBoundingSet = [ "" ];
+        SystemCallArchitectures = "native";
+        SystemCallFilter = [
+          "@system-service"
+          "~@privileged"
+          "~@resources"
+        ];
+        UMask = "0077";
+      };
+      script = let
+        bouncerName = config.services.crowdsec-firewall-bouncer.registerBouncer.bouncerName;
+        crowdsecConfigFile = (pkgs.formats.yaml { }).generate "crowdsec-sync.yaml" config.services.crowdsec.settings.general;
+        cscliBin = lib.getExe' config.services.crowdsec.package "cscli";
+      in ''
+        set -euo pipefail
+
+        export PATH="${lib.makeBinPath [ config.services.crowdsec.package ]}:$PATH"
+        cscli=${lib.escapeShellArg cscliBin}
+        crowdsec_config=${lib.escapeShellArg crowdsecConfigFile}
+        api_key="$(<"$CREDENTIALS_DIRECTORY/API_KEY_FILE")"
+
+        if "$cscli" -c "$crowdsec_config" bouncers list --output json | ${lib.getExe pkgs.jq} -e -- ${lib.escapeShellArg "any(.[]; .name == \"${bouncerName}\")"} >/dev/null; then
+          "$cscli" -c "$crowdsec_config" bouncers delete -- ${lib.escapeShellArg bouncerName}
+        fi
+
+        "$cscli" -c "$crowdsec_config" bouncers add --key "$api_key" -- ${lib.escapeShellArg bouncerName} >/dev/null
+      '';
+    };
+
+    systemd.services.crowdsec-firewall-bouncer = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
+      after = [ "crowdsec-firewall-bouncer-key-sync.service" ];
+      wants = [ "crowdsec-firewall-bouncer-key-sync.service" ];
+      requires = [ "crowdsec-firewall-bouncer-key-sync.service" ];
+    };
+
     # Open firewall for local API only (bouncer communication)
     networking.firewall.interfaces."lo".allowedTCPPorts = [ 8088 ];
 

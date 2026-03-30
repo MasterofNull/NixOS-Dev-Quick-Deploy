@@ -15,6 +15,7 @@ in
     mySystem.monitoring.enable = lib.mkDefault true;
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
     mySystem.localhostIsolation.enable = lib.mkDefault true;
+    mySystem.aiStack.switchboard.enable = lib.mkDefault true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 

@@ -18,6 +18,7 @@ import asyncio
 import os
 import re
 import json
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -41,6 +42,22 @@ AUDIT_LOG_PATH = os.getenv(
     "FIREWALL_AUDIT_LOG_PATH",
     os.getenv("DASHBOARD_DATA_DIR", "/tmp") + "/firewall-audit.jsonl"
 )
+SUDO_BIN = os.getenv("SUDO_BIN") or "/run/wrappers/bin/sudo"
+SYSTEMCTL_BIN = os.getenv("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/run/current-system/sw/bin/systemctl"
+NFT_BIN = os.getenv("NFT_BIN") or shutil.which("nft") or "/run/current-system/sw/bin/nft"
+CSCLI_BIN = os.getenv("CSCLI_BIN") or shutil.which("cscli") or "cscli"
+IPTABLES_BIN = os.getenv("IPTABLES_BIN") or shutil.which("iptables") or "/run/current-system/sw/bin/iptables"
+
+
+def _resolve_binary(command: str) -> str:
+    """Map logical command names to stable binaries for the dashboard service."""
+    return {
+        "sudo": SUDO_BIN,
+        "systemctl": SYSTEMCTL_BIN,
+        "nft": NFT_BIN,
+        "cscli": CSCLI_BIN,
+        "iptables": IPTABLES_BIN,
+    }.get(command, command)
 
 
 def audit_log(action: str, details: Dict[str, Any], success: bool, client_ip: str = "unknown"):
@@ -136,9 +153,11 @@ class DecisionRemovalRequest(BaseModel):
 # ── Command Execution ───────────────────────────────────────────────────────────
 async def run_command(cmd: List[str], timeout: int = 10) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)"""
+    resolved_cmd = [_resolve_binary(part) if index == 0 else part for index, part in enumerate(cmd)]
+    process = None
     try:
         process = await asyncio.create_subprocess_exec(
-            *cmd,
+            *resolved_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -148,7 +167,8 @@ async def run_command(cmd: List[str], timeout: int = 10) -> tuple[int, str, str]
         )
         return process.returncode, stdout.decode(), stderr.decode()
     except asyncio.TimeoutError:
-        process.kill()
+        if process is not None:
+            process.kill()
         return -1, "", "Command timed out"
     except Exception as e:
         return -1, "", str(e)
@@ -156,7 +176,10 @@ async def run_command(cmd: List[str], timeout: int = 10) -> tuple[int, str, str]
 
 async def run_sudo_command(cmd: List[str], timeout: int = 10) -> tuple[int, str, str]:
     """Run a command with sudo -n (non-interactive, requires NOPASSWD sudoers entry)"""
-    return await run_command(["sudo", "-n"] + cmd, timeout)
+    if not cmd:
+        return -1, "", "Empty command"
+    resolved = [_resolve_binary(cmd[0]), *cmd[1:]]
+    return await run_command([SUDO_BIN, "-n", *resolved], timeout)
 
 
 def get_client_ip(request: Request) -> str:
@@ -477,6 +500,19 @@ async def control_crowdsec_bouncer(request: Request, body: CrowdSecControl):
         logger.error(f"Failed to control CrowdSec bouncer: {e}")
         audit_log("crowdsec_control", {"action": body.action, "error": str(e)}, success=False, client_ip=client_ip)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/crowdsec/status")
+async def get_crowdsec_bouncer_status():
+    """Read-only CrowdSec bouncer status for dashboard polling."""
+    code, _, _ = await run_command([
+        "systemctl", "is-active", "crowdsec-firewall-bouncer"
+    ])
+    return {
+        "status": "active" if code == 0 else "inactive",
+        "paused_by_dashboard": _bypass_state["crowdsec_paused"],
+        "paused_reason": _bypass_state["crowdsec_paused_by"],
+    }
 
 
 @router.get("/crowdsec/decisions")
