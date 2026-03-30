@@ -80,6 +80,15 @@ SECRET_SPECS = [
         "obtain": "Run init/bootstrap or generate it with manage-secrets.",
     },
     {
+        "name": "crowdsec_bouncer_api_key",
+        "label": "CrowdSec bouncer API key",
+        "kind": "token",
+        "scope": "core",
+        "services": "crowdsec-firewall-bouncer",
+        "source": "generated locally",
+        "obtain": "Run init/bootstrap or generate it with manage-secrets.",
+    },
+    {
         "name": "nixos_docs_api_key",
         "label": "NixOS docs API key",
         "kind": "token",
