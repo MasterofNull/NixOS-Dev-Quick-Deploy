@@ -166,6 +166,9 @@ in
         OnUnitActiveSec = cfg.interval;
         RandomizedDelaySec = "10min";
         Persistent = true;
+      } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+        # systemd 257+: defer reactivation if service still running
+        DeferReactivation = true;
       };
     };
 
