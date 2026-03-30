@@ -37,6 +37,12 @@ in
       };
     };
 
+    # Security: Kernel CVE tracking - auto-scan on boot
+    mySystem.kernel.cveTracking = {
+      enable = lib.mkDefault true;
+      autoScan = lib.mkDefault true;
+    };
+
     # Security: CrowdSec IPS - community threat intelligence
     # Watches SSH and Nginx logs for malicious patterns, blocks via nftables bouncer.
     # Firewall bouncer only enabled when secrets are configured.
