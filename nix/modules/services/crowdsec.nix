@@ -52,11 +52,19 @@ in
 
     services.crowdsec = {
       enable = true;
+      # Use a distinct watcher identity so we don't collide with the stale
+      # partially-created "hyperd" machine left behind by earlier failed boots.
+      name = "${cfg.hostName}-watcher";
 
       # Local API server for bouncers to connect to
-      settings.general.api.server = {
-        enable = true;
-        listen_uri = "127.0.0.1:8088";
+      settings = {
+        # Upstream startup writes local watcher credentials here via
+        # `cscli machines add --auto`. Keep it under the writable state dir.
+        lapi.credentialsFile = "/var/lib/crowdsec/state/local_api_credentials.yaml";
+        general.api.server = {
+          enable = true;
+          listen_uri = "127.0.0.1:8088";
+        };
       };
 
       # Acquisitions: which log sources to monitor
@@ -84,9 +92,13 @@ in
     # Only enabled when both enableFirewallBouncer=true AND apiKeyFile is set
     services.crowdsec-firewall-bouncer = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
       enable = true;
+      # When a secret-backed API key file is provided, disable auto-registration
+      # and force the runtime file path so the upstream placeholder doesn't
+      # collide with our module value during option merging.
+      registerBouncer.enable = lib.mkForce false;
+      secrets.apiKeyPath = lib.mkForce cs.apiKeyFile;
       settings = {
-        api_url = "http://127.0.0.1:8088";
-        api_key = "file:${cs.apiKeyFile}";
+        api_url = "http://${config.services.crowdsec.settings.general.api.server.listen_uri}";
         mode = "nftables";
         nftables = {
           ipv4.table = "crowdsec";
@@ -98,6 +110,10 @@ in
     };
 
     # Systemd hardening for crowdsec services
+    systemd.tmpfiles.rules = [
+      "d /var/log/crowdsec 0750 crowdsec crowdsec -"
+    ];
+
     systemd.services.crowdsec = {
       serviceConfig = {
         PrivateTmp = true;
