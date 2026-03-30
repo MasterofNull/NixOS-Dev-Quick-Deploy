@@ -1,0 +1,11 @@
+{ lib, ... }:
+{
+  # Git identity (user.name, user.email) is written directly to ~/.gitconfig
+  # by nixos-quick-deploy.sh so it remains mutable after every switch.
+  programs.git = {
+    enable = lib.mkDefault true;
+    settings = {
+      credential.helper = lib.mkDefault "cache --timeout=28800";
+    };
+  };
+}

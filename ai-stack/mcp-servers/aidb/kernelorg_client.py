@@ -263,7 +263,10 @@ class KernelOrgClient:
             Number of releases synced
         """
         import sqlalchemy as sa
-        from .schema import KERNEL_RELEASES
+        try:
+            from .schema import KERNEL_RELEASES
+        except ImportError:
+            from schema import KERNEL_RELEASES
 
         releases = await self.get_releases(force_refresh=True)
         synced = 0

@@ -354,7 +354,10 @@ class NVDClient:
             SyncResult with statistics
         """
         import sqlalchemy as sa
-        from .schema import KERNEL_CVES
+        try:
+            from .schema import KERNEL_CVES
+        except ImportError:
+            from schema import KERNEL_CVES
 
         result = SyncResult()
         start_time = asyncio.get_event_loop().time()
