@@ -3,6 +3,12 @@
 # Deploy CLI - Health Command
 # Comprehensive health checks across all components
 
+# Source ai-stack command for AI stack health checks
+HEALTH_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${HEALTH_SCRIPT_DIR}/ai-stack.sh" ]]; then
+  source "${HEALTH_SCRIPT_DIR}/ai-stack.sh"
+fi
+
 # ============================================================================
 # Help Text
 # ============================================================================
@@ -199,10 +205,15 @@ check_storage_health() {
 
   local failed=0
 
-  # Check PostgreSQL
+  # Check PostgreSQL using pg_isready (no sudo required)
   if systemctl is-active --quiet postgresql.service 2>/dev/null; then
-    if sudo -u postgres psql -c "SELECT 1;" >/dev/null 2>&1; then
+    if command -v pg_isready >/dev/null 2>&1 && pg_isready -q 2>/dev/null; then
       log_success "PostgreSQL accessible"
+    elif psql -h /run/postgresql -U postgres -c "SELECT 1;" >/dev/null 2>&1; then
+      log_success "PostgreSQL accessible"
+    elif curl -fsS --max-time 3 "http://127.0.0.1:5432" >/dev/null 2>&1 || \
+         nc -z 127.0.0.1 5432 2>/dev/null; then
+      log_success "PostgreSQL port listening"
     else
       log_error "PostgreSQL not responding"
       failed=$((failed + 1))
