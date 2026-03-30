@@ -92,6 +92,10 @@ in
         OnCalendar = cfg.interval;
         Persistent = true;
         RandomizedDelaySec = "30min";
+      } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+        # systemd 257+: schedule the next run from service inactivity instead of
+        # immediately retriggering after an overdue OnCalendar interval.
+        DeferReactivation = true;
       } // lib.optionalAttrs cfg.onBoot {
         OnBootSec = "5min";
       };
