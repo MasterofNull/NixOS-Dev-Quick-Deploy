@@ -30,6 +30,33 @@ let
 in
 {
   config = lib.mkIf (mon.enable && cc.enable) {
+    # ── Sudo rules for firewall management ──────────────────────────────────────
+    # The dashboard provides operator controls for captive portal bypass and
+    # CrowdSec bouncer management. These require elevated privileges but are
+    # tightly scoped to specific commands.
+    security.sudo.extraRules = [
+      {
+        users = [ svcUser ];
+        commands = [
+          # nftables: list and modify firewall rules (captive portal bypass)
+          { command = "${pkgs.nftables}/bin/nft"; options = [ "NOPASSWD" ]; }
+          # CrowdSec bouncer control (pause/resume for portal login)
+          { command = "${pkgs.systemd}/bin/systemctl start crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
+          { command = "${pkgs.systemd}/bin/systemctl stop crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
+          { command = "${pkgs.systemd}/bin/systemctl restart crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
+          { command = "${pkgs.systemd}/bin/systemctl is-active crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
+          # NixOS firewall reset (restore declarative rules)
+          { command = "${pkgs.systemd}/bin/systemctl restart firewall"; options = [ "NOPASSWD" ]; }
+          { command = "${pkgs.systemd}/bin/systemctl is-active firewall"; options = [ "NOPASSWD" ]; }
+          { command = "${pkgs.systemd}/bin/systemctl is-active nftables"; options = [ "NOPASSWD" ]; }
+          # CrowdSec CLI for decision management (view/remove blocked IPs)
+          { command = "${pkgs.crowdsec}/bin/cscli"; options = [ "NOPASSWD" ]; }
+          # iptables fallback (read-only listing)
+          { command = "${pkgs.iptables}/bin/iptables -L *"; options = [ "NOPASSWD" ]; }
+        ];
+      }
+    ];
+
     systemd.tmpfiles.rules = [
       "d ${cc.dataDir} 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/cache 0750 ${svcUser} ${svcGroup} -"
