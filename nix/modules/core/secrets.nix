@@ -14,6 +14,7 @@ let
     else true;
   repoLocalSopsPath = builtins.match ".*/nix/hosts/[^/]+/secrets\\.sops\\.ya?ml$" sec.sopsFile != null;
   needsRemoteLlmSecret = swb.enable && swb.remoteUrl != null && swb.remoteApiKeyFile == null;
+  needsCrowdsecSecret = cfg.security.crowdsec.enable && cfg.security.crowdsec.enableFirewallBouncer;
 in
 {
   config = lib.mkIf sec.enable {
@@ -52,6 +53,8 @@ in
         "${sec.names.aiderWrapperApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
       } // lib.optionalAttrs needsRemoteLlmSecret {
         "${sec.names.remoteLlmApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
+      } // lib.optionalAttrs needsCrowdsecSecret {
+        "${sec.names.crowdsecBouncerApiKey}" = { mode = "0400"; owner = "root"; group = "root"; };
       };
     };
   };

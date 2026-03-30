@@ -805,6 +805,12 @@
           default = "nixos_docs_api_key";
           description = "SOPS key name for nixos-docs API auth secret.";
         };
+
+        crowdsecBouncerApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "crowdsec_bouncer_api_key";
+          description = "SOPS key name for CrowdSec firewall bouncer API key.";
+        };
       };
     };
 

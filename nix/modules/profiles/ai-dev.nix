@@ -38,13 +38,17 @@ in
     };
 
     # Security: CrowdSec IPS - community threat intelligence
-    # Disabled by default - enable in host config when CrowdSec is available/configured
-    # mySystem.security.crowdsec = {
-    #   enable = lib.mkDefault true;
-    #   watchSshd = lib.mkDefault true;
-    #   watchNginx = lib.mkDefault true;
-    #   enableFirewallBouncer = lib.mkDefault false;  # Requires apiKeyFile
-    # };
+    # Watches SSH and Nginx logs for malicious patterns, blocks via nftables bouncer.
+    # Firewall bouncer only enabled when secrets are configured.
+    mySystem.security.crowdsec = {
+      enable = lib.mkDefault true;
+      watchSshd = lib.mkDefault true;
+      watchNginx = lib.mkDefault true;
+      # Bouncer requires API key from sops - only enable when secrets are available
+      enableFirewallBouncer = lib.mkDefault config.mySystem.secrets.enable;
+      apiKeyFile = lib.mkIf config.mySystem.secrets.enable
+        (lib.mkDefault "/run/secrets/${config.mySystem.secrets.names.crowdsecBouncerApiKey}");
+    };
 
     # Security: Secure Boot via lanzaboote
     mySystem.secureboot.enable = lib.mkDefault true;
