@@ -862,7 +862,7 @@ async def route_search(
         )
     except Exception as exc:  # noqa: BLE001
         ROUTE_ERRORS.labels(route=route).inc()
-        logger.error("route_search_failed route=%s error=%s", route, exc)
+        logger.error("route_search_failed", extra={"route": route, "error": str(exc)})
         raise
 
     latency_ms = int((time.time() - start) * 1000)
