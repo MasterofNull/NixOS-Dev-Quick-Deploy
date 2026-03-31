@@ -26,6 +26,7 @@ OPTIONS:
   --component NAME        Check specific component only
   --timeout SECONDS       Health check timeout (default: 30)
   --json                  Output results in JSON format
+  --parallel              Run health checks in parallel (faster)
   --help                  Show this help
 
 COMPONENTS:
@@ -37,6 +38,7 @@ COMPONENTS:
 
 EXAMPLES:
   deploy health                        # Check all components
+  deploy health --parallel             # Check all components in parallel (faster)
   deploy health --component ai-stack   # Check AI stack only
   deploy health --json                 # JSON output for monitoring
   deploy health --timeout 60           # Longer timeout for slow systems
@@ -282,6 +284,7 @@ cmd_health() {
   local component="all"
   local timeout=30
   local use_json=0
+  local use_parallel=0
 
   # Parse options
   while [[ $# -gt 0 ]]; do
@@ -300,6 +303,10 @@ cmd_health() {
         ;;
       --json)
         use_json=1
+        shift
+        ;;
+      --parallel)
+        use_parallel=1
         shift
         ;;
       -*)
@@ -379,17 +386,57 @@ cmd_health() {
       check_storage_health || total_failures=$((total_failures + 1))
       ;;
     all)
-      log_step 1 4 "System health..."
-      check_system_health || total_failures=$((total_failures + 1))
+      if [[ $use_parallel -eq 1 ]]; then
+        # Parallel execution for faster health checks
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' RETURN
 
-      log_step 2 4 "AI stack health..."
-      check_ai_stack_health || total_failures=$((total_failures + 1))
+        log_info "Running health checks in parallel..."
 
-      log_step 3 4 "Network health..."
-      check_network_health || total_failures=$((total_failures + 1))
+        # Run all checks in background
+        ( check_system_health > "$tmp_dir/system.out" 2>&1; echo $? > "$tmp_dir/system.rc" ) &
+        local pid_system=$!
+        ( check_ai_stack_health > "$tmp_dir/aistack.out" 2>&1; echo $? > "$tmp_dir/aistack.rc" ) &
+        local pid_aistack=$!
+        ( check_network_health > "$tmp_dir/network.out" 2>&1; echo $? > "$tmp_dir/network.rc" ) &
+        local pid_network=$!
+        ( check_storage_health > "$tmp_dir/storage.out" 2>&1; echo $? > "$tmp_dir/storage.rc" ) &
+        local pid_storage=$!
 
-      log_step 4 4 "Storage health..."
-      check_storage_health || total_failures=$((total_failures + 1))
+        # Wait for all to complete
+        wait "$pid_system" "$pid_aistack" "$pid_network" "$pid_storage"
+
+        # Collect results
+        log_step 1 4 "System health..."
+        cat "$tmp_dir/system.out"
+        [[ "$(cat "$tmp_dir/system.rc")" -ne 0 ]] && total_failures=$((total_failures + 1))
+
+        log_step 2 4 "AI stack health..."
+        cat "$tmp_dir/aistack.out"
+        [[ "$(cat "$tmp_dir/aistack.rc")" -ne 0 ]] && total_failures=$((total_failures + 1))
+
+        log_step 3 4 "Network health..."
+        cat "$tmp_dir/network.out"
+        [[ "$(cat "$tmp_dir/network.rc")" -ne 0 ]] && total_failures=$((total_failures + 1))
+
+        log_step 4 4 "Storage health..."
+        cat "$tmp_dir/storage.out"
+        [[ "$(cat "$tmp_dir/storage.rc")" -ne 0 ]] && total_failures=$((total_failures + 1))
+      else
+        # Sequential execution (default)
+        log_step 1 4 "System health..."
+        check_system_health || total_failures=$((total_failures + 1))
+
+        log_step 2 4 "AI stack health..."
+        check_ai_stack_health || total_failures=$((total_failures + 1))
+
+        log_step 3 4 "Network health..."
+        check_network_health || total_failures=$((total_failures + 1))
+
+        log_step 4 4 "Storage health..."
+        check_storage_health || total_failures=$((total_failures + 1))
+      fi
       ;;
     *)
       log_error "Unknown component: $component"
