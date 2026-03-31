@@ -834,11 +834,15 @@ class ContinuousLearningPipeline:
 
         events_since_checkpoint = 0
 
-        with open(telemetry_path, "r") as f:
+        with open(telemetry_path, "r", encoding="utf-8") as f:
             # Skip to last position (resume from checkpoint)
             f.seek(last_pos)
 
-            for line in f:
+            while True:
+                line_start = f.tell()
+                line = f.readline()
+                if not line:
+                    break
                 try:
                     event = json.loads(line)
 
@@ -883,6 +887,7 @@ class ContinuousLearningPipeline:
                     logger.error(
                         "event_processing_failed",
                         file=telemetry_path.name,
+                        position=line_start,
                         error=str(e)
                     )
                     continue
