@@ -1212,3 +1212,101 @@ container_tools:
     tags: [kubernetes, k8s, tui]
     install: "nix-shell -p k9s"
     priority: low
+
+# =============================================================================
+# CATEGORY: Workflow Lessons & Best Practices
+# Learned patterns from production experience — prevents repeated mistakes.
+# =============================================================================
+workflow_lessons:
+
+  # ---------------------------------------------------------------------------
+  # LESSON: Upstream PR Template Compliance
+  # Source: COSMIC PR #2237 rejection (2026-03-30)
+  # Impact: PRs rejected without comment when templates not followed
+  # ---------------------------------------------------------------------------
+  - id: upstream_pr_template_compliance
+    name: Upstream PR Template Requirements
+    type: workflow_lesson
+    learned_from: "COSMIC PR #2237 rejected - 'The PR template is mandatory'"
+    learned_at: "2026-03-30"
+    description: |
+      Many upstream projects (COSMIC, nixpkgs, kernel) require MANDATORY PR templates.
+      PRs will be closed without comment if template checkboxes are not completed.
+
+      Key Requirements:
+      1. ALWAYS fetch and read the upstream PR template BEFORE submitting
+      2. Complete ALL checkbox items in the template
+      3. For AI-generated code: Disclose in COMMIT MESSAGES, not just PR footer
+      4. Certify Developer Certificate of Origin compliance
+      5. Demonstrate full understanding of all changes
+
+      COSMIC-specific rules:
+      - AI-generated code must be disclosed in commit messages
+      - If you don't fully understand AI changes, don't create the PR
+      - AI-authored PRs may be closed without comment if they lack context
+    when_to_use: |
+      Use when: submitting PRs to external upstream projects
+      Check: deploy upstream submit <repo> now validates templates
+    prevention: |
+      The scripts/upstream/dev submit command now:
+      1. Fetches upstream PR template automatically
+      2. Validates AI disclosure in commit messages
+      3. Requires confirmation of template compliance
+      4. Shows template requirements before submission
+    tags: [upstream, pr, github, contribution, template, cosmic, nixpkgs]
+    priority: critical
+
+  # ---------------------------------------------------------------------------
+  # LESSON: AI Code Disclosure Requirements
+  # Source: Multiple upstream rejections for missing disclosure
+  # ---------------------------------------------------------------------------
+  - id: ai_code_disclosure
+    name: AI Code Disclosure in Commits
+    type: workflow_lesson
+    learned_from: "Upstream project requirements"
+    learned_at: "2026-03-30"
+    description: |
+      Many projects require AI-generated code to be disclosed in COMMIT MESSAGES,
+      not just in PR descriptions or footers.
+
+      Format for commits:
+      ```
+      fix: description of change
+
+      AI-assisted: Claude Code was used for implementation.
+      I have reviewed and fully understand all changes.
+
+      Co-Authored-By: Claude <noreply@anthropic.com>
+      ```
+
+      This differs from our internal convention of just using Co-Authored-By.
+      Upstream projects want explicit AI acknowledgment AND understanding confirmation.
+    when_to_use: "All commits destined for upstream contribution"
+    tags: [ai, disclosure, commits, upstream]
+    priority: high
+
+  # ---------------------------------------------------------------------------
+  # LESSON: Pre-Contribution Validation
+  # Source: Best practices for successful upstream contributions
+  # ---------------------------------------------------------------------------
+  - id: upstream_validation_workflow
+    name: Upstream Contribution Validation
+    type: workflow_lesson
+    learned_from: "Systematic contribution process"
+    learned_at: "2026-03-30"
+    description: |
+      Complete validation workflow before upstream submission:
+
+      1. Make changes locally in your system config
+      2. Run 'deploy system' to activate and test
+      3. Verify changes work on your running system
+      4. Extract/adapt changes for upstream submission
+      5. Test upstream version: deploy upstream test <repo>
+      6. Validate full system: deploy upstream validate
+      7. Check PR template: deploy upstream submit <repo>
+      8. WAIT for upstream review - respond to all comments
+
+      Never submit untested changes to upstream.
+    when_to_use: "Before any upstream contribution"
+    tags: [upstream, validation, testing, workflow]
+    priority: high
