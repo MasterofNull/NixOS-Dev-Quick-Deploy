@@ -15,6 +15,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> int:
     text = DESKTOP_MODULE.read_text(encoding="utf-8")
+    home_text = (ROOT / "nix" / "home" / "base.nix").read_text(encoding="utf-8")
     assert_true(
         'com.system76.CosmicTheme.Dark.Builder' in text,
         "desktop role should create COSMIC greeter Dark.Builder directories",
@@ -34,6 +35,10 @@ def main() -> int:
     assert_true(
         'rm -rf "$base/com.system76.CosmicTheme.Dark.Builder/v1"' in text,
         "COSMIC greeter config seed should wipe stale builder files before startup",
+    )
+    assert_true(
+        'configFile."cosmic/com.system76.CosmicTheme.Dark.Builder/v1/palette"' not in home_text,
+        "Home Manager should not write the obsolete COSMIC ThemeBuilder palette file",
     )
     print("PASS: desktop role seeds minimal COSMIC greeter config declaratively")
     return 0
