@@ -618,8 +618,15 @@
       audit = {
         enable = lib.mkOption {
           type = lib.types.bool;
-          default = true;
-          description = "Enable Linux audit subsystem (auditd) for host audit trails.";
+          default = false;
+          description = ''
+            Enable Linux audit subsystem (auditd) for host audit trails.
+
+            Disabled by default on general-purpose systems because repeated
+            kernel audit failures can create heavy log churn and desktop
+            instability on some hardware/kernel combinations. Higher-assurance
+            postures such as hospital/classified mode explicitly force this on.
+          '';
         };
 
         watchPaths = lib.mkOption {

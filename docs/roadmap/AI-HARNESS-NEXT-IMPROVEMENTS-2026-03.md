@@ -140,3 +140,4 @@ Default batching rule:
 - Current routing follow-up: keep switchboard default provider local, lower the hybrid local-confidence threshold to `0.35` declaratively, and remove shell endpoint drift so health/roadmap signals use the same embeddings port (`:8081`)
 - Current reporting follow-up: distinguish observed `route_search` latency from actionable/backend-valid latency so invalid 4xx caller traffic and stale unlabeled rows do not trigger unnecessary routing changes
 - Current stability follow-up: reduce crash-adjacent local log storms by fixing continuous-learning checkpoint reads and seeding minimal declarative COSMIC greeter theme/config state before `greetd` starts
+- Current host-stability follow-up: keep Linux audit opt-in for general-purpose workstations while preserving mandatory audit enforcement for `hospitalClassified` systems, since the recent freeze evidence points at kernel audit log storms on this desktop profile
