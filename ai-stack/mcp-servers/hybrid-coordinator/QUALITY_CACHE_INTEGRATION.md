@@ -13,9 +13,11 @@ The quality cache (`quality_cache.py`) is implemented and ready for integration.
 - Comprehensive metrics tracking
 - `/status` endpoint integration
 
-**⚠ Pending:**
-- Integration into response generation paths
-- Active usage in query/delegation flows
+**✓ Integrated (2026-03-30):**
+- Integration into response generation paths (`http_server.py` lines 4140-4181)
+- Cache check before `_route_search` call
+- Automatic caching of quality-scored responses
+- Active usage in `/query` endpoint flow
 
 ## Integration Points
 
