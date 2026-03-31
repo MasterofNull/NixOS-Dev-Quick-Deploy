@@ -47,6 +47,10 @@ SYSTEMCTL_BIN = os.getenv("SYSTEMCTL_BIN") or shutil.which("systemctl") or "/run
 NFT_BIN = os.getenv("NFT_BIN") or shutil.which("nft") or "/run/current-system/sw/bin/nft"
 CSCLI_BIN = os.getenv("CSCLI_BIN") or shutil.which("cscli") or "cscli"
 IPTABLES_BIN = os.getenv("IPTABLES_BIN") or shutil.which("iptables") or "/run/current-system/sw/bin/iptables"
+NFT_FAMILY = os.getenv("FIREWALL_NFT_FAMILY", "inet")
+NFT_TABLE = os.getenv("FIREWALL_NFT_TABLE", "filter")
+NFT_OUTPUT_CHAIN = os.getenv("FIREWALL_NFT_OUTPUT_CHAIN", "output")
+CAPTIVE_PORTAL_RULE_COMMENT = os.getenv("CAPTIVE_PORTAL_RULE_COMMENT", "captive-portal-bypass")
 
 
 def _resolve_binary(command: str) -> str:
@@ -86,6 +90,7 @@ _bypass_state = {
         "expires_at": None,
         "enabled_by": None,
         "enabled_at": None,
+        "interface": None,
         "rule_handles": [],  # Track nft rule handles for cleanup
     },
     "crowdsec_paused": False,
@@ -180,6 +185,40 @@ async def run_sudo_command(cmd: List[str], timeout: int = 10) -> tuple[int, str,
         return -1, "", "Empty command"
     resolved = [_resolve_binary(cmd[0]), *cmd[1:]]
     return await run_command([SUDO_BIN, "-n", *resolved], timeout)
+
+
+def _build_captive_portal_rule(*tokens: str, interface: Optional[str] = None) -> List[str]:
+    """Build a consistent nftables add-rule command for captive portal bypass."""
+    cmd = ["nft", "add", "rule", NFT_FAMILY, NFT_TABLE, NFT_OUTPUT_CHAIN]
+    if interface:
+        cmd.extend(["oifname", interface])
+    cmd.extend(tokens)
+    cmd.extend(["comment", CAPTIVE_PORTAL_RULE_COMMENT])
+    return cmd
+
+
+async def _nft_chain_exists() -> bool:
+    """Confirm the configured nftables chain exists before mutating it."""
+    code, _, _ = await run_sudo_command(["nft", "list", "chain", NFT_FAMILY, NFT_TABLE, NFT_OUTPUT_CHAIN], timeout=5)
+    return code == 0
+
+
+async def _list_captive_portal_handles() -> List[str]:
+    """Return handle IDs for current captive portal bypass rules."""
+    code, stdout, _ = await run_sudo_command(
+        ["nft", "-a", "list", "chain", NFT_FAMILY, NFT_TABLE, NFT_OUTPUT_CHAIN],
+        timeout=5,
+    )
+    if code != 0:
+        return []
+    handles: List[str] = []
+    for line in stdout.splitlines():
+        if CAPTIVE_PORTAL_RULE_COMMENT not in line:
+            continue
+        handle_match = re.search(r'handle\s+(\d+)', line)
+        if handle_match:
+            handles.append(handle_match.group(1))
+    return handles
 
 
 def get_client_ip(request: Request) -> str:
@@ -292,37 +331,57 @@ async def enable_captive_portal_bypass(request: Request, body: CaptivePortalBypa
         now = datetime.now()
         expires_at = now + timedelta(minutes=body.duration_minutes)
 
+        if not await _nft_chain_exists():
+            raise HTTPException(
+                status_code=503,
+                detail=f"Configured nftables chain {NFT_FAMILY} {NFT_TABLE} {NFT_OUTPUT_CHAIN} is unavailable",
+            )
+
         # Update state first (before making changes)
         _bypass_state["captive_portal"]["expires_at"] = expires_at.isoformat()
         _bypass_state["captive_portal"]["active"] = True
         _bypass_state["captive_portal"]["enabled_by"] = client_ip
         _bypass_state["captive_portal"]["enabled_at"] = now.isoformat()
+        _bypass_state["captive_portal"]["interface"] = body.interface
         _bypass_state["captive_portal"]["rule_handles"] = []
 
         rules_added = []
         errors = []
 
         # Allow HTTP/HTTPS outbound (for portal sign-in)
-        code, stdout, stderr = await run_sudo_command([
-            "nft", "add", "rule", "inet", "filter", "output",
-            "tcp", "dport", "{80, 443}", "accept",
-            "comment", '"captive-portal-bypass"'
-        ])
+        code, stdout, stderr = await run_sudo_command(
+            _build_captive_portal_rule("tcp", "dport", "{80,443}", "accept", interface=body.interface)
+        )
         if code == 0:
             rules_added.append("http/https outbound")
         else:
             errors.append(f"http/https: {stderr}")
 
         # Allow DNS (portals often use their own DNS)
-        code, stdout, stderr = await run_sudo_command([
-            "nft", "add", "rule", "inet", "filter", "output",
-            "udp", "dport", "53", "accept",
-            "comment", '"captive-portal-bypass"'
-        ])
+        code, stdout, stderr = await run_sudo_command(
+            _build_captive_portal_rule("udp", "dport", "53", "accept", interface=body.interface)
+        )
         if code == 0:
-            rules_added.append("dns outbound")
+            rules_added.append("dns outbound (udp)")
         else:
-            errors.append(f"dns: {stderr}")
+            errors.append(f"dns-udp: {stderr}")
+
+        code, stdout, stderr = await run_sudo_command(
+            _build_captive_portal_rule("tcp", "dport", "53", "accept", interface=body.interface)
+        )
+        if code == 0:
+            rules_added.append("dns outbound (tcp)")
+        else:
+            errors.append(f"dns-tcp: {stderr}")
+
+        # DHCP renewals are common during captive portal sign-in.
+        code, stdout, stderr = await run_sudo_command(
+            _build_captive_portal_rule("udp", "sport", "68", "udp", "dport", "67", "accept", interface=body.interface)
+        )
+        if code == 0:
+            rules_added.append("dhcp renewal")
+        else:
+            errors.append(f"dhcp: {stderr}")
 
         # Pause CrowdSec bouncer temporarily
         code, _, stderr = await run_sudo_command([
@@ -334,6 +393,8 @@ async def enable_captive_portal_bypass(request: Request, body: CaptivePortalBypa
             rules_added.append("crowdsec paused")
         else:
             errors.append(f"crowdsec: {stderr}")
+
+        _bypass_state["captive_portal"]["rule_handles"] = await _list_captive_portal_handles()
 
         # Schedule auto-revert
         asyncio.create_task(_auto_revert_captive_portal(body.duration_minutes))
@@ -356,6 +417,7 @@ async def enable_captive_portal_bypass(request: Request, body: CaptivePortalBypa
             "status": "enabled",
             "expires_at": expires_at.isoformat(),
             "duration_minutes": body.duration_minutes,
+            "interface": body.interface,
             "rules_added": rules_added,
             "errors": errors if errors else None,
         }
@@ -404,22 +466,12 @@ async def _auto_revert_captive_portal(duration_minutes: int):
 async def _revert_captive_portal_rules():
     """Remove captive portal bypass rules and restore normal operation"""
     try:
-        # Get current rules with handles
-        code, stdout, _ = await run_sudo_command(["nft", "-a", "list", "ruleset"])
-        if code == 0:
-            # Find and delete rules with captive-portal-bypass comment
-            for line in stdout.split('\n'):
-                if 'captive-portal-bypass' in line:
-                    # Extract handle number
-                    handle_match = re.search(r'handle\s+(\d+)', line)
-                    if handle_match:
-                        handle = handle_match.group(1)
-                        # Determine chain (output rules are in filter output)
-                        if 'output' in line.lower():
-                            await run_sudo_command([
-                                "nft", "delete", "rule", "inet", "filter", "output",
-                                "handle", handle
-                            ])
+        handles = _bypass_state["captive_portal"]["rule_handles"] or await _list_captive_portal_handles()
+        for handle in handles:
+            await run_sudo_command([
+                "nft", "delete", "rule", NFT_FAMILY, NFT_TABLE, NFT_OUTPUT_CHAIN,
+                "handle", handle
+            ])
 
         # Restart CrowdSec bouncer
         if _bypass_state["crowdsec_paused"] and _bypass_state["crowdsec_paused_by"] == "captive-portal":
@@ -431,6 +483,7 @@ async def _revert_captive_portal_rules():
         _bypass_state["captive_portal"]["expires_at"] = None
         _bypass_state["captive_portal"]["enabled_by"] = None
         _bypass_state["captive_portal"]["enabled_at"] = None
+        _bypass_state["captive_portal"]["interface"] = None
         _bypass_state["captive_portal"]["rule_handles"] = []
 
     except Exception as e:
@@ -445,6 +498,7 @@ async def get_captive_portal_status():
         "expires_at": _bypass_state["captive_portal"]["expires_at"],
         "enabled_by": _bypass_state["captive_portal"]["enabled_by"],
         "enabled_at": _bypass_state["captive_portal"]["enabled_at"],
+        "interface": _bypass_state["captive_portal"]["interface"],
     }
 
 

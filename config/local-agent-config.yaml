@@ -7,6 +7,18 @@ endpoints:
   hybrid_coordinator: "http://127.0.0.1:8003"
   aidb: "http://127.0.0.1:8002"
 
+# Offline resilience
+offline:
+  enabled: true
+  prefer_local_only_when_no_internet: true
+  allow_degraded_local_execution: true
+  remote_probe_timeout_seconds: 2
+  remote_request_timeout_seconds: 60
+  degrade_features:
+    - "remote_delegation"
+    - "quality_critical_remote_only_routing"
+    - "flagship_required_remote_only_routing"
+
 # Tool Registry
 tool_registry:
   database_path: "~/.local/share/nixos-ai-stack/local-agents/tool_audit.db"
@@ -22,6 +34,10 @@ agent_executor:
   enable_fallback: true
   fallback_endpoint: "${endpoints.hybrid_coordinator}"
   max_tool_calls_per_task: 10
+  offline_mode_env: "LOCAL_AGENT_OFFLINE_MODE"
+  allow_degraded_local_env: "LOCAL_AGENT_ALLOW_DEGRADED_LOCAL"
+  remote_probe_timeout_env: "LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS"
+  remote_timeout_env: "LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS"
 
 # Task Router
 task_router:
@@ -38,6 +54,11 @@ task_router:
     latency_critical: "local"
     quality_critical: "remote"
     flagship_required: "remote"
+
+  degradation:
+    offline_quality_critical: "local"
+    offline_flagship_required: "local"
+    remote_unavailable: "local"
 
 # Monitoring Agent
 monitoring:

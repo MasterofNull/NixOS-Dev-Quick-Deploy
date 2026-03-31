@@ -115,6 +115,12 @@ export COORDINATOR_ENDPOINT="http://127.0.0.1:8003"
 # AIDB endpoint
 export AIDB_ENDPOINT="http://127.0.0.1:8002"
 
+# Offline resilience controls
+export LOCAL_AGENT_OFFLINE_MODE="false"
+export LOCAL_AGENT_ALLOW_DEGRADED_LOCAL="true"
+export LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS="2"
+export LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS="60"
+
 # Tool registry database
 export TOOL_AUDIT_DB="$HOME/.local/share/nixos-ai-stack/local-agents/tool_audit.db"
 
@@ -154,7 +160,9 @@ from local_agents import LocalAgentExecutor
 executor = LocalAgentExecutor(
     llama_endpoint="http://127.0.0.1:8080",
     enable_fallback=True,  # Enable remote fallback
-    fallback_endpoint="http://127.0.0.1:8003"
+    fallback_endpoint="http://127.0.0.1:8003",
+    offline_mode=False,
+    allow_degraded_local_execution=True,
 )
 ```
 
@@ -166,9 +174,27 @@ from local_agents import TaskRouter
 router = TaskRouter(
     local_success_threshold=0.75,  # Fallback if <75% success
     complexity_threshold=0.6,      # Route complex tasks remote
-    default_to_local=True          # Prefer local by default
+    default_to_local=True,         # Prefer local by default
+    offline_mode=False,
+    allow_degraded_local=True,
 )
 ```
+
+### Offline Operation
+
+When internet or remote delegation is unavailable, keep the local stack running and let the executor degrade to local-only routing instead of hard failing:
+
+```bash
+export LOCAL_AGENT_OFFLINE_MODE="true"
+export LOCAL_AGENT_ALLOW_DEGRADED_LOCAL="true"
+```
+
+In this mode:
+- Flagship-required and quality-critical tasks run locally with a degraded-routing note instead of blocking.
+- Remote fallback probes are skipped.
+- Loopback AI services (`llama.cpp`, `hybrid-coordinator`, `aidb`) continue to be treated as the primary execution path.
+
+If captive portal sign-in is blocking HTTP/DNS egress, use the command center firewall controls to enable a short-lived bypass, sign in, then let the auto-revert restore normal rules.
 
 ### Monitoring Configuration
 
