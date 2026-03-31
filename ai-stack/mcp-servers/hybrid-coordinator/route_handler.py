@@ -494,7 +494,12 @@ async def route_search(
 
     # Batch 2.2: Calculate adaptive timeout based on query complexity
     token_count = len(_normalize_tokens(query))
-    adaptive_timeout = calculate_adaptive_timeout(query, route, token_count)
+    adaptive_timeout = calculate_adaptive_timeout(
+        query,
+        route,
+        token_count,
+        generate_response=generate_response,
+    )
 
     # Phase 7.1.2 — LLM query expansion on semantic/hybrid routes
     _working_query = query
@@ -1001,13 +1006,21 @@ async def route_search(
 # Batch 2.2: Route Search Optimization Metrics
 # ---------------------------------------------------------------------------
 
-def calculate_adaptive_timeout(query: str, route: str, token_count: int) -> float:
+def calculate_adaptive_timeout(
+    query: str,
+    route: str,
+    token_count: int,
+    generate_response: bool = True,
+) -> float:
     """
     Calculate adaptive timeout based on query complexity.
 
     Simple queries (≤3 tokens, keyword route): 5s
     Medium queries (4-8 tokens, hybrid): 10s
     Complex queries (9+ tokens, tree/semantic): 15s
+
+    Retrieval-only requests use tighter caps because they do not pay for
+    downstream synthesis and should fail fast instead of inflating tail latency.
 
     Returns:
         Timeout in seconds
@@ -1016,13 +1029,22 @@ def calculate_adaptive_timeout(query: str, route: str, token_count: int) -> floa
     _collection_metrics.adaptive_timeout_applications += 1
 
     if token_count <= 3 and route == "keyword":
-        return 5.0
+        base_timeout = 5.0
     elif token_count <= 8 and route in ("hybrid", "keyword"):
-        return 10.0
+        base_timeout = 10.0
     elif route == "tree" or token_count > 8:
-        return 15.0
+        base_timeout = 15.0
     else:
-        return 12.0  # Default for edge cases
+        base_timeout = 12.0  # Default for edge cases
+
+    if generate_response:
+        return base_timeout
+
+    if token_count <= 3 and route == "keyword":
+        return min(base_timeout, Config.AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS)
+    if route in ("semantic", "tree") or token_count > 8:
+        return min(base_timeout, Config.AI_ROUTE_TIMEOUT_RETRIEVAL_COMPLEX_SECONDS)
+    return min(base_timeout, Config.AI_ROUTE_TIMEOUT_RETRIEVAL_HYBRID_SECONDS)
 
 
 def track_collection_search_latency(collections: List[str], latency_ms: float) -> None:
