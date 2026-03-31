@@ -3947,6 +3947,7 @@ async def run_http_mode(port: int) -> None:
             query = data.get("prompt") or data.get("query") or ""
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+            generate_response = bool(data.get("generate_response", False))
             semantic_tooling_autorun = os.getenv("AI_SEMANTIC_TOOLING_AUTORUN", "true").lower() == "true"
             request_context = data.get("context")
             if not isinstance(request_context, dict):
@@ -3967,6 +3968,8 @@ async def run_http_mode(port: int) -> None:
                 "requesting_agent": orchestration["requesting_agent"],
                 "requester_role": orchestration["requester_role"],
                 "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
+                "generate_response": generate_response,
+                "backend": "unknown",
             }
             tooling_layer = {
                 "enabled": semantic_tooling_autorun,
@@ -4165,7 +4168,7 @@ async def run_http_mode(port: int) -> None:
                     limit=int(data.get("limit", 5)),
                     keyword_limit=int(data.get("keyword_limit", 5)),
                     score_threshold=float(data.get("score_threshold", 0.7)),
-                    generate_response=bool(data.get("generate_response", False)),
+                    generate_response=generate_response,
                 )
 
                 # Cache the response if it has quality metrics
@@ -4260,6 +4263,12 @@ async def run_http_mode(port: int) -> None:
                     pass
             return web.json_response(result)
         except Exception as exc:
+            audit_metadata = request.get("audit_metadata")
+            if isinstance(audit_metadata, dict):
+                audit_metadata.setdefault("generate_response", generate_response if "generate_response" in locals() else False)
+                prefer_local = bool(data.get("prefer_local", True)) if "data" in locals() and isinstance(data, dict) else True
+                if str(audit_metadata.get("backend", "unknown")) == "unknown":
+                    audit_metadata["backend"] = "local" if prefer_local else "remote"
             return web.json_response({"error": "route_search_failed", "detail": str(exc)}, status=500)
 
     async def handle_tree_search(request):
