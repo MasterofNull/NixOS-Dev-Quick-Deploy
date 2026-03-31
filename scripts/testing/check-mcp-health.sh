@@ -79,24 +79,42 @@ url_port() {
   sed -E 's#^[a-zA-Z]+://[^:/]+:([0-9]+).*$#\1#' <<<"$url"
 }
 
+service_url() {
+  local env_name="$1"
+  local default_url="$2"
+  local current="${!env_name:-}"
+  if [[ -n "$current" ]]; then
+    printf "%s" "$current"
+  else
+    printf "%s" "$default_url"
+  fi
+}
+
 # ── Infrastructure dependencies ───────────────────────────────────────────────
 echo "── Infrastructure ───────────────────────────────────────────"
 REDIS_HOST="${REDIS_HOST:-localhost}"
-REDIS_PORT="${REDIS_PORT}"
+REDIS_PORT="${REDIS_PORT:-6379}"
 check_tcp "INFRA" "Redis" "$REDIS_HOST" "$REDIS_PORT"
 
-QDRANT_HOST="${SERVICE_HOST}"
-QDRANT_PORT="${QDRANT_PORT}"
+QDRANT_HOST="${QDRANT_HOST:-${SERVICE_HOST:-localhost}}"
+QDRANT_PORT="${QDRANT_PORT:-6333}"
 check_tcp "INFRA" "Qdrant" "$QDRANT_HOST" "$QDRANT_PORT"
 QDRANT_HEALTH_URL="http://${QDRANT_HOST}:${QDRANT_PORT}/healthz"
 check_http "INFRA" "Qdrant HTTP API     (:${QDRANT_PORT})" "$QDRANT_HEALTH_URL"
 
-POSTGRES_HOST="${POSTGRES_HOST}"
-POSTGRES_PORT="${POSTGRES_PORT}"
+POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 check_tcp "INFRA" "PostgreSQL" "$POSTGRES_HOST" "$POSTGRES_PORT"
 
 # ── Core HTTP MCP servers ─────────────────────────────────────────────────────
 echo "── Core MCP Servers ─────────────────────────────────────────"
+EMBEDDINGS_URL="$(service_url EMBEDDINGS_URL "http://${EMBEDDINGS_HOST:-localhost}:${EMBEDDINGS_PORT:-8001}")"
+AIDB_URL="$(service_url AIDB_URL "http://${AIDB_HOST:-localhost}:${AIDB_PORT:-8002}")"
+HYBRID_URL="$(service_url HYBRID_URL "http://${HYBRID_HOST:-localhost}:${HYBRID_PORT:-8003}")"
+RALPH_URL="$(service_url RALPH_URL "http://${RALPH_HOST:-${SERVICE_HOST:-localhost}}:${RALPH_PORT:-8004}")"
+SWITCHBOARD_URL="$(service_url SWITCHBOARD_URL "http://${SWITCHBOARD_HOST:-${SERVICE_HOST:-localhost}}:${SWITCHBOARD_PORT:-8085}")"
+AIDER_URL="$(service_url AIDER_URL "${AIDER_WRAPPER_URL:-http://${AIDER_HOST:-${SERVICE_HOST:-localhost}}:${AIDER_WRAPPER_PORT:-8090}}")"
+NIXOS_DOCS_URL="$(service_url NIXOS_DOCS_URL "http://${NIXOS_DOCS_HOST:-${SERVICE_HOST:-localhost}}:${NIXOS_DOCS_PORT:-8096}")"
 check_http "REQUIRED" "embeddings-service  (:$(url_port "${EMBEDDINGS_URL}"))" "${EMBEDDINGS_URL%/}/health"
 check_http "REQUIRED" "aidb                (:$(url_port "${AIDB_URL}"))" "${AIDB_URL%/}/health"
 check_http "REQUIRED" "hybrid-coordinator  (:$(url_port "${HYBRID_URL}"))" "${HYBRID_URL%/}/health"
@@ -107,10 +125,10 @@ check_http "REQUIRED" "nixos-docs          (:$(url_port "${NIXOS_DOCS_URL}"))" "
 
 # ── LLM backend ───────────────────────────────────────────────────────────────
 echo "── LLM Backends ─────────────────────────────────────────────"
-LLAMA_URL="${LLAMA_CPP_URL}"
+LLAMA_URL="${LLAMA_CPP_URL:-${LLAMA_URL:-http://127.0.0.1:8080}}"
 check_http "REQUIRED" "llama-cpp inference (:$(url_port "${LLAMA_URL}"))" "${LLAMA_URL%/}/health"
 
-LLAMA_EMBED_URL="${LLAMA_CPP_EMBED_URL}"
+LLAMA_EMBED_URL="${LLAMA_CPP_EMBED_URL:-${EMBEDDINGS_URL:-http://127.0.0.1:8081}}"
 check_http "REQUIRED" "llama-cpp embedding (:$(url_port "${LLAMA_EMBED_URL}"))" "${LLAMA_EMBED_URL%/}/health"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -128,6 +146,10 @@ echo "All required MCP services are healthy."
 if [[ "$CHECK_OPTIONAL" == "true" ]]; then
   echo ""
   echo "── Optional Services ──────────────────────────────────────"
+  OPEN_WEBUI_URL="$(service_url OPEN_WEBUI_URL "http://${OPEN_WEBUI_HOST:-${SERVICE_HOST:-localhost}}:${OPEN_WEBUI_PORT:-3001}")"
+  GRAFANA_URL="$(service_url GRAFANA_URL "http://${GRAFANA_HOST:-${SERVICE_HOST:-localhost}}:${GRAFANA_PORT:-3000}")"
+  PROMETHEUS_URL="$(service_url PROMETHEUS_URL "http://${PROMETHEUS_HOST:-${SERVICE_HOST:-localhost}}:${PROMETHEUS_PORT:-9090}")"
+  DASHBOARD_API_URL="$(service_url DASHBOARD_API_URL "http://${DASHBOARD_API_HOST:-${SERVICE_HOST:-localhost}}:${DASHBOARD_API_PORT:-8889}")"
   check_http "OPTIONAL" "open-webui          (:$(url_port "${OPEN_WEBUI_URL}"))" "${OPEN_WEBUI_URL%/}/health"
   check_http "OPTIONAL" "grafana             (:$(url_port "${GRAFANA_URL}"))" "${GRAFANA_URL%/}/api/health"
   check_http "OPTIONAL" "prometheus          (:$(url_port "${PROMETHEUS_URL}"))" "${PROMETHEUS_URL%/}/-/healthy"

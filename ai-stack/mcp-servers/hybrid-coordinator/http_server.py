@@ -6850,7 +6850,7 @@ async def run_http_mode(port: int) -> None:
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
 
             requested_profile = str(data.get("profile") or "").strip().lower()
-            prefer_local = bool(data.get("prefer_local", False))
+            prefer_local = bool(data.get("prefer_local", True))
 
             # Phase 9.3 — Use complexity routing for auto-selection
             routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
@@ -7187,7 +7187,7 @@ async def run_http_mode(port: int) -> None:
                 return web.json_response({"error": "task required"}, status=400)
 
             context = data.get("context") if isinstance(data.get("context"), dict) else {}
-            prefer_local = bool(data.get("prefer_local", False))
+            prefer_local = bool(data.get("prefer_local", True))
 
             result = _classify_and_route_task(task, context, prefer_local=prefer_local)
             result["task"] = task

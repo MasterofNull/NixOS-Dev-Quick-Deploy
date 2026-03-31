@@ -1409,6 +1409,9 @@ _CURATED_STALE_GAP_PATTERNS = (
     "how to configure qdrant and hybrid routing in this repo",
     "nixos declarative runtime tool security policy pattern for hybrid coor",
     "verify semantic tool calling and tool security metadata",
+    "continue agent mode still says message exceeds context limit",
+    "message exceeds context limit return a compact diagnosis path",
+    "continue editor rescue message exceeds context limit",
 )
 
 
@@ -2414,7 +2417,12 @@ def route_retrieval_breadth_windows(
 
 
 def routing_split(entries: Optional[List[dict]] = None) -> Dict[str, Any]:
-    """Fetch local vs remote routing split from Prometheus."""
+    """Fetch local vs remote routing split for the current report window."""
+    if entries:
+        scoped = routing_split_from_entries(entries)
+        if scoped.get("available"):
+            return scoped
+
     local_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="local"}) or vector(0)')
     remote_val = prom_query('sum(hybrid_llm_backend_selections_total{backend="remote"}) or vector(0)')
     local_n = local_val or 0.0
@@ -2454,6 +2462,33 @@ def routing_split(entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     return data
 
 
+def routing_split_from_entries(entries: List[dict]) -> Dict[str, Any]:
+    """Summarize local vs remote routing directly from route_search audit metadata."""
+    backend_counts = {"local": 0, "remote": 0}
+    route_calls = 0
+    for e in entries:
+        if str(e.get("tool_name", "")).strip().lower() != "route_search":
+            continue
+        service = str(e.get("service", "") or "").strip().lower()
+        if service and service != "hybrid-coordinator-http":
+            continue
+        route_calls += 1
+        md = e.get("metadata") if isinstance(e.get("metadata"), dict) else {}
+        backend = str(md.get("backend", "") or "").strip().lower()
+        if backend in backend_counts:
+            backend_counts[backend] += 1
+    total = backend_counts["local"] + backend_counts["remote"]
+    return {
+        "local_n": int(backend_counts["local"]),
+        "remote_n": int(backend_counts["remote"]),
+        "local_pct": round(100 * backend_counts["local"] / total, 1) if total else None,
+        "query_ok_n": route_calls,
+        "fallback_used": total == 0 and route_calls > 0,
+        "available": route_calls > 0,
+        "source": "tool_audit",
+    }
+
+
 def routing_split_windows(
     entries: List[dict],
     *,
@@ -2473,7 +2508,7 @@ def routing_split_windows(
             entry for entry in entries
             if (_entry_ts_utc(entry) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
         ]
-        summaries[label] = routing_split(window_entries)
+        summaries[label] = routing_split_from_entries(window_entries)
         summaries[label]["window"] = label
         summaries[label]["partial_window"] = report_since > cutoff
     return {
