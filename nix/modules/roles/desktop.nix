@@ -235,10 +235,13 @@ in
         if [ ! -s "$base/com.system76.CosmicTheme.Dark/v1/palette" ]; then
           install -o cosmic-greeter -g cosmic-greeter -m 0640 "${palettePath}" "$base/com.system76.CosmicTheme.Dark/v1/palette"
         fi
-        # The builder namespace expects its own config schema, not a raw palette
-        # payload. Remove any legacy seeded palette so the greeter falls back to
-        # its built-in builder defaults instead of logging a RON parse error.
-        rm -f "$base/com.system76.CosmicTheme.Dark.Builder/v1/palette"
+        # The builder namespace stores a full ThemeBuilder config, not the raw
+        # per-palette fragment used in earlier recovery attempts. Wipe any stale
+        # builder files and leave the namespace empty so COSMIC falls back to
+        # its built-in defaults without parse errors.
+        rm -rf "$base/com.system76.CosmicTheme.Dark.Builder/v1"
+        install -d -o cosmic-greeter -g cosmic-greeter -m 0750 \
+          "$base/com.system76.CosmicTheme.Dark.Builder/v1"
 
         seed_file "$base/com.system76.CosmicTheme.Dark/v1/name" '"cosmic-dark"'
         seed_file "$base/com.system76.CosmicTheme.Dark/v1/is_dark" 'true'

@@ -32,8 +32,8 @@ def main() -> int:
         "COSMIC greeter config seed should reuse the declarative palette source",
     )
     assert_true(
-        'rm -f "$base/com.system76.CosmicTheme.Dark.Builder/v1/palette"' in text,
-        "COSMIC greeter config seed should remove the legacy invalid builder palette file",
+        'rm -rf "$base/com.system76.CosmicTheme.Dark.Builder/v1"' in text,
+        "COSMIC greeter config seed should wipe stale builder files before startup",
     )
     print("PASS: desktop role seeds minimal COSMIC greeter config declaratively")
     return 0
