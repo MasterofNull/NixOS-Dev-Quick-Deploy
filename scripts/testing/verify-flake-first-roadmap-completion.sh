@@ -589,7 +589,7 @@ check_pattern "nix/home/base.nix" '"name": "aq-hints"' 'Continue config restores
 check_pattern "scripts/ai/aq-qa" 'contextLength\"\) or 0\) >= 12000' 'aq-qa enforces a Continue context-window floor for agent mode'
 check_pattern "scripts/ai/aq-qa" '0\.5\.5' 'aq-qa includes a continue-local oversized-input trimming check'
 check_pattern "scripts/ai/aq-qa" '0\.5\.6' 'aq-qa includes a Continue editor-path smoke check'
-check_pattern "scripts/ai/aq-report" 'timeout=35' 'aq-report allows the heavier Continue/editor QA batch to complete'
+check_pattern "scripts/ai/aq-report" 'AQ_REPORT_CONTINUE_EDITOR_TIMEOUT_SECONDS|timeout=timeout_seconds' 'aq-report allows the heavier Continue/editor QA batch to complete and keeps the timeout configurable'
 check_pattern "scripts/testing/smoke-continue-editor-flow.sh" '/hints' 'Continue editor smoke exercises Continue hints endpoint'
 check_pattern "scripts/testing/smoke-continue-editor-flow.sh" '/workflow/plan' 'Continue editor smoke exercises workflow planning'
 check_pattern "scripts/testing/smoke-continue-editor-flow.sh" '/query' 'Continue editor smoke exercises query path'

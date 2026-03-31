@@ -165,14 +165,24 @@ def continue_editor_health() -> Dict[str, Any]:
     """Summarise Continue/editor health from aq-qa Phase 0 checks 0.5.*."""
     if not AQ_QA_SCRIPT.exists():
         return {"available": False, "source": str(AQ_QA_SCRIPT)}
+    timeout_seconds = int(os.getenv("AQ_REPORT_CONTINUE_EDITOR_TIMEOUT_SECONDS", "35"))
     try:
         result = subprocess.run(
             [str(AQ_QA_SCRIPT), "0", "--json"],
             capture_output=True,
             text=True,
-            timeout=35,
+            timeout=timeout_seconds,
             check=False,
         )
+    except subprocess.TimeoutExpired as exc:
+        fallback = _continue_editor_health_from_history()
+        if fallback:
+            fallback["source"] = str(AQ_QA_SCRIPT)
+            fallback["fallback_source"] = str(CONTINUE_EDITOR_HISTORY_PATH)
+            fallback["warning"] = f"aq-qa timed out after {timeout_seconds}s; using latest persisted snapshot"
+            fallback["error"] = str(exc)
+            return fallback
+        return {"available": False, "source": str(AQ_QA_SCRIPT), "error": str(exc)}
     except Exception as exc:
         return {"available": False, "source": str(AQ_QA_SCRIPT), "error": str(exc)}
 
@@ -244,6 +254,47 @@ def continue_editor_health() -> Dict[str, Any]:
         "checks": checks,
         "failure_categories": failure_categories,
         "top_failure_category": failure_categories[0][0] if failure_categories else None,
+    }
+
+
+def _continue_editor_health_from_history() -> Optional[Dict[str, Any]]:
+    """Use the latest persisted Continue/editor snapshot when aq-qa is temporarily unavailable."""
+    if not CONTINUE_EDITOR_HISTORY_PATH.exists():
+        return None
+    latest: Optional[Dict[str, Any]] = None
+    try:
+        with CONTINUE_EDITOR_HISTORY_PATH.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = _entry_ts_utc(item)
+                if ts is None:
+                    continue
+                item["_ts"] = ts
+                if latest is None or ts >= latest["_ts"]:
+                    latest = item
+    except OSError:
+        return None
+    if latest is None:
+        return None
+    failure_categories = latest.get("failure_categories") or []
+    return {
+        "available": True,
+        "source": str(CONTINUE_EDITOR_HISTORY_PATH),
+        "healthy": bool(latest.get("healthy", False)),
+        "total_checks": int(latest.get("total_checks", 0) or 0),
+        "passed_n": int(latest.get("passed_n", 0) or 0),
+        "failed_n": int(latest.get("failed_n", 0) or 0),
+        "skipped_n": int(latest.get("skipped_n", 0) or 0),
+        "checks": [],
+        "failure_categories": failure_categories,
+        "top_failure_category": failure_categories[0][0] if failure_categories else None,
+        "history_timestamp": latest["_ts"].isoformat().replace("+00:00", "Z"),
     }
 
 
