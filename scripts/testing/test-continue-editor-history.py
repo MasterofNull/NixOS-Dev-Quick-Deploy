@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
 from importlib.machinery import SourceFileLoader
@@ -49,6 +50,16 @@ def main() -> int:
         )
         lines = history_path.read_text(encoding="utf-8").strip().splitlines()
         assert_true(len(lines) == 4, "expected append_continue_editor_snapshot to append one new record")
+
+        def fake_run(*_args, **_kwargs):
+            raise subprocess.TimeoutExpired(cmd=["aq-qa", "0", "--json"], timeout=35)
+
+        aq_report.subprocess.run = fake_run
+        fallback = aq_report.continue_editor_health()
+        assert_true(fallback.get("available") is True, "expected history fallback to keep continue editor summary available")
+        assert_true(fallback.get("fallback_source") == str(history_path), "expected fallback source to point at history file")
+        assert_true("timed out" in str(fallback.get("warning", "")).lower(), "expected timeout warning in fallback health")
+        assert_true(fallback.get("history_timestamp"), "expected fallback to expose history timestamp")
 
     print("PASS: Continue/editor multi-window history reporting works")
     return 0
