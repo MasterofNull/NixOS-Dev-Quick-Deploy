@@ -119,6 +119,7 @@ send_query() {
   local prompt_id="$1"
   local query="$2"
   local generate_response="false"
+  local endpoint="${HYBRID_URL%/}/query"
   local payload http_code
   if prewarm_requires_synthesis "${prompt_id}"; then
     generate_response="true"
@@ -129,24 +130,34 @@ import json, sys
 query = sys.argv[1]
 prompt_id = sys.argv[2]
 generate_response = sys.argv[3].lower() == "true"
-print(json.dumps({
-    "query": query,
-    "mode": "auto",
-    "prefer_local": True,
-    "limit": 3,
-    "generate_response": generate_response,
-    "context": {
-        "skip_gap_tracking": True,
-        "source": "aq-rag-prewarm",
-        "prewarm_prompt_id": prompt_id,
-    },
-}))
+if prompt_id == "memory_recall_contextualise":
+    print(json.dumps({
+        "query": query,
+        "limit": 3,
+        "retrieval_mode": "hybrid",
+    }))
+else:
+    print(json.dumps({
+        "query": query,
+        "mode": "auto",
+        "prefer_local": True,
+        "limit": 3,
+        "generate_response": generate_response,
+        "context": {
+            "skip_gap_tracking": True,
+            "source": "aq-rag-prewarm",
+            "prewarm_prompt_id": prompt_id,
+        },
+    }))
 PY
   )"
+  if [[ "${prompt_id}" == "memory_recall_contextualise" ]]; then
+    endpoint="${HYBRID_URL%/}/memory/recall"
+  fi
   http_code="$(
     "${CURL_BIN}" -s -o /dev/null -w "%{http_code}" \
       --max-time 30 --connect-timeout 5 \
-      -X POST "${HYBRID_URL%/}/query" \
+      -X POST "${endpoint}" \
       -H "Content-Type: application/json" \
       -H "X-API-Key: ${HYBRID_KEY}" \
       -d "${payload}" 2>/dev/null || true
