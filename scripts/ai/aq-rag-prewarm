@@ -63,6 +63,12 @@ select_prompt_ids_from_report() {
       | .[]
     ' "${REPORT_PATH}" 2>/dev/null || true
   )
+
+  local memory_diagnosis=""
+  memory_diagnosis="$(jq -r '.rag_posture.memory_recall_diagnosis // empty' "${REPORT_PATH}" 2>/dev/null || true)"
+  if [[ "${memory_diagnosis}" == "unused" || "${memory_diagnosis}" == "weak" ]]; then
+    append_unique_prompt_id "memory_recall_contextualise"
+  fi
 }
 
 append_unique_prompt_id() {

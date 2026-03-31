@@ -19,6 +19,7 @@ from ai_coordinator import (  # noqa: E402
     infer_profile,
     merge_runtime_defaults,
     prune_runtime_registry,
+    route_by_complexity,
 )
 
 
@@ -66,6 +67,12 @@ def main() -> int:
     assert_true(default_runtime_id_for_profile("remote-tool-calling") == "openrouter-tool-calling", "tool-calling runtime mapping failed")
     assert_true(default_runtime_id_for_profile("continue-local") == "local-hybrid", "continue-local runtime mapping failed")
     assert_true(default_runtime_id_for_profile("local-tool-calling") == "local-tool-calling", "local tool-calling runtime mapping failed")
+
+    continuation_route = route_by_complexity("continue the current work on the failing runtime slice", prefer_local=True)
+    assert_true(continuation_route["recommended_profile"] == "default", "continuation routing should prefer local default lane")
+
+    continuation_no_flag = route_by_complexity("resume the ongoing bounded repo task")
+    assert_true(continuation_no_flag["recommended_profile"] == "default", "continuation routing should stay local-first by default")
 
     orchestration = coerce_orchestration_context({"agent_type": "continue", "role": "sub-agent"})
     assert_true(orchestration["requesting_agent"] == "continue", "orchestration should preserve requesting agent")

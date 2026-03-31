@@ -35,6 +35,12 @@ Implementation detail and required-track sequencing live in:
    - Flag concentrated hint-selection periods as a monitoring note, not just a passive metric.
    - Goal: make future improvement loops easier to steer from the report alone.
 
+7. Offline local-agent resilience and captive portal recovery
+   - Keep local-agent execution local-first when internet or remote delegation is unavailable.
+   - Degrade flagship/quality-critical routing to local execution with explicit operator-visible reasons instead of hard failure.
+   - Keep captive portal recovery bounded: temporary HTTP/HTTPS + DNS + DHCP bypass, interface-aware when specified, with automatic revert.
+   - Goal: preserve local AI operability during WAN loss and shorten recovery from portal-gated networks.
+
 ## Medium Priority
 
 1. Hint feedback loop quality
@@ -63,6 +69,7 @@ Implementation detail and required-track sequencing live in:
 3. Suppress synthetic gaps across all hint/report surfaces
 4. Curate remaining recurring operator knowledge
 5. Re-run deploy, QA, report, and live endpoint verification
+6. Validate offline local-agent resilience and captive portal recovery
 
 ## Batch Execution Model
 
@@ -129,3 +136,5 @@ Default batching rule:
 - Refresh the live report after targeted prewarm so deploy summaries reflect the new retrieval posture
 - Prioritize `memory_recall` in workflow plans for resume/continue queries
 - Surface a stronger continuation-specific hint when broad retrieval is overused relative to memory recall
+- Current optimization direction: keep continuation-style requests on compact hybrid retrieval instead of the slower tree path when prior context is the main need, and auto-include one memory-recall prewarm seed whenever live posture says recall is underused
+- Current routing follow-up: keep switchboard default provider local, lower the hybrid local-confidence threshold to `0.35` declaratively, and remove shell endpoint drift so health/roadmap signals use the same embeddings port (`:8081`)
