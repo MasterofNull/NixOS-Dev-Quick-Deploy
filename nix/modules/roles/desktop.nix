@@ -21,6 +21,7 @@ let
   cfg = config.mySystem;
   desktopEnabled = cfg.roles.desktop.enable;
   primaryGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
+  cosmicThemeDarkPalette = builtins.readFile (../../templates + "/Royal Wine-inner.ron");
 
   # XDG portal backend selection.
   # xdg-desktop-portal-gnome requires gnome-shell running — do NOT add it when
@@ -185,6 +186,8 @@ in
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicComp/v1   0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark 0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark/v1 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark.Builder 0750 cosmic-greeter cosmic-greeter -"
+      "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Dark.Builder/v1 0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode 0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTheme.Mode/v1 0750 cosmic-greeter cosmic-greeter -"
       "d /var/lib/cosmic-greeter/.config/cosmic/com.system76.CosmicTk        0750 cosmic-greeter cosmic-greeter -"
@@ -196,6 +199,68 @@ in
       "d /home/${cfg.primaryUser}/.local/share/flatpak/exports/share/icons/hicolor 0755 ${cfg.primaryUser} ${primaryGroup} -"
       "z /home/${cfg.primaryUser}/.local/share/flatpak/exports                 - ${cfg.primaryUser} ${primaryGroup} -"
     ];
+
+    systemd.services.cosmic-greeter-config-seed = {
+      description = "Seed minimal COSMIC greeter config to avoid parser and watcher churn";
+      wantedBy = [ "graphical.target" ];
+      before = [ "greetd.service" "cosmic-greeter-daemon.service" ];
+      after = [ "systemd-tmpfiles-setup.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = let
+        palettePath = pkgs.writeText "cosmic-greeter-dark-palette.ron" cosmicThemeDarkPalette;
+      in ''
+        set -eu
+        base="/var/lib/cosmic-greeter/.config/cosmic"
+
+        install -d -o cosmic-greeter -g cosmic-greeter -m 0750 \
+          "$base/com.system76.CosmicComp/v1" \
+          "$base/com.system76.CosmicTheme.Dark/v1" \
+          "$base/com.system76.CosmicTheme.Dark.Builder/v1" \
+          "$base/com.system76.CosmicTheme.Mode/v1" \
+          "$base/com.system76.CosmicTk/v1"
+
+        seed_file() {
+          target="$1"
+          shift
+          if [ ! -s "$target" ]; then
+            printf '%s\n' "$1" >"$target"
+            chown cosmic-greeter:cosmic-greeter "$target"
+            chmod 0640 "$target"
+          fi
+        }
+
+        if [ ! -s "$base/com.system76.CosmicTheme.Dark/v1/palette" ]; then
+          install -o cosmic-greeter -g cosmic-greeter -m 0640 "${palettePath}" "$base/com.system76.CosmicTheme.Dark/v1/palette"
+        fi
+        if [ ! -s "$base/com.system76.CosmicTheme.Dark.Builder/v1/palette" ]; then
+          install -o cosmic-greeter -g cosmic-greeter -m 0640 "${palettePath}" "$base/com.system76.CosmicTheme.Dark.Builder/v1/palette"
+        fi
+
+        seed_file "$base/com.system76.CosmicTheme.Dark/v1/name" '"cosmic-dark"'
+        seed_file "$base/com.system76.CosmicTheme.Dark/v1/is_dark" 'true'
+        seed_file "$base/com.system76.CosmicTheme.Mode/v1/is_dark" 'true'
+        seed_file "$base/com.system76.CosmicTk/v1/apply_theme_global" 'true'
+        seed_file "$base/com.system76.CosmicTk/v1/header_size" 'Spacious'
+        seed_file "$base/com.system76.CosmicTk/v1/interface_density" 'Spacious'
+        seed_file "$base/com.system76.CosmicComp/v1/focus_follows_cursor" 'false'
+        seed_file "$base/com.system76.CosmicComp/v1/workspaces" '(
+            workspace_mode: OutputBound,
+            workspace_layout: Vertical,
+        )'
+        seed_file "$base/com.system76.CosmicComp/v1/xkb_config" '(
+            rules: "",
+            model: "pc104",
+            layout: "us",
+            variant: "",
+            options: None,
+            repeat_delay: 600,
+            repeat_rate: 25,
+        )'
+      '';
+    };
 
     # ---- Printing ----------------------------------------------------------
     services.printing.enable = lib.mkDefault true;
