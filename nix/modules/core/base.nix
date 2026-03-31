@@ -211,7 +211,7 @@ in
 
     systemd.tmpfiles.rules = lib.mkIf cfg.deployment.mutableSpaces.enable (
       (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserPaths)
-      ++ (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableProgramPaths)
+      ++ (map (path: "d ${path} 0750 root root -") mutableProgramPaths)
     );
 
     # ---- Security hardening (system-wide baseline) -------------------------
