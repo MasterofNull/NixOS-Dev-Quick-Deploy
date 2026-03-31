@@ -2610,7 +2610,31 @@ def routing_split_windows(
     }
 
 
-def cache_hit_rate() -> Dict[str, Any]:
+def _route_prompt_cache_hit_rate(entries: List[dict]) -> Dict[str, Any]:
+    """Derive prompt-cache sample quality from route_search audit metadata."""
+    samples: List[int] = []
+    for entry in entries:
+        if str(entry.get("tool_name", "")).strip().lower() != "route_search":
+            continue
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        if metadata.get("generate_response") is not True:
+            continue
+        cached_tokens = metadata.get("prompt_cache_cached_tokens")
+        if isinstance(cached_tokens, (int, float)):
+            samples.append(int(cached_tokens))
+    hits = sum(1 for value in samples if value > 0)
+    misses = sum(1 for value in samples if value <= 0)
+    total = hits + misses
+    return {
+        "hits": hits,
+        "misses": misses,
+        "hit_pct": round(100 * hits / total, 1) if total else None,
+        "available": total > 0,
+        "source": "route_prompt_cache_audit",
+    }
+
+
+def cache_hit_rate(audit_entries: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Fetch embedding cache hit rate from Prometheus counters."""
     hits = prom_query("sum(embedding_cache_hits_total) or vector(0)")
     misses = prom_query("sum(embedding_cache_misses_total) or vector(0)")
@@ -2621,12 +2645,18 @@ def cache_hit_rate() -> Dict[str, Any]:
     h = hits or 0.0
     m = misses or 0.0
     total = h + m
-    return {
+    result = {
         "hits": int(h),
         "misses": int(m),
         "hit_pct": round(100 * h / total, 1) if total else None,
         "available": hits is not None or misses is not None,  # None only on connection error
+        "source": "embedding_cache_prometheus",
     }
+    if total == 0 and isinstance(audit_entries, list):
+        audit_fallback = _route_prompt_cache_hit_rate(audit_entries)
+        if audit_fallback.get("available"):
+            return audit_fallback
+    return result
 
 
 def _get_last_prewarm_run(service: str) -> Dict[str, Any]:
@@ -5428,7 +5458,7 @@ def main() -> None:
         report_since=since_dt,
     )
     route_latency_decomposition = route_search_latency_decomposition(audit_entries, window=since_label)
-    cache = cache_hit_rate()
+    cache = cache_hit_rate(recent_audit_entries)
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
     adoption = hint_adoption(since_dt)  # Phase 19.3.4

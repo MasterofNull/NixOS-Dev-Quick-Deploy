@@ -28,6 +28,10 @@ def main() -> int:
         'audit_metadata["backend"] = "local" if prefer_local else "remote"' in text,
         "query error path should classify failed requests with a bounded backend label",
     )
+    assert_true(
+        'request["audit_metadata"]["prompt_cache_cached_tokens"] = cached_tokens' in text,
+        "query audit metadata should propagate prompt-cache sample counts into tool-audit rows",
+    )
 
     print("PASS: HTTP query audit metadata propagation is covered")
     return 0
