@@ -330,10 +330,6 @@ in
       text = cosmicThemeDarkPalette;
       force = true;
     };
-    configFile."cosmic/com.system76.CosmicTheme.Dark.Builder/v1/palette" = {
-      text = cosmicThemeDarkPalette;
-      force = true;
-    };
     # Keep COSMIC theme overrides minimal and version-stable.
     # Newer COSMIC builds changed several per-key RON value types; forcing
     # old `Some((...))` forms breaks theme loading at session startup.
