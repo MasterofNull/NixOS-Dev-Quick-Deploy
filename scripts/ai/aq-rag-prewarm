@@ -8,6 +8,7 @@ source "${REPO_ROOT}/config/service-endpoints.sh"
 
 REPORT_PATH="${AQ_REPORT_PATH:-/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json}"
 HYBRID_KEY_FILE="${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+CURL_BIN="${AQ_PREWARM_CURL_BIN:-curl}"
 MAX_PROMPTS=2
 REPLAY_COUNT=2
 JSON_OUTPUT=false
@@ -117,17 +118,23 @@ queries_for_prompt_id() {
 send_query() {
   local prompt_id="$1"
   local query="$2"
+  local generate_response="false"
   local payload http_code
+  if prewarm_requires_synthesis "${prompt_id}"; then
+    generate_response="true"
+  fi
   payload="$(
-    python3 - "$query" "$prompt_id" <<'PY'
+    python3 - "$query" "$prompt_id" "$generate_response" <<'PY'
 import json, sys
 query = sys.argv[1]
 prompt_id = sys.argv[2]
+generate_response = sys.argv[3].lower() == "true"
 print(json.dumps({
     "query": query,
     "mode": "auto",
     "prefer_local": True,
     "limit": 3,
+    "generate_response": generate_response,
     "context": {
         "skip_gap_tracking": True,
         "source": "aq-rag-prewarm",
@@ -137,7 +144,7 @@ print(json.dumps({
 PY
   )"
   http_code="$(
-    curl -s -o /dev/null -w "%{http_code}" \
+    "${CURL_BIN}" -s -o /dev/null -w "%{http_code}" \
       --max-time 30 --connect-timeout 5 \
       -X POST "${HYBRID_URL%/}/query" \
       -H "Content-Type: application/json" \
@@ -145,6 +152,18 @@ PY
       -d "${payload}" 2>/dev/null || true
   )"
   [[ "${http_code}" =~ ^2 ]]
+}
+
+prewarm_requires_synthesis() {
+  local prompt_id="$1"
+  case "${prompt_id}" in
+    route_search_synthesis)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 if (( ${#PROMPT_IDS[@]} > 0 )); then
