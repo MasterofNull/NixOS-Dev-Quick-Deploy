@@ -6,7 +6,7 @@
   programs.git = {
     enable = lib.mkDefault true;
     settings = {
-      credential.helper = lib.mkDefault "cache --timeout=28800";
+      credential.helper = lib.mkDefault "!gh auth git-credential";
     };
   };
 }

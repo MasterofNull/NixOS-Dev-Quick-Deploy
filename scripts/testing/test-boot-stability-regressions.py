@@ -21,8 +21,32 @@ def main() -> int:
     p14s_text = P14S.read_text(encoding="utf-8")
 
     assert_true(
-        'map (path: "d ${path} 0750 root root -") mutableProgramPaths' in base_text,
-        "program-writable mutable paths should be root-owned to avoid tmpfiles unsafe transitions",
+        'mutableUserServicePaths = lib.unique [ mutableOptimizerDir mutableLogDir ];' in base_text,
+        "base module should identify user-writable service workdirs separately from root-owned state roots",
+    )
+    assert_true(
+        'mutableSharedTraversePaths = [ mutableStateDir ];' in base_text,
+        "base module should isolate shared traverse-only parents for user-run services",
+    )
+    assert_true(
+        'map (path: "d ${path} 0711 root root -") mutableSharedTraversePaths' in base_text,
+        "AI state root should stay root-owned but traversable so user-run services can reach their writable child dirs",
+    )
+    assert_true(
+        'map (path: "d ${path} 0750 root root -") mutableRootProgramPaths' in base_text,
+        "root-owned mutable state roots should stay protected by tmpfiles ownership",
+    )
+    assert_true(
+        'map (path: "z ${path} 0711 root root -") mutableSharedTraversePaths' in base_text,
+        "tmpfiles should repair the shared traverse-only state root during activation",
+    )
+    assert_true(
+        'map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths' in base_text,
+        "optimizer and AI log workdirs should stay writable for user-run orchestration services",
+    )
+    assert_true(
+        'map (path: "z ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths' in base_text,
+        "tmpfiles should repair ownership on existing optimizer and AI log workdirs during activation",
     )
     assert_true(
         'wait_for_aidb_health()' in sync_text,

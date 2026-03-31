@@ -66,10 +66,16 @@ let
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
   mutableUserPaths = cfg.deployment.mutableSpaces.userWritablePaths;
+  mutableSharedTraversePaths = [ mutableStateDir ];
   mutableProgramPaths = lib.unique (
     cfg.deployment.mutableSpaces.programWritablePaths
     ++ [ mutableStateDir mutableOptimizerDir mutableLogDir ]
   );
+  mutableUserServicePaths = lib.unique [ mutableOptimizerDir mutableLogDir ];
+  mutableRootProgramPaths = builtins.filter (path:
+    !(builtins.elem path mutableUserServicePaths)
+    && !(builtins.elem path mutableSharedTraversePaths)
+  ) mutableProgramPaths;
   mutableAllPaths = mutableUserPaths ++ mutableProgramPaths;
 
   # ── Dev testing helper scripts (referenced by system-health-check.sh) ──────
@@ -211,7 +217,12 @@ in
 
     systemd.tmpfiles.rules = lib.mkIf cfg.deployment.mutableSpaces.enable (
       (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserPaths)
-      ++ (map (path: "d ${path} 0750 root root -") mutableProgramPaths)
+      ++ (map (path: "d ${path} 0711 root root -") mutableSharedTraversePaths)
+      ++ (map (path: "d ${path} 0750 root root -") mutableRootProgramPaths)
+      ++ (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths)
+      ++ (map (path: "z ${path} 0711 root root -") mutableSharedTraversePaths)
+      ++ (map (path: "z ${path} 0750 root root -") mutableRootProgramPaths)
+      ++ (map (path: "z ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths)
     );
 
     # ---- Security hardening (system-wide baseline) -------------------------
