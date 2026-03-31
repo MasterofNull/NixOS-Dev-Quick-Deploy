@@ -165,7 +165,7 @@ def continue_editor_health() -> Dict[str, Any]:
     """Summarise Continue/editor health from aq-qa Phase 0 checks 0.5.*."""
     if not AQ_QA_SCRIPT.exists():
         return {"available": False, "source": str(AQ_QA_SCRIPT)}
-    timeout_seconds = int(os.getenv("AQ_REPORT_CONTINUE_EDITOR_TIMEOUT_SECONDS", "35"))
+    timeout_seconds = int(os.getenv("AQ_REPORT_CONTINUE_EDITOR_TIMEOUT_SECONDS", "75"))
     try:
         result = subprocess.run(
             [str(AQ_QA_SCRIPT), "0", "--json"],
