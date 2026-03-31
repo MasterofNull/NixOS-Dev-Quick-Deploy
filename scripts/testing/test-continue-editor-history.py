@@ -25,6 +25,7 @@ def main() -> int:
         history_path = Path(tmpdir) / "continue-editor-history.jsonl"
         os.environ["AI_STRICT_ENV"] = "false"
         os.environ["CONTINUE_EDITOR_HISTORY_PATH"] = str(history_path)
+        os.environ.pop("AQ_REPORT_CONTINUE_EDITOR_TIMEOUT_SECONDS", None)
         aq_report = SourceFileLoader("aq_report_continue_hist", str(AQ_REPORT_PATH)).load_module()
 
         now = datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)
@@ -51,11 +52,18 @@ def main() -> int:
         lines = history_path.read_text(encoding="utf-8").strip().splitlines()
         assert_true(len(lines) == 4, "expected append_continue_editor_snapshot to append one new record")
 
+        observed_timeout = {"value": None}
+
         def fake_run(*_args, **_kwargs):
-            raise subprocess.TimeoutExpired(cmd=["aq-qa", "0", "--json"], timeout=35)
+            observed_timeout["value"] = _kwargs.get("timeout")
+            raise subprocess.TimeoutExpired(
+                cmd=["aq-qa", "0", "--json"],
+                timeout=_kwargs.get("timeout"),
+            )
 
         aq_report.subprocess.run = fake_run
         fallback = aq_report.continue_editor_health()
+        assert_true(observed_timeout["value"] == 75, "expected continue editor health to use the larger default timeout")
         assert_true(fallback.get("available") is True, "expected history fallback to keep continue editor summary available")
         assert_true(fallback.get("fallback_source") == str(history_path), "expected fallback source to point at history file")
         assert_true("timed out" in str(fallback.get("warning", "")).lower(), "expected timeout warning in fallback health")
