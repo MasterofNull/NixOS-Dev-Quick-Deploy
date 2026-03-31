@@ -389,6 +389,45 @@ def _select_route_collections(
     }
 
 
+def _select_keyword_pool(
+    *,
+    retrieval_profile: Dict[str, Any],
+    keyword_limit: int,
+    generate_response: bool,
+) -> int:
+    """Bound keyword scroll breadth using the active retrieval profile."""
+    keyword_limit = max(0, int(keyword_limit))
+    if keyword_limit <= 0:
+        return 0
+
+    profile = str((retrieval_profile or {}).get("profile", "") or "")
+    collections = retrieval_profile.get("collections") if isinstance(retrieval_profile, dict) else []
+    collection_count = len(collections) if isinstance(collections, list) else 0
+
+    base_pool = max(keyword_limit, int(Config.AI_ROUTE_KEYWORD_POOL_DEFAULT))
+    compact_pool = max(keyword_limit, int(Config.AI_ROUTE_KEYWORD_POOL_COMPACT))
+    single_collection_pool = max(keyword_limit, int(Config.AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION))
+
+    if collection_count <= 1:
+        return min(base_pool, single_collection_pool)
+
+    if (
+        not generate_response
+        and (
+            collection_count <= 2
+            or profile.endswith("-compact")
+            or profile.endswith("-memory-first")
+            or profile in {"simple-query-optimized", "latency-optimized"}
+        )
+    ):
+        return min(base_pool, compact_pool)
+
+    if profile.startswith("lookup-focused") and collection_count <= 2:
+        return min(base_pool, compact_pool)
+
+    return base_pool
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -497,6 +536,11 @@ async def route_search(
             generate_response=generate_response,
         )
         target_collections = retrieval_profile["collections"]
+        keyword_pool = _select_keyword_pool(
+            retrieval_profile=retrieval_profile,
+            keyword_limit=keyword_limit,
+            generate_response=generate_response,
+        )
 
         # Phase 5.2 Optimization 1: Start capability discovery in parallel
         if Config.AI_CAPABILITY_DISCOVERY_ON_QUERY:
@@ -531,6 +575,7 @@ async def route_search(
                     _hybrid_search(
                         query=query, collections=target_collections,
                         limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
+                        keyword_pool=keyword_pool,
                     ),
                     timeout=adaptive_timeout,
                 )
@@ -547,6 +592,7 @@ async def route_search(
                     _hybrid_search(
                         query=_working_query, collections=target_collections,
                         limit=limit, keyword_limit=0, score_threshold=score_threshold,
+                        keyword_pool=0,
                     ),
                     timeout=adaptive_timeout,
                 )
@@ -579,6 +625,7 @@ async def route_search(
                     _hybrid_search(
                         query=_working_query, collections=target_collections,
                         limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
+                        keyword_pool=keyword_pool,
                     ),
                     timeout=adaptive_timeout,
                 )
@@ -898,6 +945,7 @@ async def route_search(
                     "profile": retrieval_profile.get("profile", "standard"),
                     "collection_count": len(target_collections),
                     "collections": target_collections,
+                    "keyword_pool": keyword_pool,
                 },
             },
         )

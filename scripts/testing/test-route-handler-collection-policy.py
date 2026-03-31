@@ -34,6 +34,9 @@ def load_route_handler():
             Config=types.SimpleNamespace(
                 LLAMA_CPP_URL="http://127.0.0.1:8080",
                 AI_AUTONOMY_MAX_RETRIEVAL_RESULTS=8,
+                AI_ROUTE_KEYWORD_POOL_DEFAULT=60,
+                AI_ROUTE_KEYWORD_POOL_COMPACT=24,
+                AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION=16,
                 AI_LLM_EXPANSION_ENABLED=False,
                 AI_LLM_EXPANSION_TIMEOUT_S=2,
                 AI_TREE_SEARCH_ENABLED=True,
@@ -126,6 +129,12 @@ def main() -> int:
         continuation_memory_first["collections"] == ["codebase-context"],
         "expected retrieval-only continuation path to stay on a single codebase collection",
     )
+    continuation_memory_pool = route_handler._select_keyword_pool(
+        retrieval_profile=continuation_memory_first,
+        keyword_limit=5,
+        generate_response=False,
+    )
+    assert_true(continuation_memory_pool == 16, "expected single-collection continuation retrieval to use the tight keyword pool")
 
     continuation_without_memory = route_handler._select_route_collections(
         "pick up where the last agent left off on the deployment debugging work",
@@ -141,6 +150,12 @@ def main() -> int:
         len(continuation_without_memory["collections"]) == 1,
         "expected compact continuation retrieval without memory to use a single collection",
     )
+    continuation_compact_pool = route_handler._select_keyword_pool(
+        retrieval_profile=continuation_without_memory,
+        keyword_limit=5,
+        generate_response=False,
+    )
+    assert_true(continuation_compact_pool == 16, "expected compact continuation retrieval to use the single-collection keyword pool")
 
     route_handler._COLLECTIONS = {"best-practices": object(), "codebase-context": object()}
     auto_continuation_route = "auto"
@@ -174,6 +189,12 @@ def main() -> int:
     assert_true(lookup["profile"] in {"lookup-focused", "lookup-focused-compact"}, "expected bounded lookup-focused profile")
     assert_true(len(lookup["collections"]) <= 2, "expected lookup path to stay narrowly bounded")
     assert_true("codebase-context" not in lookup["collections"], "expected non-code lookup to avoid codebase context")
+    lookup_pool = route_handler._select_keyword_pool(
+        retrieval_profile=lookup,
+        keyword_limit=5,
+        generate_response=False,
+    )
+    assert_true(lookup_pool == 24, "expected bounded lookup retrieval to use the compact keyword pool")
 
     route_handler.task_classifier.classify = lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="reasoning")
     reasoning = route_handler._select_route_collections(
@@ -185,6 +206,12 @@ def main() -> int:
     assert_true(reasoning["profile"] in {"reasoning-focused", "reasoning-focused-detailed", "code-focused", "code-focused-detailed"}, "expected bounded reasoning/code-focused profile")
     assert_true("best-practices" in reasoning["collections"], "expected best-practices in reasoning path")
     assert_true("skills-patterns" in reasoning["collections"], "expected skills-patterns in reasoning path")
+    reasoning_pool = route_handler._select_keyword_pool(
+        retrieval_profile=reasoning,
+        keyword_limit=5,
+        generate_response=True,
+    )
+    assert_true(reasoning_pool == 60, "expected synthesis-oriented reasoning retrieval to keep the broader keyword pool")
 
     print("PASS: Route-handler collection policy stays bounded by task class and continuation context")
     return 0
