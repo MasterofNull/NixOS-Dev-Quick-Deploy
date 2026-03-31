@@ -746,6 +746,7 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
     handoff_requested = 0
     success_count = 0
     total = 0
+    source = "delegate_audit"
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -777,9 +778,27 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
         if str(entry.get("outcome", "") or "").strip().lower() in {"ok", "success"}:
             success_count += 1
     if total <= 0:
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("tool_name", "") or "").strip().lower() != "route_search":
+                continue
+            metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            if str(metadata.get("backend", "") or "").strip().lower() != "remote":
+                continue
+            if metadata.get("generate_response") is not True:
+                continue
+            total += 1
+            success = str(entry.get("outcome", "") or "").strip().lower() in {"ok", "success"}
+            if success:
+                success_count += 1
+            profile_counts["remote-reasoning"] = profile_counts.get("remote-reasoning", 0) + 1
+            source = "route_search_audit_fallback"
+    if total <= 0:
         return {"available": False, "window": window}
     return {
         "available": True,
+        "source": source,
         "window": window,
         "total_calls": total,
         "success_count": success_count,
