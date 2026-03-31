@@ -20,6 +20,7 @@ OPERATIONS:
   audit                   Run comprehensive security audit (default)
   scan                    Security vulnerability scan
   firewall                Firewall configuration audit
+  captive-portal          Manage captive portal bypass for wifi login
   tls                     TLS certificate management
   rotate-keys             Rotate API keys and secrets
   penetration             Run penetration test suite
@@ -37,6 +38,9 @@ EXAMPLES:
   deploy security                      # Run security audit
   deploy security scan                 # Vulnerability scan
   deploy security firewall             # Audit firewall rules
+  deploy security captive-portal       # Check captive portal bypass status
+  deploy security captive-portal enable 10  # Enable bypass for 10 minutes
+  deploy security captive-portal disable    # Disable bypass
   deploy security tls                  # Check TLS certificates
   deploy security rotate-keys --plan   # Show secret rotation readiness/impact plan
   deploy security rotate-keys          # Rotate all API keys
@@ -249,6 +253,127 @@ run_firewall_audit() {
   fi
 }
 
+# ============================================================================
+# Captive Portal Bypass
+# ============================================================================
+
+run_captive_portal() {
+  local action="${1:-status}"
+  local duration="${2:-5}"
+  local dashboard_api="${DASHBOARD_API_URL:-http://127.0.0.1:8889}"
+
+  print_section "Captive Portal Bypass"
+
+  case "$action" in
+    status)
+      log_info "Checking captive portal bypass status..."
+      local response
+      response=$(curl -s -f "${dashboard_api}/api/firewall/captive-portal/status" 2>/dev/null)
+
+      if [[ $? -ne 0 ]]; then
+        log_warn "Dashboard API not reachable - checking firewall directly"
+
+        # Direct nftables check for bypass rules
+        if command -v nft >/dev/null 2>&1; then
+          if sudo nft list ruleset 2>/dev/null | grep -q "captive-portal-bypass"; then
+            log_warn "Captive portal bypass is ACTIVE (found bypass rules)"
+          else
+            log_success "Captive portal bypass is INACTIVE (normal firewall rules)"
+          fi
+        else
+          log_info "Cannot determine status - nft not available"
+        fi
+        return 0
+      fi
+
+      local active
+      active=$(echo "$response" | jq -r '.active // false')
+
+      if [[ "$active" == "true" ]]; then
+        local expires_at
+        expires_at=$(echo "$response" | jq -r '.expires_at // "unknown"')
+        log_warn "Captive portal bypass is ACTIVE"
+        log_info "Expires at: $expires_at"
+      else
+        log_success "Captive portal bypass is INACTIVE (normal firewall rules)"
+      fi
+      ;;
+
+    enable)
+      if [[ "$duration" -lt 1 ]] || [[ "$duration" -gt 15 ]]; then
+        log_error "Duration must be between 1 and 15 minutes"
+        return 1
+      fi
+
+      log_warn "Enabling captive portal bypass for ${duration} minutes..."
+      log_info "This temporarily opens HTTP/HTTPS/DNS for wifi login portals"
+
+      local response
+      response=$(curl -s -f -X POST "${dashboard_api}/api/firewall/captive-portal/enable" \
+        -H "Content-Type: application/json" \
+        -d "{\"duration_minutes\": ${duration}}" 2>/dev/null)
+
+      if [[ $? -ne 0 ]]; then
+        log_error "Failed to enable bypass - dashboard API not reachable"
+        log_info "Try: systemctl status command-center-dashboard-api"
+        return 1
+      fi
+
+      local status
+      status=$(echo "$response" | jq -r '.status // "error"')
+
+      if [[ "$status" == "enabled" ]] || [[ "$status" == "already_active" ]]; then
+        log_success "Captive portal bypass enabled for ${duration} minutes"
+        log_info "Connect to wifi and complete portal login"
+        log_info "Bypass will auto-disable after ${duration} minutes"
+        log_info "Or run: deploy security captive-portal disable"
+      else
+        log_error "Failed to enable bypass: $(echo "$response" | jq -r '.message // .error // "unknown error"')"
+        return 1
+      fi
+      ;;
+
+    disable)
+      log_info "Disabling captive portal bypass..."
+
+      local response
+      response=$(curl -s -f -X POST "${dashboard_api}/api/firewall/captive-portal/disable" 2>/dev/null)
+
+      if [[ $? -ne 0 ]]; then
+        log_error "Failed to disable bypass - dashboard API not reachable"
+        return 1
+      fi
+
+      local status
+      status=$(echo "$response" | jq -r '.status // "error"')
+
+      if [[ "$status" == "disabled" ]] || [[ "$status" == "not_active" ]]; then
+        log_success "Captive portal bypass disabled - normal firewall rules restored"
+      else
+        log_error "Failed to disable bypass: $(echo "$response" | jq -r '.message // .error // "unknown error"')"
+        return 1
+      fi
+      ;;
+
+    *)
+      log_error "Unknown action: $action"
+      echo ""
+      echo "Usage: deploy security captive-portal [status|enable|disable] [duration]"
+      echo ""
+      echo "Actions:"
+      echo "  status              Check current bypass status (default)"
+      echo "  enable [minutes]    Enable bypass for 1-15 minutes (default: 5)"
+      echo "  disable             Disable bypass and restore firewall"
+      echo ""
+      echo "Examples:"
+      echo "  deploy security captive-portal              # Check status"
+      echo "  deploy security captive-portal enable 10   # Enable for 10 minutes"
+      echo "  deploy security captive-portal disable     # Disable bypass"
+      return 1
+      ;;
+  esac
+}
+
 run_tls_management() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -406,7 +531,7 @@ cmd_security() {
         report_path="$2"
         shift 2
         ;;
-      audit|scan|firewall|tls|rotate-keys|penetration|baseline)
+      audit|scan|firewall|captive-portal|tls|rotate-keys|penetration|baseline)
         operation="$1"
         shift
         ;;
@@ -443,6 +568,10 @@ cmd_security() {
       run_firewall_audit
       result=$?
       ;;
+    captive-portal)
+      run_captive_portal "$@"
+      result=$?
+      ;;
     tls)
       run_tls_management
       result=$?
@@ -462,7 +591,7 @@ cmd_security() {
     *)
       log_error "Unknown operation: $operation"
       echo ""
-      echo "Valid operations: audit, scan, firewall, tls, rotate-keys, penetration, baseline"
+      echo "Valid operations: audit, scan, firewall, captive-portal, tls, rotate-keys, penetration, baseline"
       return 2
       ;;
   esac
