@@ -113,6 +113,13 @@ def tree_expand_queries(query: str, branch_factor: int) -> List[str]:
     return deduped[: max(1, branch_factor)]
 
 
+async def _await_with_timeout(awaitable: Any, timeout_seconds: float) -> Any:
+    """Await *awaitable* with a timeout only when the bound is positive."""
+    if timeout_seconds <= 0:
+        return await awaitable
+    return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
+
+
 # ============================================================================
 # SearchRouter
 # ============================================================================
@@ -236,7 +243,10 @@ class SearchRouter:
                         limit=limit,
                         score_threshold=score_threshold,
                     ).points
-                points = await self._call_breaker_safe("qdrant", _query_points)
+                points = await _await_with_timeout(
+                    self._call_breaker_safe("qdrant", _query_points),
+                    Config.AI_ROUTE_COLLECTION_SEMANTIC_TIMEOUT_SECONDS,
+                )
                 for point in points:
                     col_semantic.append({
                         "collection": collection,
@@ -258,7 +268,10 @@ class SearchRouter:
                             with_payload=True,
                             with_vectors=False,
                         )
-                    points, _ = await self._call_breaker_safe("qdrant", _scroll_points)
+                    points, _ = await _await_with_timeout(
+                        self._call_breaker_safe("qdrant", _scroll_points),
+                        Config.AI_ROUTE_COLLECTION_KEYWORD_TIMEOUT_SECONDS,
+                    )
                     for point in points:
                         matched, score = payload_matches_tokens(point.payload or {}, tokens)
                         if not matched:
