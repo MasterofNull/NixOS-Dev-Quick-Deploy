@@ -150,6 +150,42 @@ def main() -> int:
                 "captive portal bypass should add TCP DNS rule",
             )
 
+            runtime_controls_module = importlib.import_module("api.services.runtime_controls")
+            runtime_controls_module = importlib.reload(runtime_controls_module)
+            audit_log = runtime_controls_module.get_operator_audit_log()
+            audit_path = Path(os.environ["DASHBOARD_OPERATOR_AUDIT_LOG_PATH"])
+            with audit_path.open("a", encoding="utf-8") as handle:
+                handle.write("{not-json}\n")
+            integrity_after_noise = audit_log.integrity_status(limit=10)
+            assert_true(integrity_after_noise.get("valid") is True, "integrity check should ignore malformed tail rows")
+            assert_true(
+                isinstance(integrity_after_noise.get("window_truncated"), bool),
+                "integrity response should keep a boolean truncation marker after malformed tail noise",
+            )
+
+            legacy_payload = {
+                "ts": "2026-03-31T00:00:00+00:00",
+                "path": "/api/deployments/legacy",
+                "method": "GET",
+                "status_code": 200,
+                "client_ip": "127.0.0.1",
+                "user_agent": "test-agent",
+                "query_keys": [],
+                "category": "default",
+                "seal_alg": "sha256-chain-v1",
+                "prev_hash": "",
+            }
+            import hashlib
+            import json
+            legacy_payload["hash"] = hashlib.sha256(
+                json.dumps({k: v for k, v in legacy_payload.items() if k != "hash"}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            with audit_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(legacy_payload, sort_keys=True) + "\n")
+            legacy_integrity = audit_log.integrity_status(limit=10)
+            assert_true(legacy_integrity.get("valid") is True, "legacy sealed rows without prev_hash should remain valid")
+            assert_true(legacy_integrity.get("legacy_events", 0) >= 1, "legacy sealed rows should be reported as compatibility events")
+
         print("PASS: dashboard runtime controls regression")
     return 0
 
