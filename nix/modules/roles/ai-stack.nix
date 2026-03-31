@@ -789,13 +789,12 @@ in {
         "vm.overcommit_ratio" = lib.mkDefault 100;
       };
       # Phase 5.1.4 / 16.3.2 — unlock full AMD GPU power management features.
-      # Required for LACT manual frequency control and ROCm compute workloads.
-      # ppfeaturemask=0xffffffff enables all amdgpu power management feature bits.
-      # Guard: only inject when an AMD GPU is actually present (resolvedAccel == "rocm").
-      # On Intel/NVIDIA/CPU-only hosts the parameter is silently ignored, but we
-      # avoid polluting the kernel command line unnecessarily.
+      # Required for LACT manual frequency control and some ROCm tuning
+      # workloads, but stability-focused hosts may explicitly disable AMD
+      # overdrive. Respect the centralized hardware.amdgpu.overdrive.enable
+      # switch so workstation stability overrides are not bypassed here.
       boot.kernelParams =
-        lib.mkIf (resolvedAccel == "rocm")
+        lib.mkIf (resolvedAccel == "rocm" && config.hardware.amdgpu.overdrive.enable)
         (lib.mkAfter ["amdgpu.ppfeaturemask=0xffffffff"]);
     })
 

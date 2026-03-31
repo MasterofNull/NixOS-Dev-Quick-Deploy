@@ -37,8 +37,12 @@ def main() -> int:
         "P14s AMD host class should force the kernel off unstable TSC at boot",
     )
     assert_true(
-        'hardware.amdgpu.overdrive.enable = lib.mkDefault false;' in p14s_text,
+        'hardware.amdgpu.overdrive.enable = lib.mkForce false;' in p14s_text,
         "P14s AMD host class should keep AMD overdrive disabled for stability",
+    )
+    assert_true(
+        'config.hardware.amdgpu.overdrive.enable' in (ROOT / "nix" / "modules" / "roles" / "ai-stack.nix").read_text(encoding="utf-8"),
+        "AI stack kernel tuning should respect the centralized AMD overdrive toggle",
     )
     assert_true(
         'amdgpu.dcdebugmask=0x10' not in p14s_text,
