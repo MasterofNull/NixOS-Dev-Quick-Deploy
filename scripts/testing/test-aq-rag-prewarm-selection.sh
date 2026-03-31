@@ -29,6 +29,7 @@ cat > "${FAKE_CURL}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 payload=""
+url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -d)
@@ -42,11 +43,19 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
+      url="$1"
       shift
       ;;
   esac
 done
-printf '%s\n' "${payload}" >> "${PAYLOAD_LOG:?}"
+python3 - "${payload}" "${url}" >> "${PAYLOAD_LOG:?}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
+payload["_url"] = sys.argv[2]
+print(json.dumps(payload))
+PY
 printf '200'
 EOF
 chmod +x "${FAKE_CURL}"
@@ -71,17 +80,17 @@ printf '%s\n' "${OUTPUT}" | grep -q '"memory_recall_contextualise"' || {
 }
 jq -e '
   select(.context.prewarm_prompt_id == "route_search_synthesis")
-  | .generate_response == true
+  | .generate_response == true and (._url | endswith("/query"))
 ' "${PAYLOAD_LOG}" >/dev/null || {
   echo "FAIL: expected route_search_synthesis prewarm payload to enable generate_response" >&2
   exit 1
 }
 jq -e '
-  select(.context.prewarm_prompt_id == "memory_recall_contextualise")
-  | .generate_response == false
+  select(._url | endswith("/memory/recall"))
+  | .query != null and .limit == 3 and .retrieval_mode == "hybrid"
 ' "${PAYLOAD_LOG}" >/dev/null || {
-  echo "FAIL: expected memory_recall_contextualise prewarm payload to stay retrieval-only" >&2
+  echo "FAIL: expected memory_recall_contextualise prewarm payload to call /memory/recall" >&2
   exit 1
 }
 
-echo "PASS: aq-rag-prewarm selects memory recall seed and enables synthesis payloads only when needed"
+echo "PASS: aq-rag-prewarm selects memory recall seed, uses synthesis on /query only when needed, and calls /memory/recall for memory prewarm"
