@@ -27,7 +27,7 @@ def main() -> int:
         os.environ["DASHBOARD_RATE_LIMIT_ENABLED"] = "true"
         os.environ["DASHBOARD_RATE_LIMIT_WINDOW_SECONDS"] = "60"
         os.environ["DASHBOARD_RATE_LIMIT_HEALTH_RPM"] = "2"
-        os.environ["DASHBOARD_RATE_LIMIT_OPERATOR_WRITE_RPM"] = "2"
+        os.environ["DASHBOARD_RATE_LIMIT_OPERATOR_WRITE_RPM"] = "4"
         os.environ["DASHBOARD_RATE_LIMIT_DEFAULT_RPM"] = "20"
         os.environ["DASHBOARD_OPERATOR_AUDIT_LOG_PATH"] = str(tmp_path / "operator-audit.jsonl")
         os.environ["DASHBOARD_CONTEXT_DB_PATH"] = str(tmp_path / "deployments-context.db")
@@ -35,6 +35,38 @@ def main() -> int:
 
         dashboard_main = importlib.import_module("api.main")
         dashboard_main = importlib.reload(dashboard_main)
+        firewall_module = importlib.import_module("api.routes.firewall")
+        firewall_module = importlib.reload(firewall_module)
+
+        recorded_commands = []
+
+        async def fake_run_command(cmd, timeout=10):
+            recorded_commands.append(list(cmd))
+            if cmd[:3] == ["systemctl", "is-active", "nftables"]:
+                return 0, "active\n", ""
+            if cmd[:3] == ["systemctl", "is-active", "firewall"]:
+                return 0, "active\n", ""
+            if cmd[:3] == ["systemctl", "is-active", "crowdsec-firewall-bouncer"]:
+                paused = firewall_module._bypass_state["crowdsec_paused"]
+                return (3, "inactive\n", "") if paused else (0, "active\n", "")
+            return 0, "", ""
+
+        async def fake_run_sudo_command(cmd, timeout=10):
+            recorded_commands.append(list(cmd))
+            if cmd[:5] == ["nft", "list", "chain", firewall_module.NFT_FAMILY, firewall_module.NFT_TABLE]:
+                return 0, "chain output { type filter hook output priority 0; policy accept; }", ""
+            if cmd[:6] == ["nft", "-a", "list", "chain", firewall_module.NFT_FAMILY, firewall_module.NFT_TABLE]:
+                return 0, (
+                    f'chain {firewall_module.NFT_OUTPUT_CHAIN} {{\n'
+                    f'  tcp dport {{ 80, 443 }} accept comment "{firewall_module.CAPTIVE_PORTAL_RULE_COMMENT}" handle 10\n'
+                    f'  udp dport 53 accept comment "{firewall_module.CAPTIVE_PORTAL_RULE_COMMENT}" handle 11\n'
+                    f'  tcp dport 53 accept comment "{firewall_module.CAPTIVE_PORTAL_RULE_COMMENT}" handle 12\n'
+                    f'}}\n'
+                ), ""
+            return 0, "", ""
+
+        firewall_module.run_command = fake_run_command
+        firewall_module.run_sudo_command = fake_run_sudo_command
 
         with TestClient(dashboard_main.app) as client:
             health_1 = client.get("/api/health")
@@ -91,6 +123,31 @@ def main() -> int:
             assert_true(
                 all(event.get("method") == "POST" for event in (filtered_data.get("events") or [])),
                 "filtered audit results should respect method",
+            )
+
+            portal_enable = client.post(
+                "/api/firewall/captive-portal/enable",
+                json={"duration_minutes": 3, "interface": "wlan0"},
+            )
+            portal_status = client.get("/api/firewall/captive-portal/status")
+            portal_disable = client.post("/api/firewall/captive-portal/disable")
+
+            assert_true(portal_enable.status_code == 200, "captive portal enable should succeed")
+            assert_true(portal_status.status_code == 200, "captive portal status should succeed")
+            assert_true(portal_disable.status_code == 200, "captive portal disable should succeed")
+
+            portal_enable_data = portal_enable.json()
+            portal_status_data = portal_status.json()
+            assert_true(portal_enable_data.get("status") == "enabled", "captive portal enable should report enabled")
+            assert_true(portal_enable_data.get("interface") == "wlan0", "captive portal enable should echo interface")
+            assert_true(portal_status_data.get("interface") == "wlan0", "captive portal status should expose interface")
+            assert_true(
+                any("oifname" in cmd and "wlan0" in cmd for cmd in recorded_commands if cmd[:4] == ["nft", "add", "rule", firewall_module.NFT_FAMILY]),
+                "interface-specific portal bypass should program oifname rule",
+            )
+            assert_true(
+                any("53" in cmd and "tcp" in cmd for cmd in recorded_commands if cmd[:4] == ["nft", "add", "rule", firewall_module.NFT_FAMILY]),
+                "captive portal bypass should add TCP DNS rule",
             )
 
         print("PASS: dashboard runtime controls regression")

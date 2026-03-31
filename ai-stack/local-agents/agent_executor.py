@@ -15,6 +15,7 @@ Part of Phase 11 Batch 11.3: Workflow Integration
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,6 +28,26 @@ import httpx
 from tool_registry import ToolCall, ToolRegistry, get_registry
 
 logger = logging.getLogger(__name__)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """Parse a boolean environment flag."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_float(name: str, default: float) -> float:
+    """Parse a float environment setting with fallback."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        logger.warning("Invalid %s=%r, using default %.2f", name, value, default)
+        return default
 
 
 class AgentType(Enum):
@@ -63,6 +84,7 @@ class Task:
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[Any] = None
     error: Optional[str] = None
+    degraded_reason: Optional[str] = None
     execution_time_ms: float = 0.0
 
     # Agent tracking
@@ -82,6 +104,7 @@ class Task:
             "status": self.status.value,
             "result": self.result,
             "error": self.error,
+            "degraded_reason": self.degraded_reason,
             "execution_time_ms": self.execution_time_ms,
             "assigned_agent": self.assigned_agent,
             "tool_calls_count": len(self.tool_calls_made),
@@ -175,11 +198,37 @@ class LocalAgentExecutor:
         tool_registry: Optional[ToolRegistry] = None,
         enable_fallback: bool = True,
         fallback_endpoint: str = "http://127.0.0.1:8003",
+        offline_mode: Optional[bool] = None,
+        allow_degraded_local_execution: Optional[bool] = None,
+        remote_timeout_seconds: Optional[float] = None,
+        remote_probe_timeout_seconds: Optional[float] = None,
     ):
         self.llama_endpoint = llama_endpoint
         self.tool_registry = tool_registry or get_registry()
         self.enable_fallback = enable_fallback
         self.fallback_endpoint = fallback_endpoint
+        self.offline_mode = (
+            _env_flag("LOCAL_AGENT_OFFLINE_MODE", False)
+            if offline_mode is None
+            else offline_mode
+        )
+        self.allow_degraded_local_execution = (
+            _env_flag("LOCAL_AGENT_ALLOW_DEGRADED_LOCAL", True)
+            if allow_degraded_local_execution is None
+            else allow_degraded_local_execution
+        )
+        self.remote_timeout_seconds = (
+            _env_float("LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS", 60.0)
+            if remote_timeout_seconds is None
+            else remote_timeout_seconds
+        )
+        self.remote_probe_timeout_seconds = (
+            _env_float("LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS", 2.0)
+            if remote_probe_timeout_seconds is None
+            else remote_probe_timeout_seconds
+        )
+        self._remote_endpoint_healthy: Optional[bool] = None
+        self._remote_endpoint_checked_at: float = 0.0
 
         # Performance tracking per agent type
         self.performance: Dict[AgentType, AgentPerformance] = {
@@ -189,7 +238,8 @@ class LocalAgentExecutor:
 
         logger.info(
             f"Local agent executor initialized: llama={llama_endpoint}, "
-            f"fallback={enable_fallback}"
+            f"fallback={enable_fallback}, offline_mode={self.offline_mode}, "
+            f"allow_degraded_local={self.allow_degraded_local_execution}"
         )
 
     def route_task(self, task: Task) -> Tuple[bool, str]:
@@ -199,8 +249,12 @@ class LocalAgentExecutor:
         Returns:
             (use_local, reason)
         """
+        remote_routing_available = self.enable_fallback and not self.offline_mode
+
         # Always use remote for flagship-required tasks
         if task.requires_flagship:
+            if not remote_routing_available and self.allow_degraded_local_execution:
+                return True, "Flagship requested but remote routing unavailable; degrading to local"
             return False, "Task requires flagship model"
 
         # Use local for simple, non-critical tasks
@@ -213,6 +267,8 @@ class LocalAgentExecutor:
 
         # Use remote for quality-critical tasks
         if task.quality_critical:
+            if not remote_routing_available and self.allow_degraded_local_execution:
+                return True, "Quality critical task degraded to local because remote routing is unavailable"
             return False, "Quality critical, remote preferred"
 
         # Check local agent performance
@@ -222,6 +278,8 @@ class LocalAgentExecutor:
 
             # Fallback to remote if local success rate too low
             if success_rate < 0.7:
+                if not remote_routing_available and self.allow_degraded_local_execution:
+                    return True, f"Local success rate low ({success_rate:.1%}) but remote routing unavailable"
                 return False, f"Local success rate low ({success_rate:.1%})"
 
         # Default to local
@@ -251,9 +309,36 @@ class LocalAgentExecutor:
         # Route task
         use_local, route_reason = self.route_task(task)
 
-        if not use_local and self.enable_fallback:
-            logger.info(f"Task {task.id} routed to remote: {route_reason}")
-            return await self._fallback_to_remote(task)
+        if not use_local:
+            if self.enable_fallback:
+                if not await self._remote_fallback_available():
+                    if self.allow_degraded_local_execution:
+                        use_local = True
+                        task.degraded_reason = (
+                            f"{route_reason}; remote fallback unavailable, executing locally"
+                        )
+                        logger.warning("Task %s degraded to local execution: %s", task.id, task.degraded_reason)
+                    else:
+                        task.status = TaskStatus.FAILED
+                        task.error = f"{route_reason}; remote fallback unavailable"
+                        task.execution_time_ms = (time.time() - start_time) * 1000
+                        self.performance[agent_type].update(task)
+                        return task
+                else:
+                    logger.info(f"Task {task.id} routed to remote: {route_reason}")
+                    return await self._fallback_to_remote(task)
+            elif self.allow_degraded_local_execution:
+                use_local = True
+                task.degraded_reason = f"{route_reason}; remote fallback disabled, executing locally"
+            else:
+                task.status = TaskStatus.FAILED
+                task.error = f"{route_reason}; remote fallback disabled"
+                task.execution_time_ms = (time.time() - start_time) * 1000
+                self.performance[agent_type].update(task)
+                return task
+
+        if task.degraded_reason is None and "degrading to local" in route_reason.lower():
+            task.degraded_reason = route_reason
 
         logger.info(f"Task {task.id} executing locally: {route_reason}")
 
@@ -282,9 +367,11 @@ class LocalAgentExecutor:
             logger.error(f"Task {task.id} failed: {e}")
 
             # Fallback to remote on failure
-            if self.enable_fallback:
+            if self.enable_fallback and await self._remote_fallback_available():
                 logger.info(f"Falling back to remote for task {task.id}")
                 return await self._fallback_to_remote(task)
+            if self.enable_fallback and task.error:
+                task.error = f"{task.error}; remote fallback unavailable"
 
         # Update performance tracking
         self.performance[agent_type].update(task)
@@ -409,6 +496,7 @@ class LocalAgentExecutor:
         start_time = time.time()
         task.status = TaskStatus.FALLBACK
         task.assigned_agent = "remote-fallback"
+        task.degraded_reason = None
 
         try:
             async with httpx.AsyncClient() as client:
@@ -418,7 +506,7 @@ class LocalAgentExecutor:
                         "query": task.objective,
                         "context": task.context,
                     },
-                    timeout=60.0,
+                    timeout=self.remote_timeout_seconds,
                 )
 
                 if response.status_code == 200:
@@ -426,7 +514,7 @@ class LocalAgentExecutor:
                     task.result = data.get("response", "")
                     task.status = TaskStatus.COMPLETED
                 else:
-                    task.error = f"Remote fallback failed: {response.status_code}"
+                    task.error = f"Remote fallback failed: {response.status_code} {response.text}"
                     task.status = TaskStatus.FAILED
 
         except Exception as e:
@@ -456,6 +544,28 @@ class LocalAgentExecutor:
             agent_type.value: perf.to_dict()
             for agent_type, perf in self.performance.items()
         }
+
+    async def _remote_fallback_available(self) -> bool:
+        """Check whether the remote fallback path should be used."""
+        if not self.enable_fallback or self.offline_mode:
+            return False
+        if time.time() - self._remote_endpoint_checked_at < 15 and self._remote_endpoint_healthy is not None:
+            return self._remote_endpoint_healthy
+        healthy = await self._probe_remote_fallback()
+        self._remote_endpoint_healthy = healthy
+        self._remote_endpoint_checked_at = time.time()
+        return healthy
+
+    async def _probe_remote_fallback(self) -> bool:
+        """Probe the remote fallback endpoint with a short timeout."""
+        health_url = f"{self.fallback_endpoint.rstrip('/')}/health"
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(health_url, timeout=self.remote_probe_timeout_seconds)
+            return response.status_code < 500
+        except Exception as exc:
+            logger.info("Remote fallback probe failed for %s: %s", health_url, exc)
+            return False
 
 
 # Global executor instance
