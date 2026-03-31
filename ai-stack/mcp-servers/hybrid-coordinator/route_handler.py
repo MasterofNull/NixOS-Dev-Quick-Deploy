@@ -542,8 +542,15 @@ async def route_search(
             generate_response=generate_response,
         )
 
+        # Retrieval-only requests do not use capability discovery in the response path,
+        # so skip that extra fan-out unless the caller already provided discovery context.
+        should_run_capability_discovery = (
+            Config.AI_CAPABILITY_DISCOVERY_ON_QUERY
+            and (generate_response or bool((context or {}).get("tool_discovery")))
+        )
+
         # Phase 5.2 Optimization 1: Start capability discovery in parallel
-        if Config.AI_CAPABILITY_DISCOVERY_ON_QUERY:
+        if should_run_capability_discovery:
             discovery_task = asyncio.create_task(capability_discovery.discover(query))
 
         # Phase 5.2 Optimization 1: Await both tasks concurrently instead of sequentially
