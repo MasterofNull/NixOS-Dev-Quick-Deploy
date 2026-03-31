@@ -22,6 +22,7 @@ Usage:
     result = await router.route(query, mode="auto")
 """
 
+import asyncio
 import logging
 import os
 import re
