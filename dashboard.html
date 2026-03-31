@@ -3087,7 +3087,7 @@
                 </div>
             </div>
 
-            <div class="dashboard-section full-width" id="section-deployments">
+            <div class="dashboard-section full-width" id="section-deployments" data-card-id="deployment-ops" data-load-fn="loadDeploymentOps">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4157,7 +4157,7 @@
             detectHostMetrics();
             loadStackHealth();
             loadAIInsights(); // Load AI insights and analytics
-            loadDeploymentOps();
+            lazyLoadManager.registerCard('deployment-ops', 'loadDeploymentOps');
 
             // Connect WebSocket for real-time metrics (2-second updates)
             connectMetricsWebSocket();

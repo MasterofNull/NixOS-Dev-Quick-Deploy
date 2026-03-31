@@ -1576,6 +1576,32 @@
               default = 30;
               description = "How often to run cache prewarm timer.";
             };
+
+            startupWarmEnable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Enable semantic cache warm-up on hybrid coordinator startup.";
+            };
+
+            startupQueries = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [
+                "what is lib.mkForce in NixOS"
+                "how to use lib.mkIf in NixOS modules"
+                "NixOS systemd service options"
+                "deployment rollback procedure"
+                "hybrid-coordinator service not responding"
+                "deployment root cause analysis"
+                "llama.cpp inference optimization"
+                "MCP server integration"
+              ];
+              description = ''
+                Canonical semantic-cache warm-up queries seeded when the hybrid
+                coordinator starts. Keep this list short and representative so
+                startup remains bounded while warming the most common operator
+                and harness retrieval paths.
+              '';
+            };
           };
 
           telemetryEnabled = lib.mkOption {

@@ -917,6 +917,8 @@ in
             "AI_RUN_DEFAULT_SAFETY_MODE=${ai.aiHarness.runtime.defaultSafetyMode}"
             "AI_RUN_DEFAULT_TOKEN_LIMIT=${toString ai.aiHarness.runtime.defaultTokenLimit}"
             "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
+            "AI_SEMANTIC_CACHE_WARM_ON_START=${if ai.aiHarness.runtime.cachePrewarm.startupWarmEnable then "true" else "false"}"
+            "AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries}"
             "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
             "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
             "WORKFLOW_BLUEPRINTS_FILE=${mcp.repoPath}/config/workflow-blueprints.json"
