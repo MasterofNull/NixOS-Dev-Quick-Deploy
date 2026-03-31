@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Regression checks for capability discovery gating on retrieval-only queries."""
+"""Regression checks for retrieval-only adaptive timeout caps in route_handler."""
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import os
 import sys
@@ -44,7 +43,7 @@ def load_route_handler():
                 AI_LLM_EXPANSION_ENABLED=False,
                 AI_LLM_EXPANSION_TIMEOUT_S=2,
                 AI_TREE_SEARCH_ENABLED=True,
-                AI_CAPABILITY_DISCOVERY_ON_QUERY=True,
+                AI_CAPABILITY_DISCOVERY_ON_QUERY=False,
                 AI_PROMPT_CACHE_POLICY_ENABLED=False,
                 AI_CONTEXT_COMPRESSION_ENABLED=False,
                 AI_CONTEXT_MAX_TOKENS=1200,
@@ -91,84 +90,50 @@ def load_route_handler():
             sanitize_query=lambda text: text,
         ),
     )
-    spec = importlib.util.spec_from_file_location("route_handler_discovery_gating_mod", ROUTE_HANDLER_PATH)
+    spec = importlib.util.spec_from_file_location("route_handler_adaptive_timeout_mod", ROUTE_HANDLER_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
     return module
 
 
-async def main_async() -> int:
+def main() -> int:
     route_handler = load_route_handler()
-    route_handler._COLLECTIONS = {"best-practices": object()}
-    discovery_calls: list[str] = []
 
-    async def _fake_hybrid_search(*_args, **_kwargs):
-        return {
-            "combined_results": [
-                {"score": 0.82, "collection": "best-practices", "payload": {"content": "stubbed result"}}
-            ],
-            "keyword_results": [],
-            "semantic_results": [],
-        }
-
-    async def _fake_discover(query: str):
-        discovery_calls.append(query)
-        return {
-            "decision": "found",
-            "reason": "test",
-            "cache_hit": False,
-            "intent_tags": [],
-            "tools": [],
-            "skills": [],
-            "servers": [],
-            "datasets": [],
-        }
-
-    route_handler._hybrid_search = _fake_hybrid_search
-    route_handler._record_telemetry = lambda *_args, **_kwargs: None
-    route_handler._select_backend = None
-    route_handler._summarize = lambda results: "stubbed retrieval summary"
-    route_handler._record_query_gap = None
-    route_handler._postgres_client_ref = lambda: None
-    route_handler._llama_cpp_client_ref = lambda: None
-    route_handler._switchboard_client_ref = lambda: None
-    route_handler._context_compressor_ref = lambda: None
-    route_handler._query_expander = None
-    route_handler.capability_discovery.discover = _fake_discover
-
-    retrieval_only = await route_handler.route_search(
-        query="list nixos module options for networking",
-        mode="hybrid",
-        prefer_local=True,
-        context={"source": "test"},
-        limit=3,
-        keyword_limit=3,
-        score_threshold=0.7,
-        generate_response=False,
-    )
-    assert_true(retrieval_only.get("backend") == "local", "expected retrieval-only route_search to stay local")
-    assert_true(not discovery_calls, "retrieval-only route_search should skip capability discovery")
-
-    generated = await route_handler.route_search(
-        query="summarize nixos module options for networking",
-        mode="hybrid",
-        prefer_local=True,
-        context={"source": "test"},
-        limit=3,
-        keyword_limit=3,
-        score_threshold=0.7,
-        generate_response=True,
-    )
-    assert_true(generated is not None, "expected generate_response route_search result")
     assert_true(
-        discovery_calls == ["summarize nixos module options for networking"],
-        "generate_response route_search should still run capability discovery",
+        route_handler.calculate_adaptive_timeout("test", "keyword", 3, generate_response=False) == 4.0,
+        "expected retrieval-only keyword route to use the tighter 4s timeout",
+    )
+    assert_true(
+        route_handler.calculate_adaptive_timeout("test query foo bar", "hybrid", 5, generate_response=False) == 6.0,
+        "expected retrieval-only hybrid route to use the tighter 6s timeout",
+    )
+    assert_true(
+        route_handler.calculate_adaptive_timeout(
+            "very long test query with many tokens for complex analysis",
+            "tree",
+            10,
+            generate_response=False,
+        ) == 8.0,
+        "expected retrieval-only complex route to use the tighter 8s timeout",
+    )
+    assert_true(
+        route_handler.calculate_adaptive_timeout("test query foo bar", "hybrid", 5, generate_response=True) == 10.0,
+        "expected synthesis-enabled hybrid route to keep the 10s timeout",
+    )
+    assert_true(
+        route_handler.calculate_adaptive_timeout(
+            "very long test query with many tokens for complex analysis",
+            "tree",
+            10,
+            generate_response=True,
+        ) == 15.0,
+        "expected synthesis-enabled complex route to keep the 15s timeout",
     )
 
-    print("PASS: route_handler skips discovery for retrieval-only queries")
+    print("PASS: route_handler caps retrieval-only adaptive timeouts without changing synthesis budgets")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main_async()))
+    raise SystemExit(main())
