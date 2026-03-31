@@ -21,7 +21,7 @@ let
   cfg = config.mySystem;
   desktopEnabled = cfg.roles.desktop.enable;
   primaryGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
-  cosmicThemeDarkPalette = builtins.readFile (../../templates + "/Royal Wine-inner.ron");
+  cosmicThemeDarkPalette = builtins.readFile (../../../templates + "/Royal Wine-inner.ron");
 
   # XDG portal backend selection.
   # xdg-desktop-portal-gnome requires gnome-shell running — do NOT add it when
