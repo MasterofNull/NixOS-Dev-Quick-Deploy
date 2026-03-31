@@ -62,7 +62,7 @@ def main() -> int:
             "service": "hybrid-coordinator-http",
             "outcome": "success",
             "latency_ms": 900.0,
-            "metadata": {"backend": "local", "route_strategy": "hybrid"},
+            "metadata": {"backend": "local", "route_strategy": "hybrid", "generate_response": False},
         },
         {
             "timestamp": (now - timedelta(minutes=9)).isoformat().replace("+00:00", "Z"),
@@ -81,6 +81,7 @@ def main() -> int:
             "metadata": {
                 "backend": "local",
                 "route_strategy": "hybrid",
+                "generate_response": True,
                 "fallback_reason": "remote_4xx_local_fallback",
                 "http_status": 502,
             },
@@ -114,9 +115,13 @@ def main() -> int:
     assert_true(route_latency.get("client_error_count") == 1, "expected one client-error route_search call")
     assert_true(route_latency.get("actionable_calls") == 2, "expected actionable calls to exclude 4xx/client errors")
     assert_true(route_latency.get("backend_valid_calls") == 2, "expected backend-valid calls to keep only local/remote rows")
+    assert_true(route_latency.get("retrieval_only_calls") == 1, "expected one retrieval-only route_search call")
+    assert_true(route_latency.get("synthesis_calls") == 1, "expected one synthesis route_search call")
     breakdown = route_latency.get("breakdown") or []
     assert_true(any(item.get("label") == "backend:local" for item in breakdown), "expected backend:local breakdown")
     assert_true(any(item.get("label") == "status:4xx" for item in breakdown), "expected 4xx breakdown")
+    assert_true(any(item.get("label") == "request:retrieval_only" for item in breakdown), "expected retrieval-only breakdown")
+    assert_true(any(item.get("label") == "request:synthesis" for item in breakdown), "expected synthesis breakdown")
     assert_true(
         any(item.get("label") == "fallback:remote_4xx_local_fallback" for item in breakdown),
         "expected fallback latency breakdown",

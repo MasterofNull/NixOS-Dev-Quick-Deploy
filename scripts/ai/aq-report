@@ -852,6 +852,8 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
     overall_latencies: List[float] = []
     actionable_latencies: List[float] = []
     backend_valid_latencies: List[float] = []
+    synthesis_latencies: List[float] = []
+    retrieval_only_latencies: List[float] = []
     client_error_count = 0
     backend_unclassified_count = 0
     for entry in route_events:
@@ -863,6 +865,7 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         backend = str(metadata.get("backend", "") or "unknown").strip().lower() or "unknown"
         fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
         status_code = metadata.get("http_status")
+        generate_response = metadata.get("generate_response")
         is_client_error = outcome == "client_error" or (isinstance(status_code, int) and 400 <= status_code < 500)
         is_actionable = not is_client_error
         if is_client_error:
@@ -873,7 +876,15 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
                 backend_valid_latencies.append(latency_value)
             else:
                 backend_unclassified_count += 1
+            if generate_response is True:
+                synthesis_latencies.append(latency_value)
+            elif generate_response is False:
+                retrieval_only_latencies.append(latency_value)
         classes = [f"backend:{backend}"]
+        if generate_response is True:
+            classes.append("request:synthesis")
+        elif generate_response is False:
+            classes.append("request:retrieval_only")
         if fallback_reason == "remote_4xx_local_fallback":
             classes.append("fallback:remote_4xx_local_fallback")
         if isinstance(status_code, int):
@@ -921,6 +932,12 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         "backend_valid_calls": len(backend_valid_latencies),
         "backend_valid_p50_ms": _percentile(backend_valid_latencies, 50),
         "backend_valid_p95_ms": _percentile(backend_valid_latencies, 95),
+        "synthesis_calls": len(synthesis_latencies),
+        "synthesis_p50_ms": _percentile(synthesis_latencies, 50),
+        "synthesis_p95_ms": _percentile(synthesis_latencies, 95),
+        "retrieval_only_calls": len(retrieval_only_latencies),
+        "retrieval_only_p50_ms": _percentile(retrieval_only_latencies, 50),
+        "retrieval_only_p95_ms": _percentile(retrieval_only_latencies, 95),
         "client_error_count": client_error_count,
         "backend_unclassified_count": backend_unclassified_count,
         "breakdown": breakdown[:8],
