@@ -32,6 +32,13 @@ _REASONING_RE = re.compile(
     r"\b(why|how does|explain|analyze|analyse|compare|design|architect|strategy|trade.?off)\b",
     re.IGNORECASE,
 )
+_CONTINUATION_RE = re.compile(
+    r"\b(resume|continue|follow[ -]?up|prior context|pick up where|last agent|left off|ongoing|current work|remaining work)\b",
+    re.IGNORECASE,
+)
+
+LOCAL_CONTINUATION_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_INPUT_TOKENS", "900"))
+LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS", "400"))
 
 
 @dataclass
@@ -61,6 +68,8 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
     else:
         task_type = "synthesize"
 
+    continuation = bool(_CONTINUATION_RE.search(q))
+
     # Routing decision
     if token_estimate > LOCAL_MAX_INPUT_TOKENS:
         return TaskComplexity(
@@ -69,6 +78,25 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
             local_suitable=False,
             remote_required=True,
             reason=f"input_too_large tokens={token_estimate} limit={LOCAL_MAX_INPUT_TOKENS}",
+        )
+    if (
+        continuation
+        and task_type in ("code", "reasoning")
+        and token_estimate <= LOCAL_CONTINUATION_MAX_INPUT_TOKENS
+        and max_output_tokens <= LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS
+    ):
+        optimized = (
+            "Continue the current task using prior context first. "
+            "Keep the answer concise, concrete, and limited to the next useful step.\n"
+            f"Task: {q}\n\nRelevant context:\n{context[:1000].strip()}"
+        ).strip()
+        return TaskComplexity(
+            token_estimate=token_estimate,
+            task_type=task_type,
+            local_suitable=True,
+            remote_required=False,
+            reason="continuation_within_local_capacity",
+            optimized_prompt=optimized,
         )
     if max_output_tokens > LOCAL_MAX_OUTPUT_TOKENS:
         return TaskComplexity(

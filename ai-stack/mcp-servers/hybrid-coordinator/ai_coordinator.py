@@ -8,6 +8,7 @@ callers to hand-roll x-ai-profile usage.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -245,6 +246,10 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
 # Routing telemetry accumulator
 _ROUTING_DECISIONS: List[Dict[str, Any]] = []
 _ROUTING_DECISION_MAX = 500  # Rolling window
+_CONTINUATION_RE = re.compile(
+    r"\b(resume|continue|follow[ -]?up|prior context|pick up where|last agent|left off|ongoing|current work|remaining work)\b",
+    re.IGNORECASE,
+)
 
 
 def _record_routing_decision(decision: Dict[str, Any]) -> None:
@@ -277,6 +282,7 @@ def detect_query_complexity(query: str) -> Dict[str, Any]:
     simple_signals = ["what is", "how do", "where", "list", "show", "find", "get", "check", "which"]
     coding_signals = ["code", "function", "class", "method", "api", "endpoint", "module"]
 
+    continuation = bool(_CONTINUATION_RE.search(query))
     matched_arch = [s for s in arch_signals if s in query_lower]
     matched_complex = [s for s in complex_signals if s in query_lower]
     matched_simple = [s for s in simple_signals if s in query_lower]
@@ -286,6 +292,9 @@ def detect_query_complexity(query: str) -> Dict[str, Any]:
     if matched_arch:
         complexity = "architecture"
         confidence = min(0.5 + len(matched_arch) * 0.15, 0.95)
+    elif continuation and word_count <= 24:
+        complexity = "simple"
+        confidence = 0.72
     elif matched_complex or word_count > 40:
         complexity = "complex"
         confidence = min(0.5 + len(matched_complex) * 0.12, 0.90)
@@ -308,6 +317,7 @@ def detect_query_complexity(query: str) -> Dict[str, Any]:
             "complex": matched_complex,
             "simple": matched_simple,
             "coding": matched_coding,
+            "continuation": ["continuation"] if continuation else [],
         },
     }
 
@@ -350,7 +360,10 @@ def route_by_complexity(
         "architecture": "remote-reasoning",  # Architecture needs reasoning
     }
 
+    continuation = bool(_CONTINUATION_RE.search(query))
     recommended = COMPLEXITY_TO_PROFILE.get(complexity, "remote-free")
+    if continuation and complexity != "architecture":
+        recommended = "default" if prefer_local or complexity in {"simple", "medium"} else recommended
 
     # Build rationale
     signals = complexity_info.get("signals", {})

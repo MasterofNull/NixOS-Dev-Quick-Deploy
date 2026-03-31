@@ -104,7 +104,10 @@ def main() -> int:
         context={"memory_recall": ["last patch changed the service path"]},
         generate_response=True,
     )
-    assert_true(continuation_code["profile"] == "continuation-code", "expected continuation-code profile")
+    assert_true(
+        continuation_code["profile"] in {"continuation-code", "continuation-code-memory-first"},
+        "expected continuation-code profile",
+    )
     assert_true(len(continuation_code["collections"]) <= 2, "expected continuation code path to stay tightly bounded")
     assert_true("codebase-context" in continuation_code["collections"], "expected codebase context for continuation code path")
     assert_true("interaction-history" not in continuation_code["collections"], "expected interaction-history to stay out when memory recall exists")
@@ -123,6 +126,43 @@ def main() -> int:
         continuation_memory_first["collections"] == ["codebase-context"],
         "expected retrieval-only continuation path to stay on a single codebase collection",
     )
+
+    continuation_without_memory = route_handler._select_route_collections(
+        "pick up where the last agent left off on the deployment debugging work",
+        route="hybrid",
+        context={},
+        generate_response=False,
+    )
+    assert_true(
+        continuation_without_memory["profile"] in {"continuation-code-compact", "continuation-compact", "continuation-reasoning-compact"},
+        "expected continuation retrieval without memory to stay on a compact profile",
+    )
+    assert_true(
+        len(continuation_without_memory["collections"]) == 1,
+        "expected compact continuation retrieval without memory to use a single collection",
+    )
+
+    route_handler._COLLECTIONS = {"best-practices": object(), "codebase-context": object()}
+    auto_continuation_route = "auto"
+    token_count = len(route_handler._normalize_tokens("pick up where the last agent left off on the deployment debugging work"))
+    if token_count <= 3:
+        auto_continuation_route = "keyword"
+    elif route_handler.Config.AI_TREE_SEARCH_ENABLED and token_count >= 8 and not route_handler._looks_like_continuation_query(
+        "pick up where the last agent left off on the deployment debugging work", {}
+    ):
+        auto_continuation_route = "tree"
+    else:
+        auto_continuation_route = "hybrid"
+    assert_true(auto_continuation_route == "hybrid", "expected continuation auto routing to avoid the tree path")
+
+    route_handler._COLLECTIONS = {
+        "best-practices": object(),
+        "error-solutions": object(),
+        "codebase-context": object(),
+        "skills-patterns": object(),
+        "interaction-history": object(),
+        "agent-memory-default": object(),
+    }
 
     route_handler.task_classifier.classify = lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="lookup")
     lookup = route_handler._select_route_collections(

@@ -862,6 +862,7 @@ in
             "AI_TASK_CLASSIFICATION_ENABLED=true"
             "LOCAL_MAX_INPUT_TOKENS=600"
             "LOCAL_MAX_OUTPUT_TOKENS=300"
+            "LOCAL_CONFIDENCE_THRESHOLD=0.35"
             "EMBEDDING_SERVICE_URL=${embedUrl}"
             "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
             "QDRANT_URL=${qdrantUrl}"

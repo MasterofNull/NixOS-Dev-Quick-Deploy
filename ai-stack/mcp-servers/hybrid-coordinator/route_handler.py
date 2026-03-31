@@ -77,6 +77,20 @@ _SYNTHETIC_GAP_SOURCE_MARKERS = {
     "synthetic-test",
 }
 
+_CONTINUATION_QUERY_MARKERS = (
+    "resume",
+    "continue",
+    "follow-up",
+    "follow up",
+    "prior context",
+    "pick up where",
+    "last agent",
+    "ongoing",
+    "left off",
+    "remaining work",
+    "current work",
+)
+
 # ---------------------------------------------------------------------------
 # Injected dependencies
 # ---------------------------------------------------------------------------
@@ -225,6 +239,21 @@ def _runtime_context_blocks(context: Optional[Dict[str, Any]]) -> List[str]:
     return blocks
 
 
+def _looks_like_continuation_query(query: str, context: Optional[Dict[str, Any]] = None) -> bool:
+    """Detect continuation-style queries that should stay on the compact local path."""
+    query_lower = str(query or "").lower()
+    if any(token in query_lower for token in _CONTINUATION_QUERY_MARKERS):
+        return True
+    if isinstance(context, dict) and context.get("memory_recall"):
+        return True
+    has_previous_ref = any(token in query_lower for token in ("previous", "prior", "last"))
+    has_resume_target = any(
+        token in query_lower
+        for token in ("context", "patch", "deploy", "troubleshooting", "debug", "loop", "work", "session")
+    )
+    return has_previous_ref and has_resume_target
+
+
 def _non_memory_collections() -> List[str]:
     return [
         name for name in _COLLECTIONS.keys()
@@ -249,9 +278,9 @@ def _select_route_collections(
     token_count = len(_normalize_tokens(query))
     has_memory = bool(ctx.get("memory_recall"))
     has_discovery = bool(ctx.get("tool_discovery"))
-    continuation = has_memory or any(
+    continuation = _looks_like_continuation_query(query, ctx) or any(
         phrase in q
-        for phrase in ("continue", "resume", "previous", "prior", "next patch", "last deploy", "last patch")
+        for phrase in ("next patch", "last deploy", "last patch")
     )
     wants_history = (
         not has_memory
@@ -324,9 +353,13 @@ def _select_route_collections(
         profile = "continuation-code"
     elif continuation and task_shape == "reasoning":
         profile = "continuation-reasoning"
-    if continuation and has_memory and not generate_response and not wants_history:
+    if continuation and has_memory and not wants_history:
         max_collections = 1
         profile = f"{profile}-memory-first" if not profile.endswith("-memory-first") else profile
+    elif continuation and not generate_response and not wants_history and token_count <= 14:
+        max_collections = 1
+        if not profile.endswith("-compact"):
+            profile = f"{profile}-compact"
 
     # Favor lower fan-out for retrieval-only queries. These requests do not
     # need broad synthesis context, so cap the collection set more aggressively.
@@ -415,7 +448,7 @@ async def route_search(
             token_count = len(_normalize_tokens(query))
             if token_count <= 3:
                 route = "keyword"
-            elif Config.AI_TREE_SEARCH_ENABLED and token_count >= 8:
+            elif Config.AI_TREE_SEARCH_ENABLED and token_count >= 8 and not _looks_like_continuation_query(query, context):
                 route = "tree"
             else:
                 route = "hybrid"
@@ -827,6 +860,14 @@ async def route_search(
                                 query_hash=_t_hash, query_text=query[:500], score=-1.0,
                                 collection="inference_timeout",
                             ))
+
+        if selected_backend in {"", "none", "unknown"} and not generate_response:
+            selected_backend = "local"
+            backend_reason_class = "retrieval_only_local"
+            LLM_BACKEND_SELECTIONS.labels(
+                backend=selected_backend,
+                reason_class=backend_reason_class,
+            ).inc()
 
         ROUTE_DECISIONS.labels(route=route).inc()
         _record_telemetry(
