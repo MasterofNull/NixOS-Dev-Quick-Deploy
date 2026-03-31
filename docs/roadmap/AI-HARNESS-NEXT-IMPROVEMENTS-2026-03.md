@@ -138,3 +138,4 @@ Default batching rule:
 - Surface a stronger continuation-specific hint when broad retrieval is overused relative to memory recall
 - Current optimization direction: keep continuation-style requests on compact hybrid retrieval instead of the slower tree path when prior context is the main need, and auto-include one memory-recall prewarm seed whenever live posture says recall is underused
 - Current routing follow-up: keep switchboard default provider local, lower the hybrid local-confidence threshold to `0.35` declaratively, and remove shell endpoint drift so health/roadmap signals use the same embeddings port (`:8081`)
+- Current reporting follow-up: distinguish observed `route_search` latency from actionable/backend-valid latency so invalid 4xx caller traffic and stale unlabeled rows do not trigger unnecessary routing changes
