@@ -365,6 +365,35 @@ cmd_diff() {
 # SUBMIT - Create PR to upstream
 #=============================================================================
 
+# Fetch upstream PR template if it exists
+fetch_pr_template() {
+    local upstream="$1"
+    local template=""
+
+    # Try common PR template locations
+    for path in ".github/PULL_REQUEST_TEMPLATE.md" ".github/pull_request_template.md" "PULL_REQUEST_TEMPLATE.md"; do
+        template=$(gh api "repos/$upstream/contents/$path" 2>/dev/null | jq -r '.content // empty' | base64 -d 2>/dev/null) || true
+        if [[ -n "$template" ]]; then
+            echo "$template"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Check if commits have proper AI disclosure
+check_ai_disclosure() {
+    local commit_msgs
+    commit_msgs=$(git log --format="%B" upstream/master..HEAD 2>/dev/null || git log --format="%B" upstream/main..HEAD 2>/dev/null || git log -5 --format="%B")
+
+    # Check for AI disclosure patterns
+    if echo "$commit_msgs" | grep -qi "claude\|gpt\|copilot\|ai.generated\|llm\|anthropic"; then
+        return 0  # Has AI mention
+    fi
+    return 1  # No AI disclosure found
+}
+
 cmd_submit() {
     local repo="${1:-}"
 
@@ -394,21 +423,84 @@ cmd_submit() {
         exit 1
     fi
 
+    # Get upstream repo
+    local upstream="${REPOS[$repo]}"
+
+    # =========================================================================
+    # LESSON: Upstream PR Template Compliance (learned 2026-03-30)
+    # COSMIC PRs were rejected for not using required template checkboxes.
+    # Always fetch and apply upstream PR templates before submission.
+    # =========================================================================
+
+    log_info "Checking upstream PR template requirements..."
+    local upstream_template=""
+    if upstream_template=$(fetch_pr_template "$upstream"); then
+        log_warn "Upstream repository has a MANDATORY PR template!"
+        echo ""
+        echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}UPSTREAM PR TEMPLATE REQUIREMENTS:${NC}"
+        echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+        echo "$upstream_template"
+        echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+        echo ""
+
+        # Check for AI disclosure requirement
+        if echo "$upstream_template" | grep -qi "AI\|LLM\|generated"; then
+            log_warn "This repository requires AI code disclosure!"
+
+            if ! check_ai_disclosure; then
+                log_error "AI disclosure not found in commit messages."
+                echo ""
+                echo "Many upstream projects (like COSMIC) require:"
+                echo "  1. AI-generated code disclosed in COMMIT MESSAGES (not just PR footer)"
+                echo "  2. Full understanding of all changes"
+                echo "  3. Developer Certificate of Origin compliance"
+                echo ""
+                echo "To fix: amend your commits to include AI disclosure, e.g.:"
+                echo "  git commit --amend -m 'fix: description"
+                echo ""
+                echo "  AI-assisted: Claude Code was used for implementation."
+                echo "  I have reviewed and understand all changes.'"
+                echo ""
+                read -p "Continue anyway? (y/N): " -n 1 -r
+                echo ""
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    log_info "Aborting. Fix AI disclosure and retry."
+                    exit 1
+                fi
+            else
+                log_ok "AI disclosure found in commits"
+            fi
+        fi
+
+        # Require user confirmation of template compliance
+        echo ""
+        log_warn "Have you completed ALL template requirements above?"
+        read -p "Confirm template compliance (y/N): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Aborting. Complete template requirements and retry."
+            exit 1
+        fi
+    fi
+
     # Push branch to fork
     log_info "Pushing branch to fork..."
     git push -u origin "$current_branch"
 
-    # Get upstream repo
-    local upstream="${REPOS[$repo]}"
-
     # Create PR
     log_info "Creating PR to $upstream..."
 
-    # Generate PR body from template
-    local pr_template="$REPO_ROOT/.upstream/proposals/${repo}-pr-description.md"
+    # Generate PR body - prefer upstream template, then local, then fill
     local pr_body=""
-    if [[ -f "$pr_template" ]]; then
-        pr_body=$(cat "$pr_template")
+    local local_template="$REPO_ROOT/.upstream/proposals/${repo}-pr-description.md"
+
+    if [[ -n "$upstream_template" ]]; then
+        # Use upstream template with checkboxes - user must have filled them
+        log_info "Using upstream PR template (ensure checkboxes are marked!)"
+        pr_body="$upstream_template"
+    elif [[ -f "$local_template" ]]; then
+        pr_body=$(cat "$local_template")
     fi
 
     if [[ -n "$pr_body" ]]; then
@@ -423,6 +515,9 @@ cmd_submit() {
     fi
 
     log_ok "PR created!"
+    echo ""
+    echo "IMPORTANT: If using upstream template, edit PR to check all boxes!"
+    echo "  gh pr edit --repo $upstream"
 }
 
 #=============================================================================
