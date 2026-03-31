@@ -921,6 +921,7 @@ async def route_search(
             "route_search",
             {
                 "query": query[:200], "route": route, "prefer_local": prefer_local,
+                "generate_response": bool(generate_response),
                 "context_keys": list((context or {}).keys()),
                 "prompt_cache_policy": {
                     "enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
