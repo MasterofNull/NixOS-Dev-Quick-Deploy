@@ -4252,6 +4252,16 @@ async def run_http_mode(port: int) -> None:
                 original_backend = str(synthesis_fallback.get("original_backend", "") or "").strip()
                 if original_backend:
                     request["audit_metadata"]["fallback_original_backend"] = original_backend
+            prompt_cache = None
+            if isinstance(result_payload, dict):
+                prompt_cache = result_payload.get("prompt_cache")
+            if isinstance(prompt_cache, dict):
+                request["audit_metadata"]["prompt_cache_policy_enabled"] = bool(
+                    prompt_cache.get("policy_enabled")
+                )
+                cached_tokens = prompt_cache.get("cached_tokens")
+                if isinstance(cached_tokens, int):
+                    request["audit_metadata"]["prompt_cache_cached_tokens"] = cached_tokens
             iid = result.get("interaction_id", "")
             if iid:
                 try:
