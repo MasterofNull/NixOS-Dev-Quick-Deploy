@@ -64,6 +64,11 @@ in
     mySystem.secrets.ageKeyFile =
       lib.mkDefault "/home/${cfg.primaryUser}/.config/sops/age/keys.txt";
 
+    # Prefer stability over manual GPU power tuning on this workstation.
+    # This removes the recurring amdgpu overdrive boot warning and narrows the
+    # remaining DMCUB diagnostics to core display/firmware behavior.
+    hardware.amdgpu.overdrive.enable = lib.mkForce false;
+
     security.sudo.extraRules = lib.mkAfter [
       {
         users = [ cfg.primaryUser ];
