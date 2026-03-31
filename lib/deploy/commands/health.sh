@@ -423,6 +423,10 @@ cmd_health() {
         log_step 4 4 "Storage health..."
         cat "$tmp_dir/storage.out"
         [[ "$(cat "$tmp_dir/storage.rc")" -ne 0 ]] && total_failures=$((total_failures + 1))
+
+        # Clean up temp dir and reset trap
+        rm -rf "$tmp_dir"
+        trap - RETURN
       else
         # Sequential execution (default)
         log_step 1 4 "System health..."
