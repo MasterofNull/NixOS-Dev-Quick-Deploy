@@ -19,6 +19,7 @@ SKILL_LISTER="${SKILL_LISTER:-/home/hyperd/.codex/skills/.system/skill-installer
 MIN_MCP_ENTRIES="${MIN_MCP_ENTRIES:-20}"
 MIN_SKILL_ENTRIES="${MIN_SKILL_ENTRIES:-20}"
 FORCE_UPDATE_EXISTING="${FORCE_UPDATE_EXISTING:-false}"
+AIDB_HEALTHCHECK_TIMEOUT_S="${AIDB_HEALTHCHECK_TIMEOUT_S:-45}"
 
 usage() {
   cat <<EOF
@@ -38,6 +39,21 @@ require_cmd() {
     echo "Missing required command: $1" >&2
     exit 1
   }
+}
+
+wait_for_aidb_health() {
+  local deadline=$((SECONDS + AIDB_HEALTHCHECK_TIMEOUT_S))
+  local health_url="${AIDB_BASE_URL%/}/health"
+
+  while (( SECONDS < deadline )); do
+    if curl -fsS --max-time 5 "${health_url}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "AIDB health check timed out after ${AIDB_HEALTHCHECK_TIMEOUT_S}s (${health_url})" >&2
+  return 1
 }
 
 write_existing_paths_json() {
@@ -128,6 +144,9 @@ post_documents_jsonl() {
   local api_key="$2"
   local count=0
   local failed=0
+  local response_file
+  response_file="$(mktemp)"
+  trap 'rm -f "${response_file}"' RETURN
   while IFS= read -r line; do
     [[ -z "${line}" ]] && continue
     local ok=0
@@ -136,7 +155,7 @@ post_documents_jsonl() {
     for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
       local http_code
       http_code="$(
-        curl -sS -o /tmp/aidb-import-response.json -w '%{http_code}' \
+        curl -sS -o "${response_file}" -w '%{http_code}' \
           -X POST "${AIDB_BASE_URL%/}/documents" \
           -H "Content-Type: application/json" \
           -H "X-API-Key: ${api_key}" \
@@ -158,7 +177,7 @@ post_documents_jsonl() {
         continue
       fi
       echo "AIDB import failed (http=${http_code}) for payload: ${line}" >&2
-      cat /tmp/aidb-import-response.json >&2 || true
+      cat "${response_file}" >&2 || true
       break
     done
     if [[ "${ok}" -ne 1 ]]; then
@@ -183,6 +202,9 @@ sync_mcp_catalog() {
   trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' EXIT
 
   api_key="$(load_api_key)"
+
+  echo "Waiting for AIDB health before import..."
+  wait_for_aidb_health
 
   echo "Fetching MCP registry catalog..."
   if ! curl -fsS --max-time 30 "${MCP_REGISTRY_URL}" > "${tmp_dir}/mcp_registry.json" 2>/dev/null; then

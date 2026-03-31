@@ -93,7 +93,10 @@ in
     ];
 
     boot.kernelParams = lib.mkAfter [
-      "amdgpu.dcdebugmask=0x10"
+      # This platform repeatedly marks TSC unstable during boot; telling the
+      # kernel up front avoids the watchdog warning and switches directly to the
+      # fallback clocksource.
+      "tsc=unstable"
     ];
   };
 }
