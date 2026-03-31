@@ -130,6 +130,27 @@ def main() -> int:
     empty = aq_report.remote_profile_utilization([], window="1h")
     assert_true(empty.get("available") is False, "empty entries should report unavailable")
 
+    route_search_only = aq_report.remote_profile_utilization(
+        [
+            {
+                "timestamp": (now - timedelta(minutes=6)).isoformat().replace("+00:00", "Z"),
+                "tool_name": "route_search",
+                "service": "hybrid-coordinator-http",
+                "outcome": "success",
+                "latency_ms": 1100.0,
+                "metadata": {
+                    "backend": "remote",
+                    "generate_response": True,
+                },
+            }
+        ],
+        window="1h",
+    )
+    assert_true(route_search_only.get("available") is True, "expected route_search remote fallback availability")
+    assert_true(route_search_only.get("source") == "route_search_audit_fallback", "expected route_search fallback source")
+    assert_true(route_search_only.get("total_calls") == 1, "expected one route_search remote fallback call")
+    assert_true((route_search_only.get("top_profiles") or [])[0][0] == "remote-reasoning", "expected remote reasoning fallback profile")
+
     print("PASS: delegated remote profile reporting and latency decomposition work")
     return 0
 
