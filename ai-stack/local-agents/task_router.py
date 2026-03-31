@@ -13,11 +13,19 @@ Part of Phase 11 Batch 11.3: Workflow Integration
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class AgentTarget(Enum):
@@ -64,17 +72,36 @@ class TaskRouter:
         local_success_threshold: float = 0.75,
         complexity_threshold: float = 0.6,
         default_to_local: bool = True,
+        remote_available: Optional[bool] = None,
+        offline_mode: Optional[bool] = None,
+        allow_degraded_local: Optional[bool] = None,
     ):
         self.local_success_threshold = local_success_threshold
         self.complexity_threshold = complexity_threshold
         self.default_to_local = default_to_local
+        self.offline_mode = (
+            _env_flag("LOCAL_AGENT_OFFLINE_MODE", False)
+            if offline_mode is None
+            else offline_mode
+        )
+        self.remote_available = (
+            _env_flag("LOCAL_AGENT_REMOTE_AVAILABLE", not self.offline_mode)
+            if remote_available is None
+            else remote_available
+        )
+        self.allow_degraded_local = (
+            _env_flag("LOCAL_AGENT_ALLOW_DEGRADED_LOCAL", True)
+            if allow_degraded_local is None
+            else allow_degraded_local
+        )
 
         # Performance tracking (injected from executor)
         self.local_success_rate: float = 0.9  # Optimistic default
 
         logger.info(
             f"Task router initialized: local_threshold={local_success_threshold}, "
-            f"complexity_threshold={complexity_threshold}"
+            f"complexity_threshold={complexity_threshold}, offline_mode={self.offline_mode}, "
+            f"remote_available={self.remote_available}"
         )
 
     def route(
@@ -100,8 +127,17 @@ class TaskRouter:
         Returns:
             Routing decision with target and reasoning
         """
+        remote_routing_available = self.remote_available and not self.offline_mode
+
         # Rule 1: Flagship requirement → Remote Claude
         if requires_flagship:
+            if not remote_routing_available and self.allow_degraded_local:
+                return RoutingDecision(
+                    target=AgentTarget.LOCAL_AGENT,
+                    confidence=0.55,
+                    reason="Flagship requested but remote routing unavailable; degrade to local",
+                    fallback=None,
+                )
             return RoutingDecision(
                 target=AgentTarget.REMOTE_CLAUDE,
                 confidence=1.0,
@@ -120,6 +156,13 @@ class TaskRouter:
 
         # Rule 3: Quality critical + high complexity → Remote
         if quality_critical and complexity > self.complexity_threshold:
+            if not remote_routing_available and self.allow_degraded_local:
+                return RoutingDecision(
+                    target=AgentTarget.LOCAL_AGENT,
+                    confidence=0.5,
+                    reason=f"Quality critical + high complexity ({complexity:.2f}) but remote routing unavailable",
+                    fallback=None,
+                )
             return RoutingDecision(
                 target=AgentTarget.REMOTE_CLAUDE,
                 confidence=0.95,
@@ -139,6 +182,13 @@ class TaskRouter:
         # Rule 5: Local performance check
         if self.local_success_rate < self.local_success_threshold:
             # Local agents underperforming, prefer remote
+            if not remote_routing_available and self.allow_degraded_local:
+                return RoutingDecision(
+                    target=AgentTarget.LOCAL_AGENT,
+                    confidence=0.45,
+                    reason=f"Local success rate low ({self.local_success_rate:.1%}) and remote routing unavailable",
+                    fallback=None,
+                )
             return RoutingDecision(
                 target=AgentTarget.REMOTE_CODEX,
                 confidence=0.8,
@@ -149,6 +199,13 @@ class TaskRouter:
         # Rule 6: Complexity-based routing
         if complexity > self.complexity_threshold:
             # High complexity → Remote
+            if not remote_routing_available and self.allow_degraded_local:
+                return RoutingDecision(
+                    target=AgentTarget.LOCAL_AGENT,
+                    confidence=0.5,
+                    reason=f"High complexity ({complexity:.2f}) but remote routing unavailable",
+                    fallback=None,
+                )
             return RoutingDecision(
                 target=AgentTarget.REMOTE_CODEX,
                 confidence=0.75,
@@ -162,9 +219,16 @@ class TaskRouter:
                 target=AgentTarget.LOCAL_AGENT,
                 confidence=0.7,
                 reason="Default to local (cost-efficient)",
-                fallback=AgentTarget.REMOTE_CODEX,
+                fallback=AgentTarget.REMOTE_CODEX if remote_routing_available else None,
             )
         else:
+            if not remote_routing_available and self.allow_degraded_local:
+                return RoutingDecision(
+                    target=AgentTarget.LOCAL_AGENT,
+                    confidence=0.5,
+                    reason="Default remote unavailable; degrade to local",
+                    fallback=None,
+                )
             return RoutingDecision(
                 target=AgentTarget.REMOTE_CODEX,
                 confidence=0.7,

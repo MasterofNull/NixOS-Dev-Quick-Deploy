@@ -927,6 +927,10 @@ in {
         AI_STACK_RALPH_ENDPOINT = "http://127.0.0.1:${toString cfg.mcpServers.ralphPort}";
         AI_STACK_WORKFLOW_ORCHESTRATE_ENDPOINT = "http://127.0.0.1:${toString cfg.mcpServers.hybridPort}/workflow/orchestrate";
         AI_STACK_INFERENCE_ENDPOINT = "http://127.0.0.1:${toString llama.port}/v1";
+        LOCAL_AGENT_OFFLINE_MODE = "false";
+        LOCAL_AGENT_ALLOW_DEGRADED_LOCAL = "true";
+        LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS = "2";
+        LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS = "60";
 
         # Tool paths (backwards compatible)
         AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
