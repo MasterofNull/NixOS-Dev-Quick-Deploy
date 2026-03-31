@@ -1,17 +1,17 @@
 # System Excellence Roadmap — 2026 Q2
 
 **Generated:** 2026-03-15
-**Last Updated:** 2026-03-20
-**Status:** Active - Phase 1 COMPLETE, Phase 2 Batches 2.1-2.3 materially implemented, Phase 3 Batches 3.1-3.3 IN PROGRESS
+**Last Updated:** 2026-03-31
+**Status:** Active - deployment/dashboard foundation complete; harness routing/reporting/offline resilience advanced; workstation stability hardening is the current activation focus
 **Owner:** AI Harness Team
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Objective:** Transform scattered capabilities into a seamless, production-ready, world-class AI development platform
 
 ---
 
 ## Executive Summary
 
-**Current State (2026-03-20 Update):**
+**Current State (2026-03-31 Update):**
 - ✅ 11 phases of AI capabilities implemented (~100K lines of code)
 - ✅ Advanced features: MAML, gap resolution, progressive disclosure, agentic patterns
 - ✅ **PHASE 1 COMPLETE:** Unified deployment CLI with 9 commands operational
@@ -19,6 +19,10 @@
 - ✅ Configuration management: config/deploy.yaml with 5 sections
 - ✅ Dashboard now serves as a real operator surface for deployment history, rollback, AI insights, and A2A readiness
 - ✅ A2A compatibility facade, SDK methods, dashboard visibility, and upstream TCK-aligned coverage landed in the harness
+- ✅ Local-agent offline resilience is materially improved: remote-unavailable work now degrades to local execution instead of hard failure, and captive-portal recovery is bounded and reversible
+- ✅ Harness routing/reporting quality improved materially: local-first continuation handling, targeted retrieval prewarm, audit-label cleanup, and actionable latency reporting are now in place
+- ✅ Shared skill registry drift and recurring synthetic/curated query-gap noise were reduced, improving the usefulness of live `aq-report` recommendations
+- ✅ Desktop freeze mitigation work is prepared in-repo: continuous-learning log storm fix, COSMIC greeter seed-state creation, and audit-default reduction on general-purpose workstation profiles
 - ⏳ Google ADK alignment is not yet systematized: the stack has overlapping capabilities, but no formal parity scorecard, integration review, or implementation-discovery loop against ADK primitives/integrations
 - ⏳ Agentic storage is now in active implementation: hybrid deployment semantic search, coverage reporting, natural-language deployment retrieval with result explanations, context-aware retrieval across deployments/logs/config/code, queryable deployment graph views, cross-deployment causality edges, cluster summaries, root-cluster/failure-family queries, ranked cause-chain summaries, cluster score-breakdown rankings, and per-cluster evidence drilldowns are live
 - ⏳ Broader knowledge graph extraction depth remains outstanding; initial multi-modal retrieval is now live
@@ -41,6 +45,27 @@
 - External framework parity: ADK scorecard published with adopt/adapt/defer decision for top relevant integrations
 - Test coverage: 90%+ (from ~70%)
 - Documentation completeness: 100% (from ~65%)
+
+## Current Activation Focus
+
+The current high-value work is no longer basic feature landing. It is:
+
+1. Deploy-time activation and verification of the recent stability batches on the live workstation.
+2. Confirmation that the desktop freeze signals are gone or materially reduced after activation.
+3. Re-baselining harness health and performance once the live system settles.
+4. Returning to improvement-loop quality work only after live stability is re-confirmed.
+
+## Post-Deploy Verification Queue
+
+1. Validate journal health for audit-storm reduction on the workstation profile.
+2. Validate COSMIC greeter startup and login stability after declarative seed-state activation.
+3. Validate hybrid coordinator logs for the absence of repeated continuous-learning checkpoint resume errors.
+4. Re-run `scripts/ai/aq-qa 0 --json`, `scripts/ai/aq-report --since=1h --format=json`, and `bash scripts/testing/check-mcp-health.sh`.
+5. If healthy, resume the next optimization queue:
+   - hint anti-dominance and feedback quality
+   - synthetic gap suppression alignment across hints/reporting
+   - residual operator knowledge curation
+   - remaining ADK parity/orchestration planning
 
 ---
 
