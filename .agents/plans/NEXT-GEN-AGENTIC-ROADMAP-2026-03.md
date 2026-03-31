@@ -2,10 +2,10 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; deployment knowledge-graph context added; dashboard/API security and audit hardening advanced; deeper orchestration still pending
+**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; local/offline resilience, routing/reporting optimization, and crash-mitigation slices advanced; deeper orchestration and next-gen improvement loops still pending
 **Created:** 2026-03-15
-**Last Updated:** 2026-03-20
-**Version:** 1.1.0
+**Last Updated:** 2026-03-31
+**Version:** 1.2.0
 
 ---
 
@@ -20,7 +20,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 6. Operates with minimal human intervention
 7. Continuously learns from every interaction
 
-## Current Harness Status (2026-03-20)
+## Current Harness Status (2026-03-31)
 
 - A2A interoperability is implemented in the hybrid coordinator, including agent card discovery, JSON-RPC task methods, task/event streaming, SDK method support, and dashboard readiness visibility.
 - The harness is actively being used with sub-agent and reviewer-gate workflows; coordination is no longer hypothetical, but the full dynamic team-formation/orchestration layer is still incomplete.
@@ -29,12 +29,25 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Dashboard/API security hardening now includes baseline CSP, HTTP security headers, HTTP rate limiting, lightweight dashboard/operator security scan automation, and non-destructive secrets rotation planning/reporting on the operator web surface.
 - Operator audit/compliance plumbing now includes an append-only dashboard audit trail, summary/report routes, filtered forensic query support, and tamper-evident hash-chain sealing for operator audit events.
 - Deployment and operator telemetry now also has natural-language deployment retrieval with query analysis/explanations, context-aware retrieval across deployments/logs/config/code, queryable graph views, cross-deployment relatedness reasoning, cluster summaries, root-cluster/failure-family queries, ranked cause chains, cluster score-breakdown rankings, per-cluster evidence drilldowns, shared operator-guidance follow-up actions that connect retrieval results back into graph/insights surfaces, stronger configuration-intent ranking so fix-oriented queries prefer config/code evidence over noisy logs, file-level repo-context aggregation so repeated line hits do not overwhelm the operator surface, likely-fix path hints so retrieval can point agents toward the next probable remediation target, recommended next-step summaries so operators and sub-agents can act on one concise instruction first, compact insight digests so the operator answer can carry lightweight analytics context without a second panel load, low-value doc pruning when a stronger actionable fix path already exists, unit-level log aggregation so runtime context stays compact when one service dominates the evidence, weak semantic tail pruning when stronger runtime or fix-path evidence is already present, weak secondary log-unit pruning when one dominant runtime unit already explains the operator query, low-value code/context tail suppression for dominant runtime-status queries, and dominant runtime-answer collapse so status-style searches resolve to one primary runtime block when that is the clearest answer.
+- Local-agent execution now degrades cleanly to local-first operation during WAN loss or remote-routing failure, with explicit reasons instead of hard failure, and captive-portal recovery is bounded to temporary HTTP/HTTPS + DNS + DHCP bypass with automatic cleanup.
+- Harness routing and reporting have been materially tightened: continuation-style retrieval is biased toward compact local retrieval and memory recall, targeted RAG prewarm improved cache posture, route-search audit labeling now distinguishes local vs remote correctly, and `aq-report` separates observed latency from actionable/backend-valid latency.
+- Shared skill registry drift was repaired, recurring Continue context-limit gap noise was suppressed/curated, and the current harness report state is now much closer to operationally useful rather than cleanup-driven.
+- Recent host-stability work directly targets freeze-adjacent signals from the desktop profile: continuous-learning checkpoint reads no longer spin on `tell()` errors, COSMIC greeter receives minimal declarative seed state before startup, and Linux audit is opt-in by default on general-purpose workstations while remaining enforced for `hospitalClassified`.
 - The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
 - Roadmap coordination should assume:
   - `codex` = orchestration/integration/reviewer gate
   - sub-agents = scoped execution slices
   - A2A = interoperability/runtime contract for continued harness evolution
   - dashboard deployment graph = shared operator context layer, not an orchestration engine
+
+## Immediate Post-Deploy Queue
+
+1. Verify the current `nixos-quick-deploy.sh` run activates the recent crash-mitigation changes cleanly.
+2. Confirm kernel/journal behavior no longer shows sustained `audit_log_subj_ctx` or related audit storm patterns on this desktop profile.
+3. Confirm COSMIC greeter starts without the prior missing-theme/config churn.
+4. Confirm hybrid coordinator no longer emits the continuous-learning checkpoint resume error loop.
+5. Refresh live harness state with `aq-report`, `aq-qa 0`, and MCP health checks before planning further architecture batches.
+6. If the system is stable after deployment, resume higher-order agentic work: hint anti-dominance, synthetic-gap suppression, residual operator knowledge curation, and next orchestration/parity slices.
 
 ---
 
