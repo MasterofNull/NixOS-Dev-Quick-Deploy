@@ -157,9 +157,9 @@ scripts/testing/smoke-security-audit-compliance.sh
    - 60-75% latency reduction for multi-collection queries
    - Query P95 improved from 3-5s to ~1-1.5s
 
-2. [ ] Add semantic cache warm-up on service start
-   - Already partially implemented
-   - Need consistent warmup for common queries
+2. [x] Add semantic cache warm-up on service start
+   - Hybrid coordinator startup warm-up is now wired declaratively through Nix
+   - Common operator and harness retrieval patterns are seeded consistently
 
 3. [x] Implement query result caching (quality_cache.py integrated)
    - Cache hint results for repeated queries
@@ -173,9 +173,9 @@ scripts/testing/smoke-security-audit-compliance.sh
    - Implemented: `deploy health --parallel`
    - Runs all 4 checks concurrently
 
-2. [ ] Lazy dashboard data loading
-   - Load deployment history on demand
-   - Virtual scrolling for large lists
+2. [x] Lazy dashboard data loading
+   - Deployment operations now load on demand through the existing card lazy-loader
+   - Large history lists continue to use pagination instead of eager full rendering
 
 ---
 
