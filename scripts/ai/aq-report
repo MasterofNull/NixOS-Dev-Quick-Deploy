@@ -799,6 +799,10 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         return bucket
 
     overall_latencies: List[float] = []
+    actionable_latencies: List[float] = []
+    backend_valid_latencies: List[float] = []
+    client_error_count = 0
+    backend_unclassified_count = 0
     for entry in route_events:
         metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
         latency = entry.get("latency_ms")
@@ -808,6 +812,16 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         backend = str(metadata.get("backend", "") or "unknown").strip().lower() or "unknown"
         fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
         status_code = metadata.get("http_status")
+        is_client_error = outcome == "client_error" or (isinstance(status_code, int) and 400 <= status_code < 500)
+        is_actionable = not is_client_error
+        if is_client_error:
+            client_error_count += 1
+        else:
+            actionable_latencies.append(latency_value)
+            if backend in {"local", "remote"}:
+                backend_valid_latencies.append(latency_value)
+            else:
+                backend_unclassified_count += 1
         classes = [f"backend:{backend}"]
         if fallback_reason == "remote_4xx_local_fallback":
             classes.append("fallback:remote_4xx_local_fallback")
@@ -850,6 +864,14 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         "total_calls": len(route_events),
         "overall_p50_ms": _percentile(overall_latencies, 50),
         "overall_p95_ms": _percentile(overall_latencies, 95),
+        "actionable_calls": len(actionable_latencies),
+        "actionable_p50_ms": _percentile(actionable_latencies, 50),
+        "actionable_p95_ms": _percentile(actionable_latencies, 95),
+        "backend_valid_calls": len(backend_valid_latencies),
+        "backend_valid_p50_ms": _percentile(backend_valid_latencies, 50),
+        "backend_valid_p95_ms": _percentile(backend_valid_latencies, 95),
+        "client_error_count": client_error_count,
+        "backend_unclassified_count": backend_unclassified_count,
         "breakdown": breakdown[:8],
     }
 
@@ -2675,6 +2697,7 @@ def build_recommendations(
     cache: Dict[str, Any],
     eval_trend: Dict[str, Any],
     gaps: List[dict],
+    route_latency_decomposition: Optional[Dict[str, Any]] = None,
     delegated_prompt_failures: Optional[Dict[str, Any]] = None,
     rag_posture_summary: Optional[Dict[str, Any]] = None,
     adoption: Optional[Dict[str, Any]] = None,
@@ -2711,6 +2734,40 @@ def build_recommendations(
             "Routing metrics unavailable (Prometheus unreachable). "
             "Verify `systemctl status prometheus` and that ai-hybrid-coordinator exposes /metrics."
         )
+
+    if route_latency_decomposition and route_latency_decomposition.get("available"):
+        observed_p95 = route_latency_decomposition.get("overall_p95_ms")
+        actionable_p95 = route_latency_decomposition.get("actionable_p95_ms")
+        backend_valid_p95 = route_latency_decomposition.get("backend_valid_p95_ms")
+        client_errors = int(route_latency_decomposition.get("client_error_count", 0) or 0)
+        unclassified = int(route_latency_decomposition.get("backend_unclassified_count", 0) or 0)
+        total_calls = int(route_latency_decomposition.get("total_calls", 0) or 0)
+        if (
+            observed_p95 is not None
+            and actionable_p95 is not None
+            and float(observed_p95) >= 2500.0
+            and float(actionable_p95) + 500.0 < float(observed_p95)
+            and client_errors > 0
+        ):
+            recs.append(
+                f"Observed route_search p95 is inflated by invalid client requests "
+                f"({_na(observed_p95, '.0f', 'ms')} observed vs {_na(actionable_p95, '.0f', 'ms')} actionable; "
+                f"{client_errors}/{total_calls} requests were 4xx/client-error). "
+                "Treat this as caller-contract noise before tuning retrieval or model routing."
+            )
+        if (
+            actionable_p95 is not None
+            and backend_valid_p95 is not None
+            and float(actionable_p95) >= 2500.0
+            and float(backend_valid_p95) + 500.0 < float(actionable_p95)
+            and unclassified > 0
+        ):
+            recs.append(
+                f"Actionable route_search latency is still inflated by backend-unclassified rows "
+                f"({_na(actionable_p95, '.0f', 'ms')} actionable vs {_na(backend_valid_p95, '.0f', 'ms')} backend-valid; "
+                f"{unclassified} rows missing explicit local/remote backend labels). "
+                "Prefer fixing audit labeling before further routing-threshold tuning."
+            )
 
     # Cache
     if cache["available"]:
@@ -3305,9 +3362,13 @@ def _rag_prewarm_candidates(
     cache = cache if isinstance(cache, dict) else {}
     route_latency = route_latency if isinstance(route_latency, dict) else {}
     retrieval_breadth = retrieval_breadth if isinstance(retrieval_breadth, dict) else {}
-    route_p95 = route_latency.get("overall_p95_ms")
+    route_p95 = route_latency.get("backend_valid_p95_ms")
+    if route_p95 is None:
+        route_p95 = route_latency.get("actionable_p95_ms")
     if route_p95 is None:
         route_p95 = route_latency.get("p95_ms")
+    if route_p95 is None:
+        route_p95 = route_latency.get("overall_p95_ms")
     cache_hit_pct = cache.get("hit_pct")
     breadth_avg = retrieval_breadth.get("avg_collection_count")
 
@@ -4031,6 +4092,27 @@ def format_md(
             f"- Overall p50/p95: **{_na(route_latency_decomposition.get('overall_p50_ms'), '.0f', 'ms')}** / "
             f"**{_na(route_latency_decomposition.get('overall_p95_ms'), '.0f', 'ms')}**"
         )
+        if route_latency_decomposition.get("actionable_calls"):
+            lines.append(
+                f"- Actionable p50/p95: **{_na(route_latency_decomposition.get('actionable_p50_ms'), '.0f', 'ms')}** / "
+                f"**{_na(route_latency_decomposition.get('actionable_p95_ms'), '.0f', 'ms')}**"
+                f" across **{int(route_latency_decomposition.get('actionable_calls', 0) or 0)}** non-4xx calls"
+            )
+        if route_latency_decomposition.get("backend_valid_calls"):
+            lines.append(
+                f"- Backend-valid p50/p95: **{_na(route_latency_decomposition.get('backend_valid_p50_ms'), '.0f', 'ms')}** / "
+                f"**{_na(route_latency_decomposition.get('backend_valid_p95_ms'), '.0f', 'ms')}**"
+                f" across **{int(route_latency_decomposition.get('backend_valid_calls', 0) or 0)}** local/remote-labeled calls"
+            )
+        client_error_count = int(route_latency_decomposition.get("client_error_count", 0) or 0)
+        backend_unclassified_count = int(route_latency_decomposition.get("backend_unclassified_count", 0) or 0)
+        if client_error_count or backend_unclassified_count:
+            noise_parts: List[str] = []
+            if client_error_count:
+                noise_parts.append(f"{client_error_count} invalid client requests")
+            if backend_unclassified_count:
+                noise_parts.append(f"{backend_unclassified_count} backend-unclassified actionable rows")
+            lines.append(f"- Noise context: {', '.join(noise_parts)}")
         breakdown = route_latency_decomposition.get("breakdown") or []
         if breakdown:
             lines.append("- Breakdown:")
@@ -4754,6 +4836,27 @@ def format_text(
             f"  Overall p50/p95: {_na(route_latency_decomposition.get('overall_p50_ms'), '.0f', 'ms')} / "
             f"{_na(route_latency_decomposition.get('overall_p95_ms'), '.0f', 'ms')}"
         )
+        if route_latency_decomposition.get("actionable_calls"):
+            lines.append(
+                f"  Actionable p50/p95: {_na(route_latency_decomposition.get('actionable_p50_ms'), '.0f', 'ms')} / "
+                f"{_na(route_latency_decomposition.get('actionable_p95_ms'), '.0f', 'ms')}"
+                f" across {int(route_latency_decomposition.get('actionable_calls', 0) or 0)} non-4xx calls"
+            )
+        if route_latency_decomposition.get("backend_valid_calls"):
+            lines.append(
+                f"  Backend-valid p50/p95: {_na(route_latency_decomposition.get('backend_valid_p50_ms'), '.0f', 'ms')} / "
+                f"{_na(route_latency_decomposition.get('backend_valid_p95_ms'), '.0f', 'ms')}"
+                f" across {int(route_latency_decomposition.get('backend_valid_calls', 0) or 0)} local/remote-labeled calls"
+            )
+        client_error_count = int(route_latency_decomposition.get("client_error_count", 0) or 0)
+        backend_unclassified_count = int(route_latency_decomposition.get("backend_unclassified_count", 0) or 0)
+        if client_error_count or backend_unclassified_count:
+            noise_parts: List[str] = []
+            if client_error_count:
+                noise_parts.append(f"{client_error_count} invalid client requests")
+            if backend_unclassified_count:
+                noise_parts.append(f"{backend_unclassified_count} backend-unclassified actionable rows")
+            lines.append(f"  Noise context: {', '.join(noise_parts)}")
         breakdown = route_latency_decomposition.get("breakdown") or []
         for item in breakdown[:5]:
             lines.append(
@@ -5307,6 +5410,7 @@ def main() -> None:
         cache,
         eval_trend,
         gaps,
+        route_latency_decomposition,
         delegation_feedback,
         rag_posture_summary,
         adoption,
