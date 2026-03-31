@@ -280,6 +280,9 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
             "latency": {
                 "window": route_latency.get("window", ""),
                 "overall_p95_ms": route_latency.get("overall_p95_ms"),
+                "actionable_p95_ms": route_latency.get("actionable_p95_ms"),
+                "backend_valid_p95_ms": route_latency.get("backend_valid_p95_ms"),
+                "client_error_count": route_latency.get("client_error_count"),
                 "top_breakdown": (route_latency.get("breakdown") or [])[:3],
             },
         },

@@ -65,6 +65,14 @@ def main() -> int:
             "metadata": {"backend": "local", "route_strategy": "hybrid"},
         },
         {
+            "timestamp": (now - timedelta(minutes=9)).isoformat().replace("+00:00", "Z"),
+            "tool_name": "route_search",
+            "service": "hybrid-coordinator-http",
+            "outcome": "client_error",
+            "latency_ms": 40.0,
+            "metadata": {"backend": "unknown", "route_strategy": "hybrid", "http_status": 400},
+        },
+        {
             "timestamp": (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
             "tool_name": "route_search",
             "service": "hybrid-coordinator-http",
@@ -102,9 +110,13 @@ def main() -> int:
 
     route_latency = aq_report.route_search_latency_decomposition(entries, window="7d")
     assert_true(route_latency.get("available") is True, "expected route latency decomposition availability")
-    assert_true(route_latency.get("total_calls") == 2, "expected two route_search calls in latency decomposition")
+    assert_true(route_latency.get("total_calls") == 3, "expected three route_search calls in latency decomposition")
+    assert_true(route_latency.get("client_error_count") == 1, "expected one client-error route_search call")
+    assert_true(route_latency.get("actionable_calls") == 2, "expected actionable calls to exclude 4xx/client errors")
+    assert_true(route_latency.get("backend_valid_calls") == 2, "expected backend-valid calls to keep only local/remote rows")
     breakdown = route_latency.get("breakdown") or []
     assert_true(any(item.get("label") == "backend:local" for item in breakdown), "expected backend:local breakdown")
+    assert_true(any(item.get("label") == "status:4xx" for item in breakdown), "expected 4xx breakdown")
     assert_true(
         any(item.get("label") == "fallback:remote_4xx_local_fallback" for item in breakdown),
         "expected fallback latency breakdown",
