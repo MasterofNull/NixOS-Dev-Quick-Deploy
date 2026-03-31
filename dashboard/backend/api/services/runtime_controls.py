@@ -142,13 +142,16 @@ class OperatorAuditLog:
         if not target.exists():
             return []
         rows: List[Dict[str, Any]] = []
-        for raw in target.read_text(encoding="utf-8").splitlines()[-max(1, limit):]:
+        for raw in reversed(target.read_text(encoding="utf-8").splitlines()):
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError:
                 continue
             if isinstance(parsed, dict):
                 rows.append(parsed)
+                if len(rows) >= max(1, limit):
+                    break
+        rows.reverse()
         return rows
 
     def append(
@@ -269,7 +272,13 @@ class OperatorAuditLog:
                     first_invalid_index = index
                     invalid_reason = "hash_mismatch"
                     break
-                if str(row.get("prev_hash") or "") != previous_digest:
+                current_prev_hash = str(row.get("prev_hash") or "")
+                if not current_prev_hash:
+                    if previous_digest:
+                        legacy_events += 1
+                    previous_digest = current_hash
+                    continue
+                if current_prev_hash != previous_digest:
                     first_invalid_index = index
                     invalid_reason = "chain_mismatch"
                     break
