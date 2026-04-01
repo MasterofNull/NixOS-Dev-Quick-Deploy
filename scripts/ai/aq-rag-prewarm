@@ -66,8 +66,20 @@ select_prompt_ids_from_report() {
   )
 
   local memory_diagnosis=""
+  local memory_share=""
+  local memory_attempts=""
+  local recent_retrieval_calls=""
   memory_diagnosis="$(jq -r '.rag_posture.memory_recall_diagnosis // empty' "${REPORT_PATH}" 2>/dev/null || true)"
+  memory_share="$(jq -r '.rag_posture.memory_recall_share_pct // empty' "${REPORT_PATH}" 2>/dev/null || true)"
+  memory_attempts="$(jq -r '.rag_posture.memory_recall_attempts // empty' "${REPORT_PATH}" 2>/dev/null || true)"
+  recent_retrieval_calls="$(jq -r '.rag_posture.recent_retrieval_calls // empty' "${REPORT_PATH}" 2>/dev/null || true)"
   if [[ "${memory_diagnosis}" == "unused" || "${memory_diagnosis}" == "weak" ]]; then
+    append_unique_prompt_id "memory_recall_contextualise"
+  elif [[ "${recent_retrieval_calls}" =~ ^[0-9]+$ && "${memory_attempts}" =~ ^[0-9]+$ ]] \
+    && (( recent_retrieval_calls > 0 )) && (( memory_attempts == 0 )); then
+    append_unique_prompt_id "memory_recall_contextualise"
+  elif [[ "${memory_share}" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+    && awk "BEGIN { exit !(${memory_share} <= 10.0) }"; then
     append_unique_prompt_id "memory_recall_contextualise"
   fi
 }
