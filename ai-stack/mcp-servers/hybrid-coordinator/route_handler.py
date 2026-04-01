@@ -589,6 +589,16 @@ def _prompt_instruction_for_lane_reason(lane_reason: Optional[str]) -> str:
     return "Provide a concise response using the context."
 
 
+def _use_classifier_optimized_prompt(
+    complexity: Optional[task_classifier.TaskComplexity],
+    lane_reason: Optional[str],
+) -> bool:
+    """Keep the hottest local reasoning lane on the tighter route-level prompt contract."""
+    if complexity is None or not getattr(complexity, "optimized_prompt", None):
+        return False
+    return str(lane_reason or "").strip().lower() != "bounded_reasoning_default_lane"
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -1005,7 +1015,7 @@ async def route_search(
                     classifier_context,
                     local_inference_lane_reason,
                 )
-                if _complexity and _complexity.optimized_prompt:
+                if _use_classifier_optimized_prompt(_complexity, local_inference_lane_reason):
                     prompt = _complexity.optimized_prompt
                 else:
                     prompt = (
