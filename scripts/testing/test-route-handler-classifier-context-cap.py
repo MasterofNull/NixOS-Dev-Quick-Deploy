@@ -47,6 +47,8 @@ def load_route_handler():
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=96,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=160,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=128,
+                AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS=360,
+                AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS=850,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=160,
                 AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=400,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS=4.0,
@@ -176,16 +178,44 @@ async def main_async() -> int:
     )
 
     assert_true(result.get("backend") == "local", "expected bounded reasoning with large retrieval context to stay local")
-    assert_true(result.get("local_inference_lane") == "reasoning", "expected bounded reasoning to report the reasoning local lane")
-    assert_true(len(reasoning_client.calls) == 1, "expected one reasoning-lane synthesis call")
-    assert_true(len(local_client.calls) == 0, "expected generic local client to be bypassed for reasoning tasks")
+    assert_true(result.get("local_inference_lane") == "default", "expected bounded reasoning to demote to the default local lane")
+    assert_true(
+        result.get("local_inference_lane_reason") == "bounded_reasoning_default_lane",
+        "expected bounded reasoning lane demotion reason",
+    )
+    assert_true(len(reasoning_client.calls) == 0, "expected bounded reasoning to avoid the dedicated reasoning lane")
+    assert_true(len(local_client.calls) == 1, "expected generic local client to handle bounded reasoning tasks")
     assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call")
     assert_true(
-        int((reasoning_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 128,
+        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 128,
         "expected reasoning tasks to use the reduced local reasoning output budget",
     )
 
-    print("PASS: route_handler caps classifier context so bounded reasoning stays on the local lane")
+    continuation_local_client = _RecordingClient(content="continuation local synthesis")
+    continuation_reasoning_client = _RecordingClient(content="continuation reasoning lane synthesis")
+    route_handler._llama_cpp_client_ref = lambda: continuation_local_client
+    route_handler._llama_cpp_reasoning_client_ref = lambda: continuation_reasoning_client
+
+    continuation_result = await route_handler.route_search(
+        query="continue analyzing the current issue using the prior context and explain why the cache is slow",
+        mode="hybrid",
+        prefer_local=True,
+        context={"source": "test"},
+        limit=3,
+        keyword_limit=3,
+        score_threshold=0.7,
+        generate_response=True,
+    )
+
+    assert_true(continuation_result.get("local_inference_lane") == "reasoning", "expected continuation reasoning to keep the dedicated lane")
+    assert_true(
+        continuation_result.get("local_inference_lane_reason") == "continuation_reasoning_lane",
+        "expected continuation reasoning lane reason",
+    )
+    assert_true(len(continuation_reasoning_client.calls) == 1, "expected continuation reasoning to use the reasoning lane")
+    assert_true(len(continuation_local_client.calls) == 0, "expected continuation reasoning to skip the default lane")
+
+    print("PASS: route_handler selects the dedicated reasoning lane only for continuation/heavier local reasoning")
     return 0
 
 
