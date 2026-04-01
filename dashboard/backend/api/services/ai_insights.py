@@ -72,6 +72,39 @@ def _code_review_results_path() -> Path:
         return Path(configured)
     return _repo_root() / ".agents" / "reviews" / "code-review.json"
 
+
+def _prometheus_metric_sum(metrics_text: str, metric_name: str) -> Optional[float]:
+    total = 0.0
+    matched = False
+    prefix = f"{metric_name}"
+    for line in metrics_text.splitlines():
+        if not line or line.startswith("#") or not line.startswith(prefix):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            total += float(parts[-1])
+            matched = True
+        except ValueError:
+            continue
+    return total if matched else None
+
+
+def _prometheus_metric_scalar(metrics_text: str, metric_name: str) -> Optional[float]:
+    prefix = f"{metric_name}"
+    for line in metrics_text.splitlines():
+        if not line or line.startswith("#") or not line.startswith(prefix):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            return float(parts[-1])
+        except ValueError:
+            continue
+    return None
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
@@ -508,6 +541,72 @@ class AIInsightsService:
             "top_tools": top_tools,
             "slow_tools": slow_tools,
             "error_tools": error_tools,
+        }
+
+    async def get_ai_specific_metrics_summary(self) -> Dict[str, Any]:
+        """Get AI-specific operational metrics from the live hybrid Prometheus surface."""
+        report = await self.get_full_report()
+        metrics_url = f"{HYBRID_URL.rstrip('/')}/metrics"
+        try:
+            request = Request(metrics_url, headers={"Accept": "text/plain"})
+            with urlopen(request, timeout=10.0) as response:
+                metrics_text = response.read().decode("utf-8", errors="replace")
+        except Exception as exc:
+            logger.warning("Failed to fetch hybrid metrics from %s: %s", metrics_url, exc)
+            return {
+                "timestamp": report.get("generated_at"),
+                "window": report.get("window"),
+                "available": False,
+                "metrics_url": metrics_url,
+                "status": "unavailable",
+                "error": str(exc),
+            }
+
+        before_count = _prometheus_metric_sum(metrics_text, "hybrid_delegated_prompt_tokens_before_count")
+        before_sum = _prometheus_metric_sum(metrics_text, "hybrid_delegated_prompt_tokens_before_sum")
+        after_count = _prometheus_metric_sum(metrics_text, "hybrid_delegated_prompt_tokens_after_count")
+        after_sum = _prometheus_metric_sum(metrics_text, "hybrid_delegated_prompt_tokens_after_sum")
+        quality_count = _prometheus_metric_sum(metrics_text, "hybrid_delegated_quality_score_count")
+        quality_sum = _prometheus_metric_sum(metrics_text, "hybrid_delegated_quality_score_sum")
+        token_savings = _prometheus_metric_sum(metrics_text, "hybrid_delegated_prompt_token_savings_total")
+        quality_events = _prometheus_metric_sum(metrics_text, "hybrid_delegated_quality_events_total")
+        progressive_context_loads = _prometheus_metric_sum(metrics_text, "hybrid_progressive_context_loads_total")
+        capability_gap_detections = _prometheus_metric_sum(metrics_text, "hybrid_capability_gap_detections_total")
+        real_time_learning_events = _prometheus_metric_sum(metrics_text, "hybrid_real_time_learning_events_total")
+        meta_learning_adaptations = _prometheus_metric_sum(metrics_text, "hybrid_meta_learning_adaptations_total")
+        process_memory_bytes = _prometheus_metric_scalar(metrics_text, "hybrid_process_memory_bytes")
+
+        avg_prompt_tokens_before = round(before_sum / before_count, 2) if before_sum is not None and before_count else None
+        avg_prompt_tokens_after = round(after_sum / after_count, 2) if after_sum is not None and after_count else None
+        avg_quality_score = round(quality_sum / quality_count, 4) if quality_sum is not None and quality_count else None
+
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            "available": True,
+            "metrics_url": metrics_url,
+            "status": "active",
+            "delegated_prompt_optimization": {
+                "samples_before": int(round(before_count)) if before_count is not None else 0,
+                "samples_after": int(round(after_count)) if after_count is not None else 0,
+                "avg_tokens_before": avg_prompt_tokens_before,
+                "avg_tokens_after": avg_prompt_tokens_after,
+                "tokens_saved_total": int(round(token_savings)) if token_savings is not None else 0,
+            },
+            "delegated_quality": {
+                "score_samples": int(round(quality_count)) if quality_count is not None else 0,
+                "avg_quality_score": avg_quality_score,
+                "quality_events_total": int(round(quality_events)) if quality_events is not None else 0,
+            },
+            "learning_and_adaptation": {
+                "progressive_context_loads_total": int(round(progressive_context_loads)) if progressive_context_loads is not None else 0,
+                "capability_gap_detections_total": int(round(capability_gap_detections)) if capability_gap_detections is not None else 0,
+                "real_time_learning_events_total": int(round(real_time_learning_events)) if real_time_learning_events is not None else 0,
+                "meta_learning_adaptations_total": int(round(meta_learning_adaptations)) if meta_learning_adaptations is not None else 0,
+            },
+            "process": {
+                "memory_bytes": int(round(process_memory_bytes)) if process_memory_bytes is not None else None,
+            },
         }
 
     async def get_routing_analytics(self) -> Dict[str, Any]:
@@ -1091,6 +1190,20 @@ class AIInsightsService:
                     f"candidates={candidates.get('total_candidates', 0)} "
                     f"| top={((candidates.get('top_candidates') or [{}])[0]).get('title', '--')} "
                     f"| categories={len(candidates.get('categories') or {})}"
+                ),
+            }
+        if normalized_target == "ai_specific_metrics":
+            metrics = await self.get_ai_specific_metrics_summary()
+            delegated = metrics.get("delegated_prompt_optimization") or {}
+            learning = metrics.get("learning_and_adaptation") or {}
+            return {
+                "target": normalized_target,
+                "title": "AI-Specific Metrics",
+                "status": metrics.get("status", "unknown"),
+                "summary": (
+                    f"saved={delegated.get('tokens_saved_total', 0)} "
+                    f"| quality={((metrics.get('delegated_quality') or {}).get('avg_quality_score', '--'))} "
+                    f"| learning={learning.get('real_time_learning_events_total', 0)}"
                 ),
             }
         if normalized_target == "code_review":
