@@ -2381,6 +2381,40 @@
                             </div>
                         </div>
 
+                        <div class="metrics-grid" id="orchestrationSessionSummaryGrid" style="margin-bottom: 1.5rem;">
+                            <div class="metric">
+                                <div class="metric-label">Runtime Status</div>
+                                <div class="metric-value" id="orchRuntimeStatus">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Current Phase</div>
+                                <div class="metric-value" id="orchCurrentPhase">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Safety Mode</div>
+                                <div class="metric-value" id="orchSafetyMode">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Token Budget</div>
+                                <div class="metric-value" id="orchTokenBudget">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Tool Budget</div>
+                                <div class="metric-value" id="orchToolBudget">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Usage</div>
+                                <div class="metric-value" id="orchUsageSummary">--</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Session Objective</h3>
+                            <div id="orchObjectiveSummary" style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 6px; color: var(--text-secondary); line-height: 1.5;">
+                                Select a session to inspect workflow runtime context.
+                            </div>
+                        </div>
+
                         <!-- Team Members Table -->
                         <div style="margin-bottom: 1.5rem;">
                             <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Team Members</h3>
@@ -9402,6 +9436,13 @@
             document.getElementById('orchRequiredSlots').textContent = (data.required_slots || []).join(', ') || '--';
             document.getElementById('orchOptionalCapacity').textContent = String(data.optional_slot_capacity ?? '--');
             document.getElementById('orchDeferredSlots').textContent = (data.deferred_slots || []).join(', ') || '--';
+            document.getElementById('orchRuntimeStatus').textContent = data.status || '--';
+            document.getElementById('orchCurrentPhase').textContent = data.current_phase || '--';
+            document.getElementById('orchSafetyMode').textContent = data.safety_mode || '--';
+            document.getElementById('orchTokenBudget').textContent = String(data?.budget?.token_limit ?? '--');
+            document.getElementById('orchToolBudget').textContent = String(data?.budget?.tool_call_limit ?? '--');
+            document.getElementById('orchUsageSummary').textContent = `${data?.usage?.tokens_used ?? '--'} tokens / ${data?.usage?.tool_calls_used ?? '--'} tools`;
+            document.getElementById('orchObjectiveSummary').textContent = data.objective || 'No workflow objective recorded.';
 
             const tbody = document.getElementById('teamMembersTable');
             if (!data.team_members || data.team_members.length === 0) {

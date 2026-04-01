@@ -104,6 +104,26 @@ def main() -> int:
         '"deferred_members": team.get("deferred_members", [])' in text,
         "detailed team inspection should include deferred collaborator members",
     )
+    assert_true(
+        '"objective": session.get("objective", "")' in text,
+        "detailed team inspection should expose workflow objective context",
+    )
+    assert_true(
+        '"status": session.get("status", "unknown")' in text,
+        "detailed team inspection should expose workflow runtime status",
+    )
+    assert_true(
+        '"current_phase": current_phase' in text,
+        "detailed team inspection should expose the current workflow phase",
+    )
+    assert_true(
+        '"safety_mode": session.get("safety_mode", "plan-readonly")' in text,
+        "detailed team inspection should expose workflow safety mode",
+    )
+    assert_true(
+        '"usage": session.get("usage", {})' in text,
+        "detailed team inspection should expose workflow usage counters",
+    )
 
     print("PASS: role-aware agent evaluation biasing is wired into orchestration scoring")
     return 0
