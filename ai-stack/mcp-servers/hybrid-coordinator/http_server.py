@@ -6627,6 +6627,7 @@ async def run_http_mode(port: int) -> None:
                 phase_state = sess.get("phase_state", [])
                 current_idx = int(sess.get("current_phase_index", 0))
                 current_phase = None
+                reasoning_pattern = sess.get("reasoning_pattern", {})
                 if 0 <= current_idx < len(phase_state):
                     current_phase = phase_state[current_idx].get("id")
                 _ensure_session_runtime_fields(sess)
@@ -6639,6 +6640,10 @@ async def run_http_mode(port: int) -> None:
                     "safety_mode": sess.get("safety_mode", "plan-readonly"),
                     "budget": sess.get("budget", {}),
                     "usage": sess.get("usage", {}),
+                    "reasoning_pattern": {
+                        "selected_pattern": reasoning_pattern.get("selected_pattern", ""),
+                        "boost_multiplier": reasoning_pattern.get("boost_multiplier", 1.0),
+                    },
                     "created_at": sess.get("created_at"),
                     "updated_at": sess.get("updated_at"),
                 })
