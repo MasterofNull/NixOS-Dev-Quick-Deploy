@@ -460,6 +460,16 @@ class AIInsightsService:
             "feedback_acceleration": report.get("feedback_acceleration", {}),
         }
 
+    async def get_improvement_candidates(self) -> Dict[str, Any]:
+        """Return the current persisted improvement-candidate summary."""
+        report = await self.get_full_report()
+        summary = self._load_improvement_candidates_summary()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **summary,
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
@@ -966,6 +976,18 @@ class AIInsightsService:
                     f"| phase6={((phases.get('phase6') or {}).get('status', '--'))} "
                     f"| phase9={((phases.get('phase9') or {}).get('candidate_count', 0))} gaps "
                     f"| phase10={((phases.get('phase10') or {}).get('promotable_lessons', 0))} lessons"
+                ),
+            }
+        if normalized_target == "improvement_candidates":
+            candidates = await self.get_improvement_candidates()
+            return {
+                "target": normalized_target,
+                "title": "Improvement Candidates",
+                "status": candidates.get("status", "unknown"),
+                "summary": (
+                    f"candidates={candidates.get('total_candidates', 0)} "
+                    f"| top={((candidates.get('top_candidates') or [{}])[0]).get('title', '--')} "
+                    f"| categories={len(candidates.get('categories') or {})}"
                 ),
             }
 

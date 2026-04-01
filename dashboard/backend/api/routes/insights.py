@@ -129,6 +129,18 @@ async def get_roadmap_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/improvements/candidates")
+async def get_improvement_candidates():
+    """Get the persisted Phase 3 improvement-candidate summary."""
+    try:
+        service = get_insights_service()
+        candidates = await service.get_improvement_candidates()
+        return candidates
+    except Exception as e:
+        logger.error(f"Failed to get improvement candidates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""
