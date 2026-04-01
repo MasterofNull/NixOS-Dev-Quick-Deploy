@@ -721,6 +721,7 @@ async def route_search(
             compressed_tokens = 0
             local_max_tokens = max(1, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS))
             remote_max_tokens = max(local_max_tokens, int(Config.AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS))
+            classifier_context_chars = max(0, int(Config.AI_ROUTE_CLASSIFIER_CONTEXT_CHARS))
             response_max_tokens = remote_max_tokens
             if Config.AI_CONTEXT_COMPRESSION_ENABLED and context_compressor and combined_context:
                 tokens_before = len(combined_context) // 4
@@ -737,9 +738,10 @@ async def route_search(
             # use discrete bounded prompt if local-suitable.
             _complexity = None
             _skip_synthesis = False
+            classifier_context = compressed_context[:classifier_context_chars] if classifier_context_chars > 0 else ""
             if Config.AI_TASK_CLASSIFICATION_ENABLED:
                 _complexity = task_classifier.classify(
-                    query, compressed_context, max_output_tokens=local_max_tokens
+                    query, classifier_context, max_output_tokens=local_max_tokens
                 )
                 logger.info(
                     "task_complexity type=%s tokens=%d local=%s reason=%s",
