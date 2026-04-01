@@ -479,6 +479,78 @@ class AIInsightsService:
             "top_findings": top_findings,
         }
 
+    def _load_testing_validation_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native Phase 3.2 testing and validation framework coverage."""
+        root = _repo_root()
+        property_tests = root / "ai-stack" / "testing" / "property_based_tests.py"
+        chaos_tests = root / "ai-stack" / "testing" / "chaos_engineering.py"
+        benchmarks = root / "ai-stack" / "testing" / "performance_benchmarks.py"
+        canary_suite = root / "scripts" / "automation" / "run-prsi-canary-suite.sh"
+
+        def _contains(path: Path, needle: str) -> bool:
+            try:
+                return needle in path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+
+        features = {
+            "property_based_testing": property_tests.exists() and _contains(property_tests, "hypothesis"),
+            "chaos_engineering": chaos_tests.exists() and _contains(chaos_tests, "ChaosExperimentType"),
+            "performance_benchmarks": benchmarks.exists() and _contains(benchmarks, "BenchmarkComparison"),
+            "canary_automation": canary_suite.exists() or _contains(root / "ai-stack" / "deployment" / "auto_deployer.py", "_deploy_canary"),
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "active" if enabled_count > 0 else "pending"
+        if enabled_count >= 3:
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "feature_count": enabled_count,
+            "features": features,
+            "paths": {
+                "property_based_testing": str(property_tests),
+                "chaos_engineering": str(chaos_tests),
+                "performance_benchmarks": str(benchmarks),
+                "canary_automation": str(canary_suite),
+            },
+        }
+
+    def _load_deployment_pipeline_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native Phase 3.3 deployment pipeline coverage."""
+        path = _repo_root() / "ai-stack" / "deployment" / "auto_deployer.py"
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {
+                "available": False,
+                "status": "pending",
+                "path": str(path),
+                "error": str(exc),
+                "features": {},
+            }
+
+        features = {
+            "safe_auto_deployment": "class AutoDeployer" in content and "_run_validation" in content,
+            "blue_green": "_deploy_blue_green" in content,
+            "rollback": "_rollback" in content and "--rollback" in content,
+            "gradual_rollout_metrics": "_deploy_canary" in content and "canary_percentage" in content,
+            "approval_gate": "require_approval" in content and "_request_approval" in content,
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "active" if enabled_count > 0 else "pending"
+        if enabled_count >= 4:
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "path": str(path),
+            "feature_count": enabled_count,
+            "features": features,
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -670,6 +742,24 @@ class AIInsightsService:
             **summary,
         }
 
+    async def get_testing_validation_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native testing and validation readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_testing_validation_readiness(),
+        }
+
+    async def get_deployment_pipeline_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native autonomous deployment readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_deployment_pipeline_readiness(),
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
@@ -678,6 +768,8 @@ class AIInsightsService:
         ai_specific_metrics = await self.get_ai_specific_metrics_summary()
         improvement_candidates = self._load_improvement_candidates_summary()
         code_review_summary = self._load_code_review_summary()
+        testing_validation = self._load_testing_validation_readiness()
+        deployment_pipeline = self._load_deployment_pipeline_readiness()
 
         routing = report.get("routing", {}) if isinstance(report.get("routing"), dict) else {}
         continue_editor = report.get("continue_editor", {}) if isinstance(report.get("continue_editor"), dict) else {}
@@ -782,6 +874,8 @@ class AIInsightsService:
                     "status": phase3_status,
                     "improvement_candidates": improvement_candidates,
                     "code_review": code_review_summary,
+                    "testing_validation": testing_validation,
+                    "deployment_pipeline": deployment_pipeline,
                     "candidate_count": int(improvement_candidates.get("total_candidates", 0) or 0),
                     "top_candidates": improvement_candidates.get("top_candidates", []),
                 },
@@ -1224,6 +1318,30 @@ class AIInsightsService:
                     f"files={review.get('total_files', 0)} "
                     f"| reviewer={review.get('reviewer', '--')} "
                     f"| critical={((review.get('severity_counts') or {}).get('critical', 0))}"
+                ),
+            }
+        if normalized_target == "testing_validation":
+            readiness = await self.get_testing_validation_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Testing Validation",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| property={((readiness.get('features') or {}).get('property_based_testing', False))} "
+                    f"| chaos={((readiness.get('features') or {}).get('chaos_engineering', False))}"
+                ),
+            }
+        if normalized_target == "deployment_pipeline":
+            readiness = await self.get_deployment_pipeline_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Deployment Pipeline",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| blue_green={((readiness.get('features') or {}).get('blue_green', False))} "
+                    f"| rollback={((readiness.get('features') or {}).get('rollback', False))}"
                 ),
             }
 
