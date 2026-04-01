@@ -224,6 +224,11 @@ All ADK integrations must follow declarative-first wiring:
    - Health checks
    - Audit logging
 
+Reference implementation and validator:
+
+- `lib/adk/declarative-wiring-spec.nix`
+- `lib/adk/wiring-validator.sh`
+
 ### Nix Module Template
 
 ```nix
