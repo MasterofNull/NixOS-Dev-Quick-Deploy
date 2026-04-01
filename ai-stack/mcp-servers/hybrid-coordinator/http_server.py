@@ -164,6 +164,7 @@ _ORCHESTRATION_LANES = {
 }
 _ORCHESTRATION_REVIEW_LANES = {"codex-review", "peer-review", "artifact-review"}
 _ORCHESTRATION_ESCALATION_LANES = {"remote-reasoning", "flagship-remote", "none"}
+_ORCHESTRATION_COLLABORATOR_LANES = _ORCHESTRATION_LANES | (_ORCHESTRATION_ESCALATION_LANES - {"none"})
 _ORCHESTRATION_CONSENSUS_MODES = {"reviewer-gate", "evidence-review", "arbiter-review"}
 _ORCHESTRATION_SELECTION_STRATEGIES = {"orchestrator-first", "local-first", "evidence-first", "escalate-on-complexity"}
 _AQ_REPORT_LATEST_JSON = Path(
@@ -1631,6 +1632,18 @@ def _normalize_string_list(value: Any) -> List[str]:
     return []
 
 
+def _normalize_orchestration_lane_list(value: Any) -> List[str]:
+    values = _normalize_string_list(value)
+    out: List[str] = []
+    seen = set()
+    for item in values:
+        lane = str(item or "").strip().lower()
+        if lane and lane not in seen:
+            seen.add(lane)
+            out.append(lane)
+    return out
+
+
 def _validate_intent_contract(contract: Any) -> Dict[str, Any]:
     """Validate required prompt-intent/spirit contract fields."""
     errors: List[str] = []
@@ -1739,6 +1752,7 @@ def _validate_orchestration_policy(policy: Any) -> Dict[str, Any]:
             "primary_lane": "implementation",
             "reviewer_lane": "codex-review",
             "escalation_lane": "remote-reasoning",
+            "collaborator_lanes": [],
             "consensus_mode": "reviewer-gate",
             "selection_strategy": "orchestrator-first",
             "allow_parallel_subagents": False,
@@ -1755,6 +1769,7 @@ def _validate_orchestration_policy(policy: Any) -> Dict[str, Any]:
     normalized = dict(base["normalized"])
     for key in ("primary_lane", "reviewer_lane", "escalation_lane", "consensus_mode", "selection_strategy"):
         normalized[key] = str(policy.get(key, normalized[key]) or normalized[key]).strip().lower()
+    normalized["collaborator_lanes"] = _normalize_orchestration_lane_list(policy.get("collaborator_lanes", []))
     normalized["allow_parallel_subagents"] = bool(policy.get("allow_parallel_subagents", False))
     try:
         normalized["max_parallel_subagents"] = max(1, int(policy.get("max_parallel_subagents", 1) or 1))
@@ -1778,6 +1793,15 @@ def _validate_orchestration_policy(policy: Any) -> Dict[str, Any]:
         base["errors"].append(
             "orchestration_policy.escalation_lane must be one of: " + ", ".join(sorted(_ORCHESTRATION_ESCALATION_LANES))
         )
+    invalid_collaborator_lanes = [
+        lane for lane in normalized["collaborator_lanes"] if lane not in _ORCHESTRATION_COLLABORATOR_LANES
+    ]
+    if invalid_collaborator_lanes:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.collaborator_lanes must be drawn from: "
+            + ", ".join(sorted(_ORCHESTRATION_COLLABORATOR_LANES))
+        )
     if normalized["consensus_mode"] not in _ORCHESTRATION_CONSENSUS_MODES:
         base["ok"] = False
         base["errors"].append(
@@ -1791,6 +1815,12 @@ def _validate_orchestration_policy(policy: Any) -> Dict[str, Any]:
         )
     if not normalized["allow_parallel_subagents"]:
         normalized["max_parallel_subagents"] = 1
+        normalized["collaborator_lanes"] = []
+    elif not normalized["collaborator_lanes"] and normalized["max_parallel_subagents"] > 1:
+        base["ok"] = False
+        base["errors"].append(
+            "orchestration_policy.collaborator_lanes must contain at least one lane when parallel subagents are enabled"
+        )
     base["normalized"] = normalized
     return base
 
@@ -2606,6 +2636,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
     primary_lane = str(policy.get("primary_lane", "implementation") or "implementation").strip()
     reviewer_lane = str(policy.get("reviewer_lane", "codex-review") or "codex-review").strip()
     escalation_lane = str(policy.get("escalation_lane", "remote-reasoning") or "remote-reasoning").strip()
+    collaborator_lanes = _normalize_orchestration_lane_list(policy.get("collaborator_lanes", []))
 
     base_requester_score = 0.4 if requester_role == "orchestrator" else 0.25
     _add_candidate(
@@ -2648,6 +2679,23 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
                 "requester_bias": 0.05,
             },
             "escalation lane candidate",
+        )
+    for idx, lane in enumerate(collaborator_lanes, start=1):
+        collaborator_agent = "remote" if lane in _ORCHESTRATION_ESCALATION_LANES else requested_by
+        collaborator_locality = 0.05 if lane in _ORCHESTRATION_ESCALATION_LANES else 0.2
+        collaborator_strategy_fit = 0.25 if strategy in {"evidence-first", "escalate-on-complexity"} else 0.18
+        _add_candidate(
+            f"collaborator-{idx}",
+            lane,
+            collaborator_agent,
+            "collaborator",
+            {
+                "strategy_fit": collaborator_strategy_fit,
+                "locality": collaborator_locality,
+                "review_alignment": 0.12,
+                "requester_bias": 0.04,
+            },
+            f"parallel collaborator lane candidate ({lane})",
         )
 
     candidates.sort(key=lambda item: (float(item.get("score", 0.0)), item.get("candidate_id", "")), reverse=True)
@@ -2695,6 +2743,11 @@ def _build_orchestration_team(
     primary_candidate = by_id.get(selected_candidate_id) or next(iter(by_id.values()), {})
     reviewer_candidate = by_id.get("reviewer") or {}
     escalation_candidate = by_id.get("escalation") or {}
+    collaborator_candidates = [
+        candidate
+        for candidate_id, candidate in by_id.items()
+        if candidate_id.startswith("collaborator-")
+    ]
     requested_by = str(orchestration.get("requested_by", "human") or "human").strip() or "human"
     requester_role = str(orchestration.get("requester_role", "orchestrator") or "orchestrator").strip() or "orchestrator"
     allow_parallel = bool(policy.get("allow_parallel_subagents", False))
@@ -2732,6 +2785,15 @@ def _build_orchestration_team(
             consensus_mode == "arbiter-review" or selection_strategy == "escalate-on-complexity",
             "escalation lane reserved for complex or arbitrated tasks",
         )
+    if allow_parallel and collaborator_candidates:
+        for candidate in collaborator_candidates:
+            lane = str(candidate.get("lane", "") or "").strip() or "unknown"
+            _append_member(
+                candidate,
+                f"collaborator:{lane}",
+                False,
+                f"parallel collaborator lane activated for {lane}",
+            )
 
     # Keep deterministic bounded team size while allowing limited multi-role composition.
     unique_members: List[Dict[str, Any]] = []

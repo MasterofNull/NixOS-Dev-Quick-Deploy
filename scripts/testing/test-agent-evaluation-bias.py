@@ -72,6 +72,22 @@ def main() -> int:
         '"roles": {' in text,
         "evaluation trends should expose per-role aggregates",
     )
+    assert_true(
+        '"collaborator_lanes": []' in text,
+        "orchestration policy should default collaborator_lanes to an empty list",
+    )
+    assert_true(
+        'normalized["collaborator_lanes"] = _normalize_orchestration_lane_list(policy.get("collaborator_lanes", []))' in text,
+        "orchestration policy should normalize collaborator lanes explicitly",
+    )
+    assert_true(
+        'if allow_parallel and collaborator_candidates:' in text,
+        "team formation should activate collaborator candidates when parallel subagents are enabled",
+    )
+    assert_true(
+        'f"collaborator-{idx}"' in text,
+        "candidate seeding should create bounded collaborator candidate ids",
+    )
 
     print("PASS: role-aware agent evaluation biasing is wired into orchestration scoring")
     return 0
