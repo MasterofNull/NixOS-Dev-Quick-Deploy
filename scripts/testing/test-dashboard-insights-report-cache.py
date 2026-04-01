@@ -65,6 +65,24 @@ async def exercise_stale_fallback(insights_service) -> None:
     assert_true(result.get("stale") is True, "stale cached report should be served when refresh times out")
 
 
+async def exercise_expired_cache_still_falls_back(insights_service) -> None:
+    service = insights_service.AIInsightsService()
+    service._cache = {"generated_at": "2026-04-01T10:58:00Z", "tool_performance": {}, "stale": "old"}
+    service._cache_timestamp = insights_service.datetime.now(insights_service.timezone.utc) - timedelta(hours=2)
+
+    def fake_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0] if args else "aq-report", timeout=60)
+
+    original_run = insights_service.subprocess.run
+    insights_service.subprocess.run = fake_timeout
+    try:
+        result = await service.get_full_report()
+    finally:
+        insights_service.subprocess.run = original_run
+
+    assert_true(result.get("stale") == "old", "even very old cache should be preferred over a 500 when refresh fails")
+
+
 async def exercise_persisted_seed_and_fallback(insights_service) -> None:
     with tempfile.TemporaryDirectory(prefix="dashboard-insights-persisted-") as tmp_dir:
         persisted_path = Path(tmp_dir) / "latest-aq-report.json"
@@ -116,6 +134,7 @@ def main() -> int:
 
     asyncio.run(exercise_shared_refresh(insights_service))
     asyncio.run(exercise_stale_fallback(insights_service))
+    asyncio.run(exercise_expired_cache_still_falls_back(insights_service))
     asyncio.run(exercise_persisted_seed_and_fallback(insights_service))
     asyncio.run(exercise_atomic_persist(insights_service))
     print("PASS: dashboard insights report cache shares refreshes and serves stale fallback")
