@@ -667,7 +667,7 @@ RETURN path
 - [x] Review ADK integrations relevant to this repo and classify each as `adopt`, `adapt`, `defer`, or `not applicable`
 - [x] Build an ADK parity scorecard covering existing harness features, missing capabilities, overlap, and implementation risk
 - [x] Add a recurring implementation-discovery workflow so new ADK features feed roadmap/backlog updates instead of one-off review notes
-- [ ] Define declarative-first wiring requirements for any adopted ADK-aligned integration, including Nix option ownership and env injection with no hardcoded ports/URLs
+- [x] Define declarative-first wiring requirements for any adopted ADK-aligned integration, including Nix option ownership and env injection with no hardcoded ports/URLs
 
 **Deliverables:**
 - ADK parity matrix and gap register
@@ -681,6 +681,9 @@ RETURN path
   [docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/architecture/GOOGLE-ADK-PARITY-MATRIX-2026-03.md)
 - Discovery workflow and reviewer-gate checklist generation:
   [implementation-discovery.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/lib/adk/implementation-discovery.sh)
+- Declarative-first wiring spec and validator:
+  [declarative-wiring-spec.nix](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/lib/adk/declarative-wiring-spec.nix)
+  [wiring-validator.sh](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/lib/adk/wiring-validator.sh)
 
 **Validation:**
 - Scorecard covers current harness against ADK docs and integrations catalog

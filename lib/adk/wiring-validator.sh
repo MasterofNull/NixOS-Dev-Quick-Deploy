@@ -288,11 +288,11 @@ validate_all() {
         results+=("$result")
 
         if [[ "$result" == PASS:* ]]; then
-            ((pass_count++))
+            pass_count=$((pass_count + 1))
         elif [[ "$result" == WARN:* ]]; then
-            ((warn_count++))
+            warn_count=$((warn_count + 1))
         else
-            ((fail_count++))
+            fail_count=$((fail_count + 1))
         fi
     done
 
@@ -384,7 +384,7 @@ validate_staged() {
         results+=("$result")
 
         if [[ "$result" == FAIL:* ]]; then
-            ((fail_count++))
+            fail_count=$((fail_count + 1))
             log_error "Validation failed: ${file}"
         fi
     done
