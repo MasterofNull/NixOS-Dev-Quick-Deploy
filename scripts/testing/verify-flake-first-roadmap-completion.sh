@@ -271,7 +271,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'token_d
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'outcome = "client_error"' 'HTTP audit classifies 4xx responses as client errors'
 check_pattern "scripts/ai/aq-report" '"cache_prewarm": cache_prewarm' 'aq-report JSON output includes cache prewarm state'
 check_pattern "scripts/ai/aq-report" "Cache prewarm: \\{cache_prewarm\\.get\\('enabled_state'" 'aq-report text output surfaces cache prewarm timer state'
-check_pattern "scripts/ai/aq-report" 'Reliability context: \{_tool_reliability_context\(stats, fresh\)\}' 'aq-report reliability recommendations include failure-mix context'
+check_pattern "scripts/ai/aq-report" 'Reliability context: \{interpretation.get\('"'note'"'\) or _tool_reliability_context\(stats, fresh\)\}' 'aq-report reliability recommendations include failure-mix context'
 check_pattern "scripts/ai/aq-report" "'OK%':>6} \{'Err':>5} \{'4xx':>5}" 'aq-report tool table exposes server and client error counts'
 check_pattern "scripts/ai/aq-report" 'def recent_health_snapshot\(' 'aq-report computes a recent health snapshot for active issues'
 check_pattern "scripts/ai/aq-report" '## 8\. Recent Health Snapshot|\[ 8\. Recent Health Snapshot' 'aq-report surfaces a recent health snapshot section'
