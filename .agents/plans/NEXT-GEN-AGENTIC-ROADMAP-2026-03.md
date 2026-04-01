@@ -428,8 +428,8 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement OpenRouter free tier monitoring
   - ai-stack/offloading/agent_pool_manager.py: Implementation exists
-- [ ] Integrate pool manager into hybrid coordinator routing
-- [ ] Add agent availability tracking (integration pending)
+- [x] Integrate pool manager into hybrid coordinator routing
+- [x] Add agent availability tracking
 - [ ] Create agent quality profiling (integration pending)
 - [ ] Implement failover to paid agents when needed
 - [ ] Add agent performance benchmarking
