@@ -80,6 +80,18 @@ Default batching rule:
 
 ## Next Batched Execution Queue
 
+Current live baseline before next redeploy gate:
+- `check-mcp-health.sh`: 13/13
+- `aq-qa 0 --json`: 36/36
+- `aq-report --since=1h --format=json`: 100% local routing, cache in healthy/low-sample transition depending on hour, memory recall healthy, no query gaps
+- Main remaining active hotspot: local `route_search` synthesis on the reasoning lane
+
+Current repo-only slices already staged behind the next redeploy:
+- low-sample hint-diversity now reports as monitoring noise instead of false monoculture
+- eval-regression watch and local reasoning-lane runtime actions landed in `aq-report` and `/hints`
+- memory-write reliability interpretation now distinguishes caller misuse from backend write failure and marks historical debt as background, not an active outage
+- report text/markdown now surface historical reliability interpretation notes directly
+
 ### Batch A — Monitoring Summary Integrity
 - Surface report freshness in deploy summary
 - Surface recent health state in deploy summary
@@ -92,6 +104,7 @@ Default batching rule:
 - Distinguish historical reliability debt from active incidents in recommendations
 - Add recent-vs-historical context for any remaining reliability watch items
 - Goal: stop background debt from looking like an active outage while keeping it visible
+Status: in progress, repo-only slices staged and awaiting next redeploy activation
 
 ### Batch C — Hint Quality and Steering
 - Surface a historical hint watchlist when concentration is visible in 7d data but not active in the 1h window

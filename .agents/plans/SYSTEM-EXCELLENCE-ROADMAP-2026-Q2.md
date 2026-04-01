@@ -1,8 +1,8 @@
 # System Excellence Roadmap — 2026 Q2
 
 **Generated:** 2026-03-15
-**Last Updated:** 2026-03-31
-**Status:** Active - deployment/dashboard foundation complete; harness routing/reporting/offline resilience advanced; workstation stability hardening is the current activation focus
+**Last Updated:** 2026-04-01
+**Status:** Active - deployment/dashboard foundation complete; harness routing/reporting/offline resilience advanced; live stack healthy; current report-integrity and reliability-interpretation batch staged behind next redeploy
 **Owner:** AI Harness Team
 **Version:** 1.4.0
 **Objective:** Transform scattered capabilities into a seamless, production-ready, world-class AI development platform
@@ -50,18 +50,17 @@
 
 The current high-value work is no longer basic feature landing. It is:
 
-1. Deploy-time activation and verification of the recent stability batches on the live workstation.
-2. Confirmation that the desktop freeze signals are gone or materially reduced after activation.
-3. Re-baselining harness health and performance once the live system settles.
-4. Returning to improvement-loop quality work only after live stability is re-confirmed.
+1. Preserve the current healthy live baseline while batching multiple repo-only improvements per deploy.
+2. Activate the staged reporting/reliability slices on the next redeploy boundary instead of doing one-change redeploy loops.
+3. Re-baseline harness health and performance after each batched activation.
+4. Continue the roadmap from report integrity and hint quality into operator knowledge curation and ADK parity work.
 
 ## Post-Deploy Verification Queue
 
-1. Validate journal health for audit-storm reduction on the workstation profile.
-2. Validate COSMIC greeter startup and login stability after declarative seed-state activation.
-3. Validate hybrid coordinator logs for the absence of repeated continuous-learning checkpoint resume errors.
-4. Re-run `scripts/ai/aq-qa 0 --json`, `scripts/ai/aq-report --since=1h --format=json`, and `bash scripts/testing/check-mcp-health.sh`.
-5. If healthy, resume the next optimization queue:
+1. Re-run `scripts/ai/aq-qa 0 --json`, `scripts/ai/aq-report --since=1h --format=json`, and `bash scripts/testing/check-mcp-health.sh`.
+2. Confirm the activated report now keeps low-sample hint diversity out of false monoculture warnings.
+3. Confirm `store_agent_memory` caller misuse no longer reads like an active backend outage in report/watchlist surfaces.
+4. If healthy, continue the next repo-only queue:
    - hint anti-dominance and feedback quality
    - synthetic gap suppression alignment across hints/reporting
    - residual operator knowledge curation
