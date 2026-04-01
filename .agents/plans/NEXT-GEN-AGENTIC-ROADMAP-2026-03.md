@@ -468,7 +468,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement LLMLingua for prompt compression
   - ai-stack/efficiency/prompt_compression.py: Implementation exists
-- [ ] Integrate compression into query pipeline
+- [x] Integrate compression into query pipeline
 - [ ] Add semantic compression for long contexts
 - [ ] Create prompt template optimization
 - [ ] Implement dynamic prompt generation based on task
@@ -484,7 +484,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement intelligent context pruning
   - ai-stack/efficiency/context_management.py: Implementation exists
-- [ ] Integrate context manager into query pipeline
+- [x] Integrate context manager into query pipeline
 - [ ] Add hierarchical summarization for long contexts
 - [ ] Create context relevance scoring
 - [ ] Implement sliding window attention for long docs
