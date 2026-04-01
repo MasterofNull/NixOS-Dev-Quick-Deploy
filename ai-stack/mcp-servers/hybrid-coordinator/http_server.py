@@ -105,6 +105,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
+from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -140,6 +141,10 @@ _HARNESS_STATS: Dict[str, Any] = {}
 _CIRCUIT_BREAKERS: Optional[Any] = None
 _SERVICE_NAME: str = "hybrid-coordinator"
 _AGENT_POOL_MANAGER = AgentPoolManager()
+_DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.ACCEPTABLE)
+_DELEGATED_RESULT_REFINER = ResultRefiner()
+_DELEGATED_RESULT_CACHE = ResultCache()
+_DELEGATED_QUALITY_TRACKER = QualityTrendTracker()
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -542,6 +547,137 @@ def _select_agent_pool_candidate(
             if agent.tier != AgentTier.FREE and agent.is_available():
                 return agent
     return None
+
+
+def _delegated_quality_status_snapshot() -> Dict[str, Any]:
+    tracked_agents = []
+    for agent_id in sorted(_DELEGATED_QUALITY_TRACKER.agent_quality.keys()):
+        trend = _DELEGATED_QUALITY_TRACKER.get_trend(agent_id, window_hours=24)
+        tracked_agents.append(
+            {
+                "agent_id": agent_id,
+                "sample_count": int(trend.get("sample_count", 0) or 0),
+                "avg_quality": round(float(trend.get("avg_quality", 0.0) or 0.0), 4),
+                "trend": str(trend.get("trend", trend.get("status", "unknown")) or "unknown"),
+            }
+        )
+    return {
+        "threshold": _DELEGATED_QUALITY_CHECKER.threshold.name.lower(),
+        "cache_entries": len(_DELEGATED_RESULT_CACHE.cache),
+        "tracked_agents": tracked_agents,
+    }
+
+
+def _extract_delegated_response_text(body: Any) -> str:
+    """Extract assistant text from delegated response payloads."""
+    if isinstance(body, str):
+        return body.strip()
+    if not isinstance(body, dict):
+        return ""
+    choices = body.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                parts = []
+                for item in content:
+                    if isinstance(item, dict):
+                        text = item.get("text")
+                        if isinstance(text, str) and text.strip():
+                            parts.append(text.strip())
+                return "\n".join(parts).strip()
+        text = choices[0].get("text") if isinstance(choices[0], dict) else ""
+        if isinstance(text, str):
+            return text.strip()
+    content = body.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    response = body.get("response")
+    if isinstance(response, str):
+        return response.strip()
+    return ""
+
+
+def _inject_delegated_response_text(body: Any, text: str) -> Any:
+    """Write assistant text back into delegated response payloads."""
+    if isinstance(body, str):
+        return text
+    if not isinstance(body, dict):
+        return body
+    payload = dict(body)
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        updated_choices = list(choices)
+        first = dict(updated_choices[0])
+        message = first.get("message")
+        if isinstance(message, dict):
+            updated_message = dict(message)
+            if isinstance(updated_message.get("content"), list):
+                updated_message["content"] = [{"type": "text", "text": text}]
+            else:
+                updated_message["content"] = text
+            first["message"] = updated_message
+        else:
+            first["text"] = text
+        updated_choices[0] = first
+        payload["choices"] = updated_choices
+        return payload
+    payload["content"] = text
+    return payload
+
+
+async def _assess_delegated_response_quality(
+    task: str,
+    body: Any,
+    *,
+    agent_id: str,
+) -> Dict[str, Any]:
+    """Assess, refine, cache, and trend delegated responses."""
+    response_text = _extract_delegated_response_text(body)
+    if not response_text:
+        return {"available": False}
+
+    quality_check = _DELEGATED_QUALITY_CHECKER.check_quality(task, response_text)
+    selected_text = response_text
+    refined_response = ""
+    cached_fallback_used = False
+
+    if quality_check.refinement_needed:
+        refinement = await _DELEGATED_RESULT_REFINER.refine(task, response_text, quality_check.score)
+        refined_check = _DELEGATED_QUALITY_CHECKER.check_quality(task, refinement.refined_response)
+        if refined_check.score.overall >= quality_check.score.overall:
+            selected_text = refinement.refined_response
+            refined_response = refinement.refined_response
+            quality_check = refined_check
+
+    if not quality_check.passed:
+        cached = _DELEGATED_RESULT_CACHE.get(task)
+        if cached:
+            cached_text, _cached_quality = cached
+            cached_check = _DELEGATED_QUALITY_CHECKER.check_quality(task, cached_text)
+            if cached_check.score.overall >= quality_check.score.overall:
+                selected_text = cached_text
+                cached_fallback_used = True
+                quality_check = cached_check
+
+    if quality_check.passed:
+        _DELEGATED_RESULT_CACHE.set(task, selected_text, quality_check.score)
+    _DELEGATED_QUALITY_TRACKER.record_quality(agent_id, quality_check.score.overall)
+
+    return {
+        "available": True,
+        "passed": quality_check.passed,
+        "refinement_applied": bool(refined_response),
+        "cached_fallback_used": cached_fallback_used,
+        "fallback_recommended": quality_check.fallback_recommended,
+        "quality_score": round(quality_check.score.overall, 4),
+        "issues": quality_check.score.issues[:5],
+        "suggestions": quality_check.score.suggestions[:5],
+        "response_text": selected_text,
+    }
 
 
 def _audit_http_request(request: web.Request, status: int, latency_ms: float) -> None:
@@ -3588,6 +3724,8 @@ async def run_http_mode(port: int) -> None:
             "auto_quality_improvement": _get_auto_improvement_summary(),
             # Batch 6.2 — Remote agent pool stats
             "agent_pool": _agent_pool_status_snapshot(),
+            # Batch 6.3 — Delegated response quality state
+            "delegated_quality_assurance": _delegated_quality_status_snapshot(),
             # Batch 5.2 — Skill Usage Tracking
             "skill_usage_stats": _get_skill_usage_stats(),
             # Batch 6.2 — Pattern Integration & Effectiveness
@@ -7554,6 +7692,18 @@ async def run_http_mode(port: int) -> None:
                         final_classification = finalization_classification
                         finalization_applied = True
                         finalization_status_code = int(finalization_response.status_code)
+            delegated_quality = {"available": False}
+            if response.status_code < 400:
+                delegated_quality = await _assess_delegated_response_quality(
+                    task,
+                    body,
+                    agent_id=pool_agent.agent_id if pool_agent else effective_profile,
+                )
+                if delegated_quality.get("available"):
+                    pool_quality_score = float(delegated_quality.get("quality_score", 0.0) or 0.0)
+                    updated_text = str(delegated_quality.get("response_text") or "").strip()
+                    if updated_text:
+                        body = _inject_delegated_response_text(body, updated_text)
             recovered_artifact = (
                 {"available": False}
                 if not final_classification.get("is_failure")
@@ -7605,6 +7755,10 @@ async def run_http_mode(port: int) -> None:
                 "agent_pool_agent_id": pool_agent.agent_id if pool_agent else "",
                 "agent_pool_tier": pool_agent.tier.value if pool_agent else "",
                 "agent_pool_provider": pool_agent.provider if pool_agent else "",
+                "delegated_quality_score": pool_quality_score,
+                "delegated_quality_passed": bool(delegated_quality.get("passed")) if delegated_quality.get("available") else False,
+                "delegated_quality_refined": bool(delegated_quality.get("refinement_applied")) if delegated_quality.get("available") else False,
+                "delegated_quality_cached_fallback": bool(delegated_quality.get("cached_fallback_used")) if delegated_quality.get("available") else False,
             }
 
             if pool_agent and response.status_code in {402, 429}:
@@ -7671,6 +7825,7 @@ async def run_http_mode(port: int) -> None:
                         }
                         if pool_agent else {"applied": False}
                     ),
+                    "quality_assurance": delegated_quality,
                     "artifact_recovery": recovered_artifact,
                     "response": body,
                 },
