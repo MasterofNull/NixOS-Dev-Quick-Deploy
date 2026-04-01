@@ -94,3 +94,43 @@ jq -e '
 }
 
 echo "PASS: aq-rag-prewarm selects memory recall seed, uses synthesis on /query only when needed, and calls /memory/recall for memory prewarm"
+
+REPORT_PATH_ZERO_RECALL="${TMP_DIR}/latest-aq-report-zero-recall.json"
+PAYLOAD_LOG_ZERO_RECALL="${TMP_DIR}/payloads-zero-recall.jsonl"
+cat > "${REPORT_PATH_ZERO_RECALL}" <<'EOF'
+{
+  "rag_posture": {
+    "memory_recall_diagnosis": "healthy",
+    "memory_recall_share_pct": 0.0,
+    "memory_recall_attempts": 0,
+    "recent_retrieval_calls": 30,
+    "prewarm_candidates": [
+      {"id": "route_search_synthesis"}
+    ]
+  }
+}
+EOF
+
+OUTPUT_ZERO_RECALL="$(
+  AQ_REPORT_PATH="${REPORT_PATH_ZERO_RECALL}" \
+  HYBRID_API_KEY_FILE="${KEY_PATH}" \
+  HYBRID_API_KEY="test-key" \
+  AQ_PREWARM_CURL_BIN="${FAKE_CURL}" \
+  PAYLOAD_LOG="${PAYLOAD_LOG_ZERO_RECALL}" \
+  HYBRID_URL="http://127.0.0.1:9" \
+  "${SCRIPT}" --from-report "${REPORT_PATH_ZERO_RECALL}" --max-prompts 2 --replay 1 --json
+)"
+
+printf '%s\n' "${OUTPUT_ZERO_RECALL}" | grep -q '"memory_recall_contextualise"' || {
+  echo "FAIL: expected zero-recall posture to force memory_recall_contextualise seed" >&2
+  exit 1
+}
+jq -e '
+  select(._url | endswith("/memory/recall"))
+  | .query != null and .limit == 3 and .retrieval_mode == "hybrid"
+' "${PAYLOAD_LOG_ZERO_RECALL}" >/dev/null || {
+  echo "FAIL: expected zero-recall posture to issue /memory/recall prewarm" >&2
+  exit 1
+}
+
+echo "PASS: aq-rag-prewarm also seeds memory recall when recent retrieval exists but recall attempts are still zero"
