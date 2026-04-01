@@ -3251,6 +3251,45 @@
 
                         <div class="deployment-grid" style="margin-bottom: 1rem;">
                             <div class="deployment-panel">
+                                <div class="deployment-subtitle">Runtime Deployment Control</div>
+                                <div class="deployment-toolbar" style="margin-bottom: 0.75rem; flex-wrap: wrap;">
+                                    <select id="deploymentExecuteStrategy" class="search-box" style="max-width: 180px;">
+                                        <option value="blue_green">Blue-Green</option>
+                                        <option value="canary">Canary</option>
+                                        <option value="rolling">Rolling</option>
+                                        <option value="immediate">Immediate</option>
+                                    </select>
+                                    <input type="number" class="search-box" id="deploymentCanaryPercentage" value="10" min="1" max="100" style="max-width: 140px;" />
+                                    <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;">
+                                        <input type="checkbox" id="deploymentExecuteDryRun" checked />
+                                        Dry Run
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;">
+                                        <input type="checkbox" id="deploymentRequireApproval" checked />
+                                        Approval Gate
+                                    </label>
+                                    <button class="export-btn" onclick="submitDeploymentExecution()">Start Runtime Deploy</button>
+                                </div>
+                                <div class="data-list" id="deploymentExecutionSummary">
+                                    <div class="data-item">
+                                        <span>Runtime deployment controls are ready.</span>
+                                        <span class="data-meta">safe defaults</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="deployment-panel">
+                                <div class="deployment-subtitle">Pending Deployment Approvals</div>
+                                <div class="data-list" id="deploymentPendingApprovalsList">
+                                    <div class="data-item">
+                                        <span>No deployment approvals pending.</span>
+                                        <span class="data-meta">idle</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="deployment-grid" style="margin-bottom: 1rem;">
+                            <div class="deployment-panel">
                                 <div class="deployment-subtitle">Deployment Relationship Graph</div>
                                 <div class="deployment-toolbar" style="margin-bottom: 0.75rem;">
                                     <select id="deploymentGraphView" class="search-box" style="max-width: 180px;" onchange="loadDeploymentGraph()">
@@ -3859,6 +3898,7 @@
         const deploymentState = {
             active: [],
             history: [],
+            pendingApprovals: [],
             searchResults: [],
             searchMeta: null,
             selectedId: null,
@@ -7534,6 +7574,7 @@
             await Promise.all([
                 loadActiveDeployments(),
                 loadDeploymentHistory(),
+                loadPendingDeploymentApprovals(),
                 loadDeploymentSearchStatus(),
                 loadDeploymentGraph()
             ]);
@@ -7546,6 +7587,23 @@
                 await selectDeployment(deploymentState.history[0].deployment_id);
             } else {
                 renderDeploymentUI();
+            }
+        }
+
+        async function loadPendingDeploymentApprovals() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/approvals/pending`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(`pending approvals HTTP ${response.status}`);
+                const data = await response.json();
+                deploymentState.pendingApprovals = Array.isArray(data.deployments) ? data.deployments : [];
+                renderPendingDeploymentApprovals();
+            } catch (error) {
+                console.error('Failed to load pending deployment approvals:', error);
+                deploymentState.pendingApprovals = [];
+                const container = document.getElementById('deploymentPendingApprovalsList');
+                if (container) {
+                    container.innerHTML = `<div class="data-item"><span>Pending approvals unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
+                }
             }
         }
 
@@ -7567,7 +7625,7 @@
         async function loadDeploymentHistory() {
             try {
                 const endpoint = '/api/deployments/history';
-                const params = { limit: 50, include_timeline_preview: true };
+                const params = { limit: 12, include_timeline_preview: true };
 
                 // Check cache first
                 const cacheKey = `${endpoint}:${JSON.stringify(params)}`;
@@ -7580,7 +7638,7 @@
                 }
 
                 // Fetch from API if not cached
-                const url = `${FASTAPI_BASE}${endpoint}?limit=${params.limit}&include_timeline_preview=${params.include_timeline_preview}`;
+                const url = `${FASTAPI_BASE}/api/deployments/history?limit=12&include_timeline_preview=true`;
                 const response = await fetch(url, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`deployment history HTTP ${response.status}`);
                 const data = await response.json();
@@ -7861,7 +7919,42 @@
             renderActiveDeployments();
             renderDeploymentHistory();
             renderDeploymentDetail();
+            renderPendingDeploymentApprovals();
             renderDeploymentSearchResults();
+        }
+
+        function renderPendingDeploymentApprovals() {
+            const container = document.getElementById('deploymentPendingApprovalsList');
+            const summary = document.getElementById('deploymentExecutionSummary');
+            if (summary) {
+                const pending = deploymentState.pendingApprovals.length;
+                summary.innerHTML = `
+                    <div class="data-item">
+                        <span>${pending > 0 ? `${pending} deployment approval${pending === 1 ? '' : 's'} waiting` : 'Runtime deployment controls are ready.'}</span>
+                        <span class="data-meta">${pending > 0 ? 'approval queue' : 'safe defaults'}</span>
+                    </div>
+                `;
+            }
+            if (!container) return;
+
+            if (!deploymentState.pendingApprovals.length) {
+                container.innerHTML = '<div class="data-item"><span>No deployment approvals pending.</span><span class="data-meta">idle</span></div>';
+                return;
+            }
+
+            container.innerHTML = deploymentState.pendingApprovals.map((item) => `
+                <div class="data-item">
+                    <div>
+                        <div>${escapeHtml(item.deployment_id || 'deployment')}</div>
+                        <div class="data-meta">${escapeHtml(item.command || 'runtime deployment')}</div>
+                        <div class="data-meta">${escapeHtml(`requested ${formatAbsoluteTime(item.requested_at)} | strategy=${item.request?.strategy || 'blue_green'} | dry_run=${item.request?.dry_run !== false}`)}</div>
+                    </div>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <button class="service-btn restart" onclick="reviewPendingDeployment('${escapeHtml(item.deployment_id)}', 'approve')">Approve</button>
+                        <button class="service-btn stop" onclick="reviewPendingDeployment('${escapeHtml(item.deployment_id)}', 'reject')">Reject</button>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function renderActiveDeployments() {
@@ -8166,6 +8259,85 @@
 
         function executeDeploymentRollback() {
             submitDeploymentRollback(true);
+        }
+
+        async function submitDeploymentExecution() {
+            const strategy = document.getElementById('deploymentExecuteStrategy')?.value || 'blue_green';
+            const dryRun = document.getElementById('deploymentExecuteDryRun')?.checked !== false;
+            const requireApproval = document.getElementById('deploymentRequireApproval')?.checked === true;
+            const canaryPercentage = Number(document.getElementById('deploymentCanaryPercentage')?.value || 10);
+            const statusEl = document.getElementById('deploymentActionStatus');
+            try {
+                if (statusEl) {
+                    statusEl.textContent = 'Starting runtime deployment...';
+                    statusEl.style.color = 'var(--status-warning)';
+                }
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        strategy,
+                        dry_run: dryRun,
+                        require_approval: requireApproval,
+                        confirm: dryRun,
+                        canary_percentage: Number.isFinite(canaryPercentage) ? canaryPercentage : 10,
+                        user: 'dashboard-operator'
+                    })
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload?.detail || `deployment execute HTTP ${response.status}`);
+                }
+                if (statusEl) {
+                    statusEl.textContent = payload.status === 'pending_approval'
+                        ? `Deployment queued for approval: ${payload.deployment_id}`
+                        : `Deployment started: ${payload.deployment_id}`;
+                    statusEl.style.color = 'var(--status-online)';
+                }
+                dashboardCache.invalidate('/api/deployments/history');
+                await loadDeploymentOps();
+            } catch (error) {
+                console.error('Failed to start runtime deployment:', error);
+                if (statusEl) {
+                    statusEl.textContent = `Runtime deployment failed: ${error.message}`;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+            }
+        }
+
+        async function reviewPendingDeployment(deploymentId, decision) {
+            const statusEl = document.getElementById('deploymentActionStatus');
+            try {
+                if (statusEl) {
+                    statusEl.textContent = `${decision === 'approve' ? 'Approving' : 'Rejecting'} deployment ${deploymentId}...`;
+                    statusEl.style.color = 'var(--status-warning)';
+                }
+                const response = await fetch(`${FASTAPI_BASE}/api/deployments/${encodeURIComponent(deploymentId)}/approval`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        decision,
+                        reviewer: 'dashboard-operator',
+                        reason: decision === 'approve' ? 'Dashboard operator approved runtime deployment' : 'Dashboard operator rejected runtime deployment'
+                    })
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload?.detail || `deployment approval HTTP ${response.status}`);
+                }
+                if (statusEl) {
+                    statusEl.textContent = `${deploymentId} ${payload.status}`;
+                    statusEl.style.color = payload.status === 'rejected' ? 'var(--status-warning)' : 'var(--status-online)';
+                }
+                dashboardCache.invalidate('/api/deployments/history');
+                await loadDeploymentOps();
+            } catch (error) {
+                console.error('Failed to review pending deployment:', error);
+                if (statusEl) {
+                    statusEl.textContent = `Deployment approval failed: ${error.message}`;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+            }
         }
 
         function openSelectedDeploymentLogs() {
