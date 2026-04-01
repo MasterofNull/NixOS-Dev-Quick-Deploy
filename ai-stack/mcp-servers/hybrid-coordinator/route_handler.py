@@ -1285,11 +1285,24 @@ def calculate_adaptive_timeout(
     if generate_response:
         return base_timeout
 
+    def _retrieval_timeout_limit(attr_name: str) -> float:
+        value = getattr(Config, attr_name, base_timeout)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid retrieval timeout config for %s=%r; falling back to base timeout %.1fs",
+                attr_name,
+                value,
+                base_timeout,
+            )
+            return base_timeout
+
     if token_count <= 3 and route == "keyword":
-        return min(base_timeout, Config.AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS)
+        return min(base_timeout, _retrieval_timeout_limit("AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS"))
     if route in ("semantic", "tree") or token_count > 8:
-        return min(base_timeout, Config.AI_ROUTE_TIMEOUT_RETRIEVAL_COMPLEX_SECONDS)
-    return min(base_timeout, Config.AI_ROUTE_TIMEOUT_RETRIEVAL_HYBRID_SECONDS)
+        return min(base_timeout, _retrieval_timeout_limit("AI_ROUTE_TIMEOUT_RETRIEVAL_COMPLEX_SECONDS"))
+    return min(base_timeout, _retrieval_timeout_limit("AI_ROUTE_TIMEOUT_RETRIEVAL_HYBRID_SECONDS"))
 
 
 def track_collection_search_latency(collections: List[str], latency_ms: float) -> None:
