@@ -37,7 +37,21 @@ from opentelemetry import trace
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from config import Config, OptimizationProposal, apply_proposal, routing_config
-from metrics import PROCESS_MEMORY_BYTES, REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
+from metrics import (
+    CAPABILITY_GAP_DETECTIONS,
+    DELEGATED_PROMPT_TOKENS_AFTER,
+    DELEGATED_PROMPT_TOKENS_BEFORE,
+    DELEGATED_PROMPT_TOKEN_SAVINGS,
+    DELEGATED_QUALITY_EVENTS,
+    DELEGATED_QUALITY_SCORE,
+    META_LEARNING_ADAPTATIONS,
+    PROCESS_MEMORY_BYTES,
+    PROGRESSIVE_CONTEXT_LOADS,
+    REAL_TIME_LEARNING_EVENTS,
+    REQUEST_COUNT,
+    REQUEST_ERRORS,
+    REQUEST_LATENCY,
+)
 from shared.tool_security_auditor import ToolSecurityAuditor
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
@@ -8342,6 +8356,44 @@ async def run_http_mode(port: int) -> None:
                 finalization_applied=finalization_applied,
                 delegated_quality=delegated_quality,
             )
+            prompt_tokens_before = int(prompt_optimization.get("original_tokens", 0) or 0)
+            prompt_tokens_after = int(prompt_optimization.get("compressed_tokens", 0) or 0)
+            DELEGATED_PROMPT_TOKENS_BEFORE.labels(profile=effective_profile).observe(prompt_tokens_before)
+            DELEGATED_PROMPT_TOKENS_AFTER.labels(profile=effective_profile).observe(prompt_tokens_after)
+            if prompt_tokens_before > prompt_tokens_after:
+                DELEGATED_PROMPT_TOKEN_SAVINGS.labels(profile=effective_profile).inc(prompt_tokens_before - prompt_tokens_after)
+            if delegated_quality.get("available"):
+                quality_value = float(delegated_quality.get("quality_score", 0.0) or 0.0)
+                DELEGATED_QUALITY_SCORE.labels(profile=effective_profile).observe(quality_value)
+                quality_outcome = (
+                    "passed" if delegated_quality.get("passed")
+                    else "cached_fallback" if delegated_quality.get("cached_fallback_used")
+                    else "refined" if delegated_quality.get("refinement_applied")
+                    else "failed"
+                )
+                DELEGATED_QUALITY_EVENTS.labels(profile=effective_profile, outcome=quality_outcome).inc()
+            if progressive_context_meta.get("applied"):
+                PROGRESSIVE_CONTEXT_LOADS.labels(
+                    category=str(progressive_context_meta.get("category", "") or "unknown"),
+                    tier=str(progressive_context_meta.get("tier", "") or "unknown"),
+                    profile=effective_profile,
+                ).inc()
+            for gap in capability_gaps:
+                CAPABILITY_GAP_DETECTIONS.labels(
+                    gap_type=gap.gap_type.value,
+                    severity=gap.severity.name.lower(),
+                ).inc()
+            if real_time_learning.get("available"):
+                REAL_TIME_LEARNING_EVENTS.labels(profile=effective_profile, event_type="learning_example").inc()
+                if int(real_time_learning.get("executed_action_count", 0) or 0) > 0:
+                    REAL_TIME_LEARNING_EVENTS.labels(profile=effective_profile, event_type="feedback_action").inc(
+                        int(real_time_learning.get("executed_action_count", 0) or 0)
+                    )
+            if meta_learning.get("available"):
+                META_LEARNING_ADAPTATIONS.labels(
+                    domain=str(meta_learning.get("domain", "") or "unknown"),
+                    method=str(meta_learning.get("method", "") or "unknown"),
+                ).inc()
 
             return web.json_response(
                 {
