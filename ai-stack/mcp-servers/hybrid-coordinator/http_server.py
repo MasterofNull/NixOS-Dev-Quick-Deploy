@@ -103,9 +103,12 @@ import mcp_handlers
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
+from prompt_compression import CompressionStrategy, PromptCompressor
+from context_management import ContextChunk, ContextPruner
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -145,6 +148,8 @@ _DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.ACCEPTABL
 _DELEGATED_RESULT_REFINER = ResultRefiner()
 _DELEGATED_RESULT_CACHE = ResultCache()
 _DELEGATED_QUALITY_TRACKER = QualityTrendTracker()
+_DELEGATED_PROMPT_COMPRESSOR = PromptCompressor()
+_DELEGATED_CONTEXT_PRUNER = ContextPruner()
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -677,6 +682,112 @@ async def _assess_delegated_response_quality(
         "issues": quality_check.score.issues[:5],
         "suggestions": quality_check.score.suggestions[:5],
         "response_text": selected_text,
+    }
+
+
+def _message_content_text(message: Dict[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+        return "\n".join(parts)
+    return ""
+
+
+def _replace_message_content(message: Dict[str, Any], text: str) -> Dict[str, Any]:
+    updated = dict(message)
+    if isinstance(updated.get("content"), list):
+        updated["content"] = [{"type": "text", "text": text}]
+    else:
+        updated["content"] = text
+    return updated
+
+
+def _estimate_message_tokens(messages: List[Dict[str, Any]]) -> int:
+    return sum(_DELEGATED_PROMPT_COMPRESSOR._estimate_tokens(_message_content_text(message)) for message in messages)
+
+
+def _optimize_delegated_messages(
+    messages: List[Dict[str, Any]],
+    profile_name: str,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Compress and prune delegated message envelopes before remote dispatch."""
+    if not messages:
+        return messages, {"applied": False}
+
+    optimized = [dict(message) for message in messages]
+    original_tokens = _estimate_message_tokens(optimized)
+    token_budget = 900 if str(profile_name or "").strip() == "remote-free" else 1200
+    compressed_messages = 0
+
+    for idx, message in enumerate(list(optimized)):
+        text = _message_content_text(message).strip()
+        if len(text) < 160:
+            continue
+        strategy = (
+            CompressionStrategy.ABBREVIATE
+            if str(message.get("role", "")).strip() == "system"
+            else CompressionStrategy.REMOVE_STOPWORDS
+        )
+        compressed = _DELEGATED_PROMPT_COMPRESSOR.compress(text, strategy=strategy)
+        if compressed.compressed_tokens < compressed.original_tokens:
+            optimized[idx] = _replace_message_content(message, compressed.compressed_text)
+            compressed_messages += 1
+
+    compressed_tokens = _estimate_message_tokens(optimized)
+    pruned_messages = 0
+    if compressed_tokens > token_budget and len(optimized) > 2:
+        anchor_text = ""
+        for message in reversed(optimized):
+            if str(message.get("role", "")).strip() == "user":
+                anchor_text = _message_content_text(message).strip()
+                if anchor_text:
+                    break
+        fixed_indexes = {0, len(optimized) - 1}
+        fixed_tokens = sum(
+            _DELEGATED_PROMPT_COMPRESSOR._estimate_tokens(_message_content_text(optimized[idx]))
+            for idx in fixed_indexes
+            if 0 <= idx < len(optimized)
+        )
+        candidate_chunks: List[ContextChunk] = []
+        for idx, message in enumerate(optimized):
+            if idx in fixed_indexes:
+                continue
+            text = _message_content_text(message).strip()
+            if not text:
+                continue
+            candidate_chunks.append(
+                ContextChunk(
+                    chunk_id=str(idx),
+                    content=text,
+                    tokens=max(1, _DELEGATED_PROMPT_COMPRESSOR._estimate_tokens(text)),
+                    source=str(message.get("role", "message") or "message"),
+                )
+            )
+        keep_budget = max(1, token_budget - fixed_tokens)
+        kept_chunks, pruned_chunks = _DELEGATED_CONTEXT_PRUNER.prune(candidate_chunks, keep_budget, query=anchor_text or None)
+        keep_ids = {chunk.chunk_id for chunk in kept_chunks}
+        optimized = [
+            message
+            for idx, message in enumerate(optimized)
+            if idx in fixed_indexes or str(idx) in keep_ids
+        ]
+        pruned_messages = len(pruned_chunks)
+
+    final_tokens = _estimate_message_tokens(optimized)
+    return optimized, {
+        "applied": compressed_messages > 0 or pruned_messages > 0,
+        "original_tokens": original_tokens,
+        "compressed_tokens": final_tokens,
+        "token_budget": token_budget,
+        "compressed_messages": compressed_messages,
+        "pruned_messages": pruned_messages,
     }
 
 
@@ -7487,6 +7598,7 @@ async def run_http_mode(port: int) -> None:
                     context=context,
                     profile=selected_profile,
                 )
+            messages, prompt_optimization = _optimize_delegated_messages(messages, selected_profile)
 
             payload: Dict[str, Any] = {
                 "messages": messages,
@@ -7759,6 +7871,9 @@ async def run_http_mode(port: int) -> None:
                 "delegated_quality_passed": bool(delegated_quality.get("passed")) if delegated_quality.get("available") else False,
                 "delegated_quality_refined": bool(delegated_quality.get("refinement_applied")) if delegated_quality.get("available") else False,
                 "delegated_quality_cached_fallback": bool(delegated_quality.get("cached_fallback_used")) if delegated_quality.get("available") else False,
+                "prompt_optimization_applied": bool(prompt_optimization.get("applied")),
+                "prompt_tokens_before": int(prompt_optimization.get("original_tokens", 0) or 0),
+                "prompt_tokens_after": int(prompt_optimization.get("compressed_tokens", 0) or 0),
             }
 
             if pool_agent and response.status_code in {402, 429}:
@@ -7815,6 +7930,7 @@ async def run_http_mode(port: int) -> None:
                         "initial": initial_classification,
                         "final": final_classification,
                     },
+                    "prompt_optimization": prompt_optimization,
                     "agent_pool": (
                         {
                             "applied": True,
