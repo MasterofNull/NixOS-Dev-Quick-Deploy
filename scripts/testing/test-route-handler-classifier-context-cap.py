@@ -176,6 +176,7 @@ async def main_async() -> int:
     )
 
     assert_true(result.get("backend") == "local", "expected bounded reasoning with large retrieval context to stay local")
+    assert_true(result.get("local_inference_lane") == "reasoning", "expected bounded reasoning to report the reasoning local lane")
     assert_true(len(reasoning_client.calls) == 1, "expected one reasoning-lane synthesis call")
     assert_true(len(local_client.calls) == 0, "expected generic local client to be bypassed for reasoning tasks")
     assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call")

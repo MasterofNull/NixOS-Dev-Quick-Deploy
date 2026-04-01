@@ -44,6 +44,10 @@ def main() -> int:
         'request["audit_metadata"]["task_complexity_remote_required"] = bool(' in text,
         "query audit metadata should propagate remote-required flags into tool-audit rows",
     )
+    assert_true(
+        'request["audit_metadata"]["local_inference_lane"] = local_inference_lane' in text,
+        "query audit metadata should propagate the selected local inference lane into tool-audit rows",
+    )
 
     print("PASS: HTTP query audit metadata propagation is covered")
     return 0

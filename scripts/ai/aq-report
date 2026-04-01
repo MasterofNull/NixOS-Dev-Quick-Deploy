@@ -906,6 +906,7 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         status_code = metadata.get("http_status")
         generate_response = metadata.get("generate_response")
         task_complexity_type = str(metadata.get("task_complexity_type", "") or "").strip().lower()
+        local_inference_lane = str(metadata.get("local_inference_lane", "") or "").strip().lower()
         is_client_error = outcome == "client_error" or (isinstance(status_code, int) and 400 <= status_code < 500)
         is_actionable = not is_client_error
         if is_client_error:
@@ -925,6 +926,8 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
             classes.append("request:synthesis")
             if task_complexity_type:
                 classes.append(f"synthesis_type:{task_complexity_type}")
+            if local_inference_lane:
+                classes.append(f"local_lane:{local_inference_lane}")
         elif generate_response is False:
             classes.append("request:retrieval_only")
         if fallback_reason == "remote_4xx_local_fallback":
