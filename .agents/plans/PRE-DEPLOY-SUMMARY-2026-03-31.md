@@ -1,12 +1,18 @@
 # Pre-Deploy Summary — 2026-03-31
 
 **Status:** Ready for deployment
-**Unpushed Commits:** 24
+**Unpushed Commits:** 28
 **QA Status:** 36/36 checks passed
 
 ---
 
 ## Completed Before Redeploy
+
+### Next-Gen Agentic Roadmap Progress
+- ✅ Phase 2.2: Security Audit & Hardening (all controls verified)
+- ✅ Phase 2.3: Audit Trail & Compliance (append-only, tamper-evident)
+- ✅ Phase 4.4: ADK Parity (eval suite, discovery workflow, API mounted)
+- 🚧 Phase 4.2: Multi-Agent Orchestration (foundation complete, deeper policies pending)
 
 ### Phase 4: End-to-End Workflows (100%)
 - ✅ All smoke tests passing (4.1, 4.2, 4.3)
