@@ -183,6 +183,7 @@ class AIInsightsService:
             "task_tooling": report.get("task_tooling_quality", {}),
             "delegated_failures": report.get("delegated_prompt_failures", {}),
             "delegated_failure_windows": report.get("delegated_prompt_failure_windows", {}),
+            "feedback_acceleration": report.get("feedback_acceleration", {}),
         }
 
     async def get_phase4_acceptance_summary(self) -> Dict[str, Any]:
@@ -357,6 +358,7 @@ class AIInsightsService:
             "window": report.get("window"),
             "latency_breakdown": route_decomp,
             "query_gaps": query_gaps,
+            "gap_remediation": report.get("gap_remediation", {}),
             "retrieval_breadth": retrieval_breadth,
             "rag_posture": report.get("rag_posture", {}),
         }

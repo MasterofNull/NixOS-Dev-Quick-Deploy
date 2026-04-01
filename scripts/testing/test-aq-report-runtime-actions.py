@@ -65,10 +65,22 @@ def main() -> int:
         eval_trend,
         [],
         route_latency_decomposition=route_latency,
+        feedback_acceleration={
+            "available": True,
+            "status": "watch",
+            "promotable_lessons": 2,
+        },
+        gap_remediation={
+            "available": True,
+            "candidate_count": 2,
+            "top_strategies": [("extract_pattern", 1), ("import_knowledge", 1)],
+        },
     )
     joined = "\n".join(recommendations)
     assert_true("eval-regression-check" in joined, "expected tagged eval recommendation")
     assert_true("Local reasoning synthesis remains the route_search tail" in joined, "expected reasoning-lane recommendation")
+    assert_true("promotable lesson candidate" in joined, "expected feedback acceleration recommendation")
+    assert_true("Recurring capability gaps remain actionable" in joined, "expected gap remediation recommendation")
 
     actions = aq_report.build_structured_actions(
         {},
@@ -88,15 +100,32 @@ def main() -> int:
                 {"hint_id": "runtime_local_reasoning_tail", "count": 1},
             ],
         },
+        {
+            "available": True,
+            "candidates": [
+                {
+                    "topic": "home-manager git credential helper conflict",
+                    "occurrences": 4,
+                    "strategy": "extract_pattern",
+                    "reason": "operational_remediation_pattern_gap",
+                    "estimated_effort": "low",
+                    "requires_approval": False,
+                },
+            ],
+        },
     )
     action_names = [item.get("action") for item in actions]
     assert_true("run_targeted_eval" in action_names, "expected targeted eval structured action")
     assert_true("tune_local_reasoning_lane" in action_names, "expected reasoning lane structured action")
     assert_true("rotate_hint_alternates" in action_names, "expected historical hint alternate structured action")
+    assert_true("remediate_gap" in action_names, "expected gap remediation structured action")
     eval_action = next(item for item in actions if item.get("action") == "run_targeted_eval")
     assert_true(eval_action.get("script_args") == ["--full", "--strategy", "eval-regression-check"], "expected tagged eval script args")
     rotate_action = next(item for item in actions if item.get("action") == "rotate_hint_alternates")
     assert_true(rotate_action.get("alternate_hint_ids") == ["runtime_local_reasoning_tail"], "expected alternate hint ids in structured action")
+    gap_action = next(item for item in actions if item.get("action") == "remediate_gap")
+    assert_true(gap_action.get("type") == "gap_remediation", "expected gap remediation action type")
+    assert_true(gap_action.get("strategy") == "extract_pattern", "expected classified gap remediation strategy")
 
     diversity = aq_report.hint_diversity(
         {
