@@ -2808,7 +2808,10 @@ def _build_orchestration_team(
     optional_members = [member for member in unique_members if not bool(member.get("required"))]
     optional_budget = max(0, max_parallel - 1)
     active_members = required_members + optional_members[:optional_budget]
+    deferred_members = optional_members[optional_budget:]
     active_slots = [str(member.get("slot", "") or "") for member in active_members]
+    deferred_slots = [str(member.get("slot", "") or "") for member in deferred_members]
+    required_slots = [str(member.get("slot", "") or "") for member in required_members]
     return {
         "requested_by": requested_by,
         "requester_role": requester_role,
@@ -2817,8 +2820,12 @@ def _build_orchestration_team(
         "consensus_mode": consensus_mode,
         "allow_parallel_subagents": allow_parallel,
         "max_parallel_subagents": max_parallel,
+        "required_slots": required_slots,
+        "optional_slot_capacity": optional_budget,
         "active_slots": active_slots,
+        "deferred_slots": deferred_slots,
         "members": active_members,
+        "deferred_members": deferred_members,
     }
 
 
@@ -6407,6 +6414,10 @@ async def run_http_mode(port: int) -> None:
                 "selection_strategy": team.get("selection_strategy", ""),
                 "team_members": team.get("members", []),
                 "active_slots": team.get("active_slots", []),
+                "required_slots": team.get("required_slots", []),
+                "optional_slot_capacity": team.get("optional_slot_capacity", 0),
+                "deferred_slots": team.get("deferred_slots", []),
+                "deferred_members": team.get("deferred_members", []),
                 "candidates": candidates,
                 "selected_candidate_id": selected_id,
                 "formation_mode": team.get("formation_mode", ""),
