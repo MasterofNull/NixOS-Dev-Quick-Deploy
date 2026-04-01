@@ -482,6 +482,8 @@ check_pattern "nixos-quick-deploy.sh" 'Continue trend' 'quick deploy summary sur
 check_pattern "nixos-quick-deploy.sh" 'category=\$\{continue_editor_top_failure_category\}' 'quick deploy summary surfaces the top Continue/editor failure category'
 check_pattern "nixos-quick-deploy.sh" 'historical_watchlist\.has_items' 'quick deploy summary reads historical watchlist state from aq-report JSON'
 check_pattern "nixos-quick-deploy.sh" 'Historical watchlist \(\$\{historical_watch_window\}\)' 'quick deploy summary surfaces background watchlist items'
+check_pattern "nixos-quick-deploy.sh" 'historical_watch_flaky_status' 'quick deploy summary reads historical reliability status from aq-report JSON'
+check_pattern "nixos-quick-deploy.sh" 'historical_watch_flaky_note' 'quick deploy summary reads historical reliability interpretation notes from aq-report JSON'
 check_pattern "nixos-quick-deploy.sh" 'historical_hint_watchlist\.has_items' 'quick deploy summary reads historical hint watchlist state from aq-report JSON'
 check_pattern "nixos-quick-deploy.sh" 'Hint watchlist \(\$\{historical_hint_watch_window\}\)' 'quick deploy summary surfaces historical hint concentration debt'
 check_pattern "nixos-quick-deploy.sh" 'rag_posture.status // "unknown"' 'quick deploy summary reads rag posture state from aq-report JSON'

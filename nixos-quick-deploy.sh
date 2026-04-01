@@ -561,6 +561,8 @@ print_completion_test_results() {
     historical_watch_flaky_ok="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].success_pct // empty')"
     historical_watch_flaky_calls="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].calls // empty')"
     historical_watch_flaky_invalid="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].client_error_count // 0')"
+    historical_watch_flaky_status="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].reliability_status // empty')"
+    historical_watch_flaky_note="$(printf '%s' "${json}" | jq -r '.historical_watchlist.flaky_tools[0].reliability_note // empty')"
     historical_watch_slow_tool="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].tool // empty')"
     historical_watch_slow_p95="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].p95_ms // empty')"
     historical_watch_slow_calls="$(printf '%s' "${json}" | jq -r '.historical_watchlist.slow_tools[0].calls // empty')"
@@ -769,6 +771,12 @@ PY
         historical_watch_label="${historical_watch_flaky_tool} backend OK ${historical_watch_flaky_ok}% (${historical_watch_flaky_calls} valid calls)"
         if [[ "${historical_watch_flaky_invalid}" != "0" ]]; then
           historical_watch_label="${historical_watch_label}; +${historical_watch_flaky_invalid} invalid"
+        fi
+        if [[ -n "${historical_watch_flaky_status}" ]]; then
+          historical_watch_label="${historical_watch_label}; ${historical_watch_flaky_status}"
+        fi
+        if [[ -n "${historical_watch_flaky_note}" ]]; then
+          historical_watch_label="${historical_watch_label}; ${historical_watch_flaky_note}"
         fi
         printf '  %-28s %s\n' \
           "Historical watchlist (${historical_watch_window})" \
