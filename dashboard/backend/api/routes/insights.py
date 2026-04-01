@@ -165,6 +165,30 @@ async def get_code_review_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/testing/readiness")
+async def get_testing_validation_readiness():
+    """Get the repo-native Phase 3.2 testing and validation readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_testing_validation_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get testing validation readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/deployments/readiness")
+async def get_deployment_pipeline_readiness():
+    """Get the repo-native Phase 3.3 autonomous deployment readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_deployment_pipeline_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get deployment pipeline readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""
