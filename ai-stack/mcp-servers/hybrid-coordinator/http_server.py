@@ -106,6 +106,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclosure"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "capability-gap"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "real-time-learning"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
@@ -121,6 +122,8 @@ from relevance_prediction import NegativeContextFilter, RelevancePredictor
 from gap_detection import GapDetector, GapType
 from gap_remediation import RemediationPlan, RemediationResult, RemediationStatus, RemediationStrategy
 from remediation_learning import OutcomeTracker, PlaybookLibrary, StrategyOptimizer
+from online_learning import IncrementalLearner, LearningExample, UpdateStrategy, HintQualityAdjuster, LivePatternMiner
+from feedback_acceleration import ImmediateFeedbackProcessor, SuccessFailureDetector
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -171,6 +174,11 @@ _GAP_DETECTOR = GapDetector()
 _REMEDIATION_OUTCOME_TRACKER = OutcomeTracker()
 _REMEDIATION_STRATEGY_OPTIMIZER = StrategyOptimizer(_REMEDIATION_OUTCOME_TRACKER)
 _REMEDIATION_PLAYBOOK_LIBRARY = PlaybookLibrary(Path(__file__).parent.parent.parent.parent / ".agents" / "playbooks")
+_ONLINE_LEARNER = IncrementalLearner(update_strategy=UpdateStrategy.BATCH)
+_HINT_QUALITY_ADJUSTER = HintQualityAdjuster()
+_LIVE_PATTERN_MINER = LivePatternMiner()
+_IMMEDIATE_FEEDBACK_PROCESSOR = ImmediateFeedbackProcessor()
+_SUCCESS_FAILURE_DETECTOR = SuccessFailureDetector()
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -855,6 +863,25 @@ def _capability_gap_status_snapshot() -> Dict[str, Any]:
     }
 
 
+def _real_time_learning_status_snapshot() -> Dict[str, Any]:
+    top_hints = _HINT_QUALITY_ADJUSTER.get_top_hints(limit=5)
+    pending_actions = _IMMEDIATE_FEEDBACK_PROCESSOR.get_pending_actions(limit=5)
+    return {
+        "learning_buffer_size": len(_ONLINE_LEARNER.learning_buffer),
+        "update_count": len(_ONLINE_LEARNER.update_history),
+        "pattern_count": len(_LIVE_PATTERN_MINER.patterns),
+        "top_hints": [[hint_id, round(float(score), 4)] for hint_id, score in top_hints],
+        "pending_feedback_actions": [
+            {
+                "action_id": action.action_id,
+                "description": action.description,
+                "priority": round(float(action.priority), 4),
+            }
+            for action in pending_actions
+        ],
+    }
+
+
 def _build_gap_failure_text(
     final_classification: Dict[str, Any],
     delegated_quality: Dict[str, Any],
@@ -984,6 +1011,48 @@ def _record_capability_gap_outcomes(
                 plan,
                 outcome,
             )
+
+
+async def _apply_real_time_learning(
+    task: str,
+    body: Any,
+    *,
+    profile_name: str,
+    delegated_quality: Dict[str, Any],
+    final_classification: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    response_text = _extract_delegated_response_text(body)
+    if not response_text:
+        return {"available": False}
+    quality_score = float(delegated_quality.get("quality_score", 0.0) or 0.0)
+    if quality_score <= 0:
+        quality_score = 0.85 if not final_classification.get("is_failure") else 0.35
+    example = LearningExample(
+        example_id=str(uuid4()),
+        query=task,
+        response=response_text,
+        feedback=max(0.0, min(1.0, quality_score)),
+        context={
+            "profile": profile_name,
+            "context": context or {},
+            "failure_classes": final_classification.get("failure_classes", []),
+        },
+    )
+    await _ONLINE_LEARNER.add_example(example)
+    await _LIVE_PATTERN_MINER.mine_interaction(task, response_text, example.context)
+    _HINT_QUALITY_ADJUSTER.record_hint_feedback(f"delegate:{profile_name}", example.feedback)
+    implicit_feedback = _SUCCESS_FAILURE_DETECTOR.create_implicit_feedback(task, response_text, None)
+    actions = await _IMMEDIATE_FEEDBACK_PROCESSOR.process_feedback(implicit_feedback)
+    return {
+        "available": True,
+        "example_id": example.example_id,
+        "feedback_score": round(example.feedback, 4),
+        "update_count": len(_ONLINE_LEARNER.update_history),
+        "pattern_count": len(_LIVE_PATTERN_MINER.patterns),
+        "pending_action_count": len(_IMMEDIATE_FEEDBACK_PROCESSOR.pending_actions),
+        "executed_action_count": sum(1 for action in actions if action.executed_at is not None),
+    }
 
 
 def _optimize_delegated_messages(
@@ -4112,6 +4181,8 @@ async def run_http_mode(port: int) -> None:
             "delegated_quality_assurance": _delegated_quality_status_snapshot(),
             # Batch 9.x — Capability gap state
             "capability_gap_automation": _capability_gap_status_snapshot(),
+            # Batch 10.x — Real-time learning state
+            "real_time_learning": _real_time_learning_status_snapshot(),
             # Batch 5.2 — Skill Usage Tracking
             "skill_usage_stats": _get_skill_usage_stats(),
             # Batch 6.2 — Pattern Integration & Effectiveness
@@ -8112,6 +8183,14 @@ async def run_http_mode(port: int) -> None:
                     },
                 )
             remediation_plans = [_plan_capability_gap_remediation(gap) for gap in capability_gaps]
+            real_time_learning = await _apply_real_time_learning(
+                task,
+                body,
+                profile_name=effective_profile,
+                delegated_quality=delegated_quality,
+                final_classification=final_classification,
+                context=data.get("context") if isinstance(data.get("context"), dict) else None,
+            ) if response.status_code < 400 else {"available": False}
             recovered_artifact = (
                 {"available": False}
                 if not final_classification.get("is_failure")
@@ -8174,6 +8253,7 @@ async def run_http_mode(port: int) -> None:
                 "progressive_context_tier": str(progressive_context_meta.get("tier", "") or ""),
                 "progressive_context_category": str(progressive_context_meta.get("category", "") or ""),
                 "capability_gap_count": len(capability_gaps),
+                "real_time_learning_applied": bool(real_time_learning.get("available")),
             }
 
             if pool_agent and response.status_code in {402, 429}:
@@ -8251,6 +8331,7 @@ async def run_http_mode(port: int) -> None:
                         for gap in capability_gaps
                     ],
                     "remediation_plans": remediation_plans,
+                    "real_time_learning": real_time_learning,
                     "agent_pool": (
                         {
                             "applied": True,
