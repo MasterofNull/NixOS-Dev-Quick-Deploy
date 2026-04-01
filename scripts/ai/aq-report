@@ -905,6 +905,7 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
         status_code = metadata.get("http_status")
         generate_response = metadata.get("generate_response")
+        task_complexity_type = str(metadata.get("task_complexity_type", "") or "").strip().lower()
         is_client_error = outcome == "client_error" or (isinstance(status_code, int) and 400 <= status_code < 500)
         is_actionable = not is_client_error
         if is_client_error:
@@ -922,6 +923,8 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         classes = [f"backend:{backend}"]
         if generate_response is True:
             classes.append("request:synthesis")
+            if task_complexity_type:
+                classes.append(f"synthesis_type:{task_complexity_type}")
         elif generate_response is False:
             classes.append("request:retrieval_only")
         if fallback_reason == "remote_4xx_local_fallback":
@@ -979,7 +982,7 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         "retrieval_only_p95_ms": _percentile(retrieval_only_latencies, 95),
         "client_error_count": client_error_count,
         "backend_unclassified_count": backend_unclassified_count,
-        "breakdown": breakdown[:8],
+        "breakdown": breakdown[:12],
     }
 
 
