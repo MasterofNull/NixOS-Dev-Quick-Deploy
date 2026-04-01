@@ -590,6 +590,43 @@ class AIInsightsService:
             },
         }
 
+    def _load_experimentation_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native A/B experimentation and comparison coverage."""
+        root = _repo_root()
+        ab_framework = root / "ai-stack" / "mcp-servers" / "shared" / "ab_testing.py"
+        hybrid_server = root / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+        interaction_tracker = root / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "interaction_tracker.py"
+
+        def _contains(path: Path, needle: str) -> bool:
+            try:
+                return needle in path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+
+        features = {
+            "ab_framework": ab_framework.exists() and _contains(ab_framework, "class ABTestEngine"),
+            "variant_feedback_compare": hybrid_server.exists() and _contains(hybrid_server, "handle_learning_ab_compare"),
+            "variant_stats_tracking": interaction_tracker.exists() and _contains(interaction_tracker, "get_feedback_variant_stats"),
+            "embedding_variant_partitioning": root.joinpath("ai-stack/mcp-servers/hybrid-coordinator/embedding_cache.py").exists()
+            and _contains(root / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "embedding_cache.py", "variant_tag"),
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "active" if enabled_count > 0 else "pending"
+        if enabled_count >= 3:
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "feature_count": enabled_count,
+            "features": features,
+            "paths": {
+                "ab_framework": str(ab_framework),
+                "variant_feedback_compare": str(hybrid_server),
+                "variant_stats_tracking": str(interaction_tracker),
+            },
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -808,12 +845,22 @@ class AIInsightsService:
             **self._load_agentic_pattern_library_readiness(),
         }
 
+    async def get_experimentation_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native experimentation readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_experimentation_readiness(),
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
         phase4 = await self.get_phase4_acceptance_summary()
         a2a = await self.get_a2a_readiness()
         ai_specific_metrics = await self.get_ai_specific_metrics_summary()
+        experimentation = self._load_experimentation_readiness()
         improvement_candidates = self._load_improvement_candidates_summary()
         code_review_summary = self._load_code_review_summary()
         testing_validation = self._load_testing_validation_readiness()
@@ -912,6 +959,7 @@ class AIInsightsService:
                     "status": phase1_status,
                     "profiling_available": bool(route_latency.get("available")),
                     "ai_specific_metrics": ai_specific_metrics,
+                    "experimentation": experimentation,
                     "route_search_latency": {
                         "overall_p95_ms": route_latency.get("overall_p95_ms"),
                         "synthesis_p95_ms": route_latency.get("synthesis_p95_ms"),
@@ -1404,6 +1452,18 @@ class AIInsightsService:
                     f"features={readiness.get('feature_count', 0)} "
                     f"| react={((readiness.get('features') or {}).get('react', False))} "
                     f"| tot={((readiness.get('features') or {}).get('tree_of_thoughts', False))}"
+                ),
+            }
+        if normalized_target == "experimentation":
+            readiness = await self.get_experimentation_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Experimentation",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| compare={((readiness.get('features') or {}).get('variant_feedback_compare', False))} "
+                    f"| stats={((readiness.get('features') or {}).get('variant_stats_tracking', False))}"
                 ),
             }
 
