@@ -105,6 +105,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclosure"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "capability-gap"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
@@ -117,6 +118,9 @@ from multi_tier_loading import (
 )
 from lazy_context import ContextDependencyGraph, ContextNode, LazyContextLoader
 from relevance_prediction import NegativeContextFilter, RelevancePredictor
+from gap_detection import GapDetector, GapType
+from gap_remediation import RemediationPlan, RemediationResult, RemediationStatus, RemediationStrategy
+from remediation_learning import OutcomeTracker, PlaybookLibrary, StrategyOptimizer
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -163,6 +167,10 @@ _DISCLOSURE_TIER_SELECTOR = TierSelector()
 _DISCLOSURE_TIER_LOADER = MultiTierLoader(_DISCLOSURE_REPOSITORY)
 _DISCLOSURE_RELEVANCE_PREDICTOR = RelevancePredictor()
 _DISCLOSURE_NEGATIVE_FILTER = NegativeContextFilter(threshold=0.25)
+_GAP_DETECTOR = GapDetector()
+_REMEDIATION_OUTCOME_TRACKER = OutcomeTracker()
+_REMEDIATION_STRATEGY_OPTIMIZER = StrategyOptimizer(_REMEDIATION_OUTCOME_TRACKER)
+_REMEDIATION_PLAYBOOK_LIBRARY = PlaybookLibrary(Path(__file__).parent.parent.parent.parent / ".agents" / "playbooks")
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -827,6 +835,155 @@ async def _apply_progressive_context(
         "filtered_candidates": max(0, len(scored_contexts) - len(filtered_contexts)),
         "profile": str(profile_name or "").strip(),
     }
+
+
+def _capability_gap_status_snapshot() -> Dict[str, Any]:
+    top_gaps = _GAP_DETECTOR.get_top_gaps(limit=5)
+    return {
+        "detected_gap_count": len(_GAP_DETECTOR.detected_gaps),
+        "tracked_outcomes": len(_REMEDIATION_OUTCOME_TRACKER.outcomes),
+        "top_gaps": [
+            {
+                "gap_id": gap.gap_id,
+                "gap_type": gap.gap_type.value,
+                "severity": gap.severity.name.lower(),
+                "priority_score": round(float(gap.priority_score or 0.0), 4),
+                "description": gap.description,
+            }
+            for gap in top_gaps
+        ],
+    }
+
+
+def _build_gap_failure_text(
+    final_classification: Dict[str, Any],
+    delegated_quality: Dict[str, Any],
+) -> str:
+    parts: List[str] = []
+    failure_classes = final_classification.get("failure_classes") or []
+    if failure_classes:
+        parts.append("delegated failure classes: " + ", ".join(str(item) for item in failure_classes))
+    salvage = final_classification.get("salvage")
+    if isinstance(salvage, dict) and salvage.get("reasoning_excerpt"):
+        parts.append(str(salvage.get("reasoning_excerpt") or ""))
+    issues = delegated_quality.get("issues") or []
+    if issues:
+        parts.append("quality issues: " + "; ".join(str(item) for item in issues))
+    suggestions = delegated_quality.get("suggestions") or []
+    if suggestions:
+        parts.append("quality suggestions: " + "; ".join(str(item) for item in suggestions))
+    return " | ".join(part for part in parts if part).strip()
+
+
+def _plan_capability_gap_remediation(gap: Any) -> Dict[str, Any]:
+    strategies = _REMEDIATION_STRATEGY_OPTIMIZER.optimize_for_gap_type(gap.gap_type)
+    strategy = strategies[0] if strategies else RemediationStrategy.MANUAL_INTERVENTION
+    steps_by_strategy = {
+        RemediationStrategy.INSTALL_PACKAGE: [
+            "check declarative package source of truth",
+            "stage package integration through Nix modules",
+            "validate with repo gates before deploy",
+        ],
+        RemediationStrategy.IMPORT_KNOWLEDGE: [
+            "collect authoritative docs for the missing topic",
+            "stage bounded knowledge artifact or hint",
+            "validate references and expected operators",
+        ],
+        RemediationStrategy.SYNTHESIZE_SKILL: [
+            "derive a repeatable procedure from recent successful examples",
+            "stage a bounded skill artifact",
+            "validate the workflow against the failing task class",
+        ],
+        RemediationStrategy.EXTRACT_PATTERN: [
+            "extract a reusable pattern from repeated successful work",
+            "stage the pattern contract in repo surfaces",
+            "validate against similar tasks",
+        ],
+        RemediationStrategy.CREATE_INTEGRATION: [
+            "identify the missing coordinator or dashboard hook",
+            "stage non-destructive integration wiring",
+            "validate with targeted regression coverage",
+        ],
+        RemediationStrategy.MANUAL_INTERVENTION: [
+            "collect failure evidence",
+            "surface manual remediation recommendation",
+            "defer destructive changes until reviewed",
+        ],
+    }
+    playbook = _REMEDIATION_PLAYBOOK_LIBRARY.find_similar_playbook(gap)
+    plan = RemediationPlan(
+        plan_id=f"gap-plan-{gap.gap_id}",
+        gap_id=gap.gap_id,
+        strategy=strategy,
+        steps=steps_by_strategy.get(strategy, steps_by_strategy[RemediationStrategy.MANUAL_INTERVENTION]),
+        estimated_effort="low" if strategy != RemediationStrategy.MANUAL_INTERVENTION else "medium",
+        requires_approval=strategy in {RemediationStrategy.INSTALL_PACKAGE, RemediationStrategy.MANUAL_INTERVENTION},
+    )
+    return {
+        "plan_id": plan.plan_id,
+        "strategy": plan.strategy.value,
+        "steps": plan.steps,
+        "estimated_effort": plan.estimated_effort,
+        "requires_approval": plan.requires_approval,
+        "playbook_id": playbook.playbook_id if playbook else "",
+        "playbook_name": playbook.name if playbook else "",
+    }
+
+
+def _record_capability_gap_outcomes(
+    gaps: List[Any],
+    *,
+    duration_seconds: float,
+    response_status: int,
+    fallback_applied: bool,
+    finalization_applied: bool,
+    delegated_quality: Dict[str, Any],
+) -> None:
+    remediation_actions: List[str] = []
+    strategy = RemediationStrategy.MANUAL_INTERVENTION
+    if fallback_applied:
+        remediation_actions.append("delegated remote-free fallback applied")
+        strategy = RemediationStrategy.CREATE_INTEGRATION
+    if finalization_applied:
+        remediation_actions.append("delegated finalization remediation applied")
+        strategy = RemediationStrategy.EXTRACT_PATTERN
+    if delegated_quality.get("refinement_applied"):
+        remediation_actions.append("delegated quality refinement applied")
+        strategy = RemediationStrategy.SYNTHESIZE_SKILL
+    if delegated_quality.get("cached_fallback_used"):
+        remediation_actions.append("delegated cached response fallback applied")
+        strategy = RemediationStrategy.IMPORT_KNOWLEDGE
+    if not remediation_actions:
+        return
+    success = response_status < 400
+    for gap in gaps:
+        plan = RemediationPlan(
+            plan_id=f"gap-outcome-{gap.gap_id}-{int(time.time())}",
+            gap_id=gap.gap_id,
+            strategy=strategy,
+            steps=remediation_actions,
+            estimated_effort="low",
+        )
+        result = RemediationResult(
+            plan_id=plan.plan_id,
+            gap_id=gap.gap_id,
+            status=RemediationStatus.SUCCESSFUL if success else RemediationStatus.FAILED,
+            success=success,
+            actions_taken=list(remediation_actions),
+            artifacts_created=[],
+            validation_passed=success,
+        )
+        outcome = _REMEDIATION_OUTCOME_TRACKER.record_outcome(gap, plan, result, duration_seconds)
+        playbook = _REMEDIATION_PLAYBOOK_LIBRARY.find_similar_playbook(gap)
+        if playbook:
+            _REMEDIATION_PLAYBOOK_LIBRARY.update_playbook(playbook.playbook_id, outcome)
+        elif success:
+            _REMEDIATION_PLAYBOOK_LIBRARY.create_playbook(
+                f"{gap.gap_type.value} recovery",
+                gap,
+                plan,
+                outcome,
+            )
 
 
 def _optimize_delegated_messages(
@@ -3953,6 +4110,8 @@ async def run_http_mode(port: int) -> None:
             "agent_pool": _agent_pool_status_snapshot(),
             # Batch 6.3 — Delegated response quality state
             "delegated_quality_assurance": _delegated_quality_status_snapshot(),
+            # Batch 9.x — Capability gap state
+            "capability_gap_automation": _capability_gap_status_snapshot(),
             # Batch 5.2 — Skill Usage Tracking
             "skill_usage_stats": _get_skill_usage_stats(),
             # Batch 6.2 — Pattern Integration & Effectiveness
@@ -7940,6 +8099,19 @@ async def run_http_mode(port: int) -> None:
                     updated_text = str(delegated_quality.get("response_text") or "").strip()
                     if updated_text:
                         body = _inject_delegated_response_text(body, updated_text)
+            capability_gaps: List[Any] = []
+            capability_gap_failure_text = _build_gap_failure_text(final_classification, delegated_quality)
+            if final_classification.get("is_failure") or (delegated_quality.get("available") and not delegated_quality.get("passed")):
+                capability_gaps = _GAP_DETECTOR.detect_from_failure(
+                    capability_gap_failure_text or f"delegated failure for {effective_profile}",
+                    task,
+                    {
+                        "profile": effective_profile,
+                        "requesting_agent": orchestration["requesting_agent"],
+                        "requester_role": orchestration["requester_role"],
+                    },
+                )
+            remediation_plans = [_plan_capability_gap_remediation(gap) for gap in capability_gaps]
             recovered_artifact = (
                 {"available": False}
                 if not final_classification.get("is_failure")
@@ -8001,6 +8173,7 @@ async def run_http_mode(port: int) -> None:
                 "progressive_context_applied": bool(progressive_context_meta.get("applied")),
                 "progressive_context_tier": str(progressive_context_meta.get("tier", "") or ""),
                 "progressive_context_category": str(progressive_context_meta.get("category", "") or ""),
+                "capability_gap_count": len(capability_gaps),
             }
 
             if pool_agent and response.status_code in {402, 429}:
@@ -8013,6 +8186,14 @@ async def run_http_mode(port: int) -> None:
                     quality_score=pool_quality_score,
                 )
                 pool_agent_acquired = False
+            _record_capability_gap_outcomes(
+                capability_gaps,
+                duration_seconds=max(0.0, time.perf_counter() - request_started_at),
+                response_status=int(response.status_code),
+                fallback_applied=fallback_applied,
+                finalization_applied=finalization_applied,
+                delegated_quality=delegated_quality,
+            )
 
             return web.json_response(
                 {
@@ -8059,6 +8240,17 @@ async def run_http_mode(port: int) -> None:
                     },
                     "progressive_context": progressive_context_meta,
                     "prompt_optimization": prompt_optimization,
+                    "capability_gaps": [
+                        {
+                            "gap_id": gap.gap_id,
+                            "gap_type": gap.gap_type.value,
+                            "severity": gap.severity.name.lower(),
+                            "priority_score": round(float(gap.priority_score or 0.0), 4),
+                            "description": gap.description,
+                        }
+                        for gap in capability_gaps
+                    ],
+                    "remediation_plans": remediation_plans,
                     "agent_pool": (
                         {
                             "applied": True,
