@@ -117,6 +117,18 @@ async def get_a2a_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/roadmap/readiness")
+async def get_roadmap_readiness():
+    """Get consolidated readiness for the active next-gen roadmap phases."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_roadmap_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get roadmap readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""

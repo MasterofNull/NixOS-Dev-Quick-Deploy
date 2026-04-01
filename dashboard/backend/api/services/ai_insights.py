@@ -30,6 +30,17 @@ def _phase4_acceptance_report_path() -> Path:
         return Path(configured)
     return _repo_root() / ".reports" / "phase-4-acceptance-report.json"
 
+
+def _reviewer_gate_checklist_path() -> Path:
+    configured = os.getenv("REVIEWER_GATE_CHECKLIST_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    reports_dir = _repo_root() / ".reports"
+    candidates = sorted(reports_dir.glob("reviewer-gate-checklist-*.md"))
+    if candidates:
+        return candidates[-1]
+    return reports_dir / "reviewer-gate-checklist-latest.md"
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
@@ -184,6 +195,111 @@ class AIInsightsService:
             "delegated_failures": report.get("delegated_prompt_failures", {}),
             "delegated_failure_windows": report.get("delegated_prompt_failure_windows", {}),
             "feedback_acceleration": report.get("feedback_acceleration", {}),
+        }
+
+    async def get_roadmap_readiness(self) -> Dict[str, Any]:
+        """Return a consolidated readiness summary for the active next-gen roadmap phases."""
+        report = await self.get_full_report()
+        phase4 = await self.get_phase4_acceptance_summary()
+        a2a = await self.get_a2a_readiness()
+
+        routing = report.get("routing", {}) if isinstance(report.get("routing"), dict) else {}
+        continue_editor = report.get("continue_editor", {}) if isinstance(report.get("continue_editor"), dict) else {}
+        gap_remediation = report.get("gap_remediation", {}) if isinstance(report.get("gap_remediation"), dict) else {}
+        feedback_acceleration = report.get("feedback_acceleration", {}) if isinstance(report.get("feedback_acceleration"), dict) else {}
+        agent_lessons = report.get("agent_lessons", {}) if isinstance(report.get("agent_lessons"), dict) else {}
+        intent_contract = report.get("intent_contract_compliance", {}) if isinstance(report.get("intent_contract_compliance"), dict) else {}
+        route_latency = (
+            report.get("route_search_latency_decomposition", {})
+            if isinstance(report.get("route_search_latency_decomposition"), dict)
+            else {}
+        )
+        remote_profile = (
+            report.get("remote_profile_utilization", {})
+            if isinstance(report.get("remote_profile_utilization"), dict)
+            else {}
+        )
+        structured_actions = report.get("structured_actions", []) if isinstance(report.get("structured_actions"), list) else []
+        recommendations = report.get("recommendations", []) if isinstance(report.get("recommendations"), list) else []
+
+        phase4_failed = int(((phase4.get("summary") or {}).get("failed_flows", 0) or 0)) if isinstance(phase4, dict) else 0
+        phase4_status = "healthy"
+        if not phase4.get("available", False):
+            phase4_status = "pending"
+        elif phase4_failed > 0 or a2a.get("status") == "unavailable":
+            phase4_status = "watch"
+
+        remote_calls = int((routing.get("remote_n", 0) or 0))
+        phase6_status = "healthy" if routing.get("available") and remote_calls == 0 else "watch"
+
+        candidate_count = int(gap_remediation.get("candidate_count", 0) or 0)
+        phase9_status = str(gap_remediation.get("status", "healthy") or "healthy")
+        if not gap_remediation.get("available", False):
+            phase9_status = "pending"
+
+        promotable_lessons = int(feedback_acceleration.get("promotable_lessons", 0) or 0)
+        phase10_status = str(feedback_acceleration.get("status", "healthy") or "healthy")
+        if not feedback_acceleration.get("available", False):
+            phase10_status = "pending"
+
+        continue_status = str(continue_editor.get("status", "unknown") or "unknown")
+        local_pct = routing.get("local_pct")
+        phase11_status = "healthy"
+        if continue_status not in {"healthy", "available"}:
+            phase11_status = "watch"
+        elif local_pct is None or float(local_pct) < 80.0:
+            phase11_status = "watch"
+
+        checklist_path = _reviewer_gate_checklist_path()
+        checklist_available = checklist_path.exists()
+
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            "status": "healthy" if all(
+                status in {"healthy", "active"}
+                for status in (phase4_status, phase6_status, phase11_status)
+            ) and phase9_status in {"healthy", "low_sample"} and phase10_status in {"healthy", "low_sample"} else "watch",
+            "phases": {
+                "phase4": {
+                    "status": phase4_status,
+                    "acceptance": phase4,
+                    "a2a_readiness": a2a,
+                    "reviewer_gate_required_runs": int(intent_contract.get("reviewer_gate_required_runs", 0) or 0),
+                    "accepted_reviews": int(intent_contract.get("accepted_reviews", 0) or 0),
+                },
+                "phase6": {
+                    "status": phase6_status,
+                    "routing": routing,
+                    "remote_profile_utilization": remote_profile,
+                    "route_search_latency": {
+                        "overall_p95_ms": route_latency.get("overall_p95_ms"),
+                        "synthesis_p95_ms": route_latency.get("synthesis_p95_ms"),
+                    },
+                },
+                "phase9": {
+                    "status": phase9_status,
+                    "gap_remediation": gap_remediation,
+                    "candidate_count": candidate_count,
+                },
+                "phase10": {
+                    "status": phase10_status,
+                    "feedback_acceleration": feedback_acceleration,
+                    "promotable_lessons": promotable_lessons,
+                },
+                "phase11": {
+                    "status": phase11_status,
+                    "continue_editor": continue_editor,
+                    "local_routing_pct": local_pct,
+                    "active_lessons": int(((agent_lessons.get("registry") or {}).get("active_count", 0) or 0)),
+                },
+            },
+            "reviewer_gate_checklist": {
+                "available": checklist_available,
+                "path": str(checklist_path),
+            },
+            "structured_action_count": len(structured_actions),
+            "priority_recommendations": recommendations[:3],
         }
 
     async def get_phase4_acceptance_summary(self) -> Dict[str, Any]:
@@ -496,6 +612,20 @@ class AIInsightsService:
                     f"hotspots={len(hotspots.get('hotspots') or [])} "
                     f"| top={top_hotspot.get('id', '--')} "
                     f"| prewarm={((hotspots.get('rag_posture') or {}).get('top_prewarm_candidate') or {}).get('id', '--')}"
+                ),
+            }
+        if normalized_target == "roadmap_readiness":
+            readiness = await self.get_roadmap_readiness()
+            phases = readiness.get("phases") or {}
+            return {
+                "target": normalized_target,
+                "title": "Roadmap Readiness",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"phase4={((phases.get('phase4') or {}).get('status', '--'))} "
+                    f"| phase6={((phases.get('phase6') or {}).get('status', '--'))} "
+                    f"| phase9={((phases.get('phase9') or {}).get('candidate_count', 0))} gaps "
+                    f"| phase10={((phases.get('phase10') or {}).get('promotable_lessons', 0))} lessons"
                 ),
             }
 

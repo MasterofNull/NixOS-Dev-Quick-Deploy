@@ -3479,6 +3479,17 @@ def build_recommendations(
         if recent_tool_stats and tool in recent_tool_stats:
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("success_pct", 0.0) or 0.0) >= 90.0:
                 continue
+        if str(tool or "").strip().lower() == "workflow_run_start":
+            accepted_reviews = int((intent_compliance or {}).get("accepted_reviews", 0) or 0)
+            rejected_reviews = int((intent_compliance or {}).get("rejected_reviews", 0) or 0)
+            pending_reviews = int((intent_compliance or {}).get("pending_reviews", 0) or 0)
+            if accepted_reviews > 0 and rejected_reviews == 0 and pending_reviews == 0:
+                recs.append(
+                    f"Workflow start backend reliability reads low ({stats['success_pct']}% across {stats['calls']} valid calls), "
+                    f"but reviewer-gated workflow runs are completing cleanly ({accepted_reviews} accepted review(s), no rejected or pending reviews). "
+                    "Treat this as workflow contract/result-classification noise before changing retries or fallback behavior."
+                )
+                continue
         interpretation = _tool_reliability_interpretation(tool, stats, fresh)
         if not interpretation.get("active_incident", False):
             continue
