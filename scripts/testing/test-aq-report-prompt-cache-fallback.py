@@ -78,7 +78,9 @@ def main() -> int:
         route_latency={"overall_p95_ms": 2800.0},
         retrieval_breadth={"avg_collection_count": 1.5},
     )
-    assert_true(rag.get("cache_hit_pct") == 50.0, "expected rag posture to use prompt-cache fallback hit rate")
+    assert_true(rag.get("cache_hit_pct") is None, "expected low-sample rag posture to suppress misleading cache hit percentages")
+    assert_true(rag.get("cache_sample_total") == 2, "expected rag posture to retain the underlying cache sample count")
+    assert_true("low sample" in str(rag.get("cache_context", "")).lower(), "expected rag posture to expose low-sample cache context")
     assert_true("prompt" in str(cache.get("source", "")).lower(), "expected explicit cache source labelling")
 
     print("PASS: aq-report falls back to prompt-cache audit samples when Prometheus cache counters are empty")
