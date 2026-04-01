@@ -28,6 +28,35 @@ def main() -> int:
         os.environ["DASHBOARD_OPERATOR_AUDIT_LOG_PATH"] = str(tmp_path / "operator-audit.jsonl")
         os.environ["DASHBOARD_CONTEXT_DB_PATH"] = str(tmp_path / "deployments-context.db")
         os.environ["DASHBOARD_MODE"] = "test"
+        os.environ["DASHBOARD_IMPROVEMENT_CANDIDATES_PATH"] = str(tmp_path / "improvement-candidates.json")
+
+        (tmp_path / "improvement-candidates.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-04-01T11:55:00Z",
+                    "total_candidates": 2,
+                    "candidates": [
+                        {
+                            "title": "Fix performance regression in route_search",
+                            "category": "performance",
+                            "priority": 1,
+                            "estimated_impact": "high",
+                            "effort": "medium",
+                            "related_files": ["ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"],
+                        },
+                        {
+                            "title": "Address broad_exception issues (3 occurrences)",
+                            "category": "quality",
+                            "priority": 3,
+                            "estimated_impact": "medium",
+                            "effort": "medium",
+                            "related_files": ["dashboard/backend/api/services/ai_insights.py"],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         report = {
             "generated_at": "2026-04-01T12:30:00Z",
@@ -100,6 +129,7 @@ def main() -> int:
             assert_true(readiness_response.status_code == 200, "roadmap readiness route should succeed")
             readiness = readiness_response.json()
             phase1 = (readiness.get("phases") or {}).get("phase1") or {}
+            phase3 = (readiness.get("phases") or {}).get("phase3") or {}
             phase4 = (readiness.get("phases") or {}).get("phase4") or {}
             phase10 = (readiness.get("phases") or {}).get("phase10") or {}
             phase11 = (readiness.get("phases") or {}).get("phase11") or {}
@@ -111,6 +141,19 @@ def main() -> int:
             assert_true(
                 top_hotspot.get("label") == "local_lane_reason:bounded_reasoning_default_lane",
                 "roadmap readiness should preserve the top profiling hotspot label",
+            )
+            assert_true(
+                phase3.get("status") == "watch",
+                "roadmap readiness should surface active improvement candidate pressure for phase 3",
+            )
+            assert_true(
+                phase3.get("candidate_count") == 2,
+                "roadmap readiness should expose improvement candidate counts",
+            )
+            top_phase3_candidate = (phase3.get("top_candidates") or [{}])[0]
+            assert_true(
+                top_phase3_candidate.get("title") == "Fix performance regression in route_search",
+                "roadmap readiness should expose the top improvement candidate title",
             )
             assert_true(
                 phase10.get("promotable_lessons") == 1,
