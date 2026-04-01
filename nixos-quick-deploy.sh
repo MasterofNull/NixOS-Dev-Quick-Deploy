@@ -447,6 +447,8 @@ print_completion_test_results() {
     local rag_posture_status rag_posture_recent rag_posture_gaps rag_posture_label
     local rag_recent_route rag_recent_tree rag_recent_memory rag_mix_label
     local rag_memory_share rag_prewarm_prompt rag_prewarm_label
+    local feedback_accel_status feedback_accel_trend feedback_accel_failures feedback_accel_lessons feedback_accel_label
+    local gap_remediation_status gap_remediation_count gap_remediation_top gap_remediation_label
     local retrieval_breadth_avg retrieval_breadth_profile retrieval_breadth_label
     local provider_fallback_window provider_fallback_count provider_fallback_pct provider_fallback_status provider_fallback_label
     local remote_profile_window remote_profile_top remote_profile_calls remote_profile_success remote_profile_label
@@ -500,6 +502,13 @@ print_completion_test_results() {
     rag_recent_memory="$(printf '%s' "${json}" | jq -r '.rag_posture.retrieval_mix.recent.recall_agent_memory // 0')"
     rag_memory_share="$(printf '%s' "${json}" | jq -r '.rag_posture.memory_recall_share_pct // "n/a"')"
     rag_prewarm_prompt="$(printf '%s' "${json}" | jq -r '.rag_posture.prewarm_candidates[0].id // empty')"
+    feedback_accel_status="$(printf '%s' "${json}" | jq -r '.feedback_acceleration.status // "unknown"')"
+    feedback_accel_trend="$(printf '%s' "${json}" | jq -r '.feedback_acceleration.trend // "unknown"')"
+    feedback_accel_failures="$(printf '%s' "${json}" | jq -r '.feedback_acceleration.recent_failure_count // 0')"
+    feedback_accel_lessons="$(printf '%s' "${json}" | jq -r '.feedback_acceleration.promotable_lessons // 0')"
+    gap_remediation_status="$(printf '%s' "${json}" | jq -r '.gap_remediation.status // "unknown"')"
+    gap_remediation_count="$(printf '%s' "${json}" | jq -r '.gap_remediation.candidate_count // 0')"
+    gap_remediation_top="$(printf '%s' "${json}" | jq -r '.gap_remediation.top_strategies[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
     retrieval_breadth_avg="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth.avg_collection_count // "n/a"')"
     retrieval_breadth_profile="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth.top_profiles[0] | if . then "\(.[0])(\(.[1]))" else empty end')"
     retrieval_breadth_24h_avg="$(printf '%s' "${json}" | jq -r '.route_retrieval_breadth_windows.windows["24h"].avg_collection_count // "n/a"')"
@@ -586,6 +595,11 @@ print_completion_test_results() {
     rag_posture_label="${rag_posture_status} (recent=${rag_posture_recent}, gaps=${rag_posture_gaps})"
     rag_mix_label="route=${rag_recent_route} tree=${rag_recent_tree} memory=${rag_recent_memory}"
     rag_prewarm_label="${rag_prewarm_prompt:-none}"
+    feedback_accel_label="${feedback_accel_status}; trend=${feedback_accel_trend}; failures=${feedback_accel_failures}; lessons=${feedback_accel_lessons}"
+    gap_remediation_label="${gap_remediation_status}; candidates=${gap_remediation_count}"
+    if [[ -n "${gap_remediation_top}" ]]; then
+      gap_remediation_label="${gap_remediation_label}; top=${gap_remediation_top}"
+    fi
     retrieval_breadth_label="${retrieval_breadth_avg}"
     if [[ -n "${retrieval_breadth_profile}" ]]; then
       retrieval_breadth_label="${retrieval_breadth_label} (${retrieval_breadth_profile})"
@@ -714,6 +728,8 @@ PY
     printf '  %-28s %s\n' "Semantic cache hit rate" "${cache_summary}"
     printf '  %-28s %s\n' "RAG posture" "${rag_posture_label}"
     printf '  %-28s %s\n' "RAG mix (1h)" "${rag_mix_label}"
+    printf '  %-28s %s\n' "Feedback acceleration" "${feedback_accel_label}"
+    printf '  %-28s %s\n' "Gap remediation" "${gap_remediation_label}"
     printf '  %-28s %s\n' "Retrieval breadth (1h)" "${retrieval_breadth_label}"
     printf '  %-28s %s\n' "Retrieval breadth trend" "${retrieval_breadth_trend_label}"
     printf '  %-28s %s\n' "Memory recall share" "${rag_memory_share}"
