@@ -25,6 +25,10 @@ def main() -> int:
         "evaluation bias should normalize agent roles for cross-lane aggregation",
     )
     assert_true(
+        "import re" in text,
+        "role normalization should import re for regex-based cleanup",
+    )
+    assert_true(
         '"roles": value.get("roles", {}) if isinstance(value.get("roles"), dict) else {}' in text,
         "agent evaluation registry should preserve role summaries",
     )
