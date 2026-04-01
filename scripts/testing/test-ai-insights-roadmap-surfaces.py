@@ -232,6 +232,10 @@ def main() -> int:
                 "roadmap readiness should surface active improvement candidate pressure for phase 3",
             )
             assert_true(
+                ((phase3.get("improvement_automation") or {}).get("features") or {}).get("telemetry_pattern_mining") is True,
+                "roadmap readiness should expose improvement automation mining coverage for phase 3",
+            )
+            assert_true(
                 phase3.get("candidate_count") == 2,
                 "roadmap readiness should expose improvement candidate counts",
             )
@@ -279,6 +283,14 @@ def main() -> int:
             assert_true(
                 (candidates_data.get("categories") or {}).get("performance") == 1,
                 "improvement candidates route should summarize candidate categories",
+            )
+
+            automation_response = client.get("/api/insights/improvements/readiness")
+            assert_true(automation_response.status_code == 200, "improvement automation readiness route should succeed")
+            automation_data = automation_response.json()
+            assert_true(
+                automation_data.get("feature_count") >= 4,
+                "improvement automation readiness should expose detector, mining, and review coverage",
             )
 
             review_response = client.get("/api/insights/improvements/reviews")

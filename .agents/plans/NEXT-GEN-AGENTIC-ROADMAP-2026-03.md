@@ -209,17 +209,17 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** Self-improvement loop operating autonomously, improvements validated before deployment
 
 ### Batch 3.1: Improvement Candidate Detection
-**Status:** ⏳ pending
+**Status:** in progress
 **Tasks:**
-- [ ] Implement automated code smell detection
-- [ ] Add performance regression detection
-- [ ] Create improvement opportunity identification
-- [ ] Implement pattern mining from telemetry
+- [x] Implement automated code smell detection
+- [x] Add performance regression detection
+- [x] Create improvement opportunity identification
+- [x] Implement pattern mining from telemetry
 - [x] Add LLM-based code review automation
 
 **Deliverables:**
-- ⏳ Improvement candidate pipeline
-- ⏳ Automated code review
+- ✅ Improvement candidate pipeline
+- ✅ Automated code review
 - ⏳ Pattern library updates
 
 ### Batch 3.2: Automated Testing & Validation
