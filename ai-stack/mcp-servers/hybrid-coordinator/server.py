@@ -216,6 +216,7 @@ app = Server("hybrid-coordinator")
 # Global clients
 qdrant_client: Optional[QdrantClient] = None
 llama_cpp_client: Optional[httpx.AsyncClient] = None
+llama_cpp_reasoning_client: Optional[httpx.AsyncClient] = None
 embedding_client: Optional[httpx.AsyncClient] = None
 aidb_client: Optional[httpx.AsyncClient] = None
 multi_turn_manager: Optional[Any] = None
@@ -530,7 +531,7 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
 async def initialize_server():
     """Initialize global clients and collections"""
-    global qdrant_client, llama_cpp_client, switchboard_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache, federated_integration_client
+    global qdrant_client, llama_cpp_client, llama_cpp_reasoning_client, switchboard_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache, federated_integration_client
 
     _enforce_startup_env()
     await _preflight_check()
@@ -545,6 +546,13 @@ async def initialize_server():
 
     # Initialize llama.cpp client (system-configured loopback service; no SSRF check needed)
     llama_cpp_client = httpx.AsyncClient(base_url=Config.LLAMA_CPP_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
+    if Config.LLAMA_CPP_DEEPSEEK_URL == Config.LLAMA_CPP_URL:
+        llama_cpp_reasoning_client = llama_cpp_client
+    else:
+        llama_cpp_reasoning_client = httpx.AsyncClient(
+            base_url=Config.LLAMA_CPP_DEEPSEEK_URL,
+            timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
+        )
     # Switchboard client — routes complex tasks to remote LLM via x-ai-route header
     switchboard_client = httpx.AsyncClient(base_url=Config.SWITCHBOARD_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
 
@@ -791,6 +799,7 @@ async def initialize_server():
         summarize_fn=harness_eval._summarize_results,
         context_compressor_ref=lambda: context_compressor,
         llama_cpp_client_ref=lambda: llama_cpp_client,
+        llama_cpp_reasoning_client_ref=lambda: llama_cpp_reasoning_client,
         switchboard_client_ref=lambda: switchboard_client,
         postgres_client_ref=lambda: postgres_client,
         collections=COLLECTIONS,

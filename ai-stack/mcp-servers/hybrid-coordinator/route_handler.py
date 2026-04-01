@@ -123,6 +123,7 @@ _record_telemetry: Optional[Callable] = None
 _summarize: Optional[Callable] = None
 _context_compressor_ref: Optional[Callable] = None
 _llama_cpp_client_ref: Optional[Callable] = None
+_llama_cpp_reasoning_client_ref: Optional[Callable] = None
 _switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
@@ -511,6 +512,7 @@ def init(
     summarize_fn: Callable,
     context_compressor_ref: Callable,
     llama_cpp_client_ref: Callable,
+    llama_cpp_reasoning_client_ref: Optional[Callable] = None,
     switchboard_client_ref: Callable,
     postgres_client_ref: Callable,
     collections: Dict[str, Any],
@@ -518,7 +520,8 @@ def init(
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
     global _hybrid_search, _tree_search, _select_backend
     global _record_query_gap, _record_telemetry, _summarize
-    global _context_compressor_ref, _llama_cpp_client_ref, _switchboard_client_ref, _postgres_client_ref, _COLLECTIONS
+    global _context_compressor_ref, _llama_cpp_client_ref, _llama_cpp_reasoning_client_ref
+    global _switchboard_client_ref, _postgres_client_ref, _COLLECTIONS
     global _query_expander
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
@@ -528,6 +531,7 @@ def init(
     _summarize = summarize_fn
     _context_compressor_ref = context_compressor_ref
     _llama_cpp_client_ref = llama_cpp_client_ref
+    _llama_cpp_reasoning_client_ref = llama_cpp_reasoning_client_ref
     _switchboard_client_ref = switchboard_client_ref
     _postgres_client_ref = postgres_client_ref
     _COLLECTIONS = collections
@@ -788,6 +792,9 @@ async def route_search(
         prompt_prefix = Config.AI_PROMPT_CACHE_STATIC_PREFIX if Config.AI_PROMPT_CACHE_POLICY_ENABLED else ""
         prompt_prefix_hash = hashlib.sha256(prompt_prefix.encode("utf-8")).hexdigest()[:16] if prompt_prefix else ""
         llama_cpp_client = _llama_cpp_client_ref()
+        llama_cpp_reasoning_client = (
+            _llama_cpp_reasoning_client_ref() if _llama_cpp_reasoning_client_ref else None
+        )
         context_compressor = _context_compressor_ref()
         if generate_response and llama_cpp_client:
             discovery_context = capability_discovery.format_context(_cap_disc)
@@ -882,7 +889,11 @@ async def route_search(
                         results["task_complexity"] = task_complexity_summary
                         _skip_synthesis = True
                 else:
-                    _inference_client = llama_cpp_client
+                    _inference_client = (
+                        llama_cpp_reasoning_client
+                        if _complexity.task_type == "reasoning" and llama_cpp_reasoning_client is not None
+                        else llama_cpp_client
+                    )
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
                     response_max_tokens = _local_response_budget(_complexity.task_type)
