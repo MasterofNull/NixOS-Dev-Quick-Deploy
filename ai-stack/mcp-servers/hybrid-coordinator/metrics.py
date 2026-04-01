@@ -109,3 +109,53 @@ MODEL_ACTIVE_INFO = Gauge(
     "Active model information (value=1 when model is loaded)",
     ["service", "model_path"],
 )
+
+# Phase 1.1 — AI-specific operations observability
+DELEGATED_PROMPT_TOKENS_BEFORE = Histogram(
+    "hybrid_delegated_prompt_tokens_before",
+    "Estimated delegated prompt tokens before optimization",
+    ["profile"],
+    buckets=[64, 128, 256, 512, 1024, 2048, 4096, 8192],
+)
+DELEGATED_PROMPT_TOKENS_AFTER = Histogram(
+    "hybrid_delegated_prompt_tokens_after",
+    "Estimated delegated prompt tokens after optimization",
+    ["profile"],
+    buckets=[64, 128, 256, 512, 1024, 2048, 4096, 8192],
+)
+DELEGATED_PROMPT_TOKEN_SAVINGS = Counter(
+    "hybrid_delegated_prompt_token_savings_total",
+    "Total estimated delegated prompt tokens saved through envelope optimization",
+    ["profile"],
+)
+DELEGATED_QUALITY_SCORE = Histogram(
+    "hybrid_delegated_quality_score",
+    "Quality scores assigned to delegated responses",
+    ["profile"],
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+)
+DELEGATED_QUALITY_EVENTS = Counter(
+    "hybrid_delegated_quality_events_total",
+    "Delegated quality-assurance outcomes",
+    ["profile", "outcome"],
+)
+PROGRESSIVE_CONTEXT_LOADS = Counter(
+    "hybrid_progressive_context_loads_total",
+    "Progressive disclosure context attachment events",
+    ["category", "tier", "profile"],
+)
+CAPABILITY_GAP_DETECTIONS = Counter(
+    "hybrid_capability_gap_detections_total",
+    "Capability gaps detected from delegated outcomes",
+    ["gap_type", "severity"],
+)
+REAL_TIME_LEARNING_EVENTS = Counter(
+    "hybrid_real_time_learning_events_total",
+    "Real-time learning events recorded from delegated outcomes",
+    ["profile", "event_type"],
+)
+META_LEARNING_ADAPTATIONS = Counter(
+    "hybrid_meta_learning_adaptations_total",
+    "Bounded meta-learning adaptations executed from delegated outcomes",
+    ["domain", "method"],
+)
