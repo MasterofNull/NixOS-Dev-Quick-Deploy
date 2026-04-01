@@ -2570,12 +2570,38 @@ class HintsEngine:
                         )
                     )
 
+        hint_focus = any(
+            token in query_lower
+            for token in ("hint", "hints", "steer", "divers", "quality", "feedback", "reuse", "improv", "report")
+        )
+
+        recent_hint_diversity = data.get("recent_hint_diversity", {})
+        if isinstance(recent_hint_diversity, dict) and recent_hint_diversity.get("available") and hint_focus:
+            diversity_status = str(recent_hint_diversity.get("status", "") or "").strip().lower()
+            if diversity_status == "concentrated":
+                dominant_hint_id = str(recent_hint_diversity.get("dominant_hint_id", "") or "").strip()
+                dominant_share_pct = recent_hint_diversity.get("dominant_share_pct")
+                total_injections = int(recent_hint_diversity.get("total_injections", 0) or 0)
+                window = str(recent_hint_diversity.get("window", "1h") or "1h")
+                hints.append(
+                    Hint(
+                        id="runtime_recent_hint_concentration",
+                        type="runtime_signal",
+                        title="Current hint injection mix is concentrated",
+                        score=0.82,
+                        snippet=(
+                            f"`{dominant_hint_id}` currently dominates {float(dominant_share_pct):.1f}% "
+                            f"of hint injections in the last {window} across {total_injections} uses. "
+                            "Rotate alternatives now instead of treating this as background debt."
+                        )[:220],
+                        reason="Derived from live aq-report recent_hint_diversity state",
+                        tags=["runtime", "hints", "diversity", "anti-dominance"],
+                        agent_hints={},
+                    )
+                )
+
         historical_hint_watch = data.get("historical_hint_watchlist", {})
         if isinstance(historical_hint_watch, dict) and historical_hint_watch.get("available") and historical_hint_watch.get("has_items"):
-            hint_focus = any(
-                token in query_lower
-                for token in ("hint", "hints", "steer", "divers", "quality", "feedback", "reuse", "improv", "report")
-            )
             if hint_focus:
                 dominant_hint_id = str(historical_hint_watch.get("dominant_hint_id", "") or "").strip()
                 dominant_share_pct = historical_hint_watch.get("dominant_share_pct")
