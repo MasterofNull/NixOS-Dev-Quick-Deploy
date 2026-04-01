@@ -94,6 +94,13 @@ def main() -> int:
         report_path.write_text(
             json.dumps(
                 {
+                    "route_search_latency_decomposition": {
+                        "available": True,
+                        "breakdown": [
+                            {"label": "local_lane:reasoning", "calls": 9, "p95_ms": 15399.0},
+                            {"label": "synthesis_type:reasoning", "calls": 12, "p95_ms": 14920.0},
+                        ],
+                    },
                     "route_retrieval_breadth": {
                         "available": True,
                         "avg_collection_count": breadth.get("avg_collection_count"),
@@ -115,6 +122,7 @@ def main() -> int:
         engine = HintsEngine(report_json_path=report_path)
         hints = engine._hints_from_latest_report("optimize route_search and routing pressure", [])
         hint_ids = [item.id for item in hints]
+        assert_true("runtime_local_reasoning_tail" in hint_ids, "expected local reasoning latency hint")
         assert_true("runtime_retrieval_breadth_optimize" in hint_ids, "expected route breadth hint")
         assert_true("runtime_provider_fallback_pressure" in hint_ids, "expected provider fallback hint")
 
