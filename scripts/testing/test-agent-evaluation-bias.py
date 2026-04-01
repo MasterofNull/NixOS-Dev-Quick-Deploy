@@ -88,6 +88,22 @@ def main() -> int:
         'f"collaborator-{idx}"' in text,
         "candidate seeding should create bounded collaborator candidate ids",
     )
+    assert_true(
+        'deferred_members = optional_members[optional_budget:]' in text,
+        "team formation should retain deferred collaborator members when capacity is exhausted",
+    )
+    assert_true(
+        '"optional_slot_capacity": optional_budget' in text,
+        "team metadata should expose the optional collaborator capacity budget",
+    )
+    assert_true(
+        '"deferred_slots": deferred_slots' in text,
+        "team metadata should expose deferred collaborator slot names",
+    )
+    assert_true(
+        '"deferred_members": team.get("deferred_members", [])' in text,
+        "detailed team inspection should include deferred collaborator members",
+    )
 
     print("PASS: role-aware agent evaluation biasing is wired into orchestration scoring")
     return 0
