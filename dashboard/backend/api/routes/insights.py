@@ -213,6 +213,18 @@ async def get_experimentation_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/performance/profiling")
+async def get_performance_profiling_readiness():
+    """Get the repo-native continuous profiling readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_performance_profiling_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get performance profiling readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""
