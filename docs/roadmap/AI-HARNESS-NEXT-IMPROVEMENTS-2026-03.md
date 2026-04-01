@@ -98,6 +98,9 @@ Default batching rule:
 - Increase alternative high-signal hints so dominance reduction has better substitutes
 - Add context-sensitive hint reuse beyond raw frequency
 - Improve ignored/rejected hint feedback reporting
+- Surface runtime steering for slow local reasoning synthesis lanes so hint/report guidance matches the live latency hotspot
+- Prefer non-overused hints when satisfying per-type diversity quotas, not only at the final fill step
+- Keep synthetic doc-analysis/file-summary prompts suppressed identically in both `/hints` and `aq-report`
 - Goal: reduce repeated token overhead while improving steering quality
 
 ### Batch D — Cache and Retrieval Effectiveness

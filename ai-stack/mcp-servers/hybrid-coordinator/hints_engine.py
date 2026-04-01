@@ -705,7 +705,12 @@ def _is_synthetic_gap(query_text: str) -> bool:
         "analyze docs/",
         "please analyze and summarize docs/",
         "analyze and summarize docs/",
+        "read docs/",
+        "read and summarize docs/",
         "summarize docs/",
+        "summarize file ",
+        "summarize the file ",
+        "analyze file ",
         "nixos-rag-test-probe-unique-sentinel",
         "fetch http://127.0.0.1",
         "fetch https://127.0.0.1",
@@ -1175,7 +1180,12 @@ class HintsEngine:
                 break
             if req_count <= 0:
                 continue
-            available = [h for h in remaining if hint_type(h) == req_type and can_take(h)]
+            available = [
+                h for h in remaining
+                if hint_type(h) == req_type and h.id not in overused_ids and can_take(h)
+            ]
+            if not available:
+                available = [h for h in remaining if hint_type(h) == req_type and can_take(h)]
             if not available:
                 continue
             target = min(req_count, len(available), max_hints - len(selected))
@@ -2699,6 +2709,64 @@ class HintsEngine:
                 )
 
         # Route search latency optimization hints
+        route_latency = data.get("route_search_latency_decomposition", {})
+        if isinstance(route_latency, dict) and route_latency.get("available"):
+            breakdown = route_latency.get("breakdown") or []
+            route_focus = any(
+                token in query_lower
+                for token in (
+                    "route",
+                    "routing",
+                    "reasoning",
+                    "latency",
+                    "performance",
+                    "synthesis",
+                    "slow",
+                    "local",
+                    "improv",
+                    "optimiz",
+                )
+            )
+            if route_focus and isinstance(breakdown, list):
+                reasoning_entries = []
+                for item in breakdown:
+                    if not isinstance(item, dict):
+                        continue
+                    label = str(item.get("label", "") or "").strip().lower()
+                    if label not in {"synthesis_type:reasoning", "local_lane:reasoning"}:
+                        continue
+                    try:
+                        calls = int(item.get("calls", 0) or 0)
+                    except (TypeError, ValueError):
+                        calls = 0
+                    try:
+                        p95_ms = float(item.get("p95_ms", 0.0) or 0.0)
+                    except (TypeError, ValueError):
+                        p95_ms = 0.0
+                    if calls <= 0 or p95_ms <= 0.0:
+                        continue
+                    reasoning_entries.append((label, calls, p95_ms))
+                if reasoning_entries:
+                    reasoning_entries.sort(key=lambda item: (-item[2], -item[1], item[0]))
+                    label, calls, p95_ms = reasoning_entries[0]
+                    if calls >= 3 and p95_ms >= 6000.0:
+                        lane_note = "dedicated reasoning lane" if label == "local_lane:reasoning" else "reasoning synthesis path"
+                        hints.append(
+                            Hint(
+                                id="runtime_local_reasoning_tail",
+                                type="runtime_signal",
+                                title="Local reasoning synthesis is the remaining route-search latency hotspot",
+                                score=0.78,
+                                snippet=(
+                                    f"{lane_note.capitalize()} is running at p95 {p95_ms:.0f}ms across {calls} recent calls. "
+                                    "Keep ordinary lookup/format asks off the reasoning lane and tighten bounded reasoning context before widening retrieval."
+                                )[:220],
+                                reason="Derived from live aq-report route_search latency decomposition showing a slow local reasoning lane",
+                                tags=["runtime", "routing", "latency", "reasoning", "local"],
+                                agent_hints={},
+                            )
+                        )
+
         route_breadth = data.get("route_retrieval_breadth", {})
         if isinstance(route_breadth, dict) and route_breadth.get("available"):
             avg_collections = route_breadth.get("avg_collection_count")
