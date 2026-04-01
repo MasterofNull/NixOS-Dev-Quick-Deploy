@@ -607,6 +607,7 @@ async def route_search(
     backend_reason_class = "not_used"
     response_max_tokens = None
     task_complexity_summary = None
+    local_inference_lane = None
     _cap_disc: Dict[str, Any] = {
         "decision": "skipped", "reason": "not-evaluated", "cache_hit": False,
         "intent_tags": [], "tools": [], "skills": [], "servers": [], "datasets": [],
@@ -676,7 +677,7 @@ async def route_search(
                 results = {"keyword_results": hybrid_results["keyword_results"]}
                 response_text = _summarize(hybrid_results["keyword_results"])
             except asyncio.TimeoutError:
-                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                logger.warning("search_timeout", extra={"route": route, "timeout": adaptive_timeout, "collections": target_collections})
                 results = {"keyword_results": []}
                 response_text = ""
 
@@ -693,7 +694,7 @@ async def route_search(
                 results = {"semantic_results": hybrid_results["semantic_results"]}
                 response_text = _summarize(hybrid_results["semantic_results"])
             except asyncio.TimeoutError:
-                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                logger.warning("search_timeout", extra={"route": route, "timeout": adaptive_timeout, "collections": target_collections})
                 results = {"semantic_results": []}
                 response_text = ""
 
@@ -709,7 +710,7 @@ async def route_search(
                 results = tree_results
                 response_text = _summarize(tree_results["combined_results"])
             except asyncio.TimeoutError:
-                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                logger.warning("search_timeout", extra={"route": route, "timeout": adaptive_timeout, "collections": target_collections})
                 results = {"combined_results": []}
                 response_text = ""
 
@@ -726,7 +727,7 @@ async def route_search(
                 results = hybrid_results
                 response_text = _summarize(hybrid_results["combined_results"])
             except asyncio.TimeoutError:
-                logger.warning("search_timeout", route=route, timeout=adaptive_timeout, collections=target_collections)
+                logger.warning("search_timeout", extra={"route": route, "timeout": adaptive_timeout, "collections": target_collections})
                 results = {"combined_results": []}
                 response_text = ""
 
@@ -894,11 +895,15 @@ async def route_search(
                         if _complexity.task_type == "reasoning" and llama_cpp_reasoning_client is not None
                         else llama_cpp_client
                     )
+                    local_inference_lane = (
+                        "reasoning" if _complexity.task_type == "reasoning" and llama_cpp_reasoning_client is not None else "default"
+                    )
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
                     response_max_tokens = _local_response_budget(_complexity.task_type)
             elif not _skip_synthesis:
                 _inference_client = llama_cpp_client
+                local_inference_lane = "default"
                 _inference_path = "/chat/completions"
                 _inference_headers = {}
                 response_max_tokens = _local_response_budget("synthesize")
@@ -1107,6 +1112,7 @@ async def route_search(
         "backend_reason_class": backend_reason_class,
         "response_max_tokens": response_max_tokens if generate_response else None,
         "task_complexity": task_complexity_summary,
+        "local_inference_lane": local_inference_lane,
         "retrieval_profile": retrieval_profile,
         "capability_discovery": {
             "decision": _cap_disc.get("decision", "unknown"),

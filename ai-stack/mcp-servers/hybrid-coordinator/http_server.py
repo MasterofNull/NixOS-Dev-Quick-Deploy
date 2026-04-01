@@ -4236,6 +4236,9 @@ async def run_http_mode(port: int) -> None:
             response_max_tokens = result.get("response_max_tokens")
             if isinstance(response_max_tokens, int):
                 request["audit_metadata"]["response_max_tokens"] = response_max_tokens
+            local_inference_lane = str(result.get("local_inference_lane", "") or "").strip()
+            if local_inference_lane:
+                request["audit_metadata"]["local_inference_lane"] = local_inference_lane
             task_complexity = result.get("task_complexity")
             if isinstance(task_complexity, dict):
                 task_complexity_reason = str(task_complexity.get("reason", "") or "").strip()

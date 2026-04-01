@@ -83,6 +83,7 @@ def main() -> int:
                 "route_strategy": "hybrid",
                 "generate_response": True,
                 "task_complexity_type": "reasoning",
+                "local_inference_lane": "reasoning",
                 "fallback_reason": "remote_4xx_local_fallback",
                 "http_status": 502,
             },
@@ -124,6 +125,7 @@ def main() -> int:
     assert_true(any(item.get("label") == "request:retrieval_only" for item in breakdown), "expected retrieval-only breakdown")
     assert_true(any(item.get("label") == "request:synthesis" for item in breakdown), "expected synthesis breakdown")
     assert_true(any(item.get("label") == "synthesis_type:reasoning" for item in breakdown), "expected synthesis task-type breakdown")
+    assert_true(any(item.get("label") == "local_lane:reasoning" for item in breakdown), "expected local inference lane breakdown")
     assert_true(
         any(item.get("label") == "fallback:remote_4xx_local_fallback" for item in breakdown),
         "expected fallback latency breakdown",
