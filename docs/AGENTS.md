@@ -34,6 +34,9 @@
    - `scripts/testing/validate-runtime-declarative.sh`
    - `scripts/testing/check-prsi-phase7-program.sh`
    - `scripts/ai/aq-report --since=7d --format=text`
+7. Close out completed work explicitly:
+   - document what changed and the validation evidence.
+   - commit the relevant changes.
 
 ## Orchestrator vs Sub-Agent Enforcement (Mandatory)
 
@@ -99,6 +102,19 @@
     - `./scripts/testing/check-package-count-drift.sh --flake-ref path:.`
   - if drift is intended, refresh:
     - `./scripts/testing/check-package-count-drift.sh --write-baseline`
+
+### Focused-Check Placement Guidance
+
+- Default placement:
+  - keep focused CI-sensitive checks in commit-time enforcement and the Tier 0 validation gate.
+  - do not add them to pre-push by default because that duplicates targeted test cost and increases push latency.
+- Rationale:
+  - commit-time checks provide earlier feedback and better fix locality.
+  - Tier 0 already serves as the centralized mandatory validation gate.
+  - preserving a faster pre-push path reduces the incentive to bypass hooks.
+- Escalation rule:
+  - if repeated CI escapes show that commit hooks or Tier 0 are being bypassed, recommend adding a conditional pre-push fallback.
+  - prefer path-aware pre-push fallback only for matching changed files, not unconditional reruns for every push.
 
 ### Reviewer Gate for CI-Sensitive Changes
 

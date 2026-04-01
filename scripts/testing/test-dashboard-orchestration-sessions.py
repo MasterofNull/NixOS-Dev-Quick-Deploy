@@ -70,6 +70,10 @@ def main() -> int:
                                 "status": "in_progress",
                                 "objective": "Investigate orchestration visibility",
                                 "current_phase": "discover",
+                                "reasoning_pattern": {
+                                    "selected_pattern": "react",
+                                    "boost_multiplier": 1.15,
+                                },
                                 "updated_at": 1775070000,
                             }
                         ],
@@ -87,11 +91,16 @@ def main() -> int:
             first = (payload.get("sessions") or [{}])[0]
             assert_true(first.get("session_id") == "wf-123", "orchestration sessions should preserve session ids")
             assert_true(first.get("current_phase") == "discover", "orchestration sessions should preserve phase metadata")
+            assert_true(
+                (first.get("reasoning_pattern") or {}).get("selected_pattern") == "react",
+                "orchestration sessions should preserve reasoning pattern metadata",
+            )
 
         html = (ROOT / "dashboard.html").read_text(encoding="utf-8")
         assert_true('id="orchestrationSessionList"' in html, "dashboard should render orchestration session list container")
         assert_true("function loadOrchestrationSessions()" in html, "dashboard should define orchestration session loader")
         assert_true("function selectOrchestrationSession(sessionId)" in html, "dashboard should support session selection shortcuts")
+        assert_true("Pattern: ${escapeHtml(String(session.reasoning_pattern?.selected_pattern || '--'))}" in html, "dashboard should render reasoning pattern in orchestration session cards")
         assert_true('id="orchFormationMode"' in html, "dashboard should expose orchestration formation mode metric")
         assert_true('id="orchRequiredSlots"' in html, "dashboard should expose orchestration required slot metric")
         assert_true('id="orchOptionalCapacity"' in html, "dashboard should expose orchestration optional capacity metric")

@@ -129,6 +129,7 @@ curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
 
 ## Commit Discipline
 - One logical task per commit.
+- When completing work, document the changes made and commit the relevant changes.
 - Include validation evidence in message/body or linked notes.
 - Do not push if mandatory gates fail.
 
@@ -146,6 +147,10 @@ Repo-specific minimum checks:
 - If `ai-stack/mcp-servers/hybrid-coordinator/route_handler.py` changes, run `python -m pytest ai-stack/mcp-servers/hybrid-coordinator/test_route_handler_optimizations.py`.
 - If `dashboard/backend/api/services/ai_insights.py` or dashboard insights startup wiring changes, run `python scripts/testing/test-dashboard-insights-report-cache.py`.
 - If package composition or flake-evaluated target inventories change, run `./scripts/testing/check-package-count-drift.sh --flake-ref path:.` and refresh the baseline when the drift is intentional.
+
+Focused-check placement note:
+- Keep focused CI-sensitive checks at commit-time plus Tier 0 by default; do not add them to pre-push unless repeated CI escapes show commit hooks or Tier 0 are being bypassed.
+- If bypass patterns emerge (`--no-verify`, skipped hooks, agent-side direct commits), recommend a conditional pre-push fallback rather than unconditional pre-push reruns.
 
 ## Autonomous Ops Boundary
 - Default unattended scope: deploy, verify, restart, test, non-destructive edits, and non-destructive commits.
