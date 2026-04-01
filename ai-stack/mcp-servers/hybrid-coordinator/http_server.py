@@ -6402,6 +6402,11 @@ async def run_http_mode(port: int) -> None:
             _ensure_session_runtime_fields(session)
             consensus = session.get("consensus", {})
             team = session.get("team", {})
+            phase_state = session.get("phase_state", [])
+            current_idx = int(session.get("current_phase_index", 0))
+            current_phase = None
+            if 0 <= current_idx < len(phase_state):
+                current_phase = phase_state[current_idx].get("id")
 
             # Extract candidates with full scoring breakdown
             candidates = consensus.get("candidates", [])
@@ -6410,6 +6415,15 @@ async def run_http_mode(port: int) -> None:
             # Build detailed team view
             team_details = {
                 "session_id": session_id,
+                "objective": session.get("objective", ""),
+                "status": session.get("status", "unknown"),
+                "current_phase": current_phase,
+                "current_phase_index": current_idx,
+                "safety_mode": session.get("safety_mode", "plan-readonly"),
+                "budget": session.get("budget", {}),
+                "usage": session.get("usage", {}),
+                "created_at": session.get("created_at"),
+                "updated_at": session.get("updated_at"),
                 "consensus_mode": consensus.get("consensus_mode", ""),
                 "selection_strategy": team.get("selection_strategy", ""),
                 "team_members": team.get("members", []),

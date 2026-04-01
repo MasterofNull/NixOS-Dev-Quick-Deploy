@@ -283,6 +283,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Role-aware candidate scoring now blends per-lane history, same-role history, whole-agent totals, and recent runtime quality when forming workflow teams
 - Workflow orchestration policies now support explicit bounded collaborator lanes so selected blueprints can activate parallel research/reasoning helpers without inventing ad hoc team shapes
 - Dashboard orchestration inspection now surfaces formation mode, required/optional/deferred slot metadata, and deferred collaborator members from live workflow sessions
+- Detailed workflow team inspection now preserves runtime session context including objective, status, phase, safety mode, budget, and usage summaries
 
 **Still missing for roadmap completion:**
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
