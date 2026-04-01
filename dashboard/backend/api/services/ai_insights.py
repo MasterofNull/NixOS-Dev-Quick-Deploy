@@ -48,14 +48,40 @@ class AIInsightsService:
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl_seconds = 60  # 1 minute cache
+        self._cache_stale_ttl_seconds = 300  # 5 minutes fallback window
+        self._report_lock = asyncio.Lock()
+        self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
 
     async def get_full_report(self) -> Dict[str, Any]:
         """Get the complete aq-report data."""
-        # Check cache
         if self._is_cache_valid():
             return self._cache
 
-        # Execute aq-report
+        try:
+            task = await self._get_or_start_report_task()
+            return await asyncio.shield(task)
+        except RuntimeError:
+            stale = self._get_cached_report(max_age_seconds=self._cache_stale_ttl_seconds)
+            if stale is not None:
+                logger.warning("Serving stale aq-report cache after refresh failure")
+                return stale
+            raise
+
+    async def _get_or_start_report_task(self) -> asyncio.Task[Dict[str, Any]]:
+        """Share one in-flight aq-report refresh across concurrent dashboard requests."""
+        async with self._report_lock:
+            if self._is_cache_valid():
+                return asyncio.create_task(self._return_cached_report())
+            if self._report_task is None or self._report_task.done():
+                self._report_task = asyncio.create_task(self._refresh_report())
+            return self._report_task
+
+    async def _return_cached_report(self) -> Dict[str, Any]:
+        if self._cache is None:
+            raise RuntimeError("AI insights cache is empty")
+        return self._cache
+
+    async def _refresh_report(self) -> Dict[str, Any]:
         try:
             result = await asyncio.to_thread(
                 subprocess.run,
@@ -67,30 +93,35 @@ class AIInsightsService:
             )
 
             data = json.loads(result.stdout)
-
-            # Update cache
             self._cache = data
             self._cache_timestamp = datetime.now(timezone.utc)
-
             return data
+        except subprocess.TimeoutExpired as exc:
+            logger.error("aq-report execution timed out: %s", exc)
+            raise RuntimeError("AI insights report generation timed out") from exc
+        except subprocess.CalledProcessError as exc:
+            logger.error("aq-report execution failed: %s", exc.stderr)
+            raise RuntimeError(f"Failed to generate AI insights report: {exc.stderr}") from exc
+        except json.JSONDecodeError as exc:
+            logger.error("Failed to parse aq-report JSON: %s", exc)
+            raise RuntimeError(f"Invalid JSON from aq-report: {exc}") from exc
+        finally:
+            async with self._report_lock:
+                if self._report_task is not None and self._report_task.done():
+                    self._report_task = None
 
-        except subprocess.CalledProcessError as e:
-            logger.error(f"aq-report execution failed: {e.stderr}")
-            raise RuntimeError(f"Failed to generate AI insights report: {e.stderr}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse aq-report JSON: {e}")
-            raise RuntimeError(f"Invalid JSON from aq-report: {e}")
-        except asyncio.TimeoutError:
-            logger.error("aq-report execution timed out")
-            raise RuntimeError("AI insights report generation timed out")
+    def _get_cached_report(self, max_age_seconds: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Return cached report payload if it is newer than the supplied age limit."""
+        if self._cache is None or self._cache_timestamp is None:
+            return None
+        age = (datetime.now(timezone.utc) - self._cache_timestamp).total_seconds()
+        if max_age_seconds is not None and age >= max_age_seconds:
+            return None
+        return self._cache
 
     def _is_cache_valid(self) -> bool:
         """Check if cached data is still valid."""
-        if self._cache is None or self._cache_timestamp is None:
-            return False
-
-        age = (datetime.now(timezone.utc) - self._cache_timestamp).total_seconds()
-        return age < self._cache_ttl_seconds
+        return self._get_cached_report(max_age_seconds=self._cache_ttl_seconds) is not None
 
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
