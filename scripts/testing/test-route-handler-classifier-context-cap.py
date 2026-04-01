@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for bounded local synthesis budgeting in route_handler."""
+"""Regression checks for bounded classifier context in route_handler synthesis routing."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def load_route_handler():
             sanitize_query=lambda text: text,
         ),
     )
-    spec = importlib.util.spec_from_file_location("route_handler_local_synthesis_budget_mod", ROUTE_HANDLER_PATH)
+    spec = importlib.util.spec_from_file_location("route_handler_classifier_context_cap_mod", ROUTE_HANDLER_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
@@ -107,14 +107,14 @@ def load_route_handler():
 
 
 class _FakeResponse:
-    def __init__(self, payload):
-        self._payload = payload
-
     def raise_for_status(self):
         return None
 
     def json(self):
-        return self._payload
+        return {
+            "choices": [{"message": {"content": "local reasoning synthesis"}}],
+            "usage": {"cached_tokens": 8},
+        }
 
 
 class _RecordingClient:
@@ -122,20 +122,8 @@ class _RecordingClient:
         self.calls = []
 
     async def post(self, path, headers=None, json=None, timeout=None):
-        self.calls.append(
-            {
-                "path": path,
-                "headers": headers or {},
-                "json": json or {},
-                "timeout": timeout,
-            }
-        )
-        return _FakeResponse(
-            {
-                "choices": [{"message": {"content": "local synthesis"}}],
-                "usage": {"cached_tokens": 12},
-            }
-        )
+        self.calls.append({"path": path, "headers": headers or {}, "json": json or {}, "timeout": timeout})
+        return _FakeResponse()
 
 
 async def main_async() -> int:
@@ -146,10 +134,15 @@ async def main_async() -> int:
     route_handler._query_expander = None
     route_handler._context_compressor_ref = lambda: None
     route_handler._postgres_client_ref = lambda: None
-    route_handler._summarize = lambda results: "bounded summary"
-    route_handler._switchboard_client_ref = lambda: _RecordingClient()
+    route_handler._summarize = lambda _results: "large context summary"
+    large_context = "cache reuse keeps repeated local requests cheap. " * 200
     route_handler._hybrid_search = lambda **_kwargs: asyncio.sleep(
-        0, result={"combined_results": [{"score": 0.9, "collection": "best-practices", "content": "bounded context"}], "keyword_results": [], "semantic_results": []}
+        0,
+        result={
+            "combined_results": [{"score": 0.9, "collection": "best-practices", "content": large_context}],
+            "keyword_results": [],
+            "semantic_results": [],
+        },
     )
 
     local_client = _RecordingClient()
@@ -158,7 +151,7 @@ async def main_async() -> int:
     route_handler._switchboard_client_ref = lambda: remote_client
 
     result = await route_handler.route_search(
-        query="summarize the local ai stack health briefly",
+        query="explain how cache reuse reduces repeated query latency",
         mode="hybrid",
         prefer_local=True,
         context={"source": "test"},
@@ -168,15 +161,11 @@ async def main_async() -> int:
         generate_response=True,
     )
 
-    assert_true(result.get("backend") == "local", "expected bounded synthesis to stay local")
-    assert_true(len(local_client.calls) == 1, "expected local client to receive one synthesis call")
-    assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call for bounded local task")
-    assert_true(
-        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 240,
-        "expected local synthesis budget to use the bounded local max_tokens",
-    )
+    assert_true(result.get("backend") == "local", "expected bounded reasoning with large retrieval context to stay local")
+    assert_true(len(local_client.calls) == 1, "expected one local synthesis call")
+    assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call")
 
-    print("PASS: route_handler keeps bounded synthesis on the local lane with a reduced token budget")
+    print("PASS: route_handler caps classifier context so bounded reasoning stays on the local lane")
     return 0
 
 
