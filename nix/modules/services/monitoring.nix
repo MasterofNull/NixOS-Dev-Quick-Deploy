@@ -354,6 +354,7 @@ amdgpu_temperature_celsius $temp_c
 # TYPE amdgpu_power_watts gauge
 amdgpu_power_watts $power_w
 EOF
+    ${pkgs.coreutils}/bin/chmod 0644 "$tmp_file"
     ${pkgs.coreutils}/bin/mv "$tmp_file" "$out_file"
   '';
 in
