@@ -3158,6 +3158,27 @@ def build_recommendations(
                     f"Local reasoning synthesis remains the route_search tail ({lane_note} p95 {_na(p95_ms, '.0f', 'ms')} across {calls} calls). "
                     "Prefer lookup/format lanes for bounded tasks, keep reasoning prompts compact, and remeasure before changing retrieval breadth."
                 )
+        bounded_default = next(
+            (
+                item for item in breakdown
+                if isinstance(item, dict) and str(item.get("label", "") or "").strip().lower()
+                == "local_lane_reason:bounded_reasoning_default_lane"
+            ),
+            None,
+        )
+        if bounded_default:
+            try:
+                bounded_calls = int(bounded_default.get("calls", 0) or 0)
+                bounded_p95 = float(bounded_default.get("p95_ms", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                bounded_calls = 0
+                bounded_p95 = 0.0
+            if bounded_calls >= 3 and bounded_p95 >= 8000.0:
+                recs.append(
+                    f"Bounded local reasoning on the default lane is still expensive "
+                    f"({_na(bounded_p95, '.0f', 'ms')} p95 across {bounded_calls} calls). "
+                    "Prefer a shorter reasoning context excerpt and keep bounded explanations compact before revisiting local/remote routing."
+                )
         lane_default = next(
             (
                 item for item in breakdown
