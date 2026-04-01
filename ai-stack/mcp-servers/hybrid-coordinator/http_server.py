@@ -2406,23 +2406,97 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str)
         return {"review_score": 0.0, "selection_score": 0.0, "runtime_score": 0.0}
     profiles = agent_row.get("profiles")
     if not isinstance(profiles, dict):
-        return {"review_score": 0.0, "selection_score": 0.0, "runtime_score": 0.0}
+        profiles = {}
     profile_row = profiles.get(str(profile or "").strip())
     if not isinstance(profile_row, dict):
-        return {"review_score": 0.0, "selection_score": 0.0, "runtime_score": 0.0}
+        profile_row = {}
 
-    review_events = max(0, int(profile_row.get("review_events", 0) or 0))
-    avg_review_score = max(0.0, min(1.0, float(profile_row.get("average_review_score", 0.0) or 0.0)))
-    consensus_selected = max(0, int(profile_row.get("consensus_selected", 0) or 0))
-    runtime_events = max(0, int(profile_row.get("runtime_events", 0) or 0))
-    avg_runtime_score = max(0.0, min(1.0, float(profile_row.get("average_runtime_score", 0.0) or 0.0)))
-    review_weight = min(1.0, review_events / 5.0)
-    selection_weight = min(1.0, consensus_selected / 5.0)
-    runtime_weight = min(1.0, runtime_events / 6.0)
+    def _bounded_score(value: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(value or 0.0)))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _bounded_count(value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    def _weighted_component(avg_score: float, count: int, divisor: float) -> float:
+        weight = min(1.0, count / divisor) if divisor > 0 else 0.0
+        return avg_score * weight
+
+    def _recent_agent_event_bias() -> Dict[str, float]:
+        events = registry.get("recent_events") if isinstance(registry, dict) else []
+        if not isinstance(events, list):
+            return {"review_score": 0.0, "selection_score": 0.0, "runtime_score": 0.0}
+        agent_key = str(agent or "").strip()
+        profile_key = str(profile or "").strip()
+        review_scores: List[float] = []
+        runtime_scores: List[float] = []
+        selection_events = 0
+        scoped_events = 0
+        agent_events = 0
+        for item in events[-12:]:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("agent", "") or "").strip() != agent_key:
+                continue
+            agent_events += 1
+            if str(item.get("profile", "") or "").strip() != profile_key:
+                continue
+            scoped_events += 1
+            event_type = str(item.get("event_type", "") or "").strip().lower()
+            if event_type == "review":
+                review_scores.append(_bounded_score(item.get("score", 0.0)))
+            elif event_type == "runtime":
+                runtime_scores.append(_bounded_score(item.get("runtime_score", 0.0)))
+            elif event_type == "consensus":
+                selection_events += 1
+        recency_weight = min(1.0, scoped_events / 4.0) if scoped_events > 0 else min(0.5, agent_events / 8.0)
+        review_score = (sum(review_scores) / len(review_scores)) if review_scores else 0.0
+        runtime_score = (sum(runtime_scores) / len(runtime_scores)) if runtime_scores else 0.0
+        selection_score = min(1.0, selection_events / 3.0)
+        return {
+            "review_score": round(review_score * recency_weight, 4),
+            "selection_score": round(selection_score * recency_weight, 4),
+            "runtime_score": round(runtime_score * recency_weight, 4),
+        }
+
+    review_events = _bounded_count(profile_row.get("review_events", 0))
+    avg_review_score = _bounded_score(profile_row.get("average_review_score", 0.0))
+    consensus_selected = _bounded_count(profile_row.get("consensus_selected", 0))
+    runtime_events = _bounded_count(profile_row.get("runtime_events", 0))
+    avg_runtime_score = _bounded_score(profile_row.get("average_runtime_score", 0.0))
+
+    totals = agent_row.get("totals") if isinstance(agent_row.get("totals"), dict) else {}
+    total_review_events = _bounded_count(totals.get("review_events", 0))
+    total_runtime_events = _bounded_count(totals.get("runtime_events", 0))
+    total_consensus_selected = _bounded_count(totals.get("consensus_selected", 0))
+    total_avg_review_score = _bounded_score(totals.get("average_review_score", 0.0))
+    total_avg_runtime_score = _bounded_score(totals.get("average_runtime_score", 0.0))
+    recent_bias = _recent_agent_event_bias()
+
+    review_component = (
+        (0.55 * _weighted_component(avg_review_score, review_events, 5.0))
+        + (0.25 * _weighted_component(total_avg_review_score, total_review_events, 12.0))
+        + (0.20 * recent_bias["review_score"])
+    )
+    selection_component = (
+        (0.60 * min(1.0, consensus_selected / 5.0))
+        + (0.20 * min(1.0, total_consensus_selected / 8.0))
+        + (0.20 * recent_bias["selection_score"])
+    )
+    runtime_component = (
+        (0.55 * _weighted_component(avg_runtime_score, runtime_events, 6.0))
+        + (0.25 * _weighted_component(total_avg_runtime_score, total_runtime_events, 12.0))
+        + (0.20 * recent_bias["runtime_score"])
+    )
     return {
-        "review_score": round(avg_review_score * review_weight, 4),
-        "selection_score": round(selection_weight, 4),
-        "runtime_score": round(avg_runtime_score * runtime_weight, 4),
+        "review_score": round(review_component, 4),
+        "selection_score": round(selection_component, 4),
+        "runtime_score": round(runtime_component, 4),
     }
 
 
