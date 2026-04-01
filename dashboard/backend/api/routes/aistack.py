@@ -2692,19 +2692,16 @@ async def get_security_audit() -> Dict[str, Any]:
 @router.get("/orchestration/sessions")
 async def get_orchestration_sessions() -> Dict[str, Any]:
     """Get list of recent workflow orchestration sessions.
-
-    Note: Currently placeholder - requires session listing endpoint in hybrid coordinator.
     """
     try:
         async with aiohttp.ClientSession() as session:
-            # Query hybrid coordinator for recent sessions
-            # This would require adding a list endpoint to hybrid coordinator
-            # For now, return placeholder structure
-            return {
-                "status": "ok",
-                "sessions": [],
-                "message": "session listing requires hybrid coordinator list endpoint"
-            }
+            url = f"{SERVICES['hybrid']}/workflow/sessions"
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch orchestration sessions: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
     except Exception as e:
         logger.error(f"Failed to fetch orchestration sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
