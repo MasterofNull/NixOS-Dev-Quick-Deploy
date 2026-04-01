@@ -43,6 +43,12 @@ def main() -> int:
                 "recent_failure_count": 2,
                 "promotable_lessons": 1,
             },
+            "agent_lessons": {
+                "available": True,
+                "registry": {"active_count": 2},
+            },
+            "routing": {"available": True, "local_pct": 100.0, "remote_n": 0},
+            "continue_editor": {"status": "healthy"},
             "route_search_latency_decomposition": {"available": True, "overall_p95_ms": 4200.0, "total_calls": 18},
             "query_gaps": [{"query_text": "home-manager credential helper conflict", "occurrences": 4}],
             "gap_remediation": {
@@ -78,6 +84,25 @@ def main() -> int:
             assert_true(
                 (workflow_data.get("feedback_acceleration") or {}).get("status") == "active",
                 "workflow compliance should expose feedback acceleration",
+            )
+
+            readiness_response = client.get("/api/insights/roadmap/readiness")
+            assert_true(readiness_response.status_code == 200, "roadmap readiness route should succeed")
+            readiness = readiness_response.json()
+            phase4 = (readiness.get("phases") or {}).get("phase4") or {}
+            phase10 = (readiness.get("phases") or {}).get("phase10") or {}
+            phase11 = (readiness.get("phases") or {}).get("phase11") or {}
+            assert_true(
+                phase10.get("promotable_lessons") == 1,
+                "roadmap readiness should expose feedback acceleration lesson counts",
+            )
+            assert_true(
+                phase11.get("local_routing_pct") == 100.0,
+                "roadmap readiness should surface local routing health for phase 11",
+            )
+            assert_true(
+                (phase4.get("a2a_readiness") or {}).get("status") in {"healthy", "ready", "unavailable"},
+                "roadmap readiness should include A2A readiness context",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")

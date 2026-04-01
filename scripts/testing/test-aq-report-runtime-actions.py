@@ -83,6 +83,35 @@ def main() -> int:
     assert_true("Dedicated local reasoning is materially slower than the default local lane" in joined, "expected default-vs-reasoning lane recommendation")
     assert_true("promotable lesson candidate" in joined, "expected feedback acceleration recommendation")
     assert_true("Recurring capability gaps remain actionable" in joined, "expected gap remediation recommendation")
+    workflow_context = aq_report.build_recommendations(
+        {
+            "workflow_run_start": {
+                "calls": 4,
+                "success_pct": 50.0,
+                "error_count": 2,
+                "client_error_count": 0,
+                "p95_ms": 90.0,
+            }
+        },
+        route,
+        cache,
+        {"available": False},
+        [],
+        intent_compliance={"available": True, "accepted_reviews": 2, "rejected_reviews": 0, "pending_reviews": 0},
+        recent_tool_stats={
+            "workflow_run_start": {
+                "calls": 4,
+                "success_pct": 50.0,
+                "error_count": 2,
+                "client_error_count": 0,
+                "p95_ms": 90.0,
+            }
+        },
+    )
+    assert_true(
+        "reviewer-gated workflow runs are completing cleanly" in "\n".join(workflow_context),
+        "expected workflow reliability contextualization for reviewer-gated starts",
+    )
 
     actions = aq_report.build_structured_actions(
         {},
