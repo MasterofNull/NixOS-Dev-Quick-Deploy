@@ -28,8 +28,10 @@ def main() -> int:
         os.environ["DASHBOARD_OPERATOR_AUDIT_LOG_PATH"] = str(tmp_path / "operator-audit.jsonl")
         os.environ["DASHBOARD_CONTEXT_DB_PATH"] = str(tmp_path / "deployments-context.db")
         os.environ["DASHBOARD_MODE"] = "test"
+        os.environ["DASHBOARD_OPTIMIZATION_PROPOSALS_PATH"] = str(tmp_path / "optimization-proposals.jsonl")
 
         report_path = tmp_path / "latest-aq-report.json"
+        proposals_path = tmp_path / "optimization-proposals.jsonl"
         report_path.write_text(
             json.dumps(
                 {
@@ -52,6 +54,36 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+        proposals_path.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "proposal_type": "routing_threshold_adjustment",
+                            "target_config_key": "routing_threshold",
+                            "current_value": 0.62,
+                            "proposed_value": 0.58,
+                            "confidence": 0.91,
+                            "evidence_summary": "Route latency remained above target during the last 7d window",
+                            "proposal_hash": "proposal-1",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "proposal_type": "iteration_limit_increase",
+                            "target_config_key": "bounded_reasoning_iteration_limit",
+                            "current_value": 6,
+                            "proposed_value": 8,
+                            "confidence": 0.72,
+                            "evidence_summary": "Long-tail reasoning tasks are saturating the current limit",
+                            "proposal_hash": "proposal-2",
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         dashboard_main = importlib.import_module("api.main")
         insights_service = importlib.import_module("api.services.ai_insights")
@@ -72,6 +104,21 @@ def main() -> int:
             assert_true(
                 ((data.get("rag_posture") or {}).get("top_prewarm_candidate") or {}).get("id") == "route_search_synthesis",
                 "top prewarm candidate should be exposed",
+            )
+            optimization_history = data.get("optimization_history") or {}
+            assert_true(optimization_history.get("available") is True, "optimization history should be exposed when proposal telemetry exists")
+            assert_true(
+                optimization_history.get("total_recent") == 2,
+                "optimization history should report the bounded recent proposal count",
+            )
+            assert_true(
+                (optimization_history.get("types") or {}).get("routing_threshold_adjustment") == 1,
+                "optimization history should summarize proposal types",
+            )
+            most_recent = (optimization_history.get("recent") or [{}])[0]
+            assert_true(
+                most_recent.get("target_config_key") == "bounded_reasoning_iteration_limit",
+                "optimization history should expose recent proposals in reverse chronological order",
             )
 
         print("PASS: performance hotspots insights regression")
