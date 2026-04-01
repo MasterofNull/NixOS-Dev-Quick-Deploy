@@ -664,6 +664,47 @@ class AIInsightsService:
             },
         }
 
+    def _load_unified_observability_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native telemetry, tracing, and structured logging coverage."""
+        root = _repo_root()
+        otel_config = root / "ai-stack" / "observability" / "opentelemetry_config.py"
+        mcp_servers = root / "nix" / "modules" / "services" / "mcp-servers.nix"
+        monitoring = root / "nix" / "modules" / "services" / "monitoring.nix"
+        logging_nix = root / "nix" / "modules" / "core" / "logging.nix"
+
+        def _contains(path: Path, needle: str) -> bool:
+            try:
+                return needle in path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+
+        features = {
+            "opentelemetry_instrumentation": otel_config.exists() and _contains(otel_config, "class OpenTelemetryConfig"),
+            "unified_otel_collector": mcp_servers.exists() and _contains(mcp_servers, 'systemd.services.ai-otel-collector'),
+            "distributed_tracing": monitoring.exists() and _contains(monitoring, 'systemd.services.ai-tempo'),
+            "structured_logging_stack": logging_nix.exists() and _contains(logging_nix, "services.loki"),
+            "journal_shipping": logging_nix.exists() and _contains(logging_nix, "services.promtail"),
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "pending"
+        if enabled_count > 0:
+            status = "active"
+        if enabled_count >= 4:
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "feature_count": enabled_count,
+            "features": features,
+            "paths": {
+                "opentelemetry_instrumentation": str(otel_config),
+                "unified_otel_collector": str(mcp_servers),
+                "distributed_tracing": str(monitoring),
+                "structured_logging_stack": str(logging_nix),
+            },
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -900,6 +941,15 @@ class AIInsightsService:
             **self._load_performance_profiling_readiness(),
         }
 
+    async def get_unified_observability_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native unified observability readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_unified_observability_readiness(),
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
@@ -908,6 +958,7 @@ class AIInsightsService:
         ai_specific_metrics = await self.get_ai_specific_metrics_summary()
         experimentation = self._load_experimentation_readiness()
         profiling = self._load_performance_profiling_readiness()
+        observability = self._load_unified_observability_readiness()
         improvement_candidates = self._load_improvement_candidates_summary()
         code_review_summary = self._load_code_review_summary()
         testing_validation = self._load_testing_validation_readiness()
@@ -1005,6 +1056,7 @@ class AIInsightsService:
                 "phase1": {
                     "status": phase1_status,
                     "profiling_available": bool(route_latency.get("available")),
+                    "unified_observability": observability,
                     "ai_specific_metrics": ai_specific_metrics,
                     "experimentation": experimentation,
                     "continuous_profiling": profiling,
@@ -1524,6 +1576,18 @@ class AIInsightsService:
                     f"features={readiness.get('feature_count', 0)} "
                     f"| profiler={((readiness.get('features') or {}).get('continuous_profiler', False))} "
                     f"| reports={((readiness.get('features') or {}).get('weekly_performance_report', False))}"
+                ),
+            }
+        if normalized_target == "observability":
+            readiness = await self.get_unified_observability_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Unified Observability",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| otel={((readiness.get('features') or {}).get('opentelemetry_instrumentation', False))} "
+                    f"| tracing={((readiness.get('features') or {}).get('distributed_tracing', False))}"
                 ),
             }
 
