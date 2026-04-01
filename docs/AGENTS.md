@@ -59,6 +59,55 @@
 - Legacy exceptions are tracked in:
   - `config/repo-structure-allowlist.txt`
 
+## CI Safety Contract (Always Apply)
+
+- Keep CI unblockers isolated:
+  - do not bundle failing-test fixes, baseline refreshes, and unrelated feature work into the same commit.
+  - use one logical CI concern per commit so reruns are attributable.
+- Reproduce workflow failures locally before editing:
+  - identify the exact GitHub Actions step, script, or test target that failed.
+  - patch only after the failing behavior is reproduced from the repo-local command path.
+- Mandatory validation before commit:
+  - run `scripts/governance/tier0-validation-gate.sh --pre-commit`
+  - do not skip subsystem-specific tests just because repo-wide gates pass.
+- Mandatory focused verification for touched subsystems:
+  - service/runtime edits must run their direct regression tests or smoke scripts.
+  - infrastructure/baseline edits must run the exact guard script used in CI.
+- Test harnesses must evolve with runtime behavior:
+  - when code changes from sync to async, blocking to subprocess-based, or adds shutdown/cancellation/timeout logic, update the matching tests in the same task.
+  - lifecycle changes are incomplete without cancellation and shutdown coverage.
+- Typed config discipline in tests:
+  - if tests patch `Config` or env-derived settings, numeric and timeout values must be explicit `int`/`float` values.
+  - never rely on implicit `MagicMock` numerics in code paths that compare, clamp, or add numbers.
+- Deterministic baseline discipline:
+  - if behavior intentionally changes a checked-in baseline, refresh the baseline in the same commit.
+  - examples include generated JSON inventories, package count baselines, and contract fixtures.
+- Worktree isolation rule:
+  - never push unrelated dirty files with a CI fix.
+  - either split into separate commits or leave unrelated changes uncommitted.
+
+### Repo-Specific CI Checks
+
+- Hybrid coordinator routing changes:
+  - if `ai-stack/mcp-servers/hybrid-coordinator/route_handler.py` changes, run:
+    - `python -m pytest ai-stack/mcp-servers/hybrid-coordinator/test_route_handler_optimizations.py`
+- Dashboard insights cache or startup lifecycle changes:
+  - if `dashboard/backend/api/services/ai_insights.py` or `dashboard/backend/api/main.py` changes, run:
+    - `python scripts/testing/test-dashboard-insights-report-cache.py`
+- Flake/package inventory changes:
+  - if package composition or evaluated target inventories change, run:
+    - `./scripts/testing/check-package-count-drift.sh --flake-ref path:.`
+  - if drift is intended, refresh:
+    - `./scripts/testing/check-package-count-drift.sh --write-baseline`
+
+### Reviewer Gate for CI-Sensitive Changes
+
+- Reject changes that:
+  - fix CI without reproducing the failure locally.
+  - change runtime semantics without updating the corresponding regression harness.
+  - update baselines without a clear rationale tied to code or configuration changes.
+  - combine CI repair with unrelated feature work in the same commit.
+
 ## Subagent Role Notes and Limitations
 
 - Role boundary (non-negotiable):

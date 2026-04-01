@@ -25,6 +25,7 @@ Runs fast commit-time governance and safety checks:
 - ✅ Repository structure policy (`--staged`)
 - ✅ Shell color-echo lint on staged files
 - ✅ Migration governance checks (allowlist/root/artifact hygiene, doc links/metadata/path migration, shim consistency, archive/deprecated guards)
+- ✅ Path-aware focused CI checks for CI-sensitive files (hybrid coordinator route handler, dashboard insights cache, package-count drift)
 
 **Skip if needed** (not recommended):
 ```bash
@@ -58,6 +59,7 @@ If the pre-commit hook finds issues, fix them automatically:
 
 ```bash
 ./scripts/governance/lint-color-echo-usage.sh --staged
+./scripts/governance/run-focused-ci-checks.sh --pre-commit
 ```
 
 Then stage the changes and commit again:

@@ -227,10 +227,30 @@ run_migration_governance_checks() {
   return 0
 }
 
+run_focused_ci_checks() {
+  local script="scripts/governance/run-focused-ci-checks.sh"
+  if [[ ! -x "${script}" ]]; then
+    echo "pre-commit: missing focused CI checks script (${script})" >&2
+    return 1
+  fi
+
+  if ! "${script}" --pre-commit; then
+    cat >&2 <<'EOF'
+Commit blocked: focused CI-sensitive checks failed.
+Fix the failing subsystem regression and re-run:
+  ./scripts/governance/run-focused-ci-checks.sh --pre-commit
+EOF
+    return 1
+  fi
+
+  return 0
+}
+
 run_secret_scan
 run_shell_validation
 run_syntax_check
 run_repo_structure_validation
 run_migration_governance_checks
+run_focused_ci_checks
 
 exit 0

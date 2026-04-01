@@ -132,6 +132,21 @@ curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
 - Include validation evidence in message/body or linked notes.
 - Do not push if mandatory gates fail.
 
+## CI Safety Contract (Always Applied)
+- Isolate CI fixes from unrelated feature or refactor work; do not mix them in one commit.
+- Reproduce GitHub Actions failures locally from the exact script, test target, or workflow command before patching.
+- Run `scripts/governance/tier0-validation-gate.sh --pre-commit` before every commit.
+- Run focused tests for each touched subsystem, not just broad repo gates.
+- Update tests and regression harnesses in the same task when runtime behavior changes (for example sync to async, subprocess lifecycle, shutdown, cancellation, timeouts).
+- Keep typed config values real in tests; mocked numeric/time settings must be concrete `int`/`float` values, not implicit `MagicMock`s.
+- Refresh deterministic baselines in the same change when behavior intentionally changes (for example `config/package-count-baseline.json`).
+- Do not push unrelated dirty worktree changes with a CI fix; isolate or leave them unstaged.
+
+Repo-specific minimum checks:
+- If `ai-stack/mcp-servers/hybrid-coordinator/route_handler.py` changes, run `python -m pytest ai-stack/mcp-servers/hybrid-coordinator/test_route_handler_optimizations.py`.
+- If `dashboard/backend/api/services/ai_insights.py` or dashboard insights startup wiring changes, run `python scripts/testing/test-dashboard-insights-report-cache.py`.
+- If package composition or flake-evaluated target inventories change, run `./scripts/testing/check-package-count-drift.sh --flake-ref path:.` and refresh the baseline when the drift is intentional.
+
 ## Autonomous Ops Boundary
 - Default unattended scope: deploy, verify, restart, test, non-destructive edits, and non-destructive commits.
 - Approval-gated: repo/system deletions, destructive git, rollback execution, boot/disk changes, external account actions.
