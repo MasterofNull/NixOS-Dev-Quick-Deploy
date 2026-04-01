@@ -44,6 +44,8 @@ required = [
     "tool_security_auditor",
     "semantic_tooling_autorun",
     "hint_diversity",
+    "feedback_acceleration",
+    "gap_remediation",
     "structured_actions",
 ]
 
@@ -75,6 +77,12 @@ if not isinstance(doc.get("semantic_tooling_autorun"), dict):
     raise SystemExit(1)
 if not isinstance(doc.get("hint_diversity"), dict):
     print("ERROR: aq-report.hint_diversity must be an object", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(doc.get("feedback_acceleration"), dict):
+    print("ERROR: aq-report.feedback_acceleration must be an object", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(doc.get("gap_remediation"), dict):
+    print("ERROR: aq-report.gap_remediation must be an object", file=sys.stderr)
     raise SystemExit(1)
 
 print("PASS: aq-report JSON contract validated")
