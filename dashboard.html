@@ -1715,6 +1715,7 @@
             <a class="action-link" href="#section-stack-health">Stack Health</a>
             <a class="action-link" href="#section-ai-services">AI Services</a>
             <a class="action-link" href="#section-deployments">Deployments</a>
+            <a class="action-link" href="#section-testing">Testing</a>
             <a class="action-link" href="#section-security">Security</a>
             <a class="action-link" id="apiHealthLink" href="/api/health" target="_blank" rel="noreferrer">API Health</a>
             <a class="action-link" id="prometheusLink" href="/metrics" target="_blank" rel="noreferrer">Prometheus</a>
@@ -3441,6 +3442,78 @@
                     </div>
                 </div>
             </div>
+            <div class="dashboard-section full-width" id="section-testing" data-card-id="testing-ops" data-load-fn="loadTestingOps">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Testing Operations</h2>
+                        </div>
+                        <span class="card-badge" id="testingOpsBadge">suite catalog</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Available Suites</div>
+                                <div class="metric-value" id="testingSuiteCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Recent Executions</div>
+                                <div class="metric-value" id="testingExecutionCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Active Runs</div>
+                                <div class="metric-value" id="testingRunningCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Selected Status</div>
+                                <div class="metric-value" id="testingSelectedStatus">--</div>
+                            </div>
+                        </div>
+                        <div class="deployment-grid" style="margin-top: 1rem; margin-bottom: 1rem;">
+                            <div class="deployment-panel">
+                                <div class="deployment-subtitle">Runtime Testing Control</div>
+                                <div class="deployment-toolbar" style="margin-bottom: 0.75rem; flex-wrap: wrap;">
+                                    <select id="testingSuiteSelect" class="search-box" style="max-width: 220px;"></select>
+                                    <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;">
+                                        <input type="checkbox" id="testingDryRun" checked />
+                                        Dry Run
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;">
+                                        <input type="checkbox" id="testingConfirmLiveRun" />
+                                        Confirm Live Run
+                                    </label>
+                                    <button class="export-btn" onclick="submitTestingExecution()">Start Test Run</button>
+                                </div>
+                                <div class="data-list" id="testingExecutionSummary">
+                                    <div class="data-item">
+                                        <span>Runtime testing controls are ready.</span>
+                                        <span class="data-meta">bounded suites</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="deployment-panel">
+                                <div class="deployment-subtitle">Suite Catalog</div>
+                                <div class="data-list" id="testingSuiteList">
+                                    <div class="data-item">
+                                        <span>Loading suite catalog...</span>
+                                        <span class="data-meta">pending</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="deployment-panel">
+                            <div class="deployment-subtitle">Recent Testing Executions</div>
+                            <div class="data-list" id="testingExecutionList">
+                                <div class="data-item">
+                                    <span>No testing executions captured yet.</span>
+                                    <span class="data-meta">idle</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- Persistence & Data -->
             <div class="dashboard-section full-width">
                 <div class="card">
@@ -3906,6 +3979,12 @@
             selectedLogs: [],
             transport: 'connecting',
             transportDetail: 'Waiting for deployment stream'
+        };
+        const testingState = {
+            suites: [],
+            executions: [],
+            selectedId: null,
+            selectedDetail: null,
         };
 
         // Data directory (update this path if needed)
@@ -7590,6 +7669,18 @@
             }
         }
 
+        async function loadTestingOps() {
+            try {
+                await Promise.all([
+                    loadTestingSuites(),
+                    loadTestingExecutions()
+                ]);
+                renderTestingUI();
+            } catch (error) {
+                console.error('Failed to load testing operations:', error);
+            }
+        }
+
         async function loadPendingDeploymentApprovals() {
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/deployments/approvals/pending`, { cache: 'no-store' });
@@ -7605,6 +7696,24 @@
                     container.innerHTML = `<div class="data-item"><span>Pending approvals unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
                 }
             }
+        }
+
+        async function loadTestingSuites() {
+            const response = await fetch(`${FASTAPI_BASE}/api/testing/suites`, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`testing suites HTTP ${response.status}`);
+            const data = await response.json();
+            testingState.suites = Array.isArray(data.suites) ? data.suites : [];
+        }
+
+        async function loadTestingExecutions() {
+            const response = await fetch(`${FASTAPI_BASE}/api/testing/executions`, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`testing executions HTTP ${response.status}`);
+            const data = await response.json();
+            testingState.executions = Array.isArray(data.executions) ? data.executions : [];
+            if (!testingState.selectedId && testingState.executions.length) {
+                testingState.selectedId = testingState.executions[0].execution_id || null;
+            }
+            testingState.selectedDetail = testingState.executions.find((item) => item.execution_id === testingState.selectedId) || null;
         }
 
         async function loadActiveDeployments() {
@@ -7921,6 +8030,107 @@
             renderDeploymentDetail();
             renderPendingDeploymentApprovals();
             renderDeploymentSearchResults();
+        }
+
+        function renderTestingUI() {
+            const suiteCountEl = document.getElementById('testingSuiteCount');
+            const executionCountEl = document.getElementById('testingExecutionCount');
+            const runningCountEl = document.getElementById('testingRunningCount');
+            const selectedStatusEl = document.getElementById('testingSelectedStatus');
+            const badge = document.getElementById('testingOpsBadge');
+            const suiteSelect = document.getElementById('testingSuiteSelect');
+            const runningCount = testingState.executions.filter((item) => item.status === 'running').length;
+
+            if (suiteCountEl) suiteCountEl.textContent = `${testingState.suites.length}`;
+            if (executionCountEl) executionCountEl.textContent = `${testingState.executions.length}`;
+            if (runningCountEl) runningCountEl.textContent = `${runningCount}`;
+            if (selectedStatusEl) selectedStatusEl.textContent = testingState.selectedDetail?.status || 'idle';
+            if (badge) {
+                badge.textContent = runningCount > 0 ? `${runningCount} running` : 'suite catalog';
+                badge.style.background = runningCount > 0 ? 'var(--status-warning)' : 'var(--status-online)';
+            }
+
+            if (suiteSelect) {
+                const currentValue = suiteSelect.value;
+                suiteSelect.innerHTML = testingState.suites.map((suite) => `
+                    <option value="${escapeHtml(suite.id)}">${escapeHtml(suite.title)} (${escapeHtml(suite.phase || 'n/a')})</option>
+                `).join('');
+                if (currentValue && testingState.suites.some((suite) => suite.id === currentValue)) {
+                    suiteSelect.value = currentValue;
+                }
+            }
+
+            renderTestingSuites();
+            renderTestingExecutionSummary();
+            renderTestingExecutions();
+        }
+
+        function renderTestingSuites() {
+            const container = document.getElementById('testingSuiteList');
+            if (!container) return;
+            if (!testingState.suites.length) {
+                container.innerHTML = '<div class="data-item"><span>No bounded testing suites available</span><span class="data-meta">empty</span></div>';
+                return;
+            }
+
+            container.innerHTML = testingState.suites.map((suite) => `
+                <div class="data-item">
+                    <div>
+                        <div>${escapeHtml(suite.title || suite.id || 'suite')}</div>
+                        <div class="data-meta">${escapeHtml((suite.command || []).join(' '))}</div>
+                    </div>
+                    <div class="data-meta">${escapeHtml(`timeout ${suite.timeout_seconds || 0}s | phase ${suite.phase || 'n/a'}`)}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderTestingExecutionSummary() {
+            const container = document.getElementById('testingExecutionSummary');
+            if (!container) return;
+            const selected = testingState.selectedDetail;
+            if (!selected) {
+                container.innerHTML = '<div class="data-item"><span>Runtime testing controls are ready.</span><span class="data-meta">bounded suites</span></div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="data-item">
+                    <div>
+                        <div>${escapeHtml(selected.title || selected.suite_id || 'execution')}</div>
+                        <div class="data-meta">${escapeHtml(`requested ${formatAbsoluteTime(selected.requested_at)} | dry_run=${selected.dry_run !== false} | returncode=${selected.returncode ?? '--'}`)}</div>
+                        <div class="data-meta">${escapeHtml((selected.output || 'No output yet').slice(0, 220))}</div>
+                    </div>
+                    <div class="data-meta">${escapeHtml(selected.status || 'idle')}</div>
+                </div>
+            `;
+        }
+
+        function renderTestingExecutions() {
+            const container = document.getElementById('testingExecutionList');
+            if (!container) return;
+            if (!testingState.executions.length) {
+                container.innerHTML = '<div class="data-item"><span>No testing executions captured yet.</span><span class="data-meta">idle</span></div>';
+                return;
+            }
+
+            container.innerHTML = testingState.executions.map((execution) => {
+                const selected = execution.execution_id === testingState.selectedId;
+                return `
+                    <div class="data-item" style="cursor: pointer; border-color: ${selected ? 'var(--border-glow)' : 'var(--border-primary)'};" onclick="selectTestingExecution('${escapeHtml(execution.execution_id)}')">
+                        <div>
+                            <div>${escapeHtml(execution.title || execution.suite_id || execution.execution_id)}</div>
+                            <div class="data-meta">${escapeHtml(`${execution.execution_id} | ${formatAbsoluteTime(execution.requested_at)}`)}</div>
+                        </div>
+                        <div class="data-meta">${escapeHtml(execution.status || 'unknown')}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function selectTestingExecution(executionId) {
+            testingState.selectedId = executionId;
+            testingState.selectedDetail = testingState.executions.find((item) => item.execution_id === executionId) || null;
+            renderTestingUI();
         }
 
         function renderPendingDeploymentApprovals() {
@@ -8301,6 +8511,38 @@
                 if (statusEl) {
                     statusEl.textContent = `Runtime deployment failed: ${error.message}`;
                     statusEl.style.color = 'var(--status-error)';
+                }
+            }
+        }
+
+        async function submitTestingExecution() {
+            const suiteId = document.getElementById('testingSuiteSelect')?.value;
+            const dryRun = document.getElementById('testingDryRun')?.checked !== false;
+            const confirm = document.getElementById('testingConfirmLiveRun')?.checked === true;
+            if (!suiteId) {
+                return;
+            }
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/testing/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        suite_id: suiteId,
+                        dry_run: dryRun,
+                        confirm,
+                        user: 'dashboard-operator'
+                    })
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload?.detail || `testing execute HTTP ${response.status}`);
+                }
+                await loadTestingOps();
+            } catch (error) {
+                console.error('Failed to start testing execution:', error);
+                const container = document.getElementById('testingExecutionSummary');
+                if (container) {
+                    container.innerHTML = `<div class="data-item"><span>Testing execution failed</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
                 }
             }
         }
@@ -9888,6 +10130,7 @@
             dashboardCache.clear();
             await loadData();
             await loadDeploymentOps();
+            await loadTestingOps();
             await loadStackHealth();
             console.log('Dashboard reloaded');
         }
