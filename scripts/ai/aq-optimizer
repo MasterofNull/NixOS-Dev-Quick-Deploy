@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +27,8 @@ AIDB_API_KEY_FILE = os.getenv("AIDB_API_KEY_FILE", "")
 OPTIMIZER_RESTART_RETRIES = int(os.getenv("OPTIMIZER_RESTART_RETRIES", "3"))
 OPTIMIZER_RESTART_TIMEOUT_SECONDS = float(os.getenv("OPTIMIZER_RESTART_TIMEOUT_SECONDS", "120"))
 OPTIMIZER_RESTART_BACKOFF_SECONDS = float(os.getenv("OPTIMIZER_RESTART_BACKOFF_SECONDS", "5"))
+HYBRID_URL = (os.getenv("HYBRID_URL") or os.getenv("HYBRID_COORDINATOR_URL") or "").rstrip("/")
+HYBRID_API_KEY_FILE = os.getenv("HYBRID_API_KEY_FILE", "")
 
 
 def _aidb_key() -> str:
@@ -35,6 +38,23 @@ def _aidb_key() -> str:
     candidates.extend([
         Path("/run/secrets/aidb_api_key"),
         Path("/run/secrets/aidb-mcp-api_key"),
+    ])
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                return candidate.read_text().strip()
+        except OSError:
+            continue
+    return ""
+
+
+def _hybrid_key() -> str:
+    candidates = []
+    if HYBRID_API_KEY_FILE:
+        candidates.append(Path(HYBRID_API_KEY_FILE))
+    candidates.extend([
+        Path("/run/secrets/hybrid_coordinator_api_key"),
+        Path("/run/secrets/hybrid_api_key"),
     ])
     for candidate in candidates:
         try:
@@ -192,6 +212,58 @@ def apply_gap_remediation(action: dict, dry_run: bool) -> dict:
     except Exception as exc:
         return {"outcome": "error", "topic": topic, "strategy": strategy, "detail": str(exc)[:120]}
 
+
+def apply_lesson_review(action: dict, dry_run: bool) -> dict:
+    lesson_key = str(action.get("lesson_key", "")).strip()
+    state = str(action.get("state", "promoted") or "promoted").strip().lower()
+    reviewer = str(action.get("reviewer", "aq-optimizer") or "aq-optimizer").strip()[:64]
+    materialization = str(action.get("materialization", "") or "").strip()
+    if not lesson_key:
+        return {"outcome": "skip:no_lesson_key"}
+    if not HYBRID_URL:
+        return {"outcome": "skip:no_hybrid_url", "lesson_key": lesson_key, "state": state}
+    payload = {
+        "lesson_key": lesson_key,
+        "state": state,
+        "reviewer": reviewer,
+        "comment": f"Structured optimizer review for {materialization or 'lesson'} candidate".strip()[:240],
+    }
+    if dry_run:
+        return {
+            "outcome": "dry_run",
+            "lesson_key": lesson_key,
+            "state": state,
+            "url": f"{HYBRID_URL}/control/ai-coordinator/lessons/review",
+        }
+    headers = {"Content-Type": "application/json"}
+    key = _hybrid_key()
+    if key:
+        headers["X-API-Key"] = key
+    try:
+        request = urllib.request.Request(
+            f"{HYBRID_URL}/control/ai-coordinator/lessons/review",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.loads(response.read().decode("utf-8"))
+        reviewed = body.get("reviewed_lesson") if isinstance(body, dict) else {}
+        return {
+            "outcome": "ok",
+            "lesson_key": lesson_key,
+            "state": str((reviewed or {}).get("state", state) or state),
+        }
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8").strip()[:160]
+        except Exception:
+            detail = str(exc)[:160]
+        return {"outcome": "failed", "lesson_key": lesson_key, "state": state, "detail": detail}
+    except Exception as exc:
+        return {"outcome": "error", "lesson_key": lesson_key, "state": state, "detail": str(exc)[:160]}
+
 def apply_maintenance(action: dict, dry_run: bool) -> dict:
     script_name = str(action.get("script", "")).strip()
     args = action.get("script_args", [])
@@ -303,6 +375,12 @@ def main() -> None:
                       "dry_run": dry_run, "result": result_info}
             if not args.output_json:
                 print("INFO  gap_remediation:", aname, "topic:", action.get("topic", "")[:60], "| outcome:", result_info.get("outcome"))
+        elif atype == "lesson" and aname == "review_agent_lesson":
+            result_info = apply_lesson_review(action, dry_run)
+            record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
+                      "dry_run": dry_run, "result": result_info}
+            if not args.output_json:
+                print("INFO  lesson:", aname, "lesson:", action.get("lesson_key", "")[:60], "| outcome:", result_info.get("outcome"))
         elif atype == "eval" and aname == "alert_human":
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "message": action.get("message")}
