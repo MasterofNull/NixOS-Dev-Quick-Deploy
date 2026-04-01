@@ -49,6 +49,7 @@ def load_route_handler():
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=128,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS=360,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS=850,
+                AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS=300,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=160,
                 AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=400,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS=4.0,
@@ -195,6 +196,14 @@ async def main_async() -> int:
     continuation_reasoning_client = _RecordingClient(content="continuation reasoning lane synthesis")
     route_handler._llama_cpp_client_ref = lambda: continuation_local_client
     route_handler._llama_cpp_reasoning_client_ref = lambda: continuation_reasoning_client
+    route_handler._hybrid_search = lambda **_kwargs: asyncio.sleep(
+        0,
+        result={
+            "combined_results": [{"score": 0.9, "collection": "best-practices", "content": "extended cache analysis context " * 220}],
+            "keyword_results": [],
+            "semantic_results": [],
+        },
+    )
 
     continuation_result = await route_handler.route_search(
         query="continue analyzing the current issue using the prior context and explain why the cache is slow",
@@ -214,6 +223,38 @@ async def main_async() -> int:
     )
     assert_true(len(continuation_reasoning_client.calls) == 1, "expected continuation reasoning to use the reasoning lane")
     assert_true(len(continuation_local_client.calls) == 0, "expected continuation reasoning to skip the default lane")
+
+    light_continuation_local_client = _RecordingClient(content="light continuation default synthesis")
+    light_continuation_reasoning_client = _RecordingClient(content="light continuation reasoning synthesis")
+    route_handler._llama_cpp_client_ref = lambda: light_continuation_local_client
+    route_handler._llama_cpp_reasoning_client_ref = lambda: light_continuation_reasoning_client
+    route_handler._hybrid_search = lambda **_kwargs: asyncio.sleep(
+        0,
+        result={
+            "combined_results": [{"score": 0.9, "collection": "best-practices", "content": "short cache note " * 3}],
+            "keyword_results": [],
+            "semantic_results": [],
+        },
+    )
+
+    light_continuation_result = await route_handler.route_search(
+        query="continue analyzing the current cache issue",
+        mode="hybrid",
+        prefer_local=True,
+        context={"source": "test"},
+        limit=3,
+        keyword_limit=3,
+        score_threshold=0.7,
+        generate_response=True,
+    )
+
+    assert_true(light_continuation_result.get("local_inference_lane") == "default", "expected light continuation to stay on the default lane")
+    assert_true(
+        light_continuation_result.get("local_inference_lane_reason") == "default_local_lane",
+        "expected light continuation lane reason",
+    )
+    assert_true(len(light_continuation_reasoning_client.calls) == 0, "expected light continuation to avoid the reasoning lane")
+    assert_true(len(light_continuation_local_client.calls) == 1, "expected light continuation to use the default local lane")
 
     print("PASS: route_handler selects the dedicated reasoning lane only for continuation/heavier local reasoning")
     return 0
