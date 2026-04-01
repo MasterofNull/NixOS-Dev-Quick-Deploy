@@ -585,7 +585,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement continuous capability scanning
   - ai-stack/capability-gap/gap_detection.py: Implementation exists
-- [ ] Integrate gap detection into coordinator
+- [x] Integrate gap detection into coordinator
 - [ ] Add failure pattern analysis
 - [ ] Create gap classification (tool, knowledge, skill, pattern)
 - [ ] Implement gap priority scoring
@@ -601,7 +601,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement automatic tool discovery and integration
   - ai-stack/capability-gap/gap_remediation.py: Implementation exists
-- [ ] Integrate remediation into coordinator
+- [x] Integrate remediation into coordinator
 - [ ] Add automatic knowledge import from external sources
 - [ ] Create skill synthesis from examples
 - [ ] Implement pattern extraction and generalization
@@ -625,6 +625,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
   - Gap similarity matching for playbook selection
 - [x] Add remediation quality improvement
   - Lessons learned and improvements suggested tracking
+- [x] Integrate remediation learning signals into coordinator recovery paths
 
 **Deliverables:**
 - ✅ Outcome tracker (remediation_learning.py)
