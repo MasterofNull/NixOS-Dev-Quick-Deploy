@@ -4230,6 +4230,31 @@ async def run_http_mode(port: int) -> None:
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
             request["audit_metadata"]["backend"] = str(result.get("backend", "unknown"))
+            backend_reason_class = str(result.get("backend_reason_class", "") or "").strip()
+            if backend_reason_class:
+                request["audit_metadata"]["backend_reason_class"] = backend_reason_class
+            response_max_tokens = result.get("response_max_tokens")
+            if isinstance(response_max_tokens, int):
+                request["audit_metadata"]["response_max_tokens"] = response_max_tokens
+            task_complexity = result.get("task_complexity")
+            if isinstance(task_complexity, dict):
+                task_complexity_reason = str(task_complexity.get("reason", "") or "").strip()
+                if task_complexity_reason:
+                    request["audit_metadata"]["task_complexity_reason"] = task_complexity_reason
+                task_complexity_type = str(task_complexity.get("type", "") or "").strip()
+                if task_complexity_type:
+                    request["audit_metadata"]["task_complexity_type"] = task_complexity_type
+                task_complexity_tokens = task_complexity.get("tokens")
+                if isinstance(task_complexity_tokens, int):
+                    request["audit_metadata"]["task_complexity_tokens"] = task_complexity_tokens
+                if "local_suitable" in task_complexity:
+                    request["audit_metadata"]["task_complexity_local_suitable"] = bool(
+                        task_complexity.get("local_suitable")
+                    )
+                if "remote_required" in task_complexity:
+                    request["audit_metadata"]["task_complexity_remote_required"] = bool(
+                        task_complexity.get("remote_required")
+                    )
             retrieval_profile = result.get("retrieval_profile")
             if isinstance(retrieval_profile, dict):
                 request["audit_metadata"]["retrieval_profile"] = str(
