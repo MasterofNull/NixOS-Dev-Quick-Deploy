@@ -290,6 +290,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Integrated runtime adoption:**
 - Workflow planning now selects a primary reasoning pattern and phase-specific pattern recommendations from live prompt context
 - Workflow run sessions now persist selected reasoning-pattern metadata for runtime inspection and follow-through
+- Command Center orchestration inspector now shows selected reasoning pattern, boost multiplier, and phase-level guidance for live workflow sessions
 
 ### Batch 4.2: Multi-Agent Orchestration
 **Status:** in progress (foundation landed, orchestration layer incomplete)
