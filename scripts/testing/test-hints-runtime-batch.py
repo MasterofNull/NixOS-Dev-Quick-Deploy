@@ -78,6 +78,61 @@ def test_runtime_eval_regression_hint(tmpdir: Path) -> None:
     assert_true("runtime_eval_regression_watch" in hint_ids, "expected eval regression hint")
 
 
+def test_historical_hint_watchlist_runtime_hint(tmpdir: Path) -> None:
+    report_path = tmpdir / "latest-aq-report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "historical_hint_watchlist": {
+                    "available": True,
+                    "has_items": True,
+                    "dominant_hint_id": "registry_eval_scorecard_analysis",
+                    "dominant_share_pct": 100.0,
+                    "total_injections": 4,
+                    "alternative_hints": [
+                        {"hint_id": "runtime_local_reasoning_tail", "count": 1},
+                        {"hint_id": "runtime_memory_recall_underused", "count": 1},
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = HintsEngine(report_json_path=report_path)
+    hints = engine._hints_from_latest_report("improve hint quality and steering diversity", [])
+    hint_ids = [item.id for item in hints]
+    assert_true("runtime_historical_hint_concentration" in hint_ids, "expected historical hint concentration hint")
+
+
+def test_feedback_profile_runtime_hints() -> None:
+    engine = HintsEngine()
+    hints = engine._hints_from_feedback_profiles(
+        "improve hint quality and reuse the most helpful guidance",
+        ["improve", "hint", "quality", "reuse"],
+        {
+            "runtime_local_reasoning_tail": {
+                "signal": 0.62,
+                "event_count": 6,
+                "helpful_count": 5,
+                "unhelpful_count": 1,
+                "confidence": 0.81,
+                "dominant_tags": ["actionable", "relevance_high"],
+            },
+            "registry_eval_scorecard_analysis": {
+                "signal": -0.41,
+                "event_count": 5,
+                "helpful_count": 1,
+                "unhelpful_count": 4,
+                "confidence": 0.74,
+                "dominant_tags": ["relevance_low", "helpful_false"],
+            },
+        },
+    )
+    hint_ids = [item.id for item in hints]
+    assert_true(any(item.startswith("runtime_feedback_positive_") for item in hint_ids), "expected positive feedback-profile hint")
+    assert_true(any(item.startswith("runtime_feedback_negative_") for item in hint_ids), "expected negative feedback-profile hint")
+
+
 def test_diversity_prefers_non_overused_candidates() -> None:
     engine = HintsEngine()
     deduped = [
@@ -104,13 +159,30 @@ def test_synthetic_gap_alignment() -> None:
         assert_true(HintsEngine.__module__ and __import__("hints_engine")._is_synthetic_gap(sample), f"expected hints synthetic gap suppression for {sample}")
 
 
+def test_curated_stale_gap_alignment() -> None:
+    samples = [
+        "show me the workflow start intent contract requirements for this repo",
+        "explain qdrant hybrid routing configuration in the ai harness",
+        "what are the progressive disclosure token discipline defaults",
+        "continue agent mode still says message exceeds context limit",
+    ]
+    hints_module = __import__("hints_engine")
+    for sample in samples:
+        assert_true(aq_report._is_curated_stale_gap(sample), f"expected aq-report curated stale-gap suppression for {sample}")
+        assert_true(hints_module._is_curated_stale_gap(sample), f"expected hints curated stale-gap suppression for {sample}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="hints-runtime-batch-") as tmpdir:
         test_runtime_reasoning_tail_hint(Path(tmpdir))
     with tempfile.TemporaryDirectory(prefix="hints-runtime-eval-") as tmpdir:
         test_runtime_eval_regression_hint(Path(tmpdir))
+    with tempfile.TemporaryDirectory(prefix="hints-runtime-history-") as tmpdir:
+        test_historical_hint_watchlist_runtime_hint(Path(tmpdir))
+    test_feedback_profile_runtime_hints()
     test_diversity_prefers_non_overused_candidates()
     test_synthetic_gap_alignment()
+    test_curated_stale_gap_alignment()
     print("PASS: hint-runtime batching improvements stay aligned and anti-dominant")
     return 0
 

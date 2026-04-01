@@ -684,11 +684,18 @@ _CURATED_STALE_GAP_PATTERNS = (
     "create a workflow plan for diagnosing continue chat hangs",
     "verify switchboard response headers for profile routing",
     "reduce token overhead through progressive disclosure defaults",
+    "progressive disclosure token discipline",
+    "progressive-disclosure token discipline",
     "intent contract fields for workflow start",
+    "workflow start intent contract",
     "show workflow run start intent contract requirements",
     "how to configure qdrant and hybrid routing in this repo",
+    "qdrant hybrid routing configuration",
     "nixos declarative runtime tool security policy pattern for hybrid coor",
     "verify semantic tool calling and tool security metadata",
+    "continue agent mode still says message exceeds context limit",
+    "message exceeds context limit return a compact diagnosis path",
+    "continue editor rescue message exceeds context limit",
 )
 
 
@@ -985,7 +992,8 @@ class HintsEngine:
         feedback = self._load_hint_feedback_scores()
         db_feedback_profiles = self._load_db_feedback_profiles()
         preference_profile = self._load_agent_preference_profile(agent_type)
-        combined: List[Hint] = source_e + source_d + source_a + source_b + source_c
+        source_f = self._hints_from_feedback_profiles(query, query_tokens, db_feedback_profiles)
+        combined: List[Hint] = source_e + source_d + source_f + source_a + source_b + source_c
         combined = [self._apply_efficiency_adjustment(h) for h in combined]
         combined = [self._apply_feedback_adjustment(h, feedback, db_feedback_profiles, query_tokens) for h in combined]
         combined = [self._apply_agent_preference_adjustment(h, preference_profile) for h in combined]
@@ -2558,6 +2566,40 @@ class HintsEngine:
                         )
                     )
 
+        historical_hint_watch = data.get("historical_hint_watchlist", {})
+        if isinstance(historical_hint_watch, dict) and historical_hint_watch.get("available") and historical_hint_watch.get("has_items"):
+            hint_focus = any(
+                token in query_lower
+                for token in ("hint", "hints", "steer", "divers", "quality", "feedback", "reuse", "improv", "report")
+            )
+            if hint_focus:
+                dominant_hint_id = str(historical_hint_watch.get("dominant_hint_id", "") or "").strip()
+                dominant_share_pct = historical_hint_watch.get("dominant_share_pct")
+                total_injections = int(historical_hint_watch.get("total_injections", 0) or 0)
+                alternatives = historical_hint_watch.get("alternative_hints") or []
+                alt_ids = [
+                    str(item.get("hint_id", "")).strip()
+                    for item in alternatives
+                    if isinstance(item, dict) and str(item.get("hint_id", "")).strip()
+                ]
+                alt_text = f" Prefer rotating in: {', '.join(alt_ids[:2])}." if alt_ids else ""
+                hints.append(
+                    Hint(
+                        id="runtime_historical_hint_concentration",
+                        type="runtime_signal",
+                        title="Historical hint concentration is visible, but not active in the current window",
+                        score=0.69,
+                        snippet=(
+                            f"`{dominant_hint_id}` dominated {float(dominant_share_pct):.1f}% of historical hint injections "
+                            f"across {total_injections} uses, but this is background debt rather than a current incident."
+                            f"{alt_text}"
+                        )[:220],
+                        reason="Derived from live aq-report historical_hint_watchlist state",
+                        tags=["runtime", "hints", "diversity", "historical"],
+                        agent_hints={},
+                    )
+                )
+
         intent = data.get("intent_contract_compliance", {})
         if isinstance(intent, dict):
             cov = intent.get("contract_coverage_pct")
@@ -2973,6 +3015,83 @@ class HintsEngine:
                         agent_hints={},
                     )
                 )
+        return hints
+
+    def _hints_from_feedback_profiles(
+        self,
+        query: str,
+        query_tokens: List[str],
+        db_feedback_profiles: Optional[Dict[str, Dict[str, object]]] = None,
+    ) -> List[Hint]:
+        query_lower = (query or "").lower()
+        focus = any(
+            token in query_lower
+            for token in ("hint", "hints", "feedback", "quality", "relevant", "irrelevant", "steer", "divers", "reuse", "improv")
+        )
+        if not focus:
+            return []
+        profiles = db_feedback_profiles or {}
+        if not profiles:
+            return []
+
+        positive_candidates: List[Tuple[str, float, int, int, float, List[str]]] = []
+        negative_candidates: List[Tuple[str, float, int, int, float, List[str]]] = []
+        for hint_id, profile in profiles.items():
+            if not isinstance(profile, dict):
+                continue
+            signal = float(profile.get("signal", 0.0) or 0.0)
+            event_count = int(profile.get("event_count", 0) or 0)
+            helpful_count = int(profile.get("helpful_count", 0) or 0)
+            unhelpful_count = int(profile.get("unhelpful_count", 0) or 0)
+            confidence = float(profile.get("confidence", 0.0) or 0.0)
+            dominant_tags = profile.get("dominant_tags", [])
+            tags = [str(tag).strip().lower() for tag in dominant_tags if str(tag).strip()]
+            if event_count < 3 or confidence < 0.35:
+                continue
+            if signal >= 0.35 and helpful_count >= max(3, unhelpful_count):
+                positive_candidates.append((str(hint_id), signal, helpful_count, event_count, confidence, tags[:3]))
+            if signal <= -0.20 and unhelpful_count >= max(2, helpful_count):
+                negative_candidates.append((str(hint_id), signal, unhelpful_count, event_count, confidence, tags[:3]))
+
+        hints: List[Hint] = []
+        if positive_candidates:
+            positive_candidates.sort(key=lambda item: (-item[1], -item[2], -item[4], item[0]))
+            hint_id, signal, helpful_count, event_count, confidence, tags = positive_candidates[0]
+            tag_text = f" Tags: {', '.join(tags)}." if tags else ""
+            hints.append(
+                Hint(
+                    id=f"runtime_feedback_positive_{re.sub(r'[^a-z0-9]+', '_', hint_id.lower())}",
+                    type="runtime_signal",
+                    title="Reuse a proven high-signal hint pattern before inventing new steering",
+                    score=min(0.82, 0.66 + min(0.12, signal * 0.18)),
+                    snippet=(
+                        f"`{hint_id}` is repeatedly helpful ({helpful_count}/{event_count}, conf {confidence:.2f})."
+                        f"{tag_text} Reuse this pattern when queries ask for similar hint-quality or steering work."
+                    )[:220],
+                    reason="Derived from live hint feedback profiles rather than raw frequency alone",
+                    tags=["runtime", "hints", "feedback", "reuse"],
+                    agent_hints={},
+                )
+            )
+        if negative_candidates:
+            negative_candidates.sort(key=lambda item: (item[1], -item[2], -item[4], item[0]))
+            hint_id, signal, unhelpful_count, event_count, confidence, tags = negative_candidates[0]
+            tag_text = f" Tags: {', '.join(tags)}." if tags else ""
+            hints.append(
+                Hint(
+                    id=f"runtime_feedback_negative_{re.sub(r'[^a-z0-9]+', '_', hint_id.lower())}",
+                    type="runtime_signal",
+                    title="Repeatedly unhelpful hint patterns should be rewritten or down-scoped",
+                    score=min(0.80, 0.67 + min(0.10, abs(signal) * 0.16)),
+                    snippet=(
+                        f"`{hint_id}` trends unhelpful ({unhelpful_count}/{event_count}, conf {confidence:.2f})."
+                        f"{tag_text} Prefer a narrower or more actionable alternative instead of repeating the same steering."
+                    )[:220],
+                    reason="Derived from live hint feedback profiles showing negative signal",
+                    tags=["runtime", "hints", "feedback", "quality"],
+                    agent_hints={},
+                )
+            )
         return hints
 
     def _hints_from_tool_audit_errors(self, query: str, query_tokens: List[str]) -> List[Hint]:
