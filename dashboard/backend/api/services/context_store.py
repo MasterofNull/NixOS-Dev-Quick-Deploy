@@ -381,6 +381,45 @@ class ContextStore:
 
         return self._execute_write("complete_deployment", write)
 
+    def update_deployment_status(
+        self,
+        deployment_id: str,
+        status: str,
+        *,
+        progress: int | None = None,
+        exit_code: int | None = None,
+        completed: bool = False,
+    ) -> bool:
+        """Update deployment status without forcing a terminal success/failed mapping."""
+        def write() -> bool:
+            now = self._timestamp()
+            completed_at = now if completed else None
+            current = self.conn.execute(
+                """
+                SELECT progress, exit_code, completed_at
+                FROM deployments
+                WHERE deployment_id = ?
+                """,
+                (deployment_id,),
+            ).fetchone()
+            if current is None:
+                return False
+            next_progress = current["progress"] if progress is None else progress
+            next_exit_code = current["exit_code"] if exit_code is None else exit_code
+            next_completed_at = completed_at or current["completed_at"]
+            self.conn.execute(
+                """
+                UPDATE deployments
+                SET status = ?, progress = ?, exit_code = ?, completed_at = ?
+                WHERE deployment_id = ?
+                """,
+                (status, next_progress, next_exit_code, next_completed_at, deployment_id),
+            )
+            self.conn.commit()
+            return True
+
+        return self._execute_write("update_deployment_status", write)
+
     # ========================================================================
     # Context-Aware Retrieval with FTS5 + BM25
     # ========================================================================

@@ -4,9 +4,11 @@ Provides real-time deployment progress and historical deployment data
 Integrated with context-aware storage (SQLite + FTS5)
 """
 
+import importlib.util
+from dataclasses import asdict
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
 import asyncio
@@ -25,6 +27,10 @@ router = APIRouter()
 # WebSocket connections for real-time updates
 deployment_connections: List[WebSocket] = []
 deployment_lock = asyncio.Lock()
+runtime_deployment_lock = asyncio.Lock()
+runtime_deployment_tasks: Dict[str, asyncio.Task[Any]] = {}
+pending_deployment_approvals: Dict[str, Dict[str, Any]] = {}
+_AUTO_DEPLOYER_MODULE: Any | None = None
 
 # Get context store singleton
 context_store = get_context_store()
@@ -79,6 +85,202 @@ class DeploymentCompleteRequest(BaseModel):
     """Deployment completion payload from the deploy CLI."""
     success: bool = True
     message: Optional[str] = None
+
+
+class DeploymentExecuteRequest(BaseModel):
+    """Safe runtime execution request for the repo-native auto-deployer."""
+    deployment_id: Optional[str] = None
+    strategy: str = Field(default="blue_green", pattern="^(blue_green|canary|rolling|immediate)$")
+    dry_run: bool = True
+    require_approval: bool = False
+    confirm: bool = False
+    user: str = "system"
+    auto_rollback: bool = True
+    canary_percentage: int = Field(default=10, ge=1, le=100)
+    validation_timeout_seconds: int = Field(default=60, ge=10, le=1800)
+    verification_timeout_seconds: int = Field(default=120, ge=10, le=3600)
+    approval_timeout_seconds: int = Field(default=300, ge=10, le=3600)
+
+
+class DeploymentApprovalRequest(BaseModel):
+    """Approve or reject a pending runtime deployment."""
+    decision: str = Field(..., pattern="^(approve|reject)$")
+    reviewer: str = "operator"
+    reason: str = "Operator decision recorded from dashboard"
+
+
+def _load_auto_deployer_module():
+    """Load the repo-native auto-deployer from the checkout path."""
+    global _AUTO_DEPLOYER_MODULE
+    if _AUTO_DEPLOYER_MODULE is not None:
+        return _AUTO_DEPLOYER_MODULE
+
+    module_path = REPO_ROOT / "ai-stack" / "deployment" / "auto_deployer.py"
+    spec = importlib.util.spec_from_file_location("dashboard_auto_deployer", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load auto deployer module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _AUTO_DEPLOYER_MODULE = module
+    return module
+
+
+def _deployment_command_from_request(request: DeploymentExecuteRequest) -> str:
+    parts = [f"auto-deployer --strategy {request.strategy}"]
+    if request.dry_run:
+        parts.append("--dry-run")
+    if request.require_approval:
+        parts.append("--require-approval")
+    if request.auto_rollback:
+        parts.append("--auto-rollback")
+    if request.strategy == "canary":
+        parts.append(f"--canary-percentage {request.canary_percentage}")
+    return " ".join(parts)
+
+
+def _serialize_runtime_request(request: DeploymentExecuteRequest) -> Dict[str, Any]:
+    return {
+        "strategy": request.strategy,
+        "dry_run": request.dry_run,
+        "require_approval": request.require_approval,
+        "auto_rollback": request.auto_rollback,
+        "canary_percentage": request.canary_percentage,
+        "validation_timeout_seconds": request.validation_timeout_seconds,
+        "verification_timeout_seconds": request.verification_timeout_seconds,
+        "approval_timeout_seconds": request.approval_timeout_seconds,
+        "user": request.user,
+    }
+
+
+def _serialize_deployment_result(result: Any) -> Dict[str, Any]:
+    payload = asdict(result)
+    payload["status"] = result.status.value
+    payload["strategy"] = result.strategy.value
+    payload["started_at"] = result.started_at.isoformat()
+    payload["completed_at"] = result.completed_at.isoformat() if result.completed_at else None
+    return payload
+
+
+async def _broadcast_runtime_status(
+    deployment_id: str,
+    event_type: str,
+    message: str,
+    *,
+    progress: int,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    await broadcast_deployment_event(
+        {
+            "deployment_id": deployment_id,
+            "event_type": event_type,
+            "message": message,
+            "progress": progress,
+            "metadata": metadata or {},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+
+async def _run_runtime_deployment(deployment_id: str, request: DeploymentExecuteRequest) -> None:
+    """Execute the repo-native auto-deployer and reflect outcome into deployment history."""
+    try:
+        auto_deployer = _load_auto_deployer_module()
+        config = auto_deployer.DeploymentConfig(
+            strategy=auto_deployer.DeploymentStrategy(request.strategy),
+            require_approval=False,
+            approval_timeout_seconds=request.approval_timeout_seconds,
+            validation_timeout_seconds=request.validation_timeout_seconds,
+            verification_timeout_seconds=request.verification_timeout_seconds,
+            auto_rollback=request.auto_rollback,
+            canary_percentage=request.canary_percentage,
+        )
+        deployer = auto_deployer.AutoDeployer(config=config, dry_run=request.dry_run)
+
+        context_store.update_deployment_status(deployment_id, "running", progress=5)
+        context_store.add_event(
+            deployment_id=deployment_id,
+            event_type="runtime_execution",
+            message=f"Runtime deployment executing via {request.strategy}",
+            progress=5,
+            metadata=_serialize_runtime_request(request),
+        )
+        await _broadcast_runtime_status(
+            deployment_id,
+            DeploymentEventType.PROGRESS,
+            f"Executing {request.strategy} deployment",
+            progress=5,
+            metadata={"runtime_execution": True, **_serialize_runtime_request(request)},
+        )
+
+        result = await deployer.deploy(deployment_id=deployment_id, approval_callback=lambda: True)
+        serialized = _serialize_deployment_result(result)
+        success = serialized["status"] == "completed"
+        final_status = "rolled_back" if serialized.get("rollback_performed") else ("success" if success else "failed")
+        final_progress = 100 if success else 0
+
+        context_store.add_event(
+            deployment_id=deployment_id,
+            event_type="runtime_result",
+            message=serialized.get("error_message") or f"Runtime deployment finished with status {serialized['status']}",
+            progress=final_progress,
+            metadata=serialized,
+        )
+        if final_status == "success":
+            context_store.complete_deployment(
+                deployment_id=deployment_id,
+                success=True,
+                exit_code=0,
+                message="Runtime deployment completed successfully",
+            )
+        else:
+            context_store.update_deployment_status(
+                deployment_id,
+                final_status,
+                progress=final_progress,
+                exit_code=0 if serialized.get("rollback_performed") else 1,
+                completed=True,
+            )
+            context_store.add_event(
+                deployment_id=deployment_id,
+                event_type=final_status,
+                message=serialized.get("error_message") or f"Runtime deployment ended in {final_status}",
+                progress=final_progress,
+                metadata={"runtime_execution": True, "rollback_performed": serialized.get("rollback_performed", False)},
+            )
+
+        await _broadcast_runtime_status(
+            deployment_id,
+            DeploymentEventType.SUCCESS if final_status == "success" else DeploymentEventType.FAILED,
+            serialized.get("error_message") or f"Runtime deployment {final_status}",
+            progress=final_progress,
+            metadata={"runtime_result": serialized, "final_status": final_status},
+        )
+    except Exception as exc:
+        logger.exception("Runtime deployment %s failed: %s", deployment_id, exc)
+        context_store.update_deployment_status(deployment_id, "failed", progress=0, exit_code=1, completed=True)
+        context_store.add_event(
+            deployment_id=deployment_id,
+            event_type="runtime_error",
+            message=f"Runtime deployment error: {exc}",
+            progress=0,
+            metadata={"runtime_execution": True},
+        )
+        await _broadcast_runtime_status(
+            deployment_id,
+            DeploymentEventType.FAILED,
+            f"Runtime deployment error: {exc}",
+            progress=0,
+            metadata={"runtime_execution": True},
+        )
+    finally:
+        async with runtime_deployment_lock:
+            runtime_deployment_tasks.pop(deployment_id, None)
+
+
+async def _start_runtime_deployment(deployment_id: str, request: DeploymentExecuteRequest) -> None:
+    async with runtime_deployment_lock:
+        task = asyncio.create_task(_run_runtime_deployment(deployment_id, request))
+        runtime_deployment_tasks[deployment_id] = task
 
 
 async def _run_rollback_command(command: str) -> subprocess.CompletedProcess:
@@ -188,6 +390,136 @@ async def start_deployment(deployment_id: str, command: str, user: str = "system
 
     logger.info(f"Started tracking deployment: {deployment_id}")
     return {"status": "started", "deployment_id": deployment_id}
+
+
+@router.post("/deployments/execute")
+async def execute_deployment(request: DeploymentExecuteRequest):
+    """Execute the repo-native deployment pipeline with safe defaults."""
+    deployment_id = request.deployment_id or f"runtime-deploy-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    command = _deployment_command_from_request(request)
+
+    async with runtime_deployment_lock:
+        if deployment_id in runtime_deployment_tasks:
+            raise HTTPException(status_code=409, detail="Deployment already executing")
+        if deployment_id in pending_deployment_approvals:
+            raise HTTPException(status_code=409, detail="Deployment is already pending approval")
+
+    existing = context_store.get_deployment_summary(deployment_id)
+    if existing:
+        raise HTTPException(status_code=409, detail="Deployment ID already exists")
+
+    if not request.dry_run and not request.confirm:
+        raise HTTPException(status_code=400, detail="Live deployment requires explicit confirmation")
+
+    context_store.start_deployment(deployment_id, command, request.user)
+    context_store.add_event(
+        deployment_id=deployment_id,
+        event_type="runtime_plan",
+        message="Runtime deployment request accepted",
+        progress=0,
+        metadata={"command": command, **_serialize_runtime_request(request)},
+    )
+
+    if request.require_approval:
+        pending_deployment_approvals[deployment_id] = {
+            "deployment_id": deployment_id,
+            "command": command,
+            "requested_at": datetime.utcnow().isoformat(),
+            "request": _serialize_runtime_request(request),
+        }
+        context_store.update_deployment_status(deployment_id, "pending_approval", progress=0)
+        context_store.add_event(
+            deployment_id=deployment_id,
+            event_type="approval_requested",
+            message="Awaiting operator approval for runtime deployment",
+            progress=0,
+            metadata={"command": command, "require_approval": True},
+        )
+        await _broadcast_runtime_status(
+            deployment_id,
+            "approval_requested",
+            "Awaiting operator approval",
+            progress=0,
+            metadata={"command": command},
+        )
+        return {
+            "status": "pending_approval",
+            "deployment_id": deployment_id,
+            "command": command,
+            "request": _serialize_runtime_request(request),
+        }
+
+    await _start_runtime_deployment(deployment_id, request)
+    return {
+        "status": "started",
+        "deployment_id": deployment_id,
+        "command": command,
+        "request": _serialize_runtime_request(request),
+    }
+
+
+@router.get("/deployments/approvals/pending")
+async def get_pending_deployment_approvals():
+    """List runtime deployments awaiting operator approval."""
+    items = sorted(
+        pending_deployment_approvals.values(),
+        key=lambda item: str(item.get("requested_at") or ""),
+        reverse=True,
+    )
+    return {"deployments": items, "count": len(items)}
+
+
+@router.post("/deployments/{deployment_id}/approval")
+async def review_deployment_approval(deployment_id: str, request: DeploymentApprovalRequest):
+    """Approve or reject a pending runtime deployment execution."""
+    pending = pending_deployment_approvals.get(deployment_id)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Pending deployment approval not found")
+
+    runtime_request = DeploymentExecuteRequest(
+        deployment_id=deployment_id,
+        **{k: v for k, v in (pending.get("request") or {}).items() if k != "user"},
+        user=str((pending.get("request") or {}).get("user") or "system"),
+        confirm=True,
+    )
+
+    if request.decision == "reject":
+        pending_deployment_approvals.pop(deployment_id, None)
+        context_store.update_deployment_status(deployment_id, "rejected", progress=0, exit_code=1, completed=True)
+        context_store.add_event(
+            deployment_id=deployment_id,
+            event_type="approval_rejected",
+            message=request.reason,
+            progress=0,
+            metadata={"reviewer": request.reviewer},
+        )
+        await _broadcast_runtime_status(
+            deployment_id,
+            "approval_rejected",
+            request.reason,
+            progress=0,
+            metadata={"reviewer": request.reviewer},
+        )
+        return {"status": "rejected", "deployment_id": deployment_id}
+
+    pending_deployment_approvals.pop(deployment_id, None)
+    context_store.update_deployment_status(deployment_id, "approved", progress=0)
+    context_store.add_event(
+        deployment_id=deployment_id,
+        event_type="approval_approved",
+        message=request.reason,
+        progress=0,
+        metadata={"reviewer": request.reviewer},
+    )
+    await _broadcast_runtime_status(
+        deployment_id,
+        "approval_approved",
+        request.reason,
+        progress=0,
+        metadata={"reviewer": request.reviewer},
+    )
+    await _start_runtime_deployment(deployment_id, runtime_request)
+    return {"status": "approved", "deployment_id": deployment_id}
 
 
 @router.post("/deployments/{deployment_id}/progress")
