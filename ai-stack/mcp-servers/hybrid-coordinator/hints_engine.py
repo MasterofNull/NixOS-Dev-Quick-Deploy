@@ -2862,6 +2862,35 @@ class HintsEngine:
                     )
                 )
 
+        eval_trend = data.get("eval_trend", {})
+        if isinstance(eval_trend, dict) and eval_trend.get("available"):
+            trend = str(eval_trend.get("trend", "") or "").strip().lower()
+            eval_focus = any(
+                token in query_lower
+                for token in ("eval", "score", "regress", "prompt", "quality", "report", "improv")
+            )
+            if eval_focus and trend == "falling":
+                latest_pct = eval_trend.get("latest_pct")
+                mean_pct = eval_trend.get("mean_pct")
+                n_runs = int(eval_trend.get("n_runs", 0) or 0)
+                source = str(eval_trend.get("source", "unknown") or "unknown")
+                sample_note = " Low sample window." if n_runs < 3 else ""
+                hints.append(
+                    Hint(
+                        id="runtime_eval_regression_watch",
+                        type="runtime_signal",
+                        title="Eval trend is falling and should be confirmed before broader tuning",
+                        score=0.76,
+                        snippet=(
+                            f"Latest eval is {latest_pct}% vs mean {mean_pct}% across {n_runs} run(s) from {source}.{sample_note} "
+                            "Run a tagged full eval pass before changing routing or retrieval policy."
+                        )[:220],
+                        reason="Derived from live aq-report eval trend telemetry",
+                        tags=["runtime", "eval", "quality", "regression"],
+                        agent_hints={},
+                    )
+                )
+
         agent_lessons = data.get("agent_lessons", {})
         lesson_registry = agent_lessons.get("registry", {}) if isinstance(agent_lessons, dict) else {}
         active_lessons = lesson_registry.get("active_lessons") if isinstance(lesson_registry, dict) else []
