@@ -153,6 +153,18 @@ async def get_improvement_candidates():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/improvements/readiness")
+async def get_improvement_automation_readiness():
+    """Get the repo-native improvement automation readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_improvement_automation_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get improvement automation readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/improvements/reviews")
 async def get_code_review_summary():
     """Get the persisted Phase 3 LLM code-review summary."""
