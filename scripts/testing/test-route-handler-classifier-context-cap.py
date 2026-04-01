@@ -115,23 +115,27 @@ def load_route_handler():
 
 
 class _FakeResponse:
+    def __init__(self, content: str):
+        self.content = content
+
     def raise_for_status(self):
         return None
 
     def json(self):
         return {
-            "choices": [{"message": {"content": "local reasoning synthesis"}}],
+            "choices": [{"message": {"content": self.content}}],
             "usage": {"cached_tokens": 8},
         }
 
 
 class _RecordingClient:
-    def __init__(self):
+    def __init__(self, content: str = "local reasoning synthesis"):
         self.calls = []
+        self.content = content
 
     async def post(self, path, headers=None, json=None, timeout=None):
         self.calls.append({"path": path, "headers": headers or {}, "json": json or {}, "timeout": timeout})
-        return _FakeResponse()
+        return _FakeResponse(self.content)
 
 
 async def main_async() -> int:
@@ -153,9 +157,11 @@ async def main_async() -> int:
         },
     )
 
-    local_client = _RecordingClient()
-    remote_client = _RecordingClient()
+    local_client = _RecordingClient(content="generic local synthesis")
+    reasoning_client = _RecordingClient(content="reasoning lane synthesis")
+    remote_client = _RecordingClient(content="remote synthesis")
     route_handler._llama_cpp_client_ref = lambda: local_client
+    route_handler._llama_cpp_reasoning_client_ref = lambda: reasoning_client
     route_handler._switchboard_client_ref = lambda: remote_client
 
     result = await route_handler.route_search(
@@ -170,10 +176,11 @@ async def main_async() -> int:
     )
 
     assert_true(result.get("backend") == "local", "expected bounded reasoning with large retrieval context to stay local")
-    assert_true(len(local_client.calls) == 1, "expected one local synthesis call")
+    assert_true(len(reasoning_client.calls) == 1, "expected one reasoning-lane synthesis call")
+    assert_true(len(local_client.calls) == 0, "expected generic local client to be bypassed for reasoning tasks")
     assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call")
     assert_true(
-        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 128,
+        int((reasoning_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 128,
         "expected reasoning tasks to use the reduced local reasoning output budget",
     )
 
