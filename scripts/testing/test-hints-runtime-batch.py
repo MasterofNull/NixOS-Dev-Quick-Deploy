@@ -55,6 +55,29 @@ def test_runtime_reasoning_tail_hint(tmpdir: Path) -> None:
     assert_true("runtime_local_reasoning_tail" in hint_ids, "expected local reasoning tail hint")
 
 
+def test_runtime_eval_regression_hint(tmpdir: Path) -> None:
+    report_path = tmpdir / "latest-aq-report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "eval_trend": {
+                    "available": True,
+                    "latest_pct": 30.0,
+                    "mean_pct": 40.0,
+                    "n_runs": 2,
+                    "source": "tool_audit",
+                    "trend": "falling",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = HintsEngine(report_json_path=report_path)
+    hints = engine._hints_from_latest_report("investigate eval score regression and prompt quality", [])
+    hint_ids = [item.id for item in hints]
+    assert_true("runtime_eval_regression_watch" in hint_ids, "expected eval regression hint")
+
+
 def test_diversity_prefers_non_overused_candidates() -> None:
     engine = HintsEngine()
     deduped = [
@@ -84,6 +107,8 @@ def test_synthetic_gap_alignment() -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="hints-runtime-batch-") as tmpdir:
         test_runtime_reasoning_tail_hint(Path(tmpdir))
+    with tempfile.TemporaryDirectory(prefix="hints-runtime-eval-") as tmpdir:
+        test_runtime_eval_regression_hint(Path(tmpdir))
     test_diversity_prefers_non_overused_candidates()
     test_synthetic_gap_alignment()
     print("PASS: hint-runtime batching improvements stay aligned and anti-dominant")

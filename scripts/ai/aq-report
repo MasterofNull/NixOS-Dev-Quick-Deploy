@@ -2024,7 +2024,9 @@ def hint_diversity(adoption: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     effective_hints = adoption.get("effective_hints")
     dominant_hint_id = adoption.get("dominant_hint_id")
 
-    if unique_hints <= 1:
+    if total < 5:
+        status = "low_sample"
+    elif unique_hints <= 1:
         status = "monoculture"
     elif dominant_share_pct is not None and float(dominant_share_pct) >= 70:
         status = "highly_concentrated"
@@ -2062,6 +2064,8 @@ def _hint_diversity_recent_context(recent_hint_diversity: Optional[Dict[str, Any
     if total <= 0:
         return f"no recent hint injections in the last {window}"
     status = str(recent_hint_diversity.get("status", "unknown") or "unknown")
+    if status == "low_sample":
+        return f"recent {window} hint diversity is low sample ({total} injection{'s' if total != 1 else ''})"
     dom = recent_hint_diversity.get("dominant_share_pct")
     if dom is None:
         return f"recent hint activity in the last {window}: status={status}"
@@ -2918,6 +2922,34 @@ def build_recommendations(
                 f"{unclassified} rows missing explicit local/remote backend labels). "
                 "Prefer fixing audit labeling before further routing-threshold tuning."
             )
+        breakdown = route_latency_decomposition.get("breakdown") or []
+        reasoning_lanes: List[Tuple[str, int, float]] = []
+        for item in breakdown:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "") or "").strip().lower()
+            if label not in {"local_lane:reasoning", "synthesis_type:reasoning"}:
+                continue
+            try:
+                calls = int(item.get("calls", 0) or 0)
+            except (TypeError, ValueError):
+                calls = 0
+            try:
+                p95_ms = float(item.get("p95_ms", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                p95_ms = 0.0
+            if calls <= 0 or p95_ms <= 0.0:
+                continue
+            reasoning_lanes.append((label, calls, p95_ms))
+        if reasoning_lanes:
+            reasoning_lanes.sort(key=lambda item: (-item[2], -item[1], item[0]))
+            label, calls, p95_ms = reasoning_lanes[0]
+            if calls >= 3 and p95_ms >= 8000.0:
+                lane_note = "dedicated reasoning lane" if label == "local_lane:reasoning" else "reasoning synthesis path"
+                recs.append(
+                    f"Local reasoning synthesis remains the route_search tail ({lane_note} p95 {_na(p95_ms, '.0f', 'ms')} across {calls} calls). "
+                    "Prefer lookup/format lanes for bounded tasks, keep reasoning prompts compact, and remeasure before changing retrieval breadth."
+                )
 
     # Cache
     if cache["available"]:
@@ -3054,10 +3086,14 @@ def build_recommendations(
 
     # Eval trend
     if eval_trend.get("available") and eval_trend.get("trend") == "falling":
+        source = str(eval_trend.get("source", "unknown") or "unknown")
+        n_runs = int(eval_trend.get("n_runs", 0) or 0)
+        sample_note = " Low sample window." if n_runs < 3 else ""
         recs.append(
             f"Eval score trending down (latest: {eval_trend['latest_pct']}%, "
-            f"mean: {eval_trend['mean_pct']}%). "
-            "Review recent prompt changes and run `scripts/automation/run-eval.sh --full` to confirm."
+            f"mean: {eval_trend['mean_pct']}%, runs: {n_runs}, source: {source})."
+            f"{sample_note} Review recent prompt changes and run "
+            "`scripts/automation/run-eval.sh --full --strategy eval-regression-check` to confirm."
         )
 
     # Hint adoption quality
@@ -3287,6 +3323,7 @@ def build_structured_actions(
     gaps: List[dict],
     delegated_prompt_failures: Optional[Dict[str, Any]] = None,
     agent_lessons: Optional[Dict[str, Any]] = None,
+    route_latency_decomposition: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """Machine-readable optimization actions for aq-optimizer."""
     actions: List[dict] = []
@@ -3330,6 +3367,33 @@ def build_structured_actions(
             "env_overrides": {"DEFAULT_PROVIDER": "local"},
             "services": ["ai-hybrid-coordinator", "ai-switchboard"],
         })
+
+    if route_latency_decomposition and route_latency_decomposition.get("available"):
+        for item in route_latency_decomposition.get("breakdown") or []:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "") or "").strip().lower()
+            if label != "local_lane:reasoning":
+                continue
+            try:
+                calls = int(item.get("calls", 0) or 0)
+                p95_ms = float(item.get("p95_ms", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if calls >= 3 and p95_ms >= 8000.0:
+                actions.append({
+                    "type": "routing",
+                    "action": "tune_local_reasoning_lane",
+                    "reason": f"local_reasoning_lane_p95_ms={round(p95_ms, 1)} calls={calls}",
+                    "safe": True,
+                    "confidence": 0.72,
+                    "notes": [
+                        "Prefer lookup/format lanes for bounded synthesis before widening reasoning prompts.",
+                        "Keep local reasoning context compact and remeasure route_search latency after one batch.",
+                    ],
+                    "services": ["ai-hybrid-coordinator"],
+                })
+                break
 
     if _cache_recommendation_actionable(cache):
         actions.append({
@@ -3405,14 +3469,18 @@ def build_structured_actions(
     if eval_trend.get("available") and eval_trend.get("trend") == "falling":
         actions.append({
             "type": "eval",
-            "action": "alert_human",
+            "action": "run_targeted_eval",
             "reason": "eval_score_falling latest=" + str(eval_trend.get("latest_pct")) + "%",
             "safe": True,
             "confidence": 0.9,
+            "script": "scripts/automation/run-eval.sh",
+            "script_args": ["--full", "--strategy", "eval-regression-check"],
+            "source": str(eval_trend.get("source", "unknown") or "unknown"),
+            "runs": int(eval_trend.get("n_runs", 0) or 0),
             "message": (
                 "Eval trend falling: " + str(eval_trend.get("latest_pct")) + "% "
                 "(mean " + str(eval_trend.get("mean_pct")) + "%). "
-                "Run: scripts/automation/run-eval.sh --full"
+                "Run: scripts/automation/run-eval.sh --full --strategy eval-regression-check"
             ),
         })
 
@@ -5614,7 +5682,16 @@ def main() -> None:
         recent_retrieval_breadth,
         cache_prewarm,
     )
-    structured_actions = build_structured_actions(tool_stats, route, cache, eval_trend, gaps, delegation_feedback, agent_lessons)
+    structured_actions = build_structured_actions(
+        tool_stats,
+        route,
+        cache,
+        eval_trend,
+        gaps,
+        delegation_feedback,
+        agent_lessons,
+        route_latency_decomposition,
+    )
 
     # Render
     fmt_args = (
