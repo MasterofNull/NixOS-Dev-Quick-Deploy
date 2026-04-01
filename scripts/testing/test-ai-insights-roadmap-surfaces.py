@@ -168,6 +168,18 @@ def main() -> int:
                 "roadmap readiness should include A2A readiness context",
             )
 
+            candidates_response = client.get("/api/insights/improvements/candidates")
+            assert_true(candidates_response.status_code == 200, "improvement candidates route should succeed")
+            candidates_data = candidates_response.json()
+            assert_true(
+                candidates_data.get("total_candidates") == 2,
+                "improvement candidates route should expose persisted candidate counts",
+            )
+            assert_true(
+                (candidates_data.get("categories") or {}).get("performance") == 1,
+                "improvement candidates route should summarize candidate categories",
+            )
+
             complexity_response = client.get("/api/insights/queries/complexity")
             assert_true(complexity_response.status_code == 200, "query complexity route should succeed")
             complexity_data = complexity_response.json()
