@@ -198,8 +198,12 @@ async def main_async() -> int:
         "expected bounded reasoning default-lane prompt context to stay compact",
     )
     assert_true(
-        "concise local reasoning summary" in bounded_prompt,
-        "expected bounded reasoning default-lane prompt to use compact local reasoning guidance",
+        "Provide a concise response using only the strongest context." in bounded_prompt,
+        "expected bounded reasoning default-lane prompt to use the tighter route-level guidance",
+    )
+    assert_true(
+        "keep the answer under 120 words" in bounded_prompt,
+        "expected bounded reasoning default-lane prompt to enforce a compact answer contract",
     )
 
     continuation_local_client = _RecordingClient(content="continuation local synthesis")
