@@ -417,6 +417,8 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'handle_w
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'handle_ai_coordinator_status|\"active_lesson_refs\": lesson_refs' 'AI coordinator status endpoint surfaces active lesson references'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'handle_ai_coordinator_lessons|\"active_lesson_refs\": lesson_refs' 'AI coordinator lessons endpoint surfaces active lesson references'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'handle_ai_coordinator_skills|\"active_lesson_refs\": lesson_refs' 'AI coordinator skills endpoint surfaces active lesson references'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'def _recent_agent_event_bias\(\)' 'Workflow orchestration scoring includes recent agent event biasing'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" 'totals = agent_row.get\("totals"\)' 'Workflow orchestration scoring blends per-profile and whole-agent history'
 check_pattern "scripts/ai/aq-report" '"provider_fallback_recovery": provider_fallbacks' 'aq-report JSON output includes recovered provider fallback state'
 check_pattern "scripts/ai/aq-report" 'def remote_profile_utilization\(' 'aq-report computes delegated remote profile utilization'
 check_pattern "scripts/ai/aq-report" '"remote_profile_utilization": remote_profile_summary' 'aq-report JSON output includes remote profile utilization state'
