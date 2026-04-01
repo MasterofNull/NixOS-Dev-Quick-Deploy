@@ -237,17 +237,17 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Canary deployment pipeline
 
 ### Batch 3.3: Self-Deployment Pipeline
-**Status:** ⏳ pending
+**Status:** in progress
 **Tasks:**
-- [ ] Implement safe auto-deployment with rollback
+- [x] Implement safe auto-deployment with rollback
 - [ ] Add blue-green deployment automation
-- [ ] Create automatic rollback on failure
+- [x] Create automatic rollback on failure
 - [ ] Implement gradual rollout with metrics
-- [ ] Add deployment approval workflow (optional human gate)
+- [x] Add deployment approval workflow (optional human gate)
 
 **Deliverables:**
-- ⏳ Auto-deployment pipeline
-- ⏳ Rollback automation
+- ✅ Auto-deployment pipeline
+- ✅ Rollback automation
 - ⏳ Deployment dashboard
 
 ---
