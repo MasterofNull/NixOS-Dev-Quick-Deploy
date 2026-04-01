@@ -954,6 +954,45 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
                 response_max_token_counts[response_max_tokens] = response_max_token_counts.get(response_max_tokens, 0) + 1
             source = "route_search_audit_fallback"
     if total <= 0:
+        local_route_calls = 0
+        synthesis_calls = 0
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("tool_name", "") or "").strip().lower() != "route_search":
+                continue
+            metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            if str(metadata.get("backend", "") or "").strip().lower() != "local":
+                continue
+            local_route_calls += 1
+            if metadata.get("generate_response") is True:
+                synthesis_calls += 1
+        if local_route_calls > 0:
+            return {
+                "available": True,
+                "source": "local_only_zero_remote",
+                "window": window,
+                "total_calls": 0,
+                "success_count": 0,
+                "success_pct": None,
+                "fallback_applied": 0,
+                "finalization_applied": 0,
+                "handoff_requested": 0,
+                "handoff_pct": None,
+                "top_profiles": [],
+                "top_runtime_ids": [],
+                "top_requester_roles": [],
+                "top_requesting_agents": [],
+                "handoff_by_requester_role": [],
+                "top_backend_reason_classes": [],
+                "top_task_complexity_types": [],
+                "top_task_complexity_reasons": [],
+                "top_response_max_tokens": [],
+                "zero_remote_calls": True,
+                "local_route_calls": local_route_calls,
+                "local_synthesis_calls": synthesis_calls,
+                "status": "healthy_local_only",
+            }
         return {"available": False, "window": window}
     return {
         "available": True,
@@ -975,6 +1014,8 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
         "top_task_complexity_types": sorted(task_type_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "top_task_complexity_reasons": sorted(task_reason_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "top_response_max_tokens": sorted(response_max_token_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "zero_remote_calls": False,
+        "status": "active" if total > 0 else "healthy_local_only",
     }
 
 
