@@ -2,9 +2,9 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - Phases 2, 4, 6.1, 7.3, 11 completed; Phases 5, 8, 9, 10 pending deeper implementation; system ready for deployment
+**Status:** Active - Phases 2, 4, 6.1, 7.3, 11 completed; Phases 5, 8, 9, 10 pending deeper implementation; harness healthy and current reporting/reliability batch staged behind next redeploy
 **Created:** 2026-03-15
-**Last Updated:** 2026-03-31
+**Last Updated:** 2026-04-01
 **Version:** 1.2.0
 
 ---
@@ -42,12 +42,11 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 ## Immediate Post-Deploy Queue
 
-1. Verify the current `nixos-quick-deploy.sh` run activates the recent crash-mitigation changes cleanly.
-2. Confirm kernel/journal behavior no longer shows sustained `audit_log_subj_ctx` or related audit storm patterns on this desktop profile.
-3. Confirm COSMIC greeter starts without the prior missing-theme/config churn.
-4. Confirm hybrid coordinator no longer emits the continuous-learning checkpoint resume error loop.
-5. Refresh live harness state with `aq-report`, `aq-qa 0`, and MCP health checks before planning further architecture batches.
-6. If the system is stable after deployment, resume higher-order agentic work: hint anti-dominance, synthetic-gap suppression, residual operator knowledge curation, and next orchestration/parity slices.
+1. Activate the current repo-only batch on the next redeploy boundary; it now includes low-sample hint-diversity cleanup plus memory-write reliability interpretation.
+2. Recheck `aq-report`, `aq-qa 0`, and MCP health after activation to confirm the staged reporting/reliability slices are live.
+3. Keep the live system on the current healthy baseline: local routing 100%, no query gaps, Continue/editor healthy, shared skill registry healthy.
+4. Continue reducing the remaining local reasoning synthesis tail with observability-first routing work, not blind token trimming.
+5. Resume higher-order agentic work in the same batch model: hint quality/anti-dominance, residual operator knowledge curation, and ADK/orchestration parity follow-ups.
 
 ---
 
