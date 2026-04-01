@@ -793,7 +793,7 @@ PY
       local hint_watch_label
       hint_watch_label="${historical_hint_watch_id} dominant ${historical_hint_watch_share}%"
       if [[ -n "${historical_hint_watch_alt}" ]]; then
-        hint_watch_label="${hint_watch_label}; alt=${historical_hint_watch_alt}"
+        hint_watch_label="${hint_watch_label}; alternate remediation candidate=${historical_hint_watch_alt}"
       fi
       printf '  %-28s %s\n' "Hint watchlist (${historical_hint_watch_window})" "${hint_watch_label}"
     fi
