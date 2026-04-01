@@ -9870,6 +9870,7 @@
                         <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
                             <span>Status: ${status}</span>
                             <span>Phase: ${phase}</span>
+                            <span>Pattern: ${escapeHtml(String(session.reasoning_pattern?.selected_pattern || '--'))}</span>
                         </div>
                     </button>
                 `;
