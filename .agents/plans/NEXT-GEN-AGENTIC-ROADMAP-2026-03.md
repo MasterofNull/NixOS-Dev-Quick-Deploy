@@ -281,6 +281,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Dashboard readiness/maturity reporting for the A2A surface
 - Mandatory TCK-aligned protocol repair work
 - Role-aware candidate scoring now blends per-lane history, same-role history, whole-agent totals, and recent runtime quality when forming workflow teams
+- Workflow orchestration policies now support explicit bounded collaborator lanes so selected blueprints can activate parallel research/reasoning helpers without inventing ad hoc team shapes
 
 **Still missing for roadmap completion:**
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
