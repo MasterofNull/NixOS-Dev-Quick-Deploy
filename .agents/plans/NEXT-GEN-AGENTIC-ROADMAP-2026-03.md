@@ -236,6 +236,9 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Chaos testing framework
 - ✅ Canary deployment pipeline
 
+**Runtime follow-through landed:**
+- Chaos and performance benchmark artifacts now target writable runtime state under `/var/lib/ai-stack/hybrid/testing/...` instead of repo-local `.agents/` paths
+
 ### Batch 3.3: Self-Deployment Pipeline
 **Status:** in progress
 **Tasks:**
