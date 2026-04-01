@@ -2688,6 +2688,44 @@
                         <span class="card-badge">Adjustable</span>
                     </div>
                     <div class="collapsible-content">
+                        <div style="margin-bottom: 1rem; padding: 1rem 1.25rem; border: 1px solid var(--status-warning); border-radius: 8px; background: rgba(255, 190, 11, 0.08);">
+                            <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-yellow); margin-bottom: 0.35rem;">Scope Split</div>
+                            <div id="configScopeNotice" style="font-size: 0.85rem; color: var(--text-secondary);">
+                                Dashboard runtime controls are local to the dashboard API. Live harness state and sub-agent policy are shown below.
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Live AI Harness Runtime</div>
+                            <div id="liveHarnessConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading live harness state...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Workflow Blueprint Orchestration (Redeploy Required)</div>
+                            <div id="workflowBlueprintConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading workflow blueprint policy...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Control Surface Findings</div>
+                            <div id="controlSurfaceFindings" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading control-plane inventory...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Dashboard API Runtime Controls (Local Only)</div>
                         <!-- Adjustable System Variables -->
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
                             <div class="config-item">
@@ -4638,7 +4676,7 @@
         }
 
         async function fetchAidbDetailedHealth() {
-            if (!DASHBOARD_DEMO_MODE) {
+            if (DASHBOARD_DEMO_MODE) {
                 return null;
             }
             try {
@@ -8913,12 +8951,74 @@
             backpressure_threshold_mb: 100,
             log_level: 'INFO'
         };
+        const controlPlaneState = {
+            snapshot: null
+        };
+
+        function renderControlPlaneLists(snapshot) {
+            const harnessContainer = document.getElementById('liveHarnessConfig');
+            const blueprintContainer = document.getElementById('workflowBlueprintConfig');
+            const findingsContainer = document.getElementById('controlSurfaceFindings');
+            const notice = document.getElementById('configScopeNotice');
+
+            if (!snapshot) {
+                return;
+            }
+
+            if (notice && snapshot.legacy_notice) {
+                notice.textContent = snapshot.legacy_notice;
+            }
+
+            const harnessSettings = snapshot?.harness_runtime?.settings || {};
+            const harnessSource = snapshot?.harness_runtime?.source || '/health';
+            const harnessEntries = Object.entries(harnessSettings);
+            harnessContainer.innerHTML = harnessEntries.length
+                ? harnessEntries.map(([key, value]) => `
+                    <div class="data-item">
+                        <span>${escapeHtml(String(key))}</span>
+                        <span class="data-meta">${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</span>
+                    </div>
+                `).join('')
+                : `<div class="data-item"><span>Live harness state unavailable</span><span class="data-meta">${escapeHtml(harnessSource)}</span></div>`;
+
+            const blueprints = Array.isArray(snapshot?.workflow_blueprints) ? snapshot.workflow_blueprints : [];
+            blueprintContainer.innerHTML = blueprints.length
+                ? blueprints.map((entry) => {
+                    const policy = entry?.orchestration_policy || {};
+                    const collaborators = Array.isArray(policy.collaborator_lanes) && policy.collaborator_lanes.length
+                        ? policy.collaborator_lanes.join(', ')
+                        : 'none';
+                    return `
+                        <div class="data-item">
+                            <span>${escapeHtml(entry.name || entry.workflow_id || 'workflow')}</span>
+                            <span class="data-meta">
+                                primary=${escapeHtml(String(policy.primary_lane || '--'))},
+                                reviewer=${escapeHtml(String(policy.reviewer_lane || '--'))},
+                                subagents=${policy.allow_parallel_subagents ? `on/${escapeHtml(String(policy.max_parallel_subagents || 1))}` : 'off'},
+                                collaborators=${escapeHtml(collaborators)}
+                            </span>
+                        </div>
+                    `;
+                }).join('')
+                : '<div class="data-item"><span>Workflow blueprint policy unavailable</span><span class="data-meta">config/workflow-blueprints.json</span></div>';
+
+            const findings = snapshot?.control_plane_inventory?.known_gaps || [];
+            findingsContainer.innerHTML = findings.length
+                ? findings.map((item) => `
+                    <div class="data-item">
+                        <span>${escapeHtml(String(item.surface || 'surface'))}</span>
+                        <span class="data-meta">${escapeHtml(String(item.status || 'unknown'))}: ${escapeHtml(String(item.detail || ''))}</span>
+                    </div>
+                `).join('')
+                : '<div class="data-item"><span>No control-plane findings reported</span><span class="data-meta">inventory clear</span></div>';
+        }
 
         // Update display of current configuration
         function updateConfigurationDisplay() {
             const display = document.getElementById('currentConfig');
             if (display) {
-                display.textContent = JSON.stringify(systemConfig, null, 2);
+                const snapshot = controlPlaneState.snapshot || systemConfig;
+                display.textContent = JSON.stringify(snapshot, null, 2);
             }
         }
 
@@ -8956,7 +9056,10 @@
 
                 if (response.ok) {
                     const result = await response.json();
-                    status.textContent = `✓ Configuration saved. Restarted: ${result.restarted.join(', ')}`;
+                    controlPlaneState.snapshot = result;
+                    renderControlPlaneLists(result);
+                    updateConfigurationDisplay();
+                    status.textContent = `✓ Dashboard runtime saved (${result.scope || 'local'}). Restarted: ${(result.restarted || []).join(', ')}`;
                     status.style.color = 'var(--status-online)';
 
                     // Also save to localStorage as backup
@@ -8991,6 +9094,9 @@
             systemConfig.log_level = 'INFO';
 
             localStorage.removeItem('systemConfig');
+            if (controlPlaneState.snapshot?.dashboard_runtime) {
+                controlPlaneState.snapshot.dashboard_runtime = { ...systemConfig };
+            }
             updateConfigurationInputs();
             updateConfigurationDisplay();
 
@@ -9121,9 +9227,11 @@
                 const response = await fetch(`${FASTAPI_BASE}/api/config`);
                 if (response.ok) {
                     const config = await response.json();
-                    Object.assign(systemConfig, config);
+                    controlPlaneState.snapshot = config;
+                    Object.assign(systemConfig, config.dashboard_runtime || config);
                     updateConfigurationDisplay();
                     updateConfigurationInputs();
+                    renderControlPlaneLists(config);
                     return;
                 }
             } catch (error) {
@@ -9151,7 +9259,7 @@
             }
 
             try {
-                const teamResp = await fetch(`/api/aistack/orchestration/team/${sessionId}`);
+                const teamResp = await fetch(`${FASTAPI_BASE}/api/aistack/orchestration/team/${encodeURIComponent(sessionId)}`);
                 if (teamResp.status === 404) {
                     alert('Session not found');
                     return;
@@ -9160,7 +9268,7 @@
                 renderOrchestrationTeam(teamData);
 
                 if (teamData.consensus_mode === 'arbiter-review') {
-                    const arbiterResp = await fetch(`/api/aistack/orchestration/arbiter/${sessionId}`);
+                    const arbiterResp = await fetch(`${FASTAPI_BASE}/api/aistack/orchestration/arbiter/${encodeURIComponent(sessionId)}`);
                     const arbiterData = await arbiterResp.json();
                     renderArbiterHistory(arbiterData);
                 } else {
@@ -9280,7 +9388,7 @@
 
         async function loadAgentEvaluationTrends() {
             try {
-                const resp = await fetch('/api/aistack/orchestration/evaluations/trends');
+                const resp = await fetch(`${FASTAPI_BASE}/api/aistack/orchestration/evaluations/trends`);
                 const data = await resp.json();
                 renderAgentTrends(data);
             } catch (err) {
