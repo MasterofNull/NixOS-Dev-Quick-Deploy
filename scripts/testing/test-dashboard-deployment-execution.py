@@ -141,6 +141,14 @@ def main() -> int:
                 "dry-run runtime deployment should expose the auto-deployer command",
             )
             assert_true(
+                dry_run_detail.get("runtime_summary", {}).get("strategy") == "blue_green",
+                "dry-run runtime deployment detail should expose runtime strategy summary",
+            )
+            assert_true(
+                dry_run_detail.get("runtime_summary", {}).get("verification_passed") is True,
+                "dry-run runtime deployment detail should expose verification outcome",
+            )
+            assert_true(
                 dry_run_detail.get("rollback", {}).get("available") is True,
                 "dry-run runtime deployment detail should preserve rollback affordance",
             )
@@ -180,6 +188,14 @@ def main() -> int:
                 str(approved_detail.get("command") or "").startswith("auto-deployer --strategy canary"),
                 "approved deployment should preserve canary execution metadata",
             )
+            assert_true(
+                approved_detail.get("runtime_summary", {}).get("approval", {}).get("status") == "approved",
+                "approved deployment should expose approval summary metadata",
+            )
+            assert_true(
+                approved_detail.get("runtime_summary", {}).get("metrics", {}).get("dry_run") == 1.0,
+                "approved deployment should expose runtime result metrics",
+            )
 
             rejected_id = "runtime-exec-rejected"
             rejected_pending = client.post(
@@ -209,6 +225,10 @@ def main() -> int:
             assert_true(
                 str(rejected_payload.get("command") or "").startswith("auto-deployer --strategy rolling"),
                 "rejected deployment should preserve rolling execution metadata",
+            )
+            assert_true(
+                rejected_payload.get("runtime_summary", {}).get("approval", {}).get("status") == "rejected",
+                "rejected deployment should expose rejected approval summary",
             )
 
         print("PASS: dashboard deployment execution regression")
