@@ -259,7 +259,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** New patterns integrated within 7 days of publication, automated testing validates integration, and Google ADK parity is measured continuously
 
 ### Batch 4.1: Agentic Pattern Library
-**Status:** 🔧 implementation exists (core patterns not integrated)
+**Status:** in progress
 **Tasks:**
 - [x] Implement ReAct (Reasoning + Acting) pattern
   - ai-stack/agentic-patterns/react_pattern.py: Full Thought-Action-Observation loop
@@ -277,6 +277,10 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ ToT reasoning engine (tree_of_thoughts.py)
 - ✅ Reflexion loop (reflexion_pattern.py)
 - ✅ Constitutional AI policies (hints engine integration)
+
+**Integrated runtime adoption:**
+- Workflow planning now selects a primary reasoning pattern and phase-specific pattern recommendations from live prompt context
+- Workflow run sessions now persist selected reasoning-pattern metadata for runtime inspection and follow-through
 
 ### Batch 4.2: Multi-Agent Orchestration
 **Status:** in progress (foundation landed, orchestration layer incomplete)

@@ -2967,6 +2967,7 @@ def _build_workflow_plan(
         prompt_coaching = {}
     tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
     continuation_query = _is_continuation_query(query)
+    reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, continuation_query)
 
     def pick_tool_names(names: set[str]) -> List[str]:
         return [name for name in tool_catalog if name in names]
@@ -2982,6 +2983,7 @@ def _build_workflow_plan(
                     {"hints", "discovery", "route_search", "tree_search"}
                     | ({"memory_recall"} if continuation_query else set())
                 ),
+                "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("discover", "react"),
                 "exit_criteria": "Top risks identified.",
             },
             {
@@ -2990,6 +2992,7 @@ def _build_workflow_plan(
                 "tools": pick_tool_names(
                     {"hints", "discovery"} | ({"memory_recall"} if continuation_query else set())
                 ),
+                "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("plan", "react"),
                 "exit_criteria": "Ordered task list exists.",
             },
             {
@@ -3005,18 +3008,21 @@ def _build_workflow_plan(
                         "feedback",
                     }
                 ),
+                "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("execute", "react"),
                 "exit_criteria": "Primary objective implemented.",
             },
             {
                 "id": "validate",
                 "goal": "Run checks and confirm behavior.",
                 "tools": pick_tool_names({"qa_check", "harness_eval", "health", "learning_stats"}),
+                "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("validate", "reflexion"),
                 "exit_criteria": "Checks pass or failures are documented.",
             },
             {
                 "id": "handoff",
                 "goal": "Capture outcomes, risk, and rollback.",
                 "tools": pick_tool_names({"feedback", "learning_stats"}),
+                "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("handoff", "reflexion"),
                 "exit_criteria": "Handoff summary ready.",
             },
         ],
@@ -3045,7 +3051,91 @@ def _build_workflow_plan(
             ),
             "created_epoch_s": int(time.time()),
             "memory_recall_priority": continuation_query,
+            "reasoning_pattern": reasoning_pattern,
         },
+    }
+
+
+def _select_reasoning_pattern(
+    query: str,
+    prompt_coaching: Dict[str, Any],
+    continuation_query: bool,
+) -> Dict[str, Any]:
+    """Select a live agentic reasoning pattern for workflow planning/runtime."""
+    normalized = str(query or "").strip().lower()
+    coaching_summary = _compact_prompt_coaching_metadata(prompt_coaching)
+    missing_count = int(coaching_summary.get("missing_count", 0) or 0)
+    complexity_tokens = {
+        "architecture",
+        "design",
+        "tradeoff",
+        "compare",
+        "strategy",
+        "complex",
+        "multi-step",
+        "reasoning",
+    }
+    reflexion_tokens = {
+        "retry",
+        "regression",
+        "failure",
+        "postmortem",
+        "improve",
+        "root cause",
+        "stability",
+        "freeze",
+    }
+    react_tokens = {
+        "debug",
+        "investigate",
+        "diagnose",
+        "fix",
+        "deploy",
+        "integration",
+        "service",
+        "workflow",
+    }
+
+    complexity_score = float(min(1.0, (len(normalized.split()) / 40.0) + (missing_count / 10.0)))
+    selection_basis: List[str] = []
+    if any(token in normalized for token in complexity_tokens):
+        primary = "tree_of_thoughts"
+        selection_basis.append("complex deliberation cues")
+    elif continuation_query or any(token in normalized for token in reflexion_tokens):
+        primary = "reflexion"
+        selection_basis.append("iterative recovery cues")
+    elif any(token in normalized for token in react_tokens):
+        primary = "react"
+        selection_basis.append("tool-using execution cues")
+    elif complexity_score >= 0.65:
+        primary = "tree_of_thoughts"
+        selection_basis.append("elevated prompt complexity")
+    else:
+        primary = "react"
+        selection_basis.append("default action-first workflow")
+
+    phase_recommendations = {
+        "discover": "react",
+        "plan": "tree_of_thoughts" if primary in {"tree_of_thoughts", "reflexion"} else "react",
+        "execute": "react",
+        "validate": "reflexion",
+        "handoff": "reflexion",
+    }
+    if primary == "tree_of_thoughts":
+        phase_recommendations["plan"] = "tree_of_thoughts"
+    elif primary == "reflexion":
+        phase_recommendations["validate"] = "reflexion"
+        phase_recommendations["handoff"] = "reflexion"
+
+    alternatives = [name for name in ("react", "tree_of_thoughts", "reflexion") if name != primary]
+    return {
+        "selected_pattern": primary,
+        "selection_basis": selection_basis,
+        "complexity_score": round(complexity_score, 3),
+        "boost_multiplier": round(float(_get_pattern_boost(primary)), 3),
+        "phase_recommendations": phase_recommendations,
+        "alternatives": alternatives,
+        "constitutional_guardrails": True,
     }
 
 
@@ -3846,6 +3936,9 @@ def _build_workflow_run_session(
 
     seeded_consensus = _seed_agent_evaluation(policy_validation["normalized"], orchestration)
     seeded_team = _build_orchestration_team(policy_validation["normalized"], orchestration, seeded_consensus)
+    reasoning_pattern = (
+        ((plan.get("metadata") or {}) if isinstance(plan.get("metadata"), dict) else {}).get("reasoning_pattern", {})
+    )
     session = {
         "session_id": session_id,
         "objective": query,
@@ -3867,6 +3960,7 @@ def _build_workflow_run_session(
         "orchestration_policy": policy_validation["normalized"],
         "consensus": seeded_consensus,
         "team": seeded_team,
+        "reasoning_pattern": reasoning_pattern,
         "reviewer_gate": {
             "required": _blueprint_requires_reviewer_gate(selected_blueprint),
             "last_review": None,
@@ -3896,6 +3990,8 @@ def _build_workflow_run_session(
                 "arbiter_required": policy_validation["normalized"]["consensus_mode"] == "arbiter-review",
                 "selected_candidate_id": seeded_consensus.get("selected_candidate_id"),
                 "team_slots": seeded_team.get("active_slots", []),
+                "reasoning_pattern": reasoning_pattern.get("selected_pattern", ""),
+                "reasoning_pattern_boost": reasoning_pattern.get("boost_multiplier", 1.0),
             }
         ],
     }
@@ -7177,6 +7273,7 @@ async def run_http_mode(port: int) -> None:
                 "usage": session.get("usage", {}),
                 "created_at": session.get("created_at"),
                 "updated_at": session.get("updated_at"),
+                "reasoning_pattern": session.get("reasoning_pattern", {}),
                 "consensus_mode": consensus.get("consensus_mode", ""),
                 "selection_strategy": team.get("selection_strategy", ""),
                 "team_members": team.get("members", []),
