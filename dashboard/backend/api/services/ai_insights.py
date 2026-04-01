@@ -41,16 +41,25 @@ def _reviewer_gate_checklist_path() -> Path:
         return candidates[-1]
     return reports_dir / "reviewer-gate-checklist-latest.md"
 
+
+def _persisted_aq_report_path() -> Path:
+    configured = os.getenv("DASHBOARD_AI_INSIGHTS_REPORT_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
     def __init__(self):
+        self._persisted_report_path = _persisted_aq_report_path()
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl_seconds = 60  # 1 minute cache
         self._cache_stale_ttl_seconds = 300  # 5 minutes fallback window
         self._report_lock = asyncio.Lock()
         self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
+        self._seed_cache_from_persisted_report()
 
     async def get_full_report(self) -> Dict[str, Any]:
         """Get the complete aq-report data."""
@@ -65,6 +74,10 @@ class AIInsightsService:
             if stale is not None:
                 logger.warning("Serving stale aq-report cache after refresh failure")
                 return stale
+            persisted = self._load_persisted_report()
+            if persisted is not None:
+                logger.warning("Serving persisted aq-report snapshot after refresh failure")
+                return persisted
             raise
 
     async def _get_or_start_report_task(self) -> asyncio.Task[Dict[str, Any]]:
@@ -93,8 +106,7 @@ class AIInsightsService:
             )
 
             data = json.loads(result.stdout)
-            self._cache = data
-            self._cache_timestamp = datetime.now(timezone.utc)
+            self._update_cache(data, timestamp=datetime.now(timezone.utc), persist=True)
             return data
         except subprocess.TimeoutExpired as exc:
             logger.error("aq-report execution timed out: %s", exc)
@@ -122,6 +134,58 @@ class AIInsightsService:
     def _is_cache_valid(self) -> bool:
         """Check if cached data is still valid."""
         return self._get_cached_report(max_age_seconds=self._cache_ttl_seconds) is not None
+
+    def _seed_cache_from_persisted_report(self) -> None:
+        """Warm the in-memory cache from the last persisted aq-report snapshot after restart."""
+        persisted = self._load_persisted_report()
+        if persisted is None:
+            return
+        logger.info("Seeded dashboard insights cache from %s", self._persisted_report_path)
+
+    def _load_persisted_report(self) -> Optional[Dict[str, Any]]:
+        if not self._persisted_report_path.exists():
+            return None
+        try:
+            raw = json.loads(self._persisted_report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to load persisted aq-report snapshot %s: %s", self._persisted_report_path, exc)
+            return None
+        if not isinstance(raw, dict):
+            return None
+        ts = self._entry_timestamp(raw) or datetime.fromtimestamp(
+            self._persisted_report_path.stat().st_mtime,
+            tz=timezone.utc,
+        )
+        self._update_cache(raw, timestamp=ts, persist=False)
+        return raw
+
+    def _persist_report(self, report: Dict[str, Any]) -> None:
+        try:
+            self._persisted_report_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = self._persisted_report_path.with_name(f"{self._persisted_report_path.name}.tmp")
+            temp_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            temp_path.replace(self._persisted_report_path)
+        except OSError as exc:
+            logger.warning("Failed to persist aq-report snapshot to %s: %s", self._persisted_report_path, exc)
+
+    def _update_cache(self, report: Dict[str, Any], *, timestamp: datetime, persist: bool) -> None:
+        self._cache = report
+        self._cache_timestamp = timestamp
+        if persist:
+            self._persist_report(report)
+
+    def _entry_timestamp(self, report: Dict[str, Any]) -> Optional[datetime]:
+        raw = report.get("generated_at")
+        if not raw:
+            return None
+        try:
+            normalized = str(raw).replace("Z", "+00:00")
+            dt = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
