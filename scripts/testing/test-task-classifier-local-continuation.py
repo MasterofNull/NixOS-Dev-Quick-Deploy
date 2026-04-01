@@ -34,6 +34,11 @@ def main() -> int:
         continuation_code.reason == "continuation_within_local_capacity",
         "expected explicit continuation-local reason",
     )
+    assert_true(
+        "Relevant context" in str(continuation_code.optimized_prompt or "")
+        and len(str(continuation_code.optimized_prompt or "")) < 900,
+        "expected continuation prompt shaping to keep context excerpts bounded",
+    )
 
     continuation_reasoning = task_classifier.classify(
         "resume the architecture tradeoff analysis for the current work",
@@ -53,6 +58,11 @@ def main() -> int:
     assert_true(
         bounded_reasoning.reason == "bounded_reasoning_within_local_capacity",
         "expected explicit bounded local reasoning reason",
+    )
+    assert_true(
+        "Relevant context" in str(bounded_reasoning.optimized_prompt or "")
+        and len(str(bounded_reasoning.optimized_prompt or "")) < 900,
+        "expected bounded reasoning prompt shaping to keep context excerpts bounded",
     )
 
     architecture_reasoning = task_classifier.classify(
