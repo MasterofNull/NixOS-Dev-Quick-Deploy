@@ -104,6 +104,29 @@ def test_historical_hint_watchlist_runtime_hint(tmpdir: Path) -> None:
     assert_true("runtime_historical_hint_concentration" in hint_ids, "expected historical hint concentration hint")
 
 
+def test_recent_hint_diversity_runtime_hint(tmpdir: Path) -> None:
+    report_path = tmpdir / "latest-aq-report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "recent_hint_diversity": {
+                    "available": True,
+                    "window": "1h",
+                    "status": "concentrated",
+                    "dominant_hint_id": "registry_eval_scorecard_analysis",
+                    "dominant_share_pct": 75.0,
+                    "total_injections": 8,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = HintsEngine(report_json_path=report_path)
+    hints = engine._hints_from_latest_report("improve current hint diversity and feedback quality", [])
+    hint_ids = [item.id for item in hints]
+    assert_true("runtime_recent_hint_concentration" in hint_ids, "expected recent hint concentration hint")
+
+
 def test_feedback_profile_runtime_hints() -> None:
     engine = HintsEngine()
     hints = engine._hints_from_feedback_profiles(
@@ -181,6 +204,8 @@ def main() -> int:
         test_runtime_eval_regression_hint(Path(tmpdir))
     with tempfile.TemporaryDirectory(prefix="hints-runtime-history-") as tmpdir:
         test_historical_hint_watchlist_runtime_hint(Path(tmpdir))
+    with tempfile.TemporaryDirectory(prefix="hints-runtime-recent-diversity-") as tmpdir:
+        test_recent_hint_diversity_runtime_hint(Path(tmpdir))
     test_feedback_profile_runtime_hints()
     test_diversity_prefers_non_overused_candidates()
     test_synthetic_gap_alignment()
