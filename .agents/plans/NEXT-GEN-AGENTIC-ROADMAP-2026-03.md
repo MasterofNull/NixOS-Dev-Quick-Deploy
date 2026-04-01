@@ -529,7 +529,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement 5-tier context loading (minimal, brief, standard, detailed, exhaustive)
   - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
-- [ ] Integrate tier loading into query pipeline
+- [x] Integrate tier loading into query pipeline
 - [ ] Add automatic tier selection based on query complexity
 - [ ] Create tier escalation triggers
 - [ ] Implement tier de-escalation for resolved queries
@@ -545,7 +545,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement just-in-time context loading
   - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
-- [ ] Integrate lazy loading into query pipeline
+- [x] Integrate lazy loading into query pipeline
 - [ ] Add incremental context expansion
 - [ ] Create context dependency graph
 - [ ] Implement parallel context fetching
@@ -561,7 +561,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 **Tasks:**
 - [x] Implement ML-based relevance prediction
   - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
-- [ ] Integrate relevance prediction into query pipeline
+- [x] Integrate relevance prediction into query pipeline
 - [ ] Add query-context similarity scoring
 - [ ] Create relevance feedback loop
 - [ ] Implement negative context filtering
