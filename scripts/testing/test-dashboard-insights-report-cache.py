@@ -27,21 +27,26 @@ async def exercise_shared_refresh(insights_service) -> None:
     service = insights_service.AIInsightsService()
     calls = {"n": 0}
 
-    def fake_run(*args, **kwargs):
-        calls["n"] += 1
-        return subprocess.CompletedProcess(
-            args=args[0] if args else [],
-            returncode=0,
-            stdout=json.dumps({"generated_at": "2026-04-01T12:00:00Z", "tool_performance": {}}),
-            stderr="",
-        )
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode = 0
 
-    original_run = insights_service.subprocess.run
-    insights_service.subprocess.run = fake_run
+        async def communicate(self):
+            return (
+                json.dumps({"generated_at": "2026-04-01T12:00:00Z", "tool_performance": {}}).encode("utf-8"),
+                b"",
+            )
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls["n"] += 1
+        return FakeProcess()
+
+    original_exec = insights_service.asyncio.create_subprocess_exec
+    insights_service.asyncio.create_subprocess_exec = fake_create_subprocess_exec
     try:
         results = await asyncio.gather(service.get_full_report(), service.get_full_report(), service.get_full_report())
     finally:
-        insights_service.subprocess.run = original_run
+        insights_service.asyncio.create_subprocess_exec = original_exec
 
     assert_true(calls["n"] == 1, "concurrent insights requests should share one aq-report refresh")
     assert_true(all(item["generated_at"] == "2026-04-01T12:00:00Z" for item in results), "shared refresh should return identical report data")
@@ -52,15 +57,31 @@ async def exercise_stale_fallback(insights_service) -> None:
     service._cache = {"generated_at": "2026-04-01T11:58:00Z", "tool_performance": {}, "stale": True}
     service._cache_timestamp = insights_service.datetime.now(insights_service.timezone.utc) - timedelta(seconds=120)
 
-    def fake_timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args[0] if args else "aq-report", timeout=60)
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode = None
 
-    original_run = insights_service.subprocess.run
-    insights_service.subprocess.run = fake_timeout
+        async def communicate(self):
+            raise asyncio.TimeoutError()
+
+        def terminate(self) -> None:
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        async def wait(self) -> int:
+            return self.returncode or 0
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    original_exec = insights_service.asyncio.create_subprocess_exec
+    insights_service.asyncio.create_subprocess_exec = fake_create_subprocess_exec
     try:
         result = await service.get_full_report()
     finally:
-        insights_service.subprocess.run = original_run
+        insights_service.asyncio.create_subprocess_exec = original_exec
 
     assert_true(result.get("stale") is True, "stale cached report should be served when refresh times out")
 
@@ -70,15 +91,31 @@ async def exercise_expired_cache_still_falls_back(insights_service) -> None:
     service._cache = {"generated_at": "2026-04-01T10:58:00Z", "tool_performance": {}, "stale": "old"}
     service._cache_timestamp = insights_service.datetime.now(insights_service.timezone.utc) - timedelta(hours=2)
 
-    def fake_timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args[0] if args else "aq-report", timeout=60)
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode = None
 
-    original_run = insights_service.subprocess.run
-    insights_service.subprocess.run = fake_timeout
+        async def communicate(self):
+            raise asyncio.TimeoutError()
+
+        def terminate(self) -> None:
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        async def wait(self) -> int:
+            return self.returncode or 0
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return FakeProcess()
+
+    original_exec = insights_service.asyncio.create_subprocess_exec
+    insights_service.asyncio.create_subprocess_exec = fake_create_subprocess_exec
     try:
         result = await service.get_full_report()
     finally:
-        insights_service.subprocess.run = original_run
+        insights_service.asyncio.create_subprocess_exec = original_exec
 
     assert_true(result.get("stale") == "old", "even very old cache should be preferred over a 500 when refresh fails")
 
@@ -100,15 +137,31 @@ async def exercise_persisted_seed_and_fallback(insights_service) -> None:
         service._cache = None
         service._cache_timestamp = None
 
-        def fake_timeout(*args, **kwargs):
-            raise subprocess.TimeoutExpired(cmd=args[0] if args else "aq-report", timeout=60)
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.returncode = None
 
-        original_run = insights_service.subprocess.run
-        insights_service.subprocess.run = fake_timeout
+            async def communicate(self):
+                raise asyncio.TimeoutError()
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def kill(self) -> None:
+                self.returncode = -9
+
+            async def wait(self) -> int:
+                return self.returncode or 0
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            return FakeProcess()
+
+        original_exec = insights_service.asyncio.create_subprocess_exec
+        insights_service.asyncio.create_subprocess_exec = fake_create_subprocess_exec
         try:
             result = await service.get_full_report()
         finally:
-            insights_service.subprocess.run = original_run
+            insights_service.asyncio.create_subprocess_exec = original_exec
             os.environ.pop("DASHBOARD_AI_INSIGHTS_REPORT_PATH", None)
 
         assert_true(result.get("persisted") is True, "persisted snapshot should be served when no in-memory cache exists")
@@ -128,6 +181,38 @@ async def exercise_atomic_persist(insights_service) -> None:
         os.environ.pop("DASHBOARD_AI_INSIGHTS_REPORT_PATH", None)
 
 
+async def exercise_shutdown_cleans_inflight_refresh(insights_service) -> None:
+    service = insights_service.AIInsightsService()
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode = None
+            self.terminated = False
+            self.killed = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        async def wait(self) -> int:
+            return self.returncode or 0
+
+    fake_process = FakeProcess()
+    service._report_process = fake_process
+    service._report_task = asyncio.create_task(asyncio.sleep(60))
+
+    await service.shutdown()
+
+    assert_true(service._shutting_down is True, "shutdown should mark the insights service as shutting down")
+    assert_true(fake_process.terminated is True, "shutdown should terminate any in-flight aq-report subprocess")
+    assert_true(service._report_task is None, "shutdown should clear the in-flight report task reference")
+    assert_true(service._report_process is None, "shutdown should clear the in-flight process reference")
+
+
 def main() -> int:
     insights_service = importlib.import_module("api.services.ai_insights")
     insights_service = importlib.reload(insights_service)
@@ -137,6 +222,7 @@ def main() -> int:
     asyncio.run(exercise_expired_cache_still_falls_back(insights_service))
     asyncio.run(exercise_persisted_seed_and_fallback(insights_service))
     asyncio.run(exercise_atomic_persist(insights_service))
+    asyncio.run(exercise_shutdown_cleans_inflight_refresh(insights_service))
     print("PASS: dashboard insights report cache shares refreshes and serves stale fallback")
     return 0
 

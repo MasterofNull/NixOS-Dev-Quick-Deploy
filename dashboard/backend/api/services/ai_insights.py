@@ -115,6 +115,8 @@ class AIInsightsService:
         self._cache_ttl_seconds = 60  # 1 minute cache
         self._report_lock = asyncio.Lock()
         self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
+        self._report_process: Optional[asyncio.subprocess.Process] = None
+        self._shutting_down = False
         self._seed_cache_from_persisted_report()
 
     async def get_full_report(self) -> Dict[str, Any]:
@@ -152,31 +154,72 @@ class AIInsightsService:
 
     async def _refresh_report(self) -> Dict[str, Any]:
         try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["python3", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-report", "--format=json"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=60,
+            if self._shutting_down:
+                raise RuntimeError("AI insights service is shutting down")
+            process = await asyncio.create_subprocess_exec(
+                "python3",
+                str(_repo_root() / "scripts" / "ai" / "aq-report"),
+                "--format=json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(_repo_root()),
+                env=os.environ.copy(),
             )
+            self._report_process = process
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
+            except asyncio.TimeoutError as exc:
+                await self._terminate_report_process()
+                logger.error("aq-report execution timed out: %s", exc)
+                raise RuntimeError("AI insights report generation timed out") from exc
+            except asyncio.CancelledError:
+                await self._terminate_report_process()
+                raise
+            if process.returncode != 0:
+                stderr_text = stderr.decode("utf-8", errors="replace")
+                logger.error("aq-report execution failed: %s", stderr_text)
+                raise RuntimeError(f"Failed to generate AI insights report: {stderr_text}")
 
-            data = json.loads(result.stdout)
+            data = json.loads(stdout.decode("utf-8", errors="replace"))
             self._update_cache(data, timestamp=datetime.now(timezone.utc), persist=True)
             return data
-        except subprocess.TimeoutExpired as exc:
-            logger.error("aq-report execution timed out: %s", exc)
-            raise RuntimeError("AI insights report generation timed out") from exc
-        except subprocess.CalledProcessError as exc:
-            logger.error("aq-report execution failed: %s", exc.stderr)
-            raise RuntimeError(f"Failed to generate AI insights report: {exc.stderr}") from exc
         except json.JSONDecodeError as exc:
             logger.error("Failed to parse aq-report JSON: %s", exc)
             raise RuntimeError(f"Invalid JSON from aq-report: {exc}") from exc
         finally:
             async with self._report_lock:
+                self._report_process = None
                 if self._report_task is not None and self._report_task.done():
                     self._report_task = None
+
+    async def _terminate_report_process(self) -> None:
+        """Terminate an in-flight aq-report subprocess during timeout or shutdown."""
+        process = self._report_process
+        if process is None or process.returncode is not None:
+            return
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+
+    async def shutdown(self) -> None:
+        """Cancel in-flight report refresh work so service shutdown does not hang."""
+        self._shutting_down = True
+        async with self._report_lock:
+            task = self._report_task
+        if task is not None and not task.done():
+            task.cancel()
+        await self._terminate_report_process()
+        if task is not None:
+            try:
+                await task
+            except (asyncio.CancelledError, RuntimeError):
+                pass
+        async with self._report_lock:
+            self._report_task = None
+            self._report_process = None
 
     def _get_cached_report(self, max_age_seconds: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Return cached report payload if it is newer than the supplied age limit."""
