@@ -565,6 +565,19 @@ def _select_local_inference_lane(
     return "default", "bounded_reasoning_default_lane"
 
 
+def _prompt_context_for_lane_reason(
+    compressed_context: str,
+    classifier_context: str,
+    lane_reason: Optional[str],
+) -> str:
+    """Keep bounded local reasoning prompts compact without changing deeper reasoning lanes."""
+    if str(lane_reason or "").strip().lower() == "bounded_reasoning_default_lane":
+        trimmed = str(classifier_context or "").strip()
+        if trimmed:
+            return trimmed
+    return compressed_context
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -976,12 +989,17 @@ async def route_search(
                 _inference_headers = {}
                 response_max_tokens = _local_response_budget("synthesize")
             if not _skip_synthesis:
+                prompt_context = _prompt_context_for_lane_reason(
+                    compressed_context,
+                    classifier_context,
+                    local_inference_lane_reason,
+                )
                 if _complexity and _complexity.optimized_prompt:
                     prompt = _complexity.optimized_prompt
                 else:
                     prompt = (
                         f"{prompt_prefix}\n\n"
-                        f"User query: {query}\n\nContext:\n{compressed_context}\n\n"
+                        f"User query: {query}\n\nContext:\n{prompt_context}\n\n"
                         "Provide a concise response using the context."
                     )
             if not _skip_synthesis:

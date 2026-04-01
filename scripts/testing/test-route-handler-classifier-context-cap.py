@@ -191,6 +191,11 @@ async def main_async() -> int:
         int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 128,
         "expected reasoning tasks to use the reduced local reasoning output budget",
     )
+    bounded_prompt = str((((local_client.calls[0].get("json") or {}).get("messages") or [])[-1]).get("content", ""))
+    assert_true(
+        len(bounded_prompt) < 2200,
+        "expected bounded reasoning default-lane prompt context to stay compact",
+    )
 
     continuation_local_client = _RecordingClient(content="continuation local synthesis")
     continuation_reasoning_client = _RecordingClient(content="continuation reasoning lane synthesis")

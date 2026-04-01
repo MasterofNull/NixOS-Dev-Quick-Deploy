@@ -56,6 +56,7 @@ def main() -> int:
             {"label": "local_lane:reasoning", "calls": 6, "p95_ms": 15267.3},
             {"label": "synthesis_type:reasoning", "calls": 6, "p95_ms": 15267.3},
             {"label": "local_lane:default", "calls": 3, "p95_ms": 4820.0},
+            {"label": "local_lane_reason:bounded_reasoning_default_lane", "calls": 5, "p95_ms": 11200.0},
         ],
     }
 
@@ -81,6 +82,7 @@ def main() -> int:
     assert_true("eval-regression-check" in joined, "expected tagged eval recommendation")
     assert_true("Local reasoning synthesis remains the route_search tail" in joined, "expected reasoning-lane recommendation")
     assert_true("Dedicated local reasoning is materially slower than the default local lane" in joined, "expected default-vs-reasoning lane recommendation")
+    assert_true("Bounded local reasoning on the default lane is still expensive" in joined, "expected bounded default-lane recommendation")
     assert_true("promotable lesson candidate" in joined, "expected feedback acceleration recommendation")
     assert_true("Recurring capability gaps remain actionable" in joined, "expected gap remediation recommendation")
     workflow_context = aq_report.build_recommendations(
