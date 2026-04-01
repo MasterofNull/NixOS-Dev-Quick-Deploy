@@ -101,16 +101,16 @@ Current scaffold-closure queue to keep in active rotation:
 ### Batch 1.1: Unified Metrics Pipeline
 **Status:** ⏳ pending
 **Tasks:**
-- [ ] Implement OpenTelemetry instrumentation across all services
-- [ ] Create unified metrics collector (Prometheus + Grafana)
-- [ ] Add distributed tracing (Jaeger) for request flows
-- [ ] Implement structured logging with ELK stack alternative
+- [x] Implement OpenTelemetry instrumentation across all services
+- [x] Create unified metrics collector (Prometheus + Grafana)
+- [x] Add distributed tracing (Jaeger) for request flows
+- [x] Implement structured logging with ELK stack alternative
 - [x] Add custom metrics for AI-specific operations (token usage, latency, quality scores)
 
 **Deliverables:**
 - ⏳ Grafana dashboards for all services
 - ✅ Real-time token usage tracking
-- ⏳ Request flow visualization
+- ✅ Request flow visualization
 - ✅ Quality score trends
 
 ### Batch 1.2: Automated Anomaly Detection

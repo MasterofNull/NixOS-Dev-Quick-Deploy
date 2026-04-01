@@ -225,6 +225,18 @@ async def get_performance_profiling_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/observability/readiness")
+async def get_unified_observability_readiness():
+    """Get the repo-native observability/tracing/logging readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_unified_observability_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get observability readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""
