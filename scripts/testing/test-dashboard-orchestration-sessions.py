@@ -92,6 +92,13 @@ def main() -> int:
         assert_true('id="orchestrationSessionList"' in html, "dashboard should render orchestration session list container")
         assert_true("function loadOrchestrationSessions()" in html, "dashboard should define orchestration session loader")
         assert_true("function selectOrchestrationSession(sessionId)" in html, "dashboard should support session selection shortcuts")
+        assert_true('id="orchFormationMode"' in html, "dashboard should expose orchestration formation mode metric")
+        assert_true('id="orchRequiredSlots"' in html, "dashboard should expose orchestration required slot metric")
+        assert_true('id="orchOptionalCapacity"' in html, "dashboard should expose orchestration optional capacity metric")
+        assert_true('id="orchDeferredSlots"' in html, "dashboard should expose orchestration deferred slot metric")
+        assert_true('id="deferredMembersList"' in html, "dashboard should render deferred collaborator container")
+        assert_true("document.getElementById('orchDeferredSlots').textContent" in html, "dashboard should populate deferred slot metric")
+        assert_true("document.getElementById('deferredMembersList')" in html, "dashboard should populate deferred collaborator list")
 
     print("PASS: dashboard orchestration sessions proxy and UI contract present")
     return 0
