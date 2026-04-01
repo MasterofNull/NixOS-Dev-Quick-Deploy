@@ -17,6 +17,7 @@ from pathlib import Path
 
 from api.routes import metrics, services, containers, config, websockets, actions, aistack, adk, audit, deployments, health, insights, workflows, collaboration, firewall
 from api.services.metrics_collector import MetricsCollector
+from api.services.ai_insights import get_insights_service
 from api.services.runtime_controls import get_dashboard_rate_limiter, get_operator_audit_log
 
 # Configure logging
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting NixOS Dashboard API...")
     metrics_collector = MetricsCollector()
+    insights_service = get_insights_service()
     
     # Start background metrics collection
     asyncio.create_task(broadcast_metrics())
@@ -96,6 +98,7 @@ async def lifespan(app: FastAPI):
         for connection in active_connections:
             await connection.close()
         active_connections.clear()
+    await insights_service.shutdown()
     # Close aistack HTTP session
     from api.routes import aistack
     await aistack.close_http_session()
