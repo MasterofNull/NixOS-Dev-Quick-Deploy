@@ -43,7 +43,9 @@ _CONTINUATION_RE = re.compile(
 
 LOCAL_CONTINUATION_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_INPUT_TOKENS", "900"))
 LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS", "400"))
+LOCAL_CONTINUATION_CONTEXT_CHARS = int(os.getenv("LOCAL_CONTINUATION_CONTEXT_CHARS", "700"))
 LOCAL_REASONING_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_REASONING_MAX_INPUT_TOKENS", "450"))
+LOCAL_REASONING_CONTEXT_CHARS = int(os.getenv("LOCAL_REASONING_CONTEXT_CHARS", "600"))
 
 
 @dataclass
@@ -93,7 +95,7 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
         optimized = (
             "Continue the current task using prior context first. "
             "Keep the answer concise, concrete, and limited to the next useful step.\n"
-            f"Task: {q}\n\nRelevant context:\n{context[:1000].strip()}"
+            f"Task: {q}\n\nRelevant context:\n{context[:LOCAL_CONTINUATION_CONTEXT_CHARS].strip()}"
         ).strip()
         return TaskComplexity(
             token_estimate=token_estimate,
@@ -112,7 +114,7 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
         optimized = (
             "Answer with a concise local reasoning summary grounded in the provided context. "
             "Do not broaden scope or introduce architectural redesign ideas.\n"
-            f"Question: {q}\n\nRelevant context:\n{context[:1000].strip()}"
+            f"Question: {q}\n\nRelevant context:\n{context[:LOCAL_REASONING_CONTEXT_CHARS].strip()}"
         ).strip()
         return TaskComplexity(
             token_estimate=token_estimate,
