@@ -80,7 +80,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - [ ] Create unified metrics collector (Prometheus + Grafana)
 - [ ] Add distributed tracing (Jaeger) for request flows
 - [ ] Implement structured logging with ELK stack alternative
-- [ ] Add custom metrics for AI-specific operations (token usage, latency, quality scores)
+- [x] Add custom metrics for AI-specific operations (token usage, latency, quality scores)
 
 **Deliverables:**
 - ⏳ Grafana dashboards for all services
