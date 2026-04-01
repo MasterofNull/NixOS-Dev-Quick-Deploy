@@ -12,6 +12,7 @@ DASHBOARD_HTML = REPO_ROOT / "dashboard.html"
 def main() -> int:
     text = DASHBOARD_HTML.read_text(encoding="utf-8")
     required = [
+        "fetch(`${FASTAPI_BASE}/api/aistack/orchestration/sessions`, { cache: 'no-store' })",
         "fetch(`${FASTAPI_BASE}/api/aistack/orchestration/team/${encodeURIComponent(sessionId)}`)",
         "fetch(`${FASTAPI_BASE}/api/aistack/orchestration/arbiter/${encodeURIComponent(sessionId)}`)",
         "fetch(`${FASTAPI_BASE}/api/aistack/orchestration/evaluations/trends`)",
@@ -24,6 +25,7 @@ def main() -> int:
         return 1
 
     forbidden = [
+        "fetch('/api/aistack/orchestration/sessions')",
         "fetch(`/api/aistack/orchestration/team/${sessionId}`)",
         "fetch(`/api/aistack/orchestration/arbiter/${sessionId}`)",
         "fetch('/api/aistack/orchestration/evaluations/trends')",

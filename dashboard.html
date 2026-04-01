@@ -2314,6 +2314,19 @@
                     <div class="collapsible-content">
                         <!-- Session Selector -->
                         <div style="margin-bottom: 1.5rem;">
+                            <div style="margin-bottom: 0.75rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <label style="color: var(--text-secondary); font-size: 0.85rem;">Recent Workflow Sessions</label>
+                                    <button
+                                        onclick="loadOrchestrationSessions()"
+                                        style="background: transparent; color: var(--accent-cyan); border: 1px solid var(--border-primary); padding: 0.35rem 0.75rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">
+                                        Refresh
+                                    </button>
+                                </div>
+                                <div id="orchestrationSessionList" class="data-list">
+                                    <div class="data-item"><span>Loading recent orchestration sessions...</span><span class="data-meta">--</span></div>
+                                </div>
+                            </div>
                             <label for="sessionIdInput" style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">
                                 Enter Session ID to Inspect:
                             </label>
@@ -9292,6 +9305,71 @@
             }
         }
 
+        async function loadOrchestrationSessions() {
+            const list = document.getElementById('orchestrationSessionList');
+            if (!list) return;
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/aistack/orchestration/sessions`, { cache: 'no-store' });
+                if (!resp.ok) throw new Error(`session listing failed (${resp.status})`);
+                const data = await resp.json();
+                renderOrchestrationSessions(data);
+            } catch (err) {
+                console.error('Failed to load orchestration sessions:', err);
+                list.innerHTML = '<div class="data-item"><span>Workflow sessions unavailable</span><span class="data-meta status-offline">offline</span></div>';
+            }
+        }
+
+        function renderOrchestrationSessions(data) {
+            const list = document.getElementById('orchestrationSessionList');
+            if (!list) return;
+            const sessions = Array.isArray(data?.sessions) ? data.sessions.slice(0, 6) : [];
+            if (sessions.length === 0) {
+                list.innerHTML = '<div class="data-item"><span>No recent workflow sessions</span><span class="data-meta">empty</span></div>';
+                return;
+            }
+            list.innerHTML = sessions.map(session => {
+                const sessionId = String(session.session_id || '').trim();
+                const objective = escapeHtml(String(session.objective || 'workflow session').trim() || 'workflow session');
+                const status = escapeHtml(String(session.status || 'unknown').trim() || 'unknown');
+                const phase = escapeHtml(String(session.current_phase || 'n/a').trim() || 'n/a');
+                const updatedAt = formatTimestamp(session.updated_at);
+                return `
+                    <button
+                        onclick="selectOrchestrationSession('${sessionId.replace(/'/g, "\\'")}')"
+                        style="width: 100%; text-align: left; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; padding: 0.75rem; color: var(--text-primary); cursor: pointer; margin-bottom: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.75rem;">
+                            <div>
+                                <div style="font-weight: 600; margin-bottom: 0.25rem;">${objective}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">${escapeHtml(sessionId)}</div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;">${updatedAt}</div>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
+                            <span>Status: ${status}</span>
+                            <span>Phase: ${phase}</span>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function selectOrchestrationSession(sessionId) {
+            document.getElementById('sessionIdInput').value = sessionId;
+            loadOrchestrationDetails();
+        }
+
+        function formatTimestamp(value) {
+            if (value === null || value === undefined || value === '') return '--';
+            const numeric = Number(value);
+            if (Number.isFinite(numeric) && numeric > 0) {
+                const date = new Date(numeric * 1000);
+                if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+            }
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString();
+            return '--';
+        }
+
         function renderOrchestrationTeam(data) {
             document.getElementById('orchSessionId').textContent = data.session_id || '--';
             document.getElementById('orchConsensusMode').textContent = data.consensus_mode || '--';
@@ -9444,6 +9522,8 @@
             // Refresh agent evaluation trends every 30 seconds
             setInterval(loadAgentEvaluationTrends, 30000);
             loadAgentEvaluationTrends(); // Initial load
+            setInterval(loadOrchestrationSessions, 30000);
+            loadOrchestrationSessions();
 
             // Initial load after 3 seconds
             setTimeout(() => {
