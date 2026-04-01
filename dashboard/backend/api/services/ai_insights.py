@@ -65,6 +65,13 @@ def _improvement_candidates_path() -> Path:
         return Path(configured)
     return _repo_root() / ".agents" / "improvement" / "candidates.json"
 
+
+def _code_review_results_path() -> Path:
+    configured = os.getenv("DASHBOARD_CODE_REVIEW_RESULTS_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return _repo_root() / ".agents" / "reviews" / "code-review.json"
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
@@ -355,6 +362,90 @@ class AIInsightsService:
             "generated_at": payload.get("generated_at"),
         }
 
+    def _load_code_review_summary(self, limit: int = 5) -> Dict[str, Any]:
+        """Load a bounded summary of persisted LLM code-review results."""
+        path = _code_review_results_path()
+        if not path.exists():
+            return {
+                "available": False,
+                "path": str(path),
+                "status": "pending",
+                "reviewed_at": None,
+                "reviewer": None,
+                "total_files": 0,
+                "average_quality": None,
+                "severity_counts": {},
+                "category_counts": {},
+                "top_findings": [],
+            }
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to load code review results from %s: %s", path, exc)
+            return {
+                "available": False,
+                "path": str(path),
+                "status": "error",
+                "reviewed_at": None,
+                "reviewer": None,
+                "total_files": 0,
+                "average_quality": None,
+                "severity_counts": {},
+                "category_counts": {},
+                "top_findings": [],
+                "error": str(exc),
+            }
+
+        files = payload.get("files", []) if isinstance(payload, dict) else []
+        severity_counts: Dict[str, int] = {}
+        category_counts: Dict[str, int] = {}
+        qualities: List[float] = []
+        top_findings: List[Dict[str, Any]] = []
+
+        for item in files:
+            if not isinstance(item, dict):
+                continue
+            quality = item.get("overall_quality")
+            if isinstance(quality, (int, float)):
+                qualities.append(float(quality))
+            for comment in item.get("comments", []) or []:
+                if not isinstance(comment, dict):
+                    continue
+                severity = str(comment.get("severity") or "unknown")
+                category = str(comment.get("category") or "unknown")
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                category_counts[category] = category_counts.get(category, 0) + 1
+                if len(top_findings) < limit:
+                    top_findings.append(
+                        {
+                            "file_path": item.get("file_path"),
+                            "line": comment.get("line"),
+                            "severity": severity,
+                            "category": category,
+                            "message": comment.get("message"),
+                            "suggestion": comment.get("suggestion"),
+                        }
+                    )
+
+        status = "active" if files else "pending"
+        if severity_counts.get("critical", 0) > 0 or severity_counts.get("major", 0) > 0:
+            status = "watch"
+
+        average_quality = round(sum(qualities) / len(qualities), 4) if qualities else None
+        return {
+            "available": True,
+            "path": str(path),
+            "status": status,
+            "reviewed_at": payload.get("reviewed_at"),
+            "reviewer": payload.get("reviewer"),
+            "total_files": int(payload.get("total_files", len(files)) or len(files)),
+            "average_quality": average_quality,
+            "severity_counts": severity_counts,
+            "category_counts": category_counts,
+            "top_findings": top_findings,
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -470,12 +561,23 @@ class AIInsightsService:
             **summary,
         }
 
+    async def get_code_review_summary(self) -> Dict[str, Any]:
+        """Return the current persisted LLM code-review summary."""
+        report = await self.get_full_report()
+        summary = self._load_code_review_summary()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **summary,
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
         phase4 = await self.get_phase4_acceptance_summary()
         a2a = await self.get_a2a_readiness()
         improvement_candidates = self._load_improvement_candidates_summary()
+        code_review_summary = self._load_code_review_summary()
 
         routing = report.get("routing", {}) if isinstance(report.get("routing"), dict) else {}
         continue_editor = report.get("continue_editor", {}) if isinstance(report.get("continue_editor"), dict) else {}
@@ -572,6 +674,7 @@ class AIInsightsService:
                 "phase3": {
                     "status": phase3_status,
                     "improvement_candidates": improvement_candidates,
+                    "code_review": code_review_summary,
                     "candidate_count": int(improvement_candidates.get("total_candidates", 0) or 0),
                     "top_candidates": improvement_candidates.get("top_candidates", []),
                 },
@@ -988,6 +1091,18 @@ class AIInsightsService:
                     f"candidates={candidates.get('total_candidates', 0)} "
                     f"| top={((candidates.get('top_candidates') or [{}])[0]).get('title', '--')} "
                     f"| categories={len(candidates.get('categories') or {})}"
+                ),
+            }
+        if normalized_target == "code_review":
+            review = await self.get_code_review_summary()
+            return {
+                "target": normalized_target,
+                "title": "Code Review",
+                "status": review.get("status", "unknown"),
+                "summary": (
+                    f"files={review.get('total_files', 0)} "
+                    f"| reviewer={review.get('reviewer', '--')} "
+                    f"| critical={((review.get('severity_counts') or {}).get('critical', 0))}"
                 ),
             }
 
