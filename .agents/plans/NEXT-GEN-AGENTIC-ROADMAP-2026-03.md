@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - A2A interoperability and sub-agent coordination foundation landed; local/offline resilience, routing/reporting optimization, and crash-mitigation slices advanced; deeper orchestration and next-gen improvement loops still pending
+**Status:** Active - Phase 2 (Security) and Phase 4.4 (ADK Parity) completed; Phase 5 (Local Model) pending; deeper orchestration and next-gen improvement loops still pending
 **Created:** 2026-03-15
 **Last Updated:** 2026-03-31
 **Version:** 1.2.0
@@ -135,7 +135,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Network policies
 
 ### Batch 2.2: Security Audit & Hardening
-**Status:** in progress
+**Status:** completed
 **Tasks:**
 - [x] Run lightweight dashboard/operator security scan automation and persist report artifacts
 - [x] Implement baseline Content Security Policy for dashboard/operator web interfaces
@@ -151,7 +151,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - ✅ Secrets rotation planning/report automation
 
 ### Batch 2.3: Audit Trail & Compliance
-**Status:** in progress
+**Status:** completed
 **Tasks:**
 - [x] Implement append-only operator audit logging for dashboard API activity
 - [x] Add tamper-proof audit trail (hash-chained append-only log)
@@ -287,13 +287,18 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Template library
 
 ### Batch 4.4: Google ADK Parity, Integrations, and Implementation Discovery
-**Status:** in_progress
+**Status:** completed
 **Tasks:**
 - [x] Compare the current harness against Google ADK core capabilities: multi-agent composition, session/state handling, tool integration patterns, evaluation, observability, and A2A alignment
 - [x] Evaluate ADK integrations relevant to the stack, especially Qdrant-backed retrieval, GitHub/tooling surfaces, and observability/evaluation hooks such as AgentOps, Phoenix, and MLflow
 - [x] Build prototype adapter plans where ADK patterns can validate or simplify existing harness components without replacing declarative Nix ownership
-- [ ] Create an ADK-driven parity/eval suite so new harness work can be checked against documented ADK capabilities before roadmap acceptance
-- [ ] Add a recurring implementation-discovery review that feeds newly surfaced ADK features into Phase 4, Phase 6, and Phase 11 prioritization
+- [x] Create an ADK-driven parity/eval suite so new harness work can be checked against documented ADK capabilities before roadmap acceptance
+  - Test suite: scripts/testing/test-adk-integration.py (discovery, parity, wiring, API tests)
+  - Protocol compliance: scripts/testing/test-adk-protocol-compliance.py
+  - Dashboard API: /api/adk/* endpoints now mounted
+- [x] Add a recurring implementation-discovery review that feeds newly surfaced ADK features into Phase 4, Phase 6, and Phase 11 prioritization
+  - Discovery workflow: scripts/ai/adk-discovery-workflow.sh (weekly recommended)
+  - Discovery log: docs/architecture/adk-discovery-log.jsonl
 
 **Deliverables:**
 - ADK parity matrix with scored capability coverage
