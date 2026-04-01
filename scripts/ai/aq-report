@@ -3276,9 +3276,12 @@ def build_recommendations(
         if recent_tool_stats and tool in recent_tool_stats:
             if int(fresh.get("calls", 0) or 0) >= 1 and float(fresh.get("success_pct", 0.0) or 0.0) >= 90.0:
                 continue
+        interpretation = _tool_reliability_interpretation(tool, stats, fresh)
+        if not interpretation.get("active_incident", False):
+            continue
         recs.append(
             f"Tool `{tool}` backend success rate is low ({stats['success_pct']}% across {stats['calls']} valid calls). "
-            f"Reliability context: {_tool_reliability_context(stats, fresh)}. "
+            f"Reliability context: {interpretation.get('note') or _tool_reliability_context(stats, fresh)}. "
             "Tighten retries/timeouts or fallback behavior only if the failures are still active."
         )
 
@@ -3513,6 +3516,63 @@ def _tool_reliability_context(stats: Dict[str, Any], fresh: Optional[Dict[str, A
             f"last hour backend OK%={_na(fresh.get('success_pct'), '.1f', '%')} across {int(fresh.get('calls', 0) or 0)} valid calls"
         )
     return "; ".join(parts)
+
+
+def _tool_reliability_interpretation(
+    tool: str,
+    stats: Dict[str, Any],
+    fresh: Optional[Dict[str, Any]] = None,
+    *,
+    historical_only: bool = False,
+) -> Dict[str, Any]:
+    """Classify whether reliability noise is active backend failure or caller/background debt."""
+    tool_name = str(tool or "").strip().lower()
+    server_errors = int(stats.get("error_count", 0) or 0)
+    client_errors = int(stats.get("client_error_count", 0) or 0)
+    fresh_server_errors = int((fresh or {}).get("error_count", 0) or 0)
+    fresh_client_errors = int((fresh or {}).get("client_error_count", 0) or 0)
+
+    if tool_name == "store_agent_memory":
+        if fresh is not None and fresh_server_errors == 0 and fresh_client_errors > 0:
+            return {
+                "status": "caller_input_only",
+                "active_incident": False,
+                "note": (
+                    f"recent caller-side validation noise only ({fresh_client_errors} invalid memory-write attempts); "
+                    "backend writes are healthy"
+                ),
+            }
+        if fresh is not None and fresh_server_errors > 0:
+            return {
+                "status": "active_backend_failures",
+                "active_incident": True,
+                "note": (
+                    f"recent backend memory-write failures remain active ({fresh_server_errors} failures in the last hour)"
+                ),
+            }
+        if historical_only and server_errors > 0:
+            return {
+                "status": "historical_backend_debt",
+                "active_incident": False,
+                "note": (
+                    f"historical backend memory-write debt remains visible ({server_errors} backend failures), "
+                    "but no recent calls are active in the last hour"
+                ),
+            }
+        if server_errors > 0 and fresh is not None and fresh_server_errors == 0:
+            return {
+                "status": "historical_backend_debt",
+                "active_incident": False,
+                "note": (
+                    f"historical backend memory-write failures exist ({server_errors}), "
+                    "but recent backend writes are healthy"
+                ),
+            }
+    return {
+        "status": "active_backend_failures" if server_errors > 0 else "healthy",
+        "active_incident": server_errors > 0,
+        "note": _tool_reliability_context(stats, fresh),
+    }
 
 
 def _backend_reliability_summary(item: Dict[str, Any], *, window_label: str, recent: bool) -> str:
@@ -3830,6 +3890,7 @@ def recent_health_snapshot(
                 }
             )
         if tool.lower() not in ignored_flaky_tools and float(stats.get("success_pct", 0.0) or 0.0) < 90.0:
+            interpretation = _tool_reliability_interpretation(tool, stats, stats)
             item = {
                 "tool": tool,
                 "calls": calls,
@@ -3837,6 +3898,9 @@ def recent_health_snapshot(
                 "error_count": int(stats.get("error_count", 0) or 0),
                 "client_error_count": int(stats.get("client_error_count", 0) or 0),
                 "recovered_fallback_count": int(stats.get("recovered_fallback_count", 0) or 0),
+                "active_incident": bool(interpretation.get("active_incident", False)),
+                "reliability_status": str(interpretation.get("status", "")),
+                "reliability_note": str(interpretation.get("note", "")),
             }
             if tool == "route_search" and recent_provider_fallbacks and recent_provider_fallbacks.get("available"):
                 item["provider_recovered_count"] = int(recent_provider_fallbacks.get("recovered_count", 0) or 0)
@@ -3872,6 +3936,7 @@ def historical_watchlist(tool_stats: Dict[str, dict], recent_tool_stats: Dict[st
                 "p95_ms": round(float(stats.get("p95_ms", 0.0) or 0.0), 1),
             })
         if tool.lower() not in ignored_flaky_tools and float(stats.get("success_pct", 0.0) or 0.0) < 90.0:
+            interpretation = _tool_reliability_interpretation(tool, stats, fresh, historical_only=True)
             watch["flaky_tools"].append({
                 "tool": tool,
                 "calls": calls,
@@ -3879,6 +3944,9 @@ def historical_watchlist(tool_stats: Dict[str, dict], recent_tool_stats: Dict[st
                 "error_count": int(stats.get("error_count", 0) or 0),
                 "client_error_count": int(stats.get("client_error_count", 0) or 0),
                 "recovered_fallback_count": int(stats.get("recovered_fallback_count", 0) or 0),
+                "active_incident": bool(interpretation.get("active_incident", False)),
+                "reliability_status": str(interpretation.get("status", "")),
+                "reliability_note": str(interpretation.get("note", "")),
             })
     watch["has_items"] = bool(watch["slow_tools"] or watch["flaky_tools"])
     return watch
@@ -4142,6 +4210,9 @@ def format_md(
                 lines.append(
                     f"  - `{item['tool']}` — {_backend_reliability_summary(item, window_label='', recent=True).lstrip()}"
                 )
+                note = str(item.get("reliability_note", "") or "").strip()
+                if note:
+                    lines.append(f"    - Interpretation: {note}")
     lines.append("")
 
     lines += ["## 8a. Continue/Editor Health", ""]
@@ -4445,6 +4516,9 @@ def format_md(
                 lines.append(
                     f"  - `{item['tool']}` — {_backend_reliability_summary(item, window_label='7d', recent=False)}"
                 )
+                note = str(item.get("reliability_note", "") or "").strip()
+                if note:
+                    lines.append(f"    - Interpretation: {note}")
     lines.append("")
 
     # 9. Recommendations
@@ -4904,6 +4978,9 @@ def format_text(
                 lines.append(
                     f"    {item['tool']}: {_backend_reliability_summary(item, window_label='', recent=True)}"
                 )
+                note = str(item.get("reliability_note", "") or "").strip()
+                if note:
+                    lines.append(f"      note: {note}")
     lines.append("")
 
     lines += ["[ 8a. Continue/Editor Health ]"]
@@ -5199,6 +5276,9 @@ def format_text(
                 lines.append(
                     f"    {item['tool']}: {_backend_reliability_summary(item, window_label='7d', recent=False)}"
                 )
+                note = str(item.get("reliability_note", "") or "").strip()
+                if note:
+                    lines.append(f"      note: {note}")
     lines.append("")
 
     lines += ["[ 9. Workflow Recommendations ]"]
