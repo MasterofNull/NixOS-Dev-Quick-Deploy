@@ -712,6 +712,9 @@ class AIInsightsService:
             if isinstance(report.get("route_retrieval_breadth_windows"), dict)
             else {}
         )
+        structured_actions = report.get("structured_actions", []) if isinstance(report.get("structured_actions"), list) else []
+        recommendations = report.get("recommendations", []) if isinstance(report.get("recommendations"), list) else []
+        route_breakdown = route_latency.get("breakdown", []) if isinstance(route_latency.get("breakdown"), list) else []
         recent_mix = ((rag_posture.get("retrieval_mix") or {}).get("recent") or {}) if isinstance(rag_posture, dict) else {}
         top_candidate = None
         for candidate in rag_posture.get("prewarm_candidates", []) or []:
@@ -766,10 +769,41 @@ class AIInsightsService:
                 }
             )
 
+        top_bottlenecks = [
+            {
+                "label": str(item.get("label", "") or ""),
+                "calls": int(item.get("calls", 0) or 0),
+                "p95_ms": item.get("p95_ms"),
+                "status": "watch" if float(item.get("p95_ms", 0) or 0) >= 2500.0 else "healthy",
+            }
+            for item in route_breakdown
+            if isinstance(item, dict) and str(item.get("label", "") or "").strip()
+        ][:5]
+
+        optimization_recommendations: List[Dict[str, Any]] = []
+        for item in structured_actions[:5]:
+            if not isinstance(item, dict):
+                continue
+            optimization_recommendations.append(
+                {
+                    "summary": item.get("summary") or item.get("title") or item.get("action"),
+                    "action": item.get("action"),
+                    "priority": item.get("priority"),
+                    "category": item.get("category"),
+                }
+            )
+        if not optimization_recommendations:
+            for rec in recommendations[:5]:
+                if not str(rec or "").strip():
+                    continue
+                optimization_recommendations.append({"summary": str(rec)})
+
         return {
             "timestamp": report.get("generated_at"),
             "window": report.get("window"),
             "hotspots": hotspots,
+            "top_bottlenecks": top_bottlenecks,
+            "optimization_recommendations": optimization_recommendations,
             "route_latency": route_latency,
             "cache": cache,
             "retrieval_breadth": retrieval_breadth,

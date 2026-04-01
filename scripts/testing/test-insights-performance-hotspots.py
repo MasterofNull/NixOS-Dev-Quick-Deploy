@@ -38,9 +38,24 @@ def main() -> int:
                     "generated_at": "2026-03-20T12:30:00Z",
                     "window": "7d",
                     "cache": {"available": True, "hit_pct": 11.8, "hits": 2, "misses": 15},
-                    "route_search_latency_decomposition": {"p95_ms": 3565.4, "calls": 42},
+                    "route_search_latency_decomposition": {
+                        "p95_ms": 3565.4,
+                        "calls": 42,
+                        "breakdown": [
+                            {"label": "synthesis_type:reasoning", "calls": 22, "p95_ms": 4120.0},
+                            {"label": "collection:agent_memory", "calls": 17, "p95_ms": 1480.0},
+                        ],
+                    },
                     "route_retrieval_breadth": {"available": True, "avg_collection_count": 2.68, "route_calls": 42},
                     "route_retrieval_breadth_windows": {"windows": {"1h": {"avg_collection_count": 2.68}}},
+                    "structured_actions": [
+                        {
+                            "summary": "Reduce route_search synthesis fan-out for high-latency reasoning queries",
+                            "action": "tune_route_search_synthesis",
+                            "priority": "high",
+                            "category": "latency",
+                        }
+                    ],
                     "rag_posture": {
                         "status": "watch",
                         "reasons": ["cache hit rate 11.8%", "memory recall is lightly used"],
@@ -104,6 +119,16 @@ def main() -> int:
             assert_true(
                 ((data.get("rag_posture") or {}).get("top_prewarm_candidate") or {}).get("id") == "route_search_synthesis",
                 "top prewarm candidate should be exposed",
+            )
+            top_bottleneck = (data.get("top_bottlenecks") or [{}])[0]
+            assert_true(
+                top_bottleneck.get("label") == "synthesis_type:reasoning",
+                "performance hotspots should expose ranked bottleneck labels",
+            )
+            recommendation = (data.get("optimization_recommendations") or [{}])[0]
+            assert_true(
+                recommendation.get("action") == "tune_route_search_synthesis",
+                "performance hotspots should expose structured optimization recommendations",
             )
             optimization_history = data.get("optimization_history") or {}
             assert_true(optimization_history.get("available") is True, "optimization history should be exposed when proposal telemetry exists")
