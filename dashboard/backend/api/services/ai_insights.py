@@ -395,6 +395,45 @@ class AIInsightsService:
             "generated_at": payload.get("generated_at"),
         }
 
+    def _load_improvement_automation_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native self-improvement automation coverage."""
+        root = _repo_root()
+        detector = root / "ai-stack" / "self-improvement" / "improvement_detector.py"
+        reviewer = root / "ai-stack" / "self-improvement" / "llm_code_reviewer.py"
+        online_learning = root / "ai-stack" / "real-time-learning" / "online_learning.py"
+
+        def _contains(path: Path, needle: str) -> bool:
+            try:
+                return needle in path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+
+        features = {
+            "code_smell_detection": detector.exists() and _contains(detector, "class CodeSmellDetector"),
+            "performance_regression_detection": detector.exists() and _contains(detector, "class PerformanceRegressionDetector"),
+            "improvement_candidate_generation": detector.exists() and _contains(detector, "class ImprovementCandidateGenerator"),
+            "telemetry_pattern_mining": online_learning.exists() and _contains(online_learning, "class LivePatternMiner"),
+            "llm_code_review": reviewer.exists() and _contains(reviewer, "class LLMCodeReviewer"),
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "pending"
+        if enabled_count > 0:
+            status = "active"
+        if enabled_count >= 4:
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "feature_count": enabled_count,
+            "features": features,
+            "paths": {
+                "detector": str(detector),
+                "reviewer": str(reviewer),
+                "online_learning": str(online_learning),
+            },
+        }
+
     def _load_code_review_summary(self, limit: int = 5) -> Dict[str, Any]:
         """Load a bounded summary of persisted LLM code-review results."""
         path = _code_review_results_path()
@@ -896,6 +935,15 @@ class AIInsightsService:
             **summary,
         }
 
+    async def get_improvement_automation_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native improvement automation readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_improvement_automation_readiness(),
+        }
+
     async def get_testing_validation_readiness(self) -> Dict[str, Any]:
         """Return the repo-native testing and validation readiness summary."""
         report = await self.get_full_report()
@@ -960,6 +1008,7 @@ class AIInsightsService:
         profiling = self._load_performance_profiling_readiness()
         observability = self._load_unified_observability_readiness()
         improvement_candidates = self._load_improvement_candidates_summary()
+        improvement_automation = self._load_improvement_automation_readiness()
         code_review_summary = self._load_code_review_summary()
         testing_validation = self._load_testing_validation_readiness()
         deployment_pipeline = self._load_deployment_pipeline_readiness()
@@ -1020,6 +1069,8 @@ class AIInsightsService:
         phase3_status = str(improvement_candidates.get("status", "pending") or "pending")
         if not improvement_candidates.get("available", False):
             phase3_status = "pending"
+        elif improvement_automation.get("available", False) and phase3_status == "pending":
+            phase3_status = "active"
 
         remote_calls = int((routing.get("remote_n", 0) or 0))
         phase6_status = "healthy" if routing.get("available") and remote_calls == 0 else "watch"
@@ -1069,6 +1120,7 @@ class AIInsightsService:
                 },
                 "phase3": {
                     "status": phase3_status,
+                    "improvement_automation": improvement_automation,
                     "improvement_candidates": improvement_candidates,
                     "code_review": code_review_summary,
                     "testing_validation": testing_validation,
@@ -1490,6 +1542,18 @@ class AIInsightsService:
                     f"candidates={candidates.get('total_candidates', 0)} "
                     f"| top={((candidates.get('top_candidates') or [{}])[0]).get('title', '--')} "
                     f"| categories={len(candidates.get('categories') or {})}"
+                ),
+            }
+        if normalized_target == "improvement-automation":
+            readiness = await self.get_improvement_automation_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Improvement Automation",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| smells={((readiness.get('features') or {}).get('code_smell_detection', False))} "
+                    f"| mining={((readiness.get('features') or {}).get('telemetry_pattern_mining', False))}"
                 ),
             }
         if normalized_target == "ai_specific_metrics":
