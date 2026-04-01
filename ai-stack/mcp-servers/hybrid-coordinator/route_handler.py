@@ -719,6 +719,9 @@ async def route_search(
             ).strip()
             compressed_context = combined_context
             compressed_tokens = 0
+            local_max_tokens = max(1, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS))
+            remote_max_tokens = max(local_max_tokens, int(Config.AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS))
+            response_max_tokens = remote_max_tokens
             if Config.AI_CONTEXT_COMPRESSION_ENABLED and context_compressor and combined_context:
                 tokens_before = len(combined_context) // 4
                 compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
@@ -736,7 +739,7 @@ async def route_search(
             _skip_synthesis = False
             if Config.AI_TASK_CLASSIFICATION_ENABLED:
                 _complexity = task_classifier.classify(
-                    query, compressed_context, max_output_tokens=400
+                    query, compressed_context, max_output_tokens=local_max_tokens
                 )
                 logger.info(
                     "task_complexity type=%s tokens=%d local=%s reason=%s",
@@ -754,6 +757,7 @@ async def route_search(
                             "x-ai-route": "remote",
                             "x-ai-profile": "remote-reasoning",
                         }
+                        response_max_tokens = remote_max_tokens
                         logger.info(
                             "task_complexity_remote type=%s tokens=%d → switchboard",
                             _complexity.task_type, _complexity.token_estimate,
@@ -770,10 +774,12 @@ async def route_search(
                     _inference_client = llama_cpp_client
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
+                    response_max_tokens = local_max_tokens
             elif not _skip_synthesis:
                 _inference_client = llama_cpp_client
                 _inference_path = "/chat/completions"
                 _inference_headers = {}
+                response_max_tokens = local_max_tokens
             if not _skip_synthesis:
                 if _complexity and _complexity.optimized_prompt:
                     prompt = _complexity.optimized_prompt
@@ -809,7 +815,7 @@ async def route_search(
                     llm_resp = await _inference_client.post(
                         _inference_path,
                         headers=_inference_headers,
-                        json={"messages": messages, "temperature": 0.2, "max_tokens": 400},
+                        json={"messages": messages, "temperature": 0.2, "max_tokens": response_max_tokens},
                         timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                     )
                     llm_resp.raise_for_status()
@@ -857,7 +863,7 @@ async def route_search(
                             llm_resp = await llama_cpp_client.post(
                                 "/chat/completions",
                                 headers={},
-                                json={"messages": fallback_messages, "temperature": 0.2, "max_tokens": 400},
+                                json={"messages": fallback_messages, "temperature": 0.2, "max_tokens": local_max_tokens},
                                 timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                             )
                             llm_resp.raise_for_status()
