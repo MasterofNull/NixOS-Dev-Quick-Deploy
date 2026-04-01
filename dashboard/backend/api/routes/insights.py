@@ -141,6 +141,18 @@ async def get_improvement_candidates():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/improvements/reviews")
+async def get_code_review_summary():
+    """Get the persisted Phase 3 LLM code-review summary."""
+    try:
+        service = get_insights_service()
+        review = await service.get_code_review_summary()
+        return review
+    except Exception as e:
+        logger.error(f"Failed to get code review summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""
