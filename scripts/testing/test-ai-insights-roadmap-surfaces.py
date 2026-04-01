@@ -22,6 +22,20 @@ def assert_true(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+class _FakeResponse:
+    def __init__(self, payload: str):
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="insights-roadmap-surfaces-") as tmp_dir:
         tmp_path = Path(tmp_dir)
@@ -147,6 +161,25 @@ def main() -> int:
         insights_service = importlib.import_module("api.services.ai_insights")
         dashboard_main = importlib.reload(dashboard_main)
         insights_service = importlib.reload(insights_service)
+        insights_service.urlopen = lambda request, timeout=10.0: _FakeResponse(
+            "\n".join(
+                [
+                    'hybrid_delegated_prompt_tokens_before_count{profile="remote-free"} 4',
+                    'hybrid_delegated_prompt_tokens_before_sum{profile="remote-free"} 1600',
+                    'hybrid_delegated_prompt_tokens_after_count{profile="remote-free"} 4',
+                    'hybrid_delegated_prompt_tokens_after_sum{profile="remote-free"} 900',
+                    'hybrid_delegated_prompt_token_savings_total{profile="remote-free"} 700',
+                    'hybrid_delegated_quality_score_count{profile="remote-free"} 4',
+                    'hybrid_delegated_quality_score_sum{profile="remote-free"} 3.2',
+                    'hybrid_delegated_quality_events_total{profile="remote-free",outcome="accepted"} 4',
+                    'hybrid_progressive_context_loads_total{category="research",tier="warm",profile="remote-free"} 6',
+                    'hybrid_capability_gap_detections_total{gap_type="tooling",severity="medium"} 2',
+                    'hybrid_real_time_learning_events_total{profile="remote-free",event_type="learning_example"} 5',
+                    'hybrid_meta_learning_adaptations_total{domain="python",method="few_shot"} 3',
+                    "hybrid_process_memory_bytes 1048576",
+                ]
+            )
+        )
 
         service = insights_service.get_insights_service()
         service._cache = report
@@ -177,6 +210,10 @@ def main() -> int:
             assert_true(
                 top_hotspot.get("label") == "local_lane_reason:bounded_reasoning_default_lane",
                 "roadmap readiness should preserve the top profiling hotspot label",
+            )
+            assert_true(
+                ((phase1.get("ai_specific_metrics") or {}).get("delegated_prompt_optimization") or {}).get("tokens_saved_total") == 700,
+                "roadmap readiness should expose AI-specific token optimization metrics for phase 1",
             )
             assert_true(
                 phase3.get("status") == "watch",

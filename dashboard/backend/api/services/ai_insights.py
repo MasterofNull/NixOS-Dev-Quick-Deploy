@@ -675,6 +675,7 @@ class AIInsightsService:
         report = await self.get_full_report()
         phase4 = await self.get_phase4_acceptance_summary()
         a2a = await self.get_a2a_readiness()
+        ai_specific_metrics = await self.get_ai_specific_metrics_summary()
         improvement_candidates = self._load_improvement_candidates_summary()
         code_review_summary = self._load_code_review_summary()
 
@@ -716,6 +717,12 @@ class AIInsightsService:
                 or (isinstance(overall_p95, (int, float)) and overall_p95 >= 3000)
             ):
                 phase1_status = "watch"
+        if ai_specific_metrics.get("available"):
+            quality_score = ((ai_specific_metrics.get("delegated_quality") or {}).get("avg_quality_score"))
+            tokens_saved_total = ((ai_specific_metrics.get("delegated_prompt_optimization") or {}).get("tokens_saved_total"))
+            if quality_score is not None or tokens_saved_total:
+                if phase1_status == "pending":
+                    phase1_status = "active"
 
         phase4_failed = int(((phase4.get("summary") or {}).get("failed_flows", 0) or 0)) if isinstance(phase4, dict) else 0
         phase4_status = "healthy"
@@ -763,6 +770,7 @@ class AIInsightsService:
                 "phase1": {
                     "status": phase1_status,
                     "profiling_available": bool(route_latency.get("available")),
+                    "ai_specific_metrics": ai_specific_metrics,
                     "route_search_latency": {
                         "overall_p95_ms": route_latency.get("overall_p95_ms"),
                         "synthesis_p95_ms": route_latency.get("synthesis_p95_ms"),
