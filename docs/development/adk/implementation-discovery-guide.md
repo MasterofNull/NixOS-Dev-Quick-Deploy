@@ -63,7 +63,8 @@ The ADK integration system consists of several interconnected components:
 3. **Gap Identification**: Identify missing or deferred capabilities
 4. **Parity Calculation**: Calculate category and overall parity scores
 5. **Reporting Phase**: Generate reports and dashboard updates
-6. **Notification Phase**: Alert on significant discoveries or regressions
+6. **Reviewer-Gate Checklist Phase**: Emit the acceptance checklist that maps ADK findings into Phase 4, Phase 6, and Phase 11 validation
+7. **Notification Phase**: Alert on significant discoveries or regressions
 
 ### File Structure
 
@@ -144,6 +145,7 @@ Discovery generates several output files:
 - `discoveries/features-YYYYMMDD.json` - Extracted features
 - `reports/capability-gaps-YYYYMMDD.json` - Identified gaps
 - `reports/roadmap-updates-YYYYMMDD.md` - Roadmap recommendations
+- `reports/reviewer-gate-checklist-YYYYMMDD.md` - Reviewer-gate acceptance checklist tied to active roadmap phases
 - `latest-discovery-notification.json` - Dashboard notification
 
 ## Parity Tracking Methodology

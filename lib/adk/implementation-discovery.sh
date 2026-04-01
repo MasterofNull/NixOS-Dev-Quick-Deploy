@@ -421,6 +421,162 @@ EOF
     return $?
 }
 
+# Generate reviewer-gate checklist tying ADK discovery back into active phases.
+generate_reviewer_gate_checklist() {
+    local gaps_file="${1:-${REPORTS_DIR}/capability-gaps-$(date +%Y%m%d).json}"
+    local parity_file="${2:-${DATA_DIR}/parity-scorecard.json}"
+    local output_file="${3:-${REPORTS_DIR}/reviewer-gate-checklist-$(date +%Y%m%d).md}"
+
+    log_verbose "Generating ADK reviewer-gate checklist"
+
+    if [[ ! -f "${gaps_file}" ]]; then
+        log_error "Gaps file not found: ${gaps_file}"
+        return 1
+    fi
+
+    if [[ ! -f "${parity_file}" ]]; then
+        log_error "Parity scorecard not found: ${parity_file}"
+        return 1
+    fi
+
+    python3 - "${gaps_file}" "${parity_file}" "${output_file}" <<'EOF'
+import json
+import sys
+from datetime import datetime
+
+gaps_file = sys.argv[1]
+parity_file = sys.argv[2]
+output_file = sys.argv[3]
+
+with open(gaps_file, "r", encoding="utf-8") as fh:
+    gaps_data = json.load(fh)
+with open(parity_file, "r", encoding="utf-8") as fh:
+    parity_data = json.load(fh)
+
+categories = parity_data.get("categories", {}) if isinstance(parity_data, dict) else {}
+deferred = []
+adapted = []
+for category_name, category in categories.items():
+    if not isinstance(category, dict):
+        continue
+    for capability in category.get("capabilities", []) or []:
+        if not isinstance(capability, dict):
+            continue
+        item = {
+            "category": category_name,
+            "name": str(capability.get("name", "")).strip(),
+            "status": str(capability.get("status", "")).strip().lower(),
+            "notes": str(capability.get("notes", "")).strip(),
+        }
+        if item["status"] == "deferred":
+            deferred.append(item)
+        elif item["status"] == "adapted":
+            adapted.append(item)
+
+overall = parity_data.get("overall_parity")
+try:
+    overall_text = f"{float(overall) * 100:.1f}%"
+except (TypeError, ValueError):
+    overall_text = "unknown"
+
+phase_map = {
+    "Phase 4": "multi-agent composition, A2A/MCP parity, workflow/session compatibility, reviewer-gate acceptance",
+    "Phase 6": "routing, remote offload quality, retrieval/state parity for delegated and remote-assisted work",
+    "Phase 11": "local agent tool-use, workflow participation, resilience, and local-runtime validation",
+}
+commands = [
+    "scripts/governance/tier0-validation-gate.sh --pre-commit",
+    "python3 scripts/testing/test-a2a-compat.py",
+    "bash scripts/testing/smoke-agent-harness-parity.sh",
+    "bash scripts/testing/smoke-focused-parity.sh",
+    "bash scripts/testing/check-mcp-health.sh",
+    "scripts/ai/aq-qa 0 --json",
+]
+
+lines = [
+    "# ADK Reviewer-Gate Checklist",
+    "",
+    f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+    f"Overall parity baseline: {overall_text}",
+    f"Discovery gaps in scope: {int(gaps_data.get('total_gaps', 0) or 0)}",
+    "",
+    "## Acceptance Gate",
+    "",
+    "Use this checklist whenever Phase 4.4, Phase 6, or Phase 11 work claims ADK-aligned progress.",
+    "Do not accept roadmap progress on narrative evidence alone; require the commands below or a tighter equivalent.",
+    "",
+    "## Required Commands",
+    "",
+]
+for command in commands:
+    lines.append(f"- `{command}`")
+
+lines.extend([
+    "",
+    "## Phase Mapping",
+    "",
+])
+for phase_name, phase_note in phase_map.items():
+    lines.append(f"- **{phase_name}**: {phase_note}")
+
+lines.extend([
+    "",
+    "## Highest-Value Deferred Capabilities",
+    "",
+])
+if deferred:
+    for item in deferred[:5]:
+        lines.append(
+            f"- `{item['name']}` ({item['category']}): {item['notes'] or 'still deferred in the current parity scorecard'}"
+        )
+else:
+    lines.append("- No deferred capabilities are currently recorded.")
+
+lines.extend([
+    "",
+    "## Adapted Capabilities To Re-verify",
+    "",
+])
+if adapted:
+    for item in adapted[:5]:
+        lines.append(
+            f"- `{item['name']}` ({item['category']}): {item['notes'] or 'adapted rather than adopted; verify harness-specific behavior remains intentional'}"
+        )
+else:
+    lines.append("- No adapted capabilities are currently recorded.")
+
+lines.extend([
+    "",
+    "## Discovery Follow-up",
+    "",
+    "Attach any new ADK release gap to one of these phases before roadmap acceptance:",
+    "- **Phase 4** when the change affects orchestration, sessions, reviewer gates, or A2A/MCP interoperability",
+    "- **Phase 6** when the change affects routing, remote execution quality, or retrieval/state parity for offloaded work",
+    "- **Phase 11** when the change affects local-agent autonomy, tool use, or local execution safety/resilience",
+    "",
+    "## Current Release Gaps",
+    "",
+])
+gaps = gaps_data.get("gaps", []) or []
+if gaps:
+    for gap in gaps[:5]:
+        if not isinstance(gap, dict):
+            continue
+        lines.append(
+            f"- `{gap.get('feature', 'unknown gap')}` [{gap.get('priority', 'unknown')}] from `{gap.get('release', 'unknown release')}`"
+        )
+else:
+    lines.append("- No release gaps were identified in the current discovery run.")
+
+with open(output_file, "w", encoding="utf-8") as fh:
+    fh.write("\n".join(lines) + "\n")
+
+print(f"Generated reviewer-gate checklist: {output_file}")
+EOF
+
+    return $?
+}
+
 # Send dashboard notification
 send_dashboard_notification() {
     local gaps_file="${1:-${REPORTS_DIR}/capability-gaps-$(date +%Y%m%d).json}"
@@ -489,6 +645,7 @@ run_discovery() {
     fi
 
     # Step 3: Compare with harness capabilities
+    local parity_file="${DATA_DIR}/parity-scorecard.json"
     local gaps_file="${REPORTS_DIR}/capability-gaps-$(date +%Y%m%d).json"
     if ! compare_with_harness "${features_file}" "${gaps_file}"; then
         log_error "Failed to compare capabilities"
@@ -502,7 +659,14 @@ run_discovery() {
         return 1
     fi
 
-    # Step 5: Send dashboard notification
+    # Step 5: Generate reviewer-gate checklist
+    local checklist_file="${REPORTS_DIR}/reviewer-gate-checklist-$(date +%Y%m%d).md"
+    if ! generate_reviewer_gate_checklist "${gaps_file}" "${parity_file}" "${checklist_file}"; then
+        log_error "Failed to generate reviewer-gate checklist"
+        return 1
+    fi
+
+    # Step 6: Send dashboard notification
     send_dashboard_notification "${gaps_file}"
 
     log "ADK discovery workflow completed successfully"
