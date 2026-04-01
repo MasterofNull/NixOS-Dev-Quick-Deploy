@@ -2667,6 +2667,7 @@ def _route_prompt_cache_hit_rate(entries: List[dict]) -> Dict[str, Any]:
     return {
         "hits": hits,
         "misses": misses,
+        "sample_total": total,
         "hit_pct": round(100 * hits / total, 1) if total else None,
         "available": total > 0,
         "source": "route_prompt_cache_audit",
@@ -2687,6 +2688,7 @@ def cache_hit_rate(audit_entries: Optional[List[dict]] = None) -> Dict[str, Any]
     result = {
         "hits": int(h),
         "misses": int(m),
+        "sample_total": int(total),
         "hit_pct": round(100 * h / total, 1) if total else None,
         "available": hits is not None or misses is not None,  # None only on connection error
         "source": "embedding_cache_prometheus",
@@ -3644,6 +3646,8 @@ def rag_posture(
     status = "healthy"
     reasons: List[str] = []
     cache_context = _cache_sample_context(cache) if cache.get("available") else None
+    cache_sample_total = int(cache.get("sample_total", 0) or 0)
+    cache_hit_pct = cache.get("hit_pct") if cache.get("available") else None
     if recent_calls == 0:
         status = "historical"
         reasons.append("no recent retrieval traffic")
@@ -3651,11 +3655,12 @@ def rag_posture(
         status = "watch"
         reasons.append(f"{len(actionable_gaps)} actionable gaps")
     if cache.get("available"):
-        total_cache = int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0)
+        total_cache = cache_sample_total or (int(cache.get("hits", 0) or 0) + int(cache.get("misses", 0) or 0))
         hit_pct = cache.get("hit_pct")
         if status != "watch" and recent_calls > 0 and total_cache < 50:
             status = "low_sample"
             reasons.append(f"cache sample still warming ({total_cache} samples)")
+            cache_hit_pct = None
         if total_cache >= 50 and hit_pct is not None and float(hit_pct) < 20.0:
             status = "watch"
             reasons.append(f"cache hit rate {_na(hit_pct, '.1f', '%')}")
@@ -3696,7 +3701,8 @@ def rag_posture(
         "recent_retrieval_calls": recent_calls,
         "total_retrieval_calls": total_calls,
         "actionable_gap_count": len(actionable_gaps),
-        "cache_hit_pct": cache.get("hit_pct") if cache.get("available") else None,
+        "cache_hit_pct": cache_hit_pct,
+        "cache_sample_total": cache_sample_total if cache.get("available") else 0,
         "cache_context": cache_context,
         "retrieval_mix": {
             "recent": recent_mix,
