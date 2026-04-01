@@ -165,6 +165,33 @@ def apply_knowledge(action: dict, dry_run: bool) -> dict:
     outcome = _import_knowledge(topic, dry_run)
     return {"topic": topic, "outcome": outcome}
 
+
+def apply_gap_remediation(action: dict, dry_run: bool) -> dict:
+    script_path = SCRIPT_DIR / "aq-gap-auto-remediate"
+    topic = str(action.get("topic", "")).strip()
+    strategy = str(action.get("strategy", "")).strip()
+    if not script_path.exists():
+        return {"outcome": "skip:script_not_found", "topic": topic, "strategy": strategy}
+    if dry_run:
+        return {"outcome": "dry_run", "topic": topic, "strategy": strategy}
+    try:
+        result = subprocess.run(
+            [str(script_path), "--limit", "5"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            return {"outcome": "ok", "topic": topic, "strategy": strategy}
+        return {
+            "outcome": "failed",
+            "topic": topic,
+            "strategy": strategy,
+            "stderr": (result.stderr or result.stdout or "").strip()[:120],
+        }
+    except Exception as exc:
+        return {"outcome": "error", "topic": topic, "strategy": strategy, "detail": str(exc)[:120]}
+
 def apply_maintenance(action: dict, dry_run: bool) -> dict:
     script_name = str(action.get("script", "")).strip()
     args = action.get("script_args", [])
@@ -270,6 +297,12 @@ def main() -> None:
                       "dry_run": dry_run, "result": result_info}
             if not args.output_json:
                 print("INFO  maintenance:", aname, "| outcome:", result_info.get("outcome"))
+        elif atype == "gap_remediation" and aname == "remediate_gap":
+            result_info = apply_gap_remediation(action, dry_run)
+            record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
+                      "dry_run": dry_run, "result": result_info}
+            if not args.output_json:
+                print("INFO  gap_remediation:", aname, "topic:", action.get("topic", "")[:60], "| outcome:", result_info.get("outcome"))
         elif atype == "eval" and aname == "alert_human":
             record = {"ts": ts, "type": atype, "action": aname, "reason": action.get("reason"),
                       "dry_run": dry_run, "message": action.get("message")}
