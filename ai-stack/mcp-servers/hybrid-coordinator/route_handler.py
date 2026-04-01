@@ -572,10 +572,21 @@ def _prompt_context_for_lane_reason(
 ) -> str:
     """Keep bounded local reasoning prompts compact without changing deeper reasoning lanes."""
     if str(lane_reason or "").strip().lower() == "bounded_reasoning_default_lane":
-        trimmed = str(classifier_context or "").strip()
+        max_chars = max(1, int(getattr(Config, "AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS", 700) or 700))
+        trimmed = str(classifier_context or "").strip()[:max_chars].strip()
         if trimmed:
             return trimmed
     return compressed_context
+
+
+def _prompt_instruction_for_lane_reason(lane_reason: Optional[str]) -> str:
+    """Nudge bounded reasoning toward concise local answers without affecting deeper lanes."""
+    if str(lane_reason or "").strip().lower() == "bounded_reasoning_default_lane":
+        return (
+            "Provide a concise response using only the strongest context. "
+            "Prefer 2-3 short bullets or a short paragraph, and keep the answer under 120 words."
+        )
+    return "Provide a concise response using the context."
 
 
 def init(
@@ -1000,7 +1011,7 @@ async def route_search(
                     prompt = (
                         f"{prompt_prefix}\n\n"
                         f"User query: {query}\n\nContext:\n{prompt_context}\n\n"
-                        "Provide a concise response using the context."
+                        f"{_prompt_instruction_for_lane_reason(local_inference_lane_reason)}"
                     )
             if not _skip_synthesis:
                 _all_results = (
