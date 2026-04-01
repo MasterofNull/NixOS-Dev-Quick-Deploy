@@ -233,6 +233,14 @@ def main() -> int:
                 "roadmap readiness should expose the persisted code review summary",
             )
             assert_true(
+                ((phase3.get("testing_validation") or {}).get("features") or {}).get("property_based_testing") is True,
+                "roadmap readiness should expose property-based testing readiness for phase 3",
+            )
+            assert_true(
+                ((phase3.get("deployment_pipeline") or {}).get("features") or {}).get("rollback") is True,
+                "roadmap readiness should expose deployment rollback readiness for phase 3",
+            )
+            assert_true(
                 phase10.get("promotable_lessons") == 1,
                 "roadmap readiness should expose feedback acceleration lesson counts",
             )
@@ -267,6 +275,22 @@ def main() -> int:
             assert_true(
                 (review_data.get("severity_counts") or {}).get("major") == 1,
                 "code review summary route should summarize review severities",
+            )
+
+            testing_response = client.get("/api/insights/testing/readiness")
+            assert_true(testing_response.status_code == 200, "testing readiness route should succeed")
+            testing_data = testing_response.json()
+            assert_true(
+                testing_data.get("feature_count") >= 3,
+                "testing readiness should expose the implemented validation framework count",
+            )
+
+            deployment_response = client.get("/api/insights/deployments/readiness")
+            assert_true(deployment_response.status_code == 200, "deployment readiness route should succeed")
+            deployment_data = deployment_response.json()
+            assert_true(
+                (deployment_data.get("features") or {}).get("approval_gate") is True,
+                "deployment readiness should expose approval-gate support",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")
