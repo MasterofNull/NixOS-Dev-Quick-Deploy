@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for capability discovery gating on retrieval-only queries."""
+"""Regression checks for capability discovery gating on retrieval and synthesis queries."""
 
 from __future__ import annotations
 
@@ -162,11 +162,27 @@ async def main_async() -> int:
     )
     assert_true(generated is not None, "expected generate_response route_search result")
     assert_true(
-        discovery_calls == ["summarize nixos module options for networking"],
-        "generate_response route_search should still run capability discovery",
+        not discovery_calls,
+        "bounded synthesis route_search should skip capability discovery when the query is not tool-oriented",
     )
 
-    print("PASS: route_handler skips discovery for retrieval-only queries")
+    discovery_oriented = await route_handler.route_search(
+        query="which workflow or tool should i use to debug nixos networking options",
+        mode="hybrid",
+        prefer_local=True,
+        context={"source": "test"},
+        limit=3,
+        keyword_limit=3,
+        score_threshold=0.7,
+        generate_response=True,
+    )
+    assert_true(discovery_oriented is not None, "expected discovery-oriented route_search result")
+    assert_true(
+        discovery_calls == ["which workflow or tool should i use to debug nixos networking options"],
+        "tool-oriented synthesis route_search should still run capability discovery",
+    )
+
+    print("PASS: route_handler gates capability discovery to retrieval-only and tool-oriented synthesis queries")
     return 0
 
 
