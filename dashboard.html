@@ -2407,12 +2407,27 @@
                                 <div class="metric-label">Usage</div>
                                 <div class="metric-value" id="orchUsageSummary">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Reasoning Pattern</div>
+                                <div class="metric-value" id="orchReasoningPattern">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Pattern Boost</div>
+                                <div class="metric-value" id="orchPatternBoost">--</div>
+                            </div>
                         </div>
 
                         <div style="margin-bottom: 1.5rem;">
                             <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Session Objective</h3>
                             <div id="orchObjectiveSummary" style="padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 6px; color: var(--text-secondary); line-height: 1.5;">
                                 Select a session to inspect workflow runtime context.
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Pattern Guidance</h3>
+                            <div id="orchPatternGuidanceList">
+                                <div style="color: var(--text-muted); font-size: 0.85rem;">No reasoning-pattern guidance recorded.</div>
                             </div>
                         </div>
 
@@ -9894,6 +9909,22 @@
             document.getElementById('orchToolBudget').textContent = String(data?.budget?.tool_call_limit ?? '--');
             document.getElementById('orchUsageSummary').textContent = `${data?.usage?.tokens_used ?? '--'} tokens / ${data?.usage?.tool_calls_used ?? '--'} tools`;
             document.getElementById('orchObjectiveSummary').textContent = data.objective || 'No workflow objective recorded.';
+            document.getElementById('orchReasoningPattern').textContent = data?.reasoning_pattern?.selected_pattern || '--';
+            document.getElementById('orchPatternBoost').textContent = String(data?.reasoning_pattern?.boost_multiplier ?? '--');
+
+            const patternGuidanceList = document.getElementById('orchPatternGuidanceList');
+            const phaseRecommendations = data?.reasoning_pattern?.phase_recommendations || {};
+            const recommendationEntries = Object.entries(phaseRecommendations);
+            if (!recommendationEntries.length) {
+                patternGuidanceList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No reasoning-pattern guidance recorded.</div>';
+            } else {
+                patternGuidanceList.innerHTML = recommendationEntries.map(([phaseId, patternName]) => `
+                    <div class="data-item">
+                        <span>${escapeHtml(`${phaseId} -> ${patternName}`)}</span>
+                        <span class="data-meta">phase guidance</span>
+                    </div>
+                `).join('');
+            }
 
             const tbody = document.getElementById('teamMembersTable');
             if (!data.team_members || data.team_members.length === 0) {
