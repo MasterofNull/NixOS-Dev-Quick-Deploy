@@ -519,6 +519,21 @@ def _strong_reasoning_query(query: str) -> bool:
     return any(marker in normalized for marker in strong_markers)
 
 
+def _deep_continuation_query(query: str) -> bool:
+    normalized = str(query or "").strip().lower()
+    if not normalized:
+        return False
+    deep_markers = (
+        "explain why",
+        "why the",
+        "step by step",
+        "root cause",
+        "reason through",
+        "walk through",
+    )
+    return any(marker in normalized for marker in deep_markers)
+
+
 def _select_local_inference_lane(
     query: str,
     complexity: Optional[task_classifier.TaskComplexity],
@@ -530,7 +545,13 @@ def _select_local_inference_lane(
 
     token_estimate = int(getattr(complexity, "token_estimate", 0) or 0)
     if str(getattr(complexity, "reason", "") or "") == "continuation_within_local_capacity":
-        return "reasoning", "continuation_reasoning_lane"
+        if (
+            _deep_continuation_query(query)
+            or token_estimate >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS)
+            or compressed_tokens >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS)
+        ):
+            return "reasoning", "continuation_reasoning_lane"
+        return "default", "light_continuation_default_lane"
 
     if (
         _strong_reasoning_query(query)
