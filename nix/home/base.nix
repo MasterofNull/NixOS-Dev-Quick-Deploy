@@ -251,6 +251,12 @@ let
   # Baseline JSON used to seed a writable settings.json on first activation.
   vscodiumSettingsJSON = pkgs.writeText "vscodium-settings-baseline.json"
     (builtins.toJSON vscodiumSettings);
+  vscodiumArgvJSON = pkgs.writeText "vscodium-argv-baseline.json"
+    (builtins.toJSON {
+      # Mitigate Codium + Wayland + amdgpu freezes under memory pressure by
+      # forcing software rendering for the Electron shell.
+      "disable-hardware-acceleration" = true;
+    });
   vscodeMutableRuntimeExtensions = [
     "ms-python.debugpy"
     "ms-toolsai.jupyter"
@@ -765,6 +771,11 @@ in
 
     unset settings_dir settings_file
   '';
+
+  # Keep VSCodium argv flags declarative. settings.json stays mutable, but the
+  # Electron process flags should converge on every activation because they
+  # directly affect startup stability.
+  home.file.".config/VSCodium/User/argv.json".source = vscodiumArgvJSON;
 
   # Enforce the selected Cyberpunk theme in mutable settings.json.
   # Must run after createVSCodiumSettings which creates the file; vscodeProfiles
