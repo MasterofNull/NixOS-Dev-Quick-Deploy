@@ -502,6 +502,48 @@ def _context_budget_for_task(task_type: str) -> int:
     return default_budget
 
 
+def _strong_reasoning_query(query: str) -> bool:
+    normalized = str(query or "").strip().lower()
+    if not normalized:
+        return False
+    strong_markers = (
+        "compare ",
+        "compare the",
+        "analyze ",
+        "analyse ",
+        "root cause",
+        "step by step",
+        "reason through",
+        "walk through",
+    )
+    return any(marker in normalized for marker in strong_markers)
+
+
+def _select_local_inference_lane(
+    query: str,
+    complexity: Optional[task_classifier.TaskComplexity],
+    compressed_tokens: int,
+    reasoning_client_available: bool,
+) -> tuple[str, str]:
+    if complexity is None or complexity.task_type != "reasoning" or not reasoning_client_available:
+        return "default", "default_local_lane"
+
+    token_estimate = int(getattr(complexity, "token_estimate", 0) or 0)
+    if str(getattr(complexity, "reason", "") or "") == "continuation_within_local_capacity":
+        return "reasoning", "continuation_reasoning_lane"
+
+    if (
+        _strong_reasoning_query(query)
+        and (
+            token_estimate >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS)
+            or compressed_tokens >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS)
+        )
+    ):
+        return "reasoning", "deep_reasoning_lane"
+
+    return "default", "bounded_reasoning_default_lane"
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -608,6 +650,7 @@ async def route_search(
     response_max_tokens = None
     task_complexity_summary = None
     local_inference_lane = None
+    local_inference_lane_reason = None
     _cap_disc: Dict[str, Any] = {
         "decision": "skipped", "reason": "not-evaluated", "cache_hit": False,
         "intent_tags": [], "tools": [], "skills": [], "servers": [], "datasets": [],
@@ -890,13 +933,16 @@ async def route_search(
                         results["task_complexity"] = task_complexity_summary
                         _skip_synthesis = True
                 else:
+                    local_inference_lane, local_inference_lane_reason = _select_local_inference_lane(
+                        query,
+                        _complexity,
+                        compressed_tokens,
+                        llama_cpp_reasoning_client is not None,
+                    )
                     _inference_client = (
                         llama_cpp_reasoning_client
-                        if _complexity.task_type == "reasoning" and llama_cpp_reasoning_client is not None
+                        if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
                         else llama_cpp_client
-                    )
-                    local_inference_lane = (
-                        "reasoning" if _complexity.task_type == "reasoning" and llama_cpp_reasoning_client is not None else "default"
                     )
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
@@ -904,6 +950,7 @@ async def route_search(
             elif not _skip_synthesis:
                 _inference_client = llama_cpp_client
                 local_inference_lane = "default"
+                local_inference_lane_reason = "default_local_lane"
                 _inference_path = "/chat/completions"
                 _inference_headers = {}
                 response_max_tokens = _local_response_budget("synthesize")
@@ -1113,6 +1160,7 @@ async def route_search(
         "response_max_tokens": response_max_tokens if generate_response else None,
         "task_complexity": task_complexity_summary,
         "local_inference_lane": local_inference_lane,
+        "local_inference_lane_reason": local_inference_lane_reason,
         "retrieval_profile": retrieval_profile,
         "capability_discovery": {
             "decision": _cap_disc.get("decision", "unknown"),
