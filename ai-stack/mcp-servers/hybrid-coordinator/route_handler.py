@@ -91,6 +91,27 @@ _CONTINUATION_QUERY_MARKERS = (
     "current work",
 )
 
+_CAPABILITY_DISCOVERY_QUERY_MARKERS = (
+    "tool",
+    "tools",
+    "skill",
+    "skills",
+    "workflow",
+    "workflows",
+    "mcp",
+    "server",
+    "servers",
+    "dataset",
+    "datasets",
+    "capability",
+    "capabilities",
+    "available",
+    "what can you use",
+    "which tool",
+    "which tools",
+    "how should i do this",
+)
+
 # ---------------------------------------------------------------------------
 # Injected dependencies
 # ---------------------------------------------------------------------------
@@ -252,6 +273,28 @@ def _looks_like_continuation_query(query: str, context: Optional[Dict[str, Any]]
         for token in ("context", "patch", "deploy", "troubleshooting", "debug", "loop", "work", "session")
     )
     return has_previous_ref and has_resume_target
+
+
+def _query_wants_capability_discovery(query: str, context: Optional[Dict[str, Any]] = None) -> bool:
+    """Run capability discovery only when the caller is likely asking for tools/workflows."""
+    ctx = context if isinstance(context, dict) else {}
+    if ctx.get("tool_discovery"):
+        return True
+    query_lower = str(query or "").strip().lower()
+    if not query_lower:
+        return False
+    if any(marker in query_lower for marker in _CAPABILITY_DISCOVERY_QUERY_MARKERS):
+        return True
+    return any(
+        phrase in query_lower
+        for phrase in (
+            "find the right",
+            "choose the best tool",
+            "which mcp",
+            "which service",
+            "which workflow",
+        )
+    )
 
 
 def _non_memory_collections() -> List[str]:
@@ -528,6 +571,8 @@ async def route_search(
     response_text = ""
     selected_backend = "none"
     backend_reason_class = "not_used"
+    response_max_tokens = None
+    task_complexity_summary = None
     _cap_disc: Dict[str, Any] = {
         "decision": "skipped", "reason": "not-evaluated", "cache_hit": False,
         "intent_tags": [], "tools": [], "skills": [], "servers": [], "datasets": [],
@@ -551,7 +596,10 @@ async def route_search(
         # so skip that extra fan-out unless the caller already provided discovery context.
         should_run_capability_discovery = (
             Config.AI_CAPABILITY_DISCOVERY_ON_QUERY
-            and (generate_response or bool((context or {}).get("tool_discovery")))
+            and (
+                bool((context or {}).get("tool_discovery"))
+                or (generate_response and _query_wants_capability_discovery(query, context))
+            )
         )
 
         # Phase 5.2 Optimization 1: Start capability discovery in parallel
@@ -738,7 +786,6 @@ async def route_search(
             # use discrete bounded prompt if local-suitable.
             _complexity = None
             _skip_synthesis = False
-            task_complexity_summary = None
             classifier_context = compressed_context[:classifier_context_chars] if classifier_context_chars > 0 else ""
             if Config.AI_TASK_CLASSIFICATION_ENABLED:
                 _complexity = task_classifier.classify(
