@@ -1551,6 +1551,10 @@ _CURATED_STALE_GAP_PATTERNS = (
     "show workflow run start intent contract requirements",
     "how to configure qdrant and hybrid routing in this repo",
     "qdrant hybrid routing configuration",
+    "programs git settings credential helper conflicting definition values",
+    "home manager git credential helper conflict",
+    "systemd oneshot permission denied var lib",
+    "tmpfiles z rules ownership reset",
     "nixos declarative runtime tool security policy pattern for hybrid coor",
     "verify semantic tool calling and tool security metadata",
     "continue agent mode still says message exceeds context limit",
@@ -2140,6 +2144,17 @@ def historical_hint_watchlist(
         }
     )
     return watch
+
+
+def _historical_hint_alternate_ids(historical_hint_watch: Optional[Dict[str, Any]]) -> List[str]:
+    if not historical_hint_watch or not historical_hint_watch.get("has_items"):
+        return []
+    alternatives = historical_hint_watch.get("alternative_hints") or []
+    return [
+        str(item.get("hint_id", "")).strip()
+        for item in alternatives[:2]
+        if isinstance(item, dict) and str(item.get("hint_id", "")).strip()
+    ]
 
 
 def _format_agent_lesson_candidate(candidate: Dict[str, Any]) -> str:
@@ -3331,6 +3346,7 @@ def build_structured_actions(
     delegated_prompt_failures: Optional[Dict[str, Any]] = None,
     agent_lessons: Optional[Dict[str, Any]] = None,
     route_latency_decomposition: Optional[Dict[str, Any]] = None,
+    historical_hint_watch: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """Machine-readable optimization actions for aq-optimizer."""
     actions: List[dict] = []
@@ -3455,6 +3471,21 @@ def build_structured_actions(
                 "materialization": top.get("materialization"),
                 "validation": "scripts/ai/aq-report --format json | jq '.agent_lessons'",
             })
+
+    if historical_hint_watch and historical_hint_watch.get("available") and historical_hint_watch.get("has_items"):
+        actions.append({
+            "type": "hints",
+            "action": "rotate_hint_alternates",
+            "reason": (
+                f"historical_hint_concentration={historical_hint_watch.get('dominant_hint_id')}:"
+                f"{historical_hint_watch.get('dominant_share_pct')}"
+            ),
+            "safe": True,
+            "confidence": 0.66,
+            "dominant_hint_id": historical_hint_watch.get("dominant_hint_id"),
+            "alternate_hint_ids": _historical_hint_alternate_ids(historical_hint_watch),
+            "validation": "scripts/ai/aq-report --format json | jq '.historical_hint_watchlist'",
+        })
 
     knowledge_gaps = [
         g for g in gaps
@@ -4708,6 +4739,7 @@ def format_md(
             )
             if alt_text:
                 lines.append(f"- Candidate alternates: {alt_text}")
+                lines.append("- Next action: rotate one of the alternate hints into the next steering batch before repeating the dominant hint.")
         lines.append("- Status: historical concentration only; diversify future high-signal hints before this becomes active again.")
     lines.append("")
 
@@ -5470,6 +5502,7 @@ def format_text(
             )
             if alt_text:
                 lines.append(f"  Candidate alternates: {alt_text}")
+                lines.append("  Next action: rotate one alternate hint into the next steering batch before repeating the dominant hint.")
         lines.append("  Status: historical concentration only; diversify future high-signal hints before this becomes active again.")
     lines.append("")
 
@@ -5775,6 +5808,7 @@ def main() -> None:
         delegation_feedback,
         agent_lessons,
         route_latency_decomposition,
+        historical_hint_watch,
     )
 
     # Render

@@ -143,10 +143,22 @@ post_doc "NixOS module merge patterns quick reference" \
 delete_gap "Summarize NixOS service option patterns and explain mkIf mkDefault mkForce tradeoffs"
 delete_gap "nixos mkIf mkForce rate limiter options"
 
+post_doc "Home Manager git credential helper conflict quick reference" \
+  "knowledge/home-manager-git-credential-helper-conflict-quick-reference.md" \
+  "When Home Manager reports conflicting definition values for programs.git.settings.credential.helper, treat it as a duplicate scalar owner problem. Prefer one authoritative helper definition in shared config and host-specific overrides only when the shared default is removed or intentionally scoped with higher priority. Validate with home-manager build --flake .#<user-host> and inspect merged ownership before using mkForce on nested freeform git settings."
+delete_gap "programs git settings credential helper conflicting definition values"
+delete_gap "home manager git credential helper conflict"
+
 post_doc "Systemd service configuration quick reference" \
   "knowledge/systemd-service-configuration-quick-reference.md" \
   "Configure systemd services declaratively under systemd.services.<name> in NixOS modules. Put dependency edges in wantedBy, after, requires, and unitConfig; put runtime execution settings in serviceConfig; and keep ports, URLs, and credentials injected through options and environment variables instead of literals. Validate unit behavior with systemctl status, systemctl cat, and journalctl, and prefer StateDirectory or RuntimeDirectory for writable state instead of ad hoc paths."
 delete_gap "systemd service configuration"
+
+post_doc "Systemd oneshot permission and tmpfiles reset quick reference" \
+  "knowledge/systemd-oneshot-permission-and-tmpfiles-reset-quick-reference.md" \
+  "For oneshot or user-run services that fail on writable state under /var/lib, inspect the parent directory mode plus tmpfiles ownership rules together. Use tmpfiles z rules when an existing path must have ownership corrected on activation, keep parent directories traverse-only if child paths need to stay protected, and validate with systemctl status plus systemd-tmpfiles --create --prefix on the affected subtree before blaming the service code."
+delete_gap "systemd oneshot permission denied var lib"
+delete_gap "tmpfiles z rules ownership reset"
 
 post_doc "Declarative runtime tool security policy quick reference" \
   "knowledge/declarative-runtime-tool-security-policy-quick-reference.md" \

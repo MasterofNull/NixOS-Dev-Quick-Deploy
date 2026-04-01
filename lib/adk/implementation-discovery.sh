@@ -484,6 +484,20 @@ phase_map = {
     "Phase 6": "routing, remote offload quality, retrieval/state parity for delegated and remote-assisted work",
     "Phase 11": "local agent tool-use, workflow participation, resilience, and local-runtime validation",
 }
+phase_commands = {
+    "Phase 4": [
+        "bash scripts/testing/smoke-agent-harness-parity.sh",
+        "bash scripts/testing/smoke-focused-parity.sh",
+    ],
+    "Phase 6": [
+        "bash scripts/testing/check-mcp-health.sh",
+        "scripts/ai/aq-report --since=1h --format=json",
+    ],
+    "Phase 11": [
+        "scripts/ai/aq-qa 0 --json",
+        "bash scripts/testing/check-mcp-health.sh",
+    ],
+}
 commands = [
     "scripts/governance/tier0-validation-gate.sh --pre-commit",
     "python3 scripts/testing/test-a2a-compat.py",
@@ -518,6 +532,9 @@ lines.extend([
 ])
 for phase_name, phase_note in phase_map.items():
     lines.append(f"- **{phase_name}**: {phase_note}")
+    mapped_commands = phase_commands.get(phase_name) or []
+    if mapped_commands:
+        lines.append(f"  Gate commands: {', '.join(f'`{command}`' for command in mapped_commands)}")
 
 lines.extend([
     "",
@@ -553,6 +570,15 @@ lines.extend([
     "- **Phase 4** when the change affects orchestration, sessions, reviewer gates, or A2A/MCP interoperability",
     "- **Phase 6** when the change affects routing, remote execution quality, or retrieval/state parity for offloaded work",
     "- **Phase 11** when the change affects local-agent autonomy, tool use, or local execution safety/resilience",
+    "",
+    "## Phase-Scoped Immediate Checks",
+    "",
+    "Use these when a discovery item is promoted into active implementation rather than backlog-only tracking:",
+])
+for phase_name, mapped_commands in phase_commands.items():
+    lines.append(f"- **{phase_name}**: {', '.join(f'`{command}`' for command in mapped_commands)}")
+
+lines.extend([
     "",
     "## Current Release Gaps",
     "",
