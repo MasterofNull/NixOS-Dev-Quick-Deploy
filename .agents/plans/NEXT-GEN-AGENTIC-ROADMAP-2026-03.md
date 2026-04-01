@@ -67,6 +67,7 @@ Required closure steps for scaffold-heavy work:
 2. Add regression coverage that proves the surface or integration contract.
 3. Record remaining blockers in the parent roadmap batch instead of leaving them implicit in code comments.
 4. Mark redeploy-gated items explicitly so they are revisited after activation.
+5. For NixOS services, classify every path as `repo-grounded artifact` or `runtime mutable state`; runtime mutable state must default to declarative writable roots, not `.agents/` or hardcoded `/home/...` paths.
 
 Current scaffold-closure queue to keep in active rotation:
 - `1.1` remaining OpenTelemetry, unified collector, tracing, structured logging, Grafana/dashboard completion
