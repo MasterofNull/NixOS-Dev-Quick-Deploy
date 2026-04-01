@@ -738,11 +738,19 @@ async def route_search(
             # use discrete bounded prompt if local-suitable.
             _complexity = None
             _skip_synthesis = False
+            task_complexity_summary = None
             classifier_context = compressed_context[:classifier_context_chars] if classifier_context_chars > 0 else ""
             if Config.AI_TASK_CLASSIFICATION_ENABLED:
                 _complexity = task_classifier.classify(
                     query, classifier_context, max_output_tokens=local_max_tokens
                 )
+                task_complexity_summary = {
+                    "type": _complexity.task_type,
+                    "tokens": _complexity.token_estimate,
+                    "local_suitable": bool(_complexity.local_suitable),
+                    "remote_required": bool(_complexity.remote_required),
+                    "reason": _complexity.reason,
+                }
                 logger.info(
                     "task_complexity type=%s tokens=%d local=%s reason=%s",
                     _complexity.task_type,
@@ -766,11 +774,7 @@ async def route_search(
                         )
                     else:
                         results["synthesis_skipped"] = True
-                        results["task_complexity"] = {
-                            "type": _complexity.task_type,
-                            "tokens": _complexity.token_estimate,
-                            "reason": _complexity.reason,
-                        }
+                        results["task_complexity"] = task_complexity_summary
                         _skip_synthesis = True
                 else:
                     _inference_client = llama_cpp_client
@@ -984,6 +988,9 @@ async def route_search(
         "route": route, "backend": selected_backend, "response": response_text,
         "results": results, "latency_ms": latency_ms,
         "interaction_id": interaction_id,
+        "backend_reason_class": backend_reason_class,
+        "response_max_tokens": response_max_tokens if generate_response else None,
+        "task_complexity": task_complexity_summary,
         "retrieval_profile": retrieval_profile,
         "capability_discovery": {
             "decision": _cap_disc.get("decision", "unknown"),
