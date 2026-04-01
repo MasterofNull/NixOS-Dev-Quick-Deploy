@@ -161,6 +161,54 @@ def _serialize_deployment_result(result: Any) -> Dict[str, Any]:
     return payload
 
 
+def _build_runtime_summary(summary: Dict[str, Any], timeline: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Extract operator-facing runtime deployment metadata from timeline events."""
+    request_metadata: Dict[str, Any] = {}
+    result_metadata: Dict[str, Any] = {}
+    approval: Dict[str, Any] = {}
+
+    for event in timeline:
+        metadata = event.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            continue
+        event_type = str(event.get("event_type") or "")
+        if event_type == "runtime_plan":
+            request_metadata = metadata
+        elif event_type == "runtime_result":
+            result_metadata = metadata
+        elif event_type in {"approval_requested", "approval_approved", "approval_rejected"}:
+            approval = {
+                "status": event_type.removeprefix("approval_"),
+                "timestamp": event.get("timestamp"),
+                "reviewer": metadata.get("reviewer"),
+                "reason": event.get("message"),
+            }
+
+    result_payload = result_metadata if result_metadata else {}
+    strategy = request_metadata.get("strategy") or result_payload.get("strategy")
+    if not strategy and not approval:
+        return None
+
+    return {
+        "strategy": strategy,
+        "dry_run": request_metadata.get("dry_run"),
+        "require_approval": request_metadata.get("require_approval"),
+        "auto_rollback": request_metadata.get("auto_rollback"),
+        "canary_percentage": request_metadata.get("canary_percentage"),
+        "validation_timeout_seconds": request_metadata.get("validation_timeout_seconds"),
+        "verification_timeout_seconds": request_metadata.get("verification_timeout_seconds"),
+        "approval_timeout_seconds": request_metadata.get("approval_timeout_seconds"),
+        "validation_passed": result_payload.get("validation_passed"),
+        "deployment_succeeded": result_payload.get("deployment_succeeded"),
+        "verification_passed": result_payload.get("verification_passed"),
+        "rollback_performed": result_payload.get("rollback_performed"),
+        "result_status": result_payload.get("status") or summary.get("status"),
+        "metrics": result_payload.get("metrics") or {},
+        "logs": result_payload.get("logs") or [],
+        "approval": approval or None,
+    }
+
+
 async def _broadcast_runtime_status(
     deployment_id: str,
     event_type: str,
@@ -754,6 +802,7 @@ async def get_deployment(deployment_id: str):
     return {
         **summary,
         "timeline": timeline,
+        "runtime_summary": _build_runtime_summary(summary, timeline),
         "rollback": {
             "available": summary["status"] in {"running", "failed", "success"},
             "command": "deploy system --rollback",

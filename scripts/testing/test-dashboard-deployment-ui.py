@@ -14,6 +14,7 @@ DASHBOARD_HTML = REPO_ROOT / "dashboard.html"
 REQUIRED_SNIPPETS = [
     'id="section-deployments"',
     'id="deploymentHistoryList"',
+    'id="deploymentRuntimeSummaryList"',
     'id="deploymentTimeline"',
     'id="deploymentSearchMode"',
     'id="deploymentSearchStatusGrid"',
@@ -70,6 +71,9 @@ REQUIRED_SNIPPETS = [
     'function submitDeploymentExecution()',
     'function reviewPendingDeployment(',
     'function executeDeploymentRollback()',
+    'runtime_summary',
+    'runtime plan',
+    'runtime result',
     '/api/deployments/execute',
     '/api/deployments/approvals/pending',
     '/api/deployments/${encodeURIComponent(deploymentId)}/approval',

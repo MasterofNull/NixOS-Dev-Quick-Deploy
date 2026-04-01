@@ -3429,6 +3429,16 @@
                                     </div>
 
                                     <div>
+                                        <div class="deployment-subtitle">Runtime Execution Summary</div>
+                                        <div class="data-list" id="deploymentRuntimeSummaryList">
+                                            <div class="data-item">
+                                                <span>Select a deployment to inspect runtime strategy and verification outcomes.</span>
+                                                <span class="data-meta">idle</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
                                         <div class="deployment-subtitle">Timeline</div>
                                         <div class="deployment-timeline" id="deploymentTimeline">
                                             <div class="deployment-event">
@@ -8311,6 +8321,7 @@
             const statusEl = document.getElementById('deploymentDetailStatus');
             const startedEl = document.getElementById('deploymentDetailStarted');
             const completedEl = document.getElementById('deploymentDetailCompleted');
+            const runtimeSummaryEl = document.getElementById('deploymentRuntimeSummaryList');
             const timelineEl = document.getElementById('deploymentTimeline');
 
             if (!detail) {
@@ -8319,6 +8330,9 @@
                 if (statusEl) statusEl.textContent = '--';
                 if (startedEl) startedEl.textContent = '--';
                 if (completedEl) completedEl.textContent = '--';
+                if (runtimeSummaryEl) {
+                    runtimeSummaryEl.innerHTML = '<div class="data-item"><span>Select a deployment to inspect runtime strategy and verification outcomes.</span><span class="data-meta">idle</span></div>';
+                }
                 if (timelineEl) {
                     timelineEl.innerHTML = '<div class="deployment-event"><div class="deployment-event-message">Timeline will appear after selecting a deployment.</div></div>';
                 }
@@ -8333,6 +8347,29 @@
                 completedEl.textContent = detail.completed_at
                     ? `${formatAbsoluteTime(detail.completed_at)} · ${formatDurationSeconds(detail.duration_seconds)}`
                     : 'in progress';
+            }
+            if (runtimeSummaryEl) {
+                const runtimeSummary = detail.runtime_summary || null;
+                if (!runtimeSummary) {
+                    runtimeSummaryEl.innerHTML = '<div class="data-item"><span>No runtime deployment summary captured.</span><span class="data-meta">none</span></div>';
+                } else {
+                    const metrics = runtimeSummary.metrics || {};
+                    const metricSummary = Object.entries(metrics).slice(0, 4).map(([key, value]) => `${key}=${value}`).join(' | ');
+                    runtimeSummaryEl.innerHTML = `
+                        <div class="data-item">
+                            <span>${escapeHtml(`strategy=${runtimeSummary.strategy || 'unknown'} | dry_run=${runtimeSummary.dry_run !== false} | approval=${runtimeSummary.approval?.status || 'none'}`)}</span>
+                            <span class="data-meta">runtime plan</span>
+                        </div>
+                        <div class="data-item">
+                            <span>${escapeHtml(`validation=${runtimeSummary.validation_passed} | deploy=${runtimeSummary.deployment_succeeded} | verification=${runtimeSummary.verification_passed} | rollback=${runtimeSummary.rollback_performed}`)}</span>
+                            <span class="data-meta">runtime result</span>
+                        </div>
+                        <div class="data-item">
+                            <span>${escapeHtml(metricSummary || 'No runtime metrics recorded')}</span>
+                            <span class="data-meta">metrics</span>
+                        </div>
+                    `;
+                }
             }
 
             const timeline = Array.isArray(detail.timeline) && detail.timeline.length
