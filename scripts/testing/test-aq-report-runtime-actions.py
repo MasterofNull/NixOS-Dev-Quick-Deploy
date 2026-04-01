@@ -55,6 +55,7 @@ def main() -> int:
         "breakdown": [
             {"label": "local_lane:reasoning", "calls": 6, "p95_ms": 15267.3},
             {"label": "synthesis_type:reasoning", "calls": 6, "p95_ms": 15267.3},
+            {"label": "local_lane:default", "calls": 3, "p95_ms": 4820.0},
         ],
     }
 
@@ -79,6 +80,7 @@ def main() -> int:
     joined = "\n".join(recommendations)
     assert_true("eval-regression-check" in joined, "expected tagged eval recommendation")
     assert_true("Local reasoning synthesis remains the route_search tail" in joined, "expected reasoning-lane recommendation")
+    assert_true("Dedicated local reasoning is materially slower than the default local lane" in joined, "expected default-vs-reasoning lane recommendation")
     assert_true("promotable lesson candidate" in joined, "expected feedback acceleration recommendation")
     assert_true("Recurring capability gaps remain actionable" in joined, "expected gap remediation recommendation")
 
