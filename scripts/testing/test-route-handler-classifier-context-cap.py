@@ -50,6 +50,7 @@ def load_route_handler():
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS=360,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS=850,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS=300,
+                AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS=700,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=160,
                 AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=400,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS=4.0,
@@ -195,6 +196,10 @@ async def main_async() -> int:
     assert_true(
         len(bounded_prompt) < 2200,
         "expected bounded reasoning default-lane prompt context to stay compact",
+    )
+    assert_true(
+        "concise local reasoning summary" in bounded_prompt,
+        "expected bounded reasoning default-lane prompt to use compact local reasoning guidance",
     )
 
     continuation_local_client = _RecordingClient(content="continuation local synthesis")
