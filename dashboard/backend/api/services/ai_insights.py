@@ -56,7 +56,6 @@ class AIInsightsService:
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl_seconds = 60  # 1 minute cache
-        self._cache_stale_ttl_seconds = 300  # 5 minutes fallback window
         self._report_lock = asyncio.Lock()
         self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
         self._seed_cache_from_persisted_report()
@@ -70,7 +69,7 @@ class AIInsightsService:
             task = await self._get_or_start_report_task()
             return await asyncio.shield(task)
         except RuntimeError:
-            stale = self._get_cached_report(max_age_seconds=self._cache_stale_ttl_seconds)
+            stale = self._get_cached_report(max_age_seconds=None)
             if stale is not None:
                 logger.warning("Serving stale aq-report cache after refresh failure")
                 return stale
