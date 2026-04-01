@@ -149,7 +149,7 @@ def load_latest_gaps() -> Dict[str, Any]:
         return {}
 
 
-@router.get("/api/adk/parity", response_model=ParityStatusResponse)
+@router.get("/parity", response_model=ParityStatusResponse)
 async def get_parity_status():
     """
     Get current ADK parity status.
@@ -184,7 +184,7 @@ async def get_parity_status():
     return response
 
 
-@router.get("/api/adk/discoveries", response_model=DiscoveryResponse)
+@router.get("/discoveries", response_model=DiscoveryResponse)
 async def get_discoveries():
     """
     List recent ADK feature discoveries.
@@ -224,7 +224,7 @@ async def get_discoveries():
     return response
 
 
-@router.get("/api/adk/integrations", response_model=IntegrationResponse)
+@router.get("/integrations", response_model=IntegrationResponse)
 async def get_integrations():
     """
     List ADK integrations by status.
@@ -271,7 +271,7 @@ async def get_integrations():
     )
 
 
-@router.get("/api/adk/gaps", response_model=GapResponse)
+@router.get("/gaps", response_model=GapResponse)
 async def get_gaps():
     """
     List capability gaps.
@@ -298,7 +298,7 @@ async def get_gaps():
     )
 
 
-@router.post("/api/adk/discovery/trigger")
+@router.post("/discovery/trigger")
 async def trigger_discovery(background_tasks: BackgroundTasks):
     """
     Trigger manual ADK discovery.
@@ -344,7 +344,7 @@ async def trigger_discovery(background_tasks: BackgroundTasks):
     }
 
 
-@router.get("/api/adk/roadmap-impact", response_model=RoadmapImpactResponse)
+@router.get("/roadmap-impact", response_model=RoadmapImpactResponse)
 async def get_roadmap_impact():
     """
     Show roadmap impact from ADK discoveries.
@@ -401,7 +401,7 @@ async def get_roadmap_impact():
     )
 
 
-@router.get("/api/adk/status")
+@router.get("/status")
 async def get_status():
     """
     Get ADK integration health status.
