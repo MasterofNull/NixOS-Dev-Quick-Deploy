@@ -48,6 +48,16 @@ def _persisted_aq_report_path() -> Path:
         return Path(configured)
     return Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
 
+
+def _optimization_proposals_path() -> Path:
+    configured = os.getenv("DASHBOARD_OPTIMIZATION_PROPOSALS_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    configured = os.getenv("OPTIMIZATION_PROPOSALS_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return Path("/var/lib/ai-stack/hybrid/telemetry/optimization_proposals.jsonl")
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
@@ -185,6 +195,84 @@ class AIInsightsService:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
+
+    def _load_recent_optimization_history(self, limit: int = 25) -> Dict[str, Any]:
+        """Load a bounded summary of recent optimization proposals from telemetry."""
+        path = _optimization_proposals_path()
+        if limit <= 0:
+            limit = 1
+        if not path.exists():
+            return {
+                "available": False,
+                "path": str(path),
+                "total_recent": 0,
+                "recent": [],
+                "types": {},
+                "target_keys": {},
+                "last_proposal_at": None,
+            }
+
+        entries: List[Dict[str, Any]] = []
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    raw_line = line.strip()
+                    if not raw_line:
+                        continue
+                    try:
+                        payload = json.loads(raw_line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(payload, dict):
+                        entries.append(payload)
+        except OSError as exc:
+            logger.warning("Failed to load optimization proposal history from %s: %s", path, exc)
+            return {
+                "available": False,
+                "path": str(path),
+                "total_recent": 0,
+                "recent": [],
+                "types": {},
+                "target_keys": {},
+                "last_proposal_at": None,
+                "error": str(exc),
+            }
+
+        recent_entries = entries[-limit:]
+        type_counts: Dict[str, int] = {}
+        target_key_counts: Dict[str, int] = {}
+        recent: List[Dict[str, Any]] = []
+        last_proposal_at: Optional[str] = None
+
+        for entry in reversed(recent_entries):
+            proposal_type = str(entry.get("proposal_type") or "unknown")
+            target_key = str(entry.get("target_config_key") or "unknown")
+            type_counts[proposal_type] = type_counts.get(proposal_type, 0) + 1
+            target_key_counts[target_key] = target_key_counts.get(target_key, 0) + 1
+            recent.append(
+                {
+                    "proposal_type": proposal_type,
+                    "target_config_key": target_key,
+                    "current_value": entry.get("current_value"),
+                    "proposed_value": entry.get("proposed_value"),
+                    "confidence": entry.get("confidence"),
+                    "evidence_summary": entry.get("evidence_summary"),
+                    "proposal_hash": entry.get("proposal_hash"),
+                }
+            )
+
+        if recent:
+            last_proposal_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+
+        return {
+            "available": True,
+            "path": str(path),
+            "total_recent": len(recent),
+            "recent": recent,
+            "types": type_counts,
+            "target_keys": target_key_counts,
+            "last_proposal_at": last_proposal_at,
+        }
 
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
@@ -606,6 +694,7 @@ class AIInsightsService:
     async def get_performance_hotspots(self) -> Dict[str, Any]:
         """Return the highest-signal performance hotspots for current optimization work."""
         report = await self.get_full_report()
+        optimization_history = self._load_recent_optimization_history()
         cache = report.get("cache", {}) if isinstance(report.get("cache"), dict) else {}
         rag_posture = report.get("rag_posture", {}) if isinstance(report.get("rag_posture"), dict) else {}
         route_latency = (
@@ -685,6 +774,7 @@ class AIInsightsService:
             "cache": cache,
             "retrieval_breadth": retrieval_breadth,
             "retrieval_breadth_windows": retrieval_windows,
+            "optimization_history": optimization_history,
             "rag_posture": {
                 "status": rag_posture.get("status"),
                 "reasons": rag_posture.get("reasons", []),
