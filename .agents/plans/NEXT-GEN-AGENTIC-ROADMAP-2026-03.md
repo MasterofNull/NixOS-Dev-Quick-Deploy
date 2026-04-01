@@ -255,6 +255,10 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Rollback automation
 - ✅ Deployment dashboard
 
+**Runtime follow-through landed:**
+- Deployment detail APIs now surface strategy, approval, verification, rollback, and metric summaries from repo-native runtime deployment executions
+- Command Center deployment inspector now shows runtime deployment strategy, approval state, verification outcome, rollback state, and bounded metric summaries
+
 ---
 
 ## Phase 4: Bleeding-Edge Agentic Capabilities

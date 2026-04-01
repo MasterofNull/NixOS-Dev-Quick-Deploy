@@ -2222,14 +2222,37 @@ class ContextStore:
     def get_deployment_timeline(self, deployment_id: str) -> List[Dict]:
         """Get condensed timeline (not full logs)"""
         cursor = self.conn.execute("""
-            SELECT event_type, message, timestamp, progress
+            SELECT event_type, message, timestamp, progress, metadata
             FROM deployment_events
             WHERE deployment_id = ?
-              AND event_type IN ('started', 'progress', 'success', 'failed', 'rollback')
+              AND event_type IN (
+                'started',
+                'progress',
+                'success',
+                'failed',
+                'rollback',
+                'runtime_plan',
+                'runtime_execution',
+                'runtime_result',
+                'approval_requested',
+                'approval_approved',
+                'approval_rejected'
+              )
             ORDER BY timestamp ASC
         """, (deployment_id,))
 
-        return [dict(row) for row in cursor]
+        timeline = []
+        for row in cursor:
+            item = dict(row)
+            if item.get("metadata"):
+                try:
+                    item["metadata"] = json.loads(item["metadata"])
+                except json.JSONDecodeError:
+                    item["metadata"] = {}
+            else:
+                item["metadata"] = {}
+            timeline.append(item)
+        return timeline
 
     # ========================================================================
     # Git and File Tracking
