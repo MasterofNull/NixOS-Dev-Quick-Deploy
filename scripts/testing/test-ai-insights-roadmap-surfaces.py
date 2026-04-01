@@ -49,7 +49,17 @@ def main() -> int:
             },
             "routing": {"available": True, "local_pct": 100.0, "remote_n": 0},
             "continue_editor": {"status": "healthy"},
-            "route_search_latency_decomposition": {"available": True, "overall_p95_ms": 4200.0, "total_calls": 18},
+            "route_search_latency_decomposition": {
+                "available": True,
+                "overall_p95_ms": 4200.0,
+                "synthesis_p95_ms": 6100.0,
+                "retrieval_only_p95_ms": 850.0,
+                "total_calls": 18,
+                "breakdown": [
+                    {"label": "local_lane_reason:bounded_reasoning_default_lane", "calls": 5, "p95_ms": 11200.0},
+                    {"label": "synthesis_type:reasoning", "calls": 5, "p95_ms": 11200.0},
+                ],
+            },
             "query_gaps": [{"query_text": "home-manager credential helper conflict", "occurrences": 4}],
             "gap_remediation": {
                 "available": True,
@@ -89,9 +99,19 @@ def main() -> int:
             readiness_response = client.get("/api/insights/roadmap/readiness")
             assert_true(readiness_response.status_code == 200, "roadmap readiness route should succeed")
             readiness = readiness_response.json()
+            phase1 = (readiness.get("phases") or {}).get("phase1") or {}
             phase4 = (readiness.get("phases") or {}).get("phase4") or {}
             phase10 = (readiness.get("phases") or {}).get("phase10") or {}
             phase11 = (readiness.get("phases") or {}).get("phase11") or {}
+            assert_true(
+                phase1.get("status") == "watch",
+                "roadmap readiness should surface active profiling bottlenecks for phase 1",
+            )
+            top_hotspot = (phase1.get("top_hotspots") or [{}])[0]
+            assert_true(
+                top_hotspot.get("label") == "local_lane_reason:bounded_reasoning_default_lane",
+                "roadmap readiness should preserve the top profiling hotspot label",
+            )
             assert_true(
                 phase10.get("promotable_lessons") == 1,
                 "roadmap readiness should expose feedback acceleration lesson counts",

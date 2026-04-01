@@ -315,6 +315,26 @@ class AIInsightsService:
         )
         structured_actions = report.get("structured_actions", []) if isinstance(report.get("structured_actions"), list) else []
         recommendations = report.get("recommendations", []) if isinstance(report.get("recommendations"), list) else []
+        route_breakdown = route_latency.get("breakdown", []) if isinstance(route_latency.get("breakdown"), list) else []
+
+        phase1_hotspots = [
+            {
+                "label": str(item.get("label", "") or ""),
+                "calls": int(item.get("calls", 0) or 0),
+                "p95_ms": item.get("p95_ms"),
+            }
+            for item in route_breakdown
+            if isinstance(item, dict) and str(item.get("label", "") or "").strip()
+        ][:3]
+        phase1_status = "pending"
+        if route_latency.get("available"):
+            phase1_status = "healthy"
+            overall_p95 = route_latency.get("overall_p95_ms")
+            if (
+                any("route_search" in str(rec or "").lower() for rec in recommendations)
+                or (isinstance(overall_p95, (int, float)) and overall_p95 >= 3000)
+            ):
+                phase1_status = "watch"
 
         phase4_failed = int(((phase4.get("summary") or {}).get("failed_flows", 0) or 0)) if isinstance(phase4, dict) else 0
         phase4_status = "healthy"
@@ -352,9 +372,19 @@ class AIInsightsService:
             "window": report.get("window"),
             "status": "healthy" if all(
                 status in {"healthy", "active"}
-                for status in (phase4_status, phase6_status, phase11_status)
+                for status in (phase1_status, phase4_status, phase6_status, phase11_status)
             ) and phase9_status in {"healthy", "low_sample"} and phase10_status in {"healthy", "low_sample"} else "watch",
             "phases": {
+                "phase1": {
+                    "status": phase1_status,
+                    "profiling_available": bool(route_latency.get("available")),
+                    "route_search_latency": {
+                        "overall_p95_ms": route_latency.get("overall_p95_ms"),
+                        "synthesis_p95_ms": route_latency.get("synthesis_p95_ms"),
+                        "retrieval_only_p95_ms": route_latency.get("retrieval_only_p95_ms"),
+                    },
+                    "top_hotspots": phase1_hotspots,
+                },
                 "phase4": {
                     "status": phase4_status,
                     "acceptance": phase4,
