@@ -102,7 +102,9 @@ import mcp_handlers
 # Phase 1: Alert Engine integration
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
+from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -137,6 +139,7 @@ _HYBRID_STATS: Dict[str, Any] = {}
 _HARNESS_STATS: Dict[str, Any] = {}
 _CIRCUIT_BREAKERS: Optional[Any] = None
 _SERVICE_NAME: str = "hybrid-coordinator"
+_AGENT_POOL_MANAGER = AgentPoolManager()
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -467,6 +470,78 @@ def _apply_remote_runtime_status(
     elif runtime_id == "local-tool-calling":
         runtime["status"] = "degraded"
     return runtime
+
+
+def _agent_pool_status_snapshot() -> Dict[str, Any]:
+    """Return compact remote agent-pool status for health and operator surfaces."""
+    stats = _AGENT_POOL_MANAGER.get_pool_stats()
+    agents = []
+    for agent in _AGENT_POOL_MANAGER.agents.values():
+        agents.append(
+            {
+                "agent_id": agent.agent_id,
+                "provider": agent.provider,
+                "model_id": agent.model_id,
+                "tier": agent.tier.value,
+                "status": agent.status.value,
+                "current_load": agent.current_load,
+                "max_concurrent": agent.max_concurrent,
+                "success_rate": round(agent.success_rate(), 4),
+                "avg_latency_ms": round(agent.avg_latency_ms, 2),
+                "avg_quality_score": round(agent.avg_quality_score, 4),
+                "total_requests": agent.total_requests,
+            }
+        )
+    agents.sort(
+        key=lambda item: (
+            item["status"] != "available",
+            item["tier"] != AgentTier.FREE.value,
+            item["current_load"],
+            item["agent_id"],
+        )
+    )
+    return {
+        "total_agents": stats.total_agents,
+        "available_agents": stats.available_agents,
+        "free_agents_available": stats.free_agents_available,
+        "total_requests": stats.total_requests,
+        "successful_requests": stats.successful_requests,
+        "avg_latency_ms": round(stats.avg_latency_ms, 2),
+        "agents": agents,
+    }
+
+
+def _remote_profile_uses_agent_pool(profile_name: str) -> bool:
+    return str(profile_name or "").strip() == "remote-free"
+
+
+def _select_agent_pool_candidate(
+    profile_name: str,
+    *,
+    min_context_window: int = 0,
+    allow_paid: bool = True,
+    exclude_agent_id: str = "",
+) -> Optional[RemoteAgent]:
+    """Select a pool agent for remote-free or fallback routing."""
+    if not _remote_profile_uses_agent_pool(profile_name):
+        return None
+    candidate = _AGENT_POOL_MANAGER.get_available_agent(
+        prefer_free=True,
+        min_context_window=max(0, int(min_context_window or 0)) or None,
+    )
+    if candidate and candidate.agent_id != exclude_agent_id:
+        return candidate
+    if exclude_agent_id:
+        candidate = _AGENT_POOL_MANAGER.get_failover_agent(exclude_agent_id, allow_paid=allow_paid)
+        if candidate:
+            return candidate
+    if allow_paid:
+        for agent in _AGENT_POOL_MANAGER.agents.values():
+            if agent.agent_id == exclude_agent_id:
+                continue
+            if agent.tier != AgentTier.FREE and agent.is_available():
+                return agent
+    return None
 
 
 def _audit_http_request(request: web.Request, status: int, latency_ms: float) -> None:
@@ -3511,6 +3586,8 @@ async def run_http_mode(port: int) -> None:
             "quality_monitor": _get_quality_monitor_stats(),
             # Auto Quality Improvement stats
             "auto_quality_improvement": _get_auto_improvement_summary(),
+            # Batch 6.2 — Remote agent pool stats
+            "agent_pool": _agent_pool_status_snapshot(),
             # Batch 5.2 — Skill Usage Tracking
             "skill_usage_stats": _get_skill_usage_stats(),
             # Batch 6.2 — Pattern Integration & Effectiveness
@@ -7291,6 +7368,19 @@ async def run_http_mode(port: int) -> None:
             timeout_s = float(data.get("timeout_s") or 60.0)
             finalization_applied = False
             finalization_status_code = None
+            pool_agent: Optional[RemoteAgent] = None
+            pool_agent_acquired = False
+            pool_quality_score = 0.0
+            request_started_at = time.perf_counter()
+
+            if "model" not in payload and _remote_profile_uses_agent_pool(selected_profile):
+                pool_agent = _select_agent_pool_candidate(
+                    selected_profile,
+                    min_context_window=int(payload.get("max_tokens") or 0),
+                )
+                if pool_agent and _AGENT_POOL_MANAGER.acquire_agent(pool_agent.agent_id):
+                    pool_agent_acquired = True
+                    payload["model"] = pool_agent.model_id
 
             async def _post_delegate(profile_name: str) -> httpx.Response:
                 local_profiles = {"default", "local-tool-calling"}
@@ -7324,6 +7414,21 @@ async def run_http_mode(port: int) -> None:
                 effective_profile = "remote-free"
                 effective_runtime_id = "openrouter-free"
                 fallback_applied = True
+                if pool_agent and response.status_code in {402, 429}:
+                    _AGENT_POOL_MANAGER.mark_rate_limited(pool_agent.agent_id)
+                    if pool_agent_acquired:
+                        _AGENT_POOL_MANAGER.release_agent(pool_agent.agent_id, success=False, latency_ms=0.0, quality_score=0.0)
+                        pool_agent_acquired = False
+                if "model" not in data:
+                    fallback_pool_agent = _select_agent_pool_candidate(
+                        effective_profile,
+                        min_context_window=int(payload.get("max_tokens") or 0),
+                        exclude_agent_id=pool_agent.agent_id if pool_agent else "",
+                    )
+                    if fallback_pool_agent and _AGENT_POOL_MANAGER.acquire_agent(fallback_pool_agent.agent_id):
+                        pool_agent = fallback_pool_agent
+                        pool_agent_acquired = True
+                        payload["model"] = fallback_pool_agent.model_id
                 response = await _post_delegate(effective_profile)
                 runtime = _apply_remote_runtime_status(
                     dict((registry.get("runtimes", {}) or {}).get(effective_runtime_id) or {}),
@@ -7497,7 +7602,21 @@ async def run_http_mode(port: int) -> None:
                 "delegation_recovery_class": recovered_artifact.get("recovery_class", "") if recovered_artifact.get("available") else "",
                 "delegation_finalization_applied": finalization_applied,
                 "delegation_handoff_requested": bool(final_classification.get("handoff_requested")),
+                "agent_pool_agent_id": pool_agent.agent_id if pool_agent else "",
+                "agent_pool_tier": pool_agent.tier.value if pool_agent else "",
+                "agent_pool_provider": pool_agent.provider if pool_agent else "",
             }
+
+            if pool_agent and response.status_code in {402, 429}:
+                _AGENT_POOL_MANAGER.mark_rate_limited(pool_agent.agent_id)
+            if pool_agent and pool_agent_acquired:
+                _AGENT_POOL_MANAGER.release_agent(
+                    pool_agent.agent_id,
+                    success=response.status_code < 400,
+                    latency_ms=max(0.0, (time.perf_counter() - request_started_at) * 1000.0),
+                    quality_score=pool_quality_score,
+                )
+                pool_agent_acquired = False
 
             return web.json_response(
                 {
@@ -7542,14 +7661,44 @@ async def run_http_mode(port: int) -> None:
                         "initial": initial_classification,
                         "final": final_classification,
                     },
+                    "agent_pool": (
+                        {
+                            "applied": True,
+                            "agent_id": pool_agent.agent_id,
+                            "provider": pool_agent.provider,
+                            "model_id": pool_agent.model_id,
+                            "tier": pool_agent.tier.value,
+                        }
+                        if pool_agent else {"applied": False}
+                    ),
                     "artifact_recovery": recovered_artifact,
                     "response": body,
                 },
                 status=response.status_code,
             )
         except httpx.HTTPError as exc:
+            pool_agent = locals().get("pool_agent")
+            pool_agent_acquired = bool(locals().get("pool_agent_acquired"))
+            request_started_at = float(locals().get("request_started_at") or time.perf_counter())
+            if pool_agent and pool_agent_acquired:
+                _AGENT_POOL_MANAGER.release_agent(
+                    pool_agent.agent_id,
+                    success=False,
+                    latency_ms=max(0.0, (time.perf_counter() - request_started_at) * 1000.0),
+                    quality_score=0.0,
+                )
             return web.json_response(_error_payload("switchboard_unavailable", exc), status=502)
         except Exception as exc:
+            pool_agent = locals().get("pool_agent")
+            pool_agent_acquired = bool(locals().get("pool_agent_acquired"))
+            request_started_at = float(locals().get("request_started_at") or time.perf_counter())
+            if pool_agent and pool_agent_acquired:
+                _AGENT_POOL_MANAGER.release_agent(
+                    pool_agent.agent_id,
+                    success=False,
+                    latency_ms=max(0.0, (time.perf_counter() - request_started_at) * 1000.0),
+                    quality_score=0.0,
+                )
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
     # ------------------------------------------------------------------
