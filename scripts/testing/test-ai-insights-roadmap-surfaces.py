@@ -29,6 +29,7 @@ def main() -> int:
         os.environ["DASHBOARD_CONTEXT_DB_PATH"] = str(tmp_path / "deployments-context.db")
         os.environ["DASHBOARD_MODE"] = "test"
         os.environ["DASHBOARD_IMPROVEMENT_CANDIDATES_PATH"] = str(tmp_path / "improvement-candidates.json")
+        os.environ["DASHBOARD_CODE_REVIEW_RESULTS_PATH"] = str(tmp_path / "code-review.json")
 
         (tmp_path / "improvement-candidates.json").write_text(
             json.dumps(
@@ -52,6 +53,41 @@ def main() -> int:
                             "effort": "medium",
                             "related_files": ["dashboard/backend/api/services/ai_insights.py"],
                         },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "code-review.json").write_text(
+            json.dumps(
+                {
+                    "reviewed_at": "2026-04-01T12:05:00Z",
+                    "reviewer": "qwen-4b",
+                    "total_files": 1,
+                    "files": [
+                        {
+                            "file_path": "ai-stack/self-improvement/improvement_detector.py",
+                            "overall_quality": 0.7,
+                            "comments_count": 2,
+                            "summary": "Mostly solid, but broad exception handling remains.",
+                            "recommendations": ["Tighten exception handling around file parsing."],
+                            "comments": [
+                                {
+                                    "line": 88,
+                                    "severity": "major",
+                                    "category": "logic",
+                                    "message": "Broad exception handling obscures parse failures.",
+                                    "suggestion": "Catch syntax and file errors explicitly.",
+                                },
+                                {
+                                    "line": 145,
+                                    "severity": "minor",
+                                    "category": "documentation",
+                                    "message": "Detector thresholds need inline rationale.",
+                                    "suggestion": "Add a short threshold comment.",
+                                },
+                            ],
+                        }
                     ],
                 }
             ),
@@ -156,6 +192,10 @@ def main() -> int:
                 "roadmap readiness should expose the top improvement candidate title",
             )
             assert_true(
+                ((phase3.get("code_review") or {}).get("reviewer")) == "qwen-4b",
+                "roadmap readiness should expose the persisted code review summary",
+            )
+            assert_true(
                 phase10.get("promotable_lessons") == 1,
                 "roadmap readiness should expose feedback acceleration lesson counts",
             )
@@ -178,6 +218,18 @@ def main() -> int:
             assert_true(
                 (candidates_data.get("categories") or {}).get("performance") == 1,
                 "improvement candidates route should summarize candidate categories",
+            )
+
+            review_response = client.get("/api/insights/improvements/reviews")
+            assert_true(review_response.status_code == 200, "code review summary route should succeed")
+            review_data = review_response.json()
+            assert_true(
+                review_data.get("reviewer") == "qwen-4b",
+                "code review summary route should expose the reviewer id",
+            )
+            assert_true(
+                (review_data.get("severity_counts") or {}).get("major") == 1,
+                "code review summary route should summarize review severities",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")
