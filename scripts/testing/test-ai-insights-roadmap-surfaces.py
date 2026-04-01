@@ -216,6 +216,10 @@ def main() -> int:
                 "roadmap readiness should expose AI-specific token optimization metrics for phase 1",
             )
             assert_true(
+                ((phase1.get("experimentation") or {}).get("features") or {}).get("ab_framework") is True,
+                "roadmap readiness should expose experimentation readiness for phase 1",
+            )
+            assert_true(
                 phase3.get("status") == "watch",
                 "roadmap readiness should surface active improvement candidate pressure for phase 3",
             )
@@ -303,6 +307,14 @@ def main() -> int:
             assert_true(
                 patterns_data.get("feature_count") == 4,
                 "pattern library readiness should expose the implemented pattern count",
+            )
+
+            experiments_response = client.get("/api/insights/experiments/readiness")
+            assert_true(experiments_response.status_code == 200, "experimentation readiness route should succeed")
+            experiments_data = experiments_response.json()
+            assert_true(
+                experiments_data.get("feature_count") >= 3,
+                "experimentation readiness should expose implemented A/B framework coverage",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")

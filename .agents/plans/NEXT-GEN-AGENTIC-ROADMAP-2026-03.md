@@ -55,6 +55,30 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 
 ---
 
+## Scaffold Closure Program
+
+All scaffold-level or partially integrated work must now remain on an explicit closure track until it reaches one of:
+- `✅ Operational`
+- `🔧 Implementation exists` with named follow-up slices for integration, operator surface, validation, activation, and rollback
+- `⏳ Pending` with a concrete parent batch and acceptance checks
+
+Required closure steps for scaffold-heavy work:
+1. Expose a repo-grounded readiness or status surface.
+2. Add regression coverage that proves the surface or integration contract.
+3. Record remaining blockers in the parent roadmap batch instead of leaving them implicit in code comments.
+4. Mark redeploy-gated items explicitly so they are revisited after activation.
+
+Current scaffold-closure queue to keep in active rotation:
+- `1.1` remaining OpenTelemetry, unified collector, tracing, structured logging, Grafana/dashboard completion
+- `1.3` remaining continuous profiling and live experimentation follow-through
+- `3.1` deeper pattern mining and candidate-generation integrations beyond current visibility surfaces
+- `3.2` turn repo-native testing frameworks into live runnable/operator-visible workflows, not just code-on-disk readiness
+- `3.3` replace deployment scaffolds with real blue-green/canary/rollout metric execution paths
+- `4.1` promote pattern-library readiness into actual runtime adoption and comparative validation
+- all `🔧 implementation exists` batches from `5.x` through `10.x` until they are either operational or explicitly redeploy-gated
+
+---
+
 ## Core Principles
 
 1. **Recursive Self-Improvement** - System improves itself automatically
@@ -108,7 +132,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - [ ] Add continuous performance profiling
 - [x] Implement automatic bottleneck identification
 - [x] Create optimization recommendations engine
-- [ ] Add A/B testing framework for improvements
+- [x] Add A/B testing framework for improvements
 - [x] Track optimization history and results
 
 **Deliverables:**

@@ -201,6 +201,18 @@ async def get_agentic_pattern_library_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/experiments/readiness")
+async def get_experimentation_readiness():
+    """Get the repo-native experimentation and A/B readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_experimentation_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get experimentation readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""
