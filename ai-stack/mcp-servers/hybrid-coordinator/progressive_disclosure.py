@@ -427,10 +427,15 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DOMAIN_CONFIG_PATH = Path(os.getenv(
-    "PROGRESSIVE_DISCLOSURE_CONFIG",
-    "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/progressive-disclosure-domains.json"
-))
+_DEFAULT_REPO_ROOT = Path(
+    os.getenv("AI_STACK_REPO_PATH", str(Path(__file__).resolve().parents[4]))
+)
+DOMAIN_CONFIG_PATH = Path(
+    os.getenv(
+        "PROGRESSIVE_DISCLOSURE_CONFIG",
+        str(_DEFAULT_REPO_ROOT / "config" / "progressive-disclosure-domains.json"),
+    )
+)
 
 
 @dataclass
