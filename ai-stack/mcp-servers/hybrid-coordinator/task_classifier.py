@@ -32,6 +32,10 @@ _REASONING_RE = re.compile(
     r"\b(why|how does|explain|analyze|analyse|compare|design|architect|strategy|trade.?off)\b",
     re.IGNORECASE,
 )
+_ARCHITECTURE_HEAVY_RE = re.compile(
+    r"\b(design|architect|strategy|trade.?off)\b",
+    re.IGNORECASE,
+)
 _CONTINUATION_RE = re.compile(
     r"\b(resume|continue|follow[ -]?up|prior context|pick up where|last agent|left off|ongoing|current work|remaining work)\b",
     re.IGNORECASE,
@@ -39,6 +43,7 @@ _CONTINUATION_RE = re.compile(
 
 LOCAL_CONTINUATION_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_INPUT_TOKENS", "900"))
 LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS", "400"))
+LOCAL_REASONING_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_REASONING_MAX_INPUT_TOKENS", "450"))
 
 
 @dataclass
@@ -96,6 +101,25 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
             local_suitable=True,
             remote_required=False,
             reason="continuation_within_local_capacity",
+            optimized_prompt=optimized,
+        )
+    if (
+        task_type == "reasoning"
+        and not _ARCHITECTURE_HEAVY_RE.search(q)
+        and token_estimate <= LOCAL_REASONING_MAX_INPUT_TOKENS
+        and max_output_tokens <= LOCAL_MAX_OUTPUT_TOKENS
+    ):
+        optimized = (
+            "Answer with a concise local reasoning summary grounded in the provided context. "
+            "Do not broaden scope or introduce architectural redesign ideas.\n"
+            f"Question: {q}\n\nRelevant context:\n{context[:1000].strip()}"
+        ).strip()
+        return TaskComplexity(
+            token_estimate=token_estimate,
+            task_type=task_type,
+            local_suitable=True,
+            remote_required=False,
+            reason="bounded_reasoning_within_local_capacity",
             optimized_prompt=optimized,
         )
     if max_output_tokens > LOCAL_MAX_OUTPUT_TOKENS:
