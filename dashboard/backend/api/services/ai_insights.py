@@ -58,6 +58,13 @@ def _optimization_proposals_path() -> Path:
         return Path(configured)
     return Path("/var/lib/ai-stack/hybrid/telemetry/optimization_proposals.jsonl")
 
+
+def _improvement_candidates_path() -> Path:
+    configured = os.getenv("DASHBOARD_IMPROVEMENT_CANDIDATES_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return _repo_root() / ".agents" / "improvement" / "candidates.json"
+
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
 
@@ -274,6 +281,80 @@ class AIInsightsService:
             "last_proposal_at": last_proposal_at,
         }
 
+    def _load_improvement_candidates_summary(self, limit: int = 5) -> Dict[str, Any]:
+        """Load a bounded summary of persisted improvement candidates."""
+        path = _improvement_candidates_path()
+        if not path.exists():
+            return {
+                "available": False,
+                "path": str(path),
+                "status": "pending",
+                "total_candidates": 0,
+                "top_candidates": [],
+                "categories": {},
+                "priority_counts": {},
+                "generated_at": None,
+            }
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to load improvement candidates from %s: %s", path, exc)
+            return {
+                "available": False,
+                "path": str(path),
+                "status": "error",
+                "total_candidates": 0,
+                "top_candidates": [],
+                "categories": {},
+                "priority_counts": {},
+                "generated_at": None,
+                "error": str(exc),
+            }
+
+        raw_candidates = payload.get("candidates", []) if isinstance(payload, dict) else []
+        categories: Dict[str, int] = {}
+        priority_counts: Dict[str, int] = {}
+        top_candidates: List[Dict[str, Any]] = []
+
+        for item in raw_candidates:
+            if not isinstance(item, dict):
+                continue
+            category = str(item.get("category") or "unknown")
+            priority = int(item.get("priority", 0) or 0)
+            categories[category] = categories.get(category, 0) + 1
+            priority_key = str(priority or "unknown")
+            priority_counts[priority_key] = priority_counts.get(priority_key, 0) + 1
+
+        for item in raw_candidates[:limit]:
+            if not isinstance(item, dict):
+                continue
+            top_candidates.append(
+                {
+                    "title": item.get("title"),
+                    "category": item.get("category"),
+                    "priority": item.get("priority"),
+                    "estimated_impact": item.get("estimated_impact"),
+                    "effort": item.get("effort"),
+                    "related_files": item.get("related_files", [])[:5],
+                }
+            )
+
+        status = "active" if top_candidates else "pending"
+        if any(int(item.get("priority", 9) or 9) <= 2 for item in raw_candidates if isinstance(item, dict)):
+            status = "watch"
+
+        return {
+            "available": True,
+            "path": str(path),
+            "status": status,
+            "total_candidates": int(payload.get("total_candidates", len(raw_candidates)) or len(raw_candidates)),
+            "top_candidates": top_candidates,
+            "categories": categories,
+            "priority_counts": priority_counts,
+            "generated_at": payload.get("generated_at"),
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -384,6 +465,7 @@ class AIInsightsService:
         report = await self.get_full_report()
         phase4 = await self.get_phase4_acceptance_summary()
         a2a = await self.get_a2a_readiness()
+        improvement_candidates = self._load_improvement_candidates_summary()
 
         routing = report.get("routing", {}) if isinstance(report.get("routing"), dict) else {}
         continue_editor = report.get("continue_editor", {}) if isinstance(report.get("continue_editor"), dict) else {}
@@ -431,6 +513,10 @@ class AIInsightsService:
         elif phase4_failed > 0 or a2a.get("status") == "unavailable":
             phase4_status = "watch"
 
+        phase3_status = str(improvement_candidates.get("status", "pending") or "pending")
+        if not improvement_candidates.get("available", False):
+            phase3_status = "pending"
+
         remote_calls = int((routing.get("remote_n", 0) or 0))
         phase6_status = "healthy" if routing.get("available") and remote_calls == 0 else "watch"
 
@@ -460,7 +546,7 @@ class AIInsightsService:
             "window": report.get("window"),
             "status": "healthy" if all(
                 status in {"healthy", "active"}
-                for status in (phase1_status, phase4_status, phase6_status, phase11_status)
+                for status in (phase1_status, phase3_status, phase4_status, phase6_status, phase11_status)
             ) and phase9_status in {"healthy", "low_sample"} and phase10_status in {"healthy", "low_sample"} else "watch",
             "phases": {
                 "phase1": {
@@ -472,6 +558,12 @@ class AIInsightsService:
                         "retrieval_only_p95_ms": route_latency.get("retrieval_only_p95_ms"),
                     },
                     "top_hotspots": phase1_hotspots,
+                },
+                "phase3": {
+                    "status": phase3_status,
+                    "improvement_candidates": improvement_candidates,
+                    "candidate_count": int(improvement_candidates.get("total_candidates", 0) or 0),
+                    "top_candidates": improvement_candidates.get("top_candidates", []),
                 },
                 "phase4": {
                     "status": phase4_status,
