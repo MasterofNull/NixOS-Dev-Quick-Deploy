@@ -224,6 +224,10 @@ def main() -> int:
                 "roadmap readiness should expose continuous profiling readiness for phase 1",
             )
             assert_true(
+                ((phase1.get("unified_observability") or {}).get("features") or {}).get("opentelemetry_instrumentation") is True,
+                "roadmap readiness should expose unified observability readiness for phase 1",
+            )
+            assert_true(
                 phase3.get("status") == "watch",
                 "roadmap readiness should surface active improvement candidate pressure for phase 3",
             )
@@ -327,6 +331,14 @@ def main() -> int:
             assert_true(
                 profiling_data.get("feature_count") >= 3,
                 "performance profiling readiness should expose implemented profiler/report coverage",
+            )
+
+            observability_response = client.get("/api/insights/observability/readiness")
+            assert_true(observability_response.status_code == 200, "observability readiness route should succeed")
+            observability_data = observability_response.json()
+            assert_true(
+                observability_data.get("feature_count") >= 4,
+                "observability readiness should expose telemetry, tracing, and logging coverage",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")
