@@ -29,6 +29,10 @@ def main() -> int:
         "hybrid coordinator should import relevance prediction primitives",
     )
     assert_true(
+        'os.getenv("DISCLOSURE_CONTEXT_DIR", "/var/lib/ai-stack/hybrid/context-tiers")' in text,
+        "hybrid coordinator should keep disclosure runtime state in writable AI stack storage by default",
+    )
+    assert_true(
         "async def _apply_progressive_context(" in text,
         "hybrid coordinator should define progressive context attachment helper",
     )

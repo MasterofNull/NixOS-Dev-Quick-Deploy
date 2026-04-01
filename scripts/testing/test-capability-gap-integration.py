@@ -29,6 +29,10 @@ def main() -> int:
         "hybrid coordinator should import remediation learning primitives",
     )
     assert_true(
+        'os.getenv("REMEDIATION_PLAYBOOKS_DIR", "/var/lib/ai-stack/hybrid/playbooks")' in text,
+        "hybrid coordinator should keep remediation playbooks in writable AI stack storage by default",
+    )
+    assert_true(
         "def _plan_capability_gap_remediation(" in text,
         "hybrid coordinator should define remediation planning helper",
     )

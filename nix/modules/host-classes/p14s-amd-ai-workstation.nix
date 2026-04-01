@@ -103,5 +103,13 @@ in
       # fallback clocksource.
       "tsc=unstable"
     ];
+
+    environment.sessionVariables = {
+      # Keep the desktop stack on the conservative display path here. Recent
+      # freezes on this Renoir/COSMIC workstation line up with amdgpu DMUB/DC
+      # faults, so do not force the experimental HDR path globally.
+      ENABLE_HDR_WSI = lib.mkForce "0";
+      DXVK_HDR = lib.mkForce "0";
+    };
   };
 }
