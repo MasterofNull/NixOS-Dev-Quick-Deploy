@@ -141,6 +141,10 @@ def main() -> int:
                 "metadata": {
                     "backend": "remote",
                     "generate_response": True,
+                    "backend_reason_class": "complexity_remote_required",
+                    "task_complexity_type": "reasoning",
+                    "task_complexity_reason": "task_type=reasoning_requires_remote",
+                    "response_max_tokens": 400,
                 },
             }
         ],
@@ -150,6 +154,22 @@ def main() -> int:
     assert_true(route_search_only.get("source") == "route_search_audit_fallback", "expected route_search fallback source")
     assert_true(route_search_only.get("total_calls") == 1, "expected one route_search remote fallback call")
     assert_true((route_search_only.get("top_profiles") or [])[0][0] == "remote-reasoning", "expected remote reasoning fallback profile")
+    assert_true(
+        (route_search_only.get("top_backend_reason_classes") or [])[0][0] == "complexity_remote_required",
+        "expected remote route_search fallback to keep backend reason classes",
+    )
+    assert_true(
+        (route_search_only.get("top_task_complexity_types") or [])[0][0] == "reasoning",
+        "expected remote route_search fallback to keep task complexity types",
+    )
+    assert_true(
+        (route_search_only.get("top_task_complexity_reasons") or [])[0][0] == "task_type=reasoning_requires_remote",
+        "expected remote route_search fallback to keep task complexity reasons",
+    )
+    assert_true(
+        (route_search_only.get("top_response_max_tokens") or [])[0][0] == 400,
+        "expected remote route_search fallback to keep response token budgets",
+    )
 
     print("PASS: delegated remote profile reporting and latency decomposition work")
     return 0

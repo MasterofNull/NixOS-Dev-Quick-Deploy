@@ -32,6 +32,18 @@ def main() -> int:
         'request["audit_metadata"]["prompt_cache_cached_tokens"] = cached_tokens' in text,
         "query audit metadata should propagate prompt-cache sample counts into tool-audit rows",
     )
+    assert_true(
+        'request["audit_metadata"]["task_complexity_tokens"] = task_complexity_tokens' in text,
+        "query audit metadata should propagate task complexity token estimates into tool-audit rows",
+    )
+    assert_true(
+        'request["audit_metadata"]["task_complexity_local_suitable"] = bool(' in text,
+        "query audit metadata should propagate local suitability into tool-audit rows",
+    )
+    assert_true(
+        'request["audit_metadata"]["task_complexity_remote_required"] = bool(' in text,
+        "query audit metadata should propagate remote-required flags into tool-audit rows",
+    )
 
     print("PASS: HTTP query audit metadata propagation is covered")
     return 0

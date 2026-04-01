@@ -741,6 +741,10 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
     requester_role_counts: Dict[str, int] = {}
     requesting_agent_counts: Dict[str, int] = {}
     handoff_by_role: Dict[str, int] = {}
+    backend_reason_counts: Dict[str, int] = {}
+    task_type_counts: Dict[str, int] = {}
+    task_reason_counts: Dict[str, int] = {}
+    response_max_token_counts: Dict[int, int] = {}
     fallback_applied = 0
     finalization_applied = 0
     handoff_requested = 0
@@ -793,6 +797,18 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
             if success:
                 success_count += 1
             profile_counts["remote-reasoning"] = profile_counts.get("remote-reasoning", 0) + 1
+            backend_reason = str(metadata.get("backend_reason_class", "") or "").strip()
+            if backend_reason:
+                backend_reason_counts[backend_reason] = backend_reason_counts.get(backend_reason, 0) + 1
+            task_type = str(metadata.get("task_complexity_type", "") or "").strip()
+            if task_type:
+                task_type_counts[task_type] = task_type_counts.get(task_type, 0) + 1
+            task_reason = str(metadata.get("task_complexity_reason", "") or "").strip()
+            if task_reason:
+                task_reason_counts[task_reason] = task_reason_counts.get(task_reason, 0) + 1
+            response_max_tokens = metadata.get("response_max_tokens")
+            if isinstance(response_max_tokens, int) and response_max_tokens > 0:
+                response_max_token_counts[response_max_tokens] = response_max_token_counts.get(response_max_tokens, 0) + 1
             source = "route_search_audit_fallback"
     if total <= 0:
         return {"available": False, "window": window}
@@ -812,6 +828,10 @@ def remote_profile_utilization(entries: List[dict], *, window: str = "") -> Dict
         "top_requester_roles": sorted(requester_role_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "top_requesting_agents": sorted(requesting_agent_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "handoff_by_requester_role": sorted(handoff_by_role.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_backend_reason_classes": sorted(backend_reason_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_task_complexity_types": sorted(task_type_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_task_complexity_reasons": sorted(task_reason_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
+        "top_response_max_tokens": sorted(response_max_token_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
     }
 
 
@@ -4173,6 +4193,26 @@ def format_md(
         top_profiles = remote_profile_summary.get("top_profiles") or []
         if top_profiles:
             lines.append(f"- Top profiles: {', '.join(f'`{name}` ({count})' for name, count in top_profiles[:3])}")
+        top_reason_classes = remote_profile_summary.get("top_backend_reason_classes") or []
+        if top_reason_classes:
+            lines.append(
+                f"- Backend reasons: {', '.join(f'`{name}` ({count})' for name, count in top_reason_classes[:3])}"
+            )
+        top_task_types = remote_profile_summary.get("top_task_complexity_types") or []
+        if top_task_types:
+            lines.append(
+                f"- Task types: {', '.join(f'`{name}` ({count})' for name, count in top_task_types[:3])}"
+            )
+        top_task_reasons = remote_profile_summary.get("top_task_complexity_reasons") or []
+        if top_task_reasons:
+            lines.append(
+                f"- Task reasons: {', '.join(f'`{name}` ({count})' for name, count in top_task_reasons[:3])}"
+            )
+        top_response_max_tokens = remote_profile_summary.get("top_response_max_tokens") or []
+        if top_response_max_tokens:
+            lines.append(
+                f"- Response token budgets: {', '.join(f'`{name}` ({count})' for name, count in top_response_max_tokens[:3])}"
+            )
         top_roles = remote_profile_summary.get("top_requester_roles") or []
         if top_roles:
             lines.append(f"- Requester roles: {', '.join(f'`{name}` ({count})' for name, count in top_roles[:3])}")
@@ -4917,6 +4957,20 @@ def format_text(
         top_profiles = remote_profile_summary.get("top_profiles") or []
         if top_profiles:
             lines.append(f"  Top profiles: {', '.join(f'{name}({count})' for name, count in top_profiles[:3])}")
+        top_reason_classes = remote_profile_summary.get("top_backend_reason_classes") or []
+        if top_reason_classes:
+            lines.append(f"  Backend reasons: {', '.join(f'{name}({count})' for name, count in top_reason_classes[:3])}")
+        top_task_types = remote_profile_summary.get("top_task_complexity_types") or []
+        if top_task_types:
+            lines.append(f"  Task types: {', '.join(f'{name}({count})' for name, count in top_task_types[:3])}")
+        top_task_reasons = remote_profile_summary.get("top_task_complexity_reasons") or []
+        if top_task_reasons:
+            lines.append(f"  Task reasons: {', '.join(f'{name}({count})' for name, count in top_task_reasons[:3])}")
+        top_response_max_tokens = remote_profile_summary.get("top_response_max_tokens") or []
+        if top_response_max_tokens:
+            lines.append(
+                f"  Response token budgets: {', '.join(f'{name}({count})' for name, count in top_response_max_tokens[:3])}"
+            )
         top_roles = remote_profile_summary.get("top_requester_roles") or []
         if top_roles:
             lines.append(f"  Requester roles: {', '.join(f'{name}({count})' for name, count in top_roles[:3])}")
