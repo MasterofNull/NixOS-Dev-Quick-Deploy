@@ -653,6 +653,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
   - Performance-based routing with recent history weighting
 - [x] Add online A/B testing
   - Experiment management with variant tracking
+- [x] Integrate online learning signals into delegated runtime outcomes
 
 **Deliverables:**
 - ✅ Incremental learning engine (online_learning.py)
@@ -672,6 +673,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
   - Sentiment-based prioritization (Positive, Negative, Neutral, Mixed)
 - [x] Add feedback quality scoring
   - Feedback quality assessment
+- [x] Integrate feedback acceleration into delegated runtime outcomes
 
 **Deliverables:**
 - ✅ Fast feedback loop (feedback_acceleration.py)
