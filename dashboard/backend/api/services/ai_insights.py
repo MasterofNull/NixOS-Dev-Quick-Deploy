@@ -551,6 +551,45 @@ class AIInsightsService:
             "features": features,
         }
 
+    def _load_agentic_pattern_library_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native Phase 4.1 agentic pattern library coverage."""
+        root = _repo_root()
+        react_path = root / "ai-stack" / "agentic-patterns" / "react_pattern.py"
+        tot_path = root / "ai-stack" / "agentic-patterns" / "tree_of_thoughts.py"
+        reflexion_path = root / "ai-stack" / "agentic-patterns" / "reflexion_pattern.py"
+        hints_path = root / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "hints_engine.py"
+
+        def _contains(path: Path, needle: str) -> bool:
+            try:
+                return needle in path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+
+        features = {
+            "react": react_path.exists() and _contains(react_path, "class ReActAgent"),
+            "tree_of_thoughts": tot_path.exists() and _contains(tot_path, "class TreeOfThoughtsAgent"),
+            "reflexion": reflexion_path.exists() and _contains(reflexion_path, "class ReflexionAgent"),
+            "constitutional_guardrails": hints_path.exists()
+            and (_contains(hints_path, "guardrails") or _contains(hints_path, "safety policy")),
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "active" if enabled_count > 0 else "pending"
+        if enabled_count >= 4:
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "feature_count": enabled_count,
+            "features": features,
+            "paths": {
+                "react": str(react_path),
+                "tree_of_thoughts": str(tot_path),
+                "reflexion": str(reflexion_path),
+                "constitutional_guardrails": str(hints_path),
+            },
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -760,6 +799,15 @@ class AIInsightsService:
             **self._load_deployment_pipeline_readiness(),
         }
 
+    async def get_agentic_pattern_library_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native agentic pattern library readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_agentic_pattern_library_readiness(),
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
@@ -770,6 +818,7 @@ class AIInsightsService:
         code_review_summary = self._load_code_review_summary()
         testing_validation = self._load_testing_validation_readiness()
         deployment_pipeline = self._load_deployment_pipeline_readiness()
+        pattern_library = self._load_agentic_pattern_library_readiness()
 
         routing = report.get("routing", {}) if isinstance(report.get("routing"), dict) else {}
         continue_editor = report.get("continue_editor", {}) if isinstance(report.get("continue_editor"), dict) else {}
@@ -883,6 +932,7 @@ class AIInsightsService:
                     "status": phase4_status,
                     "acceptance": phase4,
                     "a2a_readiness": a2a,
+                    "pattern_library": pattern_library,
                     "reviewer_gate_required_runs": int(intent_contract.get("reviewer_gate_required_runs", 0) or 0),
                     "accepted_reviews": int(intent_contract.get("accepted_reviews", 0) or 0),
                 },
@@ -1342,6 +1392,18 @@ class AIInsightsService:
                     f"features={readiness.get('feature_count', 0)} "
                     f"| blue_green={((readiness.get('features') or {}).get('blue_green', False))} "
                     f"| rollback={((readiness.get('features') or {}).get('rollback', False))}"
+                ),
+            }
+        if normalized_target == "pattern_library":
+            readiness = await self.get_agentic_pattern_library_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Pattern Library",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| react={((readiness.get('features') or {}).get('react', False))} "
+                    f"| tot={((readiness.get('features') or {}).get('tree_of_thoughts', False))}"
                 ),
             }
 

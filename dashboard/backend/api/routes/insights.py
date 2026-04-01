@@ -189,6 +189,18 @@ async def get_deployment_pipeline_readiness():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/patterns/readiness")
+async def get_agentic_pattern_library_readiness():
+    """Get the repo-native Phase 4.1 agentic pattern library readiness summary."""
+    try:
+        service = get_insights_service()
+        readiness = await service.get_agentic_pattern_library_readiness()
+        return readiness
+    except Exception as e:
+        logger.error(f"Failed to get agentic pattern library readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/security/compliance")
 async def get_security_compliance():
     """Get dashboard/operator security compliance posture summary."""

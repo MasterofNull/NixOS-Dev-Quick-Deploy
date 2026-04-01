@@ -252,6 +252,10 @@ def main() -> int:
                 (phase4.get("a2a_readiness") or {}).get("status") in {"healthy", "ready", "unavailable"},
                 "roadmap readiness should include A2A readiness context",
             )
+            assert_true(
+                ((phase4.get("pattern_library") or {}).get("features") or {}).get("react") is True,
+                "roadmap readiness should expose agentic pattern library readiness for phase 4",
+            )
 
             candidates_response = client.get("/api/insights/improvements/candidates")
             assert_true(candidates_response.status_code == 200, "improvement candidates route should succeed")
@@ -291,6 +295,14 @@ def main() -> int:
             assert_true(
                 (deployment_data.get("features") or {}).get("approval_gate") is True,
                 "deployment readiness should expose approval-gate support",
+            )
+
+            patterns_response = client.get("/api/insights/patterns/readiness")
+            assert_true(patterns_response.status_code == 200, "pattern library readiness route should succeed")
+            patterns_data = patterns_response.json()
+            assert_true(
+                patterns_data.get("feature_count") == 4,
+                "pattern library readiness should expose the implemented pattern count",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")
