@@ -4519,6 +4519,9 @@ async def run_http_mode(port: int) -> None:
             local_inference_lane = str(result.get("local_inference_lane", "") or "").strip()
             if local_inference_lane:
                 request["audit_metadata"]["local_inference_lane"] = local_inference_lane
+            local_inference_lane_reason = str(result.get("local_inference_lane_reason", "") or "").strip()
+            if local_inference_lane_reason:
+                request["audit_metadata"]["local_inference_lane_reason"] = local_inference_lane_reason
             task_complexity = result.get("task_complexity")
             if isinstance(task_complexity, dict):
                 task_complexity_reason = str(task_complexity.get("reason", "") or "").strip()

@@ -1050,6 +1050,7 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         generate_response = metadata.get("generate_response")
         task_complexity_type = str(metadata.get("task_complexity_type", "") or "").strip().lower()
         local_inference_lane = str(metadata.get("local_inference_lane", "") or "").strip().lower()
+        local_inference_lane_reason = str(metadata.get("local_inference_lane_reason", "") or "").strip().lower()
         is_client_error = outcome == "client_error" or (isinstance(status_code, int) and 400 <= status_code < 500)
         is_actionable = not is_client_error
         if is_client_error:
@@ -1071,6 +1072,8 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
                 classes.append(f"synthesis_type:{task_complexity_type}")
             if local_inference_lane:
                 classes.append(f"local_lane:{local_inference_lane}")
+            if local_inference_lane_reason:
+                classes.append(f"local_lane_reason:{local_inference_lane_reason}")
         elif generate_response is False:
             classes.append("request:retrieval_only")
         if fallback_reason == "remote_4xx_local_fallback":
@@ -3113,6 +3116,42 @@ def build_recommendations(
                 recs.append(
                     f"Local reasoning synthesis remains the route_search tail ({lane_note} p95 {_na(p95_ms, '.0f', 'ms')} across {calls} calls). "
                     "Prefer lookup/format lanes for bounded tasks, keep reasoning prompts compact, and remeasure before changing retrieval breadth."
+                )
+        lane_default = next(
+            (
+                item for item in breakdown
+                if isinstance(item, dict) and str(item.get("label", "") or "").strip().lower() == "local_lane:default"
+            ),
+            None,
+        )
+        lane_reasoning = next(
+            (
+                item for item in breakdown
+                if isinstance(item, dict) and str(item.get("label", "") or "").strip().lower() == "local_lane:reasoning"
+            ),
+            None,
+        )
+        if lane_default and lane_reasoning:
+            try:
+                default_calls = int(lane_default.get("calls", 0) or 0)
+                default_p95 = float(lane_default.get("p95_ms", 0.0) or 0.0)
+                reasoning_calls = int(lane_reasoning.get("calls", 0) or 0)
+                reasoning_p95 = float(lane_reasoning.get("p95_ms", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                default_calls = 0
+                default_p95 = 0.0
+                reasoning_calls = 0
+                reasoning_p95 = 0.0
+            if (
+                default_calls >= 2
+                and reasoning_calls >= 3
+                and default_p95 > 0.0
+                and reasoning_p95 >= default_p95 + 3000.0
+            ):
+                recs.append(
+                    f"Dedicated local reasoning is materially slower than the default local lane "
+                    f"({_na(reasoning_p95, '.0f', 'ms')} vs {_na(default_p95, '.0f', 'ms')} p95). "
+                    "Reserve the reasoning lane for continuation/deeper analyses and keep bounded explanations on the default local lane."
                 )
 
     # Cache
