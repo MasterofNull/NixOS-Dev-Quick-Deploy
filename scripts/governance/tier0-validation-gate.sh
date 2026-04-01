@@ -130,7 +130,18 @@ gate_script_headers() {
   fi
 }
 
-# Gate 6: Roadmap verification
+# Gate 6: Path-aware focused CI checks
+gate_focused_ci_checks() {
+  log "Running focused CI-sensitive checks..."
+  if bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
+    pass "Focused CI-sensitive checks passed"
+  else
+    fail "Focused CI-sensitive checks failed"
+    return 1
+  fi
+}
+
+# Gate 7: Roadmap verification
 gate_roadmap_verification() {
   log "Running roadmap verification..."
   local output
@@ -146,7 +157,7 @@ gate_roadmap_verification() {
   fi
 }
 
-# Gate 7: QA phase 0
+# Gate 8: QA phase 0
 gate_qa_phase0() {
   log "Running QA phase 0..."
   local output
@@ -196,6 +207,7 @@ gate_bash_syntax || true
 gate_nix_syntax || true
 gate_repo_structure || true
 gate_script_headers || true
+gate_focused_ci_checks || true
 gate_roadmap_verification || true
 gate_qa_phase0 || true
 
