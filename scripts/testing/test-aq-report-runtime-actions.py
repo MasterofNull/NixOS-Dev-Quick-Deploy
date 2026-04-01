@@ -79,12 +79,24 @@ def main() -> int:
         None,
         None,
         route_latency,
+        {
+            "available": True,
+            "has_items": True,
+            "dominant_hint_id": "registry_eval_scorecard_analysis",
+            "dominant_share_pct": 100.0,
+            "alternative_hints": [
+                {"hint_id": "runtime_local_reasoning_tail", "count": 1},
+            ],
+        },
     )
     action_names = [item.get("action") for item in actions]
     assert_true("run_targeted_eval" in action_names, "expected targeted eval structured action")
     assert_true("tune_local_reasoning_lane" in action_names, "expected reasoning lane structured action")
+    assert_true("rotate_hint_alternates" in action_names, "expected historical hint alternate structured action")
     eval_action = next(item for item in actions if item.get("action") == "run_targeted_eval")
     assert_true(eval_action.get("script_args") == ["--full", "--strategy", "eval-regression-check"], "expected tagged eval script args")
+    rotate_action = next(item for item in actions if item.get("action") == "rotate_hint_alternates")
+    assert_true(rotate_action.get("alternate_hint_ids") == ["runtime_local_reasoning_tail"], "expected alternate hint ids in structured action")
 
     diversity = aq_report.hint_diversity(
         {

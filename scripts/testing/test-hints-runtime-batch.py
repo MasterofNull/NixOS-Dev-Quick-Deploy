@@ -165,6 +165,8 @@ def test_curated_stale_gap_alignment() -> None:
         "explain qdrant hybrid routing configuration in the ai harness",
         "what are the progressive disclosure token discipline defaults",
         "continue agent mode still says message exceeds context limit",
+        "help me debug programs.git.settings.credential.helper conflicting definition values",
+        "when should I use tmpfiles z rules ownership reset for a systemd oneshot permission denied var lib failure",
     ]
     hints_module = __import__("hints_engine")
     for sample in samples:
