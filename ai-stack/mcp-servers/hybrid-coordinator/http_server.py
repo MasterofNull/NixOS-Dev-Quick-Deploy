@@ -684,6 +684,28 @@ def _default_agent_evaluations_registry() -> Dict[str, Any]:
     }
 
 
+def _normalize_agent_role(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return "unknown"
+    normalized = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return normalized[:64] or "unknown"
+
+
+def _default_agent_evaluation_row() -> Dict[str, Any]:
+    return {
+        "review_events": 0,
+        "accepted_reviews": 0,
+        "rejected_reviews": 0,
+        "consensus_selected": 0,
+        "runtime_events": 0,
+        "successful_runtime_events": 0,
+        "average_runtime_score": 0.0,
+        "average_review_score": 0.0,
+        "last_event_at": None,
+    }
+
+
 def _normalize_agent_lessons_registry(data: Any) -> Dict[str, Any]:
     registry = _default_agent_lessons_registry()
     if isinstance(data, dict):
@@ -739,6 +761,7 @@ def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
                 normalized_agents[agent_key] = {
                     "agent": agent_key,
                     "profiles": value.get("profiles", {}) if isinstance(value.get("profiles"), dict) else {},
+                    "roles": value.get("roles", {}) if isinstance(value.get("roles"), dict) else {},
                     "totals": value.get("totals", {}) if isinstance(value.get("totals"), dict) else {},
                     "last_event_at": value.get("last_event_at"),
                 }
@@ -752,6 +775,7 @@ def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
     runtime_events = 0
     for agent, payload in list(registry["agents"].items()):
         profiles = payload.get("profiles") if isinstance(payload.get("profiles"), dict) else {}
+        roles = payload.get("roles") if isinstance(payload.get("roles"), dict) else {}
         totals = {
             "review_events": 0,
             "accepted_reviews": 0,
@@ -767,6 +791,7 @@ def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
         weighted_runtime_scores = []
         total_runtime_score_events = 0
         normalized_profiles: Dict[str, Any] = {}
+        normalized_roles: Dict[str, Any] = {}
         for profile_name, profile_payload in profiles.items():
             profile_key = str(profile_name or "").strip() or "unknown"
             if not isinstance(profile_payload, dict):
@@ -802,6 +827,22 @@ def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
             if runtime_count > 0:
                 weighted_runtime_scores.append(avg_runtime_score * runtime_count)
                 total_runtime_score_events += runtime_count
+        for role_name, role_payload in roles.items():
+            role_key = _normalize_agent_role(role_name)
+            if not isinstance(role_payload, dict):
+                continue
+            normalized_roles[role_key] = {
+                **_default_agent_evaluation_row(),
+                "review_events": int(role_payload.get("review_events", 0) or 0),
+                "accepted_reviews": int(role_payload.get("accepted_reviews", 0) or 0),
+                "rejected_reviews": int(role_payload.get("rejected_reviews", 0) or 0),
+                "consensus_selected": int(role_payload.get("consensus_selected", 0) or 0),
+                "runtime_events": int(role_payload.get("runtime_events", 0) or 0),
+                "successful_runtime_events": int(role_payload.get("successful_runtime_events", 0) or 0),
+                "average_runtime_score": round(float(role_payload.get("average_runtime_score", 0.0) or 0.0), 4),
+                "average_review_score": round(float(role_payload.get("average_review_score", 0.0) or 0.0), 4),
+                "last_event_at": role_payload.get("last_event_at"),
+            }
         totals["average_review_score"] = round(
             (sum(weighted_scores) / total_score_events) if total_score_events else 0.0,
             4,
@@ -811,6 +852,7 @@ def _normalize_agent_evaluations_registry(data: Any) -> Dict[str, Any]:
             4,
         )
         payload["profiles"] = normalized_profiles
+        payload["roles"] = normalized_roles
         payload["totals"] = totals
         review_events += totals["review_events"]
         consensus_events += totals["consensus_selected"]
@@ -857,6 +899,7 @@ def _record_agent_review_event(
     *,
     agent: str,
     profile: str,
+    role: str,
     passed: bool,
     score: float,
     reviewer: str,
@@ -867,20 +910,18 @@ def _record_agent_review_event(
     normalized = _normalize_agent_evaluations_registry(registry)
     agent_key = str(agent or "").strip() or "unknown"
     profile_key = str(profile or "").strip() or "unknown"
+    role_key = _normalize_agent_role(role)
     agent_row = normalized["agents"].setdefault(
         agent_key,
-        {"agent": agent_key, "profiles": {}, "totals": {}, "last_event_at": None},
+        {"agent": agent_key, "profiles": {}, "roles": {}, "totals": {}, "last_event_at": None},
     )
     profile_row = agent_row["profiles"].setdefault(
         profile_key,
-        {
-            "review_events": 0,
-            "accepted_reviews": 0,
-            "rejected_reviews": 0,
-            "consensus_selected": 0,
-            "average_review_score": 0.0,
-            "last_event_at": None,
-        },
+        _default_agent_evaluation_row(),
+    )
+    role_row = agent_row["roles"].setdefault(
+        role_key,
+        _default_agent_evaluation_row(),
     )
     review_events = int(profile_row.get("review_events", 0) or 0) + 1
     running_total = float(profile_row.get("average_review_score", 0.0) or 0.0) * max(0, review_events - 1)
@@ -889,6 +930,13 @@ def _record_agent_review_event(
     profile_row["rejected_reviews"] = int(profile_row.get("rejected_reviews", 0) or 0) + (0 if passed else 1)
     profile_row["average_review_score"] = round((running_total + float(score)) / review_events, 4)
     profile_row["last_event_at"] = ts
+    role_review_events = int(role_row.get("review_events", 0) or 0) + 1
+    role_running_total = float(role_row.get("average_review_score", 0.0) or 0.0) * max(0, role_review_events - 1)
+    role_row["review_events"] = role_review_events
+    role_row["accepted_reviews"] = int(role_row.get("accepted_reviews", 0) or 0) + (1 if passed else 0)
+    role_row["rejected_reviews"] = int(role_row.get("rejected_reviews", 0) or 0) + (0 if passed else 1)
+    role_row["average_review_score"] = round((role_running_total + float(score)) / role_review_events, 4)
+    role_row["last_event_at"] = ts
     agent_row["last_event_at"] = ts
     normalized["recent_events"].append(
         {
@@ -896,6 +944,7 @@ def _record_agent_review_event(
             "event_type": "review",
             "agent": agent_key,
             "profile": profile_key,
+            "role": role_key,
             "passed": bool(passed),
             "score": round(float(score), 4),
             "reviewer": reviewer,
@@ -912,6 +961,7 @@ def _record_agent_consensus_event(
     *,
     agent: str,
     lane: str,
+    role: str,
     selected_candidate_id: str,
     summary: str,
     ts: int,
@@ -919,23 +969,23 @@ def _record_agent_consensus_event(
     normalized = _normalize_agent_evaluations_registry(registry)
     agent_key = str(agent or "").strip() or "unknown"
     profile_key = str(lane or "").strip() or "unknown"
+    role_key = _normalize_agent_role(role)
     agent_row = normalized["agents"].setdefault(
         agent_key,
-        {"agent": agent_key, "profiles": {}, "totals": {}, "last_event_at": None},
+        {"agent": agent_key, "profiles": {}, "roles": {}, "totals": {}, "last_event_at": None},
     )
     profile_row = agent_row["profiles"].setdefault(
         profile_key,
-        {
-            "review_events": 0,
-            "accepted_reviews": 0,
-            "rejected_reviews": 0,
-            "consensus_selected": 0,
-            "average_review_score": 0.0,
-            "last_event_at": None,
-        },
+        _default_agent_evaluation_row(),
+    )
+    role_row = agent_row["roles"].setdefault(
+        role_key,
+        _default_agent_evaluation_row(),
     )
     profile_row["consensus_selected"] = int(profile_row.get("consensus_selected", 0) or 0) + 1
     profile_row["last_event_at"] = ts
+    role_row["consensus_selected"] = int(role_row.get("consensus_selected", 0) or 0) + 1
+    role_row["last_event_at"] = ts
     agent_row["last_event_at"] = ts
     normalized["recent_events"].append(
         {
@@ -943,6 +993,7 @@ def _record_agent_consensus_event(
             "event_type": "consensus",
             "agent": agent_key,
             "profile": profile_key,
+            "role": role_key,
             "selected_candidate_id": selected_candidate_id,
             "summary": summary[:240],
         }
@@ -968,6 +1019,7 @@ def _record_agent_runtime_event(
     *,
     agent: str,
     profile: str,
+    role: str,
     event_type: str,
     risk_class: str,
     approved: bool,
@@ -979,23 +1031,18 @@ def _record_agent_runtime_event(
     normalized = _normalize_agent_evaluations_registry(registry)
     agent_key = str(agent or "").strip() or "unknown"
     profile_key = str(profile or "").strip() or "unknown"
+    role_key = _normalize_agent_role(role)
     agent_row = normalized["agents"].setdefault(
         agent_key,
-        {"agent": agent_key, "profiles": {}, "totals": {}, "last_event_at": None},
+        {"agent": agent_key, "profiles": {}, "roles": {}, "totals": {}, "last_event_at": None},
     )
     profile_row = agent_row["profiles"].setdefault(
         profile_key,
-        {
-            "review_events": 0,
-            "accepted_reviews": 0,
-            "rejected_reviews": 0,
-            "consensus_selected": 0,
-            "runtime_events": 0,
-            "successful_runtime_events": 0,
-            "average_runtime_score": 0.0,
-            "average_review_score": 0.0,
-            "last_event_at": None,
-        },
+        _default_agent_evaluation_row(),
+    )
+    role_row = agent_row["roles"].setdefault(
+        role_key,
+        _default_agent_evaluation_row(),
     )
     runtime_events = int(profile_row.get("runtime_events", 0) or 0) + 1
     runtime_score = _runtime_event_score(event_type, risk_class, approved)
@@ -1006,6 +1053,14 @@ def _record_agent_runtime_event(
     )
     profile_row["average_runtime_score"] = round((running_total + runtime_score) / runtime_events, 4)
     profile_row["last_event_at"] = ts
+    role_runtime_events = int(role_row.get("runtime_events", 0) or 0) + 1
+    role_running_total = float(role_row.get("average_runtime_score", 0.0) or 0.0) * max(0, role_runtime_events - 1)
+    role_row["runtime_events"] = role_runtime_events
+    role_row["successful_runtime_events"] = int(role_row.get("successful_runtime_events", 0) or 0) + (
+        1 if runtime_score >= 0.8 else 0
+    )
+    role_row["average_runtime_score"] = round((role_running_total + runtime_score) / role_runtime_events, 4)
+    role_row["last_event_at"] = ts
     agent_row["last_event_at"] = ts
     normalized["recent_events"].append(
         {
@@ -1013,6 +1068,7 @@ def _record_agent_runtime_event(
             "event_type": "runtime",
             "agent": agent_key,
             "profile": profile_key,
+            "role": role_key,
             "runtime_event_type": str(event_type or "").strip().lower(),
             "risk_class": str(risk_class or "").strip().lower(),
             "approved": bool(approved),
@@ -2397,7 +2453,7 @@ def _default_usage() -> Dict[str, int]:
     return {"tokens_used": 0, "tool_calls_used": 0}
 
 
-def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str) -> Dict[str, float]:
+def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str, role: str) -> Dict[str, float]:
     agents = registry.get("agents") if isinstance(registry, dict) else {}
     if not isinstance(agents, dict):
         return {"review_score": 0.0, "selection_score": 0.0, "runtime_score": 0.0}
@@ -2410,6 +2466,12 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str)
     profile_row = profiles.get(str(profile or "").strip())
     if not isinstance(profile_row, dict):
         profile_row = {}
+    roles = agent_row.get("roles")
+    if not isinstance(roles, dict):
+        roles = {}
+    role_row = roles.get(_normalize_agent_role(role))
+    if not isinstance(role_row, dict):
+        role_row = {}
 
     def _bounded_score(value: Any) -> float:
         try:
@@ -2433,18 +2495,21 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str)
             return {"review_score": 0.0, "selection_score": 0.0, "runtime_score": 0.0}
         agent_key = str(agent or "").strip()
         profile_key = str(profile or "").strip()
+        role_key = _normalize_agent_role(role)
         review_scores: List[float] = []
         runtime_scores: List[float] = []
         selection_events = 0
         scoped_events = 0
         agent_events = 0
-        for item in events[-12:]:
+        for item in events[-18:]:
             if not isinstance(item, dict):
                 continue
             if str(item.get("agent", "") or "").strip() != agent_key:
                 continue
             agent_events += 1
-            if str(item.get("profile", "") or "").strip() != profile_key:
+            profile_match = str(item.get("profile", "") or "").strip() == profile_key
+            role_match = _normalize_agent_role(item.get("role")) == role_key
+            if not profile_match and not role_match:
                 continue
             scoped_events += 1
             event_type = str(item.get("event_type", "") or "").strip().lower()
@@ -2454,7 +2519,7 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str)
                 runtime_scores.append(_bounded_score(item.get("runtime_score", 0.0)))
             elif event_type == "consensus":
                 selection_events += 1
-        recency_weight = min(1.0, scoped_events / 4.0) if scoped_events > 0 else min(0.5, agent_events / 8.0)
+        recency_weight = min(1.0, scoped_events / 5.0) if scoped_events > 0 else min(0.5, agent_events / 10.0)
         review_score = (sum(review_scores) / len(review_scores)) if review_scores else 0.0
         runtime_score = (sum(runtime_scores) / len(runtime_scores)) if runtime_scores else 0.0
         selection_score = min(1.0, selection_events / 3.0)
@@ -2469,6 +2534,11 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str)
     consensus_selected = _bounded_count(profile_row.get("consensus_selected", 0))
     runtime_events = _bounded_count(profile_row.get("runtime_events", 0))
     avg_runtime_score = _bounded_score(profile_row.get("average_runtime_score", 0.0))
+    role_review_events = _bounded_count(role_row.get("review_events", 0))
+    role_avg_review_score = _bounded_score(role_row.get("average_review_score", 0.0))
+    role_consensus_selected = _bounded_count(role_row.get("consensus_selected", 0))
+    role_runtime_events = _bounded_count(role_row.get("runtime_events", 0))
+    role_avg_runtime_score = _bounded_score(role_row.get("average_runtime_score", 0.0))
 
     totals = agent_row.get("totals") if isinstance(agent_row.get("totals"), dict) else {}
     total_review_events = _bounded_count(totals.get("review_events", 0))
@@ -2479,18 +2549,21 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str)
     recent_bias = _recent_agent_event_bias()
 
     review_component = (
-        (0.55 * _weighted_component(avg_review_score, review_events, 5.0))
-        + (0.25 * _weighted_component(total_avg_review_score, total_review_events, 12.0))
+        (0.40 * _weighted_component(avg_review_score, review_events, 5.0))
+        + (0.20 * _weighted_component(role_avg_review_score, role_review_events, 8.0))
+        + (0.20 * _weighted_component(total_avg_review_score, total_review_events, 12.0))
         + (0.20 * recent_bias["review_score"])
     )
     selection_component = (
-        (0.60 * min(1.0, consensus_selected / 5.0))
-        + (0.20 * min(1.0, total_consensus_selected / 8.0))
+        (0.45 * min(1.0, consensus_selected / 5.0))
+        + (0.20 * min(1.0, role_consensus_selected / 6.0))
+        + (0.15 * min(1.0, total_consensus_selected / 8.0))
         + (0.20 * recent_bias["selection_score"])
     )
     runtime_component = (
-        (0.55 * _weighted_component(avg_runtime_score, runtime_events, 6.0))
-        + (0.25 * _weighted_component(total_avg_runtime_score, total_runtime_events, 12.0))
+        (0.40 * _weighted_component(avg_runtime_score, runtime_events, 6.0))
+        + (0.25 * _weighted_component(role_avg_runtime_score, role_runtime_events, 8.0))
+        + (0.15 * _weighted_component(total_avg_runtime_score, total_runtime_events, 12.0))
         + (0.20 * recent_bias["runtime_score"])
     )
     return {
@@ -2510,7 +2583,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
     candidates: List[Dict[str, Any]] = []
 
     def _add_candidate(candidate_id: str, lane: str, agent: str, role: str, components: Dict[str, float], basis: str) -> None:
-        history = _evaluation_history_bias(evaluation_registry, agent, lane)
+        history = _evaluation_history_bias(evaluation_registry, agent, lane, role)
         components = dict(components)
         components["historical_review"] = history["review_score"]
         components["historical_selection"] = history["selection_score"]
@@ -2599,6 +2672,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
         "selected_candidate_id": selected.get("candidate_id"),
         "selected_lane": selected.get("lane"),
         "selected_agent": selected.get("agent"),
+        "selected_role": selected.get("role"),
         "candidates": candidates,
         "history": [],
         "arbiter": arbiter_state,
@@ -2738,6 +2812,7 @@ def _apply_consensus_update(
     consensus["selected_candidate_id"] = selected_candidate_id
     consensus["selected_lane"] = selected_candidate.get("lane")
     consensus["selected_agent"] = selected_candidate.get("agent")
+    consensus["selected_role"] = selected_candidate.get("role")
     history = consensus.get("history") if isinstance(consensus.get("history"), list) else []
     history.append(
         {
@@ -2745,6 +2820,7 @@ def _apply_consensus_update(
             "selected_candidate_id": selected_candidate_id,
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
+            "selected_role": selected_candidate.get("role"),
             "summary": summary,
             "decisions": normalized_decisions,
         }
@@ -2761,6 +2837,7 @@ def _apply_consensus_update(
             "selected_candidate_id": selected_candidate_id,
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
+            "selected_role": selected_candidate.get("role"),
             "decision_count": len(normalized_decisions),
         }
     )
@@ -2813,6 +2890,7 @@ def _apply_arbiter_update(
         "selected_candidate_id": selected_candidate_id,
         "selected_lane": selected_candidate.get("lane"),
         "selected_agent": selected_candidate.get("agent"),
+        "selected_role": selected_candidate.get("role"),
         "rationale": normalized_rationale,
         "summary": normalized_summary,
         "supporting_decisions": normalized_support,
@@ -2827,6 +2905,7 @@ def _apply_arbiter_update(
             "selected_candidate_id": selected_candidate_id,
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
+            "selected_role": selected_candidate.get("role"),
             "last_decision": decision,
             "history": history[-10:],
         }
@@ -2836,6 +2915,7 @@ def _apply_arbiter_update(
     consensus["selected_candidate_id"] = selected_candidate_id
     consensus["selected_lane"] = selected_candidate.get("lane")
     consensus["selected_agent"] = selected_candidate.get("agent")
+    consensus["selected_role"] = selected_candidate.get("role")
     consensus_history = consensus.get("history") if isinstance(consensus.get("history"), list) else []
     consensus_history.append(
         {
@@ -2846,6 +2926,7 @@ def _apply_arbiter_update(
             "selected_candidate_id": selected_candidate_id,
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
+            "selected_role": selected_candidate.get("role"),
             "summary": normalized_summary,
             "decisions": normalized_support,
         }
@@ -2864,6 +2945,7 @@ def _apply_arbiter_update(
             "selected_candidate_id": selected_candidate_id,
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
+            "selected_role": selected_candidate.get("role"),
             "supporting_decision_count": len(normalized_support),
         }
     )
@@ -2900,6 +2982,21 @@ def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
     policy = session.get("orchestration_policy") if isinstance(session.get("orchestration_policy"), dict) else {}
     orchestration = session.get("orchestration") if isinstance(session.get("orchestration"), dict) else {}
     session.setdefault("consensus", _seed_agent_evaluation(policy, orchestration))
+    consensus = session.get("consensus") if isinstance(session.get("consensus"), dict) else {}
+    if isinstance(consensus, dict) and not str(consensus.get("selected_role", "") or "").strip():
+        selected_candidate_id = str(consensus.get("selected_candidate_id", "") or "").strip()
+        candidates = consensus.get("candidates") if isinstance(consensus.get("candidates"), list) else []
+        selected_candidate = next(
+            (
+                item
+                for item in candidates
+                if isinstance(item, dict) and str(item.get("candidate_id", "") or "").strip() == selected_candidate_id
+            ),
+            {},
+        )
+        if selected_candidate:
+            consensus["selected_role"] = str(selected_candidate.get("role", "") or "").strip()
+            session["consensus"] = consensus
     team = session.get("team") if isinstance(session.get("team"), dict) else {}
     if not team:
         session["team"] = _build_orchestration_team(policy, orchestration, session["consensus"])
@@ -2992,6 +3089,52 @@ def _build_workflow_run_session(
     if lesson_refs:
         session["active_lesson_refs"] = lesson_refs
     return session
+
+
+def _resolve_history_role(
+    session: Dict[str, Any],
+    *,
+    agent: str,
+    profile: str,
+    review_type: str = "",
+) -> str:
+    agent_key = str(agent or "").strip()
+    profile_key = str(profile or "").strip()
+    if not agent_key:
+        return "unknown"
+
+    roles = set()
+    team = session.get("team") if isinstance(session.get("team"), dict) else {}
+    for member in team.get("members", []) if isinstance(team.get("members"), list) else []:
+        if not isinstance(member, dict):
+            continue
+        if str(member.get("agent", "") or "").strip() == agent_key:
+            role = _normalize_agent_role(member.get("slot") or member.get("role"))
+            if role != "unknown":
+                roles.add(role)
+
+    consensus = session.get("consensus") if isinstance(session.get("consensus"), dict) else {}
+    for candidate in consensus.get("candidates", []) if isinstance(consensus.get("candidates"), list) else []:
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("agent", "") or "").strip() != agent_key:
+            continue
+        candidate_role = _normalize_agent_role(candidate.get("role"))
+        candidate_lane = str(candidate.get("lane", "") or "").strip()
+        if profile_key and candidate_lane == profile_key and candidate_role != "unknown":
+            return candidate_role
+        if candidate_role != "unknown":
+            roles.add(candidate_role)
+
+    if len(roles) == 1:
+        return next(iter(roles))
+
+    normalized_review_type = str(review_type or "").strip().lower()
+    if normalized_review_type == "plan_review" or profile_key == "remote-reasoning":
+        return "escalation"
+    if normalized_review_type in {"artifact_review", "patch_review", "acceptance"}:
+        return "primary"
+    return "unknown"
 
 
 def _blueprint_requires_reviewer_gate(blueprint: Optional[Dict[str, Any]]) -> bool:
@@ -5899,6 +6042,12 @@ async def run_http_mode(port: int) -> None:
                             or "unknown"
                         ).strip()[:64] or "unknown"
                         reviewed_profile = str(data.get("reviewed_profile") or "").strip()[:64]
+                        reviewed_role = _resolve_history_role(
+                            session,
+                            agent=reviewed_agent,
+                            profile=reviewed_profile or task_class,
+                            review_type=review_type,
+                        )
                         review_snapshot = {
                             "ts": now,
                             "passed": passed,
@@ -5909,6 +6058,7 @@ async def run_http_mode(port: int) -> None:
                             "task_class": task_class,
                             "reviewed_agent": reviewed_agent,
                             "reviewed_profile": reviewed_profile,
+                            "reviewed_role": reviewed_role,
                             "criteria_ratio": round(criteria_ratio, 4),
                             "keyword_ratio": round(keyword_ratio, 4),
                             "criteria_threshold": min_criteria_ratio,
@@ -5942,6 +6092,7 @@ async def run_http_mode(port: int) -> None:
                                 "task_class": task_class,
                                 "reviewed_agent": reviewed_agent,
                                 "reviewed_profile": reviewed_profile,
+                                "reviewed_role": reviewed_role,
                                 "reviewer": reviewer,
                             }
                         )
@@ -5953,6 +6104,7 @@ async def run_http_mode(port: int) -> None:
                                 evaluation_registry,
                                 agent=reviewed_agent,
                                 profile=reviewed_profile or task_class,
+                                role=reviewed_role,
                                 passed=passed,
                                 score=float(response_payload["score"]),
                                 reviewer=reviewer,
@@ -6071,6 +6223,7 @@ async def run_http_mode(port: int) -> None:
                         evaluation_registry,
                         agent=str(consensus.get("selected_agent", "") or "unknown"),
                         lane=str(consensus.get("selected_lane", "") or "unknown"),
+                        role=str(consensus.get("selected_role", "") or "unknown"),
                         selected_candidate_id=selected_candidate_id,
                         summary=summary,
                         ts=int(session.get("updated_at") or time.time()),
@@ -6133,6 +6286,7 @@ async def run_http_mode(port: int) -> None:
                             evaluation_registry,
                             agent=str(consensus.get("selected_agent", "") or "unknown"),
                             lane=str(consensus.get("selected_lane", "") or "unknown"),
+                            role=str(consensus.get("selected_role", "") or "unknown"),
                             selected_candidate_id=selected_candidate_id,
                             summary=summary or rationale,
                             ts=int(session.get("updated_at") or time.time()),
@@ -6427,6 +6581,7 @@ async def run_http_mode(port: int) -> None:
                 consensus = session.get("consensus") if isinstance(session.get("consensus"), dict) else {}
                 runtime_agent = str(consensus.get("selected_agent", "") or "").strip()
                 runtime_profile = str(consensus.get("selected_lane", "") or "").strip()
+                runtime_role = str(consensus.get("selected_role", "") or "").strip()
                 if runtime_agent and runtime_profile:
                     async with _agent_evaluations_lock:
                         evaluation_registry = await _load_agent_evaluations_registry()
@@ -6434,6 +6589,7 @@ async def run_http_mode(port: int) -> None:
                             evaluation_registry,
                             agent=runtime_agent,
                             profile=runtime_profile,
+                            role=runtime_role,
                             event_type=event_type,
                             risk_class=risk_class,
                             approved=approved,
@@ -6665,6 +6821,7 @@ async def run_http_mode(port: int) -> None:
 
             for agent_name, agent_data in agents.items():
                 profiles = agent_data.get("profiles", {})
+                roles = agent_data.get("roles", {})
                 totals = agent_data.get("totals", {})
 
                 trends.append({
@@ -6675,6 +6832,7 @@ async def run_http_mode(port: int) -> None:
                     "average_review_score": totals.get("average_review_score", 0.0),
                     "average_runtime_score": totals.get("average_runtime_score", 0.0),
                     "profile_count": len(profiles),
+                    "role_count": len(roles),
                     "last_event_at": agent_data.get("last_event_at"),
                     "profiles": {
                         profile_name: {
@@ -6685,7 +6843,17 @@ async def run_http_mode(port: int) -> None:
                             "average_runtime_score": profile_data.get("average_runtime_score", 0.0),
                         }
                         for profile_name, profile_data in profiles.items()
-                    }
+                    },
+                    "roles": {
+                        role_name: {
+                            "review_events": role_data.get("review_events", 0),
+                            "consensus_selected": role_data.get("consensus_selected", 0),
+                            "runtime_events": role_data.get("runtime_events", 0),
+                            "average_review_score": role_data.get("average_review_score", 0.0),
+                            "average_runtime_score": role_data.get("average_runtime_score", 0.0),
+                        }
+                        for role_name, role_data in roles.items()
+                    },
                 })
 
             # Sort by total activity

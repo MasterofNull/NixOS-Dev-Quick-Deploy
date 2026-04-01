@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression checks for recency-aware agent evaluation biasing."""
+"""Static regression checks for role-aware agent evaluation biasing."""
 
 from pathlib import Path
 
@@ -21,31 +21,55 @@ def main() -> int:
         "evaluation bias should include a recent-event helper",
     )
     assert_true(
-        'events[-12:]' in text,
-        "evaluation bias should inspect a bounded recent event window",
+        "def _normalize_agent_role(value: Any) -> str:" in text,
+        "evaluation bias should normalize agent roles for cross-lane aggregation",
     )
     assert_true(
-        'totals = agent_row.get("totals")' in text,
-        "evaluation bias should blend whole-agent totals, not only one profile row",
+        '"roles": value.get("roles", {}) if isinstance(value.get("roles"), dict) else {}' in text,
+        "agent evaluation registry should preserve role summaries",
     )
     assert_true(
-        'recent_bias = _recent_agent_event_bias()' in text,
-        "evaluation bias should include recent-event signals in scoring",
+        "role_row = roles.get(_normalize_agent_role(role))" in text,
+        "evaluation bias should read the role-specific history row",
     )
     assert_true(
-        '(0.55 * _weighted_component(avg_review_score, review_events, 5.0))' in text,
-        "evaluation bias should weight direct profile review history explicitly",
+        'events[-18:]' in text,
+        "evaluation bias should inspect an expanded bounded recent event window",
     )
     assert_true(
-        '(0.25 * _weighted_component(total_avg_review_score, total_review_events, 12.0))' in text,
-        "evaluation bias should include longer whole-agent review history",
+        'if not profile_match and not role_match:' in text,
+        "recent-event bias should consider either matching profile or matching role",
     )
     assert_true(
-        '(0.20 * recent_bias["runtime_score"])' in text,
-        "evaluation bias should include recent runtime quality",
+        '(0.20 * _weighted_component(role_avg_review_score, role_review_events, 8.0))' in text,
+        "evaluation bias should include role-specific review history",
+    )
+    assert_true(
+        '(0.25 * _weighted_component(role_avg_runtime_score, role_runtime_events, 8.0))' in text,
+        "evaluation bias should include role-specific runtime quality history",
+    )
+    assert_true(
+        '(0.20 * min(1.0, role_consensus_selected / 6.0))' in text,
+        "evaluation bias should include role-specific consensus history",
+    )
+    assert_true(
+        'components["historical_runtime_quality"] = history["runtime_score"]' in text,
+        "seeded candidates should still receive runtime history bias",
+    )
+    assert_true(
+        '"selected_role": selected.get("role")' in text,
+        "seeded consensus state should preserve the selected role",
+    )
+    assert_true(
+        '"role_count": len(roles)' in text,
+        "evaluation trends should surface tracked role counts",
+    )
+    assert_true(
+        '"roles": {' in text,
+        "evaluation trends should expose per-role aggregates",
     )
 
-    print("PASS: recency-aware agent evaluation biasing is wired into orchestration scoring")
+    print("PASS: role-aware agent evaluation biasing is wired into orchestration scoring")
     return 0
 
 

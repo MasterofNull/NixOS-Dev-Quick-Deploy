@@ -280,9 +280,9 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - SDK surfaces for A2A task operations
 - Dashboard readiness/maturity reporting for the A2A surface
 - Mandatory TCK-aligned protocol repair work
+- Role-aware candidate scoring now blends per-lane history, same-role history, whole-agent totals, and recent runtime quality when forming workflow teams
 
 **Still missing for roadmap completion:**
-- Richer multi-agent selection/evaluation feedback loop weighting runtime quality over longer history windows and across multiple agent roles
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
 
 ### Batch 4.3: Agentic Workflow Automation
