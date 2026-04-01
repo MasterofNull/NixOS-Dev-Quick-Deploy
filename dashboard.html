@@ -1716,8 +1716,8 @@
             <a class="action-link" href="#section-ai-services">AI Services</a>
             <a class="action-link" href="#section-deployments">Deployments</a>
             <a class="action-link" href="#section-security">Security</a>
-            <a class="action-link" href="/api/health" target="_blank" rel="noreferrer">API Health</a>
-            <a class="action-link" href="/metrics" target="_blank" rel="noreferrer">Prometheus</a>
+            <a class="action-link" id="apiHealthLink" href="/api/health" target="_blank" rel="noreferrer">API Health</a>
+            <a class="action-link" id="prometheusLink" href="/metrics" target="_blank" rel="noreferrer">Prometheus</a>
         </div>
 
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
@@ -4186,6 +4186,7 @@
                 console.warn('Chart.js unavailable; rendering dashboard without charts.');
                 disableCharts();
             }
+            updateOperatorLinks();
             renderOperatorStrip();
 
             // Load initial data
@@ -7041,6 +7042,17 @@
             return `${protocol}//${host}:${port}`;
         })();
         const WS_BASE = FASTAPI_BASE.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+
+        function updateOperatorLinks() {
+            const apiHealthLink = document.getElementById('apiHealthLink');
+            const prometheusLink = document.getElementById('prometheusLink');
+            if (apiHealthLink) {
+                apiHealthLink.href = `${FASTAPI_BASE}/api/health`;
+            }
+            if (prometheusLink) {
+                prometheusLink.href = `${FASTAPI_BASE}/metrics`;
+            }
+        }
 
         async function loadServices() {
             try {
