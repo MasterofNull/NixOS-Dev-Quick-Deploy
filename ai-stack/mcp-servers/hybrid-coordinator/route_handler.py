@@ -484,6 +484,19 @@ def _local_response_budget(task_type: str) -> int:
     return default_budget
 
 
+def _context_budget_for_task(task_type: str) -> int:
+    """Use tighter local context budgets for simple synthesis tasks."""
+    default_budget = max(1, int(Config.AI_CONTEXT_MAX_TOKENS))
+    task_type = str(task_type or "").strip().lower()
+    if task_type == "lookup":
+        return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_LOOKUP)))
+    if task_type == "format":
+        return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_FORMAT)))
+    if task_type == "synthesize":
+        return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_SYNTHESIZE)))
+    return default_budget
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -784,17 +797,28 @@ async def route_search(
             remote_max_tokens = max(local_max_tokens, int(Config.AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS))
             classifier_context_chars = max(0, int(Config.AI_ROUTE_CLASSIFIER_CONTEXT_CHARS))
             response_max_tokens = remote_max_tokens
+            task_context_budget = max(1, int(Config.AI_CONTEXT_MAX_TOKENS))
+            context_budget_applied = task_context_budget
+            tokens_before = len(combined_context) // 4
             if Config.AI_CONTEXT_COMPRESSION_ENABLED and context_compressor and combined_context:
-                tokens_before = len(combined_context) // 4
-                compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
-                    contexts=[{"id": "route-results", "text": combined_context, "score": 1.0}],
-                    max_tokens=Config.AI_CONTEXT_MAX_TOKENS,
-                    strategy="hybrid",
-                )
-                logger.info(
-                    "context_compression tokens_before=%d tokens_after=%d budget=%d",
-                    tokens_before, compressed_tokens, Config.AI_CONTEXT_MAX_TOKENS,
-                )
+                task_context_budget = _context_budget_for_task("synthesize")
+                if tokens_before > task_context_budget:
+                    compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
+                        contexts=[{"id": "route-results", "text": combined_context, "score": 1.0}],
+                        max_tokens=task_context_budget,
+                        strategy="hybrid",
+                    )
+                    context_budget_applied = task_context_budget
+                    logger.info(
+                        "context_compression tokens_before=%d tokens_after=%d budget=%d",
+                        tokens_before, compressed_tokens, task_context_budget,
+                    )
+                else:
+                    compressed_tokens = tokens_before
+                    logger.debug(
+                        "context_compression_skipped tokens_before=%d budget=%d",
+                        tokens_before, task_context_budget,
+                    )
             # Task complexity classification — skip synthesis if remote-required,
             # use discrete bounded prompt if local-suitable.
             _complexity = None
@@ -811,6 +835,23 @@ async def route_search(
                     "remote_required": bool(_complexity.remote_required),
                     "reason": _complexity.reason,
                 }
+                task_context_budget = _context_budget_for_task(_complexity.task_type)
+                if (
+                    Config.AI_CONTEXT_COMPRESSION_ENABLED
+                    and context_compressor
+                    and combined_context
+                    and tokens_before > task_context_budget
+                    and task_context_budget != context_budget_applied
+                ):
+                    compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
+                        contexts=[{"id": "route-results", "text": combined_context, "score": 1.0}],
+                        max_tokens=task_context_budget,
+                        strategy="hybrid",
+                    )
+                    context_budget_applied = task_context_budget
+                    classifier_context = (
+                        compressed_context[:classifier_context_chars] if classifier_context_chars > 0 else ""
+                    )
                 logger.info(
                     "task_complexity type=%s tokens=%d local=%s reason=%s",
                     _complexity.task_type,
@@ -889,7 +930,7 @@ async def route_search(
                     response_text = llm_json["choices"][0]["message"]["content"]
                     usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
                     cached_tokens = int(
-                        usage.get("cached_tokens")
+                    usage.get("cached_tokens")
                         or (usage.get("prompt_tokens_details", {}) or {}).get("cached_tokens", 0)
                         or 0
                     )
@@ -901,7 +942,7 @@ async def route_search(
                     if compressed_tokens:
                         results["context_compression"] = {
                             "enabled": True,
-                            "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
+                            "token_budget": context_budget_applied,
                             "compressed_tokens": compressed_tokens,
                         }
                     LLM_BACKEND_SELECTIONS.labels(
@@ -949,7 +990,7 @@ async def route_search(
                             if compressed_tokens:
                                 results["context_compression"] = {
                                     "enabled": True,
-                                    "token_budget": Config.AI_CONTEXT_MAX_TOKENS,
+                                    "token_budget": context_budget_applied,
                                     "compressed_tokens": compressed_tokens,
                                 }
                             results["synthesis_fallback"] = {
