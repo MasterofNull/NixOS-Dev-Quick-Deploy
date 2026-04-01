@@ -479,6 +479,8 @@ def _local_response_budget(task_type: str) -> int:
         return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP)))
     if task_type == "format":
         return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT)))
+    if task_type == "reasoning":
+        return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING)))
     if task_type == "synthesize":
         return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE)))
     return default_budget
@@ -492,6 +494,8 @@ def _context_budget_for_task(task_type: str) -> int:
         return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_LOOKUP)))
     if task_type == "format":
         return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_FORMAT)))
+    if task_type == "reasoning":
+        return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_REASONING)))
     if task_type == "synthesize":
         return max(1, min(default_budget, int(Config.AI_CONTEXT_MAX_TOKENS_SYNTHESIZE)))
     return default_budget
