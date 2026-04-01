@@ -44,6 +44,10 @@ def load_route_handler():
                 AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION=16,
                 AI_ROUTE_CLASSIFIER_CONTEXT_CHARS=1200,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS=240,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=96,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=160,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=192,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=160,
                 AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=400,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS=4.0,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_HYBRID_SECONDS=6.0,
@@ -58,6 +62,7 @@ def load_route_handler():
                 AI_CONTEXT_MAX_TOKENS=1200,
                 AI_CONTEXT_MAX_TOKENS_LOOKUP=700,
                 AI_CONTEXT_MAX_TOKENS_FORMAT=900,
+                AI_CONTEXT_MAX_TOKENS_REASONING=1600,
                 AI_CONTEXT_MAX_TOKENS_SYNTHESIZE=1200,
                 LLAMA_CPP_INFERENCE_TIMEOUT=5,
                 AI_TASK_CLASSIFICATION_ENABLED=True,
@@ -167,6 +172,10 @@ async def main_async() -> int:
     assert_true(result.get("backend") == "local", "expected bounded reasoning with large retrieval context to stay local")
     assert_true(len(local_client.calls) == 1, "expected one local synthesis call")
     assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call")
+    assert_true(
+        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 192,
+        "expected reasoning tasks to use the reduced local reasoning output budget",
+    )
 
     print("PASS: route_handler caps classifier context so bounded reasoning stays on the local lane")
     return 0
