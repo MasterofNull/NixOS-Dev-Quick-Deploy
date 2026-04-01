@@ -124,6 +124,7 @@ from gap_remediation import RemediationPlan, RemediationResult, RemediationStatu
 from remediation_learning import OutcomeTracker, PlaybookLibrary, StrategyOptimizer
 from online_learning import IncrementalLearner, LearningExample, UpdateStrategy, HintQualityAdjuster, LivePatternMiner
 from feedback_acceleration import ImmediateFeedbackProcessor, SuccessFailureDetector
+from meta_learning import RapidAdaptor, Task, TaskDomain
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -179,6 +180,7 @@ _HINT_QUALITY_ADJUSTER = HintQualityAdjuster()
 _LIVE_PATTERN_MINER = LivePatternMiner()
 _IMMEDIATE_FEEDBACK_PROCESSOR = ImmediateFeedbackProcessor()
 _SUCCESS_FAILURE_DETECTOR = SuccessFailureDetector()
+_RAPID_ADAPTOR = RapidAdaptor()
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -882,6 +884,19 @@ def _real_time_learning_status_snapshot() -> Dict[str, Any]:
     }
 
 
+def _meta_learning_status_snapshot() -> Dict[str, Any]:
+    optimizer_history = _RAPID_ADAPTOR.meta_optimizer.optimization_history
+    latest = optimizer_history[-1] if optimizer_history else {}
+    return {
+        "cached_adaptations": len(_RAPID_ADAPTOR.adaptation_cache),
+        "meta_update_count": len(_RAPID_ADAPTOR.maml.update_history),
+        "known_task_embeddings": len(_RAPID_ADAPTOR.embedder.task_embeddings),
+        "known_domain_prototypes": len(_RAPID_ADAPTOR.few_shot.prototypes),
+        "latest_hyperparams": dict(_RAPID_ADAPTOR.meta_optimizer.hyperparams),
+        "latest_optimization_score": round(float(latest.get("best_score", 0.0) or 0.0), 4) if latest else 0.0,
+    }
+
+
 def _build_gap_failure_text(
     final_classification: Dict[str, Any],
     delegated_quality: Dict[str, Any],
@@ -1052,6 +1067,50 @@ async def _apply_real_time_learning(
         "pattern_count": len(_LIVE_PATTERN_MINER.patterns),
         "pending_action_count": len(_IMMEDIATE_FEEDBACK_PROCESSOR.pending_actions),
         "executed_action_count": sum(1 for action in actions if action.executed_at is not None),
+    }
+
+
+async def _apply_meta_learning(
+    task: str,
+    body: Any,
+    *,
+    profile_name: str,
+    delegated_quality: Dict[str, Any],
+) -> Dict[str, Any]:
+    response_text = _extract_delegated_response_text(body)
+    if not response_text:
+        return {"available": False}
+
+    domain_map = {
+        "remote-coding": TaskDomain.CODE_GENERATION,
+        "remote-reasoning": TaskDomain.PLANNING,
+        "remote-tool-calling": TaskDomain.CONFIGURATION,
+        "remote-free": TaskDomain.EXPLANATION,
+    }
+    domain = domain_map.get(str(profile_name or "").strip(), TaskDomain.PLANNING)
+    quality_score = float(delegated_quality.get("quality_score", 0.0) or 0.0)
+    few_shot_examples = [
+        {
+            "input": task,
+            "output": response_text[:1200],
+            "quality": max(0.0, min(1.0, quality_score or 0.75)),
+        }
+    ]
+    meta_task = Task(
+        task_id=str(uuid4()),
+        domain=domain,
+        description=task,
+        examples=list(few_shot_examples),
+    )
+    adaptation = await _RAPID_ADAPTOR.adapt_to_new_task(meta_task, few_shot_examples)
+    return {
+        "available": True,
+        "task_id": meta_task.task_id,
+        "domain": domain.value,
+        "method": str(adaptation.get("method", "") or ""),
+        "similar_task_count": len(adaptation.get("similar_tasks") or []),
+        "embedding_norm": round(float(adaptation.get("embedding_norm", 0.0) or 0.0), 4),
+        "cached_adaptations": len(_RAPID_ADAPTOR.adaptation_cache),
     }
 
 
@@ -4183,6 +4242,8 @@ async def run_http_mode(port: int) -> None:
             "capability_gap_automation": _capability_gap_status_snapshot(),
             # Batch 10.x — Real-time learning state
             "real_time_learning": _real_time_learning_status_snapshot(),
+            # Batch 10.3 — Meta-learning state
+            "meta_learning": _meta_learning_status_snapshot(),
             # Batch 5.2 — Skill Usage Tracking
             "skill_usage_stats": _get_skill_usage_stats(),
             # Batch 6.2 — Pattern Integration & Effectiveness
@@ -8191,6 +8252,12 @@ async def run_http_mode(port: int) -> None:
                 final_classification=final_classification,
                 context=data.get("context") if isinstance(data.get("context"), dict) else None,
             ) if response.status_code < 400 else {"available": False}
+            meta_learning = await _apply_meta_learning(
+                task,
+                body,
+                profile_name=effective_profile,
+                delegated_quality=delegated_quality,
+            ) if response.status_code < 400 else {"available": False}
             recovered_artifact = (
                 {"available": False}
                 if not final_classification.get("is_failure")
@@ -8254,6 +8321,7 @@ async def run_http_mode(port: int) -> None:
                 "progressive_context_category": str(progressive_context_meta.get("category", "") or ""),
                 "capability_gap_count": len(capability_gaps),
                 "real_time_learning_applied": bool(real_time_learning.get("available")),
+                "meta_learning_applied": bool(meta_learning.get("available")),
             }
 
             if pool_agent and response.status_code in {402, 429}:
@@ -8332,6 +8400,7 @@ async def run_http_mode(port: int) -> None:
                     ],
                     "remediation_plans": remediation_plans,
                     "real_time_learning": real_time_learning,
+                    "meta_learning": meta_learning,
                     "agent_pool": (
                         {
                             "applied": True,
