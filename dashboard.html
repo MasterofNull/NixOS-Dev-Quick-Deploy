@@ -2363,6 +2363,22 @@
                                 <div class="metric-label">Active Slots</div>
                                 <div class="metric-value" id="orchActiveSlots">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Formation Mode</div>
+                                <div class="metric-value" id="orchFormationMode">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Required Slots</div>
+                                <div class="metric-value" id="orchRequiredSlots">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Optional Capacity</div>
+                                <div class="metric-value" id="orchOptionalCapacity">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Deferred Slots</div>
+                                <div class="metric-value" id="orchDeferredSlots">--</div>
+                            </div>
                         </div>
 
                         <!-- Team Members Table -->
@@ -2392,6 +2408,13 @@
                             <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Candidate Scoring Breakdown</h3>
                             <div id="candidateScoringList">
                                 <div style="color: var(--text-muted); font-size: 0.85rem;">Select a session to view scoring details</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <h3 style="margin-bottom: 0.75rem; color: var(--text-primary); font-size: 0.95rem;">Deferred Collaborators</h3>
+                            <div id="deferredMembersList">
+                                <div style="color: var(--text-muted); font-size: 0.85rem;">No deferred collaborators</div>
                             </div>
                         </div>
 
@@ -9375,6 +9398,10 @@
             document.getElementById('orchConsensusMode').textContent = data.consensus_mode || '--';
             document.getElementById('orchSelectionStrategy').textContent = data.selection_strategy || '--';
             document.getElementById('orchActiveSlots').textContent = (data.active_slots || []).join(', ') || '--';
+            document.getElementById('orchFormationMode').textContent = data.formation_mode || '--';
+            document.getElementById('orchRequiredSlots').textContent = (data.required_slots || []).join(', ') || '--';
+            document.getElementById('orchOptionalCapacity').textContent = String(data.optional_slot_capacity ?? '--');
+            document.getElementById('orchDeferredSlots').textContent = (data.deferred_slots || []).join(', ') || '--';
 
             const tbody = document.getElementById('teamMembersTable');
             if (!data.team_members || data.team_members.length === 0) {
@@ -9429,6 +9456,29 @@
                         </div>
                     `;
                 }).join('');
+            }
+
+            const deferredList = document.getElementById('deferredMembersList');
+            if (!data.deferred_members || data.deferred_members.length === 0) {
+                deferredList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No deferred collaborators</div>';
+            } else {
+                deferredList.innerHTML = data.deferred_members.map(member => `
+                    <div style="padding: 1rem; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 0.75rem; border-left: 3px solid var(--accent-yellow);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <div>
+                                <span style="font-weight: 600; color: var(--text-primary);">${member.agent}</span>
+                                <span style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.85rem;">${member.role}</span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--accent-yellow); font-weight: 600;">Deferred</div>
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                            <span>Slot: <strong style="color: var(--accent-cyan);">${member.slot || '--'}</strong></span>
+                            <span>Lane: <code style="font-size: 0.75rem; background: var(--bg-tertiary); padding: 0.2rem 0.4rem; border-radius: 2px;">${member.lane || '--'}</code></span>
+                            <span>Score: <strong style="color: var(--accent-yellow);">${typeof member.score === 'number' ? member.score.toFixed(4) : '--'}</strong></span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary);">${member.activation_reason || 'Deferred because optional collaborator capacity was exhausted.'}</div>
+                    </div>
+                `).join('');
             }
         }
 
