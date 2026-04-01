@@ -15,7 +15,7 @@ import os
 from typing import Dict, List
 from pathlib import Path
 
-from api.routes import metrics, services, containers, config, websockets, actions, aistack, adk, audit, deployments, health, insights, workflows, collaboration, firewall
+from api.routes import metrics, services, containers, config, websockets, actions, aistack, adk, audit, deployments, health, insights, workflows, collaboration, firewall, testing
 from api.services.metrics_collector import MetricsCollector
 from api.services.ai_insights import get_insights_service
 from api.services.runtime_controls import get_dashboard_rate_limiter, get_operator_audit_log
@@ -99,6 +99,7 @@ async def lifespan(app: FastAPI):
             await connection.close()
         active_connections.clear()
     await insights_service.shutdown()
+    await testing.shutdown_testing_runner()
     # Close aistack HTTP session
     from api.routes import aistack
     await aistack.close_http_session()
@@ -206,6 +207,7 @@ app.include_router(workflows.router, prefix="/api", tags=["workflows"])
 app.include_router(collaboration.router, prefix="/api", tags=["collaboration"])
 app.include_router(firewall.router, prefix="/api/firewall", tags=["firewall"])
 app.include_router(adk.router, prefix="/api/adk", tags=["adk"])
+app.include_router(testing.router, prefix="/api/testing", tags=["testing"])
 
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
