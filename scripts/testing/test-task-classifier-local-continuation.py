@@ -43,6 +43,25 @@ def main() -> int:
     assert_true(continuation_reasoning.task_type == "reasoning", "expected continuation reasoning task classification")
     assert_true(continuation_reasoning.remote_required is False, "expected bounded continuation reasoning task to stay local")
 
+    bounded_reasoning = task_classifier.classify(
+        "explain how local routing and cache reuse reduce repeated query latency",
+        context="Recent reports show cache hit rate above 70% and most repeated queries already stay on the local lane.",
+        max_output_tokens=240,
+    )
+    assert_true(bounded_reasoning.task_type == "reasoning", "expected bounded reasoning task classification")
+    assert_true(bounded_reasoning.remote_required is False, "expected bounded reasoning task to stay local")
+    assert_true(
+        bounded_reasoning.reason == "bounded_reasoning_within_local_capacity",
+        "expected explicit bounded local reasoning reason",
+    )
+
+    architecture_reasoning = task_classifier.classify(
+        "design the long-term architecture strategy for hybrid routing and delegation",
+        context="The system has multiple local and remote lanes with policy tradeoffs.",
+        max_output_tokens=240,
+    )
+    assert_true(architecture_reasoning.remote_required is True, "expected architecture-heavy reasoning to stay remote-required")
+
     large_reasoning = task_classifier.classify(
         "continue the architecture analysis for the current work",
         context="x" * 5000,
