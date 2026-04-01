@@ -627,6 +627,43 @@ class AIInsightsService:
             },
         }
 
+    def _load_performance_profiling_readiness(self) -> Dict[str, Any]:
+        """Inspect repo-native continuous profiling and reporting coverage."""
+        root = _repo_root()
+        profiler = root / "ai-stack" / "observability" / "performance_profiler.py"
+        ai_stack_nix = root / "nix" / "modules" / "roles" / "ai-stack.nix"
+        search_performance = root / "dashboard" / "backend" / "api" / "routes" / "search_performance.py"
+
+        def _contains(path: Path, needle: str) -> bool:
+            try:
+                return needle in path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+
+        features = {
+            "continuous_profiler": profiler.exists() and _contains(profiler, "class PerformanceProfiler"),
+            "weekly_performance_report": ai_stack_nix.exists() and _contains(ai_stack_nix, "ai-weekly-report"),
+            "query_profile_api": search_performance.exists() and _contains(search_performance, '@router.get("/performance/profile")'),
+        }
+        enabled_count = sum(1 for enabled in features.values() if enabled)
+        status = "pending"
+        if enabled_count > 0:
+            status = "active"
+        if enabled_count == len(features):
+            status = "watch"
+
+        return {
+            "available": enabled_count > 0,
+            "status": status,
+            "feature_count": enabled_count,
+            "features": features,
+            "paths": {
+                "continuous_profiler": str(profiler),
+                "weekly_performance_report": str(ai_stack_nix),
+                "query_profile_api": str(search_performance),
+            },
+        }
+
     async def get_tool_performance_summary(self) -> Dict[str, Any]:
         """Get summarized tool performance metrics."""
         report = await self.get_full_report()
@@ -854,6 +891,15 @@ class AIInsightsService:
             **self._load_experimentation_readiness(),
         }
 
+    async def get_performance_profiling_readiness(self) -> Dict[str, Any]:
+        """Return the repo-native performance profiling readiness summary."""
+        report = await self.get_full_report()
+        return {
+            "timestamp": report.get("generated_at"),
+            "window": report.get("window"),
+            **self._load_performance_profiling_readiness(),
+        }
+
     async def get_roadmap_readiness(self) -> Dict[str, Any]:
         """Return a consolidated readiness summary for the active next-gen roadmap phases."""
         report = await self.get_full_report()
@@ -861,6 +907,7 @@ class AIInsightsService:
         a2a = await self.get_a2a_readiness()
         ai_specific_metrics = await self.get_ai_specific_metrics_summary()
         experimentation = self._load_experimentation_readiness()
+        profiling = self._load_performance_profiling_readiness()
         improvement_candidates = self._load_improvement_candidates_summary()
         code_review_summary = self._load_code_review_summary()
         testing_validation = self._load_testing_validation_readiness()
@@ -960,6 +1007,7 @@ class AIInsightsService:
                     "profiling_available": bool(route_latency.get("available")),
                     "ai_specific_metrics": ai_specific_metrics,
                     "experimentation": experimentation,
+                    "continuous_profiling": profiling,
                     "route_search_latency": {
                         "overall_p95_ms": route_latency.get("overall_p95_ms"),
                         "synthesis_p95_ms": route_latency.get("synthesis_p95_ms"),
@@ -1464,6 +1512,18 @@ class AIInsightsService:
                     f"features={readiness.get('feature_count', 0)} "
                     f"| compare={((readiness.get('features') or {}).get('variant_feedback_compare', False))} "
                     f"| stats={((readiness.get('features') or {}).get('variant_stats_tracking', False))}"
+                ),
+            }
+        if normalized_target == "profiling":
+            readiness = await self.get_performance_profiling_readiness()
+            return {
+                "target": normalized_target,
+                "title": "Continuous Profiling",
+                "status": readiness.get("status", "unknown"),
+                "summary": (
+                    f"features={readiness.get('feature_count', 0)} "
+                    f"| profiler={((readiness.get('features') or {}).get('continuous_profiler', False))} "
+                    f"| reports={((readiness.get('features') or {}).get('weekly_performance_report', False))}"
                 ),
             }
 

@@ -220,6 +220,10 @@ def main() -> int:
                 "roadmap readiness should expose experimentation readiness for phase 1",
             )
             assert_true(
+                ((phase1.get("continuous_profiling") or {}).get("features") or {}).get("continuous_profiler") is True,
+                "roadmap readiness should expose continuous profiling readiness for phase 1",
+            )
+            assert_true(
                 phase3.get("status") == "watch",
                 "roadmap readiness should surface active improvement candidate pressure for phase 3",
             )
@@ -315,6 +319,14 @@ def main() -> int:
             assert_true(
                 experiments_data.get("feature_count") >= 3,
                 "experimentation readiness should expose implemented A/B framework coverage",
+            )
+
+            profiling_response = client.get("/api/insights/performance/profiling")
+            assert_true(profiling_response.status_code == 200, "performance profiling readiness route should succeed")
+            profiling_data = profiling_response.json()
+            assert_true(
+                profiling_data.get("feature_count") >= 3,
+                "performance profiling readiness should expose implemented profiler/report coverage",
             )
 
             complexity_response = client.get("/api/insights/queries/complexity")
