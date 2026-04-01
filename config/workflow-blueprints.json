@@ -406,10 +406,11 @@
         "primary_lane": "research",
         "reviewer_lane": "codex-review",
         "escalation_lane": "remote-reasoning",
+        "collaborator_lanes": ["remote-reasoning"],
         "consensus_mode": "evidence-review",
         "selection_strategy": "evidence-first",
-        "allow_parallel_subagents": false,
-        "max_parallel_subagents": 1
+        "allow_parallel_subagents": true,
+        "max_parallel_subagents": 2
       },
       "intent_contract": {
         "user_intent": "Collect, summarize, or compare source-bounded research without drifting into open-ended scraping or unreviewed synthesis.",

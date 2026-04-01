@@ -37,6 +37,16 @@ def main() -> int:
         assert_true(bool(policy.get("reviewer_lane")), f"blueprint {item.get('id')} missing reviewer_lane")
         assert_true(bool(policy.get("escalation_lane")), f"blueprint {item.get('id')} missing escalation_lane")
         assert_true(bool(policy.get("consensus_mode")), f"blueprint {item.get('id')} missing consensus_mode")
+        if policy.get("allow_parallel_subagents"):
+            collaborator_lanes = policy.get("collaborator_lanes") or []
+            assert_true(
+                isinstance(collaborator_lanes, list) and len(collaborator_lanes) >= 1,
+                f"blueprint {item.get('id')} must declare collaborator_lanes when parallel subagents are enabled",
+            )
+            assert_true(
+                int(policy.get("max_parallel_subagents") or 0) >= 2,
+                f"blueprint {item.get('id')} must reserve at least one optional collaborator slot",
+            )
     print("PASS: workflow blueprints cover the required harness task families")
     return 0
 
