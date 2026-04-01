@@ -16,6 +16,7 @@ Benchmarks:
 import asyncio
 import json
 import logging
+import os
 import statistics
 import time
 from dataclasses import dataclass, field
@@ -24,6 +25,13 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _benchmark_artifact_dir() -> Path:
+    configured = os.getenv("PERFORMANCE_BENCHMARK_ARTIFACT_DIR", "").strip()
+    if configured:
+        return Path(configured)
+    return Path("/var/lib/ai-stack/hybrid/testing/benchmarks")
 
 
 @dataclass
@@ -310,11 +318,12 @@ async def main():
         all_results.results.extend(bench.results)
 
     # Export results
-    results_path = Path(".agents/benchmarks/performance_results.json")
+    artifact_dir = _benchmark_artifact_dir()
+    results_path = artifact_dir / "performance_results.json"
     all_results.export_results(results_path)
 
     # Compare with baseline if available
-    baseline_path = Path(".agents/benchmarks/baseline.json")
+    baseline_path = artifact_dir / "baseline.json"
     if baseline_path.exists():
         logger.info("\nComparing with baseline...")
         comparisons = all_results.compare_with_baseline(baseline_path)

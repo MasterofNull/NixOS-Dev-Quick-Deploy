@@ -15,6 +15,7 @@ Chaos experiments:
 
 import asyncio
 import logging
+import os
 import random
 import signal
 import subprocess
@@ -26,6 +27,13 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _chaos_artifact_path() -> Path:
+    configured = os.getenv("CHAOS_EXPERIMENT_REPORT_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return Path("/var/lib/ai-stack/hybrid/testing/chaos/experiment_results.json")
 
 
 class ChaosExperimentType(Enum):
@@ -376,7 +384,7 @@ async def main():
     results = await engineer.run_experiment_suite(experiments)
 
     # Generate report
-    report_path = Path(".agents/chaos/experiment_results.json")
+    report_path = _chaos_artifact_path()
     engineer.generate_report(report_path)
 
     # Summary
