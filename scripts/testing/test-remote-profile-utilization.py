@@ -139,6 +139,29 @@ def main() -> int:
     empty = aq_report.remote_profile_utilization([], window="1h")
     assert_true(empty.get("available") is False, "empty entries should report unavailable")
 
+    local_only = aq_report.remote_profile_utilization(
+        [
+            {
+                "timestamp": (now - timedelta(minutes=4)).isoformat().replace("+00:00", "Z"),
+                "tool_name": "route_search",
+                "service": "hybrid-coordinator-http",
+                "outcome": "success",
+                "latency_ms": 250.0,
+                "metadata": {
+                    "backend": "local",
+                    "generate_response": True,
+                    "task_complexity_type": "lookup",
+                },
+            }
+        ],
+        window="1h",
+    )
+    assert_true(local_only.get("available") is True, "expected local-only windows to stay reportable")
+    assert_true(local_only.get("source") == "local_only_zero_remote", "expected explicit local-only zero-remote source")
+    assert_true(local_only.get("zero_remote_calls") is True, "expected explicit zero-remote marker")
+    assert_true(local_only.get("local_route_calls") == 1, "expected one local route call")
+    assert_true(local_only.get("local_synthesis_calls") == 1, "expected one local synthesis call")
+
     route_search_only = aq_report.remote_profile_utilization(
         [
             {
