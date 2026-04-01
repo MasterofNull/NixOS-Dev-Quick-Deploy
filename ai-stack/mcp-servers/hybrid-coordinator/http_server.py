@@ -104,11 +104,19 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclosure"))
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
 from prompt_compression import CompressionStrategy, PromptCompressor
 from context_management import ContextChunk, ContextPruner
+from multi_tier_loading import (
+    ContextRepository as DisclosureContextRepository,
+    MultiTierLoader,
+    TierSelector,
+)
+from lazy_context import ContextDependencyGraph, ContextNode, LazyContextLoader
+from relevance_prediction import NegativeContextFilter, RelevancePredictor
 
 logger = logging.getLogger("hybrid-coordinator")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
@@ -150,6 +158,11 @@ _DELEGATED_RESULT_CACHE = ResultCache()
 _DELEGATED_QUALITY_TRACKER = QualityTrendTracker()
 _DELEGATED_PROMPT_COMPRESSOR = PromptCompressor()
 _DELEGATED_CONTEXT_PRUNER = ContextPruner()
+_DISCLOSURE_REPOSITORY = DisclosureContextRepository(Path(__file__).parent.parent.parent.parent / ".agents" / "context-tiers")
+_DISCLOSURE_TIER_SELECTOR = TierSelector()
+_DISCLOSURE_TIER_LOADER = MultiTierLoader(_DISCLOSURE_REPOSITORY)
+_DISCLOSURE_RELEVANCE_PREDICTOR = RelevancePredictor()
+_DISCLOSURE_NEGATIVE_FILTER = NegativeContextFilter(threshold=0.25)
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -711,6 +724,109 @@ def _replace_message_content(message: Dict[str, Any], text: str) -> Dict[str, An
 
 def _estimate_message_tokens(messages: List[Dict[str, Any]]) -> int:
     return sum(_DELEGATED_PROMPT_COMPRESSOR._estimate_tokens(_message_content_text(message)) for message in messages)
+
+
+def _infer_progressive_context_category(task: str, context: Optional[Dict[str, Any]] = None) -> str:
+    text = " ".join(
+        part for part in [
+            str(task or "").lower(),
+            json.dumps(context, sort_keys=True).lower() if isinstance(context, dict) and context else "",
+        ] if part
+    )
+    category_rules = [
+        ("security", {"security", "auth", "token", "secret", "tls", "audit"}),
+        ("deployment", {"deploy", "deployment", "service", "nixos", "systemd", "restart"}),
+        ("troubleshooting", {"error", "debug", "issue", "problem", "failure", "regression"}),
+        ("api", {"api", "endpoint", "route", "http", "json", "request"}),
+    ]
+    for category, keywords in category_rules:
+        if any(keyword in text for keyword in keywords):
+            return category
+    return "architecture"
+
+
+def _ensure_system_message(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if messages and str(messages[0].get("role", "")).strip() == "system":
+        return [dict(message) for message in messages]
+    return [{"role": "system", "content": "Use the supplied context conservatively and prefer direct evidence."}, *[dict(message) for message in messages]]
+
+
+async def _apply_progressive_context(
+    task: str,
+    messages: List[Dict[str, Any]],
+    *,
+    context: Optional[Dict[str, Any]] = None,
+    profile_name: str = "",
+    context_budget: int = 0,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Attach progressively selected context chunks to delegated message envelopes."""
+    if not messages:
+        return messages, {"applied": False}
+
+    category = _infer_progressive_context_category(task, context)
+    budget = max(200, int(context_budget or 0) or 0)
+    tier_decision = _DISCLOSURE_TIER_SELECTOR.select_tier(task, context_budget=budget)
+    load_result = await _DISCLOSURE_TIER_LOADER.load_context(task, category, tier_decision.selected_tier)
+    if not load_result.chunks_loaded:
+        return messages, {"applied": False, "category": category, "tier": tier_decision.selected_tier.name.lower()}
+
+    scored_contexts = _DISCLOSURE_RELEVANCE_PREDICTOR.predict_batch(
+        task,
+        {chunk.chunk_id: chunk.content for chunk in load_result.chunks_loaded},
+    )
+    filtered_contexts = _DISCLOSURE_NEGATIVE_FILTER.filter(scored_contexts)
+    selected_contexts = (filtered_contexts or scored_contexts)[: min(3, len(filtered_contexts or scored_contexts))]
+    if not selected_contexts:
+        return messages, {"applied": False, "category": category, "tier": tier_decision.selected_tier.name.lower()}
+
+    graph = ContextDependencyGraph()
+    previous_id = ""
+    for rank, score in enumerate(selected_contexts):
+        matching = next((chunk for chunk in load_result.chunks_loaded if chunk.chunk_id == score.context_id), None)
+        if not matching:
+            continue
+        graph.add_node(
+            ContextNode(
+                node_id=matching.chunk_id,
+                content=matching.content,
+                tokens=matching.tokens,
+                load_priority=max(1, 10 - rank),
+                metadata={"tier": matching.tier.name.lower(), "category": matching.category},
+            )
+        )
+        if previous_id:
+            graph.add_dependency(matching.chunk_id, previous_id)
+        previous_id = matching.chunk_id
+
+    lazy_loader = LazyContextLoader(graph)
+    loaded_context = await lazy_loader.load([score.context_id for score in selected_contexts], max_concurrent=3)
+    ordered_loaded = [loaded_context.get(score.context_id, "").strip() for score in selected_contexts if loaded_context.get(score.context_id)]
+    ordered_loaded = [item for item in ordered_loaded if item]
+    if not ordered_loaded:
+        return messages, {"applied": False, "category": category, "tier": tier_decision.selected_tier.name.lower()}
+
+    injection = "\n".join(f"- {item}" for item in ordered_loaded)
+    updated_messages = _ensure_system_message(messages)
+    system_text = _message_content_text(updated_messages[0]).strip()
+    progressive_prefix = (
+        f"{system_text}\n\n"
+        f"Progressive context [{category}/{tier_decision.selected_tier.name.lower()}]:\n"
+        f"{injection}"
+    ).strip()
+    updated_messages[0] = _replace_message_content(updated_messages[0], progressive_prefix)
+
+    return updated_messages, {
+        "applied": True,
+        "category": category,
+        "tier": tier_decision.selected_tier.name.lower(),
+        "confidence": round(float(tier_decision.confidence), 4),
+        "reasoning": tier_decision.reasoning,
+        "loaded_chunks": [score.context_id for score in selected_contexts],
+        "loaded_chunk_count": len(ordered_loaded),
+        "loaded_tokens": int(sum(chunk.tokens for chunk in load_result.chunks_loaded)),
+        "filtered_candidates": max(0, len(scored_contexts) - len(filtered_contexts)),
+        "profile": str(profile_name or "").strip(),
+    }
 
 
 def _optimize_delegated_messages(
@@ -7598,6 +7714,14 @@ async def run_http_mode(port: int) -> None:
                     context=context,
                     profile=selected_profile,
                 )
+            progressive_context, progressive_context_meta = await _apply_progressive_context(
+                task,
+                messages,
+                context=data.get("context") if isinstance(data.get("context"), dict) else None,
+                profile_name=selected_profile,
+                context_budget=int(data.get("max_tokens") or 0),
+            )
+            messages = progressive_context
             messages, prompt_optimization = _optimize_delegated_messages(messages, selected_profile)
 
             payload: Dict[str, Any] = {
@@ -7874,6 +7998,9 @@ async def run_http_mode(port: int) -> None:
                 "prompt_optimization_applied": bool(prompt_optimization.get("applied")),
                 "prompt_tokens_before": int(prompt_optimization.get("original_tokens", 0) or 0),
                 "prompt_tokens_after": int(prompt_optimization.get("compressed_tokens", 0) or 0),
+                "progressive_context_applied": bool(progressive_context_meta.get("applied")),
+                "progressive_context_tier": str(progressive_context_meta.get("tier", "") or ""),
+                "progressive_context_category": str(progressive_context_meta.get("category", "") or ""),
             }
 
             if pool_agent and response.status_code in {402, 429}:
@@ -7930,6 +8057,7 @@ async def run_http_mode(port: int) -> None:
                         "initial": initial_classification,
                         "final": final_classification,
                     },
+                    "progressive_context": progressive_context_meta,
                     "prompt_optimization": prompt_optimization,
                     "agent_pool": (
                         {
