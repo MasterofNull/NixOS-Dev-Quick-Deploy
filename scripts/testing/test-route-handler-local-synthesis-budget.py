@@ -44,6 +44,9 @@ def load_route_handler():
                 AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION=16,
                 AI_ROUTE_CLASSIFIER_CONTEXT_CHARS=1200,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS=240,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=96,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=160,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=160,
                 AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=400,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS=4.0,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_HYBRID_SECONDS=6.0,
@@ -172,8 +175,8 @@ async def main_async() -> int:
     assert_true(len(local_client.calls) == 1, "expected local client to receive one synthesis call")
     assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call for bounded local task")
     assert_true(
-        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 240,
-        "expected local synthesis budget to use the bounded local max_tokens",
+        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 160,
+        "expected synthesize tasks to use the reduced local output budget",
     )
 
     print("PASS: route_handler keeps bounded synthesis on the local lane with a reduced token budget")

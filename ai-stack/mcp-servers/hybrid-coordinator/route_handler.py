@@ -471,6 +471,19 @@ def _select_keyword_pool(
     return base_pool
 
 
+def _local_response_budget(task_type: str) -> int:
+    """Pick a smaller local output budget for bounded low-complexity tasks."""
+    default_budget = max(1, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS))
+    task_type = str(task_type or "").strip().lower()
+    if task_type == "lookup":
+        return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP)))
+    if task_type == "format":
+        return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT)))
+    if task_type == "synthesize":
+        return max(1, min(default_budget, int(Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE)))
+    return default_budget
+
+
 def init(
     *,
     hybrid_search_fn: Callable,
@@ -827,12 +840,12 @@ async def route_search(
                     _inference_client = llama_cpp_client
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
-                    response_max_tokens = local_max_tokens
+                    response_max_tokens = _local_response_budget(_complexity.task_type)
             elif not _skip_synthesis:
                 _inference_client = llama_cpp_client
                 _inference_path = "/chat/completions"
                 _inference_headers = {}
-                response_max_tokens = local_max_tokens
+                response_max_tokens = _local_response_budget("synthesize")
             if not _skip_synthesis:
                 if _complexity and _complexity.optimized_prompt:
                     prompt = _complexity.optimized_prompt
