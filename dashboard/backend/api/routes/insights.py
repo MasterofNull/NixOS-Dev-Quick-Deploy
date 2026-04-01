@@ -45,6 +45,18 @@ async def get_tool_performance():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/metrics/ai-specific")
+async def get_ai_specific_metrics():
+    """Get AI-specific operations metrics from the hybrid Prometheus surface."""
+    try:
+        service = get_insights_service()
+        metrics = await service.get_ai_specific_metrics_summary()
+        return metrics
+    except Exception as e:
+        logger.error(f"Failed to get AI-specific metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # LLM Routing and Model Performance Endpoints
 # ============================================================================
