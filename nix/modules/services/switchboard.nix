@@ -30,6 +30,7 @@ let
     then "/run/secrets/${sec.names.hybridApiKey}"
     else "";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
+  repoPath = cfg.mcpServers.repoPath;
   remoteBudgetStatePath = "${mutableOptimizerDir}/switchboard-remote-budget.json";
   continueLocalCard = ''
     [profile-card:continue-local]
@@ -65,8 +66,8 @@ let
   '';
   localToolCallingCard = ''
     [profile-card:local-tool-calling]
-    Use the local tool-calling prep lane for future local tool-enabled models.
-    Preserve strict tool schemas and fall back explicitly if the local backend does not support tools yet.
+    Use the local tool-calling lane for bounded built-in tool execution on the local host.
+    Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
   '';
   embeddingLocalCard = ''
     [profile-card:embedding-local]
@@ -83,9 +84,12 @@ let
   switchboardScript = pkgs.writeText "ai-switchboard.py" ''
     #!/usr/bin/env python3
     """AI Switchboard — OpenAI-compatible LLM routing proxy."""
+    import hashlib
     import os
     import json
     import re
+    import sys
+    import time
     from urllib.parse import urlparse
 
     import httpx
@@ -115,6 +119,8 @@ let
     HYBRID_URL      = os.environ.get("HYBRID_URL", "").rstrip("/")
     HINTS_INJECT    = os.environ.get("HINTS_INJECT", "1").strip() not in ("0", "false", "no")
     HINTS_LIMIT     = int(os.environ.get("HINTS_LIMIT", "2"))
+    LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", "${repoPath}/ai-stack/local-agents").strip()
+    LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "8"))
     CONNECT_TIMEOUT_S = float(os.environ.get("SWB_CONNECT_TIMEOUT_S", "10"))
     WRITE_TIMEOUT_S = float(os.environ.get("SWB_WRITE_TIMEOUT_S", "60"))
     POOL_TIMEOUT_S = float(os.environ.get("SWB_POOL_TIMEOUT_S", "30"))
@@ -147,6 +153,7 @@ let
     CARD_REMOTE_TOOL_CALLING = ${builtins.toJSON remoteToolCallingCard}
     CARD_LOCAL_TOOL_CALLING = ${builtins.toJSON localToolCallingCard}
     CARD_EMBEDDING_LOCAL = ${builtins.toJSON embeddingLocalCard}
+    _LOCAL_TOOL_REGISTRY = None
     REMOTE_MODEL_ALIASES_ENABLED = os.environ.get("SWB_REMOTE_MODEL_ALIASES_ENABLED", "1").strip() not in ("0", "false", "no")
     REMOTE_MODEL_ALIAS_FREE = os.environ.get("SWB_REMOTE_MODEL_ALIAS_FREE", "").strip()
     REMOTE_MODEL_ALIAS_CODING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_CODING", "").strip()
@@ -183,6 +190,9 @@ let
 
     REMOTE_URL = _normalize_remote_url(REMOTE_URL)
 
+    if LOCAL_AGENTS_PATH and LOCAL_AGENTS_PATH not in sys.path:
+        sys.path.insert(0, LOCAL_AGENTS_PATH)
+
     app = FastAPI(title="AI Switchboard")
     _local_sem = None
     _remote_sem = None
@@ -216,7 +226,7 @@ let
                 "remote-coding": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_CODING or None},
                 "remote-reasoning": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_REASONING or None},
                 "remote-tool-calling": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_TOOL_CALLING or None},
-                "local-tool-calling": {"force_provider": "local", "inject_hints": False, "tool_calling_preparatory": True},
+                "local-tool-calling": {"force_provider": "local", "inject_hints": False, "tool_execution": "built-in"},
                 "embedding-local": {"force_provider": "local", "inject_hints": False, "embeddings_only": True},
                 "embedded-assist": {"force_provider": "local", "inject_hints": False, "embeddings_only": False},
             },
@@ -412,6 +422,184 @@ let
             "content-length",
         }
         return {k: v for k, v in raw_headers.items() if k.lower() not in hop}
+
+    def _tool_name(tool: dict) -> str:
+        if not isinstance(tool, dict):
+            return ""
+        if tool.get("type") == "function" and isinstance(tool.get("function"), dict):
+            return str(tool["function"].get("name", "")).strip()
+        return str(tool.get("name", "")).strip()
+
+    def _tool_payload_from_schema(schema: dict) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": schema.get("name", ""),
+                "description": schema.get("description", ""),
+                "parameters": schema.get("parameters", {"type": "object", "properties": {}}),
+            },
+        }
+
+    def _load_local_tool_registry():
+        global _LOCAL_TOOL_REGISTRY
+        if _LOCAL_TOOL_REGISTRY is not None:
+            return _LOCAL_TOOL_REGISTRY
+        try:
+            from tool_registry import get_registry, ToolCall
+            from builtin_tools.ai_coordination import register_ai_coordination_tools
+            from builtin_tools.computer_use import register_computer_use_tools
+            from builtin_tools.file_operations import register_file_tools
+            from builtin_tools.shell_tools import register_shell_tools
+        except Exception as exc:
+            raise RuntimeError(f"failed to import local agent tooling from {LOCAL_AGENTS_PATH}: {exc}") from exc
+
+        registry = get_registry()
+        if not registry.tools:
+            register_file_tools(registry)
+            register_shell_tools(registry)
+            register_ai_coordination_tools(registry)
+            register_computer_use_tools(registry)
+        _LOCAL_TOOL_REGISTRY = (registry, ToolCall)
+        return _LOCAL_TOOL_REGISTRY
+
+    def _normalize_local_tools(requested_tools):
+        registry, _tool_call_cls = _load_local_tool_registry()
+        available = {
+            tool.name: _tool_payload_from_schema(tool.to_json_schema())
+            for tool in registry.list_tools()
+        }
+        if isinstance(requested_tools, list) and requested_tools:
+            selected = []
+            unsupported = []
+            seen = set()
+            for tool in requested_tools:
+                name = _tool_name(tool)
+                if not name:
+                    continue
+                if name not in available:
+                    unsupported.append(name)
+                    continue
+                if name in seen:
+                    continue
+                selected.append(available[name])
+                seen.add(name)
+            if unsupported:
+                raise ValueError(
+                    "local-tool-calling only supports built-in server tools; unsupported: "
+                    + ", ".join(sorted(set(unsupported)))
+                )
+            if not selected:
+                raise ValueError("local-tool-calling did not receive any executable built-in tools")
+            return selected, set(seen)
+        selected = list(available.values())
+        return selected, {name for name in available}
+
+    def _normalize_tool_choice(tool_choice, allowed_names):
+        if tool_choice in (None, "", False):
+            return "auto"
+        if isinstance(tool_choice, str):
+            lowered = tool_choice.strip().lower()
+            if lowered in {"auto", "none", "required"}:
+                return lowered
+            return "auto"
+        if isinstance(tool_choice, dict):
+            function_name = _tool_name(tool_choice)
+            if function_name and function_name not in allowed_names:
+                raise ValueError(f"tool_choice requested unsupported local tool: {function_name}")
+            return tool_choice
+        return "auto"
+
+    async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
+        registry, tool_call_cls = _load_local_tool_registry()
+        tools_payload, allowed_names = _normalize_local_tools(payload.get("tools"))
+        tool_choice = _normalize_tool_choice(payload.get("tool_choice"), allowed_names)
+        messages = list(payload.get("messages") or [])
+        if not messages:
+            raise ValueError("chat/completions requires messages for local-tool-calling")
+
+        requested_limit = payload.get("max_tool_calls", LOCAL_TOOL_CALL_LIMIT)
+        try:
+            max_tool_calls = int(requested_limit)
+        except (TypeError, ValueError):
+            max_tool_calls = LOCAL_TOOL_CALL_LIMIT
+        max_tool_calls = max(1, min(max_tool_calls, LOCAL_TOOL_CALL_LIMIT))
+        tool_calls_used = 0
+        request_payload = dict(payload)
+        request_payload["messages"] = messages
+        request_payload["tools"] = tools_payload
+        request_payload["tool_choice"] = tool_choice
+        request_payload["stream"] = False
+
+        async with httpx.AsyncClient(timeout=_timeout_for("local", False)) as client:
+            while True:
+                upstream = await client.post(
+                    f"{LLAMA_URL}/v1/chat/completions",
+                    headers={"Content-Type": "application/json"},
+                    json=request_payload,
+                )
+                body = upstream.json()
+                if upstream.status_code >= 400:
+                    message = body.get("error", {}).get("message") if isinstance(body, dict) else str(body)
+                    raise RuntimeError(f"local llama.cpp tool step failed: {message or upstream.text}")
+
+                choices = body.get("choices", []) if isinstance(body, dict) else []
+                if not choices:
+                    raise RuntimeError("local llama.cpp returned no choices during tool execution")
+                message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+                tool_calls = message.get("tool_calls") or []
+                if not tool_calls:
+                    return body, tool_calls_used
+
+                messages.append({
+                    "role": "assistant",
+                    "content": message.get("content", "") or "",
+                    "tool_calls": tool_calls,
+                })
+
+                for tool_call in tool_calls:
+                    if tool_calls_used >= max_tool_calls:
+                        raise RuntimeError(f"local tool-call limit exceeded: {tool_calls_used}>{max_tool_calls}")
+                    function_payload = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
+                    tool_name = str(function_payload.get("name", "")).strip()
+                    tool_call_id = str(tool_call.get("id", "")).strip() or hashlib.md5(
+                        f"{tool_name}:{time.time()}".encode("utf-8")
+                    ).hexdigest()[:16]
+                    if tool_name not in allowed_names:
+                        tool_result_text = json.dumps({
+                            "tool": tool_name,
+                            "status": "error",
+                            "error": f"unsupported local tool: {tool_name}",
+                        })
+                    else:
+                        raw_arguments = function_payload.get("arguments", "{}")
+                        try:
+                            arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments or {})
+                        except Exception as exc:
+                            tool_result_text = json.dumps({
+                                "tool": tool_name,
+                                "status": "error",
+                                "error": f"invalid JSON arguments: {exc}",
+                                "raw_arguments": raw_arguments,
+                            })
+                        else:
+                            tool_call_obj = tool_call_cls(
+                                id=tool_call_id,
+                                tool_name=tool_name,
+                                arguments=arguments,
+                                model_id=str(body.get("model", "")),
+                                session_id=f"switchboard-{hashlib.md5(json.dumps(messages, default=str).encode('utf-8')).hexdigest()[:12]}",
+                            )
+                            tool_result = await registry.execute_tool_call(tool_call_obj)
+                            tool_result_text = registry.format_tool_result(tool_result)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": tool_result_text,
+                    })
+                    tool_calls_used += 1
+
+                request_payload["messages"] = messages
+                request_payload["tool_choice"] = "auto"
 
     def _estimate_tokens(text: str) -> int:
         # Lightweight approximation for guardrail decisions. Keep a
@@ -885,6 +1073,8 @@ let
                     body = json.dumps(payload).encode("utf-8")
 
         is_stream = bool(isinstance(payload, dict) and payload.get("stream") is True)
+        local_tool_execution_used = False
+        local_tool_calls_used = 0
 
         hop_by_hop = {
             "host",
@@ -913,44 +1103,66 @@ let
 
         try:
             async with sem:
-                client = httpx.AsyncClient(timeout=timeout)
-                if is_stream:
-                    req = client.build_request(
-                        method=request.method,
-                        url=f"{target}/v1/{path}",
-                        headers=headers,
-                        content=body,
-                        params=dict(request.query_params),
-                    )
-                    upstream = await client.send(req, stream=True)
-
-                    async def _iter():
-                        try:
-                            async for chunk in upstream.aiter_bytes():
-                                yield chunk
-                        finally:
-                            await upstream.aclose()
-                            await client.aclose()
-
-                    response = StreamingResponse(
-                        _iter(),
-                        status_code=upstream.status_code,
-                        headers=_response_headers(dict(upstream.headers)),
-                    )
+                if (
+                    path == "chat/completions"
+                    and profile == "local-tool-calling"
+                    and target_type == "local"
+                    and isinstance(payload, dict)
+                    and not is_stream
+                ):
+                    try:
+                        local_body, local_tool_calls_used = await _execute_local_tool_calling(payload)
+                    except ValueError as exc:
+                        return JSONResponse(
+                            status_code=400,
+                            content={"error": {"message": str(exc), "type": "invalid_local_tool_request"}},
+                        )
+                    except RuntimeError as exc:
+                        return JSONResponse(
+                            status_code=502,
+                            content={"error": {"message": str(exc), "type": "local_tool_execution_error"}},
+                        )
+                    response = JSONResponse(status_code=200, content=local_body)
+                    local_tool_execution_used = True
                 else:
-                    async with client:
-                        upstream = await client.request(
+                    client = httpx.AsyncClient(timeout=timeout)
+                    if is_stream:
+                        req = client.build_request(
                             method=request.method,
                             url=f"{target}/v1/{path}",
                             headers=headers,
                             content=body,
                             params=dict(request.query_params),
                         )
-                    response = Response(
-                        content=upstream.content,
-                        status_code=upstream.status_code,
-                        headers=_response_headers(dict(upstream.headers)),
-                    )
+                        upstream = await client.send(req, stream=True)
+
+                        async def _iter():
+                            try:
+                                async for chunk in upstream.aiter_bytes():
+                                    yield chunk
+                            finally:
+                                await upstream.aclose()
+                                await client.aclose()
+
+                        response = StreamingResponse(
+                            _iter(),
+                            status_code=upstream.status_code,
+                            headers=_response_headers(dict(upstream.headers)),
+                        )
+                    else:
+                        async with client:
+                            upstream = await client.request(
+                                method=request.method,
+                                url=f"{target}/v1/{path}",
+                                headers=headers,
+                                content=body,
+                                params=dict(request.query_params),
+                            )
+                        response = Response(
+                            content=upstream.content,
+                            status_code=upstream.status_code,
+                            headers=_response_headers(dict(upstream.headers)),
+                        )
         except httpx.TimeoutException:
             return JSONResponse(
                 status_code=504,
@@ -976,6 +1188,9 @@ let
 
         response.headers["X-AI-Route"] = target_type
         response.headers["X-AI-Profile"] = profile
+        if local_tool_execution_used:
+            response.headers["X-AI-Tool-Execution"] = "local-agent"
+            response.headers["X-AI-Tool-Calls-Used"] = str(local_tool_calls_used)
         if remote_budget:
             response.headers["X-AI-Remote-Tokens-Used"] = str(remote_budget.get("remote_tokens_used", 0))
             if remote_budget.get("remote_tokens_remaining") is not None:
@@ -1040,9 +1255,11 @@ in
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
+          "LOCAL_AGENTS_PATH=${repoPath}/ai-stack/local-agents"
         ];
         EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";
         User                  = cfg.primaryUser;
+        WorkingDirectory      = repoPath;
         Restart               = "on-failure";
         RestartSec            = "5s";
         TimeoutStopSec        = "15s";
@@ -1050,6 +1267,7 @@ in
         NoNewPrivileges       = true;
         ProtectSystem         = "strict";
         ProtectHome           = true;
+        ReadOnlyPaths         = [ repoPath ];
         PrivateTmp            = true;
         CapabilityBoundingSet = "";
         RestrictSUIDSGID      = true;
