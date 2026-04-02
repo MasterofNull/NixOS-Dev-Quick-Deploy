@@ -119,6 +119,7 @@ run_pytest_component \
   scripts/testing/test-context-store-service-state.py \
   scripts/testing/test-context-store-deployment-deps.py \
   scripts/testing/test-context-store-deployment-lifecycle.py \
+  scripts/testing/test-context-store-query-context.py \
   scripts/testing/test-context-store-causality-edges.py \
   scripts/testing/test-deployment-graph-queries.py \
   scripts/testing/test-deployment-causality-clustering.py \
