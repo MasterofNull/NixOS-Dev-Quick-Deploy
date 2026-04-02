@@ -45,9 +45,10 @@ let
   aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
-  # Continue defaults to the hybrid coordinator so prompt ingress is routed
-  # through the coordinator decision tree before switchboard execution.
-  continueApiBase = "http://127.0.0.1:${toString aiHybridPort}/v1";
+  # Continue uses the switchboard OpenAI-compatible proxy directly because the
+  # hybrid coordinator's /v1 ingress is protected and returns 401 to editor
+  # clients that only provide placeholder local keys.
+  continueApiBase = aiOpenAIBaseUrl;
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     { name = "PATH"; value = vscodiumPathValue; }
@@ -1112,7 +1113,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="22.0"
+    _config_version="23.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1130,10 +1131,10 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "21.0",
+  "__configVersion": "23.0",
   "models": [
     {
-      "title": "Coordinator Router (Authoritative)",
+      "title": "Switchboard Router (Authoritative)",
       "provider": "openai",
       "apiKey": "local-llama-cpp",
       "apiBase": "${continueApiBase}",
