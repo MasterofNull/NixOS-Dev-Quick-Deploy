@@ -47,6 +47,18 @@ TEST_SUITES: Dict[str, Dict[str, Any]] = {
         "timeout_seconds": 120,
         "phase": "3.2",
     },
+    "comprehensive_validation": {
+        "id": "comprehensive_validation",
+        "title": "Comprehensive Validation Bundle",
+        "commands": [
+            ["python3", "ai-stack/testing/property_based_tests.py"],
+            ["bash", "scripts/testing/chaos-harness-smoke.sh"],
+            ["python3", "ai-stack/testing/performance_benchmarks.py"],
+            ["bash", "scripts/automation/run-prsi-canary-suite.sh"],
+        ],
+        "timeout_seconds": 420,
+        "phase": "3.2",
+    },
 }
 
 testing_tasks: Dict[str, asyncio.Task[Any]] = {}
@@ -56,7 +68,7 @@ testing_lock = asyncio.Lock()
 
 
 class TestingExecutionRequest(BaseModel):
-    suite_id: str = Field(..., pattern="^(property_based|chaos_smoke|performance_benchmarks|canary_suite)$")
+    suite_id: str = Field(..., pattern="^(property_based|chaos_smoke|performance_benchmarks|canary_suite|comprehensive_validation)$")
     dry_run: bool = True
     confirm: bool = False
     user: str = "dashboard-operator"
@@ -102,17 +114,35 @@ async def _run_testing_suite(execution_id: str, suite: Dict[str, Any], request: 
             )
             return
 
-        process = await _create_process(list(suite["command"]))
-        testing_processes[execution_id] = process
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=int(suite["timeout_seconds"]))
-        output = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).strip()
+        commands = suite.get("commands") or [suite.get("command", [])]
+        outputs: List[str] = []
+        total_timeout = int(suite["timeout_seconds"])
+        remaining_timeout = total_timeout
+        final_returncode = 0
+
+        for index, command in enumerate(commands, start=1):
+            if not command:
+                continue
+            step_header = f"[step {index}/{len(commands)}] {' '.join(command)}"
+            process = await _create_process(list(command))
+            testing_processes[execution_id] = process
+            step_started = asyncio.get_running_loop().time()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=max(1, remaining_timeout))
+            remaining_timeout = max(1, int(total_timeout - (asyncio.get_running_loop().time() - step_started)))
+            step_output = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).strip()
+            outputs.append(f"{step_header}\n{step_output}".strip())
+            if process.returncode != 0:
+                final_returncode = process.returncode
+                break
+
+        output = "\n\n".join(outputs).strip()
         if len(output) > 4000:
             output = "...[truncated]...\n" + output[-4000:]
         testing_runs[execution_id].update(
             {
-                "status": "success" if process.returncode == 0 else "failed",
+                "status": "success" if final_returncode == 0 else "failed",
                 "completed_at": _timestamp(),
-                "returncode": process.returncode,
+                "returncode": final_returncode,
                 "output": output,
             }
         )
@@ -195,7 +225,8 @@ async def execute_testing_suite(request: TestingExecutionRequest) -> Dict[str, A
         "dry_run": request.dry_run,
         "confirm": request.confirm,
         "user": request.user,
-        "command": suite["command"],
+        "command": suite.get("command"),
+        "commands": suite.get("commands"),
         "timeout_seconds": suite["timeout_seconds"],
         "returncode": None,
         "output": "Execution queued" if not request.dry_run else "DRY RUN: execution plan accepted",
