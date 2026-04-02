@@ -46,6 +46,7 @@ class FakeDeploymentConfig:
     verification_timeout_seconds: int = 120
     auto_rollback: bool = True
     canary_percentage: int = 10
+    rollback_on_error_rate: float = 0.05
 
 
 @dataclass
@@ -141,8 +142,16 @@ def main() -> int:
                 "dry-run runtime deployment should expose the auto-deployer command",
             )
             assert_true(
+                "--rollback-on-error-rate 0.050" in str(dry_run_detail.get("command") or ""),
+                "dry-run runtime deployment should expose rollback error-rate threshold",
+            )
+            assert_true(
                 dry_run_detail.get("runtime_summary", {}).get("strategy") == "blue_green",
                 "dry-run runtime deployment detail should expose runtime strategy summary",
+            )
+            assert_true(
+                dry_run_detail.get("runtime_summary", {}).get("rollback_on_error_rate") == 0.05,
+                "dry-run runtime deployment detail should expose rollback error-rate threshold summary",
             )
             assert_true(
                 dry_run_detail.get("runtime_summary", {}).get("verification_passed") is True,
@@ -163,6 +172,7 @@ def main() -> int:
                     "require_approval": True,
                     "confirm": True,
                     "canary_percentage": 15,
+                    "rollback_on_error_rate": 0.02,
                     "user": "codex-test",
                 },
             )
@@ -191,6 +201,10 @@ def main() -> int:
             assert_true(
                 approved_detail.get("runtime_summary", {}).get("approval", {}).get("status") == "approved",
                 "approved deployment should expose approval summary metadata",
+            )
+            assert_true(
+                approved_detail.get("runtime_summary", {}).get("rollback_on_error_rate") == 0.02,
+                "approved deployment should preserve rollback error-rate threshold metadata",
             )
             assert_true(
                 approved_detail.get("runtime_summary", {}).get("metrics", {}).get("dry_run") == 1.0,

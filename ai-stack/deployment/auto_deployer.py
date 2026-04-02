@@ -351,9 +351,22 @@ class AutoDeployer:
             qa_data = json.loads(qa_result.stdout)
             result.metrics["post_deploy_qa_passed"] = qa_data.get("passed", 0)
             result.metrics["post_deploy_qa_failed"] = qa_data.get("failed", 0)
+            total_checks = max(0, int(qa_data.get("passed", 0))) + max(0, int(qa_data.get("failed", 0)))
+            failure_rate = (float(qa_data.get("failed", 0)) / float(total_checks)) if total_checks else 0.0
+            result.metrics["post_deploy_failure_rate"] = round(failure_rate, 6)
 
             if qa_data.get("failed", 0) > 0:
                 result.logs.append(f"Post-deployment QA failures: {qa_data['failed']}")
+                if failure_rate > float(self.config.rollback_on_error_rate):
+                    result.logs.append(
+                        f"Post-deployment failure rate {failure_rate:.4f} exceeded threshold {self.config.rollback_on_error_rate:.4f}"
+                    )
+                return False
+
+            if failure_rate > float(self.config.rollback_on_error_rate):
+                result.logs.append(
+                    f"Post-deployment failure rate {failure_rate:.4f} exceeded threshold {self.config.rollback_on_error_rate:.4f}"
+                )
                 return False
 
             # Check error rates from monitoring (if available)

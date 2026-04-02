@@ -259,6 +259,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Deployment detail APIs now surface strategy, approval, verification, rollback, and metric summaries from repo-native runtime deployment executions
 - Command Center deployment inspector now shows runtime deployment strategy, approval state, verification outcome, rollback state, and bounded metric summaries
+- Runtime deployment controls now expose rollback error-rate thresholds, and post-deploy verification records and enforces failure-rate breaches against that configured limit
 
 ---
 
