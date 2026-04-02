@@ -8383,6 +8383,10 @@
                             <span class="data-meta">runtime result</span>
                         </div>
                         <div class="data-item">
+                            <span>${escapeHtml((runtimeSummary.planned_stages || []).join(' -> ') || 'No strategy stages recorded')}</span>
+                            <span class="data-meta">planned stages</span>
+                        </div>
+                        <div class="data-item">
                             <span>${escapeHtml(metricSummary || 'No runtime metrics recorded')}</span>
                             <span class="data-meta">metrics</span>
                         </div>
