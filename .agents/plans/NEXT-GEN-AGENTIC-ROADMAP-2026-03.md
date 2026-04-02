@@ -37,6 +37,7 @@ Create a **fully autonomous, self-optimizing AI harness** that:
 - Local-agent execution now degrades cleanly to local-first operation during WAN loss or remote-routing failure, with explicit reasons instead of hard failure, and captive-portal recovery is bounded to temporary HTTP/HTTPS + DNS + DHCP bypass with automatic cleanup.
 - Harness routing and reporting have been materially tightened: continuation-style retrieval is biased toward compact local retrieval and memory recall, targeted RAG prewarm improved cache posture, route-search audit labeling now distinguishes local vs remote correctly, and `aq-report` separates observed latency from actionable/backend-valid latency.
 - Coordinator delegation routing is now explicitly task-archetype aware, so planning, retrieval, and continuation slices default toward lightweight local/free lanes while implementation, tool-calling, and architecture/review work escalate to the more appropriate coding/reasoning lanes.
+- Continue prompt ingress is now moving behind the hybrid coordinator so normal editor chat can use coordinator-selected lanes first, with switchboard retained as the downstream execution proxy instead of the top-level router.
 - Shared skill registry drift was repaired, recurring Continue context-limit gap noise was suppressed/curated, and the current harness report state is now much closer to operationally useful rather than cleanup-driven.
 - Recent host-stability work directly targets freeze-adjacent signals from the desktop profile: continuous-learning checkpoint reads no longer spin on `tell()` errors, COSMIC greeter receives minimal declarative seed state before startup, and Linux audit is opt-in by default on general-purpose workstations while remaining enforced for `hospitalClassified`.
 - The current system should be treated as `multi-agent capable with standards-facing A2A foundation`, not yet `fully autonomous multi-agent orchestration complete`.
@@ -498,6 +499,7 @@ Current scaffold-closure queue to keep in active rotation:
 - `ai_coordinator.route_by_complexity()` now emits `task_archetype` and `model_class` in addition to the selected profile, making coordinator lane selection auditable instead of implicit.
 - Planning, retrieval, and continuation-oriented delegation now prefer lightweight `default`/`remote-free` lanes by default instead of over-selecting `remote-coding` or `remote-reasoning`.
 - Implementation, tool-calling, and architecture/review slices retain explicit escalation into `remote-coding`, `remote-tool-calling`, and `remote-reasoning` respectively.
+- The hybrid coordinator now exposes OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/models` ingress so Continue can submit prompts through coordinator-first routing while switchboard remains the execution layer underneath.
 
 ### Batch 6.2: Free Agent Pool Management
 **Status:** in progress (runtime routing integrated, operator visibility landed; repo primitives now fully covered)
@@ -548,6 +550,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Command Center dashboard now surfaces delegated QA threshold, tracked-agent coverage, and average delegated quality
 - Failed delegated remote calls or failed delegated QA can now trigger a bounded local retry with explicit fallback metadata for operator review
 - Hybrid coordinator control plane now exposes explicit local-fallback recommendation/recording surfaces for reviewer workflows
+- Dashboard AI runtime surfaces now include advanced offloading quality-profile coverage, quality-assessment totals, and local-fallback mode from the live control plane
 
 ---
 
@@ -614,6 +617,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Delegated query envelopes now prune oversized context before remote submission
 - Prompt-efficiency telemetry is now surfaced in the dashboard so context-budget behavior is inspectable during live operations
 - Hybrid coordinator control plane now exposes long-context summarization, relevance scoring, sliding-window construction, and reusable-context cache surfaces
+- Dashboard AI runtime surfaces now include advanced context-tier decision counts, prompt A/B variant totals, and context-reuse readiness from the live control plane
 
 ### Batch 7.3: Response Caching & Deduplication
 **Status:** completed
@@ -782,6 +786,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Gap remediation planning now runs inside delegated recovery outcomes with bounded playbook reuse
 - Adaptive runtime telemetry is surfaced in the dashboard so remediation activity is visible during operations
 - Hybrid coordinator control plane now exposes remediation knowledge import, skill synthesis, pattern extraction, and artifact validation surfaces
+- Dashboard AI runtime surfaces now include remediation artifact state and failure-pattern totals from the live control plane for operator review
 
 ### Batch 9.3: Remediation Learning Loop
 **Status:** in progress (runtime integrated, deeper reuse optimization pending)

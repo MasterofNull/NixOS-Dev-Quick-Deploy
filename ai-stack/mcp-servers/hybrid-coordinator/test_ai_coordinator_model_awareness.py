@@ -12,7 +12,12 @@ sys.modules["config"].Config = MagicMock(
     SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING="openrouter/tool-calling",
 )
 
-from ai_coordinator import detect_query_complexity, route_by_complexity
+from ai_coordinator import (
+    detect_query_complexity,
+    extract_task_from_openai_messages,
+    route_by_complexity,
+    route_openai_chat_payload,
+)
 
 
 def test_planning_defaults_to_lightweight_lane():
@@ -75,3 +80,42 @@ def test_detect_query_complexity_exposes_task_archetype():
 
     assert details["task_archetype"] == "retrieval"
     assert details["complexity"] == "simple"
+
+
+def test_extract_task_from_openai_messages_prefers_recent_user_content():
+    task = extract_task_from_openai_messages(
+        [
+            {"role": "system", "content": "Stay concise."},
+            {"role": "user", "content": "Inspect the coordinator design."},
+            {"role": "assistant", "content": "Working."},
+            {"role": "user", "content": [{"type": "text", "text": "Plan the next implementation slice."}]},
+        ]
+    )
+
+    assert "Inspect the coordinator design." in task
+    assert "Plan the next implementation slice." in task
+
+
+def test_route_openai_chat_payload_routes_tools_to_tool_calling_lane():
+    decision = route_openai_chat_payload(
+        {
+            "messages": [{"role": "user", "content": "Use tools to inspect the repo and report the result."}],
+            "tools": [{"type": "function", "function": {"name": "rg_search"}}],
+        },
+        prefer_local=False,
+    )
+
+    assert decision["recommended_profile"] == "remote-tool-calling"
+    assert decision["tools_present"] is True
+
+
+def test_route_openai_chat_payload_routes_continue_planning_to_lightweight_lane():
+    decision = route_openai_chat_payload(
+        {
+            "messages": [{"role": "user", "content": "Plan the next steps for the Continue router migration."}],
+        },
+        prefer_local=True,
+    )
+
+    assert decision["recommended_profile"] == "default"
+    assert decision["model_class"] == "lightweight"

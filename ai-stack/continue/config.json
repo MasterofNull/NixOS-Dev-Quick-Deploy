@@ -22,9 +22,9 @@
   ],
   "models": [
     {
-      "title": "Local (via Switchboard)",
+      "title": "Coordinator Router (Authoritative)",
       "provider": "openai",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/v1",
       "apiKey": "dummy",
       "model": "AUTODETECT"
     },
@@ -44,9 +44,14 @@
   "tabAutocompleteModel": {
     "title": "Local Autocomplete",
     "provider": "openai",
-    "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+    "apiBase": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/v1",
     "apiKey": "dummy",
-    "model": "AUTODETECT"
+    "model": "AUTODETECT",
+    "requestOptions": {
+      "headers": {
+        "X-AI-Profile": "continue-local"
+      }
+    }
   },
   "mcpServers": {
     "hybrid-coordinator": {
