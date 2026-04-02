@@ -1266,7 +1266,7 @@ in
         KillMode              = "mixed";
         NoNewPrivileges       = true;
         ProtectSystem         = "strict";
-        ProtectHome           = true;
+        ProtectHome           = "read-only";
         ReadOnlyPaths         = [ repoPath ];
         PrivateTmp            = true;
         CapabilityBoundingSet = "";
