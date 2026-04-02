@@ -521,6 +521,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Hybrid coordinator delegated routing now selects and tracks pool-backed free agents with rate-limit feedback
 - Command Center dashboard now surfaces live pool availability, free-agent capacity, and request health from coordinator status
+- Hybrid coordinator control plane now exposes agent quality profiles, failover selection, and observed benchmarking for operator/reviewer workflows
 
 ### Batch 6.3: Result Quality Assurance
 **Status:** in progress (routing integrated, dashboard visibility landed)
@@ -577,6 +578,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Delegated prompt envelopes are now compressed and bounded before remote dispatch
 - Command Center dashboard now surfaces average prompt envelope size before/after optimization and total token savings
+- Hybrid coordinator control plane now exposes prompt-template optimization, dynamic prompt generation, and prompt A/B outcome tracking
 
 ### Batch 7.2: Context Window Management
 **Status:** in progress (delegated pruning integrated, deeper context features pending)
@@ -650,6 +652,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Delegated runtime now applies progressive multi-tier context loading before remote dispatch
 - Command Center dashboard now surfaces live progressive-context load counts from hybrid runtime metrics
+- Hybrid coordinator control plane now exposes context-tier selection decisions and tier-selection statistics for operator inspection
 
 ### Batch 8.2: Lazy Context Resolution
 **Status:** in progress (runtime integrated, deeper dependency features pending)
@@ -734,6 +737,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Delegated failures and weak outcomes now emit capability-gap detections directly from the hybrid coordinator
 - Command Center dashboard now surfaces live capability-gap detection counts from adaptive runtime metrics
+- Hybrid coordinator control plane now exposes failure-pattern analysis and capability-gap statistics for targeted remediation review
 
 ### Batch 9.2: Automated Gap Remediation
 **Status:** in progress (runtime integrated, broader remediation pending)
@@ -810,6 +814,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Successful delegated responses now feed online learning, pattern mining, and hint-quality adjustment immediately
 - Command Center dashboard now surfaces real-time learning event counts from hybrid runtime metrics
+- Hybrid coordinator control plane now exposes explicit learning-signal recording plus learned recommendation/stat surfaces
 
 ### Batch 10.2: Feedback Loop Acceleration
 **Status:** in progress (runtime integrated, richer feedback policies pending)

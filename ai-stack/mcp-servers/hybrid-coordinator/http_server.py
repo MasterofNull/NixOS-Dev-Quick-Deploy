@@ -9362,6 +9362,118 @@ async def run_http_mode(port: int) -> None:
         )
         return web.json_response(result)
 
+    async def handle_advanced_features_readiness(request):
+        import advanced_features
+        result = await advanced_features.get_advanced_features_readiness()
+        return web.json_response(result)
+
+    async def handle_advanced_agent_quality_profiles(request):
+        import advanced_features
+        result = await advanced_features.get_agent_quality_profiles()
+        return web.json_response(result)
+
+    async def handle_advanced_agent_failover_select(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.select_failover_remote_agent(
+            min_composite_score=data.get("min_composite_score", 0.55),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_agent_benchmarks(request):
+        import advanced_features
+        result = await advanced_features.get_agent_benchmarks()
+        return web.json_response(result)
+
+    async def handle_advanced_prompt_optimize(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.optimize_prompt_template(
+            task_type=data.get("task_type", "implementation"),
+            task=data.get("task", ""),
+            context=data.get("context"),
+            constraints=data.get("constraints"),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_prompt_dynamic(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.generate_dynamic_prompt(
+            query=data.get("query", ""),
+            context=data.get("context"),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_prompt_ab_stats(request):
+        import advanced_features
+        result = await advanced_features.get_prompt_ab_stats()
+        return web.json_response(result)
+
+    async def handle_advanced_prompt_ab_record(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.record_prompt_variant_outcome(
+            task_type=data.get("task_type", "implementation"),
+            variant_id=data.get("variant_id", ""),
+            score=data.get("score", 0.0),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_context_tier_select(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.select_context_tier(
+            query=data.get("query", ""),
+            context=data.get("context"),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_context_tier_stats(request):
+        import advanced_features
+        result = await advanced_features.get_tier_selection_stats()
+        return web.json_response(result)
+
+    async def handle_advanced_failure_patterns(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.analyze_failure_patterns(
+            query=data.get("query", ""),
+            response=data.get("response", ""),
+            error_message=data.get("error_message"),
+            user_feedback=data.get("user_feedback"),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_capability_gap_stats(request):
+        import advanced_features
+        result = await advanced_features.get_capability_gap_stats()
+        return web.json_response(result)
+
+    async def handle_advanced_learning_signal(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.record_learning_signal(
+            query=data.get("query", ""),
+            response=data.get("response", ""),
+            outcome=data.get("outcome", "unknown"),
+            explicit_score=data.get("explicit_score"),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_learning_recommendations(request):
+        import advanced_features
+        data = await request.json()
+        result = await advanced_features.get_learning_recommendations(
+            query=data.get("query", ""),
+        )
+        return web.json_response(result)
+
+    async def handle_advanced_learning_stats(request):
+        import advanced_features
+        result = await advanced_features.get_learning_stats()
+        return web.json_response(result)
+
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)
     http_app.router.add_get("/.well-known/agent-card.json", handle_well_known_a2a)
@@ -9483,6 +9595,21 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/ai-coordinator/model-optimization/synthetic-data/generate", handle_synthetic_training_generate)
     http_app.router.add_post("/control/ai-coordinator/model-optimization/active-learning/select", handle_active_learning_select)
     http_app.router.add_post("/control/ai-coordinator/model-optimization/distillation/run", handle_distillation_pipeline_run)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/readiness", handle_advanced_features_readiness)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/offloading/quality-profiles", handle_advanced_agent_quality_profiles)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/offloading/failover-select", handle_advanced_agent_failover_select)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/offloading/benchmarks", handle_advanced_agent_benchmarks)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/prompt/optimize", handle_advanced_prompt_optimize)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/prompt/dynamic", handle_advanced_prompt_dynamic)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/prompt/ab-stats", handle_advanced_prompt_ab_stats)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/prompt/ab-record", handle_advanced_prompt_ab_record)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/context/tier-select", handle_advanced_context_tier_select)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/context/tier-stats", handle_advanced_context_tier_stats)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/capability-gap/failure-patterns", handle_advanced_failure_patterns)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/capability-gap/stats", handle_advanced_capability_gap_stats)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/learning/signal", handle_advanced_learning_signal)
+    http_app.router.add_post("/control/ai-coordinator/advanced-features/learning/recommendations", handle_advanced_learning_recommendations)
+    http_app.router.add_get("/control/ai-coordinator/advanced-features/learning/stats", handle_advanced_learning_stats)
 
     # Phase 1: WebSocket alert endpoint
     http_app.router.add_get("/ws/alerts", handle_alerts_websocket)
