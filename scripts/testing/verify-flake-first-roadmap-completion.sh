@@ -605,6 +605,8 @@ check_absent_pattern "nix/pkgs/continue-cli.nix" 'npmDepsHash = null' 'Continue 
 check_pattern "nix/home/base.nix" '"__configVersion": "21\.0"' 'Continue config version tracks the current generated schema'
 check_pattern "nix/home/base.nix" '"contextLength": 16384' 'Continue config matches the local llama.cpp context window instead of a stale 4k cap'
 check_pattern "nix/home/base.nix" '"name": "aq-hints"' 'Continue config restores the aq-hints HTTP context provider'
+check_pattern "scripts/ai/aq-qa" '0\.5\.2.*coordinator ingress with continue-local lane' 'aq-qa phase 0 documents coordinator ingress as the Continue config target'
+check_pattern "scripts/ai/aq-qa" 'apiBase"\) == "http://127\.0\.0\.1:8003/v1"' 'aq-qa validates Continue chat and autocomplete against hybrid coordinator ingress'
 check_pattern "scripts/ai/aq-qa" 'contextLength\"\) or 0\) >= 12000' 'aq-qa enforces a Continue context-window floor for agent mode'
 check_pattern "scripts/ai/aq-qa" '0\.5\.5' 'aq-qa includes a continue-local oversized-input trimming check'
 check_pattern "scripts/ai/aq-qa" '0\.5\.6' 'aq-qa includes a Continue editor-path smoke check'
