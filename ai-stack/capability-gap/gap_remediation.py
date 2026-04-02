@@ -16,6 +16,7 @@ Key Features:
 import asyncio
 import json
 import logging
+import os
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,6 +27,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from gap_detection import CapabilityGap, GapType
 
 logger = logging.getLogger(__name__)
+
+GAP_REMEDIATION_STATE = Path(
+    os.getenv("GAP_REMEDIATION_STATE", "/var/lib/ai-stack/hybrid/capability-gap")
+)
 
 
 class RemediationStrategy(Enum):
@@ -209,8 +214,8 @@ class ToolIntegrator:
 class KnowledgeImporter:
     """Import missing knowledge from external sources"""
 
-    def __init__(self, knowledge_dir: Path):
-        self.knowledge_dir = knowledge_dir
+    def __init__(self, knowledge_dir: Optional[Path] = None):
+        self.knowledge_dir = knowledge_dir or (GAP_REMEDIATION_STATE / "knowledge")
         self.knowledge_dir.mkdir(parents=True, exist_ok=True)
 
         self.sources = {
@@ -229,6 +234,7 @@ class KnowledgeImporter:
         self,
         topic: str,
         gap_description: str,
+        source_urls: Optional[List[str]] = None,
     ) -> RemediationResult:
         """Import knowledge about topic"""
         logger.info(f"Importing knowledge: {topic}")
@@ -238,6 +244,8 @@ class KnowledgeImporter:
 
         # Create knowledge document
         knowledge_file = self.knowledge_dir / f"{topic.replace(' ', '_')}.md"
+
+        source_urls = source_urls or self.sources.get("documentation", [])
 
         content = f"""# Knowledge: {topic}
 
@@ -262,8 +270,7 @@ Example code or configuration
 
 ## References
 
-- Reference 1
-- Reference 2
+{self._format_references(source_urls)}
 
 ## See Also
 
@@ -288,12 +295,17 @@ Example code or configuration
             validation_passed=True,
         )
 
+    def _format_references(self, source_urls: List[str]) -> str:
+        if not source_urls:
+            return "- No explicit sources recorded"
+        return "\n".join(f"- {url}" for url in source_urls)
+
 
 class SkillSynthesizer:
     """Synthesize procedural skills from examples"""
 
-    def __init__(self, skills_dir: Path):
-        self.skills_dir = skills_dir
+    def __init__(self, skills_dir: Optional[Path] = None):
+        self.skills_dir = skills_dir or (GAP_REMEDIATION_STATE / "skills")
         self.skills_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Skill Synthesizer initialized: {skills_dir}")
@@ -363,11 +375,24 @@ Procedural skill for {skill_name}
 
     def _extract_common_steps(self, examples: List[Dict]) -> List[str]:
         """Extract common procedural steps from examples"""
-        # Simplified: would use ML/pattern matching in production
+        action_counts: Dict[str, int] = {}
+        for example in examples:
+            for key in ("steps", "actions", "commands"):
+                value = example.get(key)
+                if isinstance(value, list):
+                    for step in value:
+                        action_counts[str(step)] = action_counts.get(str(step), 0) + 1
+                elif isinstance(value, str):
+                    action_counts[value] = action_counts.get(value, 0) + 1
+
+        ordered = sorted(action_counts.items(), key=lambda item: item[1], reverse=True)
+        if ordered:
+            return [step for step, _ in ordered[:5]]
+
         return [
-            "Step 1: Prepare environment",
-            "Step 2: Execute main action",
-            "Step 3: Validate result",
+            "Prepare environment",
+            "Execute main action",
+            "Validate result",
         ]
 
     def _format_steps(self, steps: List[str]) -> str:
@@ -392,8 +417,8 @@ Procedural skill for {skill_name}
 class PatternExtractor:
     """Extract and generalize workflow patterns"""
 
-    def __init__(self, patterns_dir: Path):
-        self.patterns_dir = patterns_dir
+    def __init__(self, patterns_dir: Optional[Path] = None):
+        self.patterns_dir = patterns_dir or (GAP_REMEDIATION_STATE / "patterns")
         self.patterns_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Pattern Extractor initialized: {patterns_dir}")
@@ -478,12 +503,18 @@ Pattern implementation template
 
     def _analyze_pattern_structure(self, instances: List[Dict]) -> str:
         """Analyze pattern structure from instances"""
-        # Simplified: would use sophisticated analysis in production
-        return """
-- Input: Pattern input
-- Process: Pattern transformation
-- Output: Pattern output
-"""
+        keys: Dict[str, int] = {}
+        for instance in instances:
+            for key in instance.keys():
+                keys[key] = keys.get(key, 0) + 1
+        if not keys:
+            return "- Input: unresolved\n- Process: unresolved\n- Output: unresolved"
+        common_keys = ", ".join(key for key, _ in sorted(keys.items(), key=lambda item: item[1], reverse=True)[:5])
+        return (
+            f"- Input: derived from fields [{common_keys}]\n"
+            "- Process: normalize repeated steps and decision points\n"
+            "- Output: reusable remediation or workflow template\n"
+        )
 
 
 class RemediationValidator:
@@ -514,6 +545,120 @@ class RemediationValidator:
             return await self._validate_pattern_remediation(gap, result)
 
         return False
+
+    async def _validate_tool_remediation(
+        self,
+        gap: CapabilityGap,
+        result: RemediationResult,
+    ) -> bool:
+        if not result.artifacts_created:
+            return False
+        return len(result.actions_taken) > 0
+
+    async def _validate_knowledge_remediation(
+        self,
+        gap: CapabilityGap,
+        result: RemediationResult,
+    ) -> bool:
+        return any(Path(artifact).exists() for artifact in result.artifacts_created)
+
+    async def _validate_skill_remediation(
+        self,
+        gap: CapabilityGap,
+        result: RemediationResult,
+    ) -> bool:
+        return any(Path(artifact).exists() for artifact in result.artifacts_created)
+
+    async def _validate_pattern_remediation(
+        self,
+        gap: CapabilityGap,
+        result: RemediationResult,
+    ) -> bool:
+        return any(Path(artifact).exists() for artifact in result.artifacts_created)
+
+
+class RemediationOrchestrator:
+    """Plan and execute remediation workflows against runtime-writable state."""
+
+    def __init__(self, state_dir: Optional[Path] = None):
+        self.state_dir = state_dir or GAP_REMEDIATION_STATE
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.knowledge_importer = KnowledgeImporter(self.state_dir / "knowledge")
+        self.skill_synthesizer = SkillSynthesizer(self.state_dir / "skills")
+        self.pattern_extractor = PatternExtractor(self.state_dir / "patterns")
+        self.validator = RemediationValidator()
+        self.results_file = self.state_dir / "remediation-results.json"
+
+    async def execute_plan(
+        self,
+        gap: CapabilityGap,
+        topic: Optional[str] = None,
+        examples: Optional[List[Dict[str, Any]]] = None,
+        instances: Optional[List[Dict[str, Any]]] = None,
+    ) -> RemediationResult:
+        strategy = self._select_strategy(gap)
+        topic = topic or gap.description.replace(" ", "_").lower()[:64]
+        examples = examples or []
+        instances = instances or examples
+
+        if strategy == RemediationStrategy.IMPORT_KNOWLEDGE:
+            result = await self.knowledge_importer.import_knowledge(topic, gap.description)
+        elif strategy == RemediationStrategy.SYNTHESIZE_SKILL:
+            result = await self.skill_synthesizer.synthesize_skill(topic, examples, gap.description)
+        elif strategy == RemediationStrategy.EXTRACT_PATTERN:
+            result = await self.pattern_extractor.extract_pattern(topic, instances, gap.description)
+        else:
+            result = RemediationResult(
+                plan_id="auto",
+                gap_id=gap.gap_id,
+                status=RemediationStatus.NEEDS_MANUAL,
+                success=False,
+                error_message=f"Strategy {strategy.value} not automatically executed",
+            )
+
+        result.gap_id = gap.gap_id
+        result.validation_passed = await self.validator.validate_remediation(gap, result)
+        self._record_result(gap, strategy, result)
+        return result
+
+    def _select_strategy(self, gap: CapabilityGap) -> RemediationStrategy:
+        if gap.gap_type == GapType.KNOWLEDGE:
+            return RemediationStrategy.IMPORT_KNOWLEDGE
+        if gap.gap_type == GapType.SKILL:
+            return RemediationStrategy.SYNTHESIZE_SKILL
+        if gap.gap_type == GapType.PATTERN:
+            return RemediationStrategy.EXTRACT_PATTERN
+        return RemediationStrategy.MANUAL_INTERVENTION
+
+    def _record_result(
+        self,
+        gap: CapabilityGap,
+        strategy: RemediationStrategy,
+        result: RemediationResult,
+    ) -> None:
+        if self.results_file.exists():
+            try:
+                with open(self.results_file, encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception:
+                payload = {"results": []}
+        else:
+            payload = {"results": []}
+
+        payload["results"].append(
+            {
+                "gap_id": gap.gap_id,
+                "gap_type": gap.gap_type.value,
+                "strategy": strategy.value,
+                "status": result.status.value,
+                "success": result.success,
+                "validation_passed": result.validation_passed,
+                "artifacts_created": result.artifacts_created,
+                "recorded_at": datetime.now().isoformat(),
+            }
+        )
+        with open(self.results_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
 
     async def _validate_tool_remediation(
         self,
