@@ -600,6 +600,89 @@ TOOL_DEFINITIONS: List[Tool] = [
             },
         },
     ),
+    # Phase 5 — Model Optimization Tools
+    Tool(
+        name="capture_training_example",
+        description="Capture a high-quality interaction for model training data",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The user query"},
+                "response": {"type": "string", "description": "The model response"},
+                "outcome": {"type": "string", "enum": ["success", "partial", "failure", "unknown"]},
+                "user_feedback": {"type": "integer", "minimum": -1, "maximum": 1},
+                "latency_ms": {"type": "number"},
+            },
+            "required": ["query", "response"],
+        },
+    ),
+    Tool(
+        name="flush_training_data",
+        description="Save pending training examples to disk for fine-tuning",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="get_training_data_stats",
+        description="Get statistics on captured training data",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="start_finetuning_job",
+        description="Create a fine-tuning job for local model optimization",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "base_model": {"type": "string", "description": "Base model to fine-tune"},
+                "task_type": {
+                    "type": "string",
+                    "enum": ["code_generation", "code_review", "debugging", "documentation", "general"],
+                    "default": "general",
+                },
+                "training_data_path": {"type": "string", "description": "Path to training data"},
+            },
+            "required": ["base_model"],
+        },
+    ),
+    Tool(
+        name="get_finetuning_jobs",
+        description="List fine-tuning jobs and their status",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "status_filter": {"type": "string", "enum": ["pending", "running", "completed", "failed"]},
+            },
+        },
+    ),
+    Tool(
+        name="record_model_performance",
+        description="Record performance metrics for a model",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "model_id": {"type": "string"},
+                "task_type": {"type": "string"},
+                "accuracy": {"type": "number"},
+                "latency_ms": {"type": "number"},
+                "quality_score": {"type": "number"},
+            },
+            "required": ["model_id", "task_type", "accuracy", "latency_ms", "quality_score"],
+        },
+    ),
+    Tool(
+        name="get_model_performance",
+        description="Get model performance metrics and trends",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "model_id": {"type": "string", "description": "Specific model ID or omit for all models"},
+            },
+        },
+    ),
+    Tool(
+        name="get_optimization_readiness",
+        description="Get Phase 5 model optimization readiness status",
+        inputSchema={"type": "object", "properties": {}},
+    ),
 ]
 
 
@@ -812,6 +895,76 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                     "qa_skipped": (qa_result or {}).get("skipped") if isinstance(qa_result, dict) else None,
                 },
             )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        # Phase 5 — Model Optimization Tools
+        elif name == "capture_training_example":
+            import model_optimization
+            result = await model_optimization.capture_training_example(
+                query=arguments.get("query", ""),
+                response=arguments.get("response", ""),
+                outcome=arguments.get("outcome", "unknown"),
+                user_feedback=arguments.get("user_feedback"),
+                latency_ms=arguments.get("latency_ms"),
+                metadata=arguments.get("metadata"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "flush_training_data":
+            import model_optimization
+            result = await model_optimization.flush_training_data()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_training_data_stats":
+            import model_optimization
+            result = await model_optimization.get_training_data_stats()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "start_finetuning_job":
+            import model_optimization
+            result = await model_optimization.start_finetuning_job(
+                base_model=arguments.get("base_model", ""),
+                task_type=arguments.get("task_type", "general"),
+                training_data_path=arguments.get("training_data_path"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_finetuning_jobs":
+            import model_optimization
+            result = await model_optimization.get_finetuning_jobs(
+                status_filter=arguments.get("status_filter"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "record_model_performance":
+            import model_optimization
+            result = await model_optimization.record_model_performance(
+                model_id=arguments.get("model_id", ""),
+                task_type=arguments.get("task_type", "general"),
+                accuracy=arguments.get("accuracy", 0.0),
+                latency_ms=arguments.get("latency_ms", 0.0),
+                quality_score=arguments.get("quality_score", 0.0),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_model_performance":
+            import model_optimization
+            result = await model_optimization.get_model_performance(
+                model_id=arguments.get("model_id"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_optimization_readiness":
+            import model_optimization
+            result = await model_optimization.get_optimization_readiness()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         else:
