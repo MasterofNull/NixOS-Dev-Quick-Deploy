@@ -2782,3 +2782,159 @@ async def get_evaluation_trends() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to fetch evaluation trends: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Model Optimization Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/model-optimization/readiness")
+async def get_model_optimization_readiness() -> Dict[str, Any]:
+    """Get Phase 5 model optimization readiness status.
+
+    Returns readiness for:
+    - Data capture and quality assessment
+    - Fine-tuning pipeline
+    - Model distillation and compression
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/readiness"
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch model optimization readiness: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch model optimization readiness: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/model-optimization/training-data/stats")
+async def get_training_data_stats() -> Dict[str, Any]:
+    """Get training data capture statistics.
+
+    Returns:
+    - Captured example count
+    - Quality distribution
+    - PII detection stats
+    - Available data files
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/training-data/stats"
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch training data stats: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch training data stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/model-optimization/training-data/flush")
+async def flush_training_data() -> Dict[str, Any]:
+    """Flush pending training examples to disk.
+
+    Returns:
+    - Output file path
+    - Count of flushed examples
+    - Updated stats
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/training-data/flush"
+            async with session.post(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to flush training data: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to flush training data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/model-optimization/finetuning/jobs")
+async def get_finetuning_jobs(status: Optional[str] = None) -> Dict[str, Any]:
+    """List fine-tuning jobs.
+
+    Query Parameters:
+    - status: Filter by job status (pending, running, completed, failed)
+
+    Returns list of fine-tuning jobs with status and metrics.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/finetuning/jobs"
+            if status:
+                url += f"?status={status}"
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch finetuning jobs: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch finetuning jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreateFinetuningJobRequest(BaseModel):
+    """Request body for creating a fine-tuning job."""
+    base_model: str = Field(..., description="Base model to fine-tune")
+    task_type: str = Field("general", description="Task type for specialization")
+    training_data_path: Optional[str] = Field(None, description="Path to training data")
+
+
+@router.post("/model-optimization/finetuning/jobs")
+async def create_finetuning_job(request: CreateFinetuningJobRequest) -> Dict[str, Any]:
+    """Create a new fine-tuning job.
+
+    Creates a job record for tracking. Actual training requires system deployment.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/finetuning/jobs"
+            async with session.post(
+                url,
+                headers=_hybrid_auth_headers(),
+                json=request.dict(),
+                timeout=REQUEST_TIMEOUT
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to create finetuning job: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to create finetuning job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/model-optimization/performance")
+async def get_model_performance(model_id: Optional[str] = None) -> Dict[str, Any]:
+    """Get model performance metrics and trends.
+
+    Query Parameters:
+    - model_id: Specific model ID or omit for all models
+
+    Returns performance metrics, trends, and quality scores.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/performance"
+            if model_id:
+                url += f"?model_id={model_id}"
+            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        logger.error(f"Failed to fetch model performance: {e}")
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch model performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

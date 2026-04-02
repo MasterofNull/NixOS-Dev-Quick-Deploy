@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.1-5.3, 6.2-6.3, 7.1-7.2, 8.x, 9.x, 10.x
+**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2, 5.1-5.2; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.3, 6.2-6.3, 7.1-7.2, 8.x, 9.x, 10.x
 **Created:** 2026-03-15
 **Last Updated:** 2026-04-01
 **Version:** 1.4.1
@@ -389,20 +389,27 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** Local models achieve 85%+ performance parity with flagship models on target tasks
 
 ### Batch 5.1: Training Data Collection & Curation
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (core integration landed, advanced features pending)
 **Tasks:**
 - [x] Implement automatic high-quality interaction capture
   - ai-stack/model-optimization/data_curator.py: Implementation exists
-- [ ] Integrate data curator into hybrid coordinator
-- [ ] Add data cleaning and filtering pipeline (integration pending)
+- [x] Integrate data curator into hybrid coordinator
+  - ai-stack/mcp-servers/hybrid-coordinator/model_optimization.py: TrainingDataCapture integrated
+- [x] Add data cleaning and filtering pipeline
+  - Quality assessment with DataQuality levels (excellent/good/fair/poor)
 - [ ] Create synthetic data generation from remote model outputs
 - [ ] Implement active learning for data selection
-- [ ] Add privacy-preserving data handling
+- [x] Add privacy-preserving data handling
+  - PII detection and anonymization for emails, phones, SSNs, credit cards, API keys, JWTs
 
 **Deliverables:**
-- 🔧 Training data pipeline (data_curator.py exists, not integrated)
-- ⏳ Data quality filters (pending integration)
+- ✅ Training data pipeline (model_optimization.py integrated)
+- ✅ Data quality filters (quality scoring with 4 levels)
 - ⏳ Synthetic data generator (pending)
+
+**Runtime follow-through landed:**
+- Hybrid coordinator MCP tools now expose training-data capture, flushing, stats, and readiness checks
+- Interaction outcome updates now automatically feed high-quality successful examples into model-optimization capture with PII-aware filtering and writable runtime storage
 
 ### Batch 5.2: Continuous Model Fine-Tuning
 **Status:** 🔧 implementation exists (infrastructure ready, model training pending)
@@ -422,6 +429,10 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Fine-tuning automation (continuous_finetuning.py)
 - ✅ LoRA/QLoRA pipeline (framework ready)
 - ✅ Model performance dashboard (metrics tracking)
+
+**Runtime follow-through landed:**
+- Hybrid coordinator MCP tools now expose fine-tuning job creation/listing and model performance metrics
+- Successful interaction outcomes now record per-model performance trends for live coordinator traffic under writable runtime state
 
 ### Batch 5.3: Model Distillation & Compression
 **Status:** 🔧 implementation exists (not integrated)

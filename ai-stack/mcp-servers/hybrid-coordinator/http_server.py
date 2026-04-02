@@ -9289,6 +9289,44 @@ async def run_http_mode(port: int) -> None:
 
         return ws
 
+    # Phase 5 — Model Optimization HTTP handlers
+    async def handle_model_optimization_readiness(request):
+        import model_optimization
+        result = await model_optimization.get_optimization_readiness()
+        return web.json_response(result)
+
+    async def handle_training_data_stats(request):
+        import model_optimization
+        result = await model_optimization.get_training_data_stats()
+        return web.json_response(result)
+
+    async def handle_training_data_flush(request):
+        import model_optimization
+        result = await model_optimization.flush_training_data()
+        return web.json_response(result)
+
+    async def handle_finetuning_jobs_list(request):
+        import model_optimization
+        status_filter = request.query.get("status")
+        result = await model_optimization.get_finetuning_jobs(status_filter=status_filter)
+        return web.json_response(result)
+
+    async def handle_finetuning_jobs_create(request):
+        import model_optimization
+        data = await request.json()
+        result = await model_optimization.start_finetuning_job(
+            base_model=data.get("base_model", ""),
+            task_type=data.get("task_type", "general"),
+            training_data_path=data.get("training_data_path"),
+        )
+        return web.json_response(result)
+
+    async def handle_model_performance(request):
+        import model_optimization
+        model_id = request.query.get("model_id")
+        result = await model_optimization.get_model_performance(model_id=model_id)
+        return web.json_response(result)
+
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)
     http_app.router.add_get("/.well-known/agent-card.json", handle_well_known_a2a)
@@ -9399,6 +9437,14 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/runtimes/{runtime_id}/rollback", handle_runtime_rollback)
     http_app.router.add_get("/control/runtimes/schedule/policy", handle_runtime_schedule_policy)
     http_app.router.add_post("/control/runtimes/schedule/select", handle_runtime_schedule)
+
+    # Phase 5 — Model Optimization endpoints
+    http_app.router.add_get("/control/ai-coordinator/model-optimization/readiness", handle_model_optimization_readiness)
+    http_app.router.add_get("/control/ai-coordinator/model-optimization/training-data/stats", handle_training_data_stats)
+    http_app.router.add_post("/control/ai-coordinator/model-optimization/training-data/flush", handle_training_data_flush)
+    http_app.router.add_get("/control/ai-coordinator/model-optimization/finetuning/jobs", handle_finetuning_jobs_list)
+    http_app.router.add_post("/control/ai-coordinator/model-optimization/finetuning/jobs", handle_finetuning_jobs_create)
+    http_app.router.add_get("/control/ai-coordinator/model-optimization/performance", handle_model_performance)
 
     # Phase 1: WebSocket alert endpoint
     http_app.router.add_get("/ws/alerts", handle_alerts_websocket)

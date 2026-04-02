@@ -378,6 +378,41 @@ async def update_interaction_outcome(
             points=[interaction_id],
         )
         logger.info("Updated interaction %s: outcome=%s, value=%.2f", interaction_id, outcome, value_score)
+        try:
+            import model_optimization as _model_optimization
+
+            query_text = str(interaction.get("query", "") or "")
+            response_text = str(interaction.get("response", "") or "")
+            model_used = str(interaction.get("model_used", "") or "")
+            agent_type = str(interaction.get("agent_type", "") or "general")
+            latency_ms = float(interaction.get("latency_ms", 0) or 0.0)
+
+            if outcome in {"success", "partial"} and query_text and response_text:
+                await _model_optimization.capture_training_example(
+                    query=query_text,
+                    response=response_text,
+                    outcome=outcome,
+                    user_feedback=user_feedback,
+                    latency_ms=latency_ms,
+                    metadata={
+                        "interaction_id": interaction_id,
+                        "agent_type": agent_type,
+                        "model_used": model_used,
+                        "value_score": value_score,
+                    },
+                )
+
+            if model_used:
+                accuracy = 1.0 if outcome == "success" else 0.5 if outcome == "partial" else 0.0
+                await _model_optimization.record_model_performance(
+                    model_id=model_used,
+                    task_type=agent_type,
+                    accuracy=accuracy,
+                    latency_ms=latency_ms,
+                    quality_score=value_score,
+                )
+        except Exception as exc:
+            logger.warning("model_optimization_outcome_integration_failed interaction_id=%s error=%s", interaction_id, exc)
         if value_score >= Config.HIGH_VALUE_THRESHOLD and Config.PATTERN_EXTRACTION_ENABLED:
             await extract_patterns(interaction)
             if Config.AI_MEMORY_ENABLED and outcome == "success" and _store_memory is not None:
