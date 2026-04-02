@@ -319,7 +319,11 @@ let
     out_dir="${nodeTextfileDir}"
     out_file="$out_dir/amdgpu.prom"
     tmp_file="$(mktemp "$out_dir/amdgpu.prom.XXXXXX")"
-    card_dev="$(${pkgs.findutils}/bin/find /sys/class/drm -maxdepth 2 -type d -name device 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || true)"
+    card_link="$(${pkgs.findutils}/bin/find /sys/class/drm -maxdepth 1 -type l -name 'card[0-9]*' 2>/dev/null | ${pkgs.coreutils}/bin/sort | ${pkgs.coreutils}/bin/head -n1 || true)"
+    card_dev=""
+    if [ -n "$card_link" ]; then
+      card_dev="$(${pkgs.coreutils}/bin/readlink -f "$card_link/device" 2>/dev/null || true)"
+    fi
     busy=0
     vram_used=0
     vram_total=0
@@ -329,7 +333,7 @@ let
       busy="$(${pkgs.coreutils}/bin/cat "$card_dev/gpu_busy_percent" 2>/dev/null || echo 0)"
       vram_used="$(${pkgs.coreutils}/bin/cat "$card_dev/mem_info_vram_used" 2>/dev/null || echo 0)"
       vram_total="$(${pkgs.coreutils}/bin/cat "$card_dev/mem_info_vram_total" 2>/dev/null || echo 0)"
-      hwmon_dir="$(${pkgs.findutils}/bin/find "$card_dev/hwmon" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || true)"
+      hwmon_dir="$(${pkgs.findutils}/bin/find "$card_dev/hwmon" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | ${pkgs.coreutils}/bin/sort | ${pkgs.coreutils}/bin/head -n1 || true)"
       if [ -n "$hwmon_dir" ]; then
         temp_mc="$(${pkgs.coreutils}/bin/cat "$hwmon_dir/temp1_input" 2>/dev/null || echo 0)"
         power_uw="$(${pkgs.coreutils}/bin/cat "$hwmon_dir/power1_average" 2>/dev/null || echo 0)"
@@ -506,6 +510,9 @@ in
       serviceConfig = {
         Type = "oneshot";
         User = "root";
+        Nice = 15;
+        IOSchedulingClass = "idle";
+        TimeoutStartSec = "15s";
         ExecStart = "${amdgpuTextfileScript}";
       };
     };
@@ -516,7 +523,7 @@ in
       timerConfig = {
         OnBootSec = "30s";
         OnUnitActiveSec = "${toString mon.amdgpuMetricsIntervalSeconds}s";
-        AccuracySec = "5s";
+        AccuracySec = "30s";
         Unit = "ai-amdgpu-metrics-exporter.service";
       };
     };

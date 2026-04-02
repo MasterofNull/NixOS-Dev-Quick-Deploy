@@ -2097,10 +2097,11 @@
 
       amdgpuMetricsIntervalSeconds = lib.mkOption {
         type = lib.types.ints.positive;
-        default = 60;
+        default = 300;
         description = ''
           Interval for ai-amdgpu-metrics-exporter timer runs.
-          Increased from sub-minute defaults to reduce audit/systemd churn.
+          Defaulted to 5 minutes to reduce systemd churn and avoid periodic
+          collector bursts competing with desktop interactivity.
         '';
       };
 
