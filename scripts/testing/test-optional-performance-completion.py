@@ -35,8 +35,8 @@ def main() -> int:
         "hybrid coordinator service should inject semantic cache warm-on-start env",
     )
     assert_true(
-        "AI_SEMANTIC_CACHE_WARM_QUERIES=" in mcp_text,
-        "hybrid coordinator service should inject semantic cache startup queries",
+        'AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.escapeShellArg (lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries)}' in mcp_text,
+        "hybrid coordinator service should shell-escape semantic cache startup queries so systemd preserves spaced prompts",
     )
     assert_true(
         'data-card-id="deployment-ops"' in dashboard_text,
