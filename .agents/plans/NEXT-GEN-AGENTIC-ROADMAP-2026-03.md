@@ -542,8 +542,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Quality checker runtime integration (delegated QA active in routing)
-- 🔧 Result refinement engine (implementation exists, deeper integration pending)
-- 🔧 Quality dashboard/control surface (implementation exists, broader activation pending)
+- ⏳ Result refinement engine (delegated QA/refinement path active, deeper runtime follow-through pending)
+- ⏳ Quality dashboard/control surface (dashboard and control-plane visibility landed; broader activation pending)
 
 **Runtime follow-through landed:**
 - Successful delegated responses are now quality-checked, refined/cached, and tracked per agent in the hybrid coordinator
@@ -581,8 +581,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Prompt compression runtime integration (delegated envelope optimization active)
-- 🔧 Template optimizer (implementation exists, deeper integration pending)
-- 🔧 A/B testing framework (implementation exists, broader activation pending)
+- ⏳ Template optimizer (control-plane surfaced, deeper runtime integration pending)
+- ⏳ A/B testing framework (control-plane and dashboard summary visibility landed; broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated prompt envelopes are now compressed and bounded before remote dispatch
@@ -610,8 +610,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Context pruning runtime integration (delegated query path active)
-- 🔧 Summarization pipeline (implementation exists, broader activation pending)
-- 🔧 Relevance scorer (implementation exists, broader activation pending)
+- ⏳ Summarization pipeline (control-plane surfaced, broader activation pending)
+- ⏳ Relevance scorer (control-plane surfaced, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated query envelopes now prune oversized context before remote submission
@@ -665,8 +665,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ 5-tier loading runtime integration (delegated path active)
-- 🔧 Automatic tier selection (implementation exists, broader activation pending)
-- 🔧 Learning engine (implementation exists, broader activation pending)
+- ⏳ Automatic tier selection (dashboard/control-plane surfaced, broader activation pending)
+- ⏳ Learning engine (dashboard/control-plane surfaced, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated runtime now applies progressive multi-tier context loading before remote dispatch
@@ -690,8 +690,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Lazy loading runtime integration (delegated path active)
-- 🔧 Dependency graph (implementation exists, broader activation pending)
-- 🔧 Prefetch system (implementation exists, broader activation pending)
+- ⏳ Dependency graph (runtime path active, broader activation pending)
+- ⏳ Prefetch system (runtime path active, broader activation pending)
 
 **Runtime follow-through landed:**
 - Context is now attached lazily during delegated query preparation instead of fully materializing up front
@@ -714,8 +714,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Relevance predictor runtime integration (delegated path active)
-- 🔧 Feedback loop (implementation exists, broader activation pending)
-- 🔧 Training pipeline (implementation exists, broader activation pending)
+- ⏳ Feedback loop (runtime path active, broader activation pending)
+- ⏳ Training pipeline (runtime path active, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated context selection now filters attachments through relevance prediction before remote execution
@@ -750,8 +750,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Gap scanner runtime integration (delegated recovery path active)
-- 🔧 Classification engine (implementation exists, broader activation pending)
-- 🔧 Priority scorer (implementation exists, broader activation pending)
+- ⏳ Classification engine (control-plane surfaced, broader activation pending)
+- ⏳ Priority scorer (control-plane surfaced, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated failures and weak outcomes now emit capability-gap detections directly from the hybrid coordinator
@@ -779,8 +779,8 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Tool integration runtime remediation (delegated recovery path active)
-- 🔧 Knowledge importer (implementation exists, broader activation pending)
-- 🔧 Skill synthesizer (implementation exists, broader activation pending)
+- ⏳ Knowledge importer (control-plane surfaced, broader activation pending)
+- ⏳ Skill synthesizer (control-plane surfaced, broader activation pending)
 
 **Runtime follow-through landed:**
 - Gap remediation planning now runs inside delegated recovery outcomes with bounded playbook reuse
