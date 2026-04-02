@@ -8,6 +8,7 @@ callers to hand-roll x-ai-profile usage.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -250,6 +251,31 @@ _CONTINUATION_RE = re.compile(
     r"\b(resume|continue|follow[ -]?up|prior context|pick up where|last agent|left off|ongoing|current work|remaining work)\b",
     re.IGNORECASE,
 )
+_PLANNING_RE = re.compile(
+    r"\b(plan|planning|outline|break down|steps|next step|approach|workflow|roadmap|sequence)\b",
+    re.IGNORECASE,
+)
+_RETRIEVAL_RE = re.compile(
+    r"\b(find|search|retrieve|lookup|look up|locate|grep|rg|docs|documentation|read|inspect|summarize|summary|recall)\b",
+    re.IGNORECASE,
+)
+_TOOL_CALL_RE = re.compile(
+    r"\b(tool call|tool-call|tool use|function call|call tools|use mcp|invoke tool)\b",
+    re.IGNORECASE,
+)
+_IMPLEMENTATION_RE = re.compile(
+    r"\b(implement|patch|code|refactor|fix|debug|write|update|modify|add test|create module|endpoint)\b",
+    re.IGNORECASE,
+)
+_ARCHITECTURE_RE = re.compile(
+    r"\b(architecture|architect|design|tradeoff|security review|risk review|policy|system design|scalab)\b",
+    re.IGNORECASE,
+)
+
+_LIGHTWEIGHT_COMPLEXITY_MAX_WORDS = max(
+    8,
+    int(os.getenv("AI_COORDINATOR_LIGHTWEIGHT_COMPLEXITY_MAX_WORDS", "32")),
+)
 
 
 def _record_routing_decision(decision: Dict[str, Any]) -> None:
@@ -288,8 +314,22 @@ def detect_query_complexity(query: str) -> Dict[str, Any]:
     matched_simple = [s for s in simple_signals if s in query_lower]
     matched_coding = [s for s in coding_signals if s in query_lower]
 
+    task_archetype = "general"
+    if _TOOL_CALL_RE.search(query):
+        task_archetype = "tool-calling"
+    elif matched_arch or _ARCHITECTURE_RE.search(query):
+        task_archetype = "architecture-review"
+    elif _IMPLEMENTATION_RE.search(query):
+        task_archetype = "implementation"
+    elif _PLANNING_RE.search(query):
+        task_archetype = "planning"
+    elif _RETRIEVAL_RE.search(query):
+        task_archetype = "retrieval"
+    elif continuation:
+        task_archetype = "continuation"
+
     # Determine complexity
-    if matched_arch:
+    if task_archetype == "architecture-review":
         complexity = "architecture"
         confidence = min(0.5 + len(matched_arch) * 0.15, 0.95)
     elif continuation and word_count <= 24:
@@ -308,16 +348,24 @@ def detect_query_complexity(query: str) -> Dict[str, Any]:
         complexity = "medium"
         confidence = 0.5
 
+    if task_archetype in {"planning", "retrieval"} and complexity in {"medium", "complex"} and word_count <= _LIGHTWEIGHT_COMPLEXITY_MAX_WORDS:
+        complexity = "simple"
+        confidence = max(confidence, 0.68)
+
     return {
         "complexity": complexity,
         "confidence": confidence,
         "word_count": word_count,
+        "task_archetype": task_archetype,
         "signals": {
             "architecture": matched_arch,
             "complex": matched_complex,
             "simple": matched_simple,
             "coding": matched_coding,
             "continuation": ["continuation"] if continuation else [],
+            "planning": ["planning"] if _PLANNING_RE.search(query) else [],
+            "retrieval": ["retrieval"] if _RETRIEVAL_RE.search(query) else [],
+            "tool_calling": ["tool-calling"] if _TOOL_CALL_RE.search(query) else [],
         },
     }
 
@@ -352,18 +400,43 @@ def route_by_complexity(
     complexity_info = detect_query_complexity(query)
     complexity = complexity_info["complexity"]
 
-    # Map complexity to profiles
-    COMPLEXITY_TO_PROFILE = {
-        "simple": "remote-free" if not prefer_local else "default",
-        "medium": "remote-coding" if not prefer_local else "default",
-        "complex": "remote-coding",  # Complex tasks need capable coding models
-        "architecture": "remote-reasoning",  # Architecture needs reasoning
-    }
-
+    task_archetype = str(complexity_info.get("task_archetype", "general") or "general")
     continuation = bool(_CONTINUATION_RE.search(query))
-    recommended = COMPLEXITY_TO_PROFILE.get(complexity, "remote-free")
-    if continuation and complexity != "architecture":
-        recommended = "default" if prefer_local or complexity in {"simple", "medium"} else recommended
+    model_class = "balanced"
+
+    if task_archetype == "tool-calling":
+        recommended = "local-tool-calling" if prefer_local else "remote-tool-calling"
+        model_class = "tool-calling"
+    elif task_archetype in {"planning", "retrieval"}:
+        recommended = "default" if prefer_local else "remote-free"
+        model_class = "lightweight"
+    elif task_archetype == "continuation" and complexity != "architecture":
+        recommended = "default"
+        model_class = "lightweight"
+    elif task_archetype == "implementation":
+        if prefer_local and complexity == "simple":
+            recommended = "default"
+            model_class = "lightweight"
+        else:
+            recommended = "remote-coding"
+            model_class = "coding"
+    elif task_archetype == "architecture-review" or complexity == "architecture":
+        recommended = "remote-reasoning"
+        model_class = "heavy-reasoning"
+    elif complexity == "simple":
+        recommended = "default" if prefer_local else "remote-free"
+        model_class = "lightweight"
+    elif complexity == "medium":
+        recommended = "default" if prefer_local else "remote-free"
+        model_class = "lightweight"
+    else:
+        recommended = "remote-coding"
+        model_class = "coding"
+
+    if continuation and complexity != "architecture" and task_archetype != "tool-calling":
+        recommended = "default" if prefer_local or task_archetype != "implementation" else recommended
+        if recommended == "default":
+            model_class = "lightweight"
 
     # Build rationale
     signals = complexity_info.get("signals", {})
@@ -371,12 +444,17 @@ def route_by_complexity(
     for sig_type, matches in signals.items():
         if matches:
             signal_parts.append(f"{sig_type}({','.join(matches[:2])})")
-    rationale = f"complexity={complexity}, confidence={complexity_info['confidence']:.0%}"
+    rationale = (
+        f"task_archetype={task_archetype}, complexity={complexity}, "
+        f"confidence={complexity_info['confidence']:.0%}, model_class={model_class}"
+    )
     if signal_parts:
         rationale += f", signals=[{'; '.join(signal_parts[:3])}]"
 
     decision = {
         "recommended_profile": recommended,
+        "model_class": model_class,
+        "task_archetype": task_archetype,
         "complexity": complexity,
         "complexity_confidence": complexity_info["confidence"],
         "word_count": complexity_info["word_count"],
@@ -388,8 +466,10 @@ def route_by_complexity(
     # Record for telemetry
     _record_routing_decision({
         "query_prefix": query[:60] + "..." if len(query) > 60 else query,
+        "task_archetype": task_archetype,
         "complexity": complexity,
         "profile": recommended,
+        "model_class": model_class,
         "confidence": complexity_info["confidence"],
     })
 
