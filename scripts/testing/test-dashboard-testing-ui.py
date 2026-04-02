@@ -25,6 +25,7 @@ REQUIRED_SNIPPETS = [
     'id="testingExecutionSummary"',
     'id="testingSuiteList"',
     'id="testingExecutionList"',
+    'comprehensive_validation',
     'function loadTestingOps()',
     'function loadTestingSuites()',
     'function loadTestingExecutions()',

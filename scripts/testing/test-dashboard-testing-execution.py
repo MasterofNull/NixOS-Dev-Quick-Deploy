@@ -91,10 +91,14 @@ def main() -> int:
             suites_response = client.get("/api/testing/suites")
             assert_true(suites_response.status_code == 200, "testing suites route should succeed")
             suites_payload = suites_response.json()
-            assert_true(suites_payload.get("count") == 4, "testing suite catalog should expose bounded suites")
+            assert_true(suites_payload.get("count") == 5, "testing suite catalog should expose bounded suites")
             assert_true(
                 any(item.get("id") == "property_based" for item in suites_payload.get("suites") or []),
                 "testing suite catalog should include property-based tests",
+            )
+            assert_true(
+                any(item.get("id") == "comprehensive_validation" for item in suites_payload.get("suites") or []),
+                "testing suite catalog should include comprehensive validation bundle",
             )
 
             denied = client.post(
@@ -125,6 +129,27 @@ def main() -> int:
             assert_true(
                 "executed python3 ai-stack/testing/property_based_tests.py" in str(live_detail.get("output") or ""),
                 "live testing execution should preserve bounded command output",
+            )
+
+            comprehensive = client.post(
+                "/api/testing/execute",
+                json={"suite_id": "comprehensive_validation", "dry_run": False, "confirm": True, "user": "codex-test"},
+            )
+            assert_true(comprehensive.status_code == 200, "comprehensive validation should start")
+            comprehensive_payload = comprehensive.json()
+            comprehensive_detail = _wait_for_status(client, comprehensive_payload["execution_id"], "success")
+            assert_true(
+                comprehensive_detail.get("returncode") == 0,
+                "comprehensive validation should complete successfully when all bounded steps pass",
+            )
+            output = str(comprehensive_detail.get("output") or "")
+            assert_true(
+                "[step 1/4] python3 ai-stack/testing/property_based_tests.py" in output,
+                "comprehensive validation should include property-based step output",
+            )
+            assert_true(
+                "[step 4/4] bash scripts/automation/run-prsi-canary-suite.sh" in output,
+                "comprehensive validation should include canary step output",
             )
 
             executions = client.get("/api/testing/executions")
