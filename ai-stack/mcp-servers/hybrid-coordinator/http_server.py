@@ -4425,6 +4425,15 @@ async def run_http_mode(port: int) -> None:
 
     @web.middleware
     async def api_key_middleware(request, handler):
+        def _is_loopback_hints_request(req: web.Request) -> bool:
+            if req.path != "/hints":
+                return False
+            remote = (req.remote or "").strip()
+            if remote in {"127.0.0.1", "::1", "localhost"}:
+                return True
+            forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
+            return forwarded_for in {"127.0.0.1", "::1", "localhost"}
+
         # Public endpoints that don't require authentication
         public_paths = (
             "/health",
@@ -4436,6 +4445,8 @@ async def run_http_mode(port: int) -> None:
             "/health/aggregate",
         )
         if request.path in public_paths:
+            return await handler(request)
+        if _is_loopback_hints_request(request):
             return await handler(request)
         if not Config.API_KEY:
             return await handler(request)
