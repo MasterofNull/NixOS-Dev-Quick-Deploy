@@ -13,6 +13,7 @@ with the live hybrid coordinator service.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -512,7 +513,82 @@ class ResultQualityChecker:
         }
 
 
+class LocalFallbackAdvisor:
+    """Recommend local-model fallback after degraded remote responses."""
+
+    def __init__(self):
+        self.state_file = ADVANCED_FEATURES_STATE / "offloading" / "local_fallback.json"
+        self.failure_history: List[Dict[str, Any]] = []
+        self._load()
+
+    def _load(self) -> None:
+        if not self.state_file.exists():
+            return
+        try:
+            with open(self.state_file, encoding="utf-8") as f:
+                self.failure_history = json.load(f).get("failure_history", [])[-500:]
+        except Exception as exc:
+            logger.warning("Failed to load local fallback state: %s", exc)
+
+    def _save(self) -> None:
+        with open(self.state_file, "w", encoding="utf-8") as f:
+            json.dump({"failure_history": self.failure_history[-500:]}, f, indent=2)
+
+    def record_remote_failure(
+        self,
+        query: str,
+        response: str,
+        agent_id: Optional[str],
+        reason: str,
+        quality_score: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "query": query[:500],
+            "response_excerpt": response[:500],
+            "agent_id": agent_id,
+            "reason": reason,
+            "quality_score": quality_score,
+        }
+        self.failure_history.append(record)
+        self._save()
+        return record
+
+    def recommend(self, query: str, failed_agent_id: Optional[str] = None) -> Dict[str, Any]:
+        query_terms = set(query.lower().split())
+        matching: List[Dict[str, Any]] = []
+        for record in self.failure_history:
+            record_terms = set(str(record.get("query", "")).lower().split())
+            similarity = (
+                len(query_terms & record_terms) / len(query_terms | record_terms)
+                if query_terms or record_terms
+                else 0.0
+            )
+            if similarity >= 0.3 or (
+                failed_agent_id is not None and record.get("agent_id") == failed_agent_id
+            ):
+                enriched = dict(record)
+                enriched["similarity"] = round(similarity, 4)
+                matching.append(enriched)
+
+        reasons = [str(item.get("reason", "")).lower() for item in matching]
+        fallback = len(matching) >= 2 or any(
+            key in reason for reason in reasons for key in ("timeout", "rate", "unavailable", "quota")
+        )
+        return {
+            "fallback_to_local": fallback,
+            "recommended_profile": "local-first" if fallback else "remote-retry",
+            "matching_failures": len(matching),
+            "reason": (
+                "remote failure history favors bounded local fallback"
+                if fallback
+                else "insufficient correlated failures for local fallback"
+            ),
+        }
+
+
 _quality_checker: Optional[ResultQualityChecker] = None
+_fallback_advisor: Optional[LocalFallbackAdvisor] = None
 
 
 def get_quality_checker() -> ResultQualityChecker:
@@ -520,6 +596,13 @@ def get_quality_checker() -> ResultQualityChecker:
     if _quality_checker is None:
         _quality_checker = ResultQualityChecker()
     return _quality_checker
+
+
+def get_fallback_advisor() -> LocalFallbackAdvisor:
+    global _fallback_advisor
+    if _fallback_advisor is None:
+        _fallback_advisor = LocalFallbackAdvisor()
+    return _fallback_advisor
 
 
 # ===========================================================================
@@ -927,7 +1010,155 @@ class ContextPruner:
         }
 
 
+class HierarchicalSummarizer:
+    """Summarize long contexts while preserving high-signal sentences."""
+
+    def summarize(self, text: str, target_tokens: int) -> Dict[str, Any]:
+        original_tokens = len(text.split())
+        if original_tokens <= target_tokens:
+            return {
+                "summary": text,
+                "original_tokens": original_tokens,
+                "summary_tokens": original_tokens,
+                "compression_ratio": 1.0,
+                "levels": 0,
+            }
+
+        summary = text
+        levels = 0
+        while len(summary.split()) > target_tokens and levels < 3:
+            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", summary) if s.strip()]
+            if len(sentences) <= 3:
+                break
+            scored: List[Tuple[float, str]] = []
+            for idx, sentence in enumerate(sentences):
+                score = 1.0
+                if idx in {0, len(sentences) - 1}:
+                    score += 1.5
+                if any(term in sentence.lower() for term in ("error", "critical", "must", "fix", "warning")):
+                    score += 2.0
+                score += min(len(sentence.split()) / 20.0, 1.0)
+                scored.append((score, sentence))
+            keep = {sentence for _, sentence in sorted(scored, key=lambda item: item[0], reverse=True)[: max(3, len(sentences) // 2)]}
+            summary = " ".join(sentence for sentence in sentences if sentence in keep)
+            levels += 1
+
+        summary_tokens = len(summary.split())
+        return {
+            "summary": summary,
+            "original_tokens": original_tokens,
+            "summary_tokens": summary_tokens,
+            "compression_ratio": round(summary_tokens / max(original_tokens, 1), 4),
+            "levels": levels,
+        }
+
+
+class RelevanceScorer:
+    """Score context items against a query."""
+
+    def score(self, query: str, context: str) -> float:
+        query_terms = {term for term in re.findall(r"\b[a-zA-Z0-9_-]{3,}\b", query.lower())}
+        context_terms = {term for term in re.findall(r"\b[a-zA-Z0-9_-]{3,}\b", context.lower())}
+        if not query_terms:
+            return 0.5
+        overlap = query_terms & context_terms
+        if not overlap:
+            return 0.0
+        jaccard = len(overlap) / len(query_terms | context_terms)
+        tf = sum(context.lower().count(term) for term in overlap) / (len(overlap) * 4)
+        return round(min(1.0, jaccard * 0.7 + tf * 0.3), 4)
+
+
+class SlidingWindowManager:
+    """Break long documents into overlapping windows."""
+
+    def __init__(self, window_size: int = 200):
+        self.window_size = window_size
+
+    def create_windows(self, document: str, overlap: int = 40) -> List[Dict[str, Any]]:
+        words = document.split()
+        windows: List[Dict[str, Any]] = []
+        start = 0
+        index = 0
+        step = max(self.window_size - overlap, 1)
+        while start < len(words):
+            slice_words = words[start:start + self.window_size]
+            windows.append(
+                {
+                    "window_id": f"window_{index}",
+                    "content": " ".join(slice_words),
+                    "tokens": len(slice_words),
+                    "start_word": start,
+                    "end_word": start + len(slice_words),
+                }
+            )
+            if start + self.window_size >= len(words):
+                break
+            start += step
+            index += 1
+        return windows
+
+
+class ContextReuseCache:
+    """Reuse context across similar queries."""
+
+    def __init__(self):
+        self.state_file = ADVANCED_FEATURES_STATE / "efficiency" / "context_reuse.json"
+        self.cache: Dict[str, Dict[str, Any]] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.state_file.exists():
+            return
+        try:
+            with open(self.state_file, encoding="utf-8") as f:
+                self.cache = json.load(f)
+        except Exception as exc:
+            logger.warning("Failed to load context reuse state: %s", exc)
+
+    def _save(self) -> None:
+        with open(self.state_file, "w", encoding="utf-8") as f:
+            json.dump(self.cache, f, indent=2)
+
+    def cache_context(self, query: str, context: str) -> Dict[str, Any]:
+        key = hashlib.sha256(query.lower().encode()).hexdigest()[:16]
+        self.cache[key] = {
+            "query": query,
+            "context": context,
+            "stored_at": datetime.now().isoformat(),
+        }
+        self._save()
+        return {"cache_key": key, "stored": True}
+
+    def get_context(self, query: str, similarity_threshold: float = 0.7) -> Dict[str, Any]:
+        query_terms = set(query.lower().split())
+        exact_key = hashlib.sha256(query.lower().encode()).hexdigest()[:16]
+        if exact_key in self.cache:
+            return {"hit": True, "mode": "exact", "context": self.cache[exact_key]["context"]}
+
+        for payload in self.cache.values():
+            cached_terms = set(str(payload.get("query", "")).lower().split())
+            similarity = (
+                len(query_terms & cached_terms) / len(query_terms | cached_terms)
+                if query_terms or cached_terms
+                else 0.0
+            )
+            if similarity >= similarity_threshold:
+                return {
+                    "hit": True,
+                    "mode": "similar",
+                    "similarity": round(similarity, 4),
+                    "context": payload.get("context"),
+                }
+
+        return {"hit": False}
+
+
 _pruner: Optional[ContextPruner] = None
+_hierarchical_summarizer: Optional[HierarchicalSummarizer] = None
+_relevance_scorer: Optional[RelevanceScorer] = None
+_window_manager: Optional[SlidingWindowManager] = None
+_context_reuse_cache: Optional[ContextReuseCache] = None
 
 
 def get_context_pruner() -> ContextPruner:
@@ -935,6 +1166,34 @@ def get_context_pruner() -> ContextPruner:
     if _pruner is None:
         _pruner = ContextPruner()
     return _pruner
+
+
+def get_hierarchical_summarizer() -> HierarchicalSummarizer:
+    global _hierarchical_summarizer
+    if _hierarchical_summarizer is None:
+        _hierarchical_summarizer = HierarchicalSummarizer()
+    return _hierarchical_summarizer
+
+
+def get_relevance_scorer() -> RelevanceScorer:
+    global _relevance_scorer
+    if _relevance_scorer is None:
+        _relevance_scorer = RelevanceScorer()
+    return _relevance_scorer
+
+
+def get_window_manager() -> SlidingWindowManager:
+    global _window_manager
+    if _window_manager is None:
+        _window_manager = SlidingWindowManager()
+    return _window_manager
+
+
+def get_context_reuse_cache() -> ContextReuseCache:
+    global _context_reuse_cache
+    if _context_reuse_cache is None:
+        _context_reuse_cache = ContextReuseCache()
+    return _context_reuse_cache
 
 
 # ===========================================================================
@@ -1282,6 +1541,106 @@ def get_gap_detector() -> GapDetector:
     return _gap_detector
 
 
+class RemediationWorkspace:
+    """Writable-state remediation artifact generator for Phase 9.2."""
+
+    def __init__(self):
+        self.base_dir = ADVANCED_FEATURES_STATE / "capability-gap"
+        for subdir in ("knowledge", "skills", "patterns"):
+            (self.base_dir / subdir).mkdir(parents=True, exist_ok=True)
+        self.results_file = self.base_dir / "remediation_results.json"
+
+    def import_knowledge(self, topic: str, reason: str, source_urls: Optional[List[str]] = None) -> Dict[str, Any]:
+        filename = f"{topic.replace(' ', '_').lower()[:64]}.md"
+        path = self.base_dir / "knowledge" / filename
+        refs = "\n".join(f"- {url}" for url in (source_urls or [])) or "- No explicit sources recorded"
+        path.write_text(
+            (
+                f"# Knowledge: {topic}\n\n"
+                f"Imported: {datetime.now().isoformat()}\n"
+                f"Reason: {reason}\n\n"
+                "## Summary\n\n"
+                f"Imported knowledge artifact for {topic}.\n\n"
+                "## References\n\n"
+                f"{refs}\n"
+            ),
+            encoding="utf-8",
+        )
+        return self._record_result("import_knowledge", path)
+
+    def synthesize_skill(self, skill_name: str, examples: List[Dict[str, Any]], reason: str) -> Dict[str, Any]:
+        filename = f"{skill_name.replace(' ', '_').lower()[:64]}.md"
+        path = self.base_dir / "skills" / filename
+        common_keys = sorted({key for example in examples for key in example.keys()})
+        path.write_text(
+            (
+                f"# Skill: {skill_name}\n\n"
+                f"Synthesized: {datetime.now().isoformat()}\n"
+                f"Reason: {reason}\n\n"
+                "## Common Fields\n\n"
+                f"{', '.join(common_keys) if common_keys else 'No example fields supplied'}\n\n"
+                "## Examples\n\n"
+                f"```json\n{json.dumps(examples[:3], indent=2)}\n```\n"
+            ),
+            encoding="utf-8",
+        )
+        return self._record_result("synthesize_skill", path)
+
+    def extract_pattern(self, pattern_name: str, instances: List[Dict[str, Any]], reason: str) -> Dict[str, Any]:
+        filename = f"{pattern_name.replace(' ', '_').lower()[:64]}.md"
+        path = self.base_dir / "patterns" / filename
+        repeated_keys = defaultdict(int)
+        for instance in instances:
+            for key in instance.keys():
+                repeated_keys[key] += 1
+        ranked = sorted(repeated_keys.items(), key=lambda item: item[1], reverse=True)
+        path.write_text(
+            (
+                f"# Pattern: {pattern_name}\n\n"
+                f"Extracted: {datetime.now().isoformat()}\n"
+                f"Reason: {reason}\n\n"
+                "## Frequent Fields\n\n"
+                + "\n".join(f"- {key}: {count}" for key, count in ranked[:10])
+                + "\n"
+            ),
+            encoding="utf-8",
+        )
+        return self._record_result("extract_pattern", path)
+
+    def validate(self, artifact_path: str) -> Dict[str, Any]:
+        path = Path(artifact_path)
+        valid = path.exists() and path.stat().st_size > 0
+        return {"validation_passed": valid, "artifact_path": str(path)}
+
+    def _record_result(self, action: str, path: Path) -> Dict[str, Any]:
+        if self.results_file.exists():
+            try:
+                payload = json.loads(self.results_file.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {"results": []}
+        else:
+            payload = {"results": []}
+        payload["results"].append(
+            {
+                "action": action,
+                "artifact_path": str(path),
+                "recorded_at": datetime.now().isoformat(),
+            }
+        )
+        self.results_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return {"artifact_path": str(path), "action": action}
+
+
+_remediation_workspace: Optional[RemediationWorkspace] = None
+
+
+def get_remediation_workspace() -> RemediationWorkspace:
+    global _remediation_workspace
+    if _remediation_workspace is None:
+        _remediation_workspace = RemediationWorkspace()
+    return _remediation_workspace
+
+
 # ===========================================================================
 # Phase 10: Real-Time Learning
 # ===========================================================================
@@ -1541,6 +1900,24 @@ async def get_quality_stats() -> Dict:
     return checker.get_quality_stats()
 
 
+async def record_remote_failure(
+    query: str,
+    response: str,
+    reason: str,
+    agent_id: Optional[str] = None,
+    quality_score: Optional[float] = None,
+) -> Dict:
+    """Record a failed/degraded remote response for local fallback decisions."""
+    advisor = get_fallback_advisor()
+    return advisor.record_remote_failure(query, response, agent_id, reason, quality_score)
+
+
+async def recommend_local_fallback(query: str, failed_agent_id: Optional[str] = None) -> Dict:
+    """Recommend whether a failed remote request should fall back locally."""
+    advisor = get_fallback_advisor()
+    return advisor.recommend(query=query, failed_agent_id=failed_agent_id)
+
+
 async def compress_prompt(text: str, strategy: str = "stopword_removal") -> Dict:
     """Compress a prompt (Phase 7.1)."""
     compressor = get_compressor()
@@ -1567,6 +1944,38 @@ async def get_compression_stats() -> Dict:
     """Get compression statistics (Phase 7.1)."""
     compressor = get_compressor()
     return compressor.get_stats()
+
+
+async def summarize_long_context(text: str, target_tokens: int = 120) -> Dict:
+    """Hierarchically summarize long context blocks."""
+    summarizer = get_hierarchical_summarizer()
+    return summarizer.summarize(text, target_tokens=target_tokens)
+
+
+async def score_context_relevance(query: str, context: str) -> Dict:
+    """Score how relevant a context block is to a query."""
+    scorer = get_relevance_scorer()
+    return {"score": scorer.score(query, context)}
+
+
+async def create_sliding_windows(document: str, window_size: int = 200, overlap: int = 40) -> Dict:
+    """Split a long document into overlapping windows."""
+    manager = get_window_manager()
+    manager.window_size = window_size
+    windows = manager.create_windows(document, overlap=overlap)
+    return {"windows": windows, "window_count": len(windows)}
+
+
+async def cache_reusable_context(query: str, context: str) -> Dict:
+    """Cache reusable context for later similar queries."""
+    cache = get_context_reuse_cache()
+    return cache.cache_context(query, context)
+
+
+async def get_reusable_context(query: str, similarity_threshold: float = 0.7) -> Dict:
+    """Retrieve reusable context for a similar query."""
+    cache = get_context_reuse_cache()
+    return cache.get_context(query, similarity_threshold=similarity_threshold)
 
 
 async def optimize_prompt_template(
@@ -1674,6 +2083,30 @@ async def get_capability_gap_stats() -> Dict:
     return detector.get_gap_stats()
 
 
+async def import_gap_knowledge(topic: str, reason: str, source_urls: Optional[List[str]] = None) -> Dict:
+    """Create a knowledge artifact for a capability gap."""
+    workspace = get_remediation_workspace()
+    artifact = workspace.import_knowledge(topic, reason, source_urls=source_urls)
+    validation = workspace.validate(artifact["artifact_path"])
+    return {**artifact, **validation}
+
+
+async def synthesize_gap_skill(skill_name: str, examples: List[Dict[str, Any]], reason: str) -> Dict:
+    """Create a skill artifact from remediation examples."""
+    workspace = get_remediation_workspace()
+    artifact = workspace.synthesize_skill(skill_name, examples, reason)
+    validation = workspace.validate(artifact["artifact_path"])
+    return {**artifact, **validation}
+
+
+async def extract_gap_pattern(pattern_name: str, instances: List[Dict[str, Any]], reason: str) -> Dict:
+    """Create a generalized pattern artifact from remediation instances."""
+    workspace = get_remediation_workspace()
+    artifact = workspace.extract_pattern(pattern_name, instances, reason)
+    validation = workspace.validate(artifact["artifact_path"])
+    return {**artifact, **validation}
+
+
 async def record_learning_signal(
     query: str,
     response: str,
@@ -1709,10 +2142,13 @@ async def get_advanced_features_readiness() -> Dict:
     pool_stats = get_agent_pool().get_pool_stats()
     benchmark_stats = get_agent_pool().get_performance_benchmarks()
     quality_stats = get_quality_checker().get_quality_stats()
+    fallback_stats = get_fallback_advisor().recommend("local bounded retry", None)
     compression_stats = get_compressor().get_stats()
     prompt_ab_stats = get_template_optimizer().get_ab_stats()
+    context_reuse = get_context_reuse_cache().get_context("cached context probe", similarity_threshold=0.1)
     tier_stats = get_tier_selector().get_tier_stats()
     gap_stats = get_gap_detector().get_gap_stats()
+    remediation_results_path = get_remediation_workspace().results_file
     learning_stats = get_online_learner().get_learning_stats()
 
     return {
@@ -1722,12 +2158,14 @@ async def get_advanced_features_readiness() -> Dict:
                 "agent_pool": f"{pool_stats['available_agents']}/{pool_stats['total_agents']} available",
                 "quality_assessments": quality_stats.get("total_assessments", 0),
                 "benchmarked_profiles": len(benchmark_stats.get("profiles", [])),
+                "local_fallback_mode": fallback_stats.get("recommended_profile"),
             },
             "phase_7_efficiency": {
                 "status": "implementation_exists",
                 "compressions": compression_stats.get("total", 0),
                 "tokens_saved": compression_stats.get("tokens_saved", 0),
                 "ab_variants": sum(len(variants) for variants in prompt_ab_stats.values()),
+                "context_reuse_ready": "hit" in context_reuse,
             },
             "phase_8_progressive_disclosure": {
                 "status": "implementation_exists",
@@ -1737,6 +2175,7 @@ async def get_advanced_features_readiness() -> Dict:
                 "status": "implementation_exists",
                 "gaps_detected": gap_stats.get("total_gaps", 0),
                 "failure_patterns": len(gap_stats.get("failure_patterns", {})),
+                "remediation_artifacts_recorded": remediation_results_path.exists(),
             },
             "phase_10_learning": {
                 "status": "implementation_exists",
