@@ -3276,6 +3276,7 @@
                                         <option value="immediate">Immediate</option>
                                     </select>
                                     <input type="number" class="search-box" id="deploymentCanaryPercentage" value="10" min="1" max="100" style="max-width: 140px;" />
+                                    <input type="number" class="search-box" id="deploymentRollbackThreshold" value="0.05" min="0.001" max="1" step="0.001" style="max-width: 160px;" />
                                     <label style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;">
                                         <input type="checkbox" id="deploymentExecuteDryRun" checked />
                                         Dry Run
@@ -8530,6 +8531,7 @@
             const dryRun = document.getElementById('deploymentExecuteDryRun')?.checked !== false;
             const requireApproval = document.getElementById('deploymentRequireApproval')?.checked === true;
             const canaryPercentage = Number(document.getElementById('deploymentCanaryPercentage')?.value || 10);
+            const rollbackOnErrorRate = Number(document.getElementById('deploymentRollbackThreshold')?.value || 0.05);
             const statusEl = document.getElementById('deploymentActionStatus');
             try {
                 if (statusEl) {
@@ -8545,6 +8547,7 @@
                         require_approval: requireApproval,
                         confirm: dryRun,
                         canary_percentage: Number.isFinite(canaryPercentage) ? canaryPercentage : 10,
+                        rollback_on_error_rate: Number.isFinite(rollbackOnErrorRate) ? rollbackOnErrorRate : 0.05,
                         user: 'dashboard-operator'
                     })
                 });
