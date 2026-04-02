@@ -124,7 +124,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclosure"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "capability-gap"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "real-time-learning"))
-from orchestration import IsolationMode, ToolStatus
+from orchestration import (
+    AgentHQ,
+    AgentInfo,
+    AgentStatus,
+    DelegationAPI,
+    DelegationStatus,
+    IsolationMode,
+    MCPToolInvoker,
+    SessionState,
+    ToolStatus,
+    WorkspaceManager,
+)
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
@@ -205,6 +216,18 @@ _LIVE_PATTERN_MINER = LivePatternMiner()
 _IMMEDIATE_FEEDBACK_PROCESSOR = ImmediateFeedbackProcessor()
 _SUCCESS_FAILURE_DETECTOR = SuccessFailureDetector()
 _RAPID_ADAPTOR = RapidAdaptor()
+
+# Phase 4.2 — Multi-Agent Orchestration Framework (live instances)
+_ORCHESTRATION_PERSISTENCE_DIR = Path(
+    os.getenv("ORCHESTRATION_DIR", "/var/lib/ai-stack/hybrid/orchestration")
+)
+_WORKSPACE_BASE_DIR = Path(
+    os.getenv("WORKSPACE_DIR", "/var/lib/ai-stack/hybrid/workspaces")
+)
+_AGENT_HQ = AgentHQ(persistence_dir=_ORCHESTRATION_PERSISTENCE_DIR)
+_DELEGATION_API = DelegationAPI()
+_WORKSPACE_MANAGER = WorkspaceManager(base_dir=_WORKSPACE_BASE_DIR)
+_MCP_TOOL_INVOKER = MCPToolInvoker(cache_enabled=True)
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -4264,15 +4287,28 @@ def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, 
     members = team.get("members") if isinstance(team.get("members"), list) else []
     deferred_members = team.get("deferred_members") if isinstance(team.get("deferred_members"), list) else []
 
+    # Get live orchestration framework state
+    session_id = str(session.get("session_id", "") or "").strip()
+    hq_session = _AGENT_HQ.get_session(session_id)
+    hq_status = _AGENT_HQ.get_session_status(session_id) if hq_session else None
+    delegation_status = _DELEGATION_API.get_queue_status()
+    workspace_list = _WORKSPACE_MANAGER.list_workspaces(session_id=session_id)
+    tool_report = _MCP_TOOL_INVOKER.get_usage_report()
+
     return {
         "framework": "multi-agent-orchestration-foundation",
-        "framework_status": "integrated",
+        "framework_status": "live",
         "agent_hq": {
             "enabled": True,
-            "session_id": str(session.get("session_id", "") or "").strip(),
-            "state": str(session.get("status", "unknown") or "unknown").strip(),
+            "session_id": session_id,
+            "state": hq_session.state.value if hq_session else str(session.get("status", "unknown") or "unknown").strip(),
             "checkpointing": True,
             "timeline_events": len(trajectory),
+            "live_session": hq_session is not None,
+            "registered_agents": len(_AGENT_HQ.global_agents),
+            "active_sessions": len(_AGENT_HQ.sessions),
+            "checkpoint_count": len(hq_session.checkpoints) if hq_session else 0,
+            "task_summary": hq_status.get("tasks", {}) if hq_status else {},
         },
         "delegation": {
             "enabled": True,
@@ -4282,12 +4318,18 @@ def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, 
             "selected_lane": str(consensus.get("selected_lane", "") or "").strip(),
             "active_member_count": len(members),
             "deferred_member_count": len(deferred_members),
+            "queue_size": delegation_status.get("queue_size", 0),
+            "pending_delegations": delegation_status.get("pending_count", 0),
+            "completed_delegations": delegation_status.get("completed_count", 0),
+            "registered_targets": len(delegation_status.get("agents", {})),
         },
         "workspace": {
             "enabled": True,
             "mode": _resolve_orchestration_workspace_mode(session),
             "resolved_profile": resolved_profile,
             "network_policy": str(resolved_profile.get("network_policy", "") or "").strip(),
+            "active_workspaces": len(workspace_list),
+            "total_workspaces": len(_WORKSPACE_MANAGER.workspaces),
         },
         "tool_invocation": {
             "enabled": True,
@@ -4295,6 +4337,9 @@ def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, 
             "status": ToolStatus.AVAILABLE.value,
             "cache_enabled": True,
             "reasoning_pattern": str(reasoning_pattern.get("selected_pattern", "") or "").strip(),
+            "registered_tools": tool_report.get("tools_registered", 0),
+            "total_invocations": tool_report.get("analytics", {}).get("total_invocations", 0),
+            "pending_approvals": tool_report.get("pending_approvals", 0),
         },
     }
 
