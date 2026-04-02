@@ -733,6 +733,141 @@ TOOL_DEFINITIONS: List[Tool] = [
             "required": ["teacher_model", "student_model"],
         },
     ),
+    Tool(
+        name="get_advanced_features_readiness",
+        description="Get readiness and activation status for advanced Phase 6-10 feature primitives",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="get_agent_quality_profiles",
+        description="Get composite remote-agent quality profiles for offloading decisions",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="select_failover_remote_agent",
+        description="Select a failover-capable remote agent using quality-aware tier escalation",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "min_composite_score": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.55},
+            },
+        },
+    ),
+    Tool(
+        name="get_agent_benchmarks",
+        description="Get observed agent-pool performance benchmarks",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="optimize_prompt_template",
+        description="Generate an optimized prompt template variant for a task",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_type": {"type": "string"},
+                "task": {"type": "string"},
+                "context": {"type": "string"},
+                "constraints": {"type": "string"},
+            },
+            "required": ["task_type", "task"],
+        },
+    ),
+    Tool(
+        name="generate_dynamic_prompt",
+        description="Generate a task-adaptive prompt variant from a raw query",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "context": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="record_prompt_variant_outcome",
+        description="Record an A/B outcome for an optimized prompt variant",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_type": {"type": "string"},
+                "variant_id": {"type": "string"},
+                "score": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+            },
+            "required": ["task_type", "variant_id", "score"],
+        },
+    ),
+    Tool(
+        name="get_prompt_ab_stats",
+        description="Get current prompt-template A/B statistics",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="select_context_tier",
+        description="Select an appropriate context-loading tier for a query",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "context": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="get_tier_selection_stats",
+        description="Get context-tier selection statistics",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="analyze_failure_patterns",
+        description="Analyze failure patterns without persisting a full capability-gap record",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "response": {"type": "string"},
+                "error_message": {"type": "string"},
+                "user_feedback": {"type": "object"},
+            },
+            "required": ["query", "response"],
+        },
+    ),
+    Tool(
+        name="get_capability_gap_stats",
+        description="Get capability-gap statistics and failure-pattern coverage",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="record_learning_signal",
+        description="Record a learning signal into the advanced online-learning module",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "response": {"type": "string"},
+                "outcome": {"type": "string"},
+                "explicit_score": {"type": "number"},
+            },
+            "required": ["query", "response", "outcome"],
+        },
+    ),
+    Tool(
+        name="get_learning_recommendations",
+        description="Get recommendations based on recorded online-learning patterns",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="get_advanced_learning_stats",
+        description="Get learning statistics from the advanced online-learning module",
+        inputSchema={"type": "object", "properties": {}},
+    ),
 ]
 
 
@@ -1049,6 +1184,125 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 pruning_sparsity=arguments.get("pruning_sparsity", 0.2),
                 enable_speculative_decoding=arguments.get("enable_speculative_decoding", True),
             )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_advanced_features_readiness":
+            import advanced_features
+            result = await advanced_features.get_advanced_features_readiness()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_agent_quality_profiles":
+            import advanced_features
+            result = await advanced_features.get_agent_quality_profiles()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "select_failover_remote_agent":
+            import advanced_features
+            result = await advanced_features.select_failover_remote_agent(
+                min_composite_score=arguments.get("min_composite_score", 0.55),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_agent_benchmarks":
+            import advanced_features
+            result = await advanced_features.get_agent_benchmarks()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "optimize_prompt_template":
+            import advanced_features
+            result = await advanced_features.optimize_prompt_template(
+                task_type=arguments.get("task_type", "implementation"),
+                task=arguments.get("task", ""),
+                context=arguments.get("context"),
+                constraints=arguments.get("constraints"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "generate_dynamic_prompt":
+            import advanced_features
+            result = await advanced_features.generate_dynamic_prompt(
+                query=arguments.get("query", ""),
+                context=arguments.get("context"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "record_prompt_variant_outcome":
+            import advanced_features
+            result = await advanced_features.record_prompt_variant_outcome(
+                task_type=arguments.get("task_type", "implementation"),
+                variant_id=arguments.get("variant_id", ""),
+                score=arguments.get("score", 0.0),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_prompt_ab_stats":
+            import advanced_features
+            result = await advanced_features.get_prompt_ab_stats()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "select_context_tier":
+            import advanced_features
+            result = await advanced_features.select_context_tier(
+                query=arguments.get("query", ""),
+                context=arguments.get("context"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_tier_selection_stats":
+            import advanced_features
+            result = await advanced_features.get_tier_selection_stats()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "analyze_failure_patterns":
+            import advanced_features
+            result = await advanced_features.analyze_failure_patterns(
+                query=arguments.get("query", ""),
+                response=arguments.get("response", ""),
+                error_message=arguments.get("error_message"),
+                user_feedback=arguments.get("user_feedback"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_capability_gap_stats":
+            import advanced_features
+            result = await advanced_features.get_capability_gap_stats()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "record_learning_signal":
+            import advanced_features
+            result = await advanced_features.record_learning_signal(
+                query=arguments.get("query", ""),
+                response=arguments.get("response", ""),
+                outcome=arguments.get("outcome", "unknown"),
+                explicit_score=arguments.get("explicit_score"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_learning_recommendations":
+            import advanced_features
+            result = await advanced_features.get_learning_recommendations(
+                query=arguments.get("query", ""),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_advanced_learning_stats":
+            import advanced_features
+            result = await advanced_features.get_learning_stats()
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

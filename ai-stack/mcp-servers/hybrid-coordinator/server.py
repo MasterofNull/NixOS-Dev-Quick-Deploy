@@ -91,6 +91,7 @@ import route_handler
 import federated_integration
 import federated_mcp_handlers
 import model_optimization
+import advanced_features
 from semantic_cache import SemanticCache
 from interaction_tracker import (
     compute_value_score, track_interaction, update_interaction_outcome,
@@ -696,6 +697,14 @@ async def initialize_server():
         record_telemetry_fn=record_telemetry_event,
     )
     logger.info("✓ Model optimization module initialized")
+
+    # Phase 6-10 — advanced repo-grounded feature activation
+    advanced_features.init(
+        qdrant_client=qdrant_client,
+        embed_fn=embed_text,
+        record_telemetry_fn=record_telemetry_event,
+    )
+    logger.info("✓ Advanced features module initialized")
 
     # PRSI gap-sync: export PostgreSQL gaps + feedback corrections to hints JSONL every 5 min
     async def _gap_sync_loop() -> None:
