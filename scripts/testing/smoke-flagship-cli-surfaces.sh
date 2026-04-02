@@ -4,6 +4,12 @@ set -euo pipefail
 # Smoke-test flagship agent CLI surfaces that are either declarative or
 # explicitly classified as external-but-integrated.
 
+primary_user="${AQ_PRIMARY_USER:-${SUDO_USER:-${USER:-$(id -un)}}}"
+primary_home="${AQ_PRIMARY_HOME:-$(getent passwd "${primary_user}" 2>/dev/null | cut -d: -f6)}"
+if [[ -n "${primary_home}" ]]; then
+  export HOME="${primary_home}"
+fi
+
 # Extend PATH with common install locations for npm-global CLIs
 export PATH="${HOME}/.npm-global/bin:${HOME}/.local/bin:${HOME}/.nix-profile/bin:${PATH}"
 

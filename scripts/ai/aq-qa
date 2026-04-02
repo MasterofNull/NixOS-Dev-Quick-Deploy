@@ -96,6 +96,27 @@ _primary_user() {
   printf '%s' "${USER:-}"
 }
 
+_primary_home() {
+  if [[ -n "${AQ_QA_PRIMARY_HOME:-}" ]]; then
+    printf '%s' "${AQ_QA_PRIMARY_HOME}"
+    return 0
+  fi
+  local user home_dir
+  user="$(_primary_user)"
+  home_dir="$(getent passwd "${user}" 2>/dev/null | cut -d: -f6)"
+  if [[ -n "${home_dir}" ]]; then
+    printf '%s' "${home_dir}"
+    return 0
+  fi
+  printf '%s' "${HOME:-}"
+}
+
+_primary_user_path() {
+  local home_dir
+  home_dir="$(_primary_home)"
+  printf '%s' "${home_dir}/.npm-global/bin:${home_dir}/.local/bin:${home_dir}/.nix-profile/bin:${PATH}"
+}
+
 _continue_cli_path() {
   local user home_dir
   if command -v cn >/dev/null 2>&1; then
@@ -116,10 +137,27 @@ _continue_cli_path() {
   return 1
 }
 
+_run_clean_primary_shell() {
+  local primary_home primary_user
+  primary_home="$(_primary_home)"
+  primary_user="$(_primary_user)"
+  env \
+    HOME="${primary_home}" \
+    USER="${primary_user}" \
+    LOGNAME="${primary_user}" \
+    PATH="$(_primary_user_path)" \
+    bash --noprofile --norc -c "$1"
+}
+
 _continue_cli_help() {
   local cli
   cli="$(_continue_cli_path)" || return 1
-  "${cli}" --help
+  env \
+    HOME="$(_primary_home)" \
+    USER="$(_primary_user)" \
+    LOGNAME="$(_primary_user)" \
+    PATH="$(_primary_user_path)" \
+    "${cli}" --help
 }
 
 # HTTP health check: curl URL, expect JSON with status=ok.
@@ -135,7 +173,7 @@ _http_health() {
 }
 
 _continue_config_ok() {
-  local cfg="${HOME}/.continue/config.json"
+  local cfg="$(_primary_home)/.continue/config.json"
   [[ -f "$cfg" ]] || return 1
   python3 - "$cfg" <<'PY'
 import json, sys
@@ -200,7 +238,13 @@ _continue_editor_flow_smoke() {
   bash "${REPO_ROOT}/scripts/testing/smoke-continue-editor-flow.sh"
 }
 
+_continue_extension_output() {
+  _run_clean_primary_shell 'codium --list-extensions 2>/dev/null | tr "[:upper:]" "[:lower:]"'
+}
+
 _flagship_cli_surface_smoke() {
+  AQ_PRIMARY_USER="$(_primary_user)" \
+  AQ_PRIMARY_HOME="$(_primary_home)" \
   bash "${REPO_ROOT}/scripts/testing/smoke-flagship-cli-surfaces.sh"
 }
 
@@ -305,7 +349,7 @@ run_phase_0() {
   # 0.5 Continue/editor runtime basics
   _check "0.5.1" "Continue CLI help works" _continue_cli_help
   _check "0.5.2" "Continue config targets coordinator ingress with continue-local lane" _continue_config_ok
-  _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' bash -lc 'codium --list-extensions 2>/dev/null | tr "[:upper:]" "[:lower:]"'
+  _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' _continue_extension_output
   _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
   _check "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
