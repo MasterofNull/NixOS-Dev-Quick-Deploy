@@ -117,12 +117,14 @@ import mcp_handlers
 
 # Phase 1: Alert Engine integration
 import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclosure"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "capability-gap"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "real-time-learning"))
+from orchestration import IsolationMode, ToolStatus
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
@@ -4052,6 +4054,7 @@ def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
     team = session.get("team") if isinstance(session.get("team"), dict) else {}
     if not team:
         session["team"] = _build_orchestration_team(policy, orchestration, session["consensus"])
+    session["orchestration_runtime"] = _build_orchestration_runtime_contract(session)
 
 
 def _build_workflow_run_session(
@@ -4235,6 +4238,64 @@ def _resolve_isolation_profile(session: Dict[str, Any]) -> Dict[str, Any]:
         "network_policy": network_policy,
         "allow_workspace_write": bool(profile.get("allow_workspace_write", False)),
         "allowed_processes": list(profile.get("allowed_processes", [])),
+    }
+
+
+def _resolve_orchestration_workspace_mode(session: Dict[str, Any]) -> str:
+    """Map workflow isolation state onto orchestration workspace modes."""
+    isolation = _resolve_isolation_profile(session)
+    workspace_root = str(isolation.get("workspace_root", "") or "").strip().lower()
+    safety_mode = str(session.get("safety_mode", "plan-readonly") or "plan-readonly").strip().lower()
+
+    if "/worktree" in workspace_root or workspace_root.endswith("/worktrees"):
+        return IsolationMode.GIT_WORKTREE.value
+    if safety_mode == "execute-mutating":
+        return IsolationMode.COPY.value
+    return IsolationMode.TEMP_DIR.value
+
+
+def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose the integrated orchestration-framework view for a workflow session."""
+    team = session.get("team") if isinstance(session.get("team"), dict) else {}
+    consensus = session.get("consensus") if isinstance(session.get("consensus"), dict) else {}
+    reasoning_pattern = session.get("reasoning_pattern") if isinstance(session.get("reasoning_pattern"), dict) else {}
+    trajectory = session.get("trajectory") if isinstance(session.get("trajectory"), list) else []
+    resolved_profile = _resolve_isolation_profile(session)
+    members = team.get("members") if isinstance(team.get("members"), list) else []
+    deferred_members = team.get("deferred_members") if isinstance(team.get("deferred_members"), list) else []
+
+    return {
+        "framework": "multi-agent-orchestration-foundation",
+        "framework_status": "integrated",
+        "agent_hq": {
+            "enabled": True,
+            "session_id": str(session.get("session_id", "") or "").strip(),
+            "state": str(session.get("status", "unknown") or "unknown").strip(),
+            "checkpointing": True,
+            "timeline_events": len(trajectory),
+        },
+        "delegation": {
+            "enabled": True,
+            "selection_strategy": str(team.get("selection_strategy", "") or "").strip(),
+            "consensus_mode": str(consensus.get("consensus_mode", "") or "").strip(),
+            "selected_agent": str(consensus.get("selected_agent", "") or "").strip(),
+            "selected_lane": str(consensus.get("selected_lane", "") or "").strip(),
+            "active_member_count": len(members),
+            "deferred_member_count": len(deferred_members),
+        },
+        "workspace": {
+            "enabled": True,
+            "mode": _resolve_orchestration_workspace_mode(session),
+            "resolved_profile": resolved_profile,
+            "network_policy": str(resolved_profile.get("network_policy", "") or "").strip(),
+        },
+        "tool_invocation": {
+            "enabled": True,
+            "catalog_size": len(workflow_tool_catalog() or []),
+            "status": ToolStatus.AVAILABLE.value,
+            "cache_enabled": True,
+            "reasoning_pattern": str(reasoning_pattern.get("selected_pattern", "") or "").strip(),
+        },
     }
 
 
@@ -6804,6 +6865,7 @@ async def run_http_mode(port: int) -> None:
                         "selected_pattern": reasoning_pattern.get("selected_pattern", ""),
                         "boost_multiplier": reasoning_pattern.get("boost_multiplier", 1.0),
                     },
+                    "orchestration_runtime": sess.get("orchestration_runtime", {}),
                     "created_at": sess.get("created_at"),
                     "updated_at": sess.get("updated_at"),
                 })
@@ -7447,6 +7509,7 @@ async def run_http_mode(port: int) -> None:
                 "optional_slot_capacity": team.get("optional_slot_capacity", 0),
                 "deferred_slots": team.get("deferred_slots", []),
                 "deferred_members": team.get("deferred_members", []),
+                "orchestration_runtime": session.get("orchestration_runtime", {}),
                 "candidates": candidates,
                 "selected_candidate_id": selected_id,
                 "formation_mode": team.get("formation_mode", ""),
