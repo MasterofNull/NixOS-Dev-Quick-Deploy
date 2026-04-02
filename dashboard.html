@@ -2207,10 +2207,46 @@
                                 <div class="metric-label">Cache Hit Rate</div>
                                 <div class="metric-value" id="hybridCacheHit">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Agent Pool Availability</div>
+                                <div class="metric-value" id="hybridPoolAvailability">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Free Agents Ready</div>
+                                <div class="metric-value" id="hybridFreeAgents">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Delegated QA</div>
+                                <div class="metric-value" id="hybridDelegatedQuality">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Model Optimization</div>
+                                <div class="metric-value" id="hybridModelOptimization">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Prompt Savings</div>
+                                <div class="metric-value" id="hybridPromptSavings">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Avg Prompt Envelope</div>
+                                <div class="metric-value" id="hybridPromptEnvelope">--</div>
+                            </div>
                         </div>
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Decision Trail</div>
                             <div id="hybridValueScores" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Phase 6 Offloading</div>
+                            <div id="hybridPoolSummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Phase 5 Optimization</div>
+                            <div id="hybridOptimizationSummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Phase 7 Efficiency</div>
+                            <div id="hybridEfficiencySummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
                         </div>
                     </div>
                 </div>
@@ -4660,6 +4696,8 @@
                     'systemMetrics',
                     'aiMetrics',
                     'aiInternals',
+                    'aiSpecificMetrics',
+                    'modelOptimizationReadiness',
                     'prsiActions',
                     'services',
                     'containers',
@@ -4675,6 +4713,8 @@
                     fetchSystemMetrics(),
                     fetchAIMetrics(),
                     fetchAIInternals(),
+                    fetchAISpecificMetrics(),
+                    fetchModelOptimizationReadiness(),
                     fetchPRSIActions(),
                     fetchServices(),
                     fetchContainers(),
@@ -4704,6 +4744,8 @@
                 }
                 const aiMetrics = payloads.aiMetrics;
                 const aiInternals = payloads.aiInternals;
+                const aiSpecificMetrics = payloads.aiSpecificMetrics;
+                const modelOptimizationReadiness = payloads.modelOptimizationReadiness;
                 const prsiActions = payloads.prsiActions;
                 const services = payloads.services;
                 const containers = payloads.containers;
@@ -4725,7 +4767,7 @@
                 const feedback = buildFeedbackData(aiMetrics, learningStats);
                 const config = buildConfigData(actions);
                 const proof = buildProofData(aiMetrics, services, learningStats);
-                const hybrid = buildHybridData(aiMetrics, learningStats, aiInternals);
+                const hybrid = buildHybridData(aiMetrics, learningStats, aiInternals, aiSpecificMetrics, modelOptimizationReadiness);
                 const learning = normalizeLearningData(learningStats);
                 const tokenSavings = {
                     routing: { local_percent: Number(aiInternals?.llm_routing_local_pct ?? aiMetrics?.effectiveness?.local_query_percentage ?? 0) },
@@ -4836,6 +4878,26 @@
         async function fetchAIInternals() {
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/metrics`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchAISpecificMetrics() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/insights/metrics/ai-specific`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchModelOptimizationReadiness() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/model-optimization/readiness`, { cache: 'no-store' });
                 if (!response.ok) return {};
                 return await response.json();
             } catch (_) {
@@ -5109,12 +5171,18 @@
             };
         }
 
-        function buildHybridData(aiMetrics, learningStats, aiInternals) {
+        function buildHybridData(aiMetrics, learningStats, aiInternals, aiSpecificMetrics, modelOptimizationReadiness) {
             const discovery = aiMetrics?.hybrid_discovery || {};
             const lifetime = discovery?.lifetime || {};
             const recent = discovery?.recent || {};
             const oneHour = recent?.one_hour || {};
             const oneDay = recent?.twenty_four_hours || {};
+            const hybridHealth = aiMetrics?.services?.hybrid_coordinator?.health_check || {};
+            const agentPool = hybridHealth?.agent_pool || {};
+            const delegatedQualityAssurance = hybridHealth?.delegated_quality_assurance || {};
+            const delegatedPromptOptimization = aiSpecificMetrics?.delegated_prompt_optimization || {};
+            const delegatedQuality = aiSpecificMetrics?.delegated_quality || {};
+            const modelOptimization = modelOptimizationReadiness?.readiness || {};
             const invoked = Number(lifetime?.invoked ?? 0);
             const totalDecisions = Number(lifetime?.total_decisions ?? 0);
             const cacheHitPct = hasNumeric(lifetime?.cache_hit_rate_pct)
@@ -5138,6 +5206,37 @@
                 },
                 learning: {
                     pattern_extractions: Number(learningStats?.total_patterns_learned ?? 0)
+                },
+                agent_pool: {
+                    total_agents: Number(agentPool?.total_agents ?? 0),
+                    available_agents: Number(agentPool?.available_agents ?? 0),
+                    free_agents_available: Number(agentPool?.free_agents_available ?? 0),
+                    total_requests: Number(agentPool?.total_requests ?? 0),
+                    successful_requests: Number(agentPool?.successful_requests ?? 0),
+                    avg_latency_ms: Number(agentPool?.avg_latency_ms ?? 0)
+                },
+                delegated_quality: {
+                    threshold: delegatedQualityAssurance?.threshold || '--',
+                    tracked_agents: Array.isArray(delegatedQualityAssurance?.tracked_agents) ? delegatedQualityAssurance.tracked_agents : [],
+                    avg_quality_score: hasNumeric(delegatedQuality?.avg_quality_score) ? Number(delegatedQuality.avg_quality_score) : null,
+                    quality_events_total: Number(delegatedQuality?.quality_events_total ?? 0)
+                },
+                model_optimization: {
+                    data_capture_status: modelOptimization?.data_capture?.status || '--',
+                    captured_count: Number(modelOptimization?.data_capture?.captured_count ?? 0),
+                    finetuning_status: modelOptimization?.finetuning_pipeline?.status || '--',
+                    pending_jobs: Number(modelOptimization?.finetuning_pipeline?.pending_jobs ?? 0),
+                    distillation_status: modelOptimization?.distillation?.status || '--'
+                },
+                prompt_efficiency: {
+                    avg_tokens_before: hasNumeric(delegatedPromptOptimization?.avg_tokens_before)
+                        ? Number(delegatedPromptOptimization.avg_tokens_before)
+                        : null,
+                    avg_tokens_after: hasNumeric(delegatedPromptOptimization?.avg_tokens_after)
+                        ? Number(delegatedPromptOptimization.avg_tokens_after)
+                        : null,
+                    tokens_saved_total: Number(delegatedPromptOptimization?.tokens_saved_total ?? 0),
+                    samples_after: Number(delegatedPromptOptimization?.samples_after ?? 0)
                 }
             };
         }
@@ -6354,6 +6453,42 @@
             document.getElementById('hybridValueScores').textContent = scores.length
                 ? scores.map(score => typeof score === 'number' ? score.toFixed(2) : score).join(' | ')
                 : '--';
+
+            const agentPool = hybrid.agent_pool || {};
+            const poolAvailable = Number(agentPool.available_agents ?? 0);
+            const poolTotal = Number(agentPool.total_agents ?? 0);
+            document.getElementById('hybridPoolAvailability').textContent = poolTotal > 0
+                ? `${poolAvailable}/${poolTotal}`
+                : 'idle';
+            document.getElementById('hybridFreeAgents').textContent = displayCount(Number(agentPool.free_agents_available ?? 0), '0');
+
+            const delegatedQuality = hybrid.delegated_quality || {};
+            const trackedAgents = Array.isArray(delegatedQuality.tracked_agents) ? delegatedQuality.tracked_agents.length : 0;
+            const qualityScore = delegatedQuality.avg_quality_score;
+            document.getElementById('hybridDelegatedQuality').textContent = qualityScore === null || Number.isNaN(Number(qualityScore))
+                ? `${trackedAgents} tracked`
+                : `${Number(qualityScore).toFixed(2)} (${trackedAgents})`;
+
+            const modelOptimization = hybrid.model_optimization || {};
+            document.getElementById('hybridModelOptimization').textContent =
+                `${modelOptimization.data_capture_status || '--'} / ${modelOptimization.finetuning_status || '--'}`;
+
+            const promptEfficiency = hybrid.prompt_efficiency || {};
+            document.getElementById('hybridPromptSavings').textContent = displayCount(Number(promptEfficiency.tokens_saved_total ?? 0), '0');
+            const promptBefore = promptEfficiency.avg_tokens_before;
+            const promptAfter = promptEfficiency.avg_tokens_after;
+            document.getElementById('hybridPromptEnvelope').textContent =
+                hasNumeric(promptBefore) && hasNumeric(promptAfter)
+                    ? `${Number(promptBefore).toFixed(0)} -> ${Number(promptAfter).toFixed(0)}`
+                    : 'awaiting samples';
+
+            document.getElementById('hybridPoolSummary').textContent = poolTotal > 0
+                ? `${displayCount(Number(agentPool.total_requests ?? 0), '0')} requests, ${displayCount(Number(agentPool.successful_requests ?? 0), '0')} successful, ${Number(agentPool.avg_latency_ms ?? 0).toFixed(1)}ms avg`
+                : 'pool telemetry unavailable';
+            document.getElementById('hybridOptimizationSummary').textContent =
+                `capture=${modelOptimization.captured_count ?? 0} samples | jobs=${modelOptimization.pending_jobs ?? 0} pending | distillation=${modelOptimization.distillation_status || '--'}`;
+            document.getElementById('hybridEfficiencySummary').textContent =
+                `saved=${displayCount(Number(promptEfficiency.tokens_saved_total ?? 0), '0')} tokens | samples=${displayCount(Number(promptEfficiency.samples_after ?? 0), '0')} | qa-threshold=${delegatedQuality.threshold || '--'}`;
         }
 
         function updateLearningMetrics(data) {
