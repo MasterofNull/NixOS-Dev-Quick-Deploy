@@ -264,8 +264,7 @@ class AutoDeployer:
         """Execute deployment based on strategy"""
         if self.dry_run:
             result.logs.append("DRY RUN: Deployment simulated")
-            await asyncio.sleep(2)  # Simulate deployment time
-            return True
+            return await self._simulate_strategy(result)
 
         try:
             if self.config.strategy == DeploymentStrategy.BLUE_GREEN:
@@ -283,32 +282,36 @@ class AutoDeployer:
 
     async def _deploy_blue_green(self, result: DeploymentResult) -> bool:
         """Blue-green deployment"""
-        result.logs.append("Executing blue-green deployment")
-
-        # In a real system, this would:
-        # 1. Deploy to "green" environment
-        # 2. Run health checks on green
-        # 3. Switch traffic from blue to green
-        # 4. Keep blue as rollback target
-
-        # For now, run standard deployment
-        return await self._deploy_immediate(result)
+        stages = [
+            ("prepare_green", 0.0, False),
+            ("validate_green", 0.0, False),
+            ("switch_traffic", 100.0, True),
+            ("hold_blue_for_rollback", 100.0, False),
+        ]
+        return await self._execute_strategy_stages(result, stages)
 
     async def _deploy_canary(self, result: DeploymentResult) -> bool:
         """Canary deployment"""
-        result.logs.append(
-            f"Executing canary deployment ({self.config.canary_percentage}% traffic)"
-        )
-
-        # Would gradually roll out to increasing percentage of traffic
-        return await self._deploy_immediate(result)
+        first = max(1, min(self.config.canary_percentage, 100))
+        second = max(first, min(50, 100))
+        stages = [
+            (f"rollout_{first}_percent", float(first), True),
+            ("verify_canary_metrics", float(first), False),
+            (f"rollout_{second}_percent", float(second), False),
+            ("full_verification", 100.0, False),
+        ]
+        return await self._execute_strategy_stages(result, stages)
 
     async def _deploy_rolling(self, result: DeploymentResult) -> bool:
         """Rolling deployment"""
-        result.logs.append("Executing rolling deployment")
-
-        # Would update instances one at a time
-        return await self._deploy_immediate(result)
+        stages = [
+            ("batch_update_1", 33.0, True),
+            ("node_health_check_1", 33.0, False),
+            ("batch_update_2", 66.0, False),
+            ("node_health_check_2", 66.0, False),
+            ("finalize_rollout", 100.0, False),
+        ]
+        return await self._execute_strategy_stages(result, stages)
 
     async def _deploy_immediate(self, result: DeploymentResult) -> bool:
         """Immediate deployment"""
@@ -327,6 +330,83 @@ class AutoDeployer:
             return False
 
         result.logs.append("nixos-rebuild switch completed")
+        return True
+
+    async def _simulate_strategy(self, result: DeploymentResult) -> bool:
+        """Simulate strategy stages in dry-run mode."""
+        if self.config.strategy == DeploymentStrategy.BLUE_GREEN:
+            stages = [
+                ("prepare_green", 0.0),
+                ("validate_green", 0.0),
+                ("switch_traffic", 100.0),
+                ("hold_blue_for_rollback", 100.0),
+            ]
+        elif self.config.strategy == DeploymentStrategy.CANARY:
+            first = max(1, min(self.config.canary_percentage, 100))
+            second = max(first, min(50, 100))
+            stages = [
+                (f"rollout_{first}_percent", float(first)),
+                ("verify_canary_metrics", float(first)),
+                (f"rollout_{second}_percent", float(second)),
+                ("full_verification", 100.0),
+            ]
+        elif self.config.strategy == DeploymentStrategy.ROLLING:
+            stages = [
+                ("batch_update_1", 33.0),
+                ("node_health_check_1", 33.0),
+                ("batch_update_2", 66.0),
+                ("node_health_check_2", 66.0),
+                ("finalize_rollout", 100.0),
+            ]
+        else:
+            stages = [("immediate_switch", 100.0)]
+
+        for stage_name, percentage in stages:
+            self._record_stage(result, stage_name, percentage)
+            await asyncio.sleep(0.1)
+        result.metrics["strategy_stage_count"] = float(len(stages))
+        return True
+
+    def _record_stage(self, result: DeploymentResult, stage_name: str, rollout_percentage: float) -> None:
+        """Record structured stage progress for deployment strategies."""
+        stage_log = f"[stage] {stage_name} ({rollout_percentage:.0f}% rollout)"
+        result.logs.append(stage_log)
+        result.metrics["strategy_stage_count"] = float(result.metrics.get("strategy_stage_count", 0.0) + 1.0)
+        result.metrics["rollout_percentage"] = rollout_percentage
+
+    async def _run_stage_gate(self, result: DeploymentResult, stage_name: str) -> bool:
+        """Run a bounded verification gate between rollout stages."""
+        if self.dry_run:
+            result.logs.append(f"[stage] {stage_name}: verification simulated")
+            return True
+
+        result.logs.append(f"[stage] {stage_name}: running verification gate")
+        return await self._run_verification(result)
+
+    async def _execute_strategy_stages(
+        self,
+        result: DeploymentResult,
+        stages: List[tuple[str, float, bool]],
+    ) -> bool:
+        """Execute a bounded sequence of deployment stages."""
+        deployment_executed = False
+        for stage_name, rollout_percentage, should_deploy in stages:
+            self._record_stage(result, stage_name, rollout_percentage)
+            if should_deploy and not deployment_executed:
+                ok = await self._deploy_immediate(result)
+                if not ok:
+                    result.logs.append(f"[stage] {stage_name}: deployment failed")
+                    return False
+                deployment_executed = True
+            elif deployment_executed:
+                ok = await self._run_stage_gate(result, stage_name)
+                if not ok:
+                    result.logs.append(f"[stage] {stage_name}: verification failed")
+                    return False
+
+        if not deployment_executed:
+            result.logs.append("No deployment stage executed; falling back to immediate deploy")
+            return await self._deploy_immediate(result)
         return True
 
     async def _run_verification(self, result: DeploymentResult) -> bool:

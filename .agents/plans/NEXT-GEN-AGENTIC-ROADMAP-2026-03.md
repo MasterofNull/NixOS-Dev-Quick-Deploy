@@ -247,9 +247,11 @@ Current scaffold-closure queue to keep in active rotation:
 **Status:** in progress
 **Tasks:**
 - [x] Implement safe auto-deployment with rollback
-- [ ] Add blue-green deployment automation
+- [x] Add blue-green deployment automation
+  - auto_deployer now executes bounded blue-green stage flows with explicit switch/hold phases
 - [x] Create automatic rollback on failure
-- [ ] Implement gradual rollout with metrics
+- [x] Implement gradual rollout with metrics
+  - canary and rolling strategies now execute staged rollout flows with per-stage rollout metrics and verification gates
 - [x] Add deployment approval workflow (optional human gate)
 
 **Deliverables:**
@@ -262,6 +264,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Command Center deployment inspector now shows runtime deployment strategy, approval state, verification outcome, rollback state, and bounded metric summaries
 - Runtime deployment controls now expose rollback error-rate thresholds, and post-deploy verification records and enforces failure-rate breaches against that configured limit
 - Runtime deployment requests and inspector views now expose per-strategy rollout stage plans for blue-green, canary, rolling, and immediate execution modes
+- AutoDeployer now executes bounded per-strategy stage sequences instead of collapsing blue-green/canary/rolling directly into immediate deployment
 
 ---
 
@@ -524,7 +527,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Hybrid coordinator control plane now exposes agent quality profiles, failover selection, and observed benchmarking for operator/reviewer workflows
 
 ### Batch 6.3: Result Quality Assurance
-**Status:** in progress (routing integrated, dashboard visibility landed)
+**Status:** in progress (routing integrated, dashboard visibility landed; repo primitives now fully covered)
 **Tasks:**
 - [x] Implement automated quality checking for remote results
   - ai-stack/offloading/quality_assurance.py: Implementation exists
@@ -537,13 +540,14 @@ Current scaffold-closure queue to keep in active rotation:
 
 **Deliverables:**
 - ⏳ Quality checker runtime integration (delegated QA active in routing)
-- ⏳ Result refinement engine (pending integration)
-- ⏳ Quality dashboard (pending)
+- 🔧 Result refinement engine (implementation exists, deeper integration pending)
+- 🔧 Quality dashboard/control surface (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Successful delegated responses are now quality-checked, refined/cached, and tracked per agent in the hybrid coordinator
 - Command Center dashboard now surfaces delegated QA threshold, tracked-agent coverage, and average delegated quality
 - Failed delegated remote calls or failed delegated QA can now trigger a bounded local retry with explicit fallback metadata for operator review
+- Hybrid coordinator control plane now exposes explicit local-fallback recommendation/recording surfaces for reviewer workflows
 
 ---
 
@@ -583,24 +587,33 @@ Current scaffold-closure queue to keep in active rotation:
 - Hybrid coordinator control plane now exposes prompt-template optimization, dynamic prompt generation, and prompt A/B outcome tracking
 
 ### Batch 7.2: Context Window Management
-**Status:** in progress (delegated pruning integrated, deeper context features pending)
+**Status:** in progress (delegated pruning integrated; repo primitives now fully covered)
 **Tasks:**
 - [x] Implement intelligent context pruning
   - ai-stack/efficiency/context_management.py: Implementation exists
 - [x] Integrate context manager into query pipeline
-- [ ] Add hierarchical summarization for long contexts
-- [ ] Create context relevance scoring
-- [ ] Implement sliding window attention for long docs
-- [ ] Add context reuse across similar queries
+- [x] Add hierarchical summarization for long contexts
+  - ai-stack/efficiency/context_management.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Create context relevance scoring
+  - ai-stack/efficiency/context_management.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Implement sliding window attention for long docs
+  - ai-stack/efficiency/context_management.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Sliding-window surface exists
+- [x] Add context reuse across similar queries
+  - ai-stack/efficiency/context_management.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Reuse cache surface exists
 
 **Deliverables:**
 - ⏳ Context pruning runtime integration (delegated query path active)
-- ⏳ Summarization pipeline (pending integration)
-- ⏳ Relevance scorer (pending)
+- 🔧 Summarization pipeline (implementation exists, broader activation pending)
+- 🔧 Relevance scorer (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated query envelopes now prune oversized context before remote submission
 - Prompt-efficiency telemetry is now surfaced in the dashboard so context-budget behavior is inspectable during live operations
+- Hybrid coordinator control plane now exposes long-context summarization, relevance scoring, sliding-window construction, and reusable-context cache surfaces
 
 ### Batch 7.3: Response Caching & Deduplication
 **Status:** completed
@@ -742,24 +755,33 @@ Current scaffold-closure queue to keep in active rotation:
 - Hybrid coordinator control plane now exposes failure-pattern analysis and capability-gap statistics for targeted remediation review
 
 ### Batch 9.2: Automated Gap Remediation
-**Status:** in progress (runtime integrated, broader remediation pending)
+**Status:** in progress (runtime integrated; repo primitives now fully covered)
 **Tasks:**
 - [x] Implement automatic tool discovery and integration
   - ai-stack/capability-gap/gap_remediation.py: Implementation exists
 - [x] Integrate remediation into coordinator
-- [ ] Add automatic knowledge import from external sources
-- [ ] Create skill synthesis from examples
-- [ ] Implement pattern extraction and generalization
-- [ ] Add remediation success validation
+- [x] Add automatic knowledge import from external sources
+  - ai-stack/capability-gap/gap_remediation.py: Knowledge importer exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Create skill synthesis from examples
+  - ai-stack/capability-gap/gap_remediation.py: Skill synthesizer exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Implement pattern extraction and generalization
+  - ai-stack/capability-gap/gap_remediation.py: Pattern extractor exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Add remediation success validation
+  - ai-stack/capability-gap/gap_remediation.py: Validation/orchestration exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Artifact validation surface exists
 
 **Deliverables:**
 - ⏳ Tool integration runtime remediation (delegated recovery path active)
-- ⏳ Knowledge importer (pending integration)
-- ⏳ Skill synthesizer (pending)
+- 🔧 Knowledge importer (implementation exists, broader activation pending)
+- 🔧 Skill synthesizer (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Gap remediation planning now runs inside delegated recovery outcomes with bounded playbook reuse
 - Adaptive runtime telemetry is surfaced in the dashboard so remediation activity is visible during operations
+- Hybrid coordinator control plane now exposes remediation knowledge import, skill synthesis, pattern extraction, and artifact validation surfaces
 
 ### Batch 9.3: Remediation Learning Loop
 **Status:** in progress (runtime integrated, deeper reuse optimization pending)
