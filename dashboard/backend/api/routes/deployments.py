@@ -97,6 +97,7 @@ class DeploymentExecuteRequest(BaseModel):
     user: str = "system"
     auto_rollback: bool = True
     canary_percentage: int = Field(default=10, ge=1, le=100)
+    rollback_on_error_rate: float = Field(default=0.05, gt=0.0, le=1.0)
     validation_timeout_seconds: int = Field(default=60, ge=10, le=1800)
     verification_timeout_seconds: int = Field(default=120, ge=10, le=3600)
     approval_timeout_seconds: int = Field(default=300, ge=10, le=3600)
@@ -135,6 +136,7 @@ def _deployment_command_from_request(request: DeploymentExecuteRequest) -> str:
         parts.append("--auto-rollback")
     if request.strategy == "canary":
         parts.append(f"--canary-percentage {request.canary_percentage}")
+    parts.append(f"--rollback-on-error-rate {request.rollback_on_error_rate:.3f}")
     return " ".join(parts)
 
 
@@ -145,6 +147,7 @@ def _serialize_runtime_request(request: DeploymentExecuteRequest) -> Dict[str, A
         "require_approval": request.require_approval,
         "auto_rollback": request.auto_rollback,
         "canary_percentage": request.canary_percentage,
+        "rollback_on_error_rate": request.rollback_on_error_rate,
         "validation_timeout_seconds": request.validation_timeout_seconds,
         "verification_timeout_seconds": request.verification_timeout_seconds,
         "approval_timeout_seconds": request.approval_timeout_seconds,
@@ -195,6 +198,7 @@ def _build_runtime_summary(summary: Dict[str, Any], timeline: List[Dict[str, Any
         "require_approval": request_metadata.get("require_approval"),
         "auto_rollback": request_metadata.get("auto_rollback"),
         "canary_percentage": request_metadata.get("canary_percentage"),
+        "rollback_on_error_rate": request_metadata.get("rollback_on_error_rate"),
         "validation_timeout_seconds": request_metadata.get("validation_timeout_seconds"),
         "verification_timeout_seconds": request_metadata.get("verification_timeout_seconds"),
         "approval_timeout_seconds": request_metadata.get("approval_timeout_seconds"),
@@ -240,6 +244,7 @@ async def _run_runtime_deployment(deployment_id: str, request: DeploymentExecute
             validation_timeout_seconds=request.validation_timeout_seconds,
             verification_timeout_seconds=request.verification_timeout_seconds,
             auto_rollback=request.auto_rollback,
+            rollback_on_error_rate=request.rollback_on_error_rate,
             canary_percentage=request.canary_percentage,
         )
         deployer = auto_deployer.AutoDeployer(config=config, dry_run=request.dry_run)
