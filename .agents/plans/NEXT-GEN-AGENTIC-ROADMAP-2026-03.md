@@ -340,6 +340,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Workflow orchestration policies now support explicit bounded collaborator lanes so selected blueprints can activate parallel research/reasoning helpers without inventing ad hoc team shapes
 - Dashboard orchestration inspection now surfaces formation mode, required/optional/deferred slot metadata, and deferred collaborator members from live workflow sessions
 - Detailed workflow team inspection now preserves runtime session context including objective, status, phase, safety mode, budget, and usage summaries
+- Workflow session listing and detailed team inspection now expose orchestration runtime integration metadata for AgentHQ, delegation, workspace isolation, and MCP tool invocation readiness
 
 **Still missing for roadmap completion:**
 - Richer orchestration policies across multiple live sub-agents beyond the current workflow-policy contract
