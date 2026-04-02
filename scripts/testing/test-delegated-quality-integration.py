@@ -49,6 +49,22 @@ def main() -> int:
         "delegate handler should inject refined or cached response text back into payloads",
     )
     assert_true(
+        'local_fallback_needed = (' in text,
+        "delegate handler should decide when failed remote calls need bounded local fallback",
+    )
+    assert_true(
+        'local_profile = "local-tool-calling" if isinstance(payload.get("tools"), list) and payload.get("tools") else "default"' in text,
+        "delegate handler should select an appropriate local fallback profile",
+    )
+    assert_true(
+        'stage="local_fallback"' in text,
+        "delegate handler should classify bounded local fallback attempts explicitly",
+    )
+    assert_true(
+        '"local_fallback_applied": local_fallback_applied' in text,
+        "delegate audit metadata should record local fallback activation",
+    )
+    assert_true(
         '"quality_assurance": delegated_quality' in text,
         "delegate response should surface quality assurance metadata",
     )

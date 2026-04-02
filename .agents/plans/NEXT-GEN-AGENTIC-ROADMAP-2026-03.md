@@ -530,7 +530,8 @@ Current scaffold-closure queue to keep in active rotation:
   - ai-stack/offloading/quality_assurance.py: Implementation exists
 - [x] Integrate quality checker into routing pipeline
 - [x] Add result refinement for low-quality outputs
-- [ ] Create fallback to local models for failed remote calls
+- [x] Create fallback to local models for failed remote calls
+  - delegated coordinator path now retries once on bounded local profiles after remote failure or failed delegated QA
 - [x] Implement result caching to avoid redundant calls
 - [x] Add quality trend tracking per agent
 
@@ -542,6 +543,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Successful delegated responses are now quality-checked, refined/cached, and tracked per agent in the hybrid coordinator
 - Command Center dashboard now surfaces delegated QA threshold, tracked-agent coverage, and average delegated quality
+- Failed delegated remote calls or failed delegated QA can now trigger a bounded local retry with explicit fallback metadata for operator review
 
 ---
 
