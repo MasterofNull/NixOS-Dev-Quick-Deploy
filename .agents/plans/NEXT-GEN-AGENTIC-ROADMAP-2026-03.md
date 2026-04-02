@@ -407,11 +407,12 @@ Current scaffold-closure queue to keep in active rotation:
 **Deliverables:**
 - ✅ Training data pipeline (model_optimization.py integrated)
 - ✅ Data quality filters (quality scoring with 4 levels)
-- 🔧 Synthetic data generator (implementation exists, integration pending)
+- ⏳ Synthetic data generator runtime integration (control plane active)
 
 **Runtime follow-through landed:**
 - Hybrid coordinator MCP tools now expose training-data capture, flushing, stats, and readiness checks
 - Interaction outcome updates now automatically feed high-quality successful examples into model-optimization capture with PII-aware filtering and writable runtime storage
+- Hybrid coordinator MCP tools and control endpoints now expose synthetic-data generation and active-learning selection for dataset expansion workflows
 
 ### Batch 5.2: Continuous Model Fine-Tuning
 **Status:** in progress (runtime hooks landed, model training pending)
@@ -438,11 +439,12 @@ Current scaffold-closure queue to keep in active rotation:
 - Command Center dashboard now surfaces live model-optimization readiness and pending fine-tuning status via the hybrid coordinator control plane
 
 ### Batch 5.3: Model Distillation & Compression
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime control plane integrated, deployment pending)
 **Tasks:**
 - [x] Implement knowledge distillation from flagship models
   - ai-stack/model-optimization/distillation.py: Implementation exists
-- [ ] Integrate distillation into model training pipeline
+- [x] Integrate distillation into model training pipeline
+  - hybrid coordinator control plane now runs bounded distillation artifact generation
 - [x] Add model quantization (4-bit, 8-bit)
   - ai-stack/model-optimization/distillation.py: INT8/INT4/AWQ/GPTQ/GGUF implementations exist
 - [x] Create model pruning pipeline
@@ -453,9 +455,13 @@ Current scaffold-closure queue to keep in active rotation:
   - ai-stack/model-optimization/distillation.py: Compression optimizer selects tradeoffs by target
 
 **Deliverables:**
-- 🔧 Distillation pipeline (distillation.py exists, not integrated)
-- 🔧 Quantized model artifacts (implementation exists, runtime integration pending)
-- 🔧 Compression benchmarks/selection logic (implementation exists, deployment benchmarking pending)
+- ⏳ Distillation pipeline runtime integration (artifact generation active)
+- ⏳ Quantized model artifacts (runtime generation active, deployment pending)
+- ⏳ Compression benchmarks/selection logic (optimizer recommendations active, deployment benchmarking pending)
+
+**Runtime follow-through landed:**
+- Hybrid coordinator MCP tools and control endpoints now expose bounded distillation, quantization, pruning, and speculative-decoding workflows
+- Distillation runs now persist runtime artifacts and recommended compression profiles under writable AI stack state
 
 ---
 
