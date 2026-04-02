@@ -208,6 +208,13 @@ def _build_runtime_summary(summary: Dict[str, Any], timeline: List[Dict[str, Any
     if not strategy and not approval:
         return None
 
+    runtime_logs = result_payload.get("logs") or []
+    stage_logs = [
+        str(line)
+        for line in runtime_logs
+        if isinstance(line, str) and line.startswith("[stage] ")
+    ]
+
     return {
         "strategy": strategy,
         "dry_run": request_metadata.get("dry_run"),
@@ -226,6 +233,8 @@ def _build_runtime_summary(summary: Dict[str, Any], timeline: List[Dict[str, Any
         "result_status": result_payload.get("status") or summary.get("status"),
         "metrics": result_payload.get("metrics") or {},
         "logs": result_payload.get("logs") or [],
+        "executed_stage_logs": stage_logs,
+        "executed_stage_count": len(stage_logs),
         "approval": approval or None,
     }
 

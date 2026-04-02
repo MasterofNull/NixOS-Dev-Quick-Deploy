@@ -76,6 +76,8 @@ REQUIRED_SNIPPETS = [
     'runtime plan',
     'runtime result',
     'planned stages',
+    'executed stages',
+    'executed_stage_logs',
     '/api/deployments/execute',
     'rollback_on_error_rate',
     '/api/deployments/approvals/pending',
