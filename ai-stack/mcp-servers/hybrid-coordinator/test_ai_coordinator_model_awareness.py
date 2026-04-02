@@ -324,3 +324,46 @@ def test_build_reasoning_finalization_messages_truncates_excerpt_and_preserves_c
     assert "Recovered reasoning draft:" in messages[1]["content"]
     assert "do not mention hidden reasoning" in messages[1]["content"]
     assert len(messages[1]["content"]) < 1600
+
+
+def test_profile_completion_rules_cover_specialized_profiles():
+    reasoning_rules = ai_coordinator._profile_completion_rules("remote-reasoning")
+    free_rules = ai_coordinator._profile_completion_rules("remote-free")
+    local_tool_rules = ai_coordinator._profile_completion_rules("local-tool-calling")
+    remote_tool_rules = ai_coordinator._profile_completion_rules("remote-tool-calling")
+    default_rules = ai_coordinator._profile_completion_rules("unknown")
+
+    assert any("recommended direction" in rule for rule in reasoning_rules)
+    assert any("main finding" in rule for rule in free_rules)
+    assert any("OpenAI-compatible tool contract" in rule for rule in local_tool_rules)
+    assert any("tool-call planning" in rule for rule in remote_tool_rules)
+    assert any("assigned slice" in rule for rule in default_rules)
+
+
+def test_task_shape_completion_rules_deduplicate_multi_shape_guidance():
+    rules = ai_coordinator._task_shape_completion_rules(
+        "Deploy fix and rollback switchboard failure review with retrieval source evidence",
+        "remote-free",
+    )
+
+    assert any("verification signal" in rule for rule in rules)
+    assert any("most likely root cause" in rule for rule in rules)
+    assert any("recommended direction" in rule for rule in rules)
+    assert any("explicit sources" in rule for rule in rules)
+    assert len(rules) == len(set(rules))
+
+
+def test_build_messages_adds_default_constraints_and_tool_completion_rules():
+    messages = build_messages(
+        task="Plan tool usage for the deploy review",
+        context={"expected_artifact": "bounded tool plan"},
+        profile="remote-tool-calling",
+    )
+
+    body = messages[1]["content"]
+    assert "Expected artifact: bounded tool plan" in body
+    assert "Constraints:" in body
+    assert "- stay within the assigned slice" in body
+    assert "Evidence requirements:" in body
+    assert "- cite concrete files, commands, or runtime facts when available" in body
+    assert "Tool-calling completion rules:" in body
