@@ -1,0 +1,22 @@
+[run]
+branch = True
+relative_files = True
+parallel = False
+omit =
+    */site-packages/*
+    */__pycache__/*
+    scripts/testing/*
+    */test_*.py
+    */tests/*
+
+[report]
+precision = 1
+show_missing = True
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+
+[html]
+show_contexts = False
