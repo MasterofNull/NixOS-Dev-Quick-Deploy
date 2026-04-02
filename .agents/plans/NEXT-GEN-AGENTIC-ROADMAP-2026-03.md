@@ -243,6 +243,9 @@ Current scaffold-closure queue to keep in active rotation:
 - Dashboard testing control API now exposes bounded property/chaos/benchmark/canary runs with explicit operator confirmation and shutdown-safe cancellation
 - Command Center dashboard now surfaces runtime testing controls, suite inventory, and recent bounded execution history for Phase 3.2 operators
 - Runtime testing now includes a bounded comprehensive validation bundle that chains property, chaos, benchmark, and canary checks behind the same explicit operator confirmation gate
+- Coverage expansion status remains open. Historical phase reports claim `90%+` scenario coverage, but reproducible line-coverage checks on current production modules still fall short of that bar.
+- 2026-04-02 local verification: `pytest ai-stack/mcp-servers/hybrid-coordinator -m 'not integration' --cov=ai-stack/mcp-servers/hybrid-coordinator --cov-report=term-missing` reported `4%` package coverage, and the targeted knowledge-graph suite reported `22%` for `dashboard/backend/api/services/context_store.py`.
+- Continue/editor routing coverage is now guarded by repo-side regression checks (`scripts/testing/test-aq-qa-continue-config.py`, `scripts/testing/test-continue-coordinator-ingress.py`, and verifier assertions), but broader production line coverage still needs expansion before this checkbox can close.
 
 ### Batch 3.3: Self-Deployment Pipeline
 **Status:** in progress
