@@ -374,17 +374,29 @@ curl -X POST http://127.0.0.1:8003/workflow/run/start \
   -d '{"plan_id": "...", "dry_run": false}'
 ```
 
-### Switchboard Routing
+### Coordinator-First Prompt Routing
 
-Profile-based LLM routing with context pruning:
+Continue/editor prompt ingress now targets the hybrid coordinator first. The
+coordinator classifies prompt intent, selects the execution lane, and then uses
+switchboard as the downstream execution proxy for local/remote model traffic.
+
+Execution lanes:
 
 | Profile | Behavior |
 |---------|----------|
+| `default` | Coordinator-selected local-first chat lane |
 | `continue-local` | Short prompts, local llama.cpp |
-| `remote-default` | General tasks via remote API |
+| `remote-free` | Lightweight planning, retrieval, bounded synthesis |
 | `remote-reasoning` | Architecture/policy decisions |
 | `remote-coding` | Implementation via coding models |
+| `remote-tool-calling` | Tool-calling oriented remote execution |
 | `embedding-local` | Retrieval-only (no reasoning) |
+
+OpenAI-compatible coordinator ingress:
+
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- `POST /v1/completions`
 
 ### Continuous Learning
 

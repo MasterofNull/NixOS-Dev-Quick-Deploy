@@ -500,6 +500,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Planning, retrieval, and continuation-oriented delegation now prefer lightweight `default`/`remote-free` lanes by default instead of over-selecting `remote-coding` or `remote-reasoning`.
 - Implementation, tool-calling, and architecture/review slices retain explicit escalation into `remote-coding`, `remote-tool-calling`, and `remote-reasoning` respectively.
 - The hybrid coordinator now exposes OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/models` ingress so Continue can submit prompts through coordinator-first routing while switchboard remains the execution layer underneath.
+- Repo-only verification now covers this path with a dedicated static ingress regression and a post-activation smoke script for Continue-style planning, coding, and tool-calling prompts.
 
 ### Batch 6.2: Free Agent Pool Management
 **Status:** in progress (runtime routing integrated, operator visibility landed; repo primitives now fully covered)
