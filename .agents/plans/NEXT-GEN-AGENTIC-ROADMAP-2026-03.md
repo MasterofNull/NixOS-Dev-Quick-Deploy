@@ -247,7 +247,7 @@ Current scaffold-closure queue to keep in active rotation:
 - 2026-04-02 local verification: `pytest ai-stack/mcp-servers/hybrid-coordinator -m 'not integration' --cov=ai-stack/mcp-servers/hybrid-coordinator --cov-report=term-missing` reported `4%` package coverage, and the targeted knowledge-graph suite reported `22%` for `dashboard/backend/api/services/context_store.py`.
 - Continue/editor routing coverage is now guarded by repo-side regression checks (`scripts/testing/test-aq-qa-continue-config.py`, `scripts/testing/test-continue-coordinator-ingress.py`, and verifier assertions), but broader production line coverage still needs expansion before this checkbox can close.
 - Coverage automation is now repo-native: `scripts/testing/run-targeted-coverage.sh` emits JSON/XML/HTML artifacts for measurable production modules using `scripts/testing/coverage/.coveragerc`, and `.github/workflows/test-coverage.yml` runs that batch in CI.
-- Current targeted branch-coverage baselines from the new runner are: `context_store 17.4%`, `route_handler 45.7%`, `ai_coordinator 55.8%`, and `advanced_features 51.9%`. These thresholds now guard against regression while broader line coverage still needs expansion.
+- Current targeted branch-coverage baselines from the runner are: `context_store 54.4%`, `route_handler 58.1%`, `ai_coordinator 55.8%`, `advanced_features 51.9%`, and `orchestration_framework 57.6%`. These thresholds now guard against regression while broader line coverage still needs expansion.
 
 ### Batch 3.3: Self-Deployment Pipeline
 **Status:** in progress

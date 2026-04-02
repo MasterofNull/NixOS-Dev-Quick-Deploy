@@ -19,6 +19,11 @@ import sys
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     payload = json.load(fh)
 
+totals = payload.get("totals") or {}
+if totals:
+    print(f"{float(totals.get('percent_covered', 0.0)):.1f}")
+    raise SystemExit(0)
+
 files = payload.get("files") or {}
 if not files:
     raise SystemExit("no file coverage data captured")
@@ -145,5 +150,12 @@ run_script_component \
   "ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py" \
   "${TARGET_ADVANCED_FEATURES_MIN_PCT:-50}" \
   scripts/testing/test-advanced-features-implementation.py
+
+run_script_component \
+  "orchestration_framework" \
+  "${ROOT_DIR}/ai-stack" \
+  "ai-stack/orchestration/*.py" \
+  "${TARGET_ORCHESTRATION_FRAMEWORK_MIN_PCT:-20}" \
+  scripts/testing/test-orchestration-framework.py
 
 printf '\nCoverage artifacts written to %s\n' "${REPORT_DIR}"
