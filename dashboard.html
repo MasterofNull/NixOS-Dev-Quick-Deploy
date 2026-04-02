@@ -2231,6 +2231,22 @@
                                 <div class="metric-label">Avg Prompt Envelope</div>
                                 <div class="metric-value" id="hybridPromptEnvelope">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Progressive Loads</div>
+                                <div class="metric-value" id="hybridProgressiveLoads">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Capability Gaps</div>
+                                <div class="metric-value" id="hybridCapabilityGaps">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Learning Events</div>
+                                <div class="metric-value" id="hybridLearningEvents">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Meta Adaptations</div>
+                                <div class="metric-value" id="hybridMetaAdaptations">--</div>
+                            </div>
                         </div>
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Decision Trail</div>
@@ -2247,6 +2263,10 @@
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Phase 7 Efficiency</div>
                             <div id="hybridEfficiencySummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Phase 8-10 Adaptive Runtime</div>
+                            <div id="hybridAdaptiveSummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
                         </div>
                     </div>
                 </div>
@@ -5237,6 +5257,12 @@
                         : null,
                     tokens_saved_total: Number(delegatedPromptOptimization?.tokens_saved_total ?? 0),
                     samples_after: Number(delegatedPromptOptimization?.samples_after ?? 0)
+                },
+                adaptive_runtime: {
+                    progressive_context_loads_total: Number(aiSpecificMetrics?.learning_and_adaptation?.progressive_context_loads_total ?? 0),
+                    capability_gap_detections_total: Number(aiSpecificMetrics?.learning_and_adaptation?.capability_gap_detections_total ?? 0),
+                    real_time_learning_events_total: Number(aiSpecificMetrics?.learning_and_adaptation?.real_time_learning_events_total ?? 0),
+                    meta_learning_adaptations_total: Number(aiSpecificMetrics?.learning_and_adaptation?.meta_learning_adaptations_total ?? 0)
                 }
             };
         }
@@ -6489,6 +6515,14 @@
                 `capture=${modelOptimization.captured_count ?? 0} samples | jobs=${modelOptimization.pending_jobs ?? 0} pending | distillation=${modelOptimization.distillation_status || '--'}`;
             document.getElementById('hybridEfficiencySummary').textContent =
                 `saved=${displayCount(Number(promptEfficiency.tokens_saved_total ?? 0), '0')} tokens | samples=${displayCount(Number(promptEfficiency.samples_after ?? 0), '0')} | qa-threshold=${delegatedQuality.threshold || '--'}`;
+
+            const adaptiveRuntime = hybrid.adaptive_runtime || {};
+            document.getElementById('hybridProgressiveLoads').textContent = displayCount(Number(adaptiveRuntime.progressive_context_loads_total ?? 0), '0');
+            document.getElementById('hybridCapabilityGaps').textContent = displayCount(Number(adaptiveRuntime.capability_gap_detections_total ?? 0), '0');
+            document.getElementById('hybridLearningEvents').textContent = displayCount(Number(adaptiveRuntime.real_time_learning_events_total ?? 0), '0');
+            document.getElementById('hybridMetaAdaptations').textContent = displayCount(Number(adaptiveRuntime.meta_learning_adaptations_total ?? 0), '0');
+            document.getElementById('hybridAdaptiveSummary').textContent =
+                `loads=${displayCount(Number(adaptiveRuntime.progressive_context_loads_total ?? 0), '0')} | gaps=${displayCount(Number(adaptiveRuntime.capability_gap_detections_total ?? 0), '0')} | learn=${displayCount(Number(adaptiveRuntime.real_time_learning_events_total ?? 0), '0')} | meta=${displayCount(Number(adaptiveRuntime.meta_learning_adaptations_total ?? 0), '0')}`;
         }
 
         function updateLearningMetrics(data) {
