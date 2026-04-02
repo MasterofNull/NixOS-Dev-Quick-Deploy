@@ -202,6 +202,15 @@ class FailureCategorizer:
                     score += 1
             scores[category] = score
 
+        # Boost highly-specific signatures so generic "error"/"exception"
+        # patterns do not drown out actionable resource or configuration classes.
+        if any(token in combined for token in ("modulenotfounderror", "importerror", "no module named", "command not found")):
+            scores[FailureCategory.RESOURCE] += 3
+        if any(token in combined for token in ("permission denied", "access denied", "eacces", "unauthorized", "forbidden")):
+            scores[FailureCategory.PERMISSION] += 2
+        if any(token in combined for token in ("connection refused", "network error", "dns", "http 4", "http 5")):
+            scores[FailureCategory.NETWORK] += 2
+
         # Return category with highest score
         if max(scores.values()) > 0:
             return max(scores.items(), key=lambda x: x[1])[0]
@@ -477,6 +486,8 @@ class FeedbackAnalyzer:
             (r"should (be able to|support) (.+)", "Feature request: {1}"),
             (r"error (?:when|while) (.+)", "Error during: {0}"),
             (r"fails? (?:to|when) (.+)", "Failure: {0}"),
+            (r"missing (documentation|docs) (?:for|on) (.+)", "Missing documentation for: {1}"),
+            (r"confused (?:about|how to) (.+)", "Confusion about: {0}"),
         ]
 
         logger.info("Feedback Analyzer initialized")
