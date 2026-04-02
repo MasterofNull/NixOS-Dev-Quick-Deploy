@@ -8169,7 +8169,7 @@ async def run_http_mode(port: int) -> None:
                     pool_agent_acquired = True
                     payload["model"] = pool_agent.model_id
 
-            async def _post_delegate(profile_name: str) -> httpx.Response:
+            async def _post_delegate(profile_name: str, delegate_payload: Optional[Dict[str, Any]] = None) -> httpx.Response:
                 local_profiles = {"default", "local-tool-calling"}
                 headers = {
                     "Content-Type": "application/json",
@@ -8183,12 +8183,14 @@ async def run_http_mode(port: int) -> None:
                     return await client.post(
                         f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
                         headers=headers,
-                        json=payload,
+                        json=delegate_payload or payload,
                     )
 
             effective_profile = selected_profile
             effective_runtime_id = selected_runtime_id
             fallback_applied = False
+            local_fallback_applied = False
+            fallback_reason = ""
             response = await _post_delegate(effective_profile)
             initial_response = response
             initial_body = response.json()
@@ -8201,6 +8203,7 @@ async def run_http_mode(port: int) -> None:
                 effective_profile = "remote-free"
                 effective_runtime_id = "openrouter-free"
                 fallback_applied = True
+                fallback_reason = "remote profile returned 402/429; retried on remote-free"
                 if pool_agent and response.status_code in {402, 429}:
                     _AGENT_POOL_MANAGER.mark_rate_limited(pool_agent.agent_id)
                     if pool_agent_acquired:
@@ -8353,6 +8356,48 @@ async def run_http_mode(port: int) -> None:
                     updated_text = str(delegated_quality.get("response_text") or "").strip()
                     if updated_text:
                         body = _inject_delegated_response_text(body, updated_text)
+            local_fallback_needed = (
+                prefer_local
+                and not local_fallback_applied
+                and effective_profile not in {"default", "local-tool-calling"}
+                and (
+                    response.status_code >= 400
+                    or final_classification.get("is_failure")
+                    or (
+                        delegated_quality.get("available")
+                        and not delegated_quality.get("passed")
+                        and delegated_quality.get("fallback_recommended")
+                    )
+                )
+            )
+            if local_fallback_needed:
+                local_profile = "local-tool-calling" if isinstance(payload.get("tools"), list) and payload.get("tools") else "default"
+                local_runtime_id = _ai_coordinator_default_runtime_id_for_profile(local_profile)
+                local_payload = dict(payload)
+                local_payload.pop("model", None)
+                local_response = await _post_delegate(local_profile, delegate_payload=local_payload)
+                local_body = local_response.json()
+                local_classification = classify_delegated_response(
+                    task=task,
+                    messages=messages,
+                    status_code=int(local_response.status_code),
+                    body=local_body,
+                    profile=local_profile,
+                    runtime_id=local_runtime_id,
+                    stage="local_fallback",
+                    fallback_applied=True,
+                )
+                if local_response.status_code < 400 and not local_classification.get("is_failure"):
+                    response = local_response
+                    body = local_body
+                    final_classification = local_classification
+                    effective_profile = local_profile
+                    effective_runtime_id = local_runtime_id
+                    runtime = dict((registry.get("runtimes", {}) or {}).get(effective_runtime_id) or {})
+                    fallback_applied = True
+                    local_fallback_applied = True
+                    fallback_reason = "remote failure or failed delegated QA triggered bounded local retry"
+                    delegated_quality = {"available": False, "fallback_recommended": True}
             capability_gaps: List[Any] = []
             capability_gap_failure_text = _build_gap_failure_text(final_classification, delegated_quality)
             if final_classification.get("is_failure") or (delegated_quality.get("available") and not delegated_quality.get("passed")):
@@ -8422,6 +8467,7 @@ async def run_http_mode(port: int) -> None:
                 "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
                 "delegated_http_status": int(response.status_code),
                 "fallback_applied": fallback_applied,
+                "local_fallback_applied": local_fallback_applied,
                 "delegation_failure_class": final_classification.get("primary_failure_class", ""),
                 "delegation_failure_classes": final_classification.get("failure_classes", []),
                 "delegation_salvage_useful": bool((final_classification.get("salvage") or {}).get("has_useful_data")),
@@ -8526,7 +8572,7 @@ async def run_http_mode(port: int) -> None:
                             "applied": True,
                             "from_profile": selected_profile,
                             "to_profile": effective_profile,
-                            "reason": "remote profile returned 402/429; retried on remote-free",
+                            "reason": fallback_reason or "delegated fallback applied",
                         }
                         if fallback_applied else {"applied": False}
                     ),
