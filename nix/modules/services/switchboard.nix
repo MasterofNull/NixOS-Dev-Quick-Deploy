@@ -31,6 +31,7 @@ let
     else "";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   repoPath = cfg.mcpServers.repoPath;
+  localAgentStateDir = "/home/${cfg.primaryUser}/.local/share/nixos-ai-stack/local-agents";
   remoteBudgetStatePath = "${mutableOptimizerDir}/switchboard-remote-budget.json";
   continueLocalCard = ''
     [profile-card:continue-local]
@@ -1268,6 +1269,7 @@ in
         ProtectSystem         = "strict";
         ProtectHome           = "read-only";
         ReadOnlyPaths         = [ repoPath ];
+        ReadWritePaths        = [ localAgentStateDir ];
         PrivateTmp            = true;
         CapabilityBoundingSet = "";
         RestrictSUIDSGID      = true;
