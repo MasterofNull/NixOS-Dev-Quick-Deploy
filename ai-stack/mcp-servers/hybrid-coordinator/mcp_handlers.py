@@ -683,6 +683,56 @@ TOOL_DEFINITIONS: List[Tool] = [
         description="Get Phase 5 model optimization readiness status",
         inputSchema={"type": "object", "properties": {}},
     ),
+    Tool(
+        name="generate_synthetic_training_data",
+        description="Generate synthetic training data into writable runtime storage",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target_examples": {"type": "integer", "minimum": 1, "default": 50},
+                "categories": {"type": "array", "items": {"type": "string"}},
+                "strategies": {"type": "array", "items": {"type": "string"}},
+                "min_quality": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.7},
+            },
+        },
+    ),
+    Tool(
+        name="select_active_learning_examples",
+        description="Select the most valuable training examples using active learning",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "budget": {"type": "integer", "minimum": 1, "default": 25},
+                "strategy": {
+                    "type": "string",
+                    "enum": ["uncertainty", "diversity", "qbc", "expected_gradient", "hybrid"],
+                    "default": "hybrid",
+                },
+                "candidate_paths": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+    ),
+    Tool(
+        name="run_distillation_pipeline",
+        description="Run a bounded distillation, quantization, and pruning pipeline",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "teacher_model": {"type": "string"},
+                "student_model": {"type": "string"},
+                "training_data_path": {"type": "string"},
+                "quantization_method": {
+                    "type": "string",
+                    "enum": ["int8", "int4", "gptq", "awq", "gguf"],
+                    "default": "gguf",
+                },
+                "quantization_bits": {"type": "integer", "minimum": 4, "maximum": 8, "default": 4},
+                "pruning_sparsity": {"type": "number", "minimum": 0.0, "maximum": 0.95, "default": 0.2},
+                "enable_speculative_decoding": {"type": "boolean", "default": True},
+            },
+            "required": ["teacher_model", "student_model"],
+        },
+    ),
 ]
 
 
@@ -964,6 +1014,41 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
         elif name == "get_optimization_readiness":
             import model_optimization
             result = await model_optimization.get_optimization_readiness()
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "generate_synthetic_training_data":
+            import model_optimization
+            result = await model_optimization.generate_synthetic_training_data(
+                target_examples=arguments.get("target_examples", 50),
+                categories=arguments.get("categories"),
+                strategies=arguments.get("strategies"),
+                min_quality=arguments.get("min_quality", 0.7),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "select_active_learning_examples":
+            import model_optimization
+            result = await model_optimization.select_active_learning_examples(
+                budget=arguments.get("budget", 25),
+                strategy=arguments.get("strategy", "hybrid"),
+                candidate_paths=arguments.get("candidate_paths"),
+            )
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "run_distillation_pipeline":
+            import model_optimization
+            result = await model_optimization.run_distillation_pipeline(
+                teacher_model=arguments.get("teacher_model", ""),
+                student_model=arguments.get("student_model", ""),
+                training_data_path=arguments.get("training_data_path"),
+                quantization_method=arguments.get("quantization_method", "gguf"),
+                quantization_bits=arguments.get("quantization_bits", 4),
+                pruning_sparsity=arguments.get("pruning_sparsity", 0.2),
+                enable_speculative_decoding=arguments.get("enable_speculative_decoding", True),
+            )
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 

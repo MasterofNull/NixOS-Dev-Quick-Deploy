@@ -9327,6 +9327,41 @@ async def run_http_mode(port: int) -> None:
         result = await model_optimization.get_model_performance(model_id=model_id)
         return web.json_response(result)
 
+    async def handle_synthetic_training_generate(request):
+        import model_optimization
+        data = await request.json()
+        result = await model_optimization.generate_synthetic_training_data(
+            target_examples=data.get("target_examples", 50),
+            categories=data.get("categories"),
+            strategies=data.get("strategies"),
+            min_quality=data.get("min_quality", 0.7),
+        )
+        return web.json_response(result)
+
+    async def handle_active_learning_select(request):
+        import model_optimization
+        data = await request.json()
+        result = await model_optimization.select_active_learning_examples(
+            budget=data.get("budget", 25),
+            strategy=data.get("strategy", "hybrid"),
+            candidate_paths=data.get("candidate_paths"),
+        )
+        return web.json_response(result)
+
+    async def handle_distillation_pipeline_run(request):
+        import model_optimization
+        data = await request.json()
+        result = await model_optimization.run_distillation_pipeline(
+            teacher_model=data.get("teacher_model", ""),
+            student_model=data.get("student_model", ""),
+            training_data_path=data.get("training_data_path"),
+            quantization_method=data.get("quantization_method", "gguf"),
+            quantization_bits=data.get("quantization_bits", 4),
+            pruning_sparsity=data.get("pruning_sparsity", 0.2),
+            enable_speculative_decoding=data.get("enable_speculative_decoding", True),
+        )
+        return web.json_response(result)
+
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)
     http_app.router.add_get("/.well-known/agent-card.json", handle_well_known_a2a)
@@ -9445,6 +9480,9 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/ai-coordinator/model-optimization/finetuning/jobs", handle_finetuning_jobs_list)
     http_app.router.add_post("/control/ai-coordinator/model-optimization/finetuning/jobs", handle_finetuning_jobs_create)
     http_app.router.add_get("/control/ai-coordinator/model-optimization/performance", handle_model_performance)
+    http_app.router.add_post("/control/ai-coordinator/model-optimization/synthetic-data/generate", handle_synthetic_training_generate)
+    http_app.router.add_post("/control/ai-coordinator/model-optimization/active-learning/select", handle_active_learning_select)
+    http_app.router.add_post("/control/ai-coordinator/model-optimization/distillation/run", handle_distillation_pipeline_run)
 
     # Phase 1: WebSocket alert endpoint
     http_app.router.add_get("/ws/alerts", handle_alerts_websocket)
