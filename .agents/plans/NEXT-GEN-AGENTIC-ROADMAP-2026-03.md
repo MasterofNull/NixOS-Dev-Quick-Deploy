@@ -240,6 +240,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Chaos and performance benchmark artifacts now target writable runtime state under `/var/lib/ai-stack/hybrid/testing/...` instead of repo-local `.agents/` paths
 - Dashboard testing control API now exposes bounded property/chaos/benchmark/canary runs with explicit operator confirmation and shutdown-safe cancellation
 - Command Center dashboard now surfaces runtime testing controls, suite inventory, and recent bounded execution history for Phase 3.2 operators
+- Runtime testing now includes a bounded comprehensive validation bundle that chains property, chaos, benchmark, and canary checks behind the same explicit operator confirmation gate
 
 ### Batch 3.3: Self-Deployment Pipeline
 **Status:** in progress
