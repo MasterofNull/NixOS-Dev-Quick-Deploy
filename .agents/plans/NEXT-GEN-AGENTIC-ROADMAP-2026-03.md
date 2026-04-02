@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2, 5.1-5.2; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.3, 6.2-6.3, 7.1-7.2, 8.x, 9.x, 10.x
+**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2, 5.1-5.2, 6.2-6.3, 7.1-7.2; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.3, 8.x, 9.x, 10.x
 **Created:** 2026-03-15
 **Last Updated:** 2026-04-01
 **Version:** 1.4.1
@@ -412,7 +412,7 @@ Current scaffold-closure queue to keep in active rotation:
 - Interaction outcome updates now automatically feed high-quality successful examples into model-optimization capture with PII-aware filtering and writable runtime storage
 
 ### Batch 5.2: Continuous Model Fine-Tuning
-**Status:** 🔧 implementation exists (infrastructure ready, model training pending)
+**Status:** in progress (runtime hooks landed, model training pending)
 **Tasks:**
 - [x] Implement automated fine-tuning pipeline
   - ai-stack/model-optimization/continuous_finetuning.py
@@ -433,6 +433,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Runtime follow-through landed:**
 - Hybrid coordinator MCP tools now expose fine-tuning job creation/listing and model performance metrics
 - Successful interaction outcomes now record per-model performance trends for live coordinator traffic under writable runtime state
+- Command Center dashboard now surfaces live model-optimization readiness and pending fine-tuning status via the hybrid coordinator control plane
 
 ### Batch 5.3: Model Distillation & Compression
 **Status:** 🔧 implementation exists (not integrated)
@@ -478,7 +479,7 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Cost-benefit analyzer (embedded in routing strategy)
 
 ### Batch 6.2: Free Agent Pool Management
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime routing integrated, operator visibility landed)
 **Tasks:**
 - [x] Implement OpenRouter free tier monitoring
   - ai-stack/offloading/agent_pool_manager.py: Implementation exists
@@ -489,12 +490,16 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add agent performance benchmarking
 
 **Deliverables:**
-- 🔧 Agent pool manager (agent_pool_manager.py exists, not integrated)
+- ⏳ Agent pool manager runtime integration (routing and health status live)
 - ⏳ Availability dashboard (pending integration)
 - ⏳ Performance profiles (pending)
 
+**Runtime follow-through landed:**
+- Hybrid coordinator delegated routing now selects and tracks pool-backed free agents with rate-limit feedback
+- Command Center dashboard now surfaces live pool availability, free-agent capacity, and request health from coordinator status
+
 ### Batch 6.3: Result Quality Assurance
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (routing integrated, dashboard visibility landed)
 **Tasks:**
 - [x] Implement automated quality checking for remote results
   - ai-stack/offloading/quality_assurance.py: Implementation exists
@@ -505,9 +510,13 @@ Current scaffold-closure queue to keep in active rotation:
 - [x] Add quality trend tracking per agent
 
 **Deliverables:**
-- 🔧 Quality checker (quality_assurance.py exists, not integrated)
+- ⏳ Quality checker runtime integration (delegated QA active in routing)
 - ⏳ Result refinement engine (pending integration)
 - ⏳ Quality dashboard (pending)
+
+**Runtime follow-through landed:**
+- Successful delegated responses are now quality-checked, refined/cached, and tracked per agent in the hybrid coordinator
+- Command Center dashboard now surfaces delegated QA threshold, tracked-agent coverage, and average delegated quality
 
 ---
 
@@ -518,7 +527,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** 50% reduction in token usage without quality degradation
 
 ### Batch 7.1: Prompt Compression & Optimization
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (delegated query path integrated, operator metrics landed)
 **Tasks:**
 - [x] Implement LLMLingua for prompt compression
   - ai-stack/efficiency/prompt_compression.py: Implementation exists
@@ -529,12 +538,16 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add A/B testing for prompt variants
 
 **Deliverables:**
-- 🔧 Prompt compression pipeline (prompt_compression.py exists, not integrated)
+- ⏳ Prompt compression runtime integration (delegated envelope optimization active)
 - ⏳ Template optimizer (pending integration)
 - ⏳ A/B testing framework (pending)
 
+**Runtime follow-through landed:**
+- Delegated prompt envelopes are now compressed and bounded before remote dispatch
+- Command Center dashboard now surfaces average prompt envelope size before/after optimization and total token savings
+
 ### Batch 7.2: Context Window Management
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (delegated pruning integrated, deeper context features pending)
 **Tasks:**
 - [x] Implement intelligent context pruning
   - ai-stack/efficiency/context_management.py: Implementation exists
@@ -545,9 +558,13 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add context reuse across similar queries
 
 **Deliverables:**
-- 🔧 Context pruning engine (context_management.py exists, not integrated)
+- ⏳ Context pruning runtime integration (delegated query path active)
 - ⏳ Summarization pipeline (pending integration)
 - ⏳ Relevance scorer (pending)
+
+**Runtime follow-through landed:**
+- Delegated query envelopes now prune oversized context before remote submission
+- Prompt-efficiency telemetry is now surfaced in the dashboard so context-budget behavior is inspectable during live operations
 
 ### Batch 7.3: Response Caching & Deduplication
 **Status:** completed
