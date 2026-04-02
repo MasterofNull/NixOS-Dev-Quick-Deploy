@@ -150,7 +150,16 @@ if data.get("__configVersion") != "21.0":
 models = data.get("models") or []
 if not any(
     isinstance(model, dict)
-    and model.get("apiBase") == "http://127.0.0.1:8085/v1"
+    and model.get("apiBase") == "http://127.0.0.1:8003/v1"
+    and int(model.get("contextLength") or 0) >= 12000
+    and int(model.get("maxTokens") or 0) >= 512
+    for model in models
+):
+    raise SystemExit(1)
+
+if not any(
+    isinstance(model, dict)
+    and model.get("apiBase") == "http://127.0.0.1:8003/v1"
     and ((model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") == "continue-local"
     and int(model.get("contextLength") or 0) >= 12000
     and int(model.get("maxTokens") or 0) >= 512
@@ -159,7 +168,7 @@ if not any(
     raise SystemExit(1)
 
 tab_model = data.get("tabAutocompleteModel") or {}
-if tab_model.get("apiBase") != "http://127.0.0.1:8085/v1":
+if tab_model.get("apiBase") != "http://127.0.0.1:8003/v1":
     raise SystemExit(1)
 if ((tab_model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") != "continue-local":
     raise SystemExit(1)
@@ -295,7 +304,7 @@ run_phase_0() {
 
   # 0.5 Continue/editor runtime basics
   _check "0.5.1" "Continue CLI help works" _continue_cli_help
-  _check "0.5.2" "Continue config targets continue-local via switchboard" _continue_config_ok
+  _check "0.5.2" "Continue config targets coordinator ingress with continue-local lane" _continue_config_ok
   _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' bash -lc 'codium --list-extensions 2>/dev/null | tr "[:upper:]" "[:lower:]"'
   _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
