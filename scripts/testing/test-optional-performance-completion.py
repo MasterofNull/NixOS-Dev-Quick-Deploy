@@ -7,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 OPTIONS = ROOT / "nix" / "modules" / "core" / "options.nix"
 MCP_SERVERS = ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
+AI_STACK_ROLE = ROOT / "nix" / "modules" / "roles" / "ai-stack.nix"
+CACHE_PREWARM = ROOT / "scripts" / "ai" / "aq-cache-prewarm"
 DASHBOARD = ROOT / "dashboard.html"
 ROADMAP = ROOT / ".agents" / "plans" / "PHASE-4-5-COMPLETION-ROADMAP-2026-03-30.md"
 
@@ -19,6 +21,8 @@ def assert_true(condition: bool, message: str) -> None:
 def main() -> int:
     options_text = OPTIONS.read_text(encoding="utf-8")
     mcp_text = MCP_SERVERS.read_text(encoding="utf-8")
+    ai_stack_role_text = AI_STACK_ROLE.read_text(encoding="utf-8")
+    cache_prewarm_text = CACHE_PREWARM.read_text(encoding="utf-8")
     dashboard_text = DASHBOARD.read_text(encoding="utf-8")
     roadmap_text = ROADMAP.read_text(encoding="utf-8")
 
@@ -37,6 +41,14 @@ def main() -> int:
     assert_true(
         'AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.escapeShellArg (lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries)}' in mcp_text,
         "hybrid coordinator service should shell-escape semantic cache startup queries so systemd preserves spaced prompts",
+    )
+    assert_true(
+        'scripts/ai/aq-cache-prewarm' in ai_stack_role_text and 'AI_CACHE_PREWARM_QUERY_COUNT=' in ai_stack_role_text,
+        "periodic cache prewarm service should invoke the bounded cache prewarm wrapper with an explicit broad-seed fallback count",
+    )
+    assert_true(
+        '--from-report "${REPORT_PATH}"' in cache_prewarm_text and 'run_fallback' in cache_prewarm_text,
+        "aq-cache-prewarm should prefer report-driven rag prewarm and fall back to broad routing seeds",
     )
     assert_true(
         'data-card-id="deployment-ops"' in dashboard_text,

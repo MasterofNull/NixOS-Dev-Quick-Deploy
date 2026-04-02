@@ -1319,6 +1319,7 @@ in {
           findutils
           gnugrep
           gnused
+          jq
           postgresql
           python3
           systemd
@@ -1327,7 +1328,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/data/seed-routing-traffic.sh --count ${toString ai.aiHarness.runtime.cachePrewarm.queryCount}";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-cache-prewarm";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -1343,6 +1344,7 @@ in {
             "HYB_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
             "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
             "SEED_ROUTING_PYTHON_BIN=${pkgs.python3}/bin/python3"
+            "AI_CACHE_PREWARM_QUERY_COUNT=${toString ai.aiHarness.runtime.cachePrewarm.queryCount}"
           ] ++ lib.optional cfg.secrets.enable
               "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
         };

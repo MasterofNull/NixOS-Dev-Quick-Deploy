@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# aq-cache-prewarm — prefer bounded report-driven RAG prewarm and fall back to broad routing seeds.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+REPORT_PATH="${AQ_REPORT_PATH:-/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json}"
+QUERY_COUNT="${AI_CACHE_PREWARM_QUERY_COUNT:-8}"
+MAX_PROMPTS="${AQ_CACHE_PREWARM_MAX_PROMPTS:-2}"
+REPLAY_COUNT="${AQ_CACHE_PREWARM_REPLAY_COUNT:-1}"
+RAG_PREWARM_SCRIPT="${REPO_ROOT}/scripts/ai/aq-rag-prewarm"
+SEED_SCRIPT="${REPO_ROOT}/scripts/data/seed-routing-traffic.sh"
+
+run_fallback() {
+  exec "${SEED_SCRIPT}" --count "${QUERY_COUNT}"
+}
+
+if [[ ! -x "${RAG_PREWARM_SCRIPT}" || ! -r "${REPORT_PATH}" ]]; then
+  run_fallback
+fi
+
+PREWARM_JSON="$(
+  "${RAG_PREWARM_SCRIPT}" \
+    --from-report "${REPORT_PATH}" \
+    --max-prompts "${MAX_PROMPTS}" \
+    --replay "${REPLAY_COUNT}" \
+    --json 2>/dev/null || true
+)"
+
+if [[ -z "${PREWARM_JSON}" ]]; then
+  run_fallback
+fi
+
+PREWARM_STATUS="$(
+  printf '%s' "${PREWARM_JSON}" | python3 -c 'import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("")
+else:
+    print(data.get("status", ""))
+'
+)"
+
+if [[ "${PREWARM_STATUS}" == "ok" || "${PREWARM_STATUS}" == "warn" ]]; then
+  printf '%s\n' "${PREWARM_JSON}"
+  exit 0
+fi
+
+run_fallback
