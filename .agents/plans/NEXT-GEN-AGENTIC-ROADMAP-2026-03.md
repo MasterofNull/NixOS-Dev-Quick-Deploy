@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2, 5.1-5.2, 6.2-6.3, 7.1-7.2; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.3, 8.x, 9.x, 10.x
+**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2, 5.1-5.2, 6.2-6.3, 7.1-7.2, 8.x, 9.x, 10.x; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.3
 **Created:** 2026-03-15
 **Last Updated:** 2026-04-01
 **Version:** 1.4.1
@@ -596,7 +596,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** Context loading reduced by 60%, query success rate maintained
 
 ### Batch 8.1: Multi-Tier Context Loading
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, adaptive telemetry surfaced)
 **Tasks:**
 - [x] Implement 5-tier context loading (minimal, brief, standard, detailed, exhaustive)
   - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
@@ -607,12 +607,16 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add tier selection learning from outcomes
 
 **Deliverables:**
-- 🔧 5-tier loading system (multi_tier_loading.py exists, not integrated)
+- ⏳ 5-tier loading runtime integration (delegated path active)
 - ⏳ Automatic tier selection (pending integration)
 - ⏳ Learning engine (pending)
 
+**Runtime follow-through landed:**
+- Delegated runtime now applies progressive multi-tier context loading before remote dispatch
+- Command Center dashboard now surfaces live progressive-context load counts from hybrid runtime metrics
+
 ### Batch 8.2: Lazy Context Resolution
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, deeper dependency features pending)
 **Tasks:**
 - [x] Implement just-in-time context loading
   - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
@@ -623,12 +627,16 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add context prefetching based on predictions
 
 **Deliverables:**
-- 🔧 Lazy loading engine (lazy_context.py exists, not integrated)
+- ⏳ Lazy loading runtime integration (delegated path active)
 - ⏳ Dependency graph (pending integration)
 - ⏳ Prefetch system (pending)
 
+**Runtime follow-through landed:**
+- Context is now attached lazily during delegated query preparation instead of fully materializing up front
+- Adaptive runtime telemetry is now operator-visible in the dashboard for live inspection
+
 ### Batch 8.3: Context Relevance Prediction
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, training loop pending)
 **Tasks:**
 - [x] Implement ML-based relevance prediction
   - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
@@ -639,9 +647,13 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add relevance model continuous training
 
 **Deliverables:**
-- 🔧 Relevance predictor (relevance_prediction.py exists, not integrated)
+- ⏳ Relevance predictor runtime integration (delegated path active)
 - ⏳ Feedback loop (pending integration)
 - ⏳ Training pipeline (pending)
+
+**Runtime follow-through landed:**
+- Delegated context selection now filters attachments through relevance prediction before remote execution
+- Progressive-disclosure telemetry is surfaced in the dashboard alongside other adaptive runtime signals
 
 ---
 
@@ -652,7 +664,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** 80% of gaps automatically resolved within 24 hours
 
 ### Batch 9.1: Gap Detection Automation
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, operator telemetry landed)
 **Tasks:**
 - [x] Implement continuous capability scanning
   - ai-stack/capability-gap/gap_detection.py: Implementation exists
@@ -663,12 +675,16 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add gap detection from user feedback
 
 **Deliverables:**
-- 🔧 Gap scanner (gap_detection.py exists, not integrated)
+- ⏳ Gap scanner runtime integration (delegated recovery path active)
 - ⏳ Classification engine (pending integration)
 - ⏳ Priority scorer (pending)
 
+**Runtime follow-through landed:**
+- Delegated failures and weak outcomes now emit capability-gap detections directly from the hybrid coordinator
+- Command Center dashboard now surfaces live capability-gap detection counts from adaptive runtime metrics
+
 ### Batch 9.2: Automated Gap Remediation
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, broader remediation pending)
 **Tasks:**
 - [x] Implement automatic tool discovery and integration
   - ai-stack/capability-gap/gap_remediation.py: Implementation exists
@@ -679,12 +695,16 @@ Current scaffold-closure queue to keep in active rotation:
 - [ ] Add remediation success validation
 
 **Deliverables:**
-- 🔧 Tool integration automation (gap_remediation.py exists, not integrated)
+- ⏳ Tool integration runtime remediation (delegated recovery path active)
 - ⏳ Knowledge importer (pending integration)
 - ⏳ Skill synthesizer (pending)
 
+**Runtime follow-through landed:**
+- Gap remediation planning now runs inside delegated recovery outcomes with bounded playbook reuse
+- Adaptive runtime telemetry is surfaced in the dashboard so remediation activity is visible during operations
+
 ### Batch 9.3: Remediation Learning Loop
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, deeper reuse optimization pending)
 **Tasks:**
 - [x] Implement remediation outcome tracking
   - ai-stack/capability-gap/remediation_learning.py: RemediationOutcome tracking
@@ -703,6 +723,10 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Strategy optimizer (multi-metric scoring)
 - ✅ Playbook library (reusable patterns)
 
+**Runtime follow-through landed:**
+- Remediation outcomes now feed reusable playbooks and improvement signals in delegated runtime paths
+- Adaptive runtime telemetry is now surfaced in the dashboard alongside gap-detection metrics
+
 ---
 
 ## Phase 10: Real-Time Learning & Adaptation
@@ -712,7 +736,7 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** Measurable improvement visible within 1 hour of deployment
 
 ### Batch 10.1: Online Learning Pipeline
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, online experimentation follow-through pending)
 **Tasks:**
 - [x] Implement incremental model updates
   - ai-stack/real-time-learning/online_learning.py: Multiple update strategies
@@ -731,8 +755,12 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Live pattern miner (interaction analysis)
 - ✅ Adaptive router (performance-based)
 
+**Runtime follow-through landed:**
+- Successful delegated responses now feed online learning, pattern mining, and hint-quality adjustment immediately
+- Command Center dashboard now surfaces real-time learning event counts from hybrid runtime metrics
+
 ### Batch 10.2: Feedback Loop Acceleration
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, richer feedback policies pending)
 **Tasks:**
 - [x] Implement immediate feedback incorporation
   - ai-stack/real-time-learning/feedback_acceleration.py: Immediate incorporation
@@ -751,8 +779,12 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Success detector (automated detection)
 - ✅ Aggregation engine (cross-session aggregation)
 
+**Runtime follow-through landed:**
+- Immediate delegated outcome feedback now flows into prioritization and cross-session aggregation inside the coordinator
+- Adaptive runtime telemetry is now surfaced in the dashboard to keep feedback acceleration observable
+
 ### Batch 10.3: Meta-Learning for Rapid Adaptation
-**Status:** 🔧 implementation exists (not integrated)
+**Status:** in progress (runtime integrated, broader adaptation policies pending)
 **Tasks:**
 - [x] Implement MAML (Model-Agnostic Meta-Learning)
   - ai-stack/real-time-learning/meta_learning.py: Full MAML implementation
@@ -770,6 +802,10 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ MAML implementation (meta_learning.py)
 - ✅ Few-shot learner (prototype-based)
 - ✅ Meta-optimizer (hyperparameter tuning)
+
+**Runtime follow-through landed:**
+- Delegated runtime outcomes now emit bounded meta-learning adaptations with cached task-domain state
+- Command Center dashboard now surfaces meta-learning adaptation counts from hybrid runtime metrics
 
 ---
 
