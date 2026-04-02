@@ -29,6 +29,9 @@ def main() -> int:
         "record_model_performance",
         "get_model_performance",
         "get_optimization_readiness",
+        "generate_synthetic_training_data",
+        "select_active_learning_examples",
+        "run_distillation_pipeline",
     ]:
         assert_true(f'name="{tool_name}"' in handlers_text, f"MCP handlers should expose {tool_name}")
         assert_true(f'elif name == "{tool_name}"' in handlers_text, f"MCP handlers should dispatch {tool_name}")
@@ -37,6 +40,9 @@ def main() -> int:
     assert_true("model_optimization.init(" in server_text, "server should initialize model_optimization module")
     assert_true("MODEL_OPTIMIZATION_STATE" in optimization_text, "model optimization module should use writable runtime state")
     assert_true("async def get_optimization_readiness()" in optimization_text, "model optimization module should expose readiness API")
+    assert_true("async def generate_synthetic_training_data(" in optimization_text, "model optimization should expose synthetic-data generation")
+    assert_true("async def select_active_learning_examples(" in optimization_text, "model optimization should expose active-learning selection")
+    assert_true("async def run_distillation_pipeline(" in optimization_text, "model optimization should expose distillation pipeline")
 
     print("PASS: model optimization MCP tool wiring present")
     return 0
