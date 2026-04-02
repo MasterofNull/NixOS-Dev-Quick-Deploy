@@ -61,11 +61,13 @@ from ai_coordinator import (
     build_reasoning_finalization_messages as _ai_coordinator_build_reasoning_finalization_messages,
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
+    extract_task_from_openai_messages as _ai_coordinator_extract_task_from_openai_messages,
     infer_profile as _ai_coordinator_infer_profile,
     merge_runtime_defaults as _ai_coordinator_merge_runtime_defaults,
     prune_runtime_registry as _ai_coordinator_prune_runtime_registry,
     # Phase 9.3 — Query Complexity Routing
     route_by_complexity as _ai_coordinator_route_by_complexity,
+    route_openai_chat_payload as _ai_coordinator_route_openai_chat_payload,
     get_routing_stats as _ai_coordinator_get_routing_stats,
 )
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
@@ -468,6 +470,90 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     except Exception:
         return state
     return state
+
+
+def _coordinator_requested_profile(request: web.Request, payload: Dict[str, Any] | None = None) -> str:
+    profile = str(request.headers.get("X-AI-Profile") or "").strip().lower()
+    if profile:
+        return profile
+    profile = str(request.rel_url.query.get("ai_profile") or "").strip().lower()
+    if profile:
+        return profile
+    if isinstance(payload, dict):
+        profile = str(payload.get("ai_profile") or payload.get("profile") or "").strip().lower()
+        if profile:
+            return profile
+    return ""
+
+
+def _coordinator_prefer_local(request: web.Request, payload: Dict[str, Any] | None = None) -> bool:
+    raw = str(request.headers.get("X-AI-Prefer-Local") or "").strip().lower()
+    if raw in {"0", "false", "no", "remote"}:
+        return False
+    if raw in {"1", "true", "yes", "local"}:
+        return True
+    raw = str(request.rel_url.query.get("prefer_local") or "").strip().lower()
+    if raw in {"0", "false", "no", "remote"}:
+        return False
+    if raw in {"1", "true", "yes", "local"}:
+        return True
+    if isinstance(payload, dict) and "prefer_local" in payload:
+        return bool(payload.get("prefer_local"))
+    return True
+
+
+async def _proxy_openai_request_via_coordinator(
+    request: web.Request,
+    payload: Dict[str, Any],
+    *,
+    path: str,
+) -> web.Response:
+    requested_profile = _coordinator_requested_profile(request, payload)
+    prefer_local = _coordinator_prefer_local(request, payload)
+
+    if path == "chat/completions":
+        routing = _ai_coordinator_route_openai_chat_payload(
+            payload,
+            requested_profile=requested_profile,
+            prefer_local=prefer_local,
+        )
+    else:
+        task = str(payload.get("prompt") or "").strip() or _ai_coordinator_extract_task_from_openai_messages(payload.get("messages"))
+        routing = _ai_coordinator_route_by_complexity(
+            task or "continue completion request",
+            requested_profile=requested_profile,
+            prefer_local=prefer_local,
+        )
+        routing["task"] = task
+
+    selected_profile = str(routing.get("recommended_profile") or "default").strip() or "default"
+    outbound_headers = {
+        "Content-Type": "application/json",
+        "X-AI-Profile": "continue-local" if selected_profile == "default" else selected_profile,
+        "X-AI-Route": "local" if selected_profile in {"default", "local-tool-calling"} else "remote",
+    }
+    if "Authorization" in request.headers:
+        outbound_headers["Authorization"] = request.headers["Authorization"]
+
+    timeout_s = float(payload.get("timeout_s") or 120.0)
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        upstream = await client.post(
+            f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/{path}",
+            headers=outbound_headers,
+            json=payload,
+        )
+
+    content_type = upstream.headers.get("content-type", "application/json")
+    response = web.Response(
+        status=upstream.status_code,
+        body=upstream.content,
+        content_type=content_type.split(";", 1)[0] if content_type else None,
+    )
+    response.headers["X-AI-Profile"] = selected_profile
+    response.headers["X-Coordinator-Task-Archetype"] = str(routing.get("task_archetype") or "")
+    response.headers["X-Coordinator-Model-Class"] = str(routing.get("model_class") or "")
+    response.headers["X-Coordinator-Complexity"] = str(routing.get("complexity") or "")
+    return response
 
 
 async def _aidb_shared_skills_catalog(limit: int = 25) -> Dict[str, Any]:
@@ -9520,9 +9606,43 @@ async def run_http_mode(port: int) -> None:
         result = await advanced_features.get_learning_stats()
         return web.json_response(result)
 
+    async def handle_openai_models(request: web.Request) -> web.Response:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/models")
+            content_type = response.headers.get("content-type", "application/json")
+            return web.Response(
+                status=response.status_code,
+                body=response.content,
+                content_type=content_type.split(";", 1)[0] if content_type else None,
+            )
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_openai_chat_completions(request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                return web.json_response({"error": "json object body required"}, status=400)
+            return await _proxy_openai_request_via_coordinator(request, data, path="chat/completions")
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_openai_completions(request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            if not isinstance(data, dict):
+                return web.json_response({"error": "json object body required"}, status=400)
+            return await _proxy_openai_request_via_coordinator(request, data, path="completions")
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)
     http_app.router.add_get("/.well-known/agent-card.json", handle_well_known_a2a)
+    http_app.router.add_get("/v1/models", handle_openai_models)
+    http_app.router.add_post("/v1/chat/completions", handle_openai_chat_completions)
+    http_app.router.add_post("/v1/completions", handle_openai_completions)
     http_app.router.add_get("/health", handle_health)
     http_app.router.add_get("/health/detailed", handle_health_detailed)
     http_app.router.add_get("/health/aggregate", handle_health_aggregate)  # Phase 11.2

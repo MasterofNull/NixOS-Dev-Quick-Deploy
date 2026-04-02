@@ -497,6 +497,82 @@ def get_routing_stats() -> Dict[str, Any]:
     }
 
 
+def _message_content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    parts.append(text)
+                continue
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type") or "").strip().lower() not in {"text", "input_text"}:
+                continue
+            text = str(item.get("text") or "").strip()
+            if text:
+                parts.append(text)
+        return "\n".join(parts).strip()
+    if isinstance(content, dict):
+        text = str(content.get("text") or "").strip()
+        return text
+    return ""
+
+
+def extract_task_from_openai_messages(messages: Any) -> str:
+    if not isinstance(messages, list):
+        return ""
+    user_texts: List[str] = []
+    fallback_texts: List[str] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        text = _message_content_text(item.get("content"))
+        if not text:
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role == "user":
+            user_texts.append(text)
+        elif role in {"assistant", "system", "tool"}:
+            fallback_texts.append(text)
+    if user_texts:
+        return "\n".join(user_texts[-2:]).strip()
+    if fallback_texts:
+        return "\n".join(fallback_texts[-1:]).strip()
+    return ""
+
+
+def route_openai_chat_payload(
+    payload: Dict[str, Any] | None,
+    requested_profile: str = "",
+    prefer_local: bool = True,
+) -> Dict[str, Any]:
+    body = payload if isinstance(payload, dict) else {}
+    messages = body.get("messages")
+    task = extract_task_from_openai_messages(messages)
+    if not task:
+        task = str(body.get("prompt") or body.get("input") or "").strip()
+
+    tools_present = isinstance(body.get("tools"), list) and len(body.get("tools") or []) > 0
+    tool_choice = body.get("tool_choice")
+    tool_choice_requested = bool(tool_choice) and str(tool_choice).strip().lower() not in {"none", "false"}
+    if not requested_profile and (tools_present or tool_choice_requested):
+        requested_profile = "local-tool-calling" if prefer_local else "remote-tool-calling"
+
+    decision = route_by_complexity(
+        task or "continue chat request",
+        requested_profile=requested_profile,
+        prefer_local=prefer_local,
+    )
+    decision["task"] = task
+    decision["tools_present"] = tools_present
+    decision["tool_choice_requested"] = tool_choice_requested
+    return decision
+
+
 def default_runtime_id_for_profile(profile: str) -> str:
     mapping = {
         "default": "local-hybrid",
