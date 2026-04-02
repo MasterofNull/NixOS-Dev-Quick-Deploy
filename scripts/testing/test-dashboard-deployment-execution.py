@@ -154,6 +154,15 @@ def main() -> int:
                 "dry-run runtime deployment detail should expose rollback error-rate threshold summary",
             )
             assert_true(
+                dry_run_detail.get("runtime_summary", {}).get("planned_stages") == [
+                    "prepare_green",
+                    "validate_green",
+                    "switch_traffic",
+                    "hold_blue_for_rollback",
+                ],
+                "dry-run runtime deployment detail should expose blue-green stage plan",
+            )
+            assert_true(
                 dry_run_detail.get("runtime_summary", {}).get("verification_passed") is True,
                 "dry-run runtime deployment detail should expose verification outcome",
             )
@@ -205,6 +214,10 @@ def main() -> int:
             assert_true(
                 approved_detail.get("runtime_summary", {}).get("rollback_on_error_rate") == 0.02,
                 "approved deployment should preserve rollback error-rate threshold metadata",
+            )
+            assert_true(
+                (approved_detail.get("runtime_summary", {}).get("planned_stages") or [None])[0] == "rollout_15_percent",
+                "approved deployment should preserve canary stage plan metadata",
             )
             assert_true(
                 approved_detail.get("runtime_summary", {}).get("metrics", {}).get("dry_run") == 1.0,

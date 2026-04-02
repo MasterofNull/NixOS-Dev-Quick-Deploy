@@ -140,6 +140,21 @@ def _deployment_command_from_request(request: DeploymentExecuteRequest) -> str:
     return " ".join(parts)
 
 
+def _planned_strategy_stages(request: DeploymentExecuteRequest) -> List[str]:
+    if request.strategy == "blue_green":
+        return ["prepare_green", "validate_green", "switch_traffic", "hold_blue_for_rollback"]
+    if request.strategy == "canary":
+        return [
+            f"rollout_{request.canary_percentage}_percent",
+            "observe_metrics",
+            "promote_or_rollback",
+            "full_verification",
+        ]
+    if request.strategy == "rolling":
+        return ["batch_update", "node_health_check", "continue_rollout", "full_verification"]
+    return ["apply_changes", "service_recovery_check", "full_verification"]
+
+
 def _serialize_runtime_request(request: DeploymentExecuteRequest) -> Dict[str, Any]:
     return {
         "strategy": request.strategy,
@@ -151,6 +166,7 @@ def _serialize_runtime_request(request: DeploymentExecuteRequest) -> Dict[str, A
         "validation_timeout_seconds": request.validation_timeout_seconds,
         "verification_timeout_seconds": request.verification_timeout_seconds,
         "approval_timeout_seconds": request.approval_timeout_seconds,
+        "planned_stages": _planned_strategy_stages(request),
         "user": request.user,
     }
 
@@ -202,6 +218,7 @@ def _build_runtime_summary(summary: Dict[str, Any], timeline: List[Dict[str, Any
         "validation_timeout_seconds": request_metadata.get("validation_timeout_seconds"),
         "verification_timeout_seconds": request_metadata.get("verification_timeout_seconds"),
         "approval_timeout_seconds": request_metadata.get("approval_timeout_seconds"),
+        "planned_stages": request_metadata.get("planned_stages") or [],
         "validation_passed": result_payload.get("validation_passed"),
         "deployment_succeeded": result_payload.get("deployment_succeeded"),
         "verification_passed": result_payload.get("verification_passed"),
