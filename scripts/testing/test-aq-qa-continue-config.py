@@ -32,6 +32,14 @@ def main() -> int:
         'http://127.0.0.1:8003/hints' in script,
         "aq-qa should require the aq-hints provider to stay on coordinator ingress",
     )
+    assert_true(
+        '_primary_home()' in script and '_run_clean_primary_shell()' in script,
+        "aq-qa should resolve the effective primary-user home and clean shell helpers for deploy-time checks",
+    )
+    assert_true(
+        '_continue_extension_output' in script and 'AQ_PRIMARY_HOME="$(_primary_home)"' in script,
+        "aq-qa should run Continue/editor smoke checks against the primary-user environment instead of the ambient HOME",
+    )
 
     print("PASS: aq-qa Continue config validation stays pinned to coordinator ingress")
     return 0
