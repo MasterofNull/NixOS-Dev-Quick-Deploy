@@ -74,6 +74,10 @@ def main() -> int:
                                     "selected_pattern": "react",
                                     "boost_multiplier": 1.15,
                                 },
+                                "orchestration_runtime": {
+                                    "framework_status": "integrated",
+                                    "workspace": {"mode": "temp_dir"},
+                                },
                                 "updated_at": 1775070000,
                             }
                         ],
@@ -94,6 +98,10 @@ def main() -> int:
             assert_true(
                 (first.get("reasoning_pattern") or {}).get("selected_pattern") == "react",
                 "orchestration sessions should preserve reasoning pattern metadata",
+            )
+            assert_true(
+                (first.get("orchestration_runtime") or {}).get("framework_status") == "integrated",
+                "orchestration sessions should preserve orchestration runtime integration metadata",
             )
 
         html = (ROOT / "dashboard.html").read_text(encoding="utf-8")
