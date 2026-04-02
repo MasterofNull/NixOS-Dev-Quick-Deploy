@@ -3181,10 +3181,51 @@ def _select_reasoning_pattern(
         "service",
         "workflow",
     }
+    self_consistency_tokens = {
+        "consistent",
+        "consistency",
+        "independent answers",
+        "majority vote",
+        "cross-check",
+    }
+    plan_and_solve_tokens = {
+        "step-by-step plan",
+        "break down",
+        "implementation plan",
+        "plan this",
+        "sequence of steps",
+    }
+    verification_tokens = {
+        "verify",
+        "verification",
+        "validate",
+        "fact-check",
+        "prove",
+        "confirm",
+    }
+    debate_tokens = {
+        "debate",
+        "argue both sides",
+        "counterargument",
+        "pros and cons",
+        "tradeoffs",
+    }
 
     complexity_score = float(min(1.0, (len(normalized.split()) / 40.0) + (missing_count / 10.0)))
     selection_basis: List[str] = []
-    if any(token in normalized for token in complexity_tokens):
+    if any(token in normalized for token in debate_tokens):
+        primary = "debate"
+        selection_basis.append("multi-perspective debate cues")
+    elif any(token in normalized for token in verification_tokens):
+        primary = "chain_of_verification"
+        selection_basis.append("verification-first cues")
+    elif any(token in normalized for token in self_consistency_tokens):
+        primary = "self_consistency"
+        selection_basis.append("consensus-checking cues")
+    elif any(token in normalized for token in plan_and_solve_tokens):
+        primary = "plan_and_solve"
+        selection_basis.append("explicit planning cues")
+    elif any(token in normalized for token in complexity_tokens):
         primary = "tree_of_thoughts"
         selection_basis.append("complex deliberation cues")
     elif continuation_query or any(token in normalized for token in reflexion_tokens):
@@ -3209,11 +3250,33 @@ def _select_reasoning_pattern(
     }
     if primary == "tree_of_thoughts":
         phase_recommendations["plan"] = "tree_of_thoughts"
+    elif primary == "plan_and_solve":
+        phase_recommendations["plan"] = "plan_and_solve"
+        phase_recommendations["execute"] = "plan_and_solve"
+    elif primary == "self_consistency":
+        phase_recommendations["validate"] = "self_consistency"
+    elif primary == "chain_of_verification":
+        phase_recommendations["validate"] = "chain_of_verification"
+    elif primary == "debate":
+        phase_recommendations["discover"] = "debate"
+        phase_recommendations["plan"] = "debate"
     elif primary == "reflexion":
         phase_recommendations["validate"] = "reflexion"
         phase_recommendations["handoff"] = "reflexion"
 
-    alternatives = [name for name in ("react", "tree_of_thoughts", "reflexion") if name != primary]
+    alternatives = [
+        name
+        for name in (
+            "react",
+            "tree_of_thoughts",
+            "reflexion",
+            "self_consistency",
+            "plan_and_solve",
+            "chain_of_verification",
+            "debate",
+        )
+        if name != primary
+    ]
     return {
         "selected_pattern": primary,
         "selection_basis": selection_basis,
