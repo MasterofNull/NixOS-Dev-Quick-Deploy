@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression checks for Continue -> coordinator authoritative ingress wiring."""
+"""Static regression checks for Continue -> switchboard authoritative ingress wiring."""
 
 from pathlib import Path
 
@@ -55,12 +55,16 @@ def main() -> int:
         "ai coordinator should extract task text from OpenAI message lists",
     )
     assert_true(
-        'continueApiBase = "http://127.0.0.1:${toString aiHybridPort}/v1"' in home_base_text,
-        "Home Manager Continue config should point chat ingress at the hybrid coordinator",
+        "continueApiBase = aiOpenAIBaseUrl;" in home_base_text,
+        "Home Manager Continue config should point chat ingress at the switchboard OpenAI proxy",
     )
     assert_true(
-        '"apiBase": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/v1"' in continue_config_text,
-        "repo Continue config should point at the hybrid coordinator ingress",
+        '"apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1"' in continue_config_text,
+        "repo Continue config should point at the switchboard ingress",
+    )
+    assert_true(
+        '"title": "Switchboard Router (Authoritative)"' in continue_config_text,
+        "repo Continue config should label the authoritative model path as switchboard-backed",
     )
     assert_true(
         '"X-AI-Profile": "continue-local"' in continue_config_text,

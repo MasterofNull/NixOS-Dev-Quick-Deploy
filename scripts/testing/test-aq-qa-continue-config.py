@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression checks for Continue/editor aq-qa coordinator ingress rules."""
+"""Static regression checks for Continue/editor aq-qa switchboard ingress rules."""
 
 from pathlib import Path
 
@@ -17,12 +17,12 @@ def main() -> int:
     script = AQ_QA.read_text(encoding="utf-8")
 
     assert_true(
-        '0.5.2" "Continue config targets coordinator ingress with continue-local lane"' in script,
-        "aq-qa phase 0 should describe the coordinator ingress contract for Continue config",
+        '0.5.2" "Continue config targets switchboard ingress with continue-local lane"' in script,
+        "aq-qa phase 0 should describe the switchboard ingress contract for Continue config",
     )
     assert_true(
-        script.count('http://127.0.0.1:8003/v1') >= 3,
-        "aq-qa should validate coordinator ingress for at least the base model, lane-specific model, and tab autocomplete",
+        script.count('http://127.0.0.1:8085/v1') >= 3,
+        "aq-qa should validate switchboard ingress for at least the base model, lane-specific model, and tab autocomplete",
     )
     assert_true(
         '"continue-local"' in script,
@@ -41,7 +41,7 @@ def main() -> int:
         "aq-qa should run Continue/editor smoke checks against the primary-user environment instead of the ambient HOME",
     )
 
-    print("PASS: aq-qa Continue config validation stays pinned to coordinator ingress")
+    print("PASS: aq-qa Continue config validation stays pinned to switchboard ingress")
     return 0
 
 

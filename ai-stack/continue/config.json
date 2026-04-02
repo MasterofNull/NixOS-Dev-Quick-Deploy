@@ -22,7 +22,7 @@
   ],
   "models": [
     {
-      "title": "Coordinator Router (Authoritative)",
+      "title": "Switchboard Router (Authoritative)",
       "provider": "openai",
       "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
       "apiKey": "dummy",
