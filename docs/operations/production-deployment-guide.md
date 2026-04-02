@@ -174,6 +174,50 @@ systemctl status
 systemctl list-units --type=service --all
 ```
 
+### Step 2.1: Runtime Deployment Control Plane
+
+For bounded repo-native runtime deployment exercises after the system is up, use the dashboard deployment control plane instead of ad hoc shell execution.
+
+Operator workflow:
+
+```bash
+# Inspect recent runtime deployment history
+curl http://127.0.0.1:8889/api/deployments/history?limit=12
+
+# Start a bounded dry-run deployment through the dashboard API
+curl -X POST http://127.0.0.1:8889/api/deployments/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deployment_id": "runtime-dry-run",
+    "strategy": "blue_green",
+    "dry_run": true,
+    "confirm": true,
+    "user": "operator"
+  }'
+
+# Review pending approvals when require_approval=true
+curl http://127.0.0.1:8889/api/deployments/approvals/pending
+```
+
+What operators should verify in the dashboard deployment inspector:
+- `runtime plan`: selected strategy, dry-run/live mode, approval state
+- `planned stages`: expected stage sequence for blue-green, canary, rolling, or immediate
+- `executed stages`: actual recorded stage logs emitted by the runtime deployer
+- `metrics`: rollout percentage and other bounded execution metrics
+- rollback affordance: available before attempting a live deployment
+
+Rollback path:
+
+```bash
+curl -X POST http://127.0.0.1:8889/api/deployments/runtime-dry-run/rollback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "confirm": true,
+    "execute": false,
+    "reason": "Operator reviewed rollout summary"
+  }'
+```
+
 ### Step 3: Initialize Database
 
 ```bash

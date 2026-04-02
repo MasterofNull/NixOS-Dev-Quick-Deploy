@@ -8614,6 +8614,10 @@
                             <span class="data-meta">planned stages</span>
                         </div>
                         <div class="data-item">
+                            <span>${escapeHtml((runtimeSummary.executed_stage_logs || []).join(' | ') || 'No executed stage logs captured')}</span>
+                            <span class="data-meta">executed stages</span>
+                        </div>
+                        <div class="data-item">
                             <span>${escapeHtml(metricSummary || 'No runtime metrics recorded')}</span>
                             <span class="data-meta">metrics</span>
                         </div>
