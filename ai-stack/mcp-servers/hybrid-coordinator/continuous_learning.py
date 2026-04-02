@@ -16,6 +16,7 @@ Features:
 import asyncio
 import hashlib  # P6-OPS-002: For pattern deduplication
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -39,6 +40,7 @@ from shared.auth_http_client import create_embeddings_client
 from shared.telemetry_privacy import redact_secrets, scrub_telemetry_payload
 
 logger = structlog.get_logger()
+logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 
 MAX_PATTERN_PROMPT_CHARS = 4000
 MAX_PATTERN_RESPONSE_CHARS = 12000
@@ -659,7 +661,7 @@ class ContinuousLearningPipeline:
                 changes = await asyncio.wait_for(watcher.__anext__(), timeout=timeout_seconds)
                 for _, changed_path in changes:
                     if Path(changed_path).name in tracked_files:
-                        logger.info("telemetry_change_detected", path=changed_path)
+                        logger.debug("telemetry_change_detected", path=changed_path)
                         return True
         except asyncio.TimeoutError:
             return False
