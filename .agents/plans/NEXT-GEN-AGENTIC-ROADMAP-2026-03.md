@@ -2,7 +2,7 @@
 
 **Objective:** Transform the local AI harness into a recursively self-improving, bleeding-edge agentic system that progressively offloads work to free remote agents while training local models to match flagship capabilities.
 
-**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.2, 5.1-5.2, 6.2-6.3, 7.1-7.2, 8.x, 9.x, 10.x; Pending: 1.1, 1.3, 3.x; Implementation exists (not integrated): 2.1, 4.1, 5.3
+**Status:** Active - Operational: 1.2, 2.2, 2.3, 4.3-4.4, 6.1, 7.3, 11.1-11.6; In progress: 4.1-4.2, 5.1-5.3, 6.2-6.3, 7.1-7.2, 8.x, 9.x, 10.x; Pending: 1.1, 1.3, 3.x; Deploy/infrastructure pending: 2.1
 **Created:** 2026-03-15
 **Last Updated:** 2026-04-01
 **Version:** 1.4.1
