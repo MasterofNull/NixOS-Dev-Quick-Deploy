@@ -52,6 +52,26 @@ def main() -> int:
         '"reasoning_pattern": session.get("reasoning_pattern", {})' in text,
         "detailed team inspection should expose runtime reasoning-pattern context",
     )
+    assert_true(
+        'primary = "self_consistency"' in text,
+        "reasoning-pattern selector should recognize self-consistency cues",
+    )
+    assert_true(
+        'primary = "plan_and_solve"' in text,
+        "reasoning-pattern selector should recognize plan-and-solve cues",
+    )
+    assert_true(
+        'primary = "chain_of_verification"' in text,
+        "reasoning-pattern selector should recognize chain-of-verification cues",
+    )
+    assert_true(
+        'primary = "debate"' in text,
+        "reasoning-pattern selector should recognize debate cues",
+    )
+    assert_true(
+        '"chain_of_verification"' in text and '"self_consistency"' in text and '"plan_and_solve"' in text and '"debate"' in text,
+        "selector alternatives should enumerate the expanded reasoning-pattern set",
+    )
 
     print("PASS: workflow pattern adoption is wired into live planning and runtime sessions")
     return 0
