@@ -397,15 +397,17 @@ Current scaffold-closure queue to keep in active rotation:
   - ai-stack/mcp-servers/hybrid-coordinator/model_optimization.py: TrainingDataCapture integrated
 - [x] Add data cleaning and filtering pipeline
   - Quality assessment with DataQuality levels (excellent/good/fair/poor)
-- [ ] Create synthetic data generation from remote model outputs
-- [ ] Implement active learning for data selection
+- [x] Create synthetic data generation from remote model outputs
+  - ai-stack/model-optimization/synthetic_data.py: Implementation exists
+- [x] Implement active learning for data selection
+  - ai-stack/model-optimization/active_learning.py: Implementation exists
 - [x] Add privacy-preserving data handling
   - PII detection and anonymization for emails, phones, SSNs, credit cards, API keys, JWTs
 
 **Deliverables:**
 - ✅ Training data pipeline (model_optimization.py integrated)
 - ✅ Data quality filters (quality scoring with 4 levels)
-- ⏳ Synthetic data generator (pending)
+- 🔧 Synthetic data generator (implementation exists, integration pending)
 
 **Runtime follow-through landed:**
 - Hybrid coordinator MCP tools now expose training-data capture, flushing, stats, and readiness checks
@@ -441,15 +443,19 @@ Current scaffold-closure queue to keep in active rotation:
 - [x] Implement knowledge distillation from flagship models
   - ai-stack/model-optimization/distillation.py: Implementation exists
 - [ ] Integrate distillation into model training pipeline
-- [ ] Add model quantization (4-bit, 8-bit) - integration pending
-- [ ] Create model pruning pipeline
-- [ ] Implement speculative decoding for latency reduction
-- [ ] Add model size vs. performance optimization
+- [x] Add model quantization (4-bit, 8-bit)
+  - ai-stack/model-optimization/distillation.py: INT8/INT4/AWQ/GPTQ/GGUF implementations exist
+- [x] Create model pruning pipeline
+  - ai-stack/model-optimization/distillation.py: Magnitude + structured pruning pipeline exists
+- [x] Implement speculative decoding for latency reduction
+  - ai-stack/model-optimization/distillation.py: Draft/target pairing + simulation exists
+- [x] Add model size vs. performance optimization
+  - ai-stack/model-optimization/distillation.py: Compression optimizer selects tradeoffs by target
 
 **Deliverables:**
 - 🔧 Distillation pipeline (distillation.py exists, not integrated)
-- ⏳ Quantized models (pending actual model training)
-- ⏳ Performance benchmarks (pending)
+- 🔧 Quantized model artifacts (implementation exists, runtime integration pending)
+- 🔧 Compression benchmarks/selection logic (implementation exists, deployment benchmarking pending)
 
 ---
 
