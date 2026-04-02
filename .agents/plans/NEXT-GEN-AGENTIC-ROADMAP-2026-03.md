@@ -491,20 +491,26 @@ Current scaffold-closure queue to keep in active rotation:
 - ✅ Cost-benefit analyzer (embedded in routing strategy)
 
 ### Batch 6.2: Free Agent Pool Management
-**Status:** in progress (runtime routing integrated, operator visibility landed)
+**Status:** in progress (runtime routing integrated, operator visibility landed; repo primitives now fully covered)
 **Tasks:**
 - [x] Implement OpenRouter free tier monitoring
   - ai-stack/offloading/agent_pool_manager.py: Implementation exists
 - [x] Integrate pool manager into hybrid coordinator routing
 - [x] Add agent availability tracking
-- [ ] Create agent quality profiling (integration pending)
-- [ ] Implement failover to paid agents when needed
-- [ ] Add agent performance benchmarking
+- [x] Create agent quality profiling
+  - ai-stack/offloading/agent_pool_manager.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Runtime-state bridge exists
+- [x] Implement failover to paid agents when needed
+  - ai-stack/offloading/agent_pool_manager.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Failover selector exists
+- [x] Add agent performance benchmarking
+  - ai-stack/offloading/agent_pool_manager.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Benchmark summaries exist
 
 **Deliverables:**
 - ⏳ Agent pool manager runtime integration (routing and health status live)
-- ⏳ Availability dashboard (pending integration)
-- ⏳ Performance profiles (pending)
+- 🔧 Availability dashboard data surface (implementation exists, broader integration pending)
+- 🔧 Performance profiles (implementation exists, activation pending)
 
 **Runtime follow-through landed:**
 - Hybrid coordinator delegated routing now selects and tracks pool-backed free agents with rate-limit feedback
@@ -539,20 +545,28 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** 50% reduction in token usage without quality degradation
 
 ### Batch 7.1: Prompt Compression & Optimization
-**Status:** in progress (delegated query path integrated, operator metrics landed)
+**Status:** in progress (delegated query path integrated, operator metrics landed; repo primitives now fully covered)
 **Tasks:**
 - [x] Implement LLMLingua for prompt compression
   - ai-stack/efficiency/prompt_compression.py: Implementation exists
 - [x] Integrate compression into query pipeline
-- [ ] Add semantic compression for long contexts
-- [ ] Create prompt template optimization
-- [ ] Implement dynamic prompt generation based on task
-- [ ] Add A/B testing for prompt variants
+- [x] Add semantic compression for long contexts
+  - ai-stack/efficiency/prompt_compression.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Create prompt template optimization
+  - ai-stack/efficiency/prompt_compression.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Runtime-state bridge exists
+- [x] Implement dynamic prompt generation based on task
+  - ai-stack/efficiency/prompt_compression.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Dynamic prompt generator exists
+- [x] Add A/B testing for prompt variants
+  - ai-stack/efficiency/prompt_compression.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Variant outcome tracking exists
 
 **Deliverables:**
 - ⏳ Prompt compression runtime integration (delegated envelope optimization active)
-- ⏳ Template optimizer (pending integration)
-- ⏳ A/B testing framework (pending)
+- 🔧 Template optimizer (implementation exists, deeper integration pending)
+- 🔧 A/B testing framework (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated prompt envelopes are now compressed and bounded before remote dispatch
@@ -613,15 +627,19 @@ Current scaffold-closure queue to keep in active rotation:
 - [x] Implement 5-tier context loading (minimal, brief, standard, detailed, exhaustive)
   - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
 - [x] Integrate tier loading into query pipeline
-- [ ] Add automatic tier selection based on query complexity
-- [ ] Create tier escalation triggers
-- [ ] Implement tier de-escalation for resolved queries
-- [ ] Add tier selection learning from outcomes
+- [x] Add automatic tier selection based on query complexity
+  - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
+- [x] Create tier escalation triggers
+  - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
+- [x] Implement tier de-escalation for resolved queries
+  - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
+- [x] Add tier selection learning from outcomes
+  - ai-stack/progressive-disclosure/multi_tier_loading.py: Implementation exists
 
 **Deliverables:**
 - ⏳ 5-tier loading runtime integration (delegated path active)
-- ⏳ Automatic tier selection (pending integration)
-- ⏳ Learning engine (pending)
+- 🔧 Automatic tier selection (implementation exists, broader activation pending)
+- 🔧 Learning engine (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated runtime now applies progressive multi-tier context loading before remote dispatch
@@ -633,15 +651,19 @@ Current scaffold-closure queue to keep in active rotation:
 - [x] Implement just-in-time context loading
   - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
 - [x] Integrate lazy loading into query pipeline
-- [ ] Add incremental context expansion
-- [ ] Create context dependency graph
-- [ ] Implement parallel context fetching
-- [ ] Add context prefetching based on predictions
+- [x] Add incremental context expansion
+  - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
+- [x] Create context dependency graph
+  - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
+- [x] Implement parallel context fetching
+  - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
+- [x] Add context prefetching based on predictions
+  - ai-stack/progressive-disclosure/lazy_context.py: Implementation exists
 
 **Deliverables:**
 - ⏳ Lazy loading runtime integration (delegated path active)
-- ⏳ Dependency graph (pending integration)
-- ⏳ Prefetch system (pending)
+- 🔧 Dependency graph (implementation exists, broader activation pending)
+- 🔧 Prefetch system (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Context is now attached lazily during delegated query preparation instead of fully materializing up front
@@ -653,15 +675,19 @@ Current scaffold-closure queue to keep in active rotation:
 - [x] Implement ML-based relevance prediction
   - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
 - [x] Integrate relevance prediction into query pipeline
-- [ ] Add query-context similarity scoring
-- [ ] Create relevance feedback loop
-- [ ] Implement negative context filtering
-- [ ] Add relevance model continuous training
+- [x] Add query-context similarity scoring
+  - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
+- [x] Create relevance feedback loop
+  - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
+- [x] Implement negative context filtering
+  - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
+- [x] Add relevance model continuous training
+  - ai-stack/progressive-disclosure/relevance_prediction.py: Implementation exists
 
 **Deliverables:**
 - ⏳ Relevance predictor runtime integration (delegated path active)
-- ⏳ Feedback loop (pending integration)
-- ⏳ Training pipeline (pending)
+- 🔧 Feedback loop (implementation exists, broader activation pending)
+- 🔧 Training pipeline (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated context selection now filters attachments through relevance prediction before remote execution
@@ -676,20 +702,28 @@ Current scaffold-closure queue to keep in active rotation:
 **Gate:** 80% of gaps automatically resolved within 24 hours
 
 ### Batch 9.1: Gap Detection Automation
-**Status:** in progress (runtime integrated, operator telemetry landed)
+**Status:** in progress (runtime integrated, operator telemetry landed; repo primitives now fully covered)
 **Tasks:**
 - [x] Implement continuous capability scanning
   - ai-stack/capability-gap/gap_detection.py: Implementation exists
 - [x] Integrate gap detection into coordinator
-- [ ] Add failure pattern analysis
-- [ ] Create gap classification (tool, knowledge, skill, pattern)
-- [ ] Implement gap priority scoring
-- [ ] Add gap detection from user feedback
+- [x] Add failure pattern analysis
+  - ai-stack/capability-gap/gap_detection.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Create gap classification (tool, knowledge, skill, pattern)
+  - ai-stack/capability-gap/gap_detection.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Coordinator bridge exists
+- [x] Implement gap priority scoring
+  - ai-stack/capability-gap/gap_detection.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Priority scoring exists
+- [x] Add gap detection from user feedback
+  - ai-stack/capability-gap/gap_detection.py: Implementation exists
+  - ai-stack/mcp-servers/hybrid-coordinator/advanced_features.py: Feedback-aware detection exists
 
 **Deliverables:**
 - ⏳ Gap scanner runtime integration (delegated recovery path active)
-- ⏳ Classification engine (pending integration)
-- ⏳ Priority scorer (pending)
+- 🔧 Classification engine (implementation exists, broader activation pending)
+- 🔧 Priority scorer (implementation exists, broader activation pending)
 
 **Runtime follow-through landed:**
 - Delegated failures and weak outcomes now emit capability-gap detections directly from the hybrid coordinator
