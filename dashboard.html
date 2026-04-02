@@ -2247,6 +2247,22 @@
                                 <div class="metric-label">Meta Adaptations</div>
                                 <div class="metric-value" id="hybridMetaAdaptations">--</div>
                             </div>
+                            <div class="metric">
+                                <div class="metric-label">Quality Profiles</div>
+                                <div class="metric-value" id="hybridQualityProfiles">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Context Tier Decisions</div>
+                                <div class="metric-value" id="hybridContextTiers">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Remediation Artifacts</div>
+                                <div class="metric-value" id="hybridRemediationArtifacts">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Learning Signals</div>
+                                <div class="metric-value" id="hybridLearningSignals">--</div>
+                            </div>
                         </div>
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Decision Trail</div>
@@ -2267,6 +2283,10 @@
                         <div style="margin-top: 1rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Phase 8-10 Adaptive Runtime</div>
                             <div id="hybridAdaptiveSummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em;">Advanced Control Plane</div>
+                            <div id="hybridAdvancedSummary" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</div>
                         </div>
                     </div>
                 </div>
@@ -4718,6 +4738,7 @@
                     'aiInternals',
                     'aiSpecificMetrics',
                     'modelOptimizationReadiness',
+                    'advancedRuntimeSummary',
                     'prsiActions',
                     'services',
                     'containers',
@@ -4735,6 +4756,7 @@
                     fetchAIInternals(),
                     fetchAISpecificMetrics(),
                     fetchModelOptimizationReadiness(),
+                    fetchAdvancedRuntimeSummary(),
                     fetchPRSIActions(),
                     fetchServices(),
                     fetchContainers(),
@@ -4766,6 +4788,7 @@
                 const aiInternals = payloads.aiInternals;
                 const aiSpecificMetrics = payloads.aiSpecificMetrics;
                 const modelOptimizationReadiness = payloads.modelOptimizationReadiness;
+                const advancedRuntimeSummary = payloads.advancedRuntimeSummary;
                 const prsiActions = payloads.prsiActions;
                 const services = payloads.services;
                 const containers = payloads.containers;
@@ -4787,7 +4810,7 @@
                 const feedback = buildFeedbackData(aiMetrics, learningStats);
                 const config = buildConfigData(actions);
                 const proof = buildProofData(aiMetrics, services, learningStats);
-                const hybrid = buildHybridData(aiMetrics, learningStats, aiInternals, aiSpecificMetrics, modelOptimizationReadiness);
+                const hybrid = buildHybridData(aiMetrics, learningStats, aiInternals, aiSpecificMetrics, modelOptimizationReadiness, advancedRuntimeSummary);
                 const learning = normalizeLearningData(learningStats);
                 const tokenSavings = {
                     routing: { local_percent: Number(aiInternals?.llm_routing_local_pct ?? aiMetrics?.effectiveness?.local_query_percentage ?? 0) },
@@ -4958,6 +4981,16 @@
         async function fetchLearningStats() {
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/stats/learning`, { cache: 'no-store' });
+                if (!response.ok) return {};
+                return await response.json();
+            } catch (_) {
+                return {};
+            }
+        }
+
+        async function fetchAdvancedRuntimeSummary() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/advanced/runtime-summary`, { cache: 'no-store' });
                 if (!response.ok) return {};
                 return await response.json();
             } catch (_) {
@@ -5191,7 +5224,7 @@
             };
         }
 
-        function buildHybridData(aiMetrics, learningStats, aiInternals, aiSpecificMetrics, modelOptimizationReadiness) {
+        function buildHybridData(aiMetrics, learningStats, aiInternals, aiSpecificMetrics, modelOptimizationReadiness, advancedRuntimeSummary) {
             const discovery = aiMetrics?.hybrid_discovery || {};
             const lifetime = discovery?.lifetime || {};
             const recent = discovery?.recent || {};
@@ -5203,6 +5236,11 @@
             const delegatedPromptOptimization = aiSpecificMetrics?.delegated_prompt_optimization || {};
             const delegatedQuality = aiSpecificMetrics?.delegated_quality || {};
             const modelOptimization = modelOptimizationReadiness?.readiness || {};
+            const advancedSummary = advancedRuntimeSummary?.summary || {};
+            const advancedOffloading = advancedSummary?.offloading || {};
+            const advancedContext = advancedSummary?.context_efficiency || {};
+            const advancedCapabilityGap = advancedSummary?.capability_gap || {};
+            const advancedLearning = advancedSummary?.learning || {};
             const invoked = Number(lifetime?.invoked ?? 0);
             const totalDecisions = Number(lifetime?.total_decisions ?? 0);
             const cacheHitPct = hasNumeric(lifetime?.cache_hit_rate_pct)
@@ -5263,6 +5301,18 @@
                     capability_gap_detections_total: Number(aiSpecificMetrics?.learning_and_adaptation?.capability_gap_detections_total ?? 0),
                     real_time_learning_events_total: Number(aiSpecificMetrics?.learning_and_adaptation?.real_time_learning_events_total ?? 0),
                     meta_learning_adaptations_total: Number(aiSpecificMetrics?.learning_and_adaptation?.meta_learning_adaptations_total ?? 0)
+                },
+                advanced_runtime: {
+                    quality_profiles: Number(advancedOffloading?.quality_profiles ?? 0),
+                    quality_assessments: Number(advancedOffloading?.quality_assessments ?? 0),
+                    local_fallback_mode: advancedOffloading?.local_fallback_mode || '--',
+                    context_tier_decisions: Number(advancedContext?.tier_selections ?? 0),
+                    ab_variants: Number(advancedContext?.ab_variants ?? 0),
+                    context_reuse_ready: Boolean(advancedContext?.context_reuse_ready),
+                    remediation_artifacts_recorded: Boolean(advancedCapabilityGap?.remediation_artifacts_recorded),
+                    failure_patterns: Number(advancedCapabilityGap?.failure_patterns ?? 0),
+                    learning_signals_recorded: Number(advancedLearning?.signals_recorded ?? 0),
+                    learning_recommendations: Number(advancedLearning?.recommendation_count ?? 0)
                 }
             };
         }
@@ -6523,6 +6573,14 @@
             document.getElementById('hybridMetaAdaptations').textContent = displayCount(Number(adaptiveRuntime.meta_learning_adaptations_total ?? 0), '0');
             document.getElementById('hybridAdaptiveSummary').textContent =
                 `loads=${displayCount(Number(adaptiveRuntime.progressive_context_loads_total ?? 0), '0')} | gaps=${displayCount(Number(adaptiveRuntime.capability_gap_detections_total ?? 0), '0')} | learn=${displayCount(Number(adaptiveRuntime.real_time_learning_events_total ?? 0), '0')} | meta=${displayCount(Number(adaptiveRuntime.meta_learning_adaptations_total ?? 0), '0')}`;
+
+            const advancedRuntime = hybrid.advanced_runtime || {};
+            document.getElementById('hybridQualityProfiles').textContent = displayCount(Number(advancedRuntime.quality_profiles ?? 0), '0');
+            document.getElementById('hybridContextTiers').textContent = displayCount(Number(advancedRuntime.context_tier_decisions ?? 0), '0');
+            document.getElementById('hybridRemediationArtifacts').textContent = advancedRuntime.remediation_artifacts_recorded ? 'recorded' : 'pending';
+            document.getElementById('hybridLearningSignals').textContent = displayCount(Number(advancedRuntime.learning_signals_recorded ?? 0), '0');
+            document.getElementById('hybridAdvancedSummary').textContent =
+                `profiles=${displayCount(Number(advancedRuntime.quality_profiles ?? 0), '0')} | tiers=${displayCount(Number(advancedRuntime.context_tier_decisions ?? 0), '0')} | patterns=${displayCount(Number(advancedRuntime.failure_patterns ?? 0), '0')} | recs=${displayCount(Number(advancedRuntime.learning_recommendations ?? 0), '0')} | fallback=${advancedRuntime.local_fallback_mode || '--'}`;
         }
 
         function updateLearningMetrics(data) {
