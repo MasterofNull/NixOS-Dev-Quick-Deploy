@@ -2938,3 +2938,89 @@ async def get_model_performance(model_id: Optional[str] = None) -> Dict[str, Any
     except Exception as e:
         logger.error(f"Failed to fetch model performance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _advanced_phase_readiness_status(readiness: Dict[str, Any], key: str) -> str:
+    phase = readiness.get(key)
+    if isinstance(phase, dict):
+        return str(phase.get("status") or "unknown")
+    return "unknown"
+
+
+@router.get("/advanced/runtime-summary")
+async def get_advanced_runtime_summary() -> Dict[str, Any]:
+    """Aggregate advanced Phase 6-10 control-plane state for dashboard visibility."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = _hybrid_auth_headers()
+
+            async def fetch_json(path: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
+                url = f"{SERVICES['hybrid']}{path}"
+                async with session.get(url, headers=headers, timeout=REQUEST_TIMEOUT) as resp:
+                    resp.raise_for_status()
+                    payload = await resp.json()
+                    return payload if isinstance(payload, dict) else dict(fallback)
+
+            readiness_payload, quality_profiles, context_tier_stats, capability_gap_stats, learning_stats = await asyncio.gather(
+                fetch_json("/control/ai-coordinator/advanced-features/readiness", {"readiness": {}}),
+                fetch_json("/control/ai-coordinator/advanced-features/offloading/quality-profiles", {"profiles": []}),
+                fetch_json("/control/ai-coordinator/advanced-features/context/tier-stats", {}),
+                fetch_json("/control/ai-coordinator/advanced-features/capability-gap/stats", {}),
+                fetch_json("/control/ai-coordinator/advanced-features/learning/stats", {}),
+            )
+    except aiohttp.ClientError as e:
+        logger.error("Failed to fetch advanced runtime summary: %s", e)
+        raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
+    except Exception as e:
+        logger.error("Failed to fetch advanced runtime summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    readiness = readiness_payload.get("readiness") if isinstance(readiness_payload, dict) else {}
+    readiness = readiness if isinstance(readiness, dict) else {}
+    profiles = quality_profiles.get("profiles") if isinstance(quality_profiles, dict) else []
+    profiles = profiles if isinstance(profiles, list) else []
+    failure_patterns = capability_gap_stats.get("failure_patterns") if isinstance(capability_gap_stats, dict) else {}
+    failure_pattern_count = (
+        len(failure_patterns)
+        if isinstance(failure_patterns, dict)
+        else int(capability_gap_stats.get("failure_pattern_count", 0) or 0)
+    )
+
+    return {
+        "summary": {
+            "offloading": {
+                "status": _advanced_phase_readiness_status(readiness, "phase_6_offloading"),
+                "quality_profiles": len(profiles),
+                "benchmarked_profiles": int((readiness.get("phase_6_offloading") or {}).get("benchmarked_profiles", 0) or 0),
+                "quality_assessments": int((readiness.get("phase_6_offloading") or {}).get("quality_assessments", 0) or 0),
+                "local_fallback_mode": (readiness.get("phase_6_offloading") or {}).get("local_fallback_mode"),
+            },
+            "context_efficiency": {
+                "status": _advanced_phase_readiness_status(readiness, "phase_7_efficiency"),
+                "ab_variants": int((readiness.get("phase_7_efficiency") or {}).get("ab_variants", 0) or 0),
+                "compressions": int((readiness.get("phase_7_efficiency") or {}).get("compressions", 0) or 0),
+                "tokens_saved": int((readiness.get("phase_7_efficiency") or {}).get("tokens_saved", 0) or 0),
+                "tier_selections": int((context_tier_stats or {}).get("total_selections", 0) or 0),
+                "context_reuse_ready": bool((readiness.get("phase_7_efficiency") or {}).get("context_reuse_ready")),
+            },
+            "capability_gap": {
+                "status": _advanced_phase_readiness_status(readiness, "phase_9_capability_gap"),
+                "gaps_detected": int((capability_gap_stats or {}).get("total_gaps", 0) or 0),
+                "failure_patterns": failure_pattern_count,
+                "remediation_artifacts_recorded": bool((readiness.get("phase_9_capability_gap") or {}).get("remediation_artifacts_recorded")),
+            },
+            "learning": {
+                "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
+                "signals_recorded": int((learning_stats or {}).get("total_signals", 0) or 0),
+                "recommendation_count": int((learning_stats or {}).get("recommendation_count", 0) or 0),
+                "high_confidence_recommendations": int((learning_stats or {}).get("high_confidence_recommendations", 0) or 0),
+            },
+        },
+        "readiness": readiness,
+        "raw": {
+            "quality_profiles": quality_profiles,
+            "context_tier_stats": context_tier_stats,
+            "capability_gap_stats": capability_gap_stats,
+            "learning_stats": learning_stats,
+        },
+    }
