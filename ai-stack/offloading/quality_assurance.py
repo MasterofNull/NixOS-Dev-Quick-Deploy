@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -28,6 +29,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
+
+QUALITY_ASSURANCE_STATE = Path(
+    os.getenv("QUALITY_ASSURANCE_STATE", "/var/lib/ai-stack/hybrid/quality-assurance")
+)
 
 
 class QualityDimension(Enum):
@@ -471,6 +476,95 @@ class QualityTrendTracker:
             "max_quality": max(scores),
             "trend": "improving" if scores[-1] > scores[0] else "declining" if scores[-1] < scores[0] else "stable",
         }
+
+
+class LocalFallbackManager:
+    """Recommend fallback to local models after remote failures."""
+
+    def __init__(self, state_dir: Optional[Path] = None):
+        self.state_dir = state_dir or QUALITY_ASSURANCE_STATE
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.state_file = self.state_dir / "local_fallback.json"
+        self.failure_history: deque = deque(maxlen=500)
+        self._load()
+        logger.info("Local Fallback Manager initialized: %s", self.state_dir)
+
+    def _load(self) -> None:
+        if not self.state_file.exists():
+            return
+        try:
+            with open(self.state_file, encoding="utf-8") as f:
+                data = json.load(f)
+            for record in data.get("failure_history", []):
+                self.failure_history.append(record)
+        except Exception as exc:
+            logger.warning("Failed to load local fallback state: %s", exc)
+
+    def _save(self) -> None:
+        payload = {"failure_history": list(self.failure_history)}
+        with open(self.state_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+    def record_remote_failure(
+        self,
+        query: str,
+        agent_id: str,
+        reason: str,
+        quality_score: Optional[float] = None,
+    ) -> None:
+        self.failure_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "query": query[:500],
+                "agent_id": agent_id,
+                "reason": reason,
+                "quality_score": quality_score,
+            }
+        )
+        self._save()
+
+    def recommend_fallback(
+        self,
+        query: str,
+        failed_agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Decide whether the request should fall back to local models."""
+        query_terms = set(query.lower().split())
+        related_failures = []
+        for record in self.failure_history:
+            record_terms = set(str(record.get("query", "")).lower().split())
+            similarity = (
+                len(query_terms & record_terms) / len(query_terms | record_terms)
+                if query_terms or record_terms
+                else 0.0
+            )
+            if similarity >= 0.3 or (
+                failed_agent_id is not None and record.get("agent_id") == failed_agent_id
+            ):
+                related_failures.append((similarity, record))
+
+        failure_count = len(related_failures)
+        should_fallback = failure_count >= 2 or any(
+            "timeout" in str(record.get("reason", "")).lower()
+            or "rate" in str(record.get("reason", "")).lower()
+            or "unavailable" in str(record.get("reason", "")).lower()
+            for _, record in related_failures
+        )
+
+        if any(word in query.lower() for word in ("quick", "local", "offline", "bounded")):
+            should_fallback = True
+
+        recommendation = {
+            "fallback_to_local": should_fallback,
+            "recommended_profile": "local-first" if should_fallback else "remote-retry",
+            "failure_count": failure_count,
+            "reason": (
+                "similar remote failures indicate local fallback is safer"
+                if should_fallback
+                else "insufficient failure evidence for local fallback"
+            ),
+        }
+        return recommendation
 
 
 async def main():
