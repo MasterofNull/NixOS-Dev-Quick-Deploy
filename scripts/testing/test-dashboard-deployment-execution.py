@@ -79,8 +79,13 @@ class FakeAutoDeployer:
             started_at=now,
             completed_at=now,
             strategy=self.config.strategy,
-            metrics={"dry_run": 1.0 if self.dry_run else 0.0},
-            logs=["fake validation", "fake deployment", "fake verification"],
+            metrics={"dry_run": 1.0 if self.dry_run else 0.0, "rollout_percentage": 100.0},
+            logs=[
+                "fake validation",
+                "[stage] prepare_green (0% rollout)",
+                "[stage] switch_traffic (100% rollout)",
+                "fake verification",
+            ],
         )
 
 
@@ -165,6 +170,14 @@ def main() -> int:
             assert_true(
                 dry_run_detail.get("runtime_summary", {}).get("verification_passed") is True,
                 "dry-run runtime deployment detail should expose verification outcome",
+            )
+            assert_true(
+                dry_run_detail.get("runtime_summary", {}).get("executed_stage_count") == 2,
+                "dry-run runtime deployment detail should count executed stages from runtime logs",
+            )
+            assert_true(
+                "[stage] switch_traffic (100% rollout)" in (dry_run_detail.get("runtime_summary", {}).get("executed_stage_logs") or []),
+                "dry-run runtime deployment detail should expose executed stage logs",
             )
             assert_true(
                 dry_run_detail.get("rollback", {}).get("available") is True,
