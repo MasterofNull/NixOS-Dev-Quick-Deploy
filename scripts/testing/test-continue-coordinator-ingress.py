@@ -35,6 +35,14 @@ def main() -> int:
         "hybrid coordinator should expose OpenAI-compatible model listing ingress",
     )
     assert_true(
+        "def _is_loopback_hints_request(req: web.Request) -> bool:" in http_server_text,
+        "hybrid coordinator should carve out a loopback-only auth bypass for local hints consumers",
+    )
+    assert_true(
+        'if _is_loopback_hints_request(request):' in http_server_text,
+        "hybrid coordinator auth middleware should allow local /hints requests without the API key",
+    )
+    assert_true(
         "async def _proxy_openai_request_via_coordinator(" in http_server_text,
         "hybrid coordinator should centralize Continue/OpenAI ingress proxying",
     )
