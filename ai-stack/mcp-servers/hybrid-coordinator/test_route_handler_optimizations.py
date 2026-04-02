@@ -448,6 +448,176 @@ class TestCollectionSelectionHelpers:
         assert route_handler._use_classifier_optimized_prompt(optimized, "deep_reasoning_lane") is True
 
 
+class TestRouteHeuristicHelpers:
+    """Test low-cost pure helpers that drive route shaping and gap tracking."""
+
+    def test_gap_tracking_filters_low_signal_and_short_queries(self):
+        with patch.object(route_handler, "_normalize_tokens", return_value=["nixos"]):
+            assert route_handler._should_track_query_gap("nixos", 0.1, 0, 0.4) is False
+
+        with patch.object(route_handler, "_normalize_tokens", return_value=["switchboard", "timeout"]):
+            assert route_handler._should_track_query_gap("switchboard timeout", 0.1, 1, 0.4) is False
+            assert route_handler._should_track_query_gap("switchboard timeout", 0.1, 0, 0.4) is True
+            assert route_handler._should_track_query_gap("switchboard timeout", 0.9, 0, 0.4) is False
+
+    def test_synthetic_gap_and_context_skip_detection(self):
+        with patch.object(route_handler, "_normalize_tokens", return_value=[]):
+            assert route_handler._is_synthetic_gap_query("") is True
+        with patch.object(route_handler, "_normalize_tokens", return_value=["analysis", "only", "task", "deploy"]):
+            assert route_handler._is_synthetic_gap_query("analysis only task deploy") is True
+        with patch.object(route_handler, "_normalize_tokens", return_value=["switchboard", "timeout"]):
+            assert route_handler._is_synthetic_gap_query("switchboard timeout") is False
+
+        assert route_handler._context_requests_gap_skip({"skip_gap_tracking": True}) is True
+        assert route_handler._context_requests_gap_skip({"source": "aq-qa"}) is True
+        assert route_handler._context_requests_gap_skip({"intent": "manual_probe"}) is True
+        assert route_handler._context_requests_gap_skip({"source": "interactive"}) is False
+
+    def test_runtime_context_blocks_include_hints_discovery_and_memory(self):
+        blocks = route_handler._runtime_context_blocks(
+            {
+                "tool_hints": ["Use aq-hints", "", "Inspect switchboard"],
+                "tool_discovery": {"summary": "3 matching skills", "capability_count": 3},
+                "memory_recall": ["Prior deploy failed on switchboard", "Retry path worked"],
+            }
+        )
+
+        assert len(blocks) == 3
+        assert "Workflow hints:" in blocks[0]
+        assert "Capability summary (3): 3 matching skills" == blocks[1]
+        assert "Relevant prior memory:" in blocks[2]
+
+    def test_continuation_and_capability_discovery_detection(self):
+        assert route_handler._looks_like_continuation_query("continue from the last deploy fix") is True
+        assert route_handler._looks_like_continuation_query(
+            "show previous patch context",
+            {"memory_recall": ["prior attempt"]},
+        ) is True
+        assert route_handler._looks_like_continuation_query("fresh deployment issue") is False
+
+        assert route_handler._query_wants_capability_discovery("which tool should I use for this workflow?") is True
+        assert route_handler._query_wants_capability_discovery(
+            "plain retrieval query",
+            {"tool_discovery": {"summary": "already present"}},
+        ) is True
+        assert route_handler._query_wants_capability_discovery("show me the latest switchboard error") is False
+
+    def test_select_route_collections_history_and_detailed_profiles(self):
+        original_collections = dict(route_handler._COLLECTIONS)
+        original_classifier = route_handler.task_classifier.classify
+        route_handler._COLLECTIONS = {
+            "codebase-context": {},
+            "error-solutions": {},
+            "best-practices": {},
+            "skills-patterns": {},
+            "interaction-history": {},
+            "agent-memory-sessions": {},
+        }
+        try:
+            route_handler.task_classifier.classify = MagicMock(
+                return_value=SimpleNamespace(
+                    token_estimate=60,
+                    task_type="lookup",
+                    local_suitable=True,
+                    remote_required=False,
+                    reason="within_local_capacity",
+                )
+            )
+            with patch.object(
+                route_handler,
+                "_normalize_tokens",
+                return_value=["show", "previous", "history", "from", "prior", "interaction"],
+            ):
+                history = route_handler._select_route_collections(
+                    "show previous history from the prior interaction",
+                    route="hybrid",
+                    context=None,
+                    generate_response=False,
+                )
+
+            route_handler.task_classifier.classify = MagicMock(
+                return_value=SimpleNamespace(
+                    token_estimate=180,
+                    task_type="reasoning",
+                    local_suitable=False,
+                    remote_required=True,
+                    reason="long_reasoning_query",
+                )
+            )
+            with patch.object(
+                route_handler,
+                "_normalize_tokens",
+                return_value=[
+                    "compare", "switchboard", "timeout", "coordinator",
+                    "fallback", "behavior", "across", "repo", "now", "deep", "analysis", "please",
+                ],
+            ):
+                detailed = route_handler._select_route_collections(
+                    "compare the switchboard timeout and coordinator fallback behavior across the repo now",
+                    route="tree",
+                    context=None,
+                    generate_response=True,
+                )
+        finally:
+            route_handler._COLLECTIONS = original_collections
+            route_handler.task_classifier.classify = original_classifier
+
+        assert history["profile"] == "history-aware"
+        assert len(history["collections"]) == 2
+        assert detailed["profile"].endswith("-detailed")
+        assert len(detailed["collections"]) == 4
+
+    def test_keyword_pool_and_lane_helpers_cover_default_branches(self):
+        base_pool = route_handler._select_keyword_pool(
+            retrieval_profile={"profile": "detailed", "collections": ["a", "b", "c"]},
+            keyword_limit=5,
+            generate_response=True,
+        )
+        lookup_pool = route_handler._select_keyword_pool(
+            retrieval_profile={"profile": "lookup-focused", "collections": ["a", "b"]},
+            keyword_limit=5,
+            generate_response=False,
+        )
+
+        assert base_pool == 24
+        assert lookup_pool == 12
+        assert route_handler._local_response_budget("unknown") == 220
+        assert route_handler._context_budget_for_task("unknown") == 1200
+        assert route_handler._strong_reasoning_query("compare the two deploy failures") is True
+        assert route_handler._deep_continuation_query("please explain why the service failed") is True
+
+        default_lane = route_handler._select_local_inference_lane(
+            "quick reasoning summary",
+            SimpleNamespace(
+                token_estimate=40,
+                task_type="reasoning",
+                local_suitable=True,
+                remote_required=False,
+                reason="bounded_reasoning",
+            ),
+            compressed_tokens=20,
+            reasoning_client_available=True,
+        )
+        no_reasoning_lane = route_handler._select_local_inference_lane(
+            "compare two fixes",
+            SimpleNamespace(
+                token_estimate=200,
+                task_type="reasoning",
+                local_suitable=True,
+                remote_required=False,
+                reason="bounded_reasoning",
+            ),
+            compressed_tokens=200,
+            reasoning_client_available=False,
+        )
+
+        assert default_lane == ("default", "bounded_reasoning_default_lane")
+        assert no_reasoning_lane == ("default", "default_local_lane")
+        assert route_handler._prompt_context_for_lane_reason("compressed", "classifier", "deep_reasoning_lane") == "compressed"
+        assert route_handler._prompt_instruction_for_lane_reason("deep_reasoning_lane") == "Provide a concise response using the context."
+        assert route_handler._use_classifier_optimized_prompt(None, "deep_reasoning_lane") is False
+
+
 async def run_async_tests():
     """Run all async tests."""
     tests = [
