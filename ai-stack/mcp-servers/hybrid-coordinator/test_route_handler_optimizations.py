@@ -618,12 +618,98 @@ class TestRouteHeuristicHelpers:
         assert route_handler._use_classifier_optimized_prompt(None, "deep_reasoning_lane") is False
 
 
+class TestGeneratedResponsePaths:
+    """Exercise local synthesis branches for measurable coverage lift."""
+
+    def test_route_search_generates_local_response_with_prompt_cache_metadata(self):
+        asyncio.run(self._run_route_search_generates_local_response_with_prompt_cache_metadata())
+
+    async def _run_route_search_generates_local_response_with_prompt_cache_metadata(self):
+        original_build_local_system_prompt = getattr(Config, "build_local_system_prompt", None)
+        original_remote_tokens = getattr(Config, "AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS", 320)
+        original_timeout = getattr(Config, "LLAMA_CPP_INFERENCE_TIMEOUT", 5.0)
+        original_compression = getattr(Config, "AI_CONTEXT_COMPRESSION_ENABLED", False)
+        original_classification = getattr(Config, "AI_TASK_CLASSIFICATION_ENABLED", False)
+        Config.build_local_system_prompt = staticmethod(lambda: "Local system prompt")
+        Config.AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS = 320
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = 5.0
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = False
+        Config.AI_TASK_CLASSIFICATION_ENABLED = False
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": "Synthesized local answer"}}],
+                    "usage": {"cached_tokens": 7},
+                }
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+
+            async def post(self, path, headers=None, json=None, timeout=None):
+                self.calls.append({
+                    "path": path,
+                    "headers": headers or {},
+                    "json": json or {},
+                    "timeout": timeout,
+                })
+                return FakeResponse()
+
+        fake_client = FakeClient()
+        hybrid_search_fn = AsyncMock(return_value={
+            "keyword_results": [],
+            "semantic_results": [],
+            "combined_results": [{"score": 0.9, "text": "important context"}],
+        })
+
+        with patch.object(route_handler, "_hybrid_search", hybrid_search_fn):
+            with patch.object(route_handler, "_summarize", MagicMock(return_value="fallback summary")):
+                with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                    with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                        with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                            with patch.object(route_handler, "_llama_cpp_client_ref", return_value=fake_client):
+                                with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=None):
+                                    with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                        with patch.object(route_handler, "ROUTE_DECISIONS", MagicMock()):
+                                            with patch.object(route_handler, "ROUTE_ERRORS", MagicMock()):
+                                                with patch.object(route_handler, "LLM_BACKEND_SELECTIONS", MagicMock()):
+                                                    with patch.object(route_handler, "LLM_BACKEND_LATENCY", MagicMock()):
+                                                        with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                            with patch.object(route_handler, "_injection_scanner", MagicMock()) as patched_injection_scanner:
+                                                                patched_injection_scanner.filter_results = MagicMock(return_value=([], 0))
+                                                                result = await route_handler.route_search(
+                                                                    query="summarize the current local routing behavior",
+                                                                    mode="hybrid",
+                                                                    generate_response=True,
+                                                                )
+
+        if original_build_local_system_prompt is not None:
+            Config.build_local_system_prompt = original_build_local_system_prompt
+        Config.AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS = original_remote_tokens
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = original_timeout
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = original_compression
+        Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        assert result["backend"] == "local"
+        assert result["response"] == "Synthesized local answer"
+        assert result["backend_reason_class"] == "default_local"
+        assert result["results"]["prompt_cache"]["cached_tokens"] == 7
+        assert fake_client.calls[0]["path"] == "/chat/completions"
+        assert fake_client.calls[0]["json"]["messages"][0]["content"] == "Local system prompt"
+        assert fake_client.calls[0]["json"]["temperature"] == 0.2
+
+
 async def run_async_tests():
     """Run all async tests."""
     tests = [
         TestParallelization().test_parallel_expansion_and_discovery(),
         TestTimeoutGuards().test_search_timeout(),
         TestSkipBackendSelection().test_backend_selection_skipped_on_retrieval_only(),
+        TestGeneratedResponsePaths().test_route_search_generates_local_response_with_prompt_cache_metadata(),
     ]
     results = await asyncio.gather(*tests, return_exceptions=True)
     return results

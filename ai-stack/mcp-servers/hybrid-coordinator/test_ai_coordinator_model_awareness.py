@@ -14,6 +14,10 @@ sys.modules["config"].Config = MagicMock(
 
 import ai_coordinator
 from ai_coordinator import (
+    build_messages,
+    build_reasoning_finalization_messages,
+    build_tool_call_finalization_messages,
+    coerce_orchestration_context,
     default_runtime_id_for_profile,
     detect_query_complexity,
     extract_task_from_openai_messages,
@@ -254,3 +258,69 @@ def test_get_routing_stats_rolls_up_recent_decisions():
     assert stats["total_decisions"] == 2
     assert stats["complexity_breakdown"]["simple"] >= 1
     assert stats["profile_breakdown"]["default"] >= 1
+
+
+def test_infer_profile_covers_requested_profile_and_task_fallbacks():
+    assert ai_coordinator.infer_profile("ignored", requested_profile="continue-local") == "default"
+    assert ai_coordinator.infer_profile("Need local tool call handling") == "local-tool-calling"
+    assert ai_coordinator.infer_profile("Please call tools for this workflow") == "remote-tool-calling"
+    assert ai_coordinator.infer_profile("Review the architecture tradeoff") == "remote-reasoning"
+    assert ai_coordinator.infer_profile("Implement and debug the patch") == "remote-coding"
+    assert ai_coordinator.infer_profile("Collect bounded research findings") == "remote-free"
+
+
+def test_coerce_orchestration_context_normalizes_invalid_roles():
+    normalized = coerce_orchestration_context({"requested_by": "continue", "role": "reviewer"})
+
+    assert normalized["requesting_agent"] == "continue"
+    assert normalized["requested_by"] == "continue"
+    assert normalized["requester_role"] == "orchestrator"
+    assert normalized["top_level_orchestrator"] is True
+    assert normalized["delegate_via_coordinator_only"] is True
+
+
+def test_build_messages_includes_contract_context_blocks():
+    messages = build_messages(
+        task="Deploy the ai-switchboard fix and verify rollback",
+        context={
+            "repo_paths": ["nix/modules/services/switchboard.nix"],
+            "constraints": ["do not restart unrelated services"],
+            "evidence_requirements": ["include systemctl status"],
+            "anti_goals": ["no speculative refactors"],
+            "extra_context": "The service failed with CHDIR before.",
+        },
+        profile="remote-coding",
+    )
+
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert "implementation sub-agent" in messages[0]["content"]
+    body = messages[1]["content"]
+    assert "Allowed repo paths:" in body
+    assert "- nix/modules/services/switchboard.nix" in body
+    assert "Evidence requirements:" in body
+    assert "Additional context:" in body
+
+
+def test_build_tool_call_finalization_messages_handles_missing_and_present_calls():
+    empty = build_tool_call_finalization_messages("Inspect tools", tool_calls=None)
+    present = build_tool_call_finalization_messages(
+        "Inspect tools",
+        tool_calls=[{"name": "rg", "arguments": "{\"pattern\":\"TODO\"}"}, {"name": "jq"}],
+    )
+
+    assert "tool-call-only reply" in empty[0]["content"]
+    assert "- no tool call details available" in empty[1]["content"]
+    assert "- rg: {\"pattern\":\"TODO\"}" in present[1]["content"]
+    assert "- jq" in present[1]["content"]
+
+
+def test_build_reasoning_finalization_messages_truncates_excerpt_and_preserves_constraints():
+    long_excerpt = "step " * 500
+    messages = build_reasoning_finalization_messages("Review coordinator lane selection", long_excerpt)
+
+    assert len(messages) == 2
+    assert "reasoning-only reply" in messages[0]["content"]
+    assert "Recovered reasoning draft:" in messages[1]["content"]
+    assert "do not mention hidden reasoning" in messages[1]["content"]
+    assert len(messages[1]["content"]) < 1600
