@@ -333,6 +333,9 @@ Current scaffold-closure queue to keep in active rotation:
 - SDK surfaces for A2A task operations
 - Dashboard readiness/maturity reporting for the A2A surface
 - Mandatory TCK-aligned protocol repair work
+- Centralized orchestration session lifecycle, checkpointing, and task timeline primitives
+- Declarative delegation API with capability-aware selection, queueing, and feedback scoring
+- Per-agent workspace isolation primitives for copy/worktree execution and conflict detection
 - Role-aware candidate scoring now blends per-lane history, same-role history, whole-agent totals, and recent runtime quality when forming workflow teams
 - Workflow orchestration policies now support explicit bounded collaborator lanes so selected blueprints can activate parallel research/reasoning helpers without inventing ad hoc team shapes
 - Dashboard orchestration inspection now surfaces formation mode, required/optional/deferred slot metadata, and deferred collaborator members from live workflow sessions
