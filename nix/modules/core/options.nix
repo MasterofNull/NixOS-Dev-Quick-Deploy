@@ -1,5 +1,4 @@
-{ lib, ... }:
-{
+{lib, ...}: {
   options.mySystem = {
     hostName = lib.mkOption {
       type = lib.types.str;
@@ -15,8 +14,8 @@
 
     sshAuthorizedKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "ssh-ed25519 AAAA... user@hostname" ];
+      default = [];
+      example = ["ssh-ed25519 AAAA... user@hostname"];
       description = ''
         SSH public keys authorized for the primary user.
         Set in nix/hosts/<host>/default.nix so each machine declares its own
@@ -31,13 +30,13 @@
     };
 
     profile = lib.mkOption {
-      type = lib.types.enum [ "ai-dev" "gaming" "minimal" ];
+      type = lib.types.enum ["ai-dev" "gaming" "minimal"];
       default = "minimal";
       description = "Declarative system profile selector.";
     };
 
     hardwareTier = lib.mkOption {
-      type = lib.types.enum [ "nano" "micro" "small" "medium" "large" ];
+      type = lib.types.enum ["nano" "micro" "small" "medium" "large"];
       readOnly = true;
       description = ''
         Derived hardware capability tier used by validation and policy gates.
@@ -52,7 +51,7 @@
     };
 
     nixpkgsTrack = lib.mkOption {
-      type = lib.types.enum [ "stable" "unstable" ];
+      type = lib.types.enum ["stable" "unstable"];
       default = "stable";
       description = ''
         Nixpkgs channel track for this host.
@@ -65,16 +64,16 @@
       gpuVendor = lib.mkOption {
         type = lib.types.enum [
           # ── x86_64 ──────────────────────────────────────────────────────────
-          "amd"           # AMD Radeon (RDNA/GCN) — Mesa radeonsi + LACT
-          "intel"         # Intel HD/Iris/UHD (integrated, Gen 4–13+) — i915/xe
-          "intel-arc"     # Intel Arc A/B-series discrete — xe driver
-          "nvidia"        # NVIDIA GeForce/Quadro — proprietary driver
+          "amd" # AMD Radeon (RDNA/GCN) — Mesa radeonsi + LACT
+          "intel" # Intel HD/Iris/UHD (integrated, Gen 4–13+) — i915/xe
+          "intel-arc" # Intel Arc A/B-series discrete — xe driver
+          "nvidia" # NVIDIA GeForce/Quadro — proprietary driver
           # ── ARM / SoC ───────────────────────────────────────────────────────
-          "adreno"        # Qualcomm Adreno — Mesa freedreno + Turnip Vulkan
-          "mali"          # ARM Mali (Bifrost/Valhall) — Panfrost/Lima open-source
-          "apple"         # Apple AGX (M-series) — Asahi Mesa honeykrisp/agx
+          "adreno" # Qualcomm Adreno — Mesa freedreno + Turnip Vulkan
+          "mali" # ARM Mali (Bifrost/Valhall) — Panfrost/Lima open-source
+          "apple" # Apple AGX (M-series) — Asahi Mesa honeykrisp/agx
           # ── Catch-all ───────────────────────────────────────────────────────
-          "none"          # No discrete GPU / headless
+          "none" # No discrete GPU / headless
         ];
         default = "none";
         description = ''
@@ -87,10 +86,10 @@
 
       igpuVendor = lib.mkOption {
         type = lib.types.enum [
-          "amd"     # AMD APU integrated GPU (e.g. Ryzen iGPU alongside Radeon dGPU)
-          "intel"   # Intel iGPU alongside a discrete dGPU (Optimus, MUX)
-          "apple"   # Apple AGX when used as iGPU on M-series with external GPU
-          "none"    # No secondary iGPU (single-GPU or CPU-only)
+          "amd" # AMD APU integrated GPU (e.g. Ryzen iGPU alongside Radeon dGPU)
+          "intel" # Intel iGPU alongside a discrete dGPU (Optimus, MUX)
+          "apple" # Apple AGX when used as iGPU on M-series with external GPU
+          "none" # No secondary iGPU (single-GPU or CPU-only)
         ];
         default = "none";
         description = ''
@@ -103,16 +102,16 @@
       cpuVendor = lib.mkOption {
         type = lib.types.enum [
           # ── x86_64 ──────────────────────────────────────────────────────────
-          "amd"        # AMD Ryzen/EPYC — AMD P-state, k10temp, schedutil
-          "intel"      # Intel Core/Xeon — Intel P-state/EPP, thermald, powersave
+          "amd" # AMD Ryzen/EPYC — AMD P-state, k10temp, schedutil
+          "intel" # Intel Core/Xeon — Intel P-state/EPP, thermald, powersave
           # ── AArch64 (ARM64) ─────────────────────────────────────────────────
-          "arm"        # Generic ARM Cortex-A (Raspberry Pi, AllWinner, etc.)
-          "qualcomm"   # Qualcomm Snapdragon — cpuidle, Adreno GPU, ACPI tables
-          "apple"      # Apple M-series — Asahi Linux kernel, efficiency/perf cores
+          "arm" # Generic ARM Cortex-A (Raspberry Pi, AllWinner, etc.)
+          "qualcomm" # Qualcomm Snapdragon — cpuidle, Adreno GPU, ACPI tables
+          "apple" # Apple M-series — Asahi Linux kernel, efficiency/perf cores
           # ── Other architectures ─────────────────────────────────────────────
-          "riscv"      # RISC-V (SiFive, StarFive, AllWinner D1, etc.)
+          "riscv" # RISC-V (SiFive, StarFive, AllWinner D1, etc.)
           # ── Fallback ────────────────────────────────────────────────────────
-          "unknown"    # Undetected — safe no-op; extend discover-system-facts.sh
+          "unknown" # Undetected — safe no-op; extend discover-system-facts.sh
         ];
         default = "unknown";
         description = ''
@@ -123,7 +122,7 @@
       };
 
       storageType = lib.mkOption {
-        type = lib.types.enum [ "nvme" "ssd" "hdd" "sd" ];
+        type = lib.types.enum ["nvme" "ssd" "hdd" "sd"];
         default = "ssd";
         description = "Primary storage device type. Controls I/O scheduler, fstrim, and power tuning.";
       };
@@ -140,14 +139,73 @@
         description = "True for laptops/mobile workstations. Enables power profiles, lid handling, and battery tuning.";
       };
 
+      battery = {
+        chargeThresholds = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Enable battery charge threshold enforcement.
+              When true, charging stops at stopThreshold% to prolong battery lifespan.
+              Set to false to allow charging to 100% (useful before trips).
+            '';
+          };
+
+          startThreshold = lib.mkOption {
+            type = lib.types.ints.between 0 100;
+            default = 20;
+            description = ''
+              Battery percentage at which charging should start.
+              Example: 20 means charging begins when battery drops to 20%.
+              Only enforced when chargeThresholds.enable = true.
+            '';
+          };
+
+          stopThreshold = lib.mkOption {
+            type = lib.types.ints.between 0 100;
+            default = 80;
+            description = ''
+              Battery percentage at which charging should stop.
+              Example: 80 means charging stops at 80% to preserve battery health.
+              Set to 100 to allow full charging when needed.
+              Only enforced when chargeThresholds.enable = true.
+            '';
+          };
+        };
+
+        conservationMode = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Enable conservation mode (typically 50-60% charge limit).
+              When true, overrides startThreshold/stopThreshold with conservation values.
+              Useful for laptops that stay plugged in most of the time.
+            '';
+          };
+
+          startThreshold = lib.mkOption {
+            type = lib.types.ints.between 0 100;
+            default = 50;
+            description = "Start threshold used when conservationMode.enable = true.";
+          };
+
+          stopThreshold = lib.mkOption {
+            type = lib.types.ints.between 0 100;
+            default = 60;
+            description = "Stop threshold used when conservationMode.enable = true.";
+          };
+        };
+      };
+
       firmwareType = lib.mkOption {
-        type = lib.types.enum [ "efi" "bios" "unknown" ];
+        type = lib.types.enum ["efi" "bios" "unknown"];
         default = "unknown";
         description = "Detected firmware boot mode. Used for bootloader defaults.";
       };
 
       earlyKmsPolicy = lib.mkOption {
-        type = lib.types.enum [ "auto" "force" "off" ];
+        type = lib.types.enum ["auto" "force" "off"];
         default = "off";
         description = "Early kernel modesetting: auto = driver default, force = add GPU module to initrd, off = disable.";
       };
@@ -161,7 +219,7 @@
 
     kernel = {
       track = lib.mkOption {
-        type = lib.types.enum [ "latest-stable" "6.19-latest" "6.18-lts" "default" ];
+        type = lib.types.enum ["latest-stable" "6.19-latest" "6.18-lts" "default"];
         default = "latest-stable";
         description = ''
           Kernel package selection policy.
@@ -188,7 +246,7 @@
       };
 
       rootFsckMode = lib.mkOption {
-        type = lib.types.enum [ "check" "skip" ];
+        type = lib.types.enum ["check" "skip"];
         default = "check";
         description = "Root filesystem fsck policy in initrd. Use 'skip' only as temporary recovery mode.";
       };
@@ -385,7 +443,7 @@
         };
 
         responseMode = lib.mkOption {
-          type = lib.types.enum [ "report" "fail" "quarantine" ];
+          type = lib.types.enum ["report" "fail" "quarantine"];
           default = "report";
           description = ''
             Threat response mode when npm high/critical findings are detected:
@@ -637,7 +695,7 @@
             "/var/lib/redis"
             "/srv/patient-data"
           ];
-          example = [ "/srv/patient-data" "/var/lib/aidb" ];
+          example = ["/srv/patient-data" "/var/lib/aidb"];
           description = ''
             Filesystem paths to watch with auditd.
             Each path is tracked with read/write/execute/attribute access and
@@ -682,7 +740,7 @@
         };
 
         protocol = lib.mkOption {
-          type = lib.types.enum [ "tcp" "udp" ];
+          type = lib.types.enum ["tcp" "udp"];
           default = "tcp";
           description = "Transport protocol used for remote syslog forwarding.";
         };
@@ -691,7 +749,7 @@
 
     disk = {
       layout = lib.mkOption {
-        type = lib.types.enum [ "none" "gpt-efi-ext4" "gpt-efi-btrfs" "gpt-luks-ext4" ];
+        type = lib.types.enum ["none" "gpt-efi-ext4" "gpt-efi-btrfs" "gpt-luks-ext4"];
         default = "none";
         description = "Declarative disk layout selector for disko-backed provisioning.";
       };
@@ -710,7 +768,7 @@
 
       btrfsSubvolumes = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ "@root" "@home" "@nix" ];
+        default = ["@root" "@home" "@nix"];
         description = "Btrfs subvolumes to materialize for btrfs layouts.";
       };
     };
@@ -876,7 +934,7 @@
       };
 
       backend = lib.mkOption {
-        type = lib.types.enum [ "llamacpp" ];
+        type = lib.types.enum ["llamacpp"];
         default = "llamacpp";
         description = ''
           Inference backend.
@@ -886,7 +944,7 @@
       };
 
       acceleration = lib.mkOption {
-        type = lib.types.enum [ "auto" "vulkan" "rocm" "cuda" "cpu" ];
+        type = lib.types.enum ["auto" "vulkan" "rocm" "cuda" "cpu"];
         default = "auto";
         description = ''
           GPU acceleration for inference.
@@ -897,7 +955,6 @@
           "cpu" — CPU-only inference.
         '';
       };
-
 
       ui = {
         enable = lib.mkOption {
@@ -935,7 +992,7 @@
       # The native llama.cpp path now uses `mySystem.aiStack.llamaCpp.model`.
       models = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
+        default = [];
         description = "DEPRECATED: legacy Ollama-era model tags. Ignored by the llama.cpp backend.";
       };
 
@@ -966,7 +1023,7 @@
 
         extraArgs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
-          default = [ ];
+          default = [];
           description = "Additional CLI flags passed to llama-server.";
         };
 
@@ -1005,7 +1062,7 @@
         };
 
         inferenceTimeoutSeconds = lib.mkOption {
-          type    = lib.types.ints.positive;
+          type = lib.types.ints.positive;
           default = 300;
           description = ''
             HTTP request timeout (seconds) for llama.cpp chat-completion calls.
@@ -1087,7 +1144,7 @@
         };
 
         pooling = lib.mkOption {
-          type = lib.types.enum [ "none" "mean" "cls" "last" "rank" ];
+          type = lib.types.enum ["none" "mean" "cls" "last" "rank"];
           default = "mean";
           description = ''
             Pooling strategy passed to llama-server --pooling.
@@ -1108,7 +1165,7 @@
 
         extraArgs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
-          default = [ ];
+          default = [];
           description = "Additional CLI flags for the embedding llama-server instance.";
         };
       };
@@ -1162,7 +1219,7 @@
 
         extraArgs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
-          default = [ ];
+          default = [];
           description = "Reserved extra arguments for a future BitNet sidecar command.";
         };
       };
@@ -1186,7 +1243,7 @@
 
       modelAllowlist = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
+        default = [];
         example = [
           "unsloth/Qwen3-4B-Instruct-2507-GGUF"
           "nomic-ai/nomic-embed-text-v1.5-GGUF"
@@ -1228,18 +1285,18 @@
       # ── Switchboard: local/remote LLM routing proxy ─────────────────────────
       switchboard = {
         enable = lib.mkOption {
-          type    = lib.types.bool;
+          type = lib.types.bool;
           default = false;
           description = "Enable AI Switchboard OpenAI-compatible proxy on port 8085 for local/remote LLM routing.";
         };
         port = lib.mkOption {
-          type    = lib.types.port;
+          type = lib.types.port;
           default = 8085;
           description = "TCP port for the AI Switchboard proxy.";
         };
 
         routingMode = lib.mkOption {
-          type = lib.types.enum [ "auto" "local_only" "remote_only" ];
+          type = lib.types.enum ["auto" "local_only" "remote_only"];
           default = "auto";
           description = ''
             Switchboard routing strategy.
@@ -1250,7 +1307,7 @@
         };
 
         defaultProvider = lib.mkOption {
-          type = lib.types.enum [ "local" "remote" ];
+          type = lib.types.enum ["local" "remote"];
           default = "local";
           description = "Default provider used in auto mode when no explicit route hint is present.";
         };
@@ -1431,7 +1488,7 @@
 
         runtime = {
           defaultSafetyMode = lib.mkOption {
-            type = lib.types.enum [ "plan-readonly" "execute-mutating" ];
+            type = lib.types.enum ["plan-readonly" "execute-mutating"];
             default = "plan-readonly";
             description = "Default workflow run safety mode for hybrid coordinator sessions.";
           };
@@ -1453,14 +1510,14 @@
             default = {
               modes = {
                 "plan-readonly" = {
-                  allowed_risk_classes = [ "safe" ];
-                  requires_approval = [ "review-required" ];
-                  blocked = [ "blocked" ];
+                  allowed_risk_classes = ["safe"];
+                  requires_approval = ["review-required"];
+                  blocked = ["blocked"];
                 };
                 "execute-mutating" = {
-                  allowed_risk_classes = [ "safe" ];
-                  requires_approval = [ "review-required" ];
-                  blocked = [ "blocked" ];
+                  allowed_risk_classes = ["safe"];
+                  requires_approval = ["review-required"];
+                  blocked = ["blocked"];
                 };
               };
             };
@@ -1478,13 +1535,13 @@
                 "readonly-strict" = {
                   workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-runs";
                   allow_workspace_write = false;
-                  allowed_processes = [ "rg" "cat" "ls" "jq" "sed" ];
+                  allowed_processes = ["rg" "cat" "ls" "jq" "sed"];
                   network_policy = "none";
                 };
                 "execute-guarded" = {
                   workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-runs";
                   allow_workspace_write = true;
-                  allowed_processes = [ "rg" "cat" "ls" "jq" "sed" "bash" "python3" "node" "git" ];
+                  allowed_processes = ["rg" "cat" "ls" "jq" "sed" "bash" "python3" "node" "git"];
                   network_policy = "loopback";
                 };
               };
@@ -1520,10 +1577,23 @@
                     ];
                   };
                   phases = [
-                    { id = "discover"; tools = [ "hints" "route_search" "tree_search" ]; }
-                    { id = "plan"; tools = [ "workflow_plan" ]; }
-                    { id = "execute"; tools = [ "route_search" "memory_recall" ]; requires_approval = true; }
-                    { id = "validate"; tools = [ "harness_eval" "health" ]; }
+                    {
+                      id = "discover";
+                      tools = ["hints" "route_search" "tree_search"];
+                    }
+                    {
+                      id = "plan";
+                      tools = ["workflow_plan"];
+                    }
+                    {
+                      id = "execute";
+                      tools = ["route_search" "memory_recall"];
+                      requires_approval = true;
+                    }
+                    {
+                      id = "validate";
+                      tools = ["harness_eval" "health"];
+                    }
                   ];
                 }
               ];
@@ -1537,7 +1607,7 @@
               version = "1.0";
               selection = {
                 max_candidates = 5;
-                allowed_statuses = [ "ready" "degraded" ];
+                allowed_statuses = ["ready" "degraded"];
                 require_all_tags = false;
                 freshness_window_seconds = 3600;
                 weights = {
@@ -1636,9 +1706,9 @@
               type = lib.types.attrs;
               default = {
                 version = "1.0";
-                blocked_tools = [ "shell_exec" "shell_execute" "remote_ssh_exec" "raw_system_command" "danger_tool" ];
-                keyword_exempt_tools = [ "route_search" ];
-                blocked_endpoint_patterns = [ "/control/*" "*/reload-model" "*/session/*/mode" ];
+                blocked_tools = ["shell_exec" "shell_execute" "remote_ssh_exec" "raw_system_command" "danger_tool"];
+                keyword_exempt_tools = ["route_search"];
+                blocked_endpoint_patterns = ["/control/*" "*/reload-model" "*/session/*/mode"];
                 blocked_reason_keywords = [
                   "exec"
                   "shell"
@@ -1649,8 +1719,8 @@
                   "overwrite"
                   "network egress"
                 ];
-                strip_manifest_keys = [ "exec" "command" "shell" "script" "sudo" "token" "api_key" ];
-                blocked_parameter_keys = [ "exec" "command" "shell" "script" "sudo" "api_key" "token" ];
+                strip_manifest_keys = ["exec" "command" "shell" "script" "sudo" "token" "api_key"];
+                blocked_parameter_keys = ["exec" "command" "shell" "script" "sudo" "api_key" "token"];
                 max_parameter_string_length = 4096;
               };
               description = "Declarative first-use tool security auditor policy.";
@@ -2046,12 +2116,36 @@
             default = {
               version = "1.0";
               tracks = [
-                { id = "run_trajectory_replay"; weight = 0.2; status = "partial"; }
-                { id = "runtime_control_plane"; weight = 0.2; status = "partial"; }
-                { id = "runtime_safety_envelope"; weight = 0.2; status = "partial"; }
-                { id = "budget_guardrails"; weight = 0.15; status = "partial"; }
-                { id = "cli_workflow_ergonomics"; weight = 0.15; status = "partial"; }
-                { id = "mcp_workflow_blueprints"; weight = 0.1; status = "partial"; }
+                {
+                  id = "run_trajectory_replay";
+                  weight = 0.2;
+                  status = "partial";
+                }
+                {
+                  id = "runtime_control_plane";
+                  weight = 0.2;
+                  status = "partial";
+                }
+                {
+                  id = "runtime_safety_envelope";
+                  weight = 0.2;
+                  status = "partial";
+                }
+                {
+                  id = "budget_guardrails";
+                  weight = 0.15;
+                  status = "partial";
+                }
+                {
+                  id = "cli_workflow_ergonomics";
+                  weight = 0.15;
+                  status = "partial";
+                }
+                {
+                  id = "mcp_workflow_blueprints";
+                  weight = 0.1;
+                  status = "partial";
+                }
               ];
             };
             description = "Declarative parity scorecard data source for runtime/reporting.";
@@ -2178,7 +2272,6 @@
         };
       };
     };
-
 
     # ---------------------------------------------------------------------------
     # Central host-mode port registry.
@@ -2327,7 +2420,7 @@
 
       allowedServiceGids = lib.mkOption {
         type = lib.types.listOf lib.types.int;
-        default = [ 0 35010 35011 35012 ];
+        default = [0 35010 35011 35012];
         description = "Allowed Linux GIDs for loopback access to restricted internal service ports.";
       };
     };
@@ -2399,8 +2492,8 @@
       };
 
       nixosDocsPort = lib.mkOption {
-        type        = lib.types.port;
-        default     = 8096;
+        type = lib.types.port;
+        default = 8096;
         description = "TCP port for the nixos-docs MCP server.";
       };
 
@@ -2460,13 +2553,13 @@
     profileData = {
       flatpakApps = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
+        default = [];
         description = "Profile-scoped Flatpak app identifiers.";
       };
 
       systemPackageNames = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
+        default = [];
         description = "Profile-scoped system package names merged with base packages and deduplicated.";
       };
     };
