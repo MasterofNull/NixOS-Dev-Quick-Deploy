@@ -10,6 +10,31 @@ Updated: 2026-04-03
 
 Your NixOS configuration includes **battery charge threshold management** to prolong battery lifespan by limiting maximum charge to 80% (configurable). This is why your laptop stops charging before reaching 100% even when plugged in.
 
+## COSMIC Desktop Integration
+
+**If you're using the COSMIC desktop environment** (default in this config), battery charge thresholds are managed by **COSMIC Settings → Power** panel:
+
+- **GUI Path:** Settings → Power → Battery Lifespan
+- **Toggle:** "Maximize Battery Lifespan" (caps charging at 80%)
+- **How it works:** COSMIC writes directly to sysfs and manages thresholds automatically
+- **Config location:** `~/.config/cosmic/com.system76.CosmicSettings.Power/` (RON format)
+
+**When COSMIC is active, the NixOS declarative battery service is automatically disabled** to avoid conflicts. You have two options:
+
+### Option A: Use COSMIC GUI (Recommended for COSMIC users)
+1. Open **Settings** from the COSMIC launcher
+2. Navigate to **Power**
+3. Toggle **Battery Lifespan** on/off
+4. Changes apply immediately and persist across reboots
+
+### Option B: Use NixOS Declarative Control
+If you prefer declarative config over COSMIC GUI, you can:
+1. Disable COSMIC's power management (not recommended)
+2. Configure thresholds in your NixOS config (see below)
+3. Rebuild: `sudo nixos-rebuild switch`
+
+**For most COSMIC users, the GUI is the easiest path.**
+
 ## Problem: Battery Won't Charge to 100%
 
 **This is intentional** — your system is configured to stop charging at 80% to reduce battery wear. However, you can now toggle this behavior when you need full capacity (e.g., before traveling).
@@ -69,7 +94,10 @@ sudo ./scripts/utils/battery-toggle.sh conservation
 sudo ./scripts/utils/battery-toggle.sh custom 30 90
 ```
 
-**Important:** Runtime changes persist until reboot or next `nixos-rebuild`, which reapplies your Nix config thresholds.
+**Important:**
+- Runtime changes persist until reboot or next `nixos-rebuild`, which reapplies your NixOS config thresholds
+- **If COSMIC is active**, the NixOS service is disabled, so `nixos-rebuild` won't override your COSMIC GUI settings
+- The script sends a desktop notification on COSMIC/GNOME/KDE when thresholds change
 
 ## Usage Scenarios
 
@@ -158,14 +186,25 @@ The system applies thresholds in this order:
 
 ## Troubleshooting
 
-### "No battery found" error
+### COSMIC GUI: Battery Lifespan toggle doesn't stick
+This is a known COSMIC bug (see pop-os/cosmic-epoch#2800). Workarounds:
+1. Use the runtime script instead: `sudo ./scripts/utils/battery-toggle.sh full`
+2. Check if COSMIC's config is corrupted: `ls -la ~/.config/cosmic/`
+3. Reset COSMIC power settings: Remove `~/.config/cosmic/com.system76.CosmicSettings.Power/` and restart COSMIC settings
+
+### COSMIC GUI: Can't find battery settings
+- Ensure you're on COSMIC 1.0.5+ (battery percentage indicator was added then)
+- Check that UPower is running: `systemctl status upower`
+- Verify battery is detected: `upower -i /org/freedesktop/UPower/devices/battery_BAT0`
+
+### "No battery found" error (runtime script)
 Check if your battery is detected:
 ```bash
 ls /sys/class/power_supply/
 ```
 Should show `BAT0` or similar. If not, your kernel may not have battery drivers loaded.
 
-### "Charge threshold interface not found"
+### "Charge threshold interface not found" (runtime script)
 Your hardware may not support sysfs charge control. This is common on:
 - Consumer-grade laptops (non-business lines)
 - Some Dell/HP models
@@ -177,16 +216,23 @@ Your hardware may not support sysfs charge control. This is common on:
 - **Dell:** `dell-laptop` kernel module or `smbios` tools
 
 ### Thresholds reset after reboot
-This is expected. The systemd service reapplies your NixOS config thresholds on boot. Use the runtime script after boot if you need different values temporarily.
+**Non-COSMIC setups:** This is expected. The systemd service reapplies your NixOS config thresholds on boot. Use the runtime script after boot if you need different values temporarily.
+
+**COSMIC setups:** COSMIC should persist your GUI settings automatically. If not, this is a COSMIC bug - report it upstream.
 
 ### Battery still charges to 80% after setting `enable = false`
-Run `sudo nixos-rebuild switch` to apply the config change, then reboot or restart the service:
+**Non-COSMIC setups:** Run `sudo nixos-rebuild switch` to apply the config change, then reboot or restart the service:
 ```bash
 sudo systemctl restart battery-charge-thresholds
 ```
 
+**COSMIC setups:** The NixOS service is disabled when COSMIC is active. Use the COSMIC GUI or runtime script instead.
+
 ## References
 
 - Linux kernel battery documentation: `Documentation/power/battery.rst`
+- COSMIC battery threshold bug: https://github.com/pop-os/cosmic-epoch/issues/2800
+- COSMIC Settings Power panel: `~/.config/cosmic/com.system76.CosmicSettings.Power/`
 - ThinkPad battery thresholds: `thinkpad-acpi` kernel module
 - NixOS power management: `nix/modules/hardware/mobile.nix`
+- COSMIC desktop module: `nix/modules/roles/desktop.nix`

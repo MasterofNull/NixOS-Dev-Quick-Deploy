@@ -50,7 +50,13 @@ in {
   # - conservationMode.enable: Override for always-plugged-in use (default: false)
   # - conservationMode.startThreshold: Conservation start (default: 50%)
   # - conservationMode.stopThreshold: Conservation stop (default: 60%)
-  systemd.services.battery-charge-thresholds = lib.mkIf mobile {
+  #
+  # COSMIC Desktop Integration:
+  # When COSMIC desktop is active (roles.desktop.enable = true), this service
+  # is disabled to avoid conflicts with COSMIC's built-in battery threshold
+  # management (Settings → Power → Battery Lifespan). Use the COSMIC GUI or
+  # scripts/utils/battery-toggle.sh for runtime control instead.
+  systemd.services.battery-charge-thresholds = lib.mkIf (mobile && !cfg.roles.desktop.enable) {
     description = "Set battery charge start/stop thresholds via thinkpad-acpi";
     wantedBy = ["multi-user.target" "suspend.target"];
     after = ["multi-user.target"];
