@@ -52,10 +52,46 @@ in {
   # - conservationMode.stopThreshold: Conservation stop (default: 60%)
   #
   # COSMIC Desktop Integration:
-  # When COSMIC desktop is active (roles.desktop.enable = true), this service
-  # is disabled to avoid conflicts with COSMIC's built-in battery threshold
-  # management (Settings → Power → Battery Lifespan). Use the COSMIC GUI or
-  # scripts/utils/battery-toggle.sh for runtime control instead.
+  # When COSMIC desktop is active (roles.desktop.enable = true), the declarative
+  # battery service is disabled to avoid conflicts. Instead, a D-Bus compatibility
+  # bridge (cosmic-battery-bridge.py) is started to expose a system76-power-
+  # compatible D-Bus interface so COSMIC Settings can manage charge thresholds
+  # via its GUI (Settings → Power → Battery Lifespan).
+  #
+  # When COSMIC is NOT active, the declarative systemd service below handles
+  # thresholds via mySystem.hardware.battery.* options.
+
+  # D-Bus bridge for COSMIC GUI — provides com.system76.PowerDaemon interface
+  systemd.services.cosmic-battery-bridge = lib.mkIf (mobile && cfg.roles.desktop.enable) {
+    description = "COSMIC Battery Threshold D-Bus Bridge (system76-power compatible)";
+    wantedBy = ["multi-user.target" "graphical.target"];
+    after = ["multi-user.target" "dbus.service"];
+    requires = ["dbus.service"];
+    # Only run when battery charge thresholds are supported by hardware
+    unitConfig.ConditionPathExists = "/sys/class/power_supply/BAT0/charge_control_start_threshold";
+    environment = {
+      PYTHONUNBUFFERED = "1";
+    };
+    serviceConfig = {
+      Type = "simple";
+      Restart = "on-failure";
+      RestartSec = 5;
+      ExecStart = let
+        pythonEnv = pkgs.python3.withPackages (ps: [ps.dbus-python ps.pygobject3]);
+        bridgeScript =
+          pkgs.writeScript "cosmic-battery-bridge.py"
+          (builtins.readFile ../../../scripts/services/cosmic-battery-bridge.py);
+      in "${pythonEnv}/bin/python ${bridgeScript}";
+      # Security hardening
+      ProtectSystem = "strict";
+      ProtectHome = "read-only";
+      PrivateTmp = true;
+      NoNewPrivileges = true;
+      ReadWritePaths = ["/sys/class/power_supply"];
+    };
+  };
+
+  # Declarative battery service (non-COSMIC setups)
   systemd.services.battery-charge-thresholds = lib.mkIf (mobile && !cfg.roles.desktop.enable) {
     description = "Set battery charge start/stop thresholds via thinkpad-acpi";
     wantedBy = ["multi-user.target" "suspend.target"];

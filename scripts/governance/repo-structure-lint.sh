@@ -12,7 +12,7 @@ DOC_ALLOWED_DIRS=(
   operations architecture security testing roadmap
 )
 SCRIPT_ALLOWED_DIRS=(
-  lib governance ai data deploy health security testing utils
+  lib governance ai data deploy health security testing utils services
   reliability performance observability automation
 )
 
