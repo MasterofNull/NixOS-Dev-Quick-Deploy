@@ -16,22 +16,22 @@ Your NixOS configuration includes **battery charge threshold management** to pro
 
 - **GUI Path:** Settings → Power → Battery Lifespan
 - **Toggle:** "Maximize Battery Lifespan" (caps charging at 80%)
-- **How it works:** COSMIC writes directly to sysfs and manages thresholds automatically
-- **Config location:** `~/.config/cosmic/com.system76.CosmicSettings.Power/` (RON format)
+- **How it works:** A D-Bus compatibility bridge (`cosmic-battery-bridge.py`) exposes a `com.system76.PowerDaemon` interface that COSMIC Settings discovers automatically. The bridge translates COSMIC's D-Bus calls to sysfs writes.
+- **Service:** `cosmic-battery-bridge.service` (starts automatically with COSMIC desktop)
 
-**When COSMIC is active, the NixOS declarative battery service is automatically disabled** to avoid conflicts. You have two options:
+**When COSMIC is active, the NixOS declarative battery service is automatically disabled** to avoid conflicts. The D-Bus bridge takes over and provides the same interface that `system76-power` would, but works with `power-profiles-daemon`.
 
-### Option A: Use COSMIC GUI (Recommended for COSMIC users)
+### Using the COSMIC GUI
+
 1. Open **Settings** from the COSMIC launcher
 2. Navigate to **Power**
-3. Toggle **Battery Lifespan** on/off
+3. Toggle **Battery Lifespan** on/off or select a profile
 4. Changes apply immediately and persist across reboots
 
-### Option B: Use NixOS Declarative Control
-If you prefer declarative config over COSMIC GUI, you can:
-1. Disable COSMIC's power management (not recommended)
-2. Configure thresholds in your NixOS config (see below)
-3. Rebuild: `sudo nixos-rebuild switch`
+**Profiles available in COSMIC:**
+- **Full Charge** (90%-100%): Maximum capacity for travel
+- **Balanced** (86%-90%): Good middle ground
+- **Maximize Battery Lifespan** (50%-60%): Best for always-plugged-in use
 
 **For most COSMIC users, the GUI is the easiest path.**
 
@@ -181,16 +181,39 @@ The system applies thresholds in this order:
 ## Files Modified
 
 - `nix/modules/core/options.nix` — Battery configuration options
-- `nix/modules/hardware/mobile.nix` — Threshold enforcement logic
+- `nix/modules/hardware/mobile.nix` — Threshold enforcement + D-Bus bridge wiring
+- `scripts/services/cosmic-battery-bridge.py` — D-Bus compatibility bridge (new)
 - `scripts/utils/battery-toggle.sh` — Runtime toggle script
+- `docs/operations/battery-charge-thresholds.md` — Documentation
 
 ## Troubleshooting
 
-### COSMIC GUI: Battery Lifespan toggle doesn't stick
-This is a known COSMIC bug (see pop-os/cosmic-epoch#2800). Workarounds:
-1. Use the runtime script instead: `sudo ./scripts/utils/battery-toggle.sh full`
-2. Check if COSMIC's config is corrupted: `ls -la ~/.config/cosmic/`
-3. Reset COSMIC power settings: Remove `~/.config/cosmic/com.system76.CosmicSettings.Power/` and restart COSMIC settings
+### COSMIC GUI: Battery Lifespan toggle doesn't show up
+
+**Check if the D-Bus bridge service is running:**
+```bash
+systemctl status cosmic-battery-bridge
+journalctl -u cosmic-battery-bridge -f
+```
+
+**If the service is not found:**
+1. Rebuild your NixOS config: `sudo nixos-rebuild switch`
+2. Reboot or restart the service: `sudo systemctl restart cosmic-battery-bridge`
+
+**If the service is running but COSMIC still doesn't show battery options:**
+1. Verify D-Bus interface is registered:
+   ```bash
+   dbus-send --system --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames | grep system76
+   ```
+   Should show `com.system76.PowerDaemon`
+2. Check hardware support:
+   ```bash
+   ls -l /sys/class/power_supply/BAT*/charge_control_*_threshold
+   ```
+   If these files don't exist, your hardware doesn't support charge control.
+
+**If the COSMIC bug persists (known upstream issue):**
+Use the runtime script instead: `sudo ./scripts/utils/battery-toggle.sh full`
 
 ### COSMIC GUI: Can't find battery settings
 - Ensure you're on COSMIC 1.0.5+ (battery percentage indicator was added then)
@@ -231,8 +254,10 @@ sudo systemctl restart battery-charge-thresholds
 ## References
 
 - Linux kernel battery documentation: `Documentation/power/battery.rst`
+- D-Bus bridge implementation: `scripts/services/cosmic-battery-bridge.py`
+- system76-power D-Bus interface: `com.system76.PowerDaemon` at `/com/system76/PowerDaemon`
 - COSMIC battery threshold bug: https://github.com/pop-os/cosmic-epoch/issues/2800
-- COSMIC Settings Power panel: `~/.config/cosmic/com.system76.CosmicSettings.Power/`
+- system76-power charge thresholds source: https://github.com/pop-os/system76-power/blob/master/src/charge_thresholds.rs
 - ThinkPad battery thresholds: `thinkpad-acpi` kernel module
 - NixOS power management: `nix/modules/hardware/mobile.nix`
 - COSMIC desktop module: `nix/modules/roles/desktop.nix`
