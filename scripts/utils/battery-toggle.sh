@@ -55,7 +55,7 @@ show_status() {
     status_file="${bat}status"
 
     echo -e "\n${GREEN}Battery: $bat_name${NC}"
-    
+
     if [[ -f "$start_file" ]] && [[ -f "$stop_file" ]]; then
       start_val=$(cat "$start_file" 2>/dev/null || echo "N/A")
       stop_val=$(cat "$stop_file" 2>/dev/null || echo "N/A")
@@ -120,6 +120,19 @@ set_thresholds() {
   echo ""
   echo -e "${GREEN}Thresholds applied immediately.${NC}"
   echo -e "${YELLOW}Note: Changes persist until reboot or nixos-rebuild.${NC}"
+
+  # Send desktop notification if available (COSMIC/GNOME/KDE)
+  if command -v notify-send &>/dev/null; then
+    # Find the user's display session to send notification
+    if [[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+      notify-send \
+        --icon="battery" \
+        --urgency=normal \
+        "Battery Charge Threshold Updated" \
+        "Mode: $label"$'\n'"Start: ${start}% | Stop: ${stop}%" \
+        2>/dev/null || true
+    fi
+  fi
 }
 
 usage() {
