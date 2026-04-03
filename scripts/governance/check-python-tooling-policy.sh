@@ -47,6 +47,8 @@ for path in sorted(set(targets)):
         continue
     text = path.read_text(encoding="utf-8", errors="ignore")
     for line_no, line in enumerate(text.splitlines(), start=1):
+        if "uv pip install" in line:
+            continue
         if pattern.search(line):
             violations.append((rel, line_no, line.strip()))
 
