@@ -1,12 +1,15 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   # Active when the hardware flag OR the explicit role toggle is set.
   # roles.mobile.enable lets users force mobile power management on machines
   # that are not auto-detected as laptops (e.g. a NUC running on battery).
   mobile = cfg.hardware.isMobile || cfg.roles.mobile.enable;
-in
-{
+in {
   # Mobile / laptop platform settings.
   # Gates on hardware.isMobile OR roles.mobile.enable.
 
@@ -39,22 +42,44 @@ in
   # hardware (desktop, SBC, non-ThinkPad laptops).
   # TLP is disabled above (conflicts with power-profiles-daemon); thresholds
   # are written directly to /sys/class/power_supply/BAT*/charge_control_*.
+  #
+  # Configurable via mySystem.hardware.battery.* options:
+  # - chargeThresholds.enable: Master toggle (false = charge to 100%)
+  # - chargeThresholds.startThreshold: When to start charging (default: 20%)
+  # - chargeThresholds.stopThreshold: When to stop charging (default: 80%)
+  # - conservationMode.enable: Override for always-plugged-in use (default: false)
+  # - conservationMode.startThreshold: Conservation start (default: 50%)
+  # - conservationMode.stopThreshold: Conservation stop (default: 60%)
   systemd.services.battery-charge-thresholds = lib.mkIf mobile {
     description = "Set battery charge start/stop thresholds via thinkpad-acpi";
-    wantedBy    = [ "multi-user.target" "suspend.target" ];
-    after       = [ "multi-user.target" ];
+    wantedBy = ["multi-user.target" "suspend.target"];
+    after = ["multi-user.target"];
     # Only run when the sysfs interface is present — no-op on non-ThinkPad.
     unitConfig.ConditionPathExists = "/sys/class/power_supply/BAT0/charge_control_start_threshold";
     serviceConfig = {
-      Type            = "oneshot";
+      Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart       = pkgs.writeShellScript "battery-thresholds" ''
+      ExecStart = pkgs.writeShellScript "battery-thresholds" ''
         set -euo pipefail
+
+        # Determine which thresholds to use
+        if ${lib.boolToString cfg.hardware.battery.conservationMode.enable}; then
+          start_thresh=${toString cfg.hardware.battery.conservationMode.startThreshold}
+          stop_thresh=${toString cfg.hardware.battery.conservationMode.stopThreshold}
+        elif ${lib.boolToString cfg.hardware.battery.chargeThresholds.enable}; then
+          start_thresh=${toString cfg.hardware.battery.chargeThresholds.startThreshold}
+          stop_thresh=${toString cfg.hardware.battery.chargeThresholds.stopThreshold}
+        else
+          # Thresholds disabled — allow full 100% charge
+          start_thresh=0
+          stop_thresh=100
+        fi
+
         for bat in /sys/class/power_supply/BAT*/; do
           start="''${bat}charge_control_start_threshold"
           stop="''${bat}charge_control_end_threshold"
-          [[ -w "$start" ]] && echo 20 > "$start"
-          [[ -w "$stop"  ]] && echo 80 > "$stop"
+          [[ -w "$start" ]] && echo "$start_thresh" > "$start"
+          [[ -w "$stop"  ]] && echo "$stop_thresh" > "$stop"
         done
       '';
     };
@@ -62,7 +87,7 @@ in
 
   # Kernel parameters for mobile power management.
   boot.kernelParams = lib.mkIf mobile (lib.mkAfter [
-    "quiet"    # Cleaner boot on laptop screens
+    "quiet" # Cleaner boot on laptop screens
     "splash"
   ]);
 }
