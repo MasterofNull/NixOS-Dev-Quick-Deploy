@@ -148,6 +148,7 @@ from orchestration import (
     ToolStatus,
     WorkspaceManager,
 )
+from performance_profiler import PerformanceProfiler, get_profiler as _get_global_profiler
 from alert_engine import AlertEngine, AlertSeverity, AlertStatus
 from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
@@ -240,6 +241,9 @@ _AGENT_HQ = AgentHQ(persistence_dir=_ORCHESTRATION_PERSISTENCE_DIR)
 _DELEGATION_API = DelegationAPI()
 _WORKSPACE_MANAGER = WorkspaceManager(base_dir=_WORKSPACE_BASE_DIR)
 _MCP_TOOL_INVOKER = MCPToolInvoker(cache_enabled=True)
+
+# Phase 1.3 — Live Bottleneck Detection & Performance Profiling
+_PERFORMANCE_PROFILER = _get_global_profiler()
 
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
@@ -5753,12 +5757,16 @@ async def run_http_mode(port: int) -> None:
             data = await request.json()
             memory_type = normalize_memory_type(data.get("memory_type", ""))
             summary = coerce_memory_summary(data.get("summary"), data.get("content"))
+            # Phase 1.3 — Profile memory store operation
+            _mem_store_start = time.time()
             result = await _store_memory(
                 memory_type=memory_type,
                 summary=summary,
                 content=data.get("content"),
                 metadata=data.get("metadata"),
             )
+            _mem_store_duration_ms = (time.time() - _mem_store_start) * 1000
+            _PERFORMANCE_PROFILER.record_metric("memory_store", _mem_store_duration_ms, {"memory_type": memory_type})
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -5776,12 +5784,16 @@ async def run_http_mode(port: int) -> None:
             query = data.get("query") or data.get("prompt") or ""
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+            # Phase 1.3 — Profile memory recall operation
+            _mem_recall_start = time.time()
             result = await _recall_memory(
                 query=query,
                 memory_types=data.get("memory_types"),
                 limit=data.get("limit"),
                 retrieval_mode=data.get("retrieval_mode", "hybrid"),
             )
+            _mem_recall_duration_ms = (time.time() - _mem_recall_start) * 1000
+            _PERFORMANCE_PROFILER.record_metric("memory_recall", _mem_recall_duration_ms, {"query_len": len(query), "mode": data.get("retrieval_mode", "hybrid")})
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -6102,6 +6114,22 @@ async def run_http_mode(port: int) -> None:
             from metrics import ORCHESTRATION_TOOLS_RATE_LIMITED
             ORCHESTRATION_TOOLS_RATE_LIMITED.set(tool_report.get("rate_limited_tools", 0))
             ORCHESTRATION_TOOL_PENDING_APPROVALS.set(tool_report.get("pending_approvals", 0))
+            # Phase 1.3 — Bottleneck detection metrics
+            from metrics import BOTTLENECK_COUNT, BOTTLENECK_AVG_DURATION_MS, BOTTLENECK_P95_DURATION_MS, OPTIMIZATION_RECOMMENDATIONS_PENDING
+            bottlenecks = _PERFORMANCE_PROFILER.identify_bottlenecks(min_call_count=5, threshold_ms=50)
+            severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            for b in bottlenecks:
+                severity_counts[b.severity] += 1
+                BOTTLENECK_AVG_DURATION_MS.labels(operation=b.operation).set(b.avg_duration_ms)
+                BOTTLENECK_P95_DURATION_MS.labels(operation=b.operation).set(b.p95_duration_ms)
+            for severity, count in severity_counts.items():
+                BOTTLENECK_COUNT.labels(severity=severity).set(count)
+            recommendations = _PERFORMANCE_PROFILER.generate_optimization_recommendations(bottlenecks)
+            rec_by_priority: Dict[int, int] = {}
+            for r in recommendations:
+                rec_by_priority[r.priority] = rec_by_priority.get(r.priority, 0) + 1
+            for priority, count in rec_by_priority.items():
+                OPTIMIZATION_RECOMMENDATIONS_PENDING.labels(priority=str(priority)).set(count)
         except Exception:
             pass
         return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
@@ -6460,6 +6488,8 @@ async def run_http_mode(port: int) -> None:
                     _sys.path.insert(0, str(_hints_dir))
                 from hints_engine import HintsEngine  # type: ignore[import]
                 engine = HintsEngine()
+                # Phase 1.3 — Profile hints engine operation
+                _hints_start = time.time()
                 result = engine.rank_as_dict(
                     query,
                     context=file_ext,
@@ -6470,6 +6500,8 @@ async def run_http_mode(port: int) -> None:
                     compact_mode=compact_mode,
                     force_escalation=force_escalation,
                 )
+                _hints_duration_ms = (time.time() - _hints_start) * 1000
+                _PERFORMANCE_PROFILER.record_metric("hints_engine_rank", _hints_duration_ms, {"query_len": len(query), "max_hints": max_hints})
             except Exception as exc:
                 logger.warning("hints_engine_unavailable error=%s", exc)
                 result = {
@@ -6602,7 +6634,11 @@ async def run_http_mode(port: int) -> None:
                 include_debug_metadata = request.rel_url.query.get("debug", "0").strip().lower() in {"1", "true", "yes"}
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+            # Phase 1.3 — Profile workflow plan building
+            _plan_start = time.time()
             result = _build_workflow_plan(query, include_debug_metadata=include_debug_metadata)
+            _plan_duration_ms = (time.time() - _plan_start) * 1000
+            _PERFORMANCE_PROFILER.record_metric("workflow_plan_build", _plan_duration_ms, {"query_len": len(query)})
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -10015,6 +10051,8 @@ async def run_http_mode(port: int) -> None:
             priority = int(data.get("priority", 5))
             timeout = float(data.get("timeout_seconds", 300.0))
             wait = bool(data.get("wait", False))
+            # Phase 1.3 — Profile delegation API call
+            _delegate_start = time.time()
             result = await _DELEGATION_API.delegate(
                 task_description=description,
                 required_capabilities=capabilities or None,
@@ -10023,6 +10061,8 @@ async def run_http_mode(port: int) -> None:
                 timeout_seconds=timeout,
                 wait=wait,
             )
+            _delegate_duration_ms = (time.time() - _delegate_start) * 1000
+            _PERFORMANCE_PROFILER.record_metric("delegation_api_delegate", _delegate_duration_ms, {"wait": wait, "priority": priority})
             return web.json_response({"status": "ok", "result": result.to_dict()})
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
@@ -10130,6 +10170,132 @@ async def run_http_mode(port: int) -> None:
                 "tools": [t.to_dict() for t in tools],
                 "count": len(tools),
             })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    # Phase 1.3 — Live Bottleneck Detection & Performance Profiling endpoints
+    async def handle_bottleneck_status(request: web.Request) -> web.Response:
+        """Get current bottleneck detection status and summary."""
+        try:
+            min_call_count = int(request.query.get("min_calls", 10))
+            threshold_ms = float(request.query.get("threshold_ms", 100))
+            bottlenecks = _PERFORMANCE_PROFILER.identify_bottlenecks(
+                min_call_count=min_call_count,
+                threshold_ms=threshold_ms,
+            )
+            severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            for b in bottlenecks:
+                severity_counts[b.severity] += 1
+            return web.json_response({
+                "status": "ok",
+                "operations_tracked": len(_PERFORMANCE_PROFILER.metrics),
+                "total_metrics": sum(len(m) for m in _PERFORMANCE_PROFILER.metrics.values()),
+                "bottleneck_count": len(bottlenecks),
+                "severity_breakdown": severity_counts,
+                "window_minutes": _PERFORMANCE_PROFILER.window_size.total_seconds() / 60,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_bottleneck_list(request: web.Request) -> web.Response:
+        """List all detected bottlenecks with details."""
+        try:
+            min_call_count = int(request.query.get("min_calls", 10))
+            threshold_ms = float(request.query.get("threshold_ms", 100))
+            severity_filter = request.query.get("severity")
+            bottlenecks = _PERFORMANCE_PROFILER.identify_bottlenecks(
+                min_call_count=min_call_count,
+                threshold_ms=threshold_ms,
+            )
+            if severity_filter:
+                bottlenecks = [b for b in bottlenecks if b.severity == severity_filter]
+            return web.json_response({
+                "bottlenecks": [
+                    {
+                        "operation": b.operation,
+                        "severity": b.severity,
+                        "avg_ms": round(b.avg_duration_ms, 2),
+                        "p95_ms": round(b.p95_duration_ms, 2),
+                        "p99_ms": round(b.p99_duration_ms, 2),
+                        "call_count": b.call_count,
+                        "total_time_ms": round(b.total_time_ms, 2),
+                        "percentage_of_total": round(b.percentage_of_total, 2),
+                        "recommendation": b.recommendation,
+                    }
+                    for b in bottlenecks
+                ],
+                "count": len(bottlenecks),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_bottleneck_recommendations(request: web.Request) -> web.Response:
+        """Get optimization recommendations for detected bottlenecks."""
+        try:
+            min_call_count = int(request.query.get("min_calls", 10))
+            threshold_ms = float(request.query.get("threshold_ms", 100))
+            max_priority = int(request.query.get("max_priority", 5))
+            bottlenecks = _PERFORMANCE_PROFILER.identify_bottlenecks(
+                min_call_count=min_call_count,
+                threshold_ms=threshold_ms,
+            )
+            recommendations = _PERFORMANCE_PROFILER.generate_optimization_recommendations(bottlenecks)
+            recommendations = [r for r in recommendations if r.priority <= max_priority]
+            return web.json_response({
+                "recommendations": [
+                    {
+                        "priority": r.priority,
+                        "operation": r.bottleneck.operation,
+                        "severity": r.bottleneck.severity,
+                        "estimated_improvement_pct": r.estimated_improvement,
+                        "implementation_effort": r.implementation_effort,
+                        "description": r.description,
+                        "action_items": r.action_items,
+                    }
+                    for r in recommendations
+                ],
+                "count": len(recommendations),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_bottleneck_operation_stats(request: web.Request) -> web.Response:
+        """Get detailed statistics for a specific operation."""
+        try:
+            operation = request.query.get("operation")
+            if not operation:
+                return web.json_response({"error": "operation parameter required"}, status=400)
+            stats = _PERFORMANCE_PROFILER.get_statistics(operation)
+            return web.json_response(stats)
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_bottleneck_report(request: web.Request) -> web.Response:
+        """Export a full performance report as JSON."""
+        try:
+            report_path = _PERFORMANCE_PROFILER.export_report()
+            with open(report_path) as f:
+                report = json.load(f)
+            return web.json_response(report)
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_bottleneck_record(request: web.Request) -> web.Response:
+        """Record a performance metric (used by internal components)."""
+        try:
+            data = await request.json()
+            operation = data.get("operation")
+            duration_ms = data.get("duration_ms")
+            metadata = data.get("metadata", {})
+            if not operation or duration_ms is None:
+                return web.json_response(
+                    {"error": "operation and duration_ms required"}, status=400
+                )
+            _PERFORMANCE_PROFILER.record_metric(operation, duration_ms, metadata)
+            from metrics import PROFILED_OPERATIONS, PROFILED_OPERATION_DURATION
+            PROFILED_OPERATIONS.labels(operation=operation).inc()
+            PROFILED_OPERATION_DURATION.labels(operation=operation).observe(duration_ms / 1000)
+            return web.json_response({"status": "recorded"})
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
@@ -10326,6 +10492,14 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/orchestration/tools/register", handle_orchestration_tool_register)
     http_app.router.add_post("/control/orchestration/tools/invoke", handle_orchestration_tool_invoke)
     http_app.router.add_get("/control/orchestration/tools/search", handle_orchestration_tool_search)
+
+    # Phase 1.3 — Live Bottleneck Detection & Performance Profiling routes
+    http_app.router.add_get("/control/bottleneck/status", handle_bottleneck_status)
+    http_app.router.add_get("/control/bottleneck/list", handle_bottleneck_list)
+    http_app.router.add_get("/control/bottleneck/recommendations", handle_bottleneck_recommendations)
+    http_app.router.add_get("/control/bottleneck/operation", handle_bottleneck_operation_stats)
+    http_app.router.add_get("/control/bottleneck/report", handle_bottleneck_report)
+    http_app.router.add_post("/control/bottleneck/record", handle_bottleneck_record)
 
     runner = web.AppRunner(
         http_app,
