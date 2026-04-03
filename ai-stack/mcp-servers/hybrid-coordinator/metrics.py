@@ -159,3 +159,109 @@ META_LEARNING_ADAPTATIONS = Counter(
     "Bounded meta-learning adaptations executed from delegated outcomes",
     ["domain", "method"],
 )
+
+# Phase 4.2 — Multi-Agent Orchestration Framework metrics
+ORCHESTRATION_ACTIVE_SESSIONS = Gauge(
+    "orchestration_active_sessions",
+    "Number of active orchestration sessions",
+)
+ORCHESTRATION_REGISTERED_AGENTS = Gauge(
+    "orchestration_registered_agents",
+    "Number of registered agents in the orchestration framework",
+)
+ORCHESTRATION_ACTIVE_WORKSPACES = Gauge(
+    "orchestration_active_workspaces",
+    "Number of active agent workspaces",
+)
+ORCHESTRATION_PENDING_DELEGATIONS = Gauge(
+    "orchestration_pending_delegations",
+    "Number of pending task delegations",
+)
+ORCHESTRATION_DELEGATIONS_COMPLETED = Counter(
+    "orchestration_delegations_completed_total",
+    "Total completed task delegations",
+    ["agent_id", "status"],
+)
+ORCHESTRATION_DELEGATIONS_FAILED = Counter(
+    "orchestration_delegations_failed_total",
+    "Total failed task delegations",
+    ["agent_id", "reason"],
+)
+ORCHESTRATION_DELEGATION_LATENCY = Histogram(
+    "orchestration_delegation_latency_seconds",
+    "Task delegation latency in seconds",
+    ["agent_id"],
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0],
+)
+ORCHESTRATION_SESSIONS_BY_STATE = Gauge(
+    "orchestration_sessions_by_state",
+    "Number of sessions by state",
+    ["state"],
+)
+ORCHESTRATION_CHECKPOINTS_CREATED = Counter(
+    "orchestration_checkpoints_created_total",
+    "Total checkpoints created",
+)
+ORCHESTRATION_CHECKPOINTS_RESTORED = Counter(
+    "orchestration_checkpoints_restored_total",
+    "Total checkpoints restored",
+)
+ORCHESTRATION_SESSION_DURATION = Histogram(
+    "orchestration_session_duration_seconds",
+    "Session duration in seconds",
+    buckets=[60, 300, 600, 1800, 3600, 7200, 14400],
+)
+ORCHESTRATION_WORKSPACES_BY_MODE = Gauge(
+    "orchestration_workspaces_by_mode",
+    "Number of workspaces by isolation mode",
+    ["mode"],
+)
+ORCHESTRATION_WORKSPACE_MODIFICATIONS = Counter(
+    "orchestration_workspace_modifications_total",
+    "Total workspace file modifications",
+    ["operation"],
+)
+ORCHESTRATION_WORKSPACE_CONFLICTS = Counter(
+    "orchestration_workspace_conflicts_total",
+    "Total workspace file conflicts detected",
+)
+ORCHESTRATION_WORKSPACE_DISK_BYTES = Gauge(
+    "orchestration_workspace_disk_bytes",
+    "Total disk space used by workspaces",
+)
+ORCHESTRATION_TOOL_INVOCATIONS = Counter(
+    "orchestration_tool_invocations_total",
+    "Total MCP tool invocations",
+    ["tool_id", "status"],
+)
+ORCHESTRATION_TOOL_CACHE_HITS = Counter(
+    "orchestration_tool_cache_hits_total",
+    "Total tool result cache hits",
+)
+ORCHESTRATION_TOOL_CACHE_MISSES = Counter(
+    "orchestration_tool_cache_misses_total",
+    "Total tool result cache misses",
+)
+ORCHESTRATION_TOOLS_RATE_LIMITED = Gauge(
+    "orchestration_tools_rate_limited",
+    "Number of tools currently rate limited",
+)
+ORCHESTRATION_TOOL_PENDING_APPROVALS = Gauge(
+    "orchestration_tool_pending_approvals",
+    "Number of pending tool approval requests",
+)
+REASONING_PATTERN_USAGE = Counter(
+    "reasoning_pattern_usage_total",
+    "Total reasoning pattern usage",
+    ["pattern"],
+)
+REASONING_PATTERN_SUCCESS_RATE = Gauge(
+    "reasoning_pattern_success_rate",
+    "Success rate by reasoning pattern",
+    ["pattern"],
+)
+REASONING_PATTERN_BOOST_MULTIPLIER = Gauge(
+    "reasoning_pattern_boost_multiplier",
+    "Boost multiplier by reasoning pattern",
+    ["pattern"],
+)

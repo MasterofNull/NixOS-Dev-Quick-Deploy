@@ -1,0 +1,523 @@
+{
+  "dashboard": {
+    "title": "AI Stack - Multi-Agent Orchestration Framework",
+    "tags": ["ai-stack", "orchestration", "multi-agent", "phase-4.2"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "10s",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "-- Grafana --",
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "🎯 Agent HQ Overview",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "title": "Active Sessions",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 1, "w": 4, "h": 4},
+        "targets": [
+          {
+            "expr": "orchestration_active_sessions",
+            "legendFormat": "Active",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "blue"},
+                {"value": 5, "color": "green"},
+                {"value": 10, "color": "yellow"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Registered Agents",
+        "type": "stat",
+        "gridPos": {"x": 4, "y": 1, "w": 4, "h": 4},
+        "targets": [
+          {
+            "expr": "orchestration_registered_agents",
+            "legendFormat": "Agents",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Active Workspaces",
+        "type": "stat",
+        "gridPos": {"x": 8, "y": 1, "w": 4, "h": 4},
+        "targets": [
+          {
+            "expr": "orchestration_active_workspaces",
+            "legendFormat": "Workspaces",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Pending Delegations",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 1, "w": 4, "h": 4},
+        "targets": [
+          {
+            "expr": "orchestration_pending_delegations",
+            "legendFormat": "Pending",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 5, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Tool Invocations (Rate)",
+        "type": "graph",
+        "gridPos": {"x": 16, "y": 1, "w": 8, "h": 4},
+        "targets": [
+          {
+            "expr": "rate(orchestration_tool_invocations_total[5m])",
+            "legendFormat": "Invocations/sec",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "📊 Task Delegation Metrics",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 5, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 8,
+        "title": "Delegation Success Rate",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 6, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "sum(rate(orchestration_delegations_completed_total[5m])) / (sum(rate(orchestration_delegations_completed_total[5m])) + sum(rate(orchestration_delegations_failed_total[5m]))) * 100",
+            "legendFormat": "Success %",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 70, "color": "yellow"},
+                {"value": 90, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Delegation Latency",
+        "type": "graph",
+        "gridPos": {"x": 6, "y": 6, "w": 9, "h": 6},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(orchestration_delegation_latency_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(orchestration_delegation_latency_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(orchestration_delegation_latency_bucket[5m])) by (le))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxis": {
+          "format": "s",
+          "label": "Latency"
+        }
+      },
+      {
+        "id": 10,
+        "title": "Delegations by Agent",
+        "type": "piechart",
+        "gridPos": {"x": 15, "y": 6, "w": 9, "h": 6},
+        "targets": [
+          {
+            "expr": "sum(rate(orchestration_delegations_completed_total[5m])) by (agent_id)",
+            "legendFormat": "{{agent_id}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "🔧 Session Lifecycle",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 12, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 12,
+        "title": "Sessions by State",
+        "type": "bargauge",
+        "gridPos": {"x": 0, "y": 13, "w": 8, "h": 5},
+        "targets": [
+          {
+            "expr": "orchestration_sessions_by_state",
+            "legendFormat": "{{state}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "displayMode": "gradient",
+          "orientation": "horizontal"
+        }
+      },
+      {
+        "id": 13,
+        "title": "Checkpoint Operations",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 13, "w": 8, "h": 5},
+        "targets": [
+          {
+            "expr": "rate(orchestration_checkpoints_created_total[5m])",
+            "legendFormat": "Created",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(orchestration_checkpoints_restored_total[5m])",
+            "legendFormat": "Restored",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Session Duration (avg)",
+        "type": "stat",
+        "gridPos": {"x": 16, "y": 13, "w": 8, "h": 5},
+        "targets": [
+          {
+            "expr": "avg(orchestration_session_duration_seconds)",
+            "legendFormat": "Duration",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 15,
+        "title": "🛠️ Workspace Isolation",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 18, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 16,
+        "title": "Workspaces by Mode",
+        "type": "piechart",
+        "gridPos": {"x": 0, "y": 19, "w": 6, "h": 5},
+        "targets": [
+          {
+            "expr": "orchestration_workspaces_by_mode",
+            "legendFormat": "{{mode}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "title": "File Modifications",
+        "type": "graph",
+        "gridPos": {"x": 6, "y": 19, "w": 9, "h": 5},
+        "targets": [
+          {
+            "expr": "rate(orchestration_workspace_modifications_total[5m])",
+            "legendFormat": "{{operation}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "title": "Detected Conflicts",
+        "type": "stat",
+        "gridPos": {"x": 15, "y": 19, "w": 4, "h": 5},
+        "targets": [
+          {
+            "expr": "sum(orchestration_workspace_conflicts_total)",
+            "legendFormat": "Conflicts",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 19,
+        "title": "Workspace Disk Usage",
+        "type": "graph",
+        "gridPos": {"x": 19, "y": 19, "w": 5, "h": 5},
+        "targets": [
+          {
+            "expr": "orchestration_workspace_disk_bytes",
+            "legendFormat": "Disk Usage",
+            "refId": "A"
+          }
+        ],
+        "yaxis": {
+          "format": "bytes"
+        }
+      },
+      {
+        "id": 20,
+        "title": "🔌 MCP Tool Invocation",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 24, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 21,
+        "title": "Tool Cache Hit Rate",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 25, "w": 6, "h": 5},
+        "targets": [
+          {
+            "expr": "orchestration_tool_cache_hits / (orchestration_tool_cache_hits + orchestration_tool_cache_misses) * 100",
+            "legendFormat": "Cache Hit %",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 50, "color": "yellow"},
+                {"value": 80, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 22,
+        "title": "Tool Invocations by Status",
+        "type": "graph",
+        "gridPos": {"x": 6, "y": 25, "w": 9, "h": 5},
+        "targets": [
+          {
+            "expr": "rate(orchestration_tool_invocations_total[5m])",
+            "legendFormat": "{{status}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "title": "Rate Limited Tools",
+        "type": "stat",
+        "gridPos": {"x": 15, "y": 25, "w": 4, "h": 5},
+        "targets": [
+          {
+            "expr": "orchestration_tools_rate_limited",
+            "legendFormat": "Rate Limited",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 24,
+        "title": "Pending Approvals",
+        "type": "stat",
+        "gridPos": {"x": 19, "y": 25, "w": 5, "h": 5},
+        "targets": [
+          {
+            "expr": "orchestration_tool_pending_approvals",
+            "legendFormat": "Pending",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 3, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 25,
+        "title": "📈 Reasoning Patterns",
+        "type": "row",
+        "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
+        "collapsed": false
+      },
+      {
+        "id": 26,
+        "title": "Pattern Usage Distribution",
+        "type": "piechart",
+        "gridPos": {"x": 0, "y": 31, "w": 8, "h": 5},
+        "targets": [
+          {
+            "expr": "sum(rate(reasoning_pattern_usage_total[5m])) by (pattern)",
+            "legendFormat": "{{pattern}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 27,
+        "title": "Pattern Effectiveness",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 31, "w": 8, "h": 5},
+        "targets": [
+          {
+            "expr": "reasoning_pattern_success_rate",
+            "legendFormat": "{{pattern}}",
+            "refId": "A"
+          }
+        ],
+        "yaxis": {
+          "min": 0,
+          "max": 1,
+          "format": "percentunit"
+        }
+      },
+      {
+        "id": 28,
+        "title": "Pattern Boost Multipliers",
+        "type": "bargauge",
+        "gridPos": {"x": 16, "y": 31, "w": 8, "h": 5},
+        "targets": [
+          {
+            "expr": "reasoning_pattern_boost_multiplier",
+            "legendFormat": "{{pattern}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "displayMode": "gradient",
+          "orientation": "horizontal"
+        }
+      }
+    ]
+  }
+}
