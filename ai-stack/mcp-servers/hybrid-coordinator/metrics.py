@@ -265,3 +265,41 @@ REASONING_PATTERN_BOOST_MULTIPLIER = Gauge(
     "Boost multiplier by reasoning pattern",
     ["pattern"],
 )
+
+# Phase 1.3 — Live Bottleneck Detection metrics
+BOTTLENECK_COUNT = Gauge(
+    "bottleneck_count",
+    "Number of detected bottlenecks by severity",
+    ["severity"],
+)
+BOTTLENECK_TOTAL_TIME_MS = Gauge(
+    "bottleneck_total_time_ms",
+    "Total time consumed by bottleneck operations",
+    ["operation"],
+)
+BOTTLENECK_AVG_DURATION_MS = Gauge(
+    "bottleneck_avg_duration_ms",
+    "Average duration of bottleneck operations",
+    ["operation"],
+)
+BOTTLENECK_P95_DURATION_MS = Gauge(
+    "bottleneck_p95_duration_ms",
+    "P95 duration of bottleneck operations",
+    ["operation"],
+)
+OPTIMIZATION_RECOMMENDATIONS_PENDING = Gauge(
+    "optimization_recommendations_pending",
+    "Number of pending optimization recommendations by priority",
+    ["priority"],
+)
+PROFILED_OPERATIONS = Counter(
+    "profiled_operations_total",
+    "Total operations profiled",
+    ["operation"],
+)
+PROFILED_OPERATION_DURATION = Histogram(
+    "profiled_operation_duration_seconds",
+    "Duration of profiled operations",
+    ["operation"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+)
