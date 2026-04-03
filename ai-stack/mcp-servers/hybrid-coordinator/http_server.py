@@ -45,9 +45,21 @@ from metrics import (
     DELEGATED_QUALITY_EVENTS,
     DELEGATED_QUALITY_SCORE,
     META_LEARNING_ADAPTATIONS,
+    ORCHESTRATION_ACTIVE_SESSIONS,
+    ORCHESTRATION_ACTIVE_WORKSPACES,
+    ORCHESTRATION_CHECKPOINTS_CREATED,
+    ORCHESTRATION_CHECKPOINTS_RESTORED,
+    ORCHESTRATION_DELEGATIONS_COMPLETED,
+    ORCHESTRATION_PENDING_DELEGATIONS,
+    ORCHESTRATION_REGISTERED_AGENTS,
+    ORCHESTRATION_TOOL_CACHE_HITS,
+    ORCHESTRATION_TOOL_INVOCATIONS,
+    ORCHESTRATION_TOOL_PENDING_APPROVALS,
+    ORCHESTRATION_WORKSPACES_BY_MODE,
     PROCESS_MEMORY_BYTES,
     PROGRESSIVE_CONTEXT_LOADS,
     REAL_TIME_LEARNING_EVENTS,
+    REASONING_PATTERN_USAGE,
     REQUEST_COUNT,
     REQUEST_ERRORS,
     REQUEST_LATENCY,
@@ -6053,6 +6065,45 @@ async def run_http_mode(port: int) -> None:
                     EMBEDDING_CACHE_SIZE.set(size)
             except Exception:
                 pass
+        # Phase 4.2 — update orchestration framework gauges
+        try:
+            # AgentHQ metrics
+            ORCHESTRATION_ACTIVE_SESSIONS.set(len(_AGENT_HQ.sessions))
+            ORCHESTRATION_REGISTERED_AGENTS.set(len(_AGENT_HQ.global_agents))
+            # Count sessions by state
+            from metrics import ORCHESTRATION_SESSIONS_BY_STATE
+            state_counts: Dict[str, int] = {}
+            for session in _AGENT_HQ.sessions.values():
+                state_name = session.state.name if hasattr(session.state, "name") else str(session.state)
+                state_counts[state_name] = state_counts.get(state_name, 0) + 1
+            for state_name, count in state_counts.items():
+                ORCHESTRATION_SESSIONS_BY_STATE.labels(state=state_name).set(count)
+            # DelegationAPI metrics
+            queue_status = _DELEGATION_API.get_queue_status()
+            ORCHESTRATION_PENDING_DELEGATIONS.set(queue_status.get("pending_requests", 0))
+            # WorkspaceManager metrics
+            ORCHESTRATION_ACTIVE_WORKSPACES.set(len(_WORKSPACE_MANAGER.workspaces))
+            from metrics import ORCHESTRATION_WORKSPACES_BY_MODE, ORCHESTRATION_WORKSPACE_DISK_BYTES
+            mode_counts: Dict[str, int] = {}
+            total_disk = 0
+            for ws in _WORKSPACE_MANAGER.workspaces.values():
+                mode_name = ws.mode.name if hasattr(ws.mode, "name") else str(ws.mode)
+                mode_counts[mode_name] = mode_counts.get(mode_name, 0) + 1
+                if ws.path.exists():
+                    try:
+                        total_disk += sum(f.stat().st_size for f in ws.path.rglob("*") if f.is_file())
+                    except (OSError, PermissionError):
+                        pass
+            for mode_name, count in mode_counts.items():
+                ORCHESTRATION_WORKSPACES_BY_MODE.labels(mode=mode_name).set(count)
+            ORCHESTRATION_WORKSPACE_DISK_BYTES.set(total_disk)
+            # MCPToolInvoker metrics
+            tool_report = _MCP_TOOL_INVOKER.get_usage_report()
+            from metrics import ORCHESTRATION_TOOLS_RATE_LIMITED
+            ORCHESTRATION_TOOLS_RATE_LIMITED.set(tool_report.get("rate_limited_tools", 0))
+            ORCHESTRATION_TOOL_PENDING_APPROVALS.set(tool_report.get("pending_approvals", 0))
+        except Exception:
+            pass
         return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
     # Phase 21.3 — Cache invalidation endpoint for event-driven cache management
