@@ -9788,6 +9788,300 @@ async def run_http_mode(port: int) -> None:
         result = await advanced_features.get_learning_stats()
         return web.json_response(result)
 
+    # -------------------------------------------------------------------------
+    # Phase 4.2 — Multi-Agent Orchestration Framework Endpoints
+    # -------------------------------------------------------------------------
+
+    async def handle_orchestration_status(request: web.Request) -> web.Response:
+        """Get orchestration framework status."""
+        try:
+            return web.json_response({
+                "status": "ok",
+                "agent_hq": {
+                    "registered_agents": len(_AGENT_HQ.global_agents),
+                    "active_sessions": len(_AGENT_HQ.sessions),
+                    "persistence_dir": str(_ORCHESTRATION_PERSISTENCE_DIR),
+                },
+                "delegation": _DELEGATION_API.get_queue_status(),
+                "workspaces": {
+                    "active": len(_WORKSPACE_MANAGER.workspaces),
+                    "base_dir": str(_WORKSPACE_BASE_DIR),
+                },
+                "tool_invoker": _MCP_TOOL_INVOKER.get_usage_report(),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_agents_list(request: web.Request) -> web.Response:
+        """List all registered agents."""
+        try:
+            agents = [agent.to_dict() for agent in _AGENT_HQ.global_agents.values()]
+            return web.json_response({"agents": agents, "count": len(agents)})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_agents_register(request: web.Request) -> web.Response:
+        """Register a new agent."""
+        try:
+            data = await request.json()
+            name = str(data.get("name", "")).strip()
+            if not name:
+                return web.json_response({"error": "name required"}, status=400)
+            capabilities = set(data.get("capabilities", []))
+            metadata = data.get("metadata", {})
+            agent = _AGENT_HQ.register_agent(name, capabilities, metadata)
+            # Also register with delegation API
+            _DELEGATION_API.register_agent(
+                agent.agent_id,
+                name,
+                capabilities=capabilities,
+                max_concurrent=int(data.get("max_concurrent", 5)),
+            )
+            return web.json_response({"status": "ok", "agent": agent.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_sessions_list(request: web.Request) -> web.Response:
+        """List orchestration sessions."""
+        try:
+            state_filter = request.query.get("state")
+            filter_enum = SessionState(state_filter) if state_filter else None
+            sessions = _AGENT_HQ.list_sessions(state_filter=filter_enum)
+            return web.json_response({
+                "sessions": [s.to_dict() for s in sessions],
+                "count": len(sessions),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_session_create(request: web.Request) -> web.Response:
+        """Create a new orchestration session."""
+        try:
+            data = await request.json()
+            name = str(data.get("name", "")).strip() or f"session-{int(time.time())}"
+            context = data.get("context", {})
+            session = _AGENT_HQ.create_session(name, context)
+            return web.json_response({"status": "ok", "session": session.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_session_get(request: web.Request) -> web.Response:
+        """Get session details."""
+        try:
+            session_id = request.match_info["session_id"]
+            session = _AGENT_HQ.get_session(session_id)
+            if not session:
+                return web.json_response({"error": "session not found"}, status=404)
+            status = _AGENT_HQ.get_session_status(session_id)
+            return web.json_response({
+                "session": session.to_dict(),
+                "status": status,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_session_start(request: web.Request) -> web.Response:
+        """Start or resume a session."""
+        try:
+            session_id = request.match_info["session_id"]
+            success = await _AGENT_HQ.start_session(session_id)
+            if not success:
+                return web.json_response({"error": "failed to start session"}, status=400)
+            return web.json_response({"status": "ok", "session_id": session_id, "state": "running"})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_session_pause(request: web.Request) -> web.Response:
+        """Pause a running session."""
+        try:
+            session_id = request.match_info["session_id"]
+            success = await _AGENT_HQ.pause_session(session_id)
+            if not success:
+                return web.json_response({"error": "failed to pause session"}, status=400)
+            return web.json_response({"status": "ok", "session_id": session_id, "state": "paused"})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_session_checkpoint(request: web.Request) -> web.Response:
+        """Create a checkpoint for a session."""
+        try:
+            session_id = request.match_info["session_id"]
+            data = await request.json()
+            name = str(data.get("name", "")).strip() or None
+            checkpoint = _AGENT_HQ.create_checkpoint(session_id, name)
+            if not checkpoint:
+                return web.json_response({"error": "failed to create checkpoint"}, status=400)
+            return web.json_response({"status": "ok", "checkpoint": checkpoint.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_session_restore(request: web.Request) -> web.Response:
+        """Restore session from a checkpoint."""
+        try:
+            session_id = request.match_info["session_id"]
+            data = await request.json()
+            checkpoint_id = str(data.get("checkpoint_id", "")).strip()
+            if not checkpoint_id:
+                return web.json_response({"error": "checkpoint_id required"}, status=400)
+            success = _AGENT_HQ.restore_checkpoint(session_id, checkpoint_id)
+            if not success:
+                return web.json_response({"error": "failed to restore checkpoint"}, status=400)
+            return web.json_response({"status": "ok", "restored": checkpoint_id})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_task_submit(request: web.Request) -> web.Response:
+        """Submit a task for delegation."""
+        try:
+            session_id = request.match_info["session_id"]
+            data = await request.json()
+            description = str(data.get("description", "")).strip()
+            if not description:
+                return web.json_response({"error": "description required"}, status=400)
+            capabilities = set(data.get("required_capabilities", []))
+            priority = int(data.get("priority", 5))
+            task = await _AGENT_HQ.submit_task(
+                session_id,
+                description,
+                priority=priority,
+                required_capabilities=capabilities or None,
+            )
+            if not task:
+                return web.json_response({"error": "failed to submit task"}, status=400)
+            return web.json_response({"status": "ok", "task": task.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_delegate(request: web.Request) -> web.Response:
+        """Delegate a task directly via the delegation API."""
+        try:
+            data = await request.json()
+            description = str(data.get("description", "")).strip()
+            if not description:
+                return web.json_response({"error": "description required"}, status=400)
+            capabilities = set(data.get("required_capabilities", []))
+            preferred_agent = data.get("preferred_agent")
+            priority = int(data.get("priority", 5))
+            timeout = float(data.get("timeout_seconds", 300.0))
+            wait = bool(data.get("wait", False))
+            result = await _DELEGATION_API.delegate(
+                task_description=description,
+                required_capabilities=capabilities or None,
+                preferred_agent=preferred_agent,
+                priority=priority,
+                timeout_seconds=timeout,
+                wait=wait,
+            )
+            return web.json_response({"status": "ok", "result": result.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_workspace_create(request: web.Request) -> web.Response:
+        """Create an isolated workspace."""
+        try:
+            data = await request.json()
+            agent_id = str(data.get("agent_id", "")).strip()
+            session_id = str(data.get("session_id", "")).strip()
+            if not agent_id or not session_id:
+                return web.json_response({"error": "agent_id and session_id required"}, status=400)
+            mode_str = str(data.get("mode", "temp_dir")).strip().lower()
+            mode = IsolationMode(mode_str) if mode_str in [m.value for m in IsolationMode] else IsolationMode.TEMP_DIR
+            source_path = data.get("source_path")
+            workspace = await _WORKSPACE_MANAGER.create_workspace(
+                agent_id=agent_id,
+                session_id=session_id,
+                source_path=Path(source_path) if source_path else None,
+                mode=mode,
+            )
+            return web.json_response({"status": "ok", "workspace": workspace.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_workspace_list(request: web.Request) -> web.Response:
+        """List workspaces."""
+        try:
+            session_id = request.query.get("session_id")
+            agent_id = request.query.get("agent_id")
+            workspaces = _WORKSPACE_MANAGER.list_workspaces(session_id=session_id, agent_id=agent_id)
+            return web.json_response({
+                "workspaces": [w.to_dict() for w in workspaces],
+                "count": len(workspaces),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_workspace_cleanup(request: web.Request) -> web.Response:
+        """Clean up a workspace."""
+        try:
+            workspace_id = request.match_info["workspace_id"]
+            force = request.query.get("force", "false").lower() == "true"
+            success = await _WORKSPACE_MANAGER.cleanup_workspace(workspace_id, force=force)
+            if not success:
+                return web.json_response({"error": "failed to cleanup workspace"}, status=400)
+            return web.json_response({"status": "ok", "cleaned": workspace_id})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_tool_register(request: web.Request) -> web.Response:
+        """Register an MCP tool."""
+        try:
+            data = await request.json()
+            tool_id = str(data.get("tool_id", "")).strip()
+            name = str(data.get("name", "")).strip()
+            description = str(data.get("description", "")).strip()
+            server_id = str(data.get("server_id", "")).strip()
+            if not all([tool_id, name, description, server_id]):
+                return web.json_response({"error": "tool_id, name, description, server_id required"}, status=400)
+            tool = _MCP_TOOL_INVOKER.register_tool(
+                tool_id=tool_id,
+                name=name,
+                description=description,
+                server_id=server_id,
+                capabilities=set(data.get("capabilities", [])),
+                estimated_cost=float(data.get("estimated_cost", 0.0)),
+                requires_approval=bool(data.get("requires_approval", False)),
+                rate_limit=data.get("rate_limit"),
+            )
+            return web.json_response({"status": "ok", "tool": tool.to_dict()})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_tool_invoke(request: web.Request) -> web.Response:
+        """Invoke an MCP tool."""
+        try:
+            data = await request.json()
+            tool_id = str(data.get("tool_id", "")).strip()
+            if not tool_id:
+                return web.json_response({"error": "tool_id required"}, status=400)
+            params = data.get("params", {})
+            agent_id = str(data.get("agent_id", "system")).strip()
+            result = await _MCP_TOOL_INVOKER.invoke(
+                tool_id=tool_id,
+                params=params,
+                agent_id=agent_id,
+            )
+            return web.json_response({"status": "ok", "result": result})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_orchestration_tool_search(request: web.Request) -> web.Response:
+        """Search for tools."""
+        try:
+            query = request.query.get("q", "")
+            capabilities = request.query.get("capabilities", "").split(",") if request.query.get("capabilities") else []
+            max_results = int(request.query.get("max_results", 10))
+            tools = _MCP_TOOL_INVOKER.search_tools(
+                query=query,
+                capabilities=set(c.strip() for c in capabilities if c.strip()) or None,
+                max_results=max_results,
+            )
+            return web.json_response({
+                "tools": [t.to_dict() for t in tools],
+                "count": len(tools),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
     async def handle_openai_models(request: web.Request) -> web.Response:
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -9961,6 +10255,26 @@ async def run_http_mode(port: int) -> None:
 
     # Phase 1: WebSocket alert endpoint
     http_app.router.add_get("/ws/alerts", handle_alerts_websocket)
+
+    # Phase 4.2 — Multi-Agent Orchestration Framework endpoints
+    http_app.router.add_get("/control/orchestration/status", handle_orchestration_status)
+    http_app.router.add_get("/control/orchestration/agents", handle_orchestration_agents_list)
+    http_app.router.add_post("/control/orchestration/agents/register", handle_orchestration_agents_register)
+    http_app.router.add_get("/control/orchestration/sessions", handle_orchestration_sessions_list)
+    http_app.router.add_post("/control/orchestration/sessions", handle_orchestration_session_create)
+    http_app.router.add_get("/control/orchestration/sessions/{session_id}", handle_orchestration_session_get)
+    http_app.router.add_post("/control/orchestration/sessions/{session_id}/start", handle_orchestration_session_start)
+    http_app.router.add_post("/control/orchestration/sessions/{session_id}/pause", handle_orchestration_session_pause)
+    http_app.router.add_post("/control/orchestration/sessions/{session_id}/checkpoint", handle_orchestration_session_checkpoint)
+    http_app.router.add_post("/control/orchestration/sessions/{session_id}/restore", handle_orchestration_session_restore)
+    http_app.router.add_post("/control/orchestration/sessions/{session_id}/tasks", handle_orchestration_task_submit)
+    http_app.router.add_post("/control/orchestration/delegate", handle_orchestration_delegate)
+    http_app.router.add_get("/control/orchestration/workspaces", handle_orchestration_workspace_list)
+    http_app.router.add_post("/control/orchestration/workspaces", handle_orchestration_workspace_create)
+    http_app.router.add_delete("/control/orchestration/workspaces/{workspace_id}", handle_orchestration_workspace_cleanup)
+    http_app.router.add_post("/control/orchestration/tools/register", handle_orchestration_tool_register)
+    http_app.router.add_post("/control/orchestration/tools/invoke", handle_orchestration_tool_invoke)
+    http_app.router.add_get("/control/orchestration/tools/search", handle_orchestration_tool_search)
 
     runner = web.AppRunner(
         http_app,
