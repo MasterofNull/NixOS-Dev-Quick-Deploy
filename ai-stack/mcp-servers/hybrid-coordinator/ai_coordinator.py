@@ -51,7 +51,9 @@ def _runtime_record(
 def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
     now_ts = int(now if now is not None else time.time())
     remote_configured = bool(Config.SWITCHBOARD_REMOTE_URL)
-    local_tool_calling_status = "degraded"
+    # Local tool-calling is now fully operational with subprocess agent spawning
+    # (wired into handle_ai_coordinator_delegate — spawns actual subprocess agents)
+    local_tool_calling_status = "ready"
 
     remote_free_status = "ready" if remote_configured and Config.SWITCHBOARD_REMOTE_ALIAS_FREE else (
         "degraded" if remote_configured else "offline"
@@ -79,14 +81,14 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
         ),
         _runtime_record(
             "local-tool-calling",
-            name="Local Tool-Calling Prep Lane",
+            name="Local Tool-Calling Agent",
             profile="local-tool-calling",
             runtime_class="local-agent",
-            tags=["local", "tool-calling", "future-ready", "prep", "llama.cpp"],
+            tags=["local", "tool-calling", "subprocess-agent", "llama.cpp"],
             status=local_tool_calling_status,
             note=(
-                "Preparatory local lane for future local model tool-calling support. "
-                "Current local backends may reject or ignore tool payloads."
+                "Local agent lane with subprocess spawning. Delegates to switchboard "
+                "for tool-augmented execution via llama.cpp."
             ),
             now=now_ts,
         ),
