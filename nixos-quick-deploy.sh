@@ -3220,49 +3220,120 @@ restart_repo_backed_ai_services_if_needed
 
 # ── Phase 20.2: Model download (post-switch, not blocking boot) ──────────
 # Models are downloaded after the system switch so boot is never delayed.
-# This waits for downloads to complete before running health checks.
+# The Nix switch generates new model fetch services with the target paths.
+# We extract the actual model paths from the systemd services (source of truth)
+# and delete stale metadata to force a fresh comparison.
 download_ai_models() {
   section "Model Download"
 
-  # The model fetch services are idempotent — they check if the model file
-  # exists and matches the configured source, skipping download if so.
-  # We just trigger them and wait for completion.
+  # Extract actual model paths from the Nix-generated systemd units.
+  # These are the definitive paths — not hardcoded defaults.
+  local chat_model_path=""
+  local chat_meta_path=""
+  local embed_model_path=""
+  local embed_meta_path=""
 
-  local chat_trigger=false
-  local embed_trigger=false
-
-  # Check if the chat model fetch service exists
-  if systemctl list-unit-files llama-cpp-model-fetch.service >/dev/null 2>&1; then
-    chat_trigger=true
+  # Get chat model path from llama-cpp-model-fetch ExecStart
+  if systemctl show llama-cpp-model-fetch.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
+    # Extract model path: the first /var/lib/llama-cpp/... path in ExecStart
+    chat_model_path="$(systemctl show llama-cpp-model-fetch.service -p ExecStart 2>/dev/null | grep -oP '/var/lib/llama-cpp/models/\S+\.gguf' | head -1 || true)"
   fi
 
-  # Check if the embedding model fetch service exists
-  if systemctl list-unit-files llama-cpp-embed-model-fetch.service >/dev/null 2>&1; then
-    embed_trigger=true
+  # Get embedding model path from llama-cpp-embed-model-fetch ExecStart
+  if systemctl show llama-cpp-embed-model-fetch.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
+    embed_model_path="$(systemctl show llama-cpp-embed-model-fetch.service -p ExecStart 2>/dev/null | grep -oP '/var/lib/llama-cpp/models/\S+\.gguf' | head -1 || true)"
   fi
 
-  if [[ "$chat_trigger" != true && "$embed_trigger" != true ]]; then
-    log "Model download: no model fetch services configured (place GGUFs in /var/lib/llama-cpp/models/ or set huggingFaceRepo)."
+  # Fallback to default paths if extraction failed
+  [[ -z "$chat_model_path" ]] && chat_model_path="/var/lib/llama-cpp/models/model.gguf"
+  [[ -z "$embed_model_path" ]] && embed_model_path="/var/lib/llama-cpp/models/embed.gguf"
+  chat_meta_path="${chat_model_path}.source-meta"
+  embed_meta_path="${embed_model_path}.source-meta"
+
+  log "Model download: chat model target = $chat_model_path"
+  log "Model download: embedding model target = $embed_model_path"
+
+  # Remove stale metadata from previous configs so the fetch service
+  # does a fresh comparison against the NEW config.
+  if [[ -f "$chat_meta_path" ]]; then
+    log "Model download: removing stale chat model metadata"
+    rm -f "$chat_meta_path"
+  fi
+  if [[ -f "$embed_meta_path" ]]; then
+    log "Model download: removing stale embedding model metadata"
+    rm -f "$embed_meta_path"
+  fi
+
+  # Also remove old model files at default paths that may be from a different config
+  # (e.g. old Qwen3 model.gguf when new config uses gemma4-e4b at a different path)
+  local old_default_model="/var/lib/llama-cpp/models/model.gguf"
+  if [[ -f "$old_default_model" && "$chat_model_path" != "$old_default_model" ]]; then
+    log "Model download: removing old model at $old_default_model (config changed to $chat_model_path)"
+    rm -f "$old_default_model" "${old_default_model}.source-meta"
+  fi
+  local old_default_embed="/var/lib/llama-cpp/models/embed.gguf"
+  if [[ -f "$old_default_embed" && "$embed_model_path" != "$old_default_embed" ]]; then
+    log "Model download: removing old embedding model at $old_default_embed (config changed to $embed_model_path)"
+    rm -f "$old_default_embed" "${old_default_embed}.source-meta"
+  fi
+
+  local chat_model_present=false
+  local embed_model_present=false
+
+  # Check if models are already present at the TARGET paths (valid size > 10MB)
+  if [[ -f "$chat_model_path" ]]; then
+    local chat_sz
+    chat_sz="$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)"
+    if [[ "$chat_sz" -gt 10485760 ]]; then
+      chat_model_present=true
+      log "Model download: chat model present ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+    fi
+  fi
+
+  if [[ -f "$embed_model_path" ]]; then
+    local embed_sz
+    embed_sz="$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)"
+    if [[ "$embed_sz" -gt 10485760 ]]; then
+      embed_model_present=true
+      log "Model download: embedding model present ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+    fi
+  fi
+
+  if [[ "$chat_model_present" == true && "$embed_model_present" == true ]]; then
+    log "Model download: both models present. Skipping download."
+    return 0
+  fi
+
+  # Only proceed if at least one fetch service exists
+  if ! systemctl list-unit-files llama-cpp-model-fetch.service >/dev/null 2>&1 && \
+     ! systemctl list-unit-files llama-cpp-embed-model-fetch.service >/dev/null 2>&1; then
+    log "Model download: no model fetch services configured."
+    if [[ "$chat_model_present" != true ]]; then
+      log_warn "Model download: chat model missing and no fetch service to download it"
+    fi
+    if [[ "$embed_model_present" != true ]]; then
+      log_warn "Model download: embedding model missing and no fetch service to download it"
+    fi
     return 0
   fi
 
   log "Model download: starting downloads (boot was not delayed)..."
 
-  # Trigger chat model fetch (idempotent — skips if model present)
-  if [[ "$chat_trigger" == true ]]; then
+  # Trigger chat model fetch
+  if [[ "$chat_model_present" != true ]]; then
+    systemctl reset-failed llama-cpp-model-fetch.service 2>/dev/null || true
     log "Model download: starting llama-cpp-model-fetch..."
     if ! systemctl start llama-cpp-model-fetch 2>/dev/null; then
       log_warn "Model download: failed to trigger chat model fetch"
-      chat_trigger=false
     fi
   fi
 
-  # Trigger embedding model fetch (idempotent — skips if model present)
-  if [[ "$embed_trigger" == true ]]; then
+  # Trigger embedding model fetch
+  if [[ "$embed_model_present" != true ]]; then
+    systemctl reset-failed llama-cpp-embed-model-fetch.service 2>/dev/null || true
     log "Model download: starting llama-cpp-embed-model-fetch..."
     if ! systemctl start llama-cpp-embed-model-fetch 2>/dev/null; then
       log_warn "Model download: failed to trigger embedding model fetch"
-      embed_trigger=false
     fi
   fi
 
@@ -3270,11 +3341,13 @@ download_ai_models() {
   local timeout=1800
   local elapsed=0
   local interval=10
+  local waiting_chat="$([[ "$chat_model_present" != true ]] && echo true || echo false)"
+  local waiting_embed="$([[ "$embed_model_present" != true ]] && echo true || echo false)"
 
   while [[ $elapsed -lt $timeout ]]; do
     local all_done=true
 
-    if [[ "$chat_trigger" == true ]]; then
+    if [[ "$waiting_chat" == true ]]; then
       local chat_state
       chat_state="$(systemctl is-active llama-cpp-model-fetch.service 2>/dev/null || echo "unknown")"
       if [[ "$chat_state" == "activating" || "$chat_state" == "active" ]]; then
@@ -3285,11 +3358,27 @@ download_ai_models() {
       elif [[ "$chat_state" == "failed" ]]; then
         log_warn "Model download: chat model fetch failed"
         journalctl -u llama-cpp-model-fetch --no-pager -n 5 2>/dev/null || true
-        chat_trigger=false
+        waiting_chat=false
+      elif [[ "$chat_state" == "inactive" || "$chat_state" == "dead" ]]; then
+        # Service completed — verify model file appeared
+        if [[ -f "$chat_model_path" ]]; then
+          local sz
+          sz="$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)"
+          if [[ "$sz" -gt 10485760 ]]; then
+            waiting_chat=false
+            log "Model download: chat model downloaded successfully ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+          else
+            log_warn "Model download: chat model file too small ($sz bytes) — download may have failed"
+            waiting_chat=false
+          fi
+        else
+          log_warn "Model download: chat model fetch completed but file not found"
+          waiting_chat=false
+        fi
       fi
     fi
 
-    if [[ "$embed_trigger" == true ]]; then
+    if [[ "$waiting_embed" == true ]]; then
       local embed_state
       embed_state="$(systemctl is-active llama-cpp-embed-model-fetch.service 2>/dev/null || echo "unknown")"
       if [[ "$embed_state" == "activating" || "$embed_state" == "active" ]]; then
@@ -3300,7 +3389,22 @@ download_ai_models() {
       elif [[ "$embed_state" == "failed" ]]; then
         log_warn "Model download: embedding model fetch failed"
         journalctl -u llama-cpp-embed-model-fetch --no-pager -n 5 2>/dev/null || true
-        embed_trigger=false
+        waiting_embed=false
+      elif [[ "$embed_state" == "inactive" || "$embed_state" == "dead" ]]; then
+        if [[ -f "$embed_model_path" ]]; then
+          local sz
+          sz="$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)"
+          if [[ "$sz" -gt 10485760 ]]; then
+            waiting_embed=false
+            log "Model download: embedding model downloaded successfully ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+          else
+            log_warn "Model download: embedding model file too small ($sz bytes)"
+            waiting_embed=false
+          fi
+        else
+          log_warn "Model download: embedding model fetch completed but file not found"
+          waiting_embed=false
+        fi
       fi
     fi
 
@@ -3318,6 +3422,18 @@ download_ai_models() {
     log "  Monitor: journalctl -u llama-cpp-embed-model-fetch -f"
   else
     log "Model download: complete (${elapsed}s)"
+  fi
+
+  # Final verification
+  if [[ -f "$chat_model_path" ]]; then
+    log "Model download: chat model ready at $chat_model_path ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+  elif [[ "$chat_model_present" != true ]]; then
+    log_warn "Model download: chat model file still missing after download attempt"
+  fi
+  if [[ -f "$embed_model_path" ]]; then
+    log "Model download: embedding model ready at $embed_model_path ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+  elif [[ "$embed_model_present" != true ]]; then
+    log_warn "Model download: embedding model file still missing after download attempt"
   fi
 }
 
