@@ -3218,6 +3218,114 @@ fi
 
 restart_repo_backed_ai_services_if_needed
 
+# ── Phase 20.2: Model download (post-switch, not blocking boot) ──────────
+# Models are downloaded after the system switch so boot is never delayed.
+# This waits for downloads to complete before running health checks.
+download_ai_models() {
+  section "Model Download"
+
+  # The model fetch services are idempotent — they check if the model file
+  # exists and matches the configured source, skipping download if so.
+  # We just trigger them and wait for completion.
+
+  local chat_trigger=false
+  local embed_trigger=false
+
+  # Check if the chat model fetch service exists
+  if systemctl list-unit-files llama-cpp-model-fetch.service >/dev/null 2>&1; then
+    chat_trigger=true
+  fi
+
+  # Check if the embedding model fetch service exists
+  if systemctl list-unit-files llama-cpp-embed-model-fetch.service >/dev/null 2>&1; then
+    embed_trigger=true
+  fi
+
+  if [[ "$chat_trigger" != true && "$embed_trigger" != true ]]; then
+    log "Model download: no model fetch services configured (place GGUFs in /var/lib/llama-cpp/models/ or set huggingFaceRepo)."
+    return 0
+  fi
+
+  log "Model download: starting downloads (boot was not delayed)..."
+
+  # Trigger chat model fetch (idempotent — skips if model present)
+  if [[ "$chat_trigger" == true ]]; then
+    log "Model download: starting llama-cpp-model-fetch..."
+    if ! systemctl start llama-cpp-model-fetch 2>/dev/null; then
+      log_warn "Model download: failed to trigger chat model fetch"
+      chat_trigger=false
+    fi
+  fi
+
+  # Trigger embedding model fetch (idempotent — skips if model present)
+  if [[ "$embed_trigger" == true ]]; then
+    log "Model download: starting llama-cpp-embed-model-fetch..."
+    if ! systemctl start llama-cpp-embed-model-fetch 2>/dev/null; then
+      log_warn "Model download: failed to trigger embedding model fetch"
+      embed_trigger=false
+    fi
+  fi
+
+  # Wait for downloads to complete (timeout: 30 min for large models)
+  local timeout=1800
+  local elapsed=0
+  local interval=10
+
+  while [[ $elapsed -lt $timeout ]]; do
+    local all_done=true
+
+    if [[ "$chat_trigger" == true ]]; then
+      local chat_state
+      chat_state="$(systemctl is-active llama-cpp-model-fetch.service 2>/dev/null || echo "unknown")"
+      if [[ "$chat_state" == "activating" || "$chat_state" == "active" ]]; then
+        all_done=false
+        if (( elapsed % 30 == 0 )); then
+          log "Model download: chat model still downloading... (${elapsed}s)"
+        fi
+      elif [[ "$chat_state" == "failed" ]]; then
+        log_warn "Model download: chat model fetch failed"
+        journalctl -u llama-cpp-model-fetch --no-pager -n 5 2>/dev/null || true
+        chat_trigger=false
+      fi
+    fi
+
+    if [[ "$embed_trigger" == true ]]; then
+      local embed_state
+      embed_state="$(systemctl is-active llama-cpp-embed-model-fetch.service 2>/dev/null || echo "unknown")"
+      if [[ "$embed_state" == "activating" || "$embed_state" == "active" ]]; then
+        all_done=false
+        if (( elapsed % 30 == 0 )); then
+          log "Model download: embedding model still downloading... (${elapsed}s)"
+        fi
+      elif [[ "$embed_state" == "failed" ]]; then
+        log_warn "Model download: embedding model fetch failed"
+        journalctl -u llama-cpp-embed-model-fetch --no-pager -n 5 2>/dev/null || true
+        embed_trigger=false
+      fi
+    fi
+
+    if [[ "$all_done" == true ]]; then
+      break
+    fi
+
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
+  done
+
+  if [[ $elapsed -ge $timeout ]]; then
+    log_warn "Model download: timed out after ${timeout}s — downloads may still be in progress"
+    log "  Monitor: journalctl -u llama-cpp-model-fetch -f"
+    log "  Monitor: journalctl -u llama-cpp-embed-model-fetch -f"
+  else
+    log "Model download: complete (${elapsed}s)"
+  fi
+}
+
+if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+  download_ai_models
+fi
+
+
 if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]]; then
   log "Syncing Flatpak apps for profile '${PROFILE}' (system scope)"
   if "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
