@@ -6,6 +6,10 @@
  *
  * Minimal RPC-style CLI for the hybrid harness APIs.
  *
+ * Bootstrap (run first on every session):
+ *   harness-rpc.js status            # verify harness is running
+ *   harness-rpc.js hints -q "task"  # get workflow hints
+ *
  * Examples:
  *   harness-rpc.js plan --query "fix continue hang"
  *   harness-rpc.js session-start --query "debug switchboard"
@@ -15,9 +19,14 @@
  *   harness-rpc.js run-start --query "implement parity features" --safety-mode execute-mutating
  *   harness-rpc.js run-event --id <session_id> --event-type tool_call --risk-class review-required --approved true
  *   harness-rpc.js run-replay --id <session_id>
+ *
+ * Environment:
+ *   HYBRID_URL (or HYB_URL)  — harness base URL (default: http://127.0.0.1:8003)
+ *   HYBRID_API_KEY           — optional API key for auth
  */
 
-const DEFAULT_BASE_URL = process.env.HYB_URL || "http://127.0.0.1:8003";
+const DEFAULT_BASE_URL =
+  process.env.HYBRID_URL || process.env.HYB_URL || "http://127.0.0.1:8003";
 const API_KEY = process.env.HYBRID_API_KEY || "";
 
 function parseArgs(argv) {
@@ -50,10 +59,18 @@ async function call(path, method = "GET", body = null) {
   });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    console.error(JSON.stringify({ ok: false, status: resp.status, error: payload }, null, 2));
+    console.error(
+      JSON.stringify(
+        { ok: false, status: resp.status, error: payload },
+        null,
+        2
+      )
+    );
     process.exit(1);
   }
-  console.log(JSON.stringify({ ok: true, status: resp.status, data: payload }, null, 2));
+  console.log(
+    JSON.stringify({ ok: true, status: resp.status, data: payload }, null, 2)
+  );
 }
 
 function csv(value) {
@@ -68,15 +85,16 @@ function defaultIntentContract(query) {
   const normalized = String(query || "").trim() || "workflow run";
   return {
     user_intent: normalized,
-    definition_of_done: `Complete requested workflow task: ${normalized.slice(0, 120)}`,
+    definition_of_done: `Complete requested workflow task: ${normalized.slice(
+      0,
+      120
+    )}`,
     depth_expectation: "minimum",
     spirit_constraints: [
       "follow declarative-first policy",
       "capture validation evidence",
     ],
-    no_early_exit_without: [
-      "all requested checks complete",
-    ],
+    no_early_exit_without: ["all requested checks complete"],
   };
 }
 
@@ -90,9 +108,13 @@ async function main() {
 
   switch (cmd) {
     case "plan":
-      return call("/workflow/plan", "POST", { query: args.query || args.q || "" });
+      return call("/workflow/plan", "POST", {
+        query: args.query || args.q || "",
+      });
     case "session-start":
-      return call("/workflow/session/start", "POST", { query: args.query || args.q || "" });
+      return call("/workflow/session/start", "POST", {
+        query: args.query || args.q || "",
+      });
     case "session-list":
       return call("/workflow/sessions", "GET");
     case "session-tree": {
@@ -101,13 +123,18 @@ async function main() {
       const includeObjective = args["include-objective"] ?? "true";
       return call(
         `/workflow/tree?include_completed=${includeCompleted}&include_failed=${includeFailed}&include_objective=${includeObjective}`,
-        "GET",
+        "GET"
       );
     }
     case "session-get":
-      return call(`/workflow/session/${args.id}${args.lineage ? "?lineage=true" : ""}`, "GET");
+      return call(
+        `/workflow/session/${args.id}${args.lineage ? "?lineage=true" : ""}`,
+        "GET"
+      );
     case "session-fork":
-      return call(`/workflow/session/${args.id}/fork`, "POST", { note: args.note || "forked session" });
+      return call(`/workflow/session/${args.id}/fork`, "POST", {
+        note: args.note || "forked session",
+      });
     case "session-advance":
       return call(`/workflow/session/${args.id}/advance`, "POST", {
         action: args.action || "note",
@@ -129,29 +156,36 @@ async function main() {
         mode: args.mode || "auto",
         expected_keywords: csv(args.keywords),
       });
-    case "run-start":
-      {
-        const query = args.query || args.q || "";
-        const intentContract = defaultIntentContract(query);
-        if (args["intent-user"]) intentContract.user_intent = String(args["intent-user"]);
-        if (args["intent-dod"]) intentContract.definition_of_done = String(args["intent-dod"]);
-        if (args["intent-depth"]) intentContract.depth_expectation = String(args["intent-depth"]);
-        const spirit = csv(args["intent-spirit"]);
-        if (spirit.length > 0) intentContract.spirit_constraints = spirit;
-        const noExit = csv(args["intent-no-exit"]);
-        if (noExit.length > 0) intentContract.no_early_exit_without = noExit;
-        return call("/workflow/run/start", "POST", {
-          query,
-          safety_mode: args["safety-mode"] || "plan-readonly",
-          token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
-          tool_call_limit: args["tool-call-limit"] ? Number(args["tool-call-limit"]) : 40,
-          requesting_agent: args.agent || "human",
-          requester_role: args["requester-role"] || "orchestrator",
-          intent_contract: intentContract,
-        });
-      }
+    case "run-start": {
+      const query = args.query || args.q || "";
+      const intentContract = defaultIntentContract(query);
+      if (args["intent-user"])
+        intentContract.user_intent = String(args["intent-user"]);
+      if (args["intent-dod"])
+        intentContract.definition_of_done = String(args["intent-dod"]);
+      if (args["intent-depth"])
+        intentContract.depth_expectation = String(args["intent-depth"]);
+      const spirit = csv(args["intent-spirit"]);
+      if (spirit.length > 0) intentContract.spirit_constraints = spirit;
+      const noExit = csv(args["intent-no-exit"]);
+      if (noExit.length > 0) intentContract.no_early_exit_without = noExit;
+      return call("/workflow/run/start", "POST", {
+        query,
+        safety_mode: args["safety-mode"] || "plan-readonly",
+        token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
+        tool_call_limit: args["tool-call-limit"]
+          ? Number(args["tool-call-limit"])
+          : 40,
+        requesting_agent: args.agent || "human",
+        requester_role: args["requester-role"] || "orchestrator",
+        intent_contract: intentContract,
+      });
+    }
     case "run-get":
-      return call(`/workflow/run/${args.id}?replay=${args.replay ? "true" : "false"}`, "GET");
+      return call(
+        `/workflow/run/${args.id}?replay=${args.replay ? "true" : "false"}`,
+        "GET"
+      );
     case "run-mode":
       return call(`/workflow/run/${args.id}/mode`, "POST", {
         safety_mode: args["safety-mode"] || "plan-readonly",
@@ -171,7 +205,9 @@ async function main() {
         risk_class: args["risk-class"] || "safe",
         approved: args.approved === "true" || args.approved === true,
         token_delta: args["token-delta"] ? Number(args["token-delta"]) : 0,
-        tool_call_delta: args["tool-call-delta"] ? Number(args["tool-call-delta"]) : 0,
+        tool_call_delta: args["tool-call-delta"]
+          ? Number(args["tool-call-delta"])
+          : 0,
         detail: args.detail || "",
       });
     case "run-replay":
@@ -220,7 +256,9 @@ async function main() {
       return call("/control/runtimes/schedule/select", "POST", {
         objective: args.objective || args.query || "",
         strategy: args.strategy || "weighted",
-        include_degraded: args["include-degraded"] === "true" || args["include-degraded"] === true,
+        include_degraded:
+          args["include-degraded"] === "true" ||
+          args["include-degraded"] === true,
         requirements: {
           runtime_class: args["runtime-class"] || "",
           transport: args.transport || "",
@@ -230,7 +268,10 @@ async function main() {
     case "coordinator-status":
       return call("/control/ai-coordinator/status", "GET");
     case "coordinator-skills":
-      return call(`/control/ai-coordinator/skills?limit=${args.limit || 25}`, "GET");
+      return call(
+        `/control/ai-coordinator/skills?limit=${args.limit || 25}`,
+        "GET"
+      );
     case "coordinator-delegate":
       return call("/control/ai-coordinator/delegate", "POST", {
         task: args.task || args.query || args.q || "",
@@ -242,20 +283,40 @@ async function main() {
       return call("/research/web/fetch", "POST", {
         urls: csv(args.urls),
         selectors: csv(args.selectors),
-        max_text_chars: args["max-text-chars"] ? Number(args["max-text-chars"]) : undefined,
+        max_text_chars: args["max-text-chars"]
+          ? Number(args["max-text-chars"])
+          : undefined,
       });
     case "browser-research":
       return call("/research/web/browser-fetch", "POST", {
         urls: csv(args.urls),
         selectors: csv(args.selectors),
-        max_text_chars: args["max-text-chars"] ? Number(args["max-text-chars"]) : undefined,
+        max_text_chars: args["max-text-chars"]
+          ? Number(args["max-text-chars"])
+          : undefined,
       });
     case "curated-research":
       return call("/research/workflows/curated-fetch", "POST", {
         workflow: args.workflow || args.pack || "",
         inputs: args.inputs ? JSON.parse(args.inputs) : undefined,
-        max_text_chars: args["max-text-chars"] ? Number(args["max-text-chars"]) : undefined,
+        max_text_chars: args["max-text-chars"]
+          ? Number(args["max-text-chars"])
+          : undefined,
       });
+
+    // ── Harness bootstrap / health ─────────────────────────────────────────
+    case "status":
+    case "health":
+      return call("/health", "GET");
+    case "health-detailed":
+      return call("/health/detailed", "GET");
+    case "hints":
+      return call("/hints", "POST", {
+        q: args.query || args.q || "",
+        agent: args.agent || "codex",
+        format: args.format || "json",
+      });
+
     default:
       console.error(`Unknown command: ${cmd}`);
       process.exit(2);

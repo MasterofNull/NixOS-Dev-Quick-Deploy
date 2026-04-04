@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# aq-session-zero — Session-zero bootstrap for AI agents
+#
+# Run this as the FIRST command in every agent session. It:
+# 1. Loads all service endpoints (HYBRID_URL, etc.)
+# 2. Verifies the harness is running and healthy
+# 3. Reports harness status (version, capabilities, memory state)
+# 4. Provides the standard workflow entry points
+#
+# Usage:
+#   aq-session-zero          # full bootstrap
+#   aq-session-zero --brief  # minimal output
+#   aq-session-zero --json   # machine-readable
+#
+# Exit codes:
+#   0 — harness is healthy and ready
+#   1 — harness unreachable (agent may proceed locally)
+#   2 — partial degradation (some subsystems down)
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENDPOINTS_FILE="${REPO_ROOT}/config/service-endpoints.sh"
+BRIEF=false
+JSON_MODE=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --brief) BRIEF=true; shift ;;
+    --json)  JSON_MODE=true; shift ;;
+    -h|--help)
+      echo "Usage: aq-session-zero [--brief] [--json]"
+      echo "Session-zero bootstrap — verifies harness and loads endpoints."
+      exit 0
+      ;;
+    *) echo "Unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+# ── Step 1: Load endpoints ───────────────────────────────────────────────────
+
+if [[ -f "$ENDPOINTS_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$ENDPOINTS_FILE"
+else
+  if $JSON_MODE; then
+    echo '{"status":"error","reason":"endpoints file missing"}'
+  else
+    echo "ERROR: $ENDPOINTS_FILE not found" >&2
+  fi
+  exit 1
+fi
+
+HARNESS_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
+
+# ── Step 2: Health check ─────────────────────────────────────────────────────
+
+HEALTH_RESPONSE=""
+HTTP_CODE=""
+declare -A SUBSYSTEMS=()
+
+if command -v curl &>/dev/null; then
+  HEALTH_RESPONSE=$(curl -sf --max-time 5 "${HARNESS_URL}/health" 2>/dev/null) || true
+  if [[ -n "$HEALTH_RESPONSE" ]]; then
+    # Extract key fields
+    STATUS=$(echo "$HEALTH_RESPONSE" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('status', 'unknown'))
+except: print('unknown')
+" 2>/dev/null || echo "parse-error")
+  else
+    STATUS="unreachable"
+  fi
+elif command -v wget &>/dev/null; then
+  HEALTH_RESPONSE=$(wget -qO- --timeout=5 "${HARNESS_URL}/health" 2>/dev/null) || true
+  if [[ -n "$HEALTH_RESPONSE" ]]; then
+    STATUS=$(echo "$HEALTH_RESPONSE" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('status', 'unknown'))
+except: print('unknown')
+" 2>/dev/null || echo "parse-error")
+  else
+    STATUS="unreachable"
+  fi
+else
+  STATUS="unreachable"
+fi
+
+# ── Step 3: Output ───────────────────────────────────────────────────────────
+
+if $JSON_MODE; then
+  cat <<EOF
+{
+  "session_zero": true,
+  "harness_url": "${HARNESS_URL}",
+  "harness_status": "${STATUS}",
+  "endpoints_loaded": true,
+  "workflow_entry": {
+    "plan": "POST ${HARNESS_URL}/workflow/plan",
+    "run_start": "POST ${HARNESS_URL}/workflow/run/start",
+    "hints": "GET ${HARNESS_URL}/hints?q=<query>&agent=<type>",
+    "review": "POST ${HARNESS_URL}/review/acceptance"
+  },
+  "cli_shortcuts": {
+    "hints": "aq-hints \"<task>\" --format=json",
+    "rpc": "harness-rpc.js <command> [--flags]",
+    "status": "harness-rpc.js status"
+  }
+}
+EOF
+else
+  if [[ "$STATUS" == "healthy" ]]; then
+    echo "═══════════════════════════════════════════════════════════"
+    echo "  HARNESS READY — ${HARNESS_URL}"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "  Workflow entry points:"
+    echo "    Plan:     POST ${HARNESS_URL}/workflow/plan"
+    echo "    Run:      POST ${HARNESS_URL}/workflow/run/start"
+    echo "    Hints:    GET  ${HARNESS_URL}/hints?q=<query>"
+    echo "    Review:   POST ${HARNESS_URL}/review/acceptance"
+    echo ""
+    echo "  CLI shortcuts:"
+    echo "    aq-hints \"<task>\" --format=json   # get ranked hints"
+    echo "    harness-rpc.js status               # health check"
+    echo "    harness-rpc.js <command> --flags    # all RPC calls"
+    echo ""
+    echo "  Endpoints loaded from: config/service-endpoints.sh"
+    echo "═══════════════════════════════════════════════════════════"
+    exit 0
+  else
+    echo "═══════════════════════════════════════════════════════════"
+    echo "  HARNESS UNREACHABLE — ${HARNESS_URL}"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "  Status: ${STATUS}"
+    echo "  Proceed with local execution. Retry before commit."
+    echo ""
+    echo "  Endpoints loaded from: config/service-endpoints.sh"
+    echo "═══════════════════════════════════════════════════════════"
+    exit 1
+  fi
+fi
