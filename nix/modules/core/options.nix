@@ -1097,6 +1097,78 @@
             Only effective when trackLatest = true.
           '';
         };
+
+        # ── Phase 20.2: Model catalog for easy swapping ─────────────────────
+        modelCatalog = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                description = "Display name for this model entry.";
+              };
+              repo = lib.mkOption {
+                type = lib.types.str;
+                description = "HuggingFace repo (org/name) for GGUF download.";
+              };
+              file = lib.mkOption {
+                type = lib.types.str;
+                description = "GGUF filename within the repo.";
+              };
+              sha256 = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "SHA256 hash for integrity verification.";
+              };
+              params = lib.mkOption {
+                type = lib.types.str;
+                description = "Parameter count string (e.g. '4B', '31B').";
+              };
+              contextSize = lib.mkOption {
+                type = lib.types.int;
+                description = "Native context window in tokens.";
+              };
+              ramEstimate = lib.mkOption {
+                type = lib.types.str;
+                description = "Estimated RAM for Q4_K_M quantization.";
+              };
+              type = lib.mkOption {
+                type = lib.types.enum ["dense" "moe" "embedding"];
+                description = "Model architecture type.";
+              };
+              recommended = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = "Whether this model is the current recommended default.";
+              };
+            };
+          });
+          default = {};
+          description = ''
+            Catalog of available models for quick swapping.
+            Set mySystem.aiStack.llamaCpp.activeModel to a key from this catalog
+            to switch models. The system downloads and configures the selected
+            model on next rebuild.
+
+            Pre-populated models (2026-04):
+            - gemma4-e4b: Gemma 4 E4B Instruct (4.5B active, 128K ctx, ~3GB Q4)
+            - gemma4-e2b: Gemma 4 E2B Instruct (2.3B active, 128K ctx, ~1.5GB Q4)
+            - qwen3-4b: Qwen3 4B Instruct (4B, 262K ctx, ~2.5GB Q4)
+            - qwen3-8b: Qwen3 8B Instruct (8B, 40K ctx, ~5GB Q4)
+            - phi4-mini: Phi-4 Mini Instruct (3.8B, 128K ctx, ~2.5GB Q4)
+          '';
+        };
+
+        activeModel = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "gemma4-e4b";
+          description = ''
+            Key from modelCatalog to use as the active chat model.
+            When set, overrides model, huggingFaceRepo, huggingFaceFile,
+            and sha256 from the catalog entry.
+            null = use explicit model/huggingFaceRepo values below.
+          '';
+        };
       };
 
       embeddingServer = {
@@ -1167,6 +1239,72 @@
           type = lib.types.listOf lib.types.str;
           default = [];
           description = "Additional CLI flags for the embedding llama-server instance.";
+        };
+
+        # ── Embedding model catalog for easy swapping ───────────────────────
+        modelCatalog = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                description = "Display name.";
+              };
+              repo = lib.mkOption {
+                type = lib.types.str;
+                description = "HuggingFace repo.";
+              };
+              file = lib.mkOption {
+                type = lib.types.str;
+                description = "GGUF filename.";
+              };
+              sha256 = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "SHA256 hash.";
+              };
+              dimensions = lib.mkOption {
+                type = lib.types.int;
+                description = "Embedding vector dimensions.";
+              };
+              maxTokens = lib.mkOption {
+                type = lib.types.int;
+                description = "Max context tokens.";
+              };
+              ramEstimate = lib.mkOption {
+                type = lib.types.str;
+                description = "Estimated RAM for Q8.";
+              };
+              pooling = lib.mkOption {
+                type = lib.types.enum ["mean" "cls" "last" "none" "rank"];
+                description = "Pooling strategy.";
+              };
+              recommended = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = "Current recommended default.";
+              };
+            };
+          });
+          default = {};
+          description = ''
+            Catalog of available embedding models for easy swapping.
+            Set mySystem.aiStack.embeddingServer.activeModel to a key from this catalog.
+
+            Pre-populated models (2026-04):
+            - bge-m3: BGE-M3 (1024-dim, 8K ctx, ~0.5GB Q8) — recommended for RAG
+            - jina-v3: Jina Embeddings v3 (1024-dim, 8K ctx, ~0.8GB Q8)
+            - nomic-embed: Nomic Embed v1.5 (768-dim, 8K ctx, ~0.5GB Q8)
+          '';
+        };
+
+        activeModel = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "bge-m3";
+          description = ''
+            Key from embedding modelCatalog to use. Overrides model, repo, file,
+            sha256, and pooling from the catalog entry.
+          '';
         };
       };
 
