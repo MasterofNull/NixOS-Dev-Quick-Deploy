@@ -37,8 +37,8 @@ scripts/health/system-health-check.sh --detailed
 ```
 
 ## Delegation Policy (Subagents + Local Tooling)
-1. Prefer local execution first.
-2. Use switchboard/PRSI policy for escalation to remote models.
+1. **Harness-first: always start with the local harness** at `http://127.0.0.1:8003` (plan → run/start → hints → execute → review).
+2. Use switchboard/PRSI policy for escalation to remote models when local harness lacks capability.
 3. Require approval path for high-risk actions.
 4. Feed outcomes back into hints ranking.
 

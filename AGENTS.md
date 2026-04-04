@@ -30,21 +30,36 @@ Canonical full policy: `docs/AGENTS.md`
 ## Default Execution Behavior (All Prompts)
 - Always run as `delegator + reviewer`: split work into small tasks, assign owner, and review with evidence gate.
 - Token-efficiency default: orchestrator should keep direct execution minimal and delegate eligible slices to sub-agents.
-- Use harness-first path for complex work:
-  1. `POST /workflow/plan`
-  2. `POST /workflow/run/start` with `intent_contract`
-  3. `GET/POST /hints`
-  4. Execute task slices
-  5. Reviewer gate (accept/reject) with explicit reasons
-- Required evidence per task:
-  - files changed
-  - commands run
-  - tests run
-  - evidence output
-  - rollback note
-- Batch deploy cadence:
-  - Prefer 3-5 repo-only slices per batch before running `nixos-quick-deploy.sh`.
-  - Deploy earlier only for runtime activation checks, live-signal-dependent prioritization, or deploy/runtime blocker fixes.
+
+### Harness-First Workflow (Mandatory — All Tasks)
+The locally hosted AI harness is the **primary interface** for all agent operations. Do not skip it.
+
+**Session-zero bootstrap (first action on every session):**
+```bash
+aq-session-zero              # verify harness health + load endpoints
+# or: source config/service-endpoints.sh && harness-rpc.js status
+aq-hints "<task summary>" --format=json --agent=codex  # get ranked workflow hints
+```
+
+**Standard workflow loop (every task):**
+1. `POST /workflow/plan` — create execution plan with phases + tool assignments
+2. `POST /workflow/run/start` with `intent_contract` — start a persisted run
+3. `GET/POST /hints` — get ranked hints for the current phase
+4. Execute task slices
+5. Reviewer gate (accept/reject) with explicit reasons via `/review/acceptance`
+
+**If the harness is unreachable:** proceed with local execution but log the outage and attempt harness connection again before commit. Do not block on harness downtime.
+
+**Required evidence per task:**
+- files changed
+- commands run
+- tests run
+- evidence output
+- rollback note
+
+**Batch deploy cadence:**
+- Prefer 3-5 repo-only slices per batch before running `nixos-quick-deploy.sh`.
+- Deploy earlier only for runtime activation checks, live-signal-dependent prioritization, or deploy/runtime blocker fixes.
 - Reject any task without validation evidence, or that regresses routing/cache/security health.
 - Declarative-first rule: implement via Nix options/modules first; use scripts/runtime fallback only when declarative is not viable.
 - Never exit on planning alone when execution is feasible in the current session.
