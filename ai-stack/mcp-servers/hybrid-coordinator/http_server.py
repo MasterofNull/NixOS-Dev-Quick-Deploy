@@ -4547,14 +4547,40 @@ async def run_http_mode(port: int) -> None:
 
     @web.middleware
     async def api_key_middleware(request, handler):
-        def _is_loopback_hints_request(req: web.Request) -> bool:
-            if req.path != "/hints":
-                return False
+        def _is_loopback_request(req: web.Request) -> bool:
+            """Check if the request originates from localhost."""
             remote = (req.remote or "").strip()
             if remote in {"127.0.0.1", "::1", "localhost"}:
                 return True
             forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
             return forwarded_for in {"127.0.0.1", "::1", "localhost"}
+
+        def _is_loopback_agent_request(req: web.Request) -> bool:
+            """Loopback bypass for local agent endpoints.
+
+            Local agents (Qwen, Claude Code, Aider, etc.) running on the same
+            machine should be able to use the harness without manual API key
+            configuration. Remote requests still require full auth.
+            """
+            if not _is_loopback_request(req):
+                return False
+            # Only bypass for endpoints that local agents actually need
+            agent_prefixes = (
+                "/hints",
+                "/workflow/",
+                "/query",
+                "/review/",
+                "/discovery/",
+                "/control/ai-coordinator/",
+                "/control/llm/",
+                "/memory/",
+                "/learning/",
+                "/cache/",
+                "/harness/",
+                "/parity/",
+                "/feedback",
+            )
+            return any(req.path.startswith(pfx) for pfx in agent_prefixes)
 
         # Public endpoints that don't require authentication
         public_paths = (
@@ -4568,7 +4594,7 @@ async def run_http_mode(port: int) -> None:
         )
         if request.path in public_paths:
             return await handler(request)
-        if _is_loopback_hints_request(request):
+        if _is_loopback_agent_request(request):
             return await handler(request)
         if not Config.API_KEY:
             return await handler(request)

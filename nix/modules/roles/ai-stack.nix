@@ -47,9 +47,10 @@ let
   dataDir = "/var/lib/llama-cpp";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
-  promptEvalPython = pkgs.python3.withPackages (ps: with ps; [
-    pyyaml
-  ]);
+  promptEvalPython = pkgs.python3.withPackages (ps:
+    with ps; [
+      pyyaml
+    ]);
   gapAutoRemediatePath = lib.makeBinPath [
     pkgs.bash
     pkgs.bc
@@ -81,20 +82,21 @@ let
   # "auto" detects AMD → vulkan, NVIDIA → cuda, otherwise cpu.
   # "rocm" is deprecated (crashes on APUs) and remaps to "vulkan".
   # Portable profiles: config/ai-stack-hardware-profiles.json
-  resolvedAccel =
-    let
-      explicit = ai.acceleration;
-      autoDetected =
-        if cfg.hardware.gpuVendor == "amd" || cfg.hardware.igpuVendor == "amd"
-        then "vulkan"  # Vulkan via Mesa RADV is stable on AMD APUs
-        else if cfg.hardware.gpuVendor == "nvidia"
-        then "cuda"
-        else if cfg.hardware.gpuVendor == "intel" || cfg.hardware.igpuVendor == "intel"
-        then "vulkan"  # Intel Arc/integrated via ANV
-        else "cpu";
-    in
-    if explicit == "auto" then autoDetected
-    else if explicit == "rocm" then "vulkan"  # ROCm deprecated; use Vulkan
+  resolvedAccel = let
+    explicit = ai.acceleration;
+    autoDetected =
+      if cfg.hardware.gpuVendor == "amd" || cfg.hardware.igpuVendor == "amd"
+      then "vulkan" # Vulkan via Mesa RADV is stable on AMD APUs
+      else if cfg.hardware.gpuVendor == "nvidia"
+      then "cuda"
+      else if cfg.hardware.gpuVendor == "intel" || cfg.hardware.igpuVendor == "intel"
+      then "vulkan" # Intel Arc/integrated via ANV
+      else "cpu";
+  in
+    if explicit == "auto"
+    then autoDetected
+    else if explicit == "rocm"
+    then "vulkan" # ROCm deprecated; use Vulkan
     else explicit;
 
   hasGpuLayersArg =
@@ -116,22 +118,24 @@ let
   # Vulkan environment for Mesa RADV/ANV on AMD/Intel GPUs.
   # Required for ggml-vulkan to find the ICD loader.
   # Portable config: config/ai-stack-hardware-profiles.json
-  vulkanEnv =
-    let
-      # Select ICD based on GPU vendor
-      gpuVendor = if cfg.hardware.gpuVendor != "none" then cfg.hardware.gpuVendor
-                  else cfg.hardware.igpuVendor;
-      icdPath =
-        if gpuVendor == "amd" then
-          "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json"
-        else if gpuVendor == "intel" then
-          "/run/opengl-driver/share/vulkan/icd.d/intel_icd.x86_64.json"
-        else
-          "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
-    in {
+  vulkanEnv = let
+    # Select ICD based on GPU vendor
+    gpuVendor =
+      if cfg.hardware.gpuVendor != "none"
+      then cfg.hardware.gpuVendor
+      else cfg.hardware.igpuVendor;
+    icdPath =
+      if gpuVendor == "amd"
+      then "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json"
+      else if gpuVendor == "intel"
+      then "/run/opengl-driver/share/vulkan/icd.d/intel_icd.x86_64.json"
+      else "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
+  in
+    {
       VK_ICD_FILENAMES = icdPath;
       VK_DRIVER_FILES = icdPath;
-    } // lib.optionalAttrs (ai.vulkanVisibleDevices != null) {
+    }
+    // lib.optionalAttrs (ai.vulkanVisibleDevices != null) {
       GGML_VK_VISIBLE_DEVICES = ai.vulkanVisibleDevices;
     };
 
@@ -140,8 +144,9 @@ let
   # CUDA: handled by nixpkgs (no special env needed)
   # CPU: no GPU env needed
   gpuEnv =
-    if resolvedAccel == "vulkan" then vulkanEnv
-    else {};  # cuda/cpu need no special GPU env
+    if resolvedAccel == "vulkan"
+    then vulkanEnv
+    else {}; # cuda/cpu need no special GPU env
 
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
   gpuEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") gpuEnv;
@@ -149,15 +154,13 @@ let
   # AppArmor currently confines /nix/store/*/bin/llama-server specifically.
   # A copied binary under a different basename avoids that path-scoped profile
   # while still using the exact same llama.cpp build and shared libraries.
-  llamaServerExec =
-    let
-      renamedServer = pkgs.runCommand "llama-server-unconfined" {} ''
-        mkdir -p "$out/bin"
-        cp ${pkgs.llama-cpp}/bin/llama-server "$out/bin/llama-server-unconfined"
-        chmod 0555 "$out/bin/llama-server-unconfined"
-      '';
-    in
-    "${renamedServer}/bin/llama-server-unconfined";
+  llamaServerExec = let
+    renamedServer = pkgs.runCommand "llama-server-unconfined" {} ''
+      mkdir -p "$out/bin"
+      cp ${pkgs.llama-cpp}/bin/llama-server "$out/bin/llama-server-unconfined"
+      chmod 0555 "$out/bin/llama-server-unconfined"
+    '';
+  in "${renamedServer}/bin/llama-server-unconfined";
 
   embed = ai.embeddingServer;
 
@@ -169,7 +172,10 @@ let
     else baseNameOf embed.model;
   hasEmbedAutoDownload = embedHfRepo != null;
   # Use empty string when sha256 is null to avoid coercion errors in shell scripts.
-  embedHfSha256 = if embed.sha256 != null then embed.sha256 else "";
+  embedHfSha256 =
+    if embed.sha256 != null
+    then embed.sha256
+    else "";
   embedHfSha256Valid = embed.sha256 != null && builtins.match "^[a-fA-F0-9]{64}$" embed.sha256 != null;
 
   aiHarnessCliWrappers = pkgs.symlinkJoin {
@@ -180,6 +186,9 @@ let
       '')
       (pkgs.writeShellScriptBin "aq-hints" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-session-zero" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-session-zero" "$@"
       '')
       (pkgs.writeShellScriptBin "aq-report" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-report" "$@"
@@ -302,9 +311,9 @@ in {
           pinFile = ../../pins/llama-cpp.json;
           useFallback = llama.useFallback;
           # GPU acceleration flags based on resolved acceleration mode
-          enableVulkan = (resolvedAccel == "vulkan");
-          enableRocm = false;  # Disabled: ROCm crashes on Cezanne APU
-          enableCuda = (resolvedAccel == "cuda");
+          enableVulkan = resolvedAccel == "vulkan";
+          enableRocm = false; # Disabled: ROCm crashes on Cezanne APU
+          enableCuda = resolvedAccel == "cuda";
         })
       ];
     })
@@ -671,17 +680,19 @@ in {
                 echo "llama-cpp-embed: sha256 = $actual_sha"
                 ${
                   # Only verify if sha256 was provided; if null, print hash for user to record.
-                  if embedHfSha256Valid then ''
-                expected_sha="${embedHfSha256}"
-                if [ "$actual_sha" != "$expected_sha" ]; then
-                  echo "llama-cpp-embed: SHA256 mismatch for downloaded model" >&2
-                  echo "expected: $expected_sha" >&2
-                  echo "actual:   $actual_sha" >&2
-                  exit 1
-                fi
-                echo "llama-cpp-embed: SHA256 verified"
-                  '' else ''
-                echo "llama-cpp-embed: WARNING — no sha256 configured; add the hash above to facts.nix to enable integrity checking"
+                  if embedHfSha256Valid
+                  then ''
+                    expected_sha="${embedHfSha256}"
+                    if [ "$actual_sha" != "$expected_sha" ]; then
+                      echo "llama-cpp-embed: SHA256 mismatch for downloaded model" >&2
+                      echo "expected: $expected_sha" >&2
+                      echo "actual:   $actual_sha" >&2
+                      exit 1
+                    fi
+                    echo "llama-cpp-embed: SHA256 verified"
+                  ''
+                  else ''
+                    echo "llama-cpp-embed: WARNING — no sha256 configured; add the hash above to facts.nix to enable integrity checking"
                   ''
                 }
 
@@ -908,7 +919,7 @@ in {
     # This must not depend on shell-completions, otherwise aq-hints can be missing
     # from PATH when completions are disabled.
     (lib.mkIf roleEnabled {
-      environment.systemPackages = [ aiHarnessCliWrappers ];
+      environment.systemPackages = [aiHarnessCliWrappers];
 
       # Agent-agnostic environment variables for tool discovery.
       # These work with any AI agent (Claude, GPT, Codex, Qwen, Gemini, Aider, etc.)
@@ -1054,13 +1065,15 @@ in {
       systemd.timers.ai-weekly-report = {
         description = "Weekly AI stack performance report timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar = "Sun 08:00:00";
-          Persistent = true;
-          RandomizedDelaySec = "15min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "Sun 08:00:00";
+            Persistent = true;
+            RandomizedDelaySec = "15min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
     })
 
@@ -1070,20 +1083,20 @@ in {
         description = "AI stack prompt registry evaluation and leaderboard update";
         after = ["network-online.target" "ai-stack.target"];
         wants = ["network-online.target"];
-        path = [ promptEvalPython ];
+        path = [promptEvalPython];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${promptEvalPython}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval";
           StandardOutput = "journal";
-          StandardError  = "journal";
+          StandardError = "journal";
           NoNewPrivileges = true;
-          ProtectSystem   = "strict";
-          ProtectHome     = "read-only";
-          PrivateTmp      = true;
-          MemoryMax       = "256M";
-          ReadWritePaths  = [
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "256M";
+          ReadWritePaths = [
             "${cfg.mcpServers.repoPath}/ai-stack/prompts"
           ];
         };
@@ -1092,13 +1105,15 @@ in {
       systemd.timers.ai-prompt-eval = {
         description = "Bi-weekly prompt eval leaderboard refresh timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar     = "Wed 02:00:00";
-          Persistent     = true;
-          RandomizedDelaySec = "30min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "Wed 02:00:00";
+            Persistent = true;
+            RandomizedDelaySec = "30min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
     })
 
@@ -1108,32 +1123,34 @@ in {
         description = "Import agent instruction files (CLAUDE.md, AGENTS.md, registry) into AIDB";
         after = ["network-online.target" "ai-aidb.service"];
         wants = ["network-online.target"];
-        path = [ pkgs.bash pkgs.coreutils pkgs.curl pkgs.jq pkgs.python3 ];
+        path = [pkgs.bash pkgs.coreutils pkgs.curl pkgs.jq pkgs.python3];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/data/import-agent-instructions.sh";
           StandardOutput = "journal";
-          StandardError  = "journal";
+          StandardError = "journal";
           NoNewPrivileges = true;
-          ProtectSystem   = "strict";
-          ProtectHome     = "read-only";
-          PrivateTmp      = true;
-          MemoryMax       = "128M";
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "128M";
         };
       };
 
       systemd.timers.ai-import-agent-instructions = {
         description = "Weekly agent instruction AIDB import timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar     = "Mon 00:03:00";
-          Persistent     = true;
-          RandomizedDelaySec = "10min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "Mon 00:03:00";
+            Persistent = true;
+            RandomizedDelaySec = "10min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
     })
 
@@ -1146,21 +1163,21 @@ in {
         after = ["network-online.target" "ai-aidb.service"];
         wants = ["network-online.target"];
         # PATH must include bash and common tools for the script's shebang
-        path = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.curl pkgs.jq ];
+        path = [pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.python3 pkgs.curl pkgs.jq];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-import";
           StandardOutput = "journal";
-          StandardError  = "journal";
+          StandardError = "journal";
           NoNewPrivileges = true;
-          ProtectSystem   = "strict";
-          ProtectHome     = "read-only";
-          PrivateTmp      = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
           # Needs network for Gemini API and Qdrant rebuild
-          PrivateNetwork  = false;
-          MemoryMax       = "512M";
+          PrivateNetwork = false;
+          MemoryMax = "512M";
           Environment = [
             "GAPS_JSONL=${mutableLogDir}/query-gaps.jsonl"
             "MIN_OCCURRENCES=3"
@@ -1172,13 +1189,15 @@ in {
       systemd.timers.ai-gap-import = {
         description = "Weekly PRSI gap knowledge import timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar     = "Sat 03:00:00";
-          Persistent     = true;
-          RandomizedDelaySec = "30min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "Sat 03:00:00";
+            Persistent = true;
+            RandomizedDelaySec = "30min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
 
       # Phase 21.4: Daily automated gap remediation for self-improvement loops
@@ -1186,90 +1205,98 @@ in {
         description = "AI gap auto-remediation (Phase 21.4 self-improvement)";
         after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" "postgresql.service"];
         wants = ["network-online.target"];
-        path = [ pkgs.bash pkgs.bc pkgs.coreutils pkgs.curl pkgs.findutils pkgs.gawk pkgs.gnugrep pkgs.gnused pkgs.jq pkgs.postgresql pkgs.systemd ];
+        path = [pkgs.bash pkgs.bc pkgs.coreutils pkgs.curl pkgs.findutils pkgs.gawk pkgs.gnugrep pkgs.gnused pkgs.jq pkgs.postgresql pkgs.systemd];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify";
           StandardOutput = "journal";
-          StandardError  = "journal";
+          StandardError = "journal";
           NoNewPrivileges = true;
-          ProtectSystem   = "strict";
-          ProtectHome     = "read-only";
-          PrivateTmp      = true;
-          PrivateNetwork  = false;
-          MemoryMax       = "512M";
-          ReadWritePaths  = [
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          PrivateNetwork = false;
+          MemoryMax = "512M";
+          ReadWritePaths = [
             mutableLogDir
             mutableOptimizerDir
           ];
-          Environment = [
-            "PATH=${gapAutoRemediatePath}"
-            "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
-            "GAP_REMEDIATION_LOG_DIR=${mutableOptimizerDir}/gap-remediation"
-          ] ++ lib.optional cfg.secrets.enable
-              "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
+          Environment =
+            [
+              "PATH=${gapAutoRemediatePath}"
+              "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
+              "GAP_REMEDIATION_LOG_DIR=${mutableOptimizerDir}/gap-remediation"
+            ]
+            ++ lib.optional cfg.secrets.enable
+            "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
         };
       };
 
       systemd.timers.ai-gap-auto-remediate = {
         description = "Daily AI gap auto-remediation timer (Phase 21.4)";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar          = "*-*-* 06:00:00";
-          Persistent          = true;
-          RandomizedDelaySec  = "15min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "*-*-* 06:00:00";
+            Persistent = true;
+            RandomizedDelaySec = "15min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
 
       systemd.services.ai-optimizer = {
         description = "AI stack agentic optimizer (PRSI action loop)";
-        after = [ "network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" ];
-        wants = [ "network-online.target" ];
+        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-optimizer --since=1d";
           StandardOutput = "journal";
-          StandardError  = "journal";
+          StandardError = "journal";
           NoNewPrivileges = true;
-          ProtectSystem   = "strict";
-          ProtectHome     = "read-only";
-          PrivateTmp      = true;
-          PrivateNetwork  = false;
-          MemoryMax       = "256M";
-          ReadWritePaths  = [
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          PrivateNetwork = false;
+          MemoryMax = "256M";
+          ReadWritePaths = [
             mutableOptimizerDir
             mutableLogDir
           ];
-          Environment = [
-            "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
-            "PYTHONPATH=${cfg.mcpServers.repoPath}/scripts"
-          ] ++ lib.optional cfg.secrets.enable
-              "AIDB_API_KEY_FILE=/run/secrets/${cfg.secrets.names.aidbApiKey}";
+          Environment =
+            [
+              "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
+              "PYTHONPATH=${cfg.mcpServers.repoPath}/scripts"
+            ]
+            ++ lib.optional cfg.secrets.enable
+            "AIDB_API_KEY_FILE=/run/secrets/${cfg.secrets.names.aidbApiKey}";
         };
       };
 
       systemd.timers.ai-optimizer = {
         description = "Daily AI stack agentic optimizer timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar          = "daily";
-          Persistent          = true;
-          RandomizedDelaySec  = "15min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "daily";
+            Persistent = true;
+            RandomizedDelaySec = "15min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
 
       systemd.services.ai-prsi-orchestrator = {
         description = "PRSI orchestrator cycle (identify → approve-low-risk → execute)";
-        after = [ "network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" ];
-        wants = [ "network-online.target" ];
+        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -1299,19 +1326,21 @@ in {
       systemd.timers.ai-prsi-orchestrator = {
         description = "Hourly PRSI orchestrator timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar = "hourly";
-          Persistent = true;
-          RandomizedDelaySec = "10min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "hourly";
+            Persistent = true;
+            RandomizedDelaySec = "10min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
 
       systemd.services.ai-cache-prewarm = lib.mkIf ai.aiHarness.runtime.cachePrewarm.enable {
         description = "AI stack semantic cache prewarm";
-        after = [ "network-online.target" "ai-hybrid-coordinator.service" ];
-        wants = [ "network-online.target" ];
+        after = ["network-online.target" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
         path = with pkgs; [
           bash
           coreutils
@@ -1340,26 +1369,30 @@ in {
           ReadWritePaths = [
             mutableLogDir
           ];
-          Environment = [
-            "HYB_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
-            "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
-            "SEED_ROUTING_PYTHON_BIN=${pkgs.python3}/bin/python3"
-            "AI_CACHE_PREWARM_QUERY_COUNT=${toString ai.aiHarness.runtime.cachePrewarm.queryCount}"
-          ] ++ lib.optional cfg.secrets.enable
-              "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
+          Environment =
+            [
+              "HYB_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
+              "AIDB_URL=http://127.0.0.1:${toString cfg.mcpServers.aidbPort}"
+              "SEED_ROUTING_PYTHON_BIN=${pkgs.python3}/bin/python3"
+              "AI_CACHE_PREWARM_QUERY_COUNT=${toString ai.aiHarness.runtime.cachePrewarm.queryCount}"
+            ]
+            ++ lib.optional cfg.secrets.enable
+            "HYBRID_API_KEY_FILE=/run/secrets/${cfg.secrets.names.hybridApiKey}";
         };
       };
 
       systemd.timers.ai-cache-prewarm = lib.mkIf ai.aiHarness.runtime.cachePrewarm.enable {
         description = "Periodic AI stack cache prewarm timer";
         wantedBy = ["timers.target"];
-        timerConfig = {
-          OnCalendar = "*-*-* *:0/${toString ai.aiHarness.runtime.cachePrewarm.intervalMinutes}:00";
-          Persistent = true;
-          RandomizedDelaySec = "5min";
-        } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-          DeferReactivation = true;
-        };
+        timerConfig =
+          {
+            OnCalendar = "*-*-* *:0/${toString ai.aiHarness.runtime.cachePrewarm.intervalMinutes}:00";
+            Persistent = true;
+            RandomizedDelaySec = "5min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
       };
     })
 
