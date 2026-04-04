@@ -91,6 +91,12 @@ in {
     };
   };
 
+  # D-Bus system policy for the battery bridge — allows owning com.system76.PowerDaemon
+  services.dbus.packages = lib.mkIf (mobile && cfg.roles.desktop.enable) [
+    (pkgs.writeTextDir "share/dbus-1/system.d/cosmic-battery-bridge.conf"
+      (builtins.readFile ../../../scripts/services/cosmic-battery-bridge-dbus.conf))
+  ];
+
   # Declarative battery service (non-COSMIC setups)
   systemd.services.battery-charge-thresholds = lib.mkIf (mobile && !cfg.roles.desktop.enable) {
     description = "Set battery charge start/stop thresholds via thinkpad-acpi";
