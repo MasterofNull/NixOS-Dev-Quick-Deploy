@@ -279,6 +279,46 @@ async function main() {
         max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
         temperature: args.temperature ? Number(args.temperature) : undefined,
       });
+
+    // ── Sub-agent delegation ─────────────────────────────────────────────
+    case "sub-agent":
+    case "spawn":
+    case "delegate": {
+      // Spawns a task through the harness workflow system with its own run/session
+      const spawnQuery = args.task || args.query || args.q || "";
+      const spawnIntent = {
+        user_intent:
+          args["intent-user"] || `Complete: ${spawnQuery.slice(0, 120)}`,
+        definition_of_done:
+          args["intent-dod"] || "Task completed with validation evidence",
+        depth_expectation: args["intent-depth"] || "standard",
+        spirit_constraints: ["follow project conventions", "capture evidence"],
+        no_early_exit_without: ["validation passes"],
+      };
+      return call("/workflow/run/start", "POST", {
+        query: spawnQuery,
+        safety_mode: args["safety-mode"] || "execute-mutating",
+        token_limit: args["token-limit"] ? Number(args["token-limit"]) : 4000,
+        tool_call_limit: args["tool-call-limit"]
+          ? Number(args["tool-call-limit"])
+          : 20,
+        requesting_agent: args.agent || "human",
+        requester_role: args["requester-role"] || "orchestrator",
+        intent_contract: spawnIntent,
+      });
+    }
+    case "orchestrate":
+      return call("/workflow/orchestrate", "POST", {
+        task: args.task || args.query || args.q || "",
+        priority: args.priority || "normal",
+        agent: args.agent || "codex",
+      });
+    case "query":
+      return call("/query", "POST", {
+        query: args.query || args.q || "",
+        context: args.context || "",
+        max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
+      });
     case "web-research":
       return call("/research/web/fetch", "POST", {
         urls: csv(args.urls),

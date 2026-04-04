@@ -69,6 +69,25 @@ aq-hints "<task summary>" --format=json --agent=codex  # get ranked workflow hin
   - `codex`: orchestration, planning, reviewer gate, integration quality, final acceptance.
   - `claude`: architecture reasoning, risk/policy analysis, long-form synthesis.
   - `qwen`: concrete patch proposals, implementation slices, test scaffolding.
+
+### Sub-Agent Delegation via Harness
+When work can be split into independent slices, spawn sub-agents through the harness:
+
+```bash
+# Spawn a sub-agent task (creates its own workflow run + session)
+harness-rpc.js sub-agent --task "implement X" --agent codex --safety-mode execute-mutating
+
+# Or delegate through the AI coordinator (auto-routes to best model)
+harness-rpc.js coordinator-delegate --task "analyze Y" --profile coder
+
+# Or submit to the orchestration queue
+harness-rpc.js orchestrate --task "do Z" --agent qwen --priority high
+```
+
+**Delegate when any of these are true:**
+  - parallel independent slices exist,
+  - research and implementation can run concurrently,
+  - work can be split into architecture + patch + review tracks.
 - Sub-agent self-awareness (non-negotiable):
   - Nested/sub-agents must never behave as orchestrators.
   - If running as a sub-agent, execute only assigned slice and return evidence + rollback notes.
