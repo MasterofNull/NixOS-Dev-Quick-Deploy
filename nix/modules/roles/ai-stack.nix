@@ -238,12 +238,169 @@ let
       RAG_OPENAI_API_KEY = "dummy";
       EMBEDDING_MODEL_API_BASE_URL = "http://127.0.0.1:${toString embed.port}/v1";
     };
+
+  # ── Phase 20.2: Model catalog defaults ─────────────────────────────────
+  # Pre-populated model entries for easy swapping via activeModel key.
+  # Update SHA256 hashes after downloading: sha256sum model.gguf
+  defaultModelCatalog = {
+    # ── Chat models ──────────────────────────────────────────────────────
+    "gemma4-e4b" = {
+      name = "Gemma 4 E4B Instruct";
+      repo = "bartowski/gemma-4-E4B-12B-it-GGUF";
+      file = "gemma-4-E4B-12B-it-Q4_K_M.gguf";
+      sha256 = null; # Set after first download
+      params = "4.5B active / 8B total";
+      contextSize = 131072;
+      ramEstimate = "~3 GB Q4";
+      type = "dense";
+      recommended = true;
+    };
+    "gemma4-e2b" = {
+      name = "Gemma 4 E2B Instruct";
+      repo = "bartowski/gemma-4-E2B-5B-it-GGUF";
+      file = "gemma-4-E2B-5B-it-Q4_K_M.gguf";
+      sha256 = null;
+      params = "2.3B active / 5.1B total";
+      contextSize = 131072;
+      ramEstimate = "~1.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen3-4b" = {
+      name = "Qwen3 4B Instruct 2507";
+      repo = "unsloth/Qwen3-4B-Instruct-2507-GGUF";
+      file = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+      sha256 = null;
+      params = "4B";
+      contextSize = 262144;
+      ramEstimate = "~2.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen3-8b" = {
+      name = "Qwen3 8B Instruct";
+      repo = "unsloth/Qwen3-8B-Instruct-GGUF";
+      file = "Qwen3-8B-Instruct-Q4_K_M.gguf";
+      sha256 = null;
+      params = "8B";
+      contextSize = 40960;
+      ramEstimate = "~5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "phi4-mini" = {
+      name = "Phi-4 Mini Instruct";
+      repo = "unsloth/phi-4-mini-instruct-GGUF";
+      file = "phi-4-mini-instruct-Q4_K_M.gguf";
+      sha256 = null;
+      params = "3.8B";
+      contextSize = 131072;
+      ramEstimate = "~2.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    # ── Embedding models ─────────────────────────────────────────────────
+    "bge-m3" = {
+      name = "BGE-M3";
+      repo = "mkunzli/bge-m3-GGUF";
+      file = "bge-m3-Q8_0.gguf";
+      sha256 = null;
+      dimensions = 1024;
+      maxTokens = 8192;
+      ramEstimate = "~0.5 GB Q8";
+      pooling = "cls";
+      recommended = true;
+    };
+    "jina-v3" = {
+      name = "Jina Embeddings v3";
+      repo = "jinaai/jina-embeddings-v3-GGUF";
+      file = "jina-embeddings-v3-Q8_0.gguf";
+      sha256 = null;
+      dimensions = 1024;
+      maxTokens = 8192;
+      ramEstimate = "~0.8 GB Q8";
+      pooling = "mean";
+      recommended = false;
+    };
+    "nomic-embed" = {
+      name = "Nomic Embed v1.5";
+      repo = "nomic-ai/nomic-embed-text-v1.5-GGUF";
+      file = "nomic-embed-text-v1.5.Q8_0.gguf";
+      sha256 = null;
+      dimensions = 768;
+      maxTokens = 8192;
+      ramEstimate = "~0.5 GB Q8";
+      pooling = "mean";
+      recommended = false;
+    };
+  };
 in {
   config = lib.mkMerge [
     (lib.mkIf (roleEnabled && ai.models != []) {
       warnings = [
         "mySystem.aiStack.models is deprecated and ignored for llama.cpp. Set mySystem.aiStack.llamaCpp.model to a GGUF path instead."
       ];
+    })
+
+    # ── Phase 20.2: Active model resolution from catalog ────────────────
+    # When activeModel is set, resolve it from the model catalog and override
+    # the explicit model/huggingFaceRepo/huggingFaceFile/sha256 options.
+    (lib.mkIf (roleEnabled && ai.llamaCpp.activeModel != null) {
+      mySystem.aiStack.llamaCpp = let
+        catalog = ai.llamaCpp.modelCatalog // defaultModelCatalog;
+        key = ai.llamaCpp.activeModel;
+        entry = catalog.${key} or null;
+      in
+        lib.mkIf (entry != null) {
+          huggingFaceRepo = entry.repo;
+          huggingFaceFile = entry.file;
+          sha256 = entry.sha256;
+          model = "/var/lib/llama-cpp/models/${entry.file}";
+          ctxSize = lib.mkDefault entry.contextSize;
+        };
+      warnings = let
+        catalog = ai.llamaCpp.modelCatalog // defaultModelCatalog;
+        entry = catalog.${ai.llamaCpp.activeModel} or null;
+      in
+        lib.optional (entry == null)
+        "mySystem.aiStack.llamaCpp.activeModel = \"${ai.llamaCpp.activeModel}\" not found in model catalog. Available: ${lib.concatStringsSep ", " (lib.attrNames (ai.llamaCpp.modelCatalog // defaultModelCatalog))}";
+    })
+
+    # ── Phase 20.2: Active embedding model resolution from catalog ──────
+    (lib.mkIf (roleEnabled && ai.embeddingServer.activeModel != null) {
+      mySystem.aiStack.embeddingServer = let
+        catalog = ai.embeddingServer.modelCatalog // defaultModelCatalog;
+        key = ai.embeddingServer.activeModel;
+        entry = catalog.${key} or null;
+      in
+        lib.mkIf (entry != null) {
+          huggingFaceRepo = entry.repo;
+          huggingFaceFile = entry.file;
+          sha256 = entry.sha256;
+          model = "/var/lib/llama-cpp/models/embed-${entry.file}";
+          pooling = entry.pooling;
+        };
+      mySystem.aiStack.embeddingDimensions = let
+        catalog = ai.embeddingServer.modelCatalog // defaultModelCatalog;
+        entry = catalog.${ai.embeddingServer.activeModel} or null;
+      in
+        lib.mkIf (entry != null) entry.dimensions;
+    })
+
+    # ── Populate default catalog entries if not overridden ──────────────
+    (lib.mkIf roleEnabled {
+      mySystem.aiStack.llamaCpp.modelCatalog = lib.mkIf (ai.llamaCpp.modelCatalog == {}) {
+        gemma4-e4b = defaultModelCatalog."gemma4-e4b";
+        gemma4-e2b = defaultModelCatalog."gemma4-e2b";
+        qwen3-4b = defaultModelCatalog."qwen3-4b";
+        qwen3-8b = defaultModelCatalog."qwen3-8b";
+        phi4-mini = defaultModelCatalog."phi4-mini";
+      };
+      mySystem.aiStack.embeddingServer.modelCatalog = lib.mkIf (ai.embeddingServer.modelCatalog == {}) {
+        bge-m3 = defaultModelCatalog."bge-m3";
+        jina-v3 = defaultModelCatalog."jina-v3";
+        nomic-embed = defaultModelCatalog."nomic-embed";
+      };
     })
 
     (lib.mkIf roleEnabled {

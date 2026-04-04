@@ -52,7 +52,12 @@
       "Bash(mv *)",
       "Bash(bash *)",
       "Bash(aq-hints *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "WebSearch",
+      "WebFetch(ai.rs)",
+      "WebFetch(wavespeed.ai)",
+      "WebFetch(milvus.io)",
+      "WebFetch(www.stackai.com)"
     ]
   }
 }
