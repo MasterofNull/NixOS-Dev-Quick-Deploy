@@ -49,7 +49,10 @@
   "$version": 3,
   "permissions": {
     "allow": [
-      "Bash(mv *)"
+      "Bash(mv *)",
+      "Bash(bash *)",
+      "Bash(aq-hints *)",
+      "Bash(python3 *)"
     ]
   }
 }

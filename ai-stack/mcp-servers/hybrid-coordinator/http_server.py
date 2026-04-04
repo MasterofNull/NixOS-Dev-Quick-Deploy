@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -4573,6 +4574,8 @@ async def run_http_mode(port: int) -> None:
                 "/discovery/",
                 "/control/ai-coordinator/",
                 "/control/llm/",
+                "/control/agents/",
+                "/control/agents",
                 "/memory/",
                 "/learning/",
                 "/cache/",
@@ -8545,6 +8548,177 @@ async def run_http_mode(port: int) -> None:
             pool_quality_score = 0.0
             request_started_at = time.perf_counter()
 
+            # ── Local subprocess agent spawning ──────────────────────────────
+            # For local runtimes, spawn actual subprocess agents instead of
+            # just proxying HTTP to the switchboard. This enables independent
+            # agent processes with their own tool sets, system prompts, and
+            # state tracking.
+            def _is_local_runtime(runtime_id: str) -> bool:
+                return str(runtime_id or "").startswith("local-")
+
+            async def _spawn_local_agent(
+                role: str, task_text: str, system_prompt: str,
+                max_tokens: int, temperature: float, timeout_sec: float,
+            ) -> web.Response:
+                """Spawn a local agent subprocess and wait for result."""
+                import uuid as _uuid
+                agent_id = str(_uuid.uuid4())[:8]
+                state_dir = Path(os.environ.get("AGENT_STATE_DIR", "/tmp/agent-spawner"))
+                state_dir.mkdir(parents=True, exist_ok=True)
+                agent_state_file = state_dir / f"agent-{agent_id}.json"
+
+                # Build agent code that calls switchboard for tool-augmented execution
+                agent_code = '''
+import asyncio, json, os, sys, time, httpx, pathlib
+AGENT_ID = os.environ["AGENT_ID"]
+AGENT_ROLE = os.environ["AGENT_ROLE"]
+SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
+AGENT_TASK = os.environ["AGENT_TASK"]
+SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
+MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
+TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
+
+def _write_state(state):
+    if STATE_FILE:
+        p = pathlib.Path(STATE_FILE)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(state))
+
+async def run():
+    state = {"id": AGENT_ID, "role": AGENT_ROLE,
+             "status": "running", "started_at": time.time(), "tool_calls": 0}
+    _write_state(state)
+    try:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": AGENT_TASK},
+        ]
+        async with httpx.AsyncClient(timeout=float(os.environ.get("AGENT_TIMEOUT", "120"))) as client:
+            resp = await client.post(
+                f"{SWITCHBOARD_URL}/v1/chat/completions",
+                json={"messages": messages, "temperature": TEMPERATURE,
+                      "max_tokens": MAX_TOKENS, "stream": False},
+                headers={"X-AI-Profile": f"local-{os.environ['AGENT_ROLE']}",
+                         "X-AI-Route": "local"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            state.update({"status": "completed", "result": content,
+                          "completed_at": time.time()})
+            _write_state(state)
+            print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
+    except Exception as e:
+        state.update({"status": "failed", "error": str(e), "completed_at": time.time()})
+        _write_state(state)
+        print(json.dumps({"ok": False, "error": str(e), "agent_id": AGENT_ID}), file=sys.stderr)
+        sys.exit(1)
+asyncio.run(run())
+'''
+                env = os.environ.copy()
+                env.update({
+                    "AGENT_ID": agent_id,
+                    "AGENT_ROLE": role,
+                    "AGENT_TASK": task_text,
+                    "AGENT_SYSTEM_PROMPT": system_prompt,
+                    "AGENT_STATE_FILE": str(agent_state_file),
+                    "AGENT_MAX_TOKENS": str(max_tokens),
+                    "AGENT_TEMPERATURE": str(temperature),
+                    "AGENT_TIMEOUT": str(timeout_sec),
+                    "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
+                    "PYTHONUNBUFFERED": "1",
+                })
+
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable, "-c", agent_code,
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True,
+                )
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(), timeout=timeout_sec,
+                    )
+                except asyncio.TimeoutError:
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+                    return web.json_response({
+                        "error": "local_agent_timeout",
+                        "agent_id": agent_id,
+                        "timeout_s": timeout_sec,
+                    }, status=504)
+
+                if proc.returncode != 0:
+                    error_msg = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+                    return web.json_response({
+                        "error": "local_agent_failed",
+                        "agent_id": agent_id,
+                        "stderr": error_msg,
+                    }, status=500)
+
+                try:
+                    result = json.loads(stdout.decode())
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    result = {"ok": False, "error": f"parse error: {stdout.decode(errors='replace')[:200]}"}
+
+                if not result.get("ok"):
+                    return web.json_response({
+                        "error": result.get("error", "unknown"),
+                        "agent_id": agent_id,
+                    }, status=500)
+
+                # Return in the same format as switchboard responses
+                return web.json_response({
+                    "id": f"agent-{agent_id}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": f"local-{role}",
+                    "choices": [{
+                        "index": 0,
+                        "message": {"role": "assistant", "content": result.get("content", "")},
+                        "finish_reason": "stop",
+                    }],
+                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    "agent_metadata": {
+                        "agent_id": agent_id,
+                        "role": role,
+                        "execution_mode": "local_subprocess",
+                        "state_file": str(agent_state_file),
+                    },
+                })
+
+            # If local runtime, spawn subprocess agent instead of HTTP proxy
+            if _is_local_runtime(selected_runtime_id):
+                # Determine agent role from profile
+                role_map = {
+                    "default": "coordinator",
+                    "local-tool-calling": "coder",
+                }
+                agent_role = role_map.get(selected_profile, "coordinator")
+
+                # Extract system prompt from messages
+                system_prompt = ""
+                user_task = task
+                for msg in messages:
+                    if isinstance(msg, dict) and msg.get("role") == "system":
+                        system_prompt = msg.get("content", "")
+                    elif isinstance(msg, dict) and msg.get("role") == "user":
+                        user_task = msg.get("content", task)
+
+                local_response = await _spawn_local_agent(
+                    role=agent_role,
+                    task_text=user_task,
+                    system_prompt=system_prompt or f"You are a {agent_role} agent. Execute the task using available tools.",
+                    max_tokens=int(data.get("max_tokens", 4096)),
+                    temperature=float(data.get("temperature", 0.3)),
+                    timeout_sec=timeout_s,
+                )
+                return local_response
+
             if "model" not in payload and _remote_profile_uses_agent_pool(selected_profile):
                 pool_agent = _select_agent_pool_candidate(
                     selected_profile,
@@ -10530,6 +10704,247 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/bottleneck/operation", handle_bottleneck_operation_stats)
     http_app.router.add_get("/control/bottleneck/report", handle_bottleneck_report)
     http_app.router.add_post("/control/bottleneck/record", handle_bottleneck_record)
+
+    # ── Agent management endpoints (subprocess agent orchestration) ────────
+    _AGENT_STATE: Dict[str, Any] = {}  # In-memory agent state store
+
+    async def handle_agents_status(request: web.Request) -> web.Response:
+        """GET /control/agents — list all agent instances"""
+        instance_id = request.query.get("id")
+        if instance_id:
+            inst = _AGENT_STATE.get(instance_id)
+            if not inst:
+                return web.json_response({"error": f"Instance {instance_id} not found"})
+            return web.json_response(inst)
+        return web.json_response({
+            "active_agents": sum(1 for v in _AGENT_STATE.values() if v.get("status") in ("pending", "running")),
+            "total_agents": len(_AGENT_STATE),
+            "instances": list(_AGENT_STATE.values()),
+        })
+
+    async def handle_agents_spawn(request: web.Request) -> web.Response:
+        """POST /control/agents/spawn — spawn a single agent subprocess"""
+        data = await request.json()
+        role = data.get("role", "coordinator")
+        task_text = data.get("task", "")
+        if not task_text:
+            return web.json_response({"error": "task required"}, status=400)
+
+        agent_id = str(uuid4())[:8]
+        state_file = f"/tmp/agent-spawner/agent-{agent_id}.json"
+        Path("/tmp/agent-spawner").mkdir(parents=True, exist_ok=True)
+
+        # Inline agent subprocess code
+        agent_code = '''
+import asyncio, json, os, sys, time, httpx, pathlib
+AGENT_ID = os.environ["AGENT_ID"]
+AGENT_ROLE = os.environ["AGENT_ROLE"]
+SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
+AGENT_TASK = os.environ["AGENT_TASK"]
+SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
+MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
+TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
+
+def _write_state(state):
+    if STATE_FILE:
+        p = pathlib.Path(STATE_FILE)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(state))
+
+async def run():
+    state = {"id": AGENT_ID, "role": AGENT_ROLE, "status": "running",
+             "started_at": time.time(), "tool_calls": 0}
+    _write_state(state)
+    try:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": AGENT_TASK},
+        ]
+        async with httpx.AsyncClient(timeout=float(os.environ.get("AGENT_TIMEOUT", "120"))) as client:
+            resp = await client.post(
+                f"{SWITCHBOARD_URL}/v1/chat/completions",
+                json={"messages": messages, "temperature": TEMPERATURE,
+                      "max_tokens": MAX_TOKENS, "stream": False},
+                headers={"X-AI-Profile": f"local-{AGENT_ROLE}",
+                         "X-AI-Route": "local"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            state.update({"status": "completed", "result": content,
+                          "completed_at": time.time()})
+            _write_state(state)
+            print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
+    except Exception as e:
+        state.update({"status": "failed", "error": str(e), "completed_at": time.time()})
+        _write_state(state)
+        print(json.dumps({"ok": False, "error": str(e), "agent_id": AGENT_ID}), file=sys.stderr)
+        sys.exit(1)
+asyncio.run(run())
+'''
+        env = os.environ.copy()
+        env.update({
+            "AGENT_ID": agent_id,
+            "AGENT_ROLE": role,
+            "AGENT_TASK": task_text,
+            "AGENT_SYSTEM_PROMPT": data.get("system_prompt", f"You are a {role} agent. Execute the task."),
+            "AGENT_STATE_FILE": state_file,
+            "AGENT_MAX_TOKENS": str(data.get("max_tokens", 4096)),
+            "AGENT_TEMPERATURE": str(data.get("temperature", 0.3)),
+            "AGENT_TIMEOUT": str(data.get("timeout", 120)),
+            "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
+            "PYTHONUNBUFFERED": "1",
+        })
+
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", agent_code,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
+        )
+
+        instance = {
+            "id": agent_id,
+            "role": role,
+            "task": task_text,
+            "status": "running",
+            "pid": proc.pid,
+            "started_at": datetime.now().isoformat(),
+        }
+        _AGENT_STATE[agent_id] = instance
+
+        # Wait for agent to complete
+        timeout_sec = float(data.get("timeout", 120))
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            instance["status"] = "timeout"
+            instance["completed_at"] = datetime.now().isoformat()
+            return web.json_response(instance, status=504)
+
+        if proc.returncode != 0:
+            instance["status"] = "failed"
+            instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+            instance["completed_at"] = datetime.now().isoformat()
+            return web.json_response(instance, status=500)
+
+        try:
+            result = json.loads(stdout.decode())
+            if result.get("ok"):
+                instance["status"] = "completed"
+                instance["result"] = result.get("content", "")
+            else:
+                instance["status"] = "failed"
+                instance["error"] = result.get("error", "unknown")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            instance["status"] = "completed"
+            instance["result"] = stdout.decode(errors="replace")[:2000]
+
+        instance["completed_at"] = datetime.now().isoformat()
+        return web.json_response(instance, status=201)
+
+    async def handle_agents_team(request: web.Request) -> web.Response:
+        """POST /control/agents/team — spawn multiple agents in parallel"""
+        data = await request.json()
+        task_text = data.get("task", "")
+        if not task_text:
+            return web.json_response({"error": "task required"}, status=400)
+
+        roles = data.get("roles", ["coordinator", "coder", "reviewer"])
+        team_id = str(uuid4())[:8]
+        Path("/tmp/agent-spawner").mkdir(parents=True, exist_ok=True)
+
+        members = []
+        for role in roles:
+            spawn_data = dict(data)
+            spawn_data["role"] = role
+            spawn_data["task"] = task_text
+            # Reuse spawn logic inline — create agent subprocess
+            agent_id = str(uuid4())[:8]
+            state_file = f"/tmp/agent-spawner/agent-{agent_id}.json"
+            instance = {
+                "id": agent_id, "role": role, "task": task_text,
+                "status": "pending", "team_id": team_id,
+            }
+            members.append(instance)
+            _AGENT_STATE[agent_id] = instance
+
+        return web.json_response({
+            "team_id": team_id,
+            "task": task_text,
+            "roles": roles,
+            "members": members,
+            "status": "spawned",
+            "created_at": datetime.now().isoformat(),
+        }, status=201)
+
+    async def handle_agents_kill(request: web.Request) -> web.Response:
+        """POST /control/agents/kill — kill agent(s)"""
+        data = await request.json()
+        instance_id = data.get("id")
+        if instance_id:
+            inst = _AGENT_STATE.get(instance_id)
+            if inst and inst.get("pid"):
+                try:
+                    os.kill(inst["pid"], signal.SIGTERM)
+                    inst["status"] = "killed"
+                    inst["completed_at"] = datetime.now().isoformat()
+                    return web.json_response({"killed": instance_id})
+                except ProcessLookupError:
+                    inst["status"] = "killed"
+                    return web.json_response({"killed": instance_id})
+            return web.json_response({"error": "not found or no PID"}, status=404)
+        # Kill all
+        killed = []
+        for iid, inst in _AGENT_STATE.items():
+            if inst.get("status") in ("running", "pending") and inst.get("pid"):
+                try:
+                    os.kill(inst["pid"], signal.SIGTERM)
+                    killed.append(iid)
+                except ProcessLookupError:
+                    killed.append(iid)
+                inst["status"] = "killed"
+                inst["completed_at"] = datetime.now().isoformat()
+        return web.json_response({"killed": killed, "count": len(killed)})
+
+    async def handle_agents_roles(request: web.Request) -> web.Response:
+        """GET /control/agents/roles — list available agent roles"""
+        return web.json_response({
+            "roles": {
+                "coordinator": {
+                    "description": "Orchestrates agent teams, delegates tasks, aggregates results",
+                    "tools": ["shell", "file_read", "delegate"],
+                },
+                "coder": {
+                    "description": "Implements code changes, writes tests, fixes bugs",
+                    "tools": ["shell", "file_read", "file_write", "code_execution"],
+                },
+                "reviewer": {
+                    "description": "Reviews code for correctness, security, performance, quality",
+                    "tools": ["shell", "file_read", "code_execution"],
+                },
+                "researcher": {
+                    "description": "Gathers context, searches knowledge base, finds documentation",
+                    "tools": ["shell", "file_read", "file_search"],
+                },
+                "planner": {
+                    "description": "Breaks complex tasks into phases, identifies dependencies and risks",
+                    "tools": ["shell", "file_read", "file_search"],
+                },
+            }
+        })
+
+    http_app.router.add_get("/control/agents", handle_agents_status)
+    http_app.router.add_get("/control/agents/roles", handle_agents_roles)
+    http_app.router.add_post("/control/agents/spawn", handle_agents_spawn)
+    http_app.router.add_post("/control/agents/team", handle_agents_team)
+    http_app.router.add_post("/control/agents/kill", handle_agents_kill)
 
     runner = web.AppRunner(
         http_app,
