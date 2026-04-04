@@ -515,8 +515,9 @@ in {
       systemd.services.llama-cpp = {
         description = "llama.cpp OpenAI-compatible inference server";
         wantedBy = ["multi-user.target"];
-        after = ["network.target" "llama-cpp-model-fetch.service"];
-        requires = ["llama-cpp-model-fetch.service"];
+        after = ["network.target"];
+        # Model fetch no longer blocks boot — server starts without model,
+        # logs a warning if the model file is missing.
         partOf = ["ai-stack.target"];
         serviceConfig = {
           Type = "simple";
@@ -565,19 +566,20 @@ in {
         };
       };
 
-      # Model fetch oneshot — downloads the GGUF from HuggingFace on first boot
-      # if the file is absent.  Subsequent boots skip the download instantly.
+      # Model fetch timer — downloads the GGUF from HuggingFace on a schedule,
+      # NOT during boot. Boot must never block on a multi-GB download.
+      # The download runs as a timer-triggered oneshot, retries daily.
       # Check progress / errors with: journalctl -u llama-cpp-model-fetch -f
+      # Trigger manually: sudo systemctl start llama-cpp-model-fetch
       systemd.services.llama-cpp-model-fetch = {
-        description = "llama.cpp model download (first-boot provisioning)";
-        wantedBy = ["multi-user.target"];
+        description = "llama.cpp model download (scheduled, not blocking boot)";
         after = ["network-online.target" "local-fs.target"];
         wants = ["network-online.target"];
-        before = ["llama-cpp.service"];
+        # NOT wantedBy multi-user.target — runs via timer, not boot
         serviceConfig = {
           Type = "oneshot";
-          RemainAfterExit = true;
-          User = "root"; # needs write to /var/lib/llama-cpp
+          RemainAfterExit = false;
+          User = "root";
           ExecStart = pkgs.writeShellScript "llama-model-fetch" (''
               set -euo pipefail
               model="${llama.model}"
@@ -708,8 +710,7 @@ in {
       systemd.services.ai-local-model-access = {
         description = "Grant primary user ACL access to local llama.cpp models";
         wantedBy = ["multi-user.target"];
-        after = ["llama-cpp-model-fetch.service" "llama-cpp-embed-model-fetch.service"];
-        wants = ["llama-cpp-model-fetch.service" "llama-cpp-embed-model-fetch.service"];
+        # Model fetch no longer blocks boot — ACLs applied at boot regardless
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
@@ -749,16 +750,15 @@ in {
     # Uses a small, fast embedding model (e.g. nomic-embed-text-v1.5 ~274 MB)
     # rather than the larger chat model so inference and embedding don't contend.
     (lib.mkIf (roleEnabled && embed.enable) {
-      # Model fetch oneshot — same idempotent pattern as the chat model.
+      # Embedding model fetch — scheduled, not blocking boot.
       systemd.services.llama-cpp-embed-model-fetch = {
-        description = "llama.cpp embedding model download (first-boot provisioning)";
-        wantedBy = ["multi-user.target"];
+        description = "llama.cpp embedding model download (scheduled, not blocking boot)";
         after = ["network-online.target" "local-fs.target"];
         wants = ["network-online.target"];
-        before = ["llama-cpp-embed.service"];
+        # NOT wantedBy multi-user.target — runs via timer or manual trigger
         serviceConfig = {
           Type = "oneshot";
-          RemainAfterExit = true;
+          RemainAfterExit = false;
           User = "root";
           ExecStart = pkgs.writeShellScript "llama-embed-model-fetch" (''
               set -euo pipefail
@@ -884,8 +884,8 @@ in {
       systemd.services.llama-cpp-embed = {
         description = "llama.cpp embedding server (:${toString embed.port})";
         wantedBy = ["multi-user.target"];
-        after = ["network.target" "llama-cpp-embed-model-fetch.service"];
-        requires = ["llama-cpp-embed-model-fetch.service"];
+        after = ["network.target"];
+        # Model fetch no longer blocks boot — server starts without model.
         partOf = ["ai-stack.target"];
         serviceConfig = {
           Type = "simple";
