@@ -4579,6 +4579,10 @@ async def run_http_mode(port: int) -> None:
                 "/harness/",
                 "/parity/",
                 "/feedback",
+                "/status",
+                "/alerts",
+                "/stats",
+                "/learning/stats",
             )
             return any(req.path.startswith(pfx) for pfx in agent_prefixes)
 
