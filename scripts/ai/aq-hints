@@ -179,13 +179,30 @@ def get_hints(
         or _fetch_rest(query, context, max_hints, agent, debug_meta, compact, max_tokens, escalate)
     )
     if result is None:
+        # Graceful degradation: return offline marker instead of hard-failing.
+        # Agents should proceed locally when harness is unreachable.
+        offline = {
+            "status": "offline",
+            "hints": [],
+            "query": query,
+            "agent_type": agent,
+            "inject_prefix": "HARNESS UNREACHABLE — proceed with local execution, retry before commit.",
+            "offline_notice": (
+                f"Local engine: {'OK' if _ENGINE_AVAILABLE else 'MISSING'}; "
+                f"REST fallback: {HYBRID_URL}/hints (unreachable). "
+                "Proceed locally and retry before commit."
+            ),
+        }
         print(
-            "ERROR: hints_engine unavailable locally and REST fallback failed.\n"
-            f"  Local engine: {'OK' if _ENGINE_AVAILABLE else 'MISSING (check sys.path)'}\n"
+            "WARN: Harness unreachable — returning offline mode.",
+            file=sys.stderr,
+        )
+        print(
+            f"  Local engine: {'OK' if _ENGINE_AVAILABLE else 'MISSING'}\n"
             f"  REST fallback: {HYBRID_URL}/hints (ensure hybrid-coordinator is running)",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return offline
     return result
 
 
@@ -383,6 +400,10 @@ def main() -> None:
             print(output)
     else:
         print(_format_text(result, args.agent, args.debug_meta))
+
+    # Exit code 2 for offline mode — scripts can detect but don't hard-fail
+    if result.get("status") == "offline":
+        sys.exit(2)
 
 
 if __name__ == "__main__":
