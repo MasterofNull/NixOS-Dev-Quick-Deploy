@@ -3213,6 +3213,19 @@ PYEOF
     log "Model download: starting downloads before rebuild..."
     run_privileged mkdir -p /var/lib/llama-cpp/models
 
+    # HuggingFace authentication: check for token in standard locations
+    # Priority: HF_TOKEN env > ~/.cache/huggingface/token file
+    local hf_token="${HF_TOKEN:-}"
+    local hf_token_file="${HOME}/.cache/huggingface/token"
+    if [[ -z "$hf_token" && -f "$hf_token_file" ]]; then
+      hf_token="$(cat "$hf_token_file" 2>/dev/null | tr -d '[:space:]')"
+    fi
+    local -a hf_auth_args=()
+    if [[ -n "$hf_token" ]]; then
+      hf_auth_args=(-H "Authorization: Bearer $hf_token")
+      log "  HuggingFace token detected — using authenticated downloads"
+    fi
+
     if [[ "$download_chat" == true && -n "$new_chat_key" ]]; then
       local chat_info="${MODEL_CATALOG_CHAT[$new_chat_key]}"
       local chat_repo="${chat_info%%|*}"; chat_info="${chat_info#*|}"
@@ -3223,7 +3236,7 @@ PYEOF
         log "Downloading chat model: $chat_repo / $chat_file"
         local tmp_model
         tmp_model="$(mktemp "/tmp/.dl-chat-model-XXXXXX")"
-        if curl -fL --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 7200 \
+        if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 7200 \
             -o "$tmp_model" \
             "https://huggingface.co/${chat_repo}/resolve/main/${chat_file}" 2>&1; then
           local sz
@@ -3242,7 +3255,12 @@ PYEOF
           fi
         else
           rm -f "$tmp_model"
-          log_warn "  Chat model download failed (network error)"
+          if [[ -z "$hf_token" ]]; then
+            log_warn "  Chat model download failed — may require HuggingFace authentication"
+            log_warn "  To authenticate: huggingface-cli login  OR  export HF_TOKEN=hf_..."
+          else
+            log_warn "  Chat model download failed (network error or invalid token)"
+          fi
         fi
       fi
     fi
@@ -3257,7 +3275,7 @@ PYEOF
         log "Downloading embedding model: $embed_repo / $embed_file"
         local tmp_model
         tmp_model="$(mktemp "/tmp/.dl-embed-model-XXXXXX")"
-        if curl -fL --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 3600 \
+        if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 3600 \
             -o "$tmp_model" \
             "https://huggingface.co/${embed_repo}/resolve/main/${embed_file}" 2>&1; then
           local sz
@@ -3276,7 +3294,12 @@ PYEOF
           fi
         else
           rm -f "$tmp_model"
-          log_warn "  Embedding model download failed (network error)"
+          if [[ -z "$hf_token" ]]; then
+            log_warn "  Embedding model download failed — may require HuggingFace authentication"
+            log_warn "  To authenticate: huggingface-cli login  OR  export HF_TOKEN=hf_..."
+          else
+            log_warn "  Embedding model download failed (network error or invalid token)"
+          fi
         fi
       fi
     fi
