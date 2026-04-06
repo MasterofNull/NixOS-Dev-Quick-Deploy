@@ -3128,6 +3128,52 @@ prompt_model_selection() {
   log "  Chat model:      $new_chat_key (download: $download_chat)"
   log "  Embedding model: $new_embed_key (download: $download_embed)"
 
+  # ── HuggingFace authentication check ─────────────────────────────────────
+  # If downloads are required, ensure we have a HuggingFace token.
+  # Some models (e.g., Gemma 4) are gated and require authentication.
+  if [[ "$download_chat" == true || "$download_embed" == true ]]; then
+    local hf_token="${HF_TOKEN:-}"
+    local hf_token_file="${HOME}/.cache/huggingface/token"
+
+    # Check for existing token
+    if [[ -z "$hf_token" && -f "$hf_token_file" ]]; then
+      hf_token="$(cat "$hf_token_file" 2>/dev/null | tr -d '[:space:]')"
+    fi
+
+    if [[ -z "$hf_token" ]]; then
+      echo ""
+      log "=== HUGGINGFACE AUTHENTICATION ==="
+      log "Some models require HuggingFace authentication to download."
+      log "To get a token:"
+      log "  1. Create account at https://huggingface.co/join"
+      log "  2. Accept model license (e.g., visit model page and agree to terms)"
+      log "  3. Create token at https://huggingface.co/settings/tokens"
+      echo ""
+      echo -n "Enter your HuggingFace token (or press Enter to skip): "
+      read -r hf_token_input
+      if [[ -n "$hf_token_input" ]]; then
+        # Validate token format (should start with hf_)
+        if [[ "$hf_token_input" =~ ^hf_ ]]; then
+          # Save token for future use
+          mkdir -p "${HOME}/.cache/huggingface"
+          echo "$hf_token_input" > "$hf_token_file"
+          chmod 600 "$hf_token_file"
+          export HF_TOKEN="$hf_token_input"
+          log "  Token saved to $hf_token_file"
+        else
+          log_warn "Token doesn't appear to be a HuggingFace token (should start with 'hf_')"
+          log_warn "Proceeding anyway — downloads may fail if models require authentication"
+          export HF_TOKEN="$hf_token_input"
+        fi
+      else
+        log_warn "No token provided — downloads may fail for gated models"
+        log_warn "You can set HF_TOKEN env var or run 'huggingface-cli login' later"
+      fi
+    else
+      log "  HuggingFace token detected — authenticated downloads enabled"
+    fi
+  fi
+
   # ── Write the selections to facts.nix ─────────────────────────────────────
   if [[ "$new_chat_key" != "$current_chat_key" || "$new_embed_key" != "$current_embed_key" ]]; then
     log "Updating facts.nix with new model selections..."
