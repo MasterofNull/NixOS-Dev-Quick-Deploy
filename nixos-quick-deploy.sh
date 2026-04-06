@@ -2926,11 +2926,372 @@ if [[ "${ANALYZE_ONLY}" == true ]]; then
   exit 0
 fi
 
-if [[ "$UPDATE_FLAKE_LOCK" == true ]]; then
-  update_flake_lock "${FLAKE_REF}"
-fi
+# ── Phase 1: Model Selection Prompt ────────────────────────────────────────
+# Presents available models, shows current state, lets user choose.
+# Downloads are triggered here (pre-rebuild) if models changed.
+# This ensures models exist on disk BEFORE nixos-rebuild builds the config.
+# ---------------------------------------------------------------------------
+
+declare -A MODEL_CATALOG_CHAT=(
+  ["gemma4-e4b"]="bartowski/gemma-4-E4B-12B-it-GGUF|gemma-4-E4B-12B-it-Q4_K_M.gguf|~3 GB|4.5B active / 128K ctx|Google Gemma 4 E4B — recommended"
+  ["gemma4-e2b"]="bartowski/gemma-4-E2B-5B-it-GGUF|gemma-4-E2B-5B-it-Q4_K_M.gguf|~1.5 GB|2.3B active / 128K ctx|Google Gemma 4 E2B — ultra-lightweight"
+  ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF|Qwen3-4B-Instruct-2507-Q4_K_M.gguf|~2.5 GB|4B / 262K ctx|Qwen3 4B — current system model"
+  ["qwen3-8b"]="unsloth/Qwen3-8B-Instruct-GGUF|Qwen3-8B-Instruct-Q4_K_M.gguf|~5 GB|8B / 40K ctx|Qwen3 8B — stronger reasoning"
+  ["phi4-mini"]="unsloth/phi-4-mini-instruct-GGUF|phi-4-mini-instruct-Q4_K_M.gguf|~2.5 GB|3.8B / 128K ctx|Phi-4 Mini — Microsoft"
+)
+declare -A MODEL_CATALOG_EMBED=(
+  ["bge-m3"]="mkunzli/bge-m3-GGUF|bge-m3-Q8_0.gguf|~0.5 GB|1024-dim / 8K ctx|BGE-M3 — recommended for RAG"
+  ["jina-v3"]="jinaai/jina-embeddings-v3-GGUF|jina-embeddings-v3-Q8_0.gguf|~0.8 GB|1024-dim / 8K ctx|Jina v3 — long-context docs"
+  ["nomic-embed"]="nomic-ai/nomic-embed-text-v1.5-GGUF|nomic-embed-text-v1.5.Q8_0.gguf|~0.5 GB|768-dim / 8K ctx|Nomic Embed v1.5"
+)
+
+prompt_model_selection() {
+  section "Phase 1: Model Selection"
+  log "Selecting AI models for this deployment..."
+
+  local facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
+  [[ -f "$facts_file" ]] || return 0
+
+  # ── Detect current models from facts.nix ──────────────────────────────────
+  local current_chat_key=""
+  local current_embed_key=""
+
+  # Try activeModel first (Phase 20.2 catalog-style config)
+  local active_chat_model=""
+  local active_embed_model=""
+  active_chat_model="$(grep -oP '(?<=llamaCpp\.activeModel\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+  active_embed_model="$(grep -oP '(?<=embeddingServer\.activeModel\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+
+  if [[ -n "$active_chat_model" ]]; then
+    current_chat_key="$active_chat_model"
+  fi
+  if [[ -n "$active_embed_model" ]]; then
+    current_embed_key="$active_embed_model"
+  fi
+
+  # Fallback: detect from huggingFaceRepo
+  if [[ -z "$current_chat_key" ]]; then
+    local current_chat_repo
+    current_chat_repo="$(grep -oP '(?<=llamaCpp\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+    if [[ -n "$current_chat_repo" ]]; then
+      for key in "${!MODEL_CATALOG_CHAT[@]}"; do
+        local repo="${MODEL_CATALOG_CHAT[$key]%%|*}"
+        if [[ "$repo" == "$current_chat_repo" ]]; then
+          current_chat_key="$key"
+          break
+        fi
+      done
+    fi
+  fi
+  if [[ -z "$current_embed_key" ]]; then
+    local current_embed_repo
+    current_embed_repo="$(grep -oP '(?<=embeddingServer\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+    if [[ -n "$current_embed_repo" ]]; then
+      for key in "${!MODEL_CATALOG_EMBED[@]}"; do
+        local repo="${MODEL_CATALOG_EMBED[$key]%%|*}"
+        if [[ "$repo" == "$current_embed_repo" ]]; then
+          current_embed_key="$key"
+          break
+        fi
+      done
+    fi
+  fi
+
+  # Detect which models are actually on disk
+  local disk_chat=""
+  local disk_embed=""
+  if [[ -f "/var/lib/llama-cpp/models/model.gguf" ]]; then
+    disk_chat="model.gguf ($(du -h /var/lib/llama-cpp/models/model.gguf 2>/dev/null | cut -f1))"
+  fi
+  for f in /var/lib/llama-cpp/models/*.gguf; do
+    [[ -f "$f" ]] || continue
+    [[ "$f" == *"embed"* ]] && continue
+    [[ "$f" == *"model.gguf" ]] && continue
+    disk_chat="$(basename "$f") ($(du -h "$f" 2>/dev/null | cut -f1))"
+  done
+  for f in /var/lib/llama-cpp/models/*embed*.gguf /var/lib/llama-cpp/models/embed*.gguf; do
+    [[ -f "$f" ]] || continue
+    disk_embed="$(basename "$f") ($(du -h "$f" 2>/dev/null | cut -f1))"
+  done
+
+  # ── Show current state ────────────────────────────────────────────────────
+  echo ""
+  log "=== CURRENT MODEL STATE ==="
+  log "  Chat model:      ${current_chat_key:-unknown} (disk: ${disk_chat:-none})"
+  log "  Embedding model: ${current_embed_key:-unknown} (disk: ${disk_embed:-none})"
+  echo ""
+
+  # ── Show available models ─────────────────────────────────────────────────
+  log "=== AVAILABLE CHAT MODELS ==="
+  for key in "gemma4-e4b" "gemma4-e2b" "qwen3-4b" "qwen3-8b" "phi4-mini"; do
+    local info="${MODEL_CATALOG_CHAT[$key]}"
+    local repo="${info%%|*}"; info="${info#*|}"
+    local file="${info%%|*}"; info="${info#*|}"
+    local size="${info%%|*}"; info="${info#*|}"
+    local specs="${info%%|*}"; info="${info#*|}"
+    local desc="$info"
+    local marker=""
+    [[ "$key" == "$current_chat_key" ]] && marker=" ← CURRENT"
+    log "  [$key] $desc ($size, $specs)$marker"
+  done
+  echo ""
+
+  log "=== AVAILABLE EMBEDDING MODELS ==="
+  for key in "bge-m3" "jina-v3" "nomic-embed"; do
+    local info="${MODEL_CATALOG_EMBED[$key]}"
+    local repo="${info%%|*}"; info="${info#*|}"
+    local file="${info%%|*}"; info="${info#*|}"
+    local size="${info%%|*}"; info="${info#*|}"
+    local specs="${info%%|*}"; info="${info#*|}"
+    local desc="$info"
+    local marker=""
+    [[ "$key" == "$current_embed_key" ]] && marker=" ← CURRENT"
+    log "  [$key] $desc ($size, $specs)$marker"
+  done
+  echo ""
+
+  # ── Ask user for selection ───────────────────────────────────────────────
+  local new_chat_key=""
+  local new_embed_key=""
+
+  # Chat model selection
+  echo -n "Chat model key [${current_chat_key:-none}]: "
+  read -r new_chat_key
+  new_chat_key="${new_chat_key:-$current_chat_key}"
+  if [[ -z "$new_chat_key" ]]; then
+    log "No chat model selected — keeping current (${current_chat_key:-none})"
+    new_chat_key="$current_chat_key"
+  elif [[ ! -v "MODEL_CATALOG_CHAT[$new_chat_key]" ]]; then
+    log_warn "Unknown chat model key '$new_chat_key' — keeping current (${current_chat_key:-none})"
+    new_chat_key="$current_chat_key"
+  fi
+
+  # Embedding model selection
+  echo -n "Embedding model key [${current_embed_key:-none}]: "
+  read -r new_embed_key
+  new_embed_key="${new_embed_key:-$current_embed_key}"
+  if [[ -z "$new_embed_key" ]]; then
+    log "No embedding model selected — keeping current (${current_embed_key:-none})"
+    new_embed_key="$current_embed_key"
+  elif [[ ! -v "MODEL_CATALOG_EMBED[$new_embed_key]" ]]; then
+    log_warn "Unknown embedding model key '$new_embed_key' — keeping current (${current_embed_key:-none})"
+    new_embed_key="$current_embed_key"
+  fi
+
+  # ── Compare and decide what to download ──────────────────────────────────
+  local download_chat=false
+  local download_embed=false
+
+  if [[ "$new_chat_key" != "$current_chat_key" ]]; then
+    if [[ -n "$new_chat_key" && "$new_chat_key" != "none" && "$new_chat_key" != "null" ]]; then
+      download_chat=true
+      log "→ Chat model changed: ${current_chat_key:-none} → $new_chat_key — will download"
+    else
+      log "  Chat model removed from config"
+    fi
+  else
+    # Same model — check if file is already on disk
+    local chat_info="${MODEL_CATALOG_CHAT[$new_chat_key]:-}"
+    if [[ -n "$chat_info" ]]; then
+      local chat_file="${chat_info#*|}"; chat_file="${chat_file%%|*}"
+      if [[ -f "/var/lib/llama-cpp/models/$chat_file" ]]; then
+        log "  Chat model already on disk at $chat_file — skipping download"
+      else
+        download_chat=true
+        log "  Chat model file missing — will download"
+      fi
+    fi
+  fi
+
+  if [[ "$new_embed_key" != "$current_embed_key" ]]; then
+    if [[ -n "$new_embed_key" && "$new_embed_key" != "none" && "$new_embed_key" != "null" ]]; then
+      download_embed=true
+      log "→ Embedding model changed: ${current_embed_key:-none} → $new_embed_key — will download"
+    else
+      log "  Embedding model removed from config"
+    fi
+  else
+    local embed_info="${MODEL_CATALOG_EMBED[$new_embed_key]:-}"
+    if [[ -n "$embed_info" ]]; then
+      local embed_file="${embed_info#*|}"; embed_file="${embed_file%%|*}"
+      if [[ -f "/var/lib/llama-cpp/models/$embed_file" ]]; then
+        log "  Embedding model already on disk at $embed_file — skipping download"
+      else
+        download_embed=true
+        log "  Embedding model file missing — will download"
+      fi
+    fi
+  fi
+
+  echo ""
+  log "=== SELECTION SUMMARY ==="
+  log "  Chat model:      $new_chat_key (download: $download_chat)"
+  log "  Embedding model: $new_embed_key (download: $download_embed)"
+
+  # ── Write the selections to facts.nix ─────────────────────────────────────
+  if [[ "$new_chat_key" != "$current_chat_key" || "$new_embed_key" != "$current_embed_key" ]]; then
+    log "Updating facts.nix with new model selections..."
+    local tmp_facts
+    tmp_facts="$(mktemp)"
+
+    # Build the aiStack block
+    local aiblock=""
+    aiblock+=$'    # ── AI Stack model configuration (Phase 20.2) ──────────────────────\n'
+    aiblock+=$'    # Switch models by changing activeModel to any key from the catalog.\n'
+    aiblock+=$'    aiStack = {\n'
+    aiblock+=$'      llamaCpp = {\n'
+    if [[ -n "$new_chat_key" && "$new_chat_key" != "none" ]]; then
+      aiblock+="        activeModel = \"${new_chat_key}\";\n"
+      aiblock+="        trackLatest = true;\n"
+    fi
+    aiblock+="      };\n"
+    aiblock+="      embeddingServer = {\n"
+    if [[ -n "$new_embed_key" && "$new_embed_key" != "none" ]]; then
+      aiblock+="        activeModel = \"${new_embed_key}\";\n"
+    fi
+    aiblock+="      };\n"
+    aiblock+="    };\n"
+
+    # Use Python to safely update facts.nix
+    python3 - "$facts_file" "$tmp_facts" "$new_chat_key" "$new_embed_key" <<'PYEOF'
+import sys, re
+
+facts_path = sys.argv[1]
+tmp_path = sys.argv[2]
+chat_key = sys.argv[3]
+embed_key = sys.argv[4]
+
+with open(facts_path) as f:
+    content = f.read()
+
+# Build replacement aiStack block
+aiblock = '    # ── AI Stack model configuration (Phase 20.2) ──────────────────────\n'
+aiblock += '    # Switch models by changing activeModel to any key from the catalog.\n'
+aiblock += '    # Available chat models: gemma4-e4b, gemma4-e2b, qwen3-4b, qwen3-8b, phi4-mini\n'
+aiblock += '    # Available embedding models: bge-m3, jina-v3, nomic-embed\n'
+aiblock += '    aiStack = {\n'
+aiblock += '      llamaCpp = {\n'
+if chat_key and chat_key != "none":
+    aiblock += f'        activeModel = "{chat_key}";\n'
+    aiblock += '        trackLatest = true;\n'
+aiblock += '      };\n'
+aiblock += '      embeddingServer = {\n'
+if embed_key and embed_key != "none":
+    aiblock += f'        activeModel = "{embed_key}";\n'
+aiblock += '      };\n'
+aiblock += '    };\n'
+
+# Replace existing aiStack block or insert before closing braces
+if 'aiStack = {' in content:
+    # Replace from 'aiStack' to its closing '};'
+    pattern = r'(\s+)aiStack = \{[^}]*embeddingServer = \{[^}]*\}[^}]*\};'
+    content = re.sub(pattern, lambda m: m.group(1) + aiblock.rstrip(), content, count=1, flags=re.DOTALL)
+else:
+    # Insert before the last two closing braces
+    content = content.rstrip()
+    if content.endswith('};\n  };\n}'):
+        content = content[:-9] + aiblock + '  };\n}\n'
+    elif content.endswith('};\n}'):
+        content = content[:-5] + aiblock + '}\n'
+
+with open(tmp_path, 'w') as f:
+    f.write(content)
+PYEOF
+
+    if [[ -f "$tmp_facts" ]]; then
+      mv "$tmp_facts" "$facts_file"
+      log "facts.nix updated with new model selections"
+    else
+      log_warn "Failed to update facts.nix — keeping previous model config"
+    fi
+  fi
+
+  # ── Download models BEFORE rebuild ───────────────────────────────────────
+  # NOTE: /var/lib/llama-cpp/models is root-owned, so we download to /tmp first
+  # then use run_privileged to move files into place.
+  if [[ "$download_chat" == true || "$download_embed" == true ]]; then
+    log "Model download: starting downloads before rebuild..."
+    run_privileged mkdir -p /var/lib/llama-cpp/models
+
+    if [[ "$download_chat" == true && -n "$new_chat_key" ]]; then
+      local chat_info="${MODEL_CATALOG_CHAT[$new_chat_key]}"
+      local chat_repo="${chat_info%%|*}"; chat_info="${chat_info#*|}"
+      local chat_file="${chat_info%%|*}"
+      local chat_dest="/var/lib/llama-cpp/models/$chat_file"
+
+      if ! run_privileged test -f "$chat_dest"; then
+        log "Downloading chat model: $chat_repo / $chat_file"
+        local tmp_model
+        tmp_model="$(mktemp "/tmp/.dl-chat-model-XXXXXX")"
+        if curl -fL --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 7200 \
+            -o "$tmp_model" \
+            "https://huggingface.co/${chat_repo}/resolve/main/${chat_file}" 2>&1; then
+          local sz
+          sz="$(stat -c%s "$tmp_model" 2>/dev/null || echo 0)"
+          if [[ "$sz" -gt 10485760 ]]; then
+            run_privileged mv "$tmp_model" "$chat_dest"
+            run_privileged chmod 0644 "$chat_dest"
+            local actual_sha
+            actual_sha="$(run_privileged sha256sum "$chat_dest" | awk '{print $1}')"
+            log "  Chat model downloaded: $(run_privileged du -h "$chat_dest" | cut -f1) (sha256: ${actual_sha:0:16}...)"
+            run_privileged sh -c "printf '%s\n' '${chat_repo}:${chat_file}:${actual_sha}' > '${chat_dest}.source-meta'"
+            run_privileged chmod 0644 "${chat_dest}.source-meta"
+          else
+            rm -f "$tmp_model"
+            log_warn "  Chat model download produced a small file ($sz bytes) — likely corrupt"
+          fi
+        else
+          rm -f "$tmp_model"
+          log_warn "  Chat model download failed (network error)"
+        fi
+      fi
+    fi
+
+    if [[ "$download_embed" == true && -n "$new_embed_key" ]]; then
+      local embed_info="${MODEL_CATALOG_EMBED[$new_embed_key]}"
+      local embed_repo="${embed_info%%|*}"; embed_info="${embed_info#*|}"
+      local embed_file="${embed_info%%|*}"
+      local embed_dest="/var/lib/llama-cpp/models/$embed_file"
+
+      if ! run_privileged test -f "$embed_dest"; then
+        log "Downloading embedding model: $embed_repo / $embed_file"
+        local tmp_model
+        tmp_model="$(mktemp "/tmp/.dl-embed-model-XXXXXX")"
+        if curl -fL --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 3600 \
+            -o "$tmp_model" \
+            "https://huggingface.co/${embed_repo}/resolve/main/${embed_file}" 2>&1; then
+          local sz
+          sz="$(stat -c%s "$tmp_model" 2>/dev/null || echo 0)"
+          if [[ "$sz" -gt 1048576 ]]; then
+            run_privileged mv "$tmp_model" "$embed_dest"
+            run_privileged chmod 0644 "$embed_dest"
+            local actual_sha
+            actual_sha="$(run_privileged sha256sum "$embed_dest" | awk '{print $1}')"
+            log "  Embedding model downloaded: $(run_privileged du -h "$embed_dest" | cut -f1) (sha256: ${actual_sha:0:16}...)"
+            run_privileged sh -c "printf '%s\n' '${embed_repo}:${embed_file}:${actual_sha}' > '${embed_dest}.source-meta'"
+            run_privileged chmod 0644 "${embed_dest}.source-meta"
+          else
+            rm -f "$tmp_model"
+            log_warn "  Embedding model download produced a small file ($sz bytes)"
+          fi
+        else
+          rm -f "$tmp_model"
+          log_warn "  Embedding model download failed (network error)"
+        fi
+      fi
+    fi
+  else
+    log "Model download: no downloads needed (selected models already on disk or unchanged)."
+  fi
+}
 
 ensure_host_facts_access
+
+# Run Phase 1 model selection (interactive, before preflight)
+if [[ "${SKIP_MODEL_SELECTION:-}" != true ]]; then
+  prompt_model_selection
+fi
+
 section "Preflight Validation"
 if [[ "$RUN_DISCOVERY" == true ]]; then
   run_timed_step "Hardware Discovery" run_discovery_step
