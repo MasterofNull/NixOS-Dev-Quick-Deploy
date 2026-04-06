@@ -75,8 +75,12 @@ let
     then llama.huggingFaceFile
     else baseNameOf llama.model;
   hasAutoDownload = hfRepo != null;
-  hfSha256 = llama.sha256;
-  hfSha256Valid = hfSha256 != null && builtins.match "^[a-fA-F0-9]{64}$" hfSha256 != null;
+  # Use empty string when sha256 is null to avoid coercion errors in shell scripts.
+  hfSha256 =
+    if llama.sha256 != null
+    then llama.sha256
+    else "";
+  hfSha256Valid = llama.sha256 != null && builtins.match "^[a-fA-F0-9]{64}$" llama.sha256 != null;
 
   # Resolve GPU acceleration mode.
   # "auto" detects AMD → vulkan, NVIDIA → cuda, otherwise cpu.
@@ -387,27 +391,18 @@ in {
         lib.mkIf (entry != null) entry.dimensions;
     })
 
-    # ── Populate default catalog entries if not overridden ──────────────
-    (lib.mkIf roleEnabled {
-      mySystem.aiStack.llamaCpp.modelCatalog = lib.mkIf (ai.llamaCpp.modelCatalog == {}) {
-        gemma4-e4b = defaultModelCatalog."gemma4-e4b";
-        gemma4-e2b = defaultModelCatalog."gemma4-e2b";
-        qwen3-4b = defaultModelCatalog."qwen3-4b";
-        qwen3-8b = defaultModelCatalog."qwen3-8b";
-        phi4-mini = defaultModelCatalog."phi4-mini";
-      };
-      mySystem.aiStack.embeddingServer.modelCatalog = lib.mkIf (ai.embeddingServer.modelCatalog == {}) {
-        bge-m3 = defaultModelCatalog."bge-m3";
-        jina-v3 = defaultModelCatalog."jina-v3";
-        nomic-embed = defaultModelCatalog."nomic-embed";
-      };
-    })
+    # NOTE: Default catalog entries are provided via defaultModelCatalog in the
+    # active model resolution above (lines using `ai.*.modelCatalog // defaultModelCatalog`).
+    # User overrides in ai.*.modelCatalog take precedence; the defaultModelCatalog
+    # serves as a fallback without needing explicit population here.
 
     (lib.mkIf roleEnabled {
       assertions = [
         {
-          assertion = !hasAutoDownload || hfSha256Valid;
-          message = "mySystem.aiStack.llamaCpp.huggingFaceRepo requires mySystem.aiStack.llamaCpp.sha256 (64 hex chars).";
+          # sha256 = null is allowed (skips verification; set after first deploy).
+          # sha256 = "..." must be 64 hex chars if provided.
+          assertion = !hasAutoDownload || llama.sha256 == null || hfSha256Valid;
+          message = "mySystem.aiStack.llamaCpp.sha256 must be 64 hex characters when set.";
         }
         {
           # sha256 = null is allowed (skips verification; set after first deploy).
@@ -604,16 +599,23 @@ in {
 
                 # Backward compatibility: if metadata file is missing but hash matches,
                 # keep the model and stamp metadata so future runs are idempotent.
-                if [ -z "$current_ref" ]; then
-                  existing_sha="$(${pkgs.coreutils}/bin/sha256sum "$model" | ${pkgs.gawk}/bin/awk '{print $1}')"
-                  if [ "$existing_sha" = "${hfSha256}" ]; then
-                    echo "$desired_ref" > "$model_meta"
-                    chown llama:llama "$model_meta"
-                    chmod 0640 "$model_meta"
-                    echo "llama-cpp: model hash matches requested source; metadata recorded"
-                    exit 0
-                  fi
-                fi
+                # Skip this check if sha256 is not configured (empty string).
+                ${
+                  if hfSha256Valid
+                  then ''
+                    if [ -z "$current_ref" ]; then
+                      existing_sha="$(${pkgs.coreutils}/bin/sha256sum "$model" | ${pkgs.gawk}/bin/awk '{print $1}')"
+                      if [ "$existing_sha" = "${hfSha256}" ]; then
+                        echo "$desired_ref" > "$model_meta"
+                        chown llama:llama "$model_meta"
+                        chmod 0640 "$model_meta"
+                        echo "llama-cpp: model hash matches requested source; metadata recorded"
+                        exit 0
+                      fi
+                    fi
+                  ''
+                  else ""
+                }
 
                 echo "llama-cpp: existing model differs from requested source; downloading verified replacement before swap"
                 rm -f "$model_meta"
@@ -647,14 +649,25 @@ in {
                   exit 1
                 fi
 
-                expected_sha="${hfSha256}"
                 actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$tmp" | ${pkgs.gawk}/bin/awk '{print $1}')"
-                if [ "$actual_sha" != "$expected_sha" ]; then
-                  echo "llama-cpp: SHA256 mismatch for downloaded model" >&2
-                  echo "expected: $expected_sha" >&2
-                  echo "actual:   $actual_sha" >&2
-                  exit 1
-                fi
+                echo "llama-cpp: sha256 = $actual_sha"
+                ${
+                  # Only verify if sha256 was provided; if null, print hash for user to record.
+                  if hfSha256Valid
+                  then ''
+                    expected_sha="${hfSha256}"
+                    if [ "$actual_sha" != "$expected_sha" ]; then
+                      echo "llama-cpp: SHA256 mismatch for downloaded model" >&2
+                      echo "expected: $expected_sha" >&2
+                      echo "actual:   $actual_sha" >&2
+                      exit 1
+                    fi
+                    echo "llama-cpp: SHA256 verified"
+                  ''
+                  else ''
+                    echo "llama-cpp: WARNING — no sha256 configured; add the hash above to facts.nix to enable integrity checking"
+                  ''
+                }
 
                 # Phase 11.3 — Model Weight Integrity: Run safety verification
                 # This checks for pickle magic bytes and records provenance metadata.
