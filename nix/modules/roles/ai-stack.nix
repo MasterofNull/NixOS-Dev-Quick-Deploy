@@ -632,6 +632,18 @@ in {
                 tmp="$(mktemp "$model_dir/.fetch-XXXXXX")"
                 trap 'rm -f "$tmp"' EXIT
 
+                # HuggingFace authentication: check for token in standard locations
+                hf_token="''${HF_TOKEN:-}"
+                hf_token_file="$HOME/.cache/huggingface/token"
+                if [ -z "$hf_token" ] && [ -f "$hf_token_file" ]; then
+                  hf_token="$(cat "$hf_token_file" 2>/dev/null | tr -d '[:space:]')"
+                fi
+                hf_auth_args=""
+                if [ -n "$hf_token" ]; then
+                  hf_auth_args="-H 'Authorization: Bearer $hf_token'"
+                  echo "llama-cpp: using HuggingFace authentication"
+                fi
+
                 ${pkgs.curl}/bin/curl \
                   --location \
                   --retry 5 \
@@ -641,6 +653,7 @@ in {
                   --max-time 7200 \
                   --progress-bar \
                   --output "$tmp" \
+                  $hf_auth_args \
                   "$hf_url"
 
                 sz=$(stat -c%s "$tmp" 2>/dev/null || echo 0)
@@ -829,6 +842,18 @@ in {
                 tmp="$(mktemp "$model_dir/.fetch-embed-XXXXXX")"
                 trap 'rm -f "$tmp"' EXIT
 
+                # HuggingFace authentication: check for token in standard locations
+                hf_token="''${HF_TOKEN:-}"
+                hf_token_file="$HOME/.cache/huggingface/token"
+                if [ -z "$hf_token" ] && [ -f "$hf_token_file" ]; then
+                  hf_token="$(cat "$hf_token_file" 2>/dev/null | tr -d '[:space:]')"
+                fi
+                hf_auth_args=""
+                if [ -n "$hf_token" ]; then
+                  hf_auth_args="-H 'Authorization: Bearer $hf_token'"
+                  echo "llama-cpp-embed: using HuggingFace authentication"
+                fi
+
                 ${pkgs.curl}/bin/curl \
                   --location \
                   --retry 5 \
@@ -838,6 +863,7 @@ in {
                   --max-time 3600 \
                   --progress-bar \
                   --output "$tmp" \
+                  $hf_auth_args \
                   "$hf_url"
 
                 sz=$(stat -c%s "$tmp" 2>/dev/null || echo 0)
