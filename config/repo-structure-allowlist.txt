@@ -207,7 +207,6 @@ scripts/cron-templates.sh
 scripts/curate-residual-gaps.sh
 scripts/demo-local-ai-usage.py
 scripts/deploy/deploy-aidb-mcp-server.sh
-scripts/deploy-clean.sh
 scripts/governance/discover-focused-agent-repos.py
 scripts/governance/discover-improvements.py
 scripts/governance/discover-improvements.sh
