@@ -2933,14 +2933,14 @@ fi
 # ---------------------------------------------------------------------------
 
 declare -A MODEL_CATALOG_CHAT=(
-  ["gemma4-e4b"]="bartowski/gemma-4-E4B-12B-it-GGUF|gemma-4-E4B-12B-it-Q4_K_M.gguf|~3 GB|4.5B active / 128K ctx|Google Gemma 4 E4B — recommended"
-  ["gemma4-e2b"]="bartowski/gemma-4-E2B-5B-it-GGUF|gemma-4-E2B-5B-it-Q4_K_M.gguf|~1.5 GB|2.3B active / 128K ctx|Google Gemma 4 E2B — ultra-lightweight"
+  ["gemma4-e4b"]="bartowski/google_gemma-4-E4B-it-GGUF|google_gemma-4-E4B-it-Q4_K_M.gguf|~5.2 GB|4.5B active / 128K ctx|Google Gemma 4 E4B — recommended"
+  ["gemma4-e2b"]="bartowski/google_gemma-4-E2B-it-GGUF|google_gemma-4-E2B-it-Q4_K_M.gguf|~2.5 GB|2.3B active / 128K ctx|Google Gemma 4 E2B — ultra-lightweight"
   ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF|Qwen3-4B-Instruct-2507-Q4_K_M.gguf|~2.5 GB|4B / 262K ctx|Qwen3 4B — current system model"
   ["qwen3-8b"]="unsloth/Qwen3-8B-Instruct-GGUF|Qwen3-8B-Instruct-Q4_K_M.gguf|~5 GB|8B / 40K ctx|Qwen3 8B — stronger reasoning"
   ["phi4-mini"]="unsloth/phi-4-mini-instruct-GGUF|phi-4-mini-instruct-Q4_K_M.gguf|~2.5 GB|3.8B / 128K ctx|Phi-4 Mini — Microsoft"
 )
 declare -A MODEL_CATALOG_EMBED=(
-  ["bge-m3"]="mkunzli/bge-m3-GGUF|bge-m3-Q8_0.gguf|~0.5 GB|1024-dim / 8K ctx|BGE-M3 — recommended for RAG"
+  ["bge-m3"]="gpustack/bge-m3-GGUF|bge-m3-Q8_0.gguf|~0.6 GB|1024-dim / 8K ctx|BGE-M3 — recommended for RAG"
   ["jina-v3"]="jinaai/jina-embeddings-v3-GGUF|jina-embeddings-v3-Q8_0.gguf|~0.8 GB|1024-dim / 8K ctx|Jina v3 — long-context docs"
   ["nomic-embed"]="nomic-ai/nomic-embed-text-v1.5-GGUF|nomic-embed-text-v1.5.Q8_0.gguf|~0.5 GB|768-dim / 8K ctx|Nomic Embed v1.5"
 )

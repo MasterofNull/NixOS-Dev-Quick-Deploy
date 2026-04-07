@@ -250,23 +250,23 @@ let
     # ── Chat models ──────────────────────────────────────────────────────
     "gemma4-e4b" = {
       name = "Gemma 4 E4B Instruct";
-      repo = "bartowski/gemma-4-E4B-12B-it-GGUF";
-      file = "gemma-4-E4B-12B-it-Q4_K_M.gguf";
+      repo = "bartowski/google_gemma-4-E4B-it-GGUF";
+      file = "google_gemma-4-E4B-it-Q4_K_M.gguf";
       sha256 = null; # Set after first download
       params = "4.5B active / 8B total";
       contextSize = 131072;
-      ramEstimate = "~3 GB Q4";
+      ramEstimate = "~5.2 GB Q4";
       type = "dense";
       recommended = true;
     };
     "gemma4-e2b" = {
       name = "Gemma 4 E2B Instruct";
-      repo = "bartowski/gemma-4-E2B-5B-it-GGUF";
-      file = "gemma-4-E2B-5B-it-Q4_K_M.gguf";
+      repo = "bartowski/google_gemma-4-E2B-it-GGUF";
+      file = "google_gemma-4-E2B-it-Q4_K_M.gguf";
       sha256 = null;
       params = "2.3B active / 5.1B total";
       contextSize = 131072;
-      ramEstimate = "~1.5 GB Q4";
+      ramEstimate = "~2.5 GB Q4";
       type = "dense";
       recommended = false;
     };
@@ -306,12 +306,12 @@ let
     # ── Embedding models ─────────────────────────────────────────────────
     "bge-m3" = {
       name = "BGE-M3";
-      repo = "mkunzli/bge-m3-GGUF";
+      repo = "gpustack/bge-m3-GGUF";
       file = "bge-m3-Q8_0.gguf";
       sha256 = null;
       dimensions = 1024;
       maxTokens = 8192;
-      ramEstimate = "~0.5 GB Q8";
+      ramEstimate = "~0.6 GB Q8";
       pooling = "cls";
       recommended = true;
     };
