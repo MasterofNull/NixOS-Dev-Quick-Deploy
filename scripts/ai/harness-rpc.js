@@ -357,6 +357,145 @@ async function main() {
         format: args.format || "json",
       });
 
+    // ── Tmux-based agent sandboxes (IndyDevDan pattern) ───────────────────
+    case "tmux-spawn": {
+      // Spawn a Claude Code agent in an isolated tmux pane
+      const tmuxSession = args.session || "agent-sandbox";
+      const tmuxWindow = args.window || `agent-${Date.now()}`;
+      const agentCmd = args.command || `claude --dangerously-skip-permissions`;
+      const task = args.task || args.query || args.q || "";
+      const { execSync } = require("child_process");
+
+      try {
+        // Create tmux session if it doesn't exist
+        try {
+          execSync(`tmux has-session -t ${tmuxSession} 2>/dev/null`, { encoding: "utf8" });
+        } catch {
+          execSync(`tmux new-session -d -s ${tmuxSession}`, { encoding: "utf8" });
+        }
+        // Create new window with the agent command
+        execSync(
+          `tmux new-window -t ${tmuxSession} -n ${tmuxWindow} "${agentCmd}"`,
+          { encoding: "utf8" }
+        );
+        // If task provided, send it to the pane
+        if (task) {
+          execSync(
+            `tmux send-keys -t ${tmuxSession}:${tmuxWindow} "${task.replace(/"/g, '\\"')}" Enter`,
+            { encoding: "utf8" }
+          );
+        }
+        console.log(
+          JSON.stringify({
+            ok: true,
+            status: 200,
+            data: {
+              tmux_session: tmuxSession,
+              tmux_window: tmuxWindow,
+              agent_command: agentCmd,
+              task: task || "(none)",
+              attach_command: `tmux attach -t ${tmuxSession}:${tmuxWindow}`,
+            },
+          }, null, 2)
+        );
+      } catch (err) {
+        console.error(JSON.stringify({ ok: false, error: String(err) }, null, 2));
+        process.exit(1);
+      }
+      return;
+    }
+    case "tmux-list": {
+      const { execSync } = require("child_process");
+      try {
+        const output = execSync("tmux list-windows -a 2>/dev/null || echo '(no tmux sessions)'", {
+          encoding: "utf8",
+        });
+        console.log(
+          JSON.stringify({ ok: true, status: 200, data: { windows: output.trim().split("\n") } }, null, 2)
+        );
+      } catch (err) {
+        console.log(
+          JSON.stringify({ ok: true, status: 200, data: { windows: [], note: "no tmux sessions" } }, null, 2)
+        );
+      }
+      return;
+    }
+    case "tmux-kill": {
+      const { execSync } = require("child_process");
+      const target = args.window || args.session;
+      if (!target) {
+        console.error(JSON.stringify({ ok: false, error: "--window or --session required" }, null, 2));
+        process.exit(1);
+      }
+      try {
+        execSync(`tmux kill-window -t ${target} 2>/dev/null || tmux kill-session -t ${target}`, {
+          encoding: "utf8",
+        });
+        console.log(JSON.stringify({ ok: true, status: 200, data: { killed: target } }, null, 2));
+      } catch (err) {
+        console.error(JSON.stringify({ ok: false, error: String(err) }, null, 2));
+        process.exit(1);
+      }
+      return;
+    }
+
+    // ── Polling-based task manager (IndyDevDan pattern) ───────────────────
+    case "poll-tasks":
+      return call("/control/task-manager/poll", "POST", {
+        source: args.source || "local",  // local, linear, jira, github
+        project: args.project || "",
+        status_filter: args.status || "todo",
+        max_tasks: args.max ? Number(args.max) : 5,
+        agent: args.agent || "codex",
+      });
+    case "task-complete":
+      return call("/control/task-manager/complete", "POST", {
+        task_id: args.id || args["task-id"] || "",
+        source: args.source || "local",
+        result: args.result || "completed",
+        evidence: args.evidence || "",
+      });
+    case "task-create":
+      return call("/control/task-manager/create", "POST", {
+        title: args.title || "",
+        description: args.description || args.desc || "",
+        source: args.source || "local",
+        priority: args.priority || "normal",
+        assignee: args.assignee || args.agent || "codex",
+      });
+
+    // ── Agent-to-Agent review handoff (IndyDevDan pattern) ────────────────
+    case "review-handoff":
+      return call("/control/review/agent-handoff", "POST", {
+        from_agent: args.from || args["from-agent"] || "codex",
+        to_agent: args.to || args["to-agent"] || "qwen",
+        session_id: args.session || args.id || "",
+        artifact_type: args.type || "code",  // code, config, docs, test
+        artifact_path: args.path || "",
+        review_criteria: csv(args.criteria) || ["correctness", "style", "security"],
+        auto_merge: args["auto-merge"] === "true" || args["auto-merge"] === true,
+      });
+    case "review-status":
+      return call(
+        `/control/review/status?session_id=${encodeURIComponent(args.session || args.id || "")}`,
+        "GET"
+      );
+    case "review-accept":
+      return call("/control/review/accept", "POST", {
+        session_id: args.session || args.id || "",
+        reviewer_agent: args.agent || "codex",
+        reason: args.reason || "approved",
+        evidence: args.evidence || "",
+      });
+    case "review-reject":
+      return call("/control/review/reject", "POST", {
+        session_id: args.session || args.id || "",
+        reviewer_agent: args.agent || "codex",
+        reason: args.reason || "",
+        feedback: args.feedback || "",
+        suggested_fixes: csv(args.fixes) || [],
+      });
+
     default:
       console.error(`Unknown command: ${cmd}`);
       process.exit(2);
