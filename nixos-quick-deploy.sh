@@ -3252,17 +3252,105 @@ PYEOF
     fi
   fi
 
-  # ── Model download scheduling ─────────────────────────────────────────────
-  # Downloads are handled by systemd services post-switch (llama-cpp-model-fetch
-  # and llama-cpp-embed-model-fetch). This ensures boot is never blocked by
-  # network operations and provides proper retry/logging via systemd.
+  # ── Download models BEFORE rebuild (Phase 1) ─────────────────────────────
+  # Models are downloaded immediately after user selection so they're available
+  # for the rebuild. This is the PRIMARY download point - post-switch only
+  # verifies models are present, it does not re-download.
+  # NOTE: /var/lib/llama-cpp/models is root-owned, so we download to /tmp first
+  # then use run_privileged to move files into place.
   if [[ "$download_chat" == true || "$download_embed" == true ]]; then
-    log "Model download: required models will be fetched post-switch via systemd"
-    log "  Services: llama-cpp-model-fetch.service, llama-cpp-embed-model-fetch.service"
-    if [[ -n "${HF_TOKEN:-}" ]] || [[ -f "${HOME}/.cache/huggingface/token" ]]; then
-      log "  HuggingFace token detected — authenticated downloads will be used"
-    else
-      log "  Note: If downloads fail, you may need to set HF_TOKEN for gated models"
+    log "Model download: starting downloads before rebuild..."
+    run_privileged mkdir -p /var/lib/llama-cpp/models
+
+    # HuggingFace authentication: check for token in standard locations
+    # Priority: HF_TOKEN env > ~/.cache/huggingface/token file
+    local hf_token="${HF_TOKEN:-}"
+    local hf_token_file="${HOME}/.cache/huggingface/token"
+    if [[ -z "$hf_token" && -f "$hf_token_file" ]]; then
+      hf_token="$(cat "$hf_token_file" 2>/dev/null | tr -d '[:space:]')"
+    fi
+    local -a hf_auth_args=()
+    if [[ -n "$hf_token" ]]; then
+      hf_auth_args=(-H "Authorization: Bearer $hf_token")
+      log "  HuggingFace token detected — using authenticated downloads"
+    fi
+
+    if [[ "$download_chat" == true && -n "$new_chat_key" ]]; then
+      local chat_info="${MODEL_CATALOG_CHAT[$new_chat_key]}"
+      local chat_repo="${chat_info%%|*}"; chat_info="${chat_info#*|}"
+      local chat_file="${chat_info%%|*}"
+      local chat_dest="/var/lib/llama-cpp/models/$chat_file"
+
+      if ! run_privileged test -f "$chat_dest"; then
+        log "Downloading chat model: $chat_repo / $chat_file"
+        local tmp_model
+        tmp_model="$(mktemp "/tmp/.dl-chat-model-XXXXXX")"
+        if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 7200 \
+            -o "$tmp_model" \
+            "https://huggingface.co/${chat_repo}/resolve/main/${chat_file}" 2>&1; then
+          local sz
+          sz="$(stat -c%s "$tmp_model" 2>/dev/null || echo 0)"
+          if [[ "$sz" -gt 10485760 ]]; then
+            run_privileged mv "$tmp_model" "$chat_dest"
+            run_privileged chmod 0644 "$chat_dest"
+            local actual_sha
+            actual_sha="$(run_privileged sha256sum "$chat_dest" | awk '{print $1}')"
+            log "  Chat model downloaded: $(run_privileged du -h "$chat_dest" | cut -f1) (sha256: ${actual_sha:0:16}...)"
+            run_privileged sh -c "printf '%s\n' '${chat_repo}:${chat_file}:${actual_sha}' > '${chat_dest}.source-meta'"
+            run_privileged chmod 0644 "${chat_dest}.source-meta"
+          else
+            rm -f "$tmp_model"
+            log_warn "  Chat model download produced a small file ($sz bytes) — likely corrupt"
+          fi
+        else
+          rm -f "$tmp_model"
+          if [[ -z "$hf_token" ]]; then
+            log_warn "  Chat model download failed — may require HuggingFace authentication"
+            log_warn "  To authenticate: huggingface-cli login  OR  export HF_TOKEN=hf_..."
+          else
+            log_warn "  Chat model download failed (network error or invalid token)"
+          fi
+        fi
+      fi
+    fi
+
+    if [[ "$download_embed" == true && -n "$new_embed_key" ]]; then
+      local embed_info="${MODEL_CATALOG_EMBED[$new_embed_key]}"
+      local embed_repo="${embed_info%%|*}"; embed_info="${embed_info#*|}"
+      local embed_file="${embed_info%%|*}"
+      local embed_dest="/var/lib/llama-cpp/models/$embed_file"
+
+      if ! run_privileged test -f "$embed_dest"; then
+        log "Downloading embedding model: $embed_repo / $embed_file"
+        local tmp_model
+        tmp_model="$(mktemp "/tmp/.dl-embed-model-XXXXXX")"
+        if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 3600 \
+            -o "$tmp_model" \
+            "https://huggingface.co/${embed_repo}/resolve/main/${embed_file}" 2>&1; then
+          local sz
+          sz="$(stat -c%s "$tmp_model" 2>/dev/null || echo 0)"
+          if [[ "$sz" -gt 1048576 ]]; then
+            run_privileged mv "$tmp_model" "$embed_dest"
+            run_privileged chmod 0644 "$embed_dest"
+            local actual_sha
+            actual_sha="$(run_privileged sha256sum "$embed_dest" | awk '{print $1}')"
+            log "  Embedding model downloaded: $(run_privileged du -h "$embed_dest" | cut -f1) (sha256: ${actual_sha:0:16}...)"
+            run_privileged sh -c "printf '%s\n' '${embed_repo}:${embed_file}:${actual_sha}' > '${embed_dest}.source-meta'"
+            run_privileged chmod 0644 "${embed_dest}.source-meta"
+          else
+            rm -f "$tmp_model"
+            log_warn "  Embedding model download produced a small file ($sz bytes)"
+          fi
+        else
+          rm -f "$tmp_model"
+          if [[ -z "$hf_token" ]]; then
+            log_warn "  Embedding model download failed — may require HuggingFace authentication"
+            log_warn "  To authenticate: huggingface-cli login  OR  export HF_TOKEN=hf_..."
+          else
+            log_warn "  Embedding model download failed (network error or invalid token)"
+          fi
+        fi
+      fi
     fi
   else
     log "Model download: no downloads needed (selected models already on disk or unchanged)"
@@ -3373,7 +3461,7 @@ fi
 # Records SHA256 hashes of models ALREADY ON DISK into facts.nix before
 # nixos-rebuild, ensuring declarative integrity checks. This function does
 # NOT perform network operations or download models - downloads are handled
-# by systemd services post-switch (see download_ai_models below).
+# by Phase 1 (prompt_model_selection) or fallback systemd services post-switch.
 #
 # facts.nix (generated by discover-system-facts.sh) always writes sha256 = null.
 # This function:
@@ -3565,15 +3653,15 @@ fi
 
 restart_repo_backed_ai_services_if_needed
 
-# ── Post-switch model download (systemd orchestration) ───────────────────
-# This is the ONLY place where network model downloads are initiated during
-# deployment. Downloads happen post-switch so boot is never blocked.
+# ── Post-switch model verification (fallback download if Phase 1 failed) ──
+# Models should already be downloaded during Phase 1 (prompt_model_selection).
+# This function verifies models are present and falls back to systemd services
+# only if Phase 1 download failed or was skipped.
 #
-# The function triggers llama-cpp-model-fetch.service and
-# llama-cpp-embed-model-fetch.service, then monitors for completion.
-# Model paths are extracted from systemd units (source of truth).
-download_ai_models() {
-  section "Model Download"
+# Primary download: Phase 1 (prompt_model_selection) - before rebuild
+# Fallback download: systemd services (llama-cpp-model-fetch) - post-switch
+verify_or_download_ai_models() {
+  section "Model Verification"
 
   # Extract actual model paths from the Nix-generated systemd units.
   # These are the definitive paths — not hardcoded defaults.
@@ -3599,17 +3687,17 @@ download_ai_models() {
   chat_meta_path="${chat_model_path}.source-meta"
   embed_meta_path="${embed_model_path}.source-meta"
 
-  log "Model download: chat model target = $chat_model_path"
-  log "Model download: embedding model target = $embed_model_path"
+  log "Model verification: chat model target = $chat_model_path"
+  log "Model verification: embedding model target = $embed_model_path"
 
   # Remove stale metadata from previous configs so the fetch service
   # does a fresh comparison against the NEW config.
   if [[ -f "$chat_meta_path" ]]; then
-    log "Model download: removing stale chat model metadata"
+    log "Model verification: removing stale chat model metadata"
     rm -f "$chat_meta_path"
   fi
   if [[ -f "$embed_meta_path" ]]; then
-    log "Model download: removing stale embedding model metadata"
+    log "Model verification: removing stale embedding model metadata"
     rm -f "$embed_meta_path"
   fi
 
@@ -3617,12 +3705,12 @@ download_ai_models() {
   # (e.g. old Qwen3 model.gguf when new config uses gemma4-e4b at a different path)
   local old_default_model="/var/lib/llama-cpp/models/model.gguf"
   if [[ -f "$old_default_model" && "$chat_model_path" != "$old_default_model" ]]; then
-    log "Model download: removing old model at $old_default_model (config changed to $chat_model_path)"
+    log "Model verification: removing old model at $old_default_model (config changed to $chat_model_path)"
     rm -f "$old_default_model" "${old_default_model}.source-meta"
   fi
   local old_default_embed="/var/lib/llama-cpp/models/embed.gguf"
   if [[ -f "$old_default_embed" && "$embed_model_path" != "$old_default_embed" ]]; then
-    log "Model download: removing old embedding model at $old_default_embed (config changed to $embed_model_path)"
+    log "Model verification: removing old embedding model at $old_default_embed (config changed to $embed_model_path)"
     rm -f "$old_default_embed" "${old_default_embed}.source-meta"
   fi
 
@@ -3635,7 +3723,7 @@ download_ai_models() {
     chat_sz="$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)"
     if [[ "$chat_sz" -gt 10485760 ]]; then
       chat_model_present=true
-      log "Model download: chat model present ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+      log "Model verification: chat model present ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
     fi
   fi
 
@@ -3644,19 +3732,19 @@ download_ai_models() {
     embed_sz="$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)"
     if [[ "$embed_sz" -gt 10485760 ]]; then
       embed_model_present=true
-      log "Model download: embedding model present ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+      log "Model verification: embedding model present ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
     fi
   fi
 
   if [[ "$chat_model_present" == true && "$embed_model_present" == true ]]; then
-    log "Model download: both models present. Skipping download."
+    log "Model verification: both models present (Phase 1 download successful)"
     return 0
   fi
 
   # Only proceed if at least one fetch service exists
   if ! systemctl list-unit-files llama-cpp-model-fetch.service >/dev/null 2>&1 && \
      ! systemctl list-unit-files llama-cpp-embed-model-fetch.service >/dev/null 2>&1; then
-    log "Model download: no model fetch services configured."
+    log "Model verification: no model fetch services configured (fallback unavailable)"
     if [[ "$chat_model_present" != true ]]; then
       log_warn "Model download: chat model missing and no fetch service to download it"
     fi
@@ -3666,7 +3754,7 @@ download_ai_models() {
     return 0
   fi
 
-  log "Model download: starting downloads (boot was not delayed)..."
+  log "Model verification: Phase 1 download incomplete — triggering fallback via systemd..."
 
   # Trigger chat model fetch
   if [[ "$chat_model_present" != true ]]; then
@@ -3787,7 +3875,7 @@ download_ai_models() {
 }
 
 if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
-  download_ai_models
+  verify_or_download_ai_models
 fi
 
 
