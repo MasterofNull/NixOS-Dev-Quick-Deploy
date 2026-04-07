@@ -10946,6 +10946,238 @@ asyncio.run(run())
     http_app.router.add_post("/control/agents/team", handle_agents_team)
     http_app.router.add_post("/control/agents/kill", handle_agents_kill)
 
+    # ── Task Manager (IndyDevDan polling-based pattern) ────────────────────
+    _TASK_QUEUE: List[Dict[str, Any]] = []  # In-memory task queue
+
+    async def handle_task_manager_poll(request: web.Request) -> web.Response:
+        """POST /control/task-manager/poll — poll for tasks to work on."""
+        try:
+            data = await request.json()
+            source = data.get("source", "local")
+            status_filter = data.get("status_filter", "todo")
+            max_tasks = int(data.get("max_tasks", 5))
+            agent = data.get("agent", "codex")
+
+            # Filter tasks by status and source
+            available_tasks = [
+                t for t in _TASK_QUEUE
+                if t.get("status") == status_filter
+                and (source == "local" or t.get("source") == source)
+            ][:max_tasks]
+
+            # Mark polled tasks as assigned
+            for task in available_tasks:
+                task["status"] = "in_progress"
+                task["assigned_to"] = agent
+                task["assigned_at"] = time.time()
+
+            return web.json_response({
+                "status": "ok",
+                "source": source,
+                "tasks": available_tasks,
+                "count": len(available_tasks),
+                "remaining": len([t for t in _TASK_QUEUE if t.get("status") == "todo"]),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_task_manager_complete(request: web.Request) -> web.Response:
+        """POST /control/task-manager/complete — mark a task as completed."""
+        try:
+            data = await request.json()
+            task_id = data.get("task_id", "")
+            result = data.get("result", "completed")
+            evidence = data.get("evidence", "")
+
+            task = next((t for t in _TASK_QUEUE if t.get("id") == task_id), None)
+            if not task:
+                return web.json_response({"error": f"Task {task_id} not found"}, status=404)
+
+            task["status"] = result
+            task["completed_at"] = time.time()
+            task["evidence"] = evidence
+
+            return web.json_response({
+                "status": "ok",
+                "task_id": task_id,
+                "result": result,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_task_manager_create(request: web.Request) -> web.Response:
+        """POST /control/task-manager/create — create a new task."""
+        try:
+            data = await request.json()
+            title = data.get("title", "")
+            if not title:
+                return web.json_response({"error": "title required"}, status=400)
+
+            task_id = f"task-{uuid4().hex[:8]}"
+            task = {
+                "id": task_id,
+                "title": title,
+                "description": data.get("description", ""),
+                "source": data.get("source", "local"),
+                "priority": data.get("priority", "normal"),
+                "assignee": data.get("assignee", ""),
+                "status": "todo",
+                "created_at": time.time(),
+            }
+            _TASK_QUEUE.append(task)
+
+            return web.json_response({
+                "status": "ok",
+                "task": task,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/task-manager/poll", handle_task_manager_poll)
+    http_app.router.add_post("/control/task-manager/complete", handle_task_manager_complete)
+    http_app.router.add_post("/control/task-manager/create", handle_task_manager_create)
+
+    # ── Agent-to-Agent Review Handoff (IndyDevDan pattern) ─────────────────
+    _REVIEW_QUEUE: Dict[str, Dict[str, Any]] = {}  # session_id -> review state
+
+    async def handle_review_agent_handoff(request: web.Request) -> web.Response:
+        """POST /control/review/agent-handoff — hand off work for review."""
+        try:
+            data = await request.json()
+            from_agent = data.get("from_agent", "codex")
+            to_agent = data.get("to_agent", "qwen")
+            session_id = data.get("session_id") or f"review-{uuid4().hex[:8]}"
+            artifact_type = data.get("artifact_type", "code")
+            artifact_path = data.get("artifact_path", "")
+            review_criteria = data.get("review_criteria", ["correctness", "style"])
+            auto_merge = data.get("auto_merge", False)
+
+            review = {
+                "session_id": session_id,
+                "from_agent": from_agent,
+                "to_agent": to_agent,
+                "artifact_type": artifact_type,
+                "artifact_path": artifact_path,
+                "review_criteria": review_criteria,
+                "auto_merge": auto_merge,
+                "status": "pending_review",
+                "created_at": time.time(),
+                "history": [
+                    {
+                        "event": "handoff_initiated",
+                        "from": from_agent,
+                        "to": to_agent,
+                        "timestamp": time.time(),
+                    }
+                ],
+            }
+            _REVIEW_QUEUE[session_id] = review
+
+            return web.json_response({
+                "status": "ok",
+                "session_id": session_id,
+                "review": review,
+                "next_action": f"Agent {to_agent} should review and call /control/review/accept or /control/review/reject",
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_review_status(request: web.Request) -> web.Response:
+        """GET /control/review/status — check review status."""
+        try:
+            session_id = request.query.get("session_id", "")
+            if session_id:
+                review = _REVIEW_QUEUE.get(session_id)
+                if not review:
+                    return web.json_response({"error": f"Review {session_id} not found"}, status=404)
+                return web.json_response(review)
+
+            return web.json_response({
+                "pending_reviews": len([r for r in _REVIEW_QUEUE.values() if r.get("status") == "pending_review"]),
+                "total_reviews": len(_REVIEW_QUEUE),
+                "reviews": list(_REVIEW_QUEUE.values()),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_review_accept(request: web.Request) -> web.Response:
+        """POST /control/review/accept — accept and approve a review."""
+        try:
+            data = await request.json()
+            session_id = data.get("session_id", "")
+            review = _REVIEW_QUEUE.get(session_id)
+            if not review:
+                return web.json_response({"error": f"Review {session_id} not found"}, status=404)
+
+            reviewer_agent = data.get("reviewer_agent", "codex")
+            reason = data.get("reason", "approved")
+            evidence = data.get("evidence", "")
+
+            review["status"] = "accepted"
+            review["accepted_at"] = time.time()
+            review["accepted_by"] = reviewer_agent
+            review["acceptance_reason"] = reason
+            review["acceptance_evidence"] = evidence
+            review["history"].append({
+                "event": "review_accepted",
+                "by": reviewer_agent,
+                "reason": reason,
+                "timestamp": time.time(),
+            })
+
+            return web.json_response({
+                "status": "ok",
+                "session_id": session_id,
+                "accepted": True,
+                "auto_merge": review.get("auto_merge", False),
+                "next_action": "merge" if review.get("auto_merge") else "manual merge required",
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_review_reject(request: web.Request) -> web.Response:
+        """POST /control/review/reject — reject a review with feedback."""
+        try:
+            data = await request.json()
+            session_id = data.get("session_id", "")
+            review = _REVIEW_QUEUE.get(session_id)
+            if not review:
+                return web.json_response({"error": f"Review {session_id} not found"}, status=404)
+
+            reviewer_agent = data.get("reviewer_agent", "codex")
+            reason = data.get("reason", "")
+            feedback = data.get("feedback", "")
+            suggested_fixes = data.get("suggested_fixes", [])
+
+            review["status"] = "rejected"
+            review["rejected_at"] = time.time()
+            review["rejected_by"] = reviewer_agent
+            review["rejection_reason"] = reason
+            review["feedback"] = feedback
+            review["suggested_fixes"] = suggested_fixes
+            review["history"].append({
+                "event": "review_rejected",
+                "by": reviewer_agent,
+                "reason": reason,
+                "timestamp": time.time(),
+            })
+
+            return web.json_response({
+                "status": "ok",
+                "session_id": session_id,
+                "rejected": True,
+                "feedback": feedback,
+                "suggested_fixes": suggested_fixes,
+                "next_action": f"Agent {review.get('from_agent')} should address feedback and resubmit",
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/review/agent-handoff", handle_review_agent_handoff)
+    http_app.router.add_get("/control/review/status", handle_review_status)
+    http_app.router.add_post("/control/review/accept", handle_review_accept)
+    http_app.router.add_post("/control/review/reject", handle_review_reject)
+
     runner = web.AppRunner(
         http_app,
         access_log=access_logger,
