@@ -496,6 +496,114 @@ async function main() {
         suggested_fixes: csv(args.fixes) || [],
       });
 
+    // =========================================================================
+    // Minor IndyDevDan Patterns - Evidence, Safety, Message Bus, Capability
+    // =========================================================================
+
+    // Evidence Capture API
+    case "evidence-record":
+      return call("/control/evidence/record", "POST", {
+        session_id: args.session || args.id || "",
+        task_id: args.task || "",
+        agent_id: args.agent || "",
+        type: args.type || "general",
+        content: args.content ? JSON.parse(args.content) : {},
+        command: args.command || "",
+        output: args.output || "",
+        exit_code: args["exit-code"] ? parseInt(args["exit-code"], 10) : null,
+        files_changed: csv(args.files),
+        tags: csv(args.tags),
+      });
+
+    case "evidence-list":
+      {
+        let url = `/control/evidence/list?session_id=${encodeURIComponent(args.session || args.id || "")}`;
+        if (args.type) url += `&type=${encodeURIComponent(args.type)}`;
+        if (args.task) url += `&task_id=${encodeURIComponent(args.task)}`;
+        return call(url, "GET");
+      }
+
+    // Safety Gate Pre-Hooks
+    case "safety-check":
+      return call("/control/safety/check", "POST", {
+        command: args.command || "",
+        operation: args.operation || "",
+        context: args.context ? JSON.parse(args.context) : {},
+      });
+
+    case "safety-register-hook":
+      return call("/control/safety/register-hook", "POST", {
+        pattern: args.pattern || "",
+        action: args.action || "warn",
+        reason: args.reason || "Custom safety rule",
+      });
+
+    // Inter-Agent Message Bus
+    case "bus-publish":
+      return call("/control/message-bus/publish", "POST", {
+        topic: args.topic || "",
+        from_agent: args.agent || args.from || "",
+        payload: args.payload ? JSON.parse(args.payload) : {},
+        type: args.type || "info",
+        correlation_id: args.correlation || "",
+      });
+
+    case "bus-subscribe":
+      return call("/control/message-bus/subscribe", "POST", {
+        topic: args.topic || "",
+        agent_id: args.agent || "",
+      });
+
+    case "bus-poll":
+      {
+        let url = `/control/message-bus/poll?topic=${encodeURIComponent(args.topic || "")}`;
+        if (args.agent) url += `&agent_id=${encodeURIComponent(args.agent)}`;
+        if (args.since) url += `&since=${encodeURIComponent(args.since)}`;
+        if (args.limit) url += `&limit=${encodeURIComponent(args.limit)}`;
+        return call(url, "GET");
+      }
+
+    // Historical Capability Scoring
+    case "capability-record":
+      return call("/control/capability/record-outcome", "POST", {
+        agent_id: args.agent || "",
+        capability: args.capability || "",
+        task_id: args.task || "",
+        success: args.success !== "false",
+        quality_score: args.quality ? parseFloat(args.quality) : 1.0,
+        duration_seconds: args.duration ? parseFloat(args.duration) : null,
+        error_type: args.error || null,
+        notes: args.notes || "",
+      });
+
+    case "capability-score":
+      {
+        let url = `/control/capability/score?agent_id=${encodeURIComponent(args.agent || "")}`;
+        if (args.capability) url += `&capability=${encodeURIComponent(args.capability)}`;
+        if (args.window) url += `&window_hours=${encodeURIComponent(args.window)}`;
+        return call(url, "GET");
+      }
+
+    // Rollback Execution API
+    case "rollback-register":
+      return call("/control/rollback/register", "POST", {
+        session_id: args.session || args.id || "",
+        task_id: args.task || "",
+        commands: csv(args.commands),
+        files: args.files ? JSON.parse(args.files) : {},
+        description: args.description || "",
+        agent_id: args.agent || "",
+      });
+
+    case "rollback-execute":
+      return call("/control/rollback/execute", "POST", {
+        session_id: args.session || args.id || "",
+        dry_run: args["dry-run"] !== "false",
+      });
+
+    case "rollback-status":
+      return call(`/control/rollback/status?session_id=${encodeURIComponent(args.session || args.id || "")}`, "GET");
+
     default:
       console.error(`Unknown command: ${cmd}`);
       process.exit(2);

@@ -11178,6 +11178,484 @@ asyncio.run(run())
     http_app.router.add_post("/control/review/accept", handle_review_accept)
     http_app.router.add_post("/control/review/reject", handle_review_reject)
 
+    # =========================================================================
+    # Minor IndyDevDan Patterns - Evidence, Safety, Message Bus, Capability
+    # =========================================================================
+
+    # Evidence Storage - for structured evidence capture during task execution
+    _evidence_store: dict[str, list[dict]] = {}
+
+    async def handle_evidence_record(request: web.Request) -> web.Response:
+        """Record evidence for a task/session (IndyDevDan pattern: Structured Evidence Capture)."""
+        try:
+            data = await request.json()
+            session_id = data.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+
+            evidence = {
+                "id": f"ev-{int(time.time() * 1000)}",
+                "session_id": session_id,
+                "task_id": data.get("task_id", ""),
+                "agent_id": data.get("agent_id", ""),
+                "evidence_type": data.get("type", "general"),  # command, test, file_change, validation
+                "content": data.get("content", {}),
+                "command": data.get("command", ""),
+                "output": data.get("output", ""),
+                "exit_code": data.get("exit_code"),
+                "files_changed": data.get("files_changed", []),
+                "timestamp": time.time(),
+                "tags": data.get("tags", []),
+            }
+
+            if session_id not in _evidence_store:
+                _evidence_store[session_id] = []
+            _evidence_store[session_id].append(evidence)
+
+            return web.json_response({
+                "status": "recorded",
+                "evidence_id": evidence["id"],
+                "session_id": session_id,
+                "total_evidence": len(_evidence_store[session_id]),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_evidence_list(request: web.Request) -> web.Response:
+        """List evidence for a session with optional filtering."""
+        try:
+            session_id = request.query.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+
+            evidence_list = _evidence_store.get(session_id, [])
+            evidence_type = request.query.get("type")
+            if evidence_type:
+                evidence_list = [e for e in evidence_list if e["evidence_type"] == evidence_type]
+
+            task_id = request.query.get("task_id")
+            if task_id:
+                evidence_list = [e for e in evidence_list if e["task_id"] == task_id]
+
+            return web.json_response({
+                "session_id": session_id,
+                "evidence": evidence_list,
+                "count": len(evidence_list),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/evidence/record", handle_evidence_record)
+    http_app.router.add_get("/control/evidence/list", handle_evidence_list)
+
+    # Safety Gate Pre-Hooks - block destructive operations
+    _safety_hooks: list[dict] = [
+        {"pattern": "rm -rf /", "action": "block", "reason": "System wipe attempt"},
+        {"pattern": "git push --force", "action": "warn", "reason": "Force push can lose history"},
+        {"pattern": "DROP TABLE", "action": "block", "reason": "Destructive SQL operation"},
+        {"pattern": "nixos-rebuild switch", "action": "require_approval", "reason": "System change"},
+        {"pattern": "sudo rm", "action": "warn", "reason": "Privileged file deletion"},
+    ]
+
+    async def handle_safety_check(request: web.Request) -> web.Response:
+        """Check if a command/operation is safe to execute (IndyDevDan pattern: Safety Gates)."""
+        try:
+            data = await request.json()
+            command = data.get("command", "")
+            operation = data.get("operation", "")
+            context = data.get("context", {})
+
+            check_text = command or operation
+            if not check_text:
+                return web.json_response({"error": "command or operation required"}, status=400)
+
+            violations = []
+            for hook in _safety_hooks:
+                pattern = hook["pattern"]
+                if pattern.lower() in check_text.lower():
+                    violations.append({
+                        "pattern": pattern,
+                        "action": hook["action"],
+                        "reason": hook["reason"],
+                    })
+
+            if not violations:
+                return web.json_response({
+                    "safe": True,
+                    "command": check_text,
+                    "action": "allow",
+                })
+
+            # Determine overall action (most restrictive wins)
+            actions = [v["action"] for v in violations]
+            if "block" in actions:
+                overall_action = "block"
+            elif "require_approval" in actions:
+                overall_action = "require_approval"
+            else:
+                overall_action = "warn"
+
+            return web.json_response({
+                "safe": overall_action not in ("block", "require_approval"),
+                "command": check_text,
+                "action": overall_action,
+                "violations": violations,
+                "recommendation": "Request approval or modify command" if overall_action != "warn" else "Proceed with caution",
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_safety_register_hook(request: web.Request) -> web.Response:
+        """Register a new safety hook pattern."""
+        try:
+            data = await request.json()
+            pattern = data.get("pattern", "")
+            action = data.get("action", "warn")
+            reason = data.get("reason", "Custom safety rule")
+
+            if not pattern:
+                return web.json_response({"error": "pattern required"}, status=400)
+            if action not in ("block", "warn", "require_approval"):
+                return web.json_response({"error": "action must be block/warn/require_approval"}, status=400)
+
+            hook = {"pattern": pattern, "action": action, "reason": reason}
+            _safety_hooks.append(hook)
+
+            return web.json_response({
+                "status": "registered",
+                "hook": hook,
+                "total_hooks": len(_safety_hooks),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/safety/check", handle_safety_check)
+    http_app.router.add_post("/control/safety/register-hook", handle_safety_register_hook)
+
+    # Inter-Agent Message Bus - pub/sub for parallel agent coordination
+    _message_bus_topics: dict[str, list[dict]] = {}
+    _message_bus_subscribers: dict[str, list[str]] = {}  # topic -> [agent_ids]
+
+    async def handle_message_bus_publish(request: web.Request) -> web.Response:
+        """Publish a message to a topic (IndyDevDan pattern: Inter-Agent Message Bus)."""
+        try:
+            data = await request.json()
+            topic = data.get("topic", "")
+            if not topic:
+                return web.json_response({"error": "topic required"}, status=400)
+
+            message = {
+                "id": f"msg-{int(time.time() * 1000)}",
+                "topic": topic,
+                "from_agent": data.get("from_agent", ""),
+                "payload": data.get("payload", {}),
+                "message_type": data.get("type", "info"),  # info, request, response, event
+                "timestamp": time.time(),
+                "correlation_id": data.get("correlation_id", ""),
+            }
+
+            if topic not in _message_bus_topics:
+                _message_bus_topics[topic] = []
+            _message_bus_topics[topic].append(message)
+
+            # Keep only last 100 messages per topic
+            if len(_message_bus_topics[topic]) > 100:
+                _message_bus_topics[topic] = _message_bus_topics[topic][-100:]
+
+            subscriber_count = len(_message_bus_subscribers.get(topic, []))
+
+            return web.json_response({
+                "status": "published",
+                "message_id": message["id"],
+                "topic": topic,
+                "subscriber_count": subscriber_count,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_message_bus_subscribe(request: web.Request) -> web.Response:
+        """Subscribe an agent to a topic."""
+        try:
+            data = await request.json()
+            topic = data.get("topic", "")
+            agent_id = data.get("agent_id", "")
+
+            if not topic or not agent_id:
+                return web.json_response({"error": "topic and agent_id required"}, status=400)
+
+            if topic not in _message_bus_subscribers:
+                _message_bus_subscribers[topic] = []
+            if agent_id not in _message_bus_subscribers[topic]:
+                _message_bus_subscribers[topic].append(agent_id)
+
+            return web.json_response({
+                "status": "subscribed",
+                "topic": topic,
+                "agent_id": agent_id,
+                "total_subscribers": len(_message_bus_subscribers[topic]),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_message_bus_poll(request: web.Request) -> web.Response:
+        """Poll messages from a topic for an agent."""
+        try:
+            topic = request.query.get("topic", "")
+            agent_id = request.query.get("agent_id", "")
+            since = float(request.query.get("since", "0"))
+            limit = int(request.query.get("limit", "50"))
+
+            if not topic:
+                return web.json_response({"error": "topic required"}, status=400)
+
+            messages = _message_bus_topics.get(topic, [])
+            # Filter messages after 'since' timestamp
+            if since > 0:
+                messages = [m for m in messages if m["timestamp"] > since]
+            # Exclude own messages if agent_id provided
+            if agent_id:
+                messages = [m for m in messages if m["from_agent"] != agent_id]
+
+            messages = messages[-limit:]
+
+            return web.json_response({
+                "topic": topic,
+                "messages": messages,
+                "count": len(messages),
+                "latest_timestamp": messages[-1]["timestamp"] if messages else since,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/message-bus/publish", handle_message_bus_publish)
+    http_app.router.add_post("/control/message-bus/subscribe", handle_message_bus_subscribe)
+    http_app.router.add_get("/control/message-bus/poll", handle_message_bus_poll)
+
+    # Historical Capability Scoring - track agent performance over time
+    _capability_history: dict[str, list[dict]] = {}  # agent_id -> [outcomes]
+
+    async def handle_capability_record_outcome(request: web.Request) -> web.Response:
+        """Record a capability outcome for an agent (IndyDevDan pattern: Historical Scoring)."""
+        try:
+            data = await request.json()
+            agent_id = data.get("agent_id", "")
+            capability = data.get("capability", "")
+
+            if not agent_id or not capability:
+                return web.json_response({"error": "agent_id and capability required"}, status=400)
+
+            outcome = {
+                "id": f"out-{int(time.time() * 1000)}",
+                "agent_id": agent_id,
+                "capability": capability,
+                "task_id": data.get("task_id", ""),
+                "success": data.get("success", True),
+                "quality_score": data.get("quality_score", 1.0),  # 0.0 to 1.0
+                "duration_seconds": data.get("duration_seconds"),
+                "error_type": data.get("error_type"),
+                "notes": data.get("notes", ""),
+                "timestamp": time.time(),
+            }
+
+            if agent_id not in _capability_history:
+                _capability_history[agent_id] = []
+            _capability_history[agent_id].append(outcome)
+
+            # Keep only last 500 outcomes per agent
+            if len(_capability_history[agent_id]) > 500:
+                _capability_history[agent_id] = _capability_history[agent_id][-500:]
+
+            return web.json_response({
+                "status": "recorded",
+                "outcome_id": outcome["id"],
+                "agent_id": agent_id,
+                "capability": capability,
+                "total_outcomes": len(_capability_history[agent_id]),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_capability_score(request: web.Request) -> web.Response:
+        """Get capability scores for an agent based on historical performance."""
+        try:
+            agent_id = request.query.get("agent_id", "")
+            capability = request.query.get("capability")
+            window_hours = int(request.query.get("window_hours", "168"))  # Default 1 week
+
+            if not agent_id:
+                return web.json_response({"error": "agent_id required"}, status=400)
+
+            outcomes = _capability_history.get(agent_id, [])
+            cutoff = time.time() - (window_hours * 3600)
+            outcomes = [o for o in outcomes if o["timestamp"] > cutoff]
+
+            if capability:
+                outcomes = [o for o in outcomes if o["capability"] == capability]
+
+            if not outcomes:
+                return web.json_response({
+                    "agent_id": agent_id,
+                    "capability": capability,
+                    "scores": {},
+                    "message": "No historical data available",
+                })
+
+            # Calculate scores by capability
+            capabilities: dict[str, list[dict]] = {}
+            for o in outcomes:
+                cap = o["capability"]
+                if cap not in capabilities:
+                    capabilities[cap] = []
+                capabilities[cap].append(o)
+
+            scores = {}
+            for cap, cap_outcomes in capabilities.items():
+                total = len(cap_outcomes)
+                successes = sum(1 for o in cap_outcomes if o["success"])
+                avg_quality = sum(o.get("quality_score", 1.0) for o in cap_outcomes) / total
+                durations = [o["duration_seconds"] for o in cap_outcomes if o.get("duration_seconds")]
+                avg_duration = sum(durations) / len(durations) if durations else None
+
+                scores[cap] = {
+                    "success_rate": successes / total,
+                    "average_quality": round(avg_quality, 3),
+                    "sample_count": total,
+                    "average_duration_seconds": round(avg_duration, 2) if avg_duration else None,
+                    "recent_errors": [o["error_type"] for o in cap_outcomes[-5:] if o.get("error_type")],
+                }
+
+            # Calculate overall score
+            overall_success = sum(1 for o in outcomes if o["success"]) / len(outcomes)
+            overall_quality = sum(o.get("quality_score", 1.0) for o in outcomes) / len(outcomes)
+
+            return web.json_response({
+                "agent_id": agent_id,
+                "window_hours": window_hours,
+                "overall": {
+                    "success_rate": round(overall_success, 3),
+                    "average_quality": round(overall_quality, 3),
+                    "total_outcomes": len(outcomes),
+                },
+                "by_capability": scores,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/capability/record-outcome", handle_capability_record_outcome)
+    http_app.router.add_get("/control/capability/score", handle_capability_score)
+
+    # Rollback Execution API - execute rollback commands safely
+    _rollback_registry: dict[str, dict] = {}  # session_id -> rollback_info
+
+    async def handle_rollback_register(request: web.Request) -> web.Response:
+        """Register a rollback procedure for a session/task."""
+        try:
+            data = await request.json()
+            session_id = data.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+
+            rollback_info = {
+                "session_id": session_id,
+                "task_id": data.get("task_id", ""),
+                "rollback_commands": data.get("commands", []),
+                "rollback_files": data.get("files", {}),  # {path: original_content}
+                "description": data.get("description", ""),
+                "registered_at": time.time(),
+                "registered_by": data.get("agent_id", ""),
+                "status": "registered",
+            }
+
+            _rollback_registry[session_id] = rollback_info
+
+            return web.json_response({
+                "status": "registered",
+                "session_id": session_id,
+                "command_count": len(rollback_info["rollback_commands"]),
+                "file_count": len(rollback_info["rollback_files"]),
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_rollback_execute(request: web.Request) -> web.Response:
+        """Execute a registered rollback (IndyDevDan pattern: Safe Rollback)."""
+        try:
+            data = await request.json()
+            session_id = data.get("session_id", "")
+            dry_run = data.get("dry_run", True)  # Default to dry-run for safety
+
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+
+            rollback_info = _rollback_registry.get(session_id)
+            if not rollback_info:
+                return web.json_response({"error": f"No rollback registered for session {session_id}"}, status=404)
+
+            if dry_run:
+                return web.json_response({
+                    "status": "dry_run",
+                    "session_id": session_id,
+                    "would_execute": rollback_info["rollback_commands"],
+                    "would_restore_files": list(rollback_info["rollback_files"].keys()),
+                    "description": rollback_info["description"],
+                    "message": "Set dry_run=false to execute",
+                })
+
+            # Execute rollback (file restoration only - command execution requires approval)
+            restored_files = []
+            for file_path, content in rollback_info["rollback_files"].items():
+                try:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    restored_files.append(file_path)
+                except Exception as e:
+                    logger.warning("Failed to restore %s: %s", file_path, e)
+
+            rollback_info["status"] = "executed"
+            rollback_info["executed_at"] = time.time()
+            rollback_info["restored_files"] = restored_files
+
+            return web.json_response({
+                "status": "executed",
+                "session_id": session_id,
+                "restored_files": restored_files,
+                "pending_commands": rollback_info["rollback_commands"],
+                "message": "Files restored. Execute commands manually for safety.",
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_rollback_status(request: web.Request) -> web.Response:
+        """Get rollback status for a session."""
+        try:
+            session_id = request.query.get("session_id", "")
+            if not session_id:
+                return web.json_response({"error": "session_id required"}, status=400)
+
+            rollback_info = _rollback_registry.get(session_id)
+            if not rollback_info:
+                return web.json_response({
+                    "session_id": session_id,
+                    "has_rollback": False,
+                    "message": "No rollback registered",
+                })
+
+            return web.json_response({
+                "session_id": session_id,
+                "has_rollback": True,
+                "status": rollback_info["status"],
+                "registered_at": rollback_info["registered_at"],
+                "command_count": len(rollback_info["rollback_commands"]),
+                "file_count": len(rollback_info["rollback_files"]),
+                "description": rollback_info["description"],
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+    http_app.router.add_post("/control/rollback/register", handle_rollback_register)
+    http_app.router.add_post("/control/rollback/execute", handle_rollback_execute)
+    http_app.router.add_get("/control/rollback/status", handle_rollback_status)
+
     runner = web.AppRunner(
         http_app,
         access_log=access_logger,
