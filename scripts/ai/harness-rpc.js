@@ -366,6 +366,21 @@ async function main() {
         "GET"
       );
 
+    // ── Delegation with failover chain (Phase 20.2) ─────────────────────
+    case "delegate":
+    case "delegate-with-failover":
+      return call("/control/ai-coordinator/delegate", "POST", {
+        task: args.task || args.query || args.q || "",
+        profile: args.profile || "",
+        prefer_local:
+          args["prefer-local"] === "true" || args["prefer-local"] === true,
+        max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
+        temperature: args.temperature ? Number(args.temperature) : undefined,
+        timeout_s: args.timeout ? Number(args.timeout) : undefined,
+        // Phase 20.2: Failover chain is automatic on unavailability
+        // The endpoint builds priority-based fallback chains automatically
+      });
+
     // ── Tmux-based agent sandboxes (IndyDevDan pattern) ───────────────────
     case "tmux-spawn": {
       // Spawn a Claude Code agent in an isolated tmux pane
