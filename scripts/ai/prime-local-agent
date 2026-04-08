@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+#
+# Prime Local Agent
+#
+# Outputs a comprehensive context dump for the local agent to consume.
+# Run this at the start of a session to prime the agent with harness knowledge.
+#
+# Usage:
+#   scripts/ai/prime-local-agent
+#   scripts/ai/prime-local-agent --compact
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+COMPACT="${1:-}"
+
+echo "=== AI HARNESS PRIMER ==="
+echo ""
+
+# Service status
+echo "## Service Status"
+echo ""
+echo "| Service | Status | Model/Info |"
+echo "|---------|--------|------------|"
+
+if curl -sf --max-time 2 http://127.0.0.1:8080/health > /dev/null 2>&1; then
+    model=$(curl -sf http://127.0.0.1:8080/v1/models 2>/dev/null | jq -r '.data[0].id // "unknown"')
+    echo "| llama-cpp | OK | $model |"
+else
+    echo "| llama-cpp | DOWN | - |"
+fi
+
+if curl -sf --max-time 2 http://127.0.0.1:8003/health > /dev/null 2>&1; then
+    echo "| hybrid-coordinator | OK | Workflows, Hints, Memory |"
+else
+    echo "| hybrid-coordinator | DOWN | - |"
+fi
+
+if curl -sf --max-time 2 http://127.0.0.1:8002/health > /dev/null 2>&1; then
+    echo "| AIDB | OK | RAG, Knowledge Base |"
+else
+    echo "| AIDB | DOWN | - |"
+fi
+
+echo ""
+
+# Quick reference commands
+echo "## Quick Reference Commands"
+echo ""
+echo "\`\`\`bash"
+echo "# Get hints for any task"
+echo "scripts/ai/aq-hints --query \"your task description\""
+echo ""
+echo "# Search knowledge base"
+echo "curl -s -X POST http://127.0.0.1:8003/query -H 'Content-Type: application/json' -d '{\"query\": \"search terms\", \"limit\": 5}' | jq"
+echo ""
+echo "# Store a decision/fact in memory"
+echo "curl -s -X POST http://127.0.0.1:8003/memory/store -H 'Content-Type: application/json' -d '{\"content\": \"Decision made\", \"agent_id\": \"continue\", \"memory_type\": \"procedural\"}'"
+echo ""
+echo "# Recall relevant memories"
+echo "curl -s -X POST http://127.0.0.1:8003/memory/recall -H 'Content-Type: application/json' -d '{\"query\": \"what we decided\", \"agent_id\": \"continue\", \"limit\": 3}' | jq"
+echo ""
+echo "# Create a workflow plan"
+echo "curl -s -X POST http://127.0.0.1:8003/workflow/plan -H 'Content-Type: application/json' -d '{\"query\": \"implement feature X\"}' | jq"
+echo ""
+echo "# Check orchestrator status"
+echo "scripts/ai/local-orchestrator --status"
+echo "\`\`\`"
+echo ""
+
+if [[ "$COMPACT" != "--compact" ]]; then
+    # Available workflows
+    echo "## Available Workflows"
+    echo ""
+    echo "\`\`\`"
+    "$SCRIPT_DIR/aqd" workflows list 2>/dev/null | head -15 || echo "aqd not available"
+    echo "\`\`\`"
+    echo ""
+
+    # Key files
+    echo "## Key Files"
+    echo ""
+    echo "| File | Purpose |"
+    echo "|------|---------|"
+    echo "| .agent/LOCAL-AGENT-HARNESS-PRIMER.md | Full harness documentation |"
+    echo "| CLAUDE.md | Agent instructions |"
+    echo "| .agent/PROJECT-PRD.md | Project requirements |"
+    echo "| scripts/ai/aqd | Main harness CLI |"
+    echo "| scripts/ai/local-orchestrator | Primary orchestrator |"
+    echo ""
+
+    # Recent hints
+    echo "## Current Hints (from harness)"
+    echo ""
+    echo "\`\`\`"
+    curl -sf "http://127.0.0.1:8003/hints?limit=3" 2>/dev/null | jq -r '.hints[]?.content // "No hints available"' || echo "Hints unavailable"
+    echo "\`\`\`"
+fi
+
+echo ""
+echo "=== END PRIMER ==="
+echo ""
+echo "You now have full access to the AI harness. Use the commands above to:"
+echo "1. Search for context before implementing"
+echo "2. Store decisions in memory for continuity"
+echo "3. Create workflow plans for complex tasks"
+echo "4. Recall past decisions to maintain consistency"
