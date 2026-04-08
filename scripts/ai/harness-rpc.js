@@ -357,6 +357,15 @@ async function main() {
         format: args.format || "json",
       });
 
+    // ── Agent status / availability ─────────────────────────────────────
+    case "agent-status":
+      return call(
+        `/agent-status${
+          args.agent ? "?agent_id=" + encodeURIComponent(args.agent) : ""
+        }${args.detail ? "&detail=true" : ""}`,
+        "GET"
+      );
+
     // ── Tmux-based agent sandboxes (IndyDevDan pattern) ───────────────────
     case "tmux-spawn": {
       // Spawn a Claude Code agent in an isolated tmux pane
@@ -369,9 +378,13 @@ async function main() {
       try {
         // Create tmux session if it doesn't exist
         try {
-          execSync(`tmux has-session -t ${tmuxSession} 2>/dev/null`, { encoding: "utf8" });
+          execSync(`tmux has-session -t ${tmuxSession} 2>/dev/null`, {
+            encoding: "utf8",
+          });
         } catch {
-          execSync(`tmux new-session -d -s ${tmuxSession}`, { encoding: "utf8" });
+          execSync(`tmux new-session -d -s ${tmuxSession}`, {
+            encoding: "utf8",
+          });
         }
         // Create new window with the agent command
         execSync(
@@ -381,25 +394,34 @@ async function main() {
         // If task provided, send it to the pane
         if (task) {
           execSync(
-            `tmux send-keys -t ${tmuxSession}:${tmuxWindow} "${task.replace(/"/g, '\\"')}" Enter`,
+            `tmux send-keys -t ${tmuxSession}:${tmuxWindow} "${task.replace(
+              /"/g,
+              '\\"'
+            )}" Enter`,
             { encoding: "utf8" }
           );
         }
         console.log(
-          JSON.stringify({
-            ok: true,
-            status: 200,
-            data: {
-              tmux_session: tmuxSession,
-              tmux_window: tmuxWindow,
-              agent_command: agentCmd,
-              task: task || "(none)",
-              attach_command: `tmux attach -t ${tmuxSession}:${tmuxWindow}`,
+          JSON.stringify(
+            {
+              ok: true,
+              status: 200,
+              data: {
+                tmux_session: tmuxSession,
+                tmux_window: tmuxWindow,
+                agent_command: agentCmd,
+                task: task || "(none)",
+                attach_command: `tmux attach -t ${tmuxSession}:${tmuxWindow}`,
+              },
             },
-          }, null, 2)
+            null,
+            2
+          )
         );
       } catch (err) {
-        console.error(JSON.stringify({ ok: false, error: String(err) }, null, 2));
+        console.error(
+          JSON.stringify({ ok: false, error: String(err) }, null, 2)
+        );
         process.exit(1);
       }
       return;
@@ -407,15 +429,34 @@ async function main() {
     case "tmux-list": {
       const { execSync } = require("child_process");
       try {
-        const output = execSync("tmux list-windows -a 2>/dev/null || echo '(no tmux sessions)'", {
-          encoding: "utf8",
-        });
+        const output = execSync(
+          "tmux list-windows -a 2>/dev/null || echo '(no tmux sessions)'",
+          {
+            encoding: "utf8",
+          }
+        );
         console.log(
-          JSON.stringify({ ok: true, status: 200, data: { windows: output.trim().split("\n") } }, null, 2)
+          JSON.stringify(
+            {
+              ok: true,
+              status: 200,
+              data: { windows: output.trim().split("\n") },
+            },
+            null,
+            2
+          )
         );
       } catch (err) {
         console.log(
-          JSON.stringify({ ok: true, status: 200, data: { windows: [], note: "no tmux sessions" } }, null, 2)
+          JSON.stringify(
+            {
+              ok: true,
+              status: 200,
+              data: { windows: [], note: "no tmux sessions" },
+            },
+            null,
+            2
+          )
         );
       }
       return;
@@ -424,16 +465,33 @@ async function main() {
       const { execSync } = require("child_process");
       const target = args.window || args.session;
       if (!target) {
-        console.error(JSON.stringify({ ok: false, error: "--window or --session required" }, null, 2));
+        console.error(
+          JSON.stringify(
+            { ok: false, error: "--window or --session required" },
+            null,
+            2
+          )
+        );
         process.exit(1);
       }
       try {
-        execSync(`tmux kill-window -t ${target} 2>/dev/null || tmux kill-session -t ${target}`, {
-          encoding: "utf8",
-        });
-        console.log(JSON.stringify({ ok: true, status: 200, data: { killed: target } }, null, 2));
+        execSync(
+          `tmux kill-window -t ${target} 2>/dev/null || tmux kill-session -t ${target}`,
+          {
+            encoding: "utf8",
+          }
+        );
+        console.log(
+          JSON.stringify(
+            { ok: true, status: 200, data: { killed: target } },
+            null,
+            2
+          )
+        );
       } catch (err) {
-        console.error(JSON.stringify({ ok: false, error: String(err) }, null, 2));
+        console.error(
+          JSON.stringify({ ok: false, error: String(err) }, null, 2)
+        );
         process.exit(1);
       }
       return;
@@ -442,7 +500,7 @@ async function main() {
     // ── Polling-based task manager (IndyDevDan pattern) ───────────────────
     case "poll-tasks":
       return call("/control/task-manager/poll", "POST", {
-        source: args.source || "local",  // local, linear, jira, github
+        source: args.source || "local", // local, linear, jira, github
         project: args.project || "",
         status_filter: args.status || "todo",
         max_tasks: args.max ? Number(args.max) : 5,
@@ -470,14 +528,21 @@ async function main() {
         from_agent: args.from || args["from-agent"] || "codex",
         to_agent: args.to || args["to-agent"] || "qwen",
         session_id: args.session || args.id || "",
-        artifact_type: args.type || "code",  // code, config, docs, test
+        artifact_type: args.type || "code", // code, config, docs, test
         artifact_path: args.path || "",
-        review_criteria: csv(args.criteria) || ["correctness", "style", "security"],
-        auto_merge: args["auto-merge"] === "true" || args["auto-merge"] === true,
+        review_criteria: csv(args.criteria) || [
+          "correctness",
+          "style",
+          "security",
+        ],
+        auto_merge:
+          args["auto-merge"] === "true" || args["auto-merge"] === true,
       });
     case "review-status":
       return call(
-        `/control/review/status?session_id=${encodeURIComponent(args.session || args.id || "")}`,
+        `/control/review/status?session_id=${encodeURIComponent(
+          args.session || args.id || ""
+        )}`,
         "GET"
       );
     case "review-accept":
@@ -515,13 +580,14 @@ async function main() {
         tags: csv(args.tags),
       });
 
-    case "evidence-list":
-      {
-        let url = `/control/evidence/list?session_id=${encodeURIComponent(args.session || args.id || "")}`;
-        if (args.type) url += `&type=${encodeURIComponent(args.type)}`;
-        if (args.task) url += `&task_id=${encodeURIComponent(args.task)}`;
-        return call(url, "GET");
-      }
+    case "evidence-list": {
+      let url = `/control/evidence/list?session_id=${encodeURIComponent(
+        args.session || args.id || ""
+      )}`;
+      if (args.type) url += `&type=${encodeURIComponent(args.type)}`;
+      if (args.task) url += `&task_id=${encodeURIComponent(args.task)}`;
+      return call(url, "GET");
+    }
 
     // Safety Gate Pre-Hooks
     case "safety-check":
@@ -554,14 +620,15 @@ async function main() {
         agent_id: args.agent || "",
       });
 
-    case "bus-poll":
-      {
-        let url = `/control/message-bus/poll?topic=${encodeURIComponent(args.topic || "")}`;
-        if (args.agent) url += `&agent_id=${encodeURIComponent(args.agent)}`;
-        if (args.since) url += `&since=${encodeURIComponent(args.since)}`;
-        if (args.limit) url += `&limit=${encodeURIComponent(args.limit)}`;
-        return call(url, "GET");
-      }
+    case "bus-poll": {
+      let url = `/control/message-bus/poll?topic=${encodeURIComponent(
+        args.topic || ""
+      )}`;
+      if (args.agent) url += `&agent_id=${encodeURIComponent(args.agent)}`;
+      if (args.since) url += `&since=${encodeURIComponent(args.since)}`;
+      if (args.limit) url += `&limit=${encodeURIComponent(args.limit)}`;
+      return call(url, "GET");
+    }
 
     // Historical Capability Scoring
     case "capability-record":
@@ -576,13 +643,16 @@ async function main() {
         notes: args.notes || "",
       });
 
-    case "capability-score":
-      {
-        let url = `/control/capability/score?agent_id=${encodeURIComponent(args.agent || "")}`;
-        if (args.capability) url += `&capability=${encodeURIComponent(args.capability)}`;
-        if (args.window) url += `&window_hours=${encodeURIComponent(args.window)}`;
-        return call(url, "GET");
-      }
+    case "capability-score": {
+      let url = `/control/capability/score?agent_id=${encodeURIComponent(
+        args.agent || ""
+      )}`;
+      if (args.capability)
+        url += `&capability=${encodeURIComponent(args.capability)}`;
+      if (args.window)
+        url += `&window_hours=${encodeURIComponent(args.window)}`;
+      return call(url, "GET");
+    }
 
     // Rollback Execution API
     case "rollback-register":
@@ -602,7 +672,12 @@ async function main() {
       });
 
     case "rollback-status":
-      return call(`/control/rollback/status?session_id=${encodeURIComponent(args.session || args.id || "")}`, "GET");
+      return call(
+        `/control/rollback/status?session_id=${encodeURIComponent(
+          args.session || args.id || ""
+        )}`,
+        "GET"
+      );
 
     default:
       console.error(`Unknown command: ${cmd}`);

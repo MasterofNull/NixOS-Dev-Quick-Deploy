@@ -10,12 +10,12 @@
 
 ### Service Endpoints (All Running Locally)
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| **llama-cpp** | `http://127.0.0.1:8080` | Local LLM (Gemma 4 E4B) |
+| Service                | URL                     | Purpose                               |
+| ---------------------- | ----------------------- | ------------------------------------- |
+| **llama-cpp**          | `http://127.0.0.1:8080` | Local LLM (Gemma 4 E4B)               |
 | **hybrid-coordinator** | `http://127.0.0.1:8003` | Workflow orchestration, hints, memory |
-| **AIDB** | `http://127.0.0.1:8002` | RAG knowledge base, tool registry |
-| **embedding-server** | `http://127.0.0.1:8081` | Embeddings for semantic search |
+| **AIDB**               | `http://127.0.0.1:8002` | RAG knowledge base, tool registry     |
+| **embedding-server**   | `http://127.0.0.1:8081` | Embeddings for semantic search        |
 
 ### Health Check Command
 
@@ -189,15 +189,15 @@ ai-stack/                       # AI stack modules
 
 When using the MCP bridge, these tools are available:
 
-| Tool | Purpose | When to Use |
-|------|---------|-------------|
-| `hybrid_search` | Semantic + keyword search | Finding code, docs, patterns |
-| `get_hints` | Workflow hints | Before starting any task |
-| `query_aidb` | Direct knowledge base query | Specific documentation lookup |
-| `recall_memory` | Retrieve past decisions | Maintaining context across sessions |
-| `store_memory` | Persist facts/decisions | After important decisions |
-| `workflow_plan` | Create phased plans | Planning implementations |
-| `workflow_run_start` | Execute guarded workflow | Running approved plans |
+| Tool                 | Purpose                     | When to Use                         |
+| -------------------- | --------------------------- | ----------------------------------- |
+| `hybrid_search`      | Semantic + keyword search   | Finding code, docs, patterns        |
+| `get_hints`          | Workflow hints              | Before starting any task            |
+| `query_aidb`         | Direct knowledge base query | Specific documentation lookup       |
+| `recall_memory`      | Retrieve past decisions     | Maintaining context across sessions |
+| `store_memory`       | Persist facts/decisions     | After important decisions           |
+| `workflow_plan`      | Create phased plans         | Planning implementations            |
+| `workflow_run_start` | Execute guarded workflow    | Running approved plans              |
 
 ---
 
@@ -229,13 +229,13 @@ When using the MCP bridge, these tools are available:
 
 ## Important Files to Know
 
-| File | Purpose |
-|------|---------|
-| `CLAUDE.md` | Primary agent instructions |
-| `AGENTS.md` | Compact policy baseline |
-| `.agent/PROJECT-PRD.md` | Project requirements |
+| File                     | Purpose                    |
+| ------------------------ | -------------------------- |
+| `CLAUDE.md`              | Primary agent instructions |
+| `AGENTS.md`              | Compact policy baseline    |
+| `.agent/PROJECT-PRD.md`  | Project requirements       |
 | `.agent/GLOBAL-RULES.md` | Guardrails and constraints |
-| `docs/AGENTS.md` | Full policy documentation |
+| `docs/AGENTS.md`         | Full policy documentation  |
 
 ---
 
@@ -262,9 +262,16 @@ This exposes all harness tools as MCP tools within your Continue.dev session.
 ## Quick Diagnostic Commands
 
 ```bash
-# Check all services
-for svc in llama-cpp hybrid-coordinator aidb; do
-  echo "$svc: $(curl -sf http://127.0.0.1:${svc:+8080}/health && echo OK || echo DOWN)"
+# Check all services (correct port mapping)
+declare -A SVC_PORTS=(
+  ["llama-cpp"]=8080
+  ["hybrid-coordinator"]=8003
+  ["aidb"]=8002
+)
+for svc in "${!SVC_PORTS[@]}"; do
+  port="${SVC_PORTS[$svc]}"
+  status=$(curl -sf "http://127.0.0.1:${port}/health" > /dev/null 2>&1 && echo "OK" || echo "DOWN")
+  echo "$svc (port ${port}): $status"
 done
 
 # See current model
@@ -272,6 +279,9 @@ curl -s http://127.0.0.1:8080/v1/models | jq '.data[0].id'
 
 # Check harness capabilities
 curl -s http://127.0.0.1:8003/health | jq '.ai_harness'
+
+# Check agent pool status (Phase 20.1)
+curl -s http://127.0.0.1:8003/agent-status | jq '{pool_status, total_agents, available_agents}'
 ```
 
 ---
