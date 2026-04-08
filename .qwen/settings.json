@@ -57,7 +57,13 @@
       "WebFetch(ai.rs)",
       "WebFetch(wavespeed.ai)",
       "WebFetch(milvus.io)",
-      "WebFetch(www.stackai.com)"
+      "WebFetch(www.stackai.com)",
+      "WebFetch(youtu.be)",
+      "Bash(scripts/governance/tier0-validation-gate.sh *)",
+      "Bash(nix *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(nix-instantiate *)"
     ]
   }
 }
