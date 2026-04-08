@@ -733,6 +733,199 @@ def _select_agent_pool_candidate(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Phase 20.2: Priority-based delegation with automatic failover
+# ---------------------------------------------------------------------------
+
+# Task type to agent capability mapping
+_TASK_TYPE_CAPABILITIES = {
+    "coding": {
+        "priority_profiles": ["remote-coding", "remote-free", "local-tool-calling", "default"],
+        "required_context_window": 8192,
+        "prefer_free_first": False,
+    },
+    "reasoning": {
+        "priority_profiles": ["remote-reasoning", "remote-free", "default"],
+        "required_context_window": 8192,
+        "prefer_free_first": False,
+    },
+    "tool-calling": {
+        "priority_profiles": ["remote-tool-calling", "local-tool-calling", "remote-free", "default"],
+        "required_context_window": 4096,
+        "prefer_free_first": True,
+    },
+    "simple": {
+        "priority_profiles": ["remote-free", "default", "local-tool-calling"],
+        "required_context_window": 4096,
+        "prefer_free_first": True,
+    },
+    "default": {
+        "priority_profiles": ["remote-free", "default"],
+        "required_context_window": 4096,
+        "prefer_free_first": True,
+    },
+}
+
+
+def _detect_task_type(task: str, profile: str = "") -> str:
+    """Detect task type from task description for capability-based routing."""
+    task_lower = (task or "").lower()
+
+    # Explicit profile overrides detection
+    if profile:
+        profile_lower = profile.lower()
+        if "coding" in profile_lower or "implement" in profile_lower:
+            return "coding"
+        if "reasoning" in profile_lower or "architecture" in profile_lower:
+            return "reasoning"
+        if "tool" in profile_lower:
+            return "tool-calling"
+        return "default"
+
+    # Detect from task content
+    coding_keywords = ["implement", "code", "function", "class", "fix bug", "refactor", "patch", "script"]
+    reasoning_keywords = ["architecture", "design", "review", "analyze", "tradeoff", "strategy", "plan"]
+    tool_keywords = ["run", "execute", "command", "script", "deploy", "build", "test"]
+
+    if any(kw in task_lower for kw in coding_keywords):
+        return "coding"
+    if any(kw in task_lower for kw in reasoning_keywords):
+        return "reasoning"
+    if any(kw in task_lower for kw in tool_keywords):
+        return "tool-calling"
+
+    # Simple heuristic: short tasks are likely simple
+    if len(task_lower.split()) <= 10:
+        return "simple"
+
+    return "default"
+
+
+def _build_delegation_fallback_chain(
+    task: str,
+    requested_profile: str = "",
+    prefer_local: bool = False,
+) -> List[Dict[str, Any]]:
+    """Build a prioritized fallback chain of delegation targets.
+
+    Phase 20.2: Returns an ordered list of delegation attempts with:
+    - profile: The routing profile to use
+    - runtime_id: The corresponding runtime ID
+    - reason: Why this profile is in the chain
+    - is_local: Whether this is a local delegation
+    """
+    task_type = _detect_task_type(task, requested_profile)
+    capabilities = _TASK_TYPE_CAPABILITIES.get(task_type, _TASK_TYPE_CAPABILITIES["default"])
+
+    chain = []
+    seen_profiles = set()
+
+    for profile in capabilities["priority_profiles"]:
+        if profile in seen_profiles:
+            continue
+        seen_profiles.add(profile)
+
+        # Skip local profiles if we already tried local
+        is_local = "local" in profile.lower()
+
+        # Determine runtime ID for this profile
+        try:
+            from ai_coordinator import _profile_to_runtime_id  # type: ignore
+            runtime_id = _profile_to_runtime_id(profile)
+        except Exception:
+            # Fallback mapping
+            runtime_map = {
+                "remote-free": "openrouter-free",
+                "remote-coding": "openrouter-coding",
+                "remote-reasoning": "openrouter-reasoning",
+                "remote-tool-calling": "openrouter-tool-calling",
+                "local-tool-calling": "local-tool-calling",
+                "default": "local-hybrid",
+            }
+            runtime_id = runtime_map.get(profile, "local-hybrid")
+
+        chain.append({
+            "profile": profile,
+            "runtime_id": runtime_id,
+            "reason": f"{task_type} task: {profile} (priority {len(chain) + 1})",
+            "is_local": is_local,
+            "context_window": capabilities["required_context_window"],
+        })
+
+    # If prefer_local is set, ensure local is in the chain
+    if prefer_local and not any(c["is_local"] for c in chain):
+        chain.append({
+            "profile": "default",
+            "runtime_id": "local-hybrid",
+            "reason": "prefer_local flag: local fallback",
+            "is_local": True,
+            "context_window": 4096,
+        })
+
+    return chain
+
+
+def _check_runtime_available(runtime_id: str) -> bool:
+    """Check if a runtime is currently available."""
+    try:
+        from switchboard_state import get_switchboard_state  # type: ignore
+        state = get_switchboard_state()
+        runtime_status = state.get_runtime_status(runtime_id)
+        return runtime_status in ("ready", "degraded")
+    except Exception:
+        # If we can't check, assume available (will fail gracefully later)
+        return True
+
+
+def _check_agent_available_for_profile(profile: str) -> bool:
+    """Check if any agent is available for the given profile."""
+    if not _remote_profile_uses_agent_pool(profile):
+        return True  # Non-pool profiles are assumed available
+
+    # Check if any agent in the pool is available
+    for agent in _AGENT_POOL_MANAGER.agents.values():
+        if agent.is_available() and not agent.is_rate_limited():
+            return True
+
+    return False
+
+
+def _select_next_available_delegation_target(
+    fallback_chain: List[Dict[str, Any]],
+    exclude_profiles: Optional[Set[str]] = None,
+    exclude_agent_id: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Select the next available delegation target from the fallback chain.
+
+    Phase 20.2: Proactively checks availability before attempting delegation.
+    Returns the first available target, or None if all are unavailable.
+    """
+    exclude = exclude_profiles or set()
+
+    for target in fallback_chain:
+        profile = target["profile"]
+        runtime_id = target["runtime_id"]
+
+        # Skip excluded profiles
+        if profile in exclude:
+            continue
+
+        # Check runtime availability
+        if not _check_runtime_available(runtime_id):
+            logger.info("delegation_failover: runtime %s unavailable, skipping", runtime_id)
+            continue
+
+        # Check agent pool availability for pool-based profiles
+        if not _check_agent_available_for_profile(profile):
+            logger.info("delegation_failover: no agents available for %s, skipping", profile)
+            continue
+
+        # This target is available
+        return target
+
+    return None
+
+
 def _delegated_quality_status_snapshot() -> Dict[str, Any]:
     tracked_agents = []
     for agent_id in sorted(_DELEGATED_QUALITY_TRACKER.agent_quality.keys()):
@@ -8588,14 +8781,77 @@ async def run_http_mode(port: int) -> None:
 
             status = str(runtime.get("status", "unknown")).strip().lower()
             if status not in {"ready", "degraded"}:
-                return web.json_response(
-                    {
-                        "error": "runtime_unavailable",
-                        "runtime_id": selected_runtime_id,
-                        "status": status,
-                    },
-                    status=503,
+                # Phase 20.2: Instead of immediately failing, try failover chain
+                logger.warning(
+                    "delegation_failover: runtime %s unavailable (status=%s), attempting failover",
+                    selected_runtime_id,
+                    status,
                 )
+
+                # Build fallback chain based on task type
+                fallback_chain = _build_delegation_fallback_chain(
+                    task,
+                    requested_profile,
+                    prefer_local,
+                )
+
+                # Find next available target
+                next_target = _select_next_available_delegation_target(
+                    fallback_chain,
+                    exclude_profiles={selected_profile},
+                )
+
+                if next_target:
+                    logger.info(
+                        "delegation_failover: selected fallback profile=%s runtime=%s reason='%s'",
+                        next_target["profile"],
+                        next_target["runtime_id"],
+                        next_target["reason"],
+                    )
+                    # Update selected profile and runtime
+                    selected_profile = next_target["profile"]
+                    selected_runtime_id = next_target["runtime_id"]
+
+                    # Reload runtime with new profile
+                    async with _runtime_registry_lock:
+                        registry = await _load_runtime_registry()
+                        runtime = (registry.get("runtimes", {}) or {}).get(selected_runtime_id)
+                    if not isinstance(runtime, dict):
+                        return web.json_response(
+                            {"error": "runtime not found after failover", "runtime_id": selected_runtime_id},
+                            status=404,
+                        )
+
+                    # Re-check runtime status
+                    swb_state = await _switchboard_ai_coordinator_state()
+                    remote_aliases = swb_state.get("remote_aliases", {})
+                    remote_configured = bool(swb_state.get("remote_configured", False))
+                    runtime = _apply_remote_runtime_status(runtime, selected_runtime_id, remote_aliases, remote_configured)
+                    status = str(runtime.get("status", "unknown")).strip().lower()
+
+                    if status not in {"ready", "degraded"}:
+                        # Even failover target is unavailable
+                        return web.json_response(
+                            {
+                                "error": "runtime_unavailable_after_failover",
+                                "requested_runtime": selected_runtime_id,
+                                "failed_over_to": next_target,
+                                "status": status,
+                                "hint": "All delegation targets are currently unavailable. Retry later or use local execution.",
+                            },
+                            status=503,
+                        )
+                else:
+                    # No failover targets available
+                    return web.json_response(
+                        {
+                            "error": "runtime_unavailable_no_failover",
+                            "runtime_id": selected_runtime_id,
+                            "status": status,
+                            "hint": "No alternative delegation targets available. Retry later or use local execution.",
+                        },
+                        status=503,
+                    )
 
             messages = data.get("messages")
             if not isinstance(messages, list) or not messages:
@@ -8842,41 +9098,79 @@ asyncio.run(run())
             fallback_applied = False
             local_fallback_applied = False
             fallback_reason = ""
+            failover_chain_used = False
+            excluded_profiles = set()
+
             response = await _post_delegate(effective_profile)
             initial_response = response
             initial_body = response.json()
-            if (
-                response.status_code in {402, 429}
-                and selected_runtime_id in {"openrouter-coding", "openrouter-reasoning", "openrouter-tool-calling"}
-                and remote_configured
-                and remote_aliases.get("free")
-            ):
-                effective_profile = "remote-free"
-                effective_runtime_id = "openrouter-free"
-                fallback_applied = True
-                fallback_reason = "remote profile returned 402/429; retried on remote-free"
-                if pool_agent and response.status_code in {402, 429}:
+
+            # Phase 20.2: Enhanced failover chain for 402/429 errors
+            if response.status_code in {402, 429}:
+                # Mark agent as rate-limited if applicable
+                if pool_agent:
                     _AGENT_POOL_MANAGER.mark_rate_limited(pool_agent.agent_id)
                     if pool_agent_acquired:
                         _AGENT_POOL_MANAGER.release_agent(pool_agent.agent_id, success=False, latency_ms=0.0, quality_score=0.0)
                         pool_agent_acquired = False
-                if "model" not in data:
-                    fallback_pool_agent = _select_agent_pool_candidate(
-                        effective_profile,
-                        min_context_window=int(payload.get("max_tokens") or 0),
-                        exclude_agent_id=pool_agent.agent_id if pool_agent else "",
-                    )
-                    if fallback_pool_agent and _AGENT_POOL_MANAGER.acquire_agent(fallback_pool_agent.agent_id):
-                        pool_agent = fallback_pool_agent
-                        pool_agent_acquired = True
-                        payload["model"] = fallback_pool_agent.model_id
-                response = await _post_delegate(effective_profile)
-                runtime = _apply_remote_runtime_status(
-                    dict((registry.get("runtimes", {}) or {}).get(effective_runtime_id) or {}),
-                    effective_runtime_id,
-                    remote_aliases,
-                    remote_configured,
+
+                # Add failed profile to exclusion list
+                excluded_profiles.add(effective_profile)
+
+                # Build and use failover chain
+                failover_chain = _build_delegation_fallback_chain(
+                    task,
+                    requested_profile,
+                    prefer_local,
                 )
+
+                next_target = _select_next_available_delegation_target(
+                    failover_chain,
+                    exclude_profiles=excluded_profiles,
+                )
+
+                if next_target:
+                    failover_chain_used = True
+                    effective_profile = next_target["profile"]
+                    effective_runtime_id = next_target["runtime_id"]
+                    fallback_applied = True
+                    fallback_reason = f"failover chain: {response.status_code} on {selected_profile}, fell back to {effective_profile} ({next_target['reason']})"
+
+                    logger.info(
+                        "delegation_failover_chain: HTTP %d on profile=%s, failing over to profile=%s runtime=%s",
+                        response.status_code,
+                        selected_profile,
+                        effective_profile,
+                        effective_runtime_id,
+                    )
+
+                    # Select new pool agent if needed
+                    if "model" not in data:
+                        fallback_pool_agent = _select_agent_pool_candidate(
+                            effective_profile,
+                            min_context_window=int(payload.get("max_tokens") or 0),
+                            exclude_agent_id=pool_agent.agent_id if pool_agent else "",
+                        )
+                        if fallback_pool_agent and _AGENT_POOL_MANAGER.acquire_agent(fallback_pool_agent.agent_id):
+                            pool_agent = fallback_pool_agent
+                            pool_agent_acquired = True
+                            payload["model"] = fallback_pool_agent.model_id
+
+                    # Retry with new profile
+                    response = await _post_delegate(effective_profile)
+                    runtime = _apply_remote_runtime_status(
+                        dict((registry.get("runtimes", {}) or {}).get(effective_runtime_id) or {}),
+                        effective_runtime_id,
+                        remote_aliases,
+                        remote_configured,
+                    )
+                else:
+                    # No failover available, fall back to old behavior
+                    if selected_runtime_id in {"openrouter-coding", "openrouter-reasoning", "openrouter-tool-calling"} and remote_configured and remote_aliases.get("free"):
+                        effective_profile = "remote-free"
+                        effective_runtime_id = "openrouter-free"
+                        fallback_applied = True
+                        fallback_reason = "remote profile returned 402/429; no failover chain available, retried on remote-free"
             body = response.json()
 
             initial_classification = classify_delegated_response(
@@ -9224,8 +9518,18 @@ asyncio.run(run())
                             "from_profile": selected_profile,
                             "to_profile": effective_profile,
                             "reason": fallback_reason or "delegated fallback applied",
+                            "failover_chain_used": failover_chain_used,
                         }
                         if fallback_applied else {"applied": False}
+                    ),
+                    "failover_chain": (
+                        {
+                            "used": failover_chain_used,
+                            "original_profile": selected_profile,
+                            "final_profile": effective_profile,
+                            "reason": fallback_reason,
+                        }
+                        if failover_chain_used else {"used": False}
                     ),
                     "finalization": {
                         "applied": finalization_applied,
