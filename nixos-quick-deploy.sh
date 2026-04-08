@@ -3233,12 +3233,20 @@ if 'aiStack = {' in content:
     pattern = r'(\s+)aiStack = \{[^}]*embeddingServer = \{[^}]*\}[^}]*\};'
     content = re.sub(pattern, lambda m: m.group(1) + aiblock.rstrip(), content, count=1, flags=re.DOTALL)
 else:
-    # Insert before the last two closing braces
-    content = content.rstrip()
-    if content.endswith('};\n  };\n}'):
-        content = content[:-9] + aiblock + '  };\n}\n'
-    elif content.endswith('};\n}'):
-        content = content[:-5] + aiblock + '}\n'
+    # Insert aiStack block before the closing of mySystem = { ... };
+    # Pattern: find "  };\n}" at end (mySystem closing brace + file closing brace)
+    import re as re_mod
+    # Match the final mySystem closing: whitespace + }; + newline + }
+    end_pattern = r'(\s*\};\s*\n\}\s*)$'
+    match = re_mod.search(end_pattern, content)
+    if match:
+        insert_pos = match.start()
+        content = content[:insert_pos] + '\n' + aiblock + content[insert_pos:]
+    else:
+        # Fallback: append before final }
+        content = content.rstrip()
+        if content.endswith('}'):
+            content = content[:-1] + aiblock + '}\n'
 
 with open(tmp_path, 'w') as f:
     f.write(content)
@@ -3781,6 +3789,12 @@ verify_or_download_ai_models() {
   local waiting_chat="$([[ "$chat_model_present" != true ]] && echo true || echo false)"
   local waiting_embed="$([[ "$embed_model_present" != true ]] && echo true || echo false)"
 
+  # Track previous sizes for speed calculation
+  local prev_chat_size=0
+  local prev_embed_size=0
+  local progress_interval=10  # Log progress every 10 seconds
+  local last_progress_log=0
+
   while [[ $elapsed -lt $timeout ]]; do
     local all_done=true
 
@@ -3789,8 +3803,24 @@ verify_or_download_ai_models() {
       chat_state="$(systemctl is-active llama-cpp-model-fetch.service 2>/dev/null || echo "unknown")"
       if [[ "$chat_state" == "activating" || "$chat_state" == "active" ]]; then
         all_done=false
-        if (( elapsed % 30 == 0 )); then
-          log "Model download: chat model still downloading... (${elapsed}s)"
+        # Show progress with file size and speed
+        if (( elapsed - last_progress_log >= progress_interval )); then
+          local current_size=0
+          local speed_mb=""
+          if [[ -f "$chat_model_path" ]]; then
+            current_size=$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)
+            local size_mb=$((current_size / 1048576))
+            if [[ $prev_chat_size -gt 0 ]]; then
+              local delta=$((current_size - prev_chat_size))
+              local speed=$((delta / progress_interval / 1048576))
+              speed_mb=" @ ~${speed} MB/s"
+            fi
+            log "Model download: chat model downloading... ${size_mb} MB downloaded (${elapsed}s)${speed_mb}"
+            prev_chat_size=$current_size
+          else
+            log "Model download: chat model starting download... (${elapsed}s)"
+          fi
+          last_progress_log=$elapsed
         fi
       elif [[ "$chat_state" == "failed" ]]; then
         log_warn "Model download: chat model fetch failed"
@@ -3820,8 +3850,25 @@ verify_or_download_ai_models() {
       embed_state="$(systemctl is-active llama-cpp-embed-model-fetch.service 2>/dev/null || echo "unknown")"
       if [[ "$embed_state" == "activating" || "$embed_state" == "active" ]]; then
         all_done=false
-        if (( elapsed % 30 == 0 )); then
-          log "Model download: embedding model still downloading... (${elapsed}s)"
+        # Show progress with file size and speed
+        if (( elapsed - last_progress_log >= progress_interval )) || [[ "$waiting_chat" != true ]]; then
+          local current_size=0
+          local speed_mb=""
+          if [[ -f "$embed_model_path" ]]; then
+            current_size=$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)
+            local size_mb=$((current_size / 1048576))
+            if [[ $prev_embed_size -gt 0 ]]; then
+              local delta=$((current_size - prev_embed_size))
+              local speed=$((delta / progress_interval / 1048576))
+              speed_mb=" @ ~${speed} MB/s"
+            fi
+            log "Model download: embedding model downloading... ${size_mb} MB (${elapsed}s)${speed_mb}"
+            prev_embed_size=$current_size
+          else
+            log "Model download: embedding model starting download... (${elapsed}s)"
+          fi
+          # Only update last_progress_log if chat wasn't just logged
+          [[ "$waiting_chat" != true ]] && last_progress_log=$elapsed
         fi
       elif [[ "$embed_state" == "failed" ]]; then
         log_warn "Model download: embedding model fetch failed"
