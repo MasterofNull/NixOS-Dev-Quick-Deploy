@@ -4350,7 +4350,7 @@ def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, 
         },
         "tool_invocation": {
             "enabled": True,
-            "catalog_size": len(workflow_tool_catalog() or []),
+            "catalog_size": len(workflow_tool_catalog("") or []),
             "status": ToolStatus.AVAILABLE.value,
             "cache_enabled": True,
             "reasoning_pattern": str(reasoning_pattern.get("selected_pattern", "") or "").strip(),
@@ -6466,11 +6466,58 @@ async def run_http_mode(port: int) -> None:
     # Phase 19.2.1/19.2.2 — /hints endpoint (agent-agnostic hint API)
     # ------------------------------------------------------------------
 
+    def _get_remote_agent_status() -> Dict[str, Any]:
+        """Return remote agent pool availability and rate-limit status."""
+        try:
+            stats = _AGENT_POOL_MANAGER.get_pool_stats()
+            agents_detail = []
+            for agent_id, agent in _AGENT_POOL_MANAGER.agents.items():
+                is_rl = agent.is_rate_limited()
+                eta_minutes = 0
+                if is_rl and agent.last_rate_limit:
+                    elapsed = (datetime.now() - agent.last_rate_limit).total_seconds()
+                    remaining = max(0, 60 - elapsed)
+                    eta_minutes = int(remaining / 60) + (1 if remaining % 60 > 0 else 0)
+
+                agents_detail.append({
+                    "agent_id": agent_id,
+                    "name": agent.name,
+                    "status": agent.status.value,
+                    "tier": agent.tier.value,
+                    "is_available": agent.is_available(),
+                    "is_rate_limited": is_rl,
+                    "current_load": agent.current_load,
+                    "max_concurrent": agent.max_concurrent,
+                    "success_rate": round(agent.success_rate(), 2),
+                    "eta_available_minutes": eta_minutes if is_rl else None,
+                    "last_rate_limit": agent.last_rate_limit.isoformat() if agent.last_rate_limit else None,
+                })
+
+            return {
+                "pool_status": "ok",
+                "total_agents": stats.total_agents,
+                "available_agents": stats.available_agents,
+                "free_agents_available": stats.free_agents_available,
+                "agents": agents_detail,
+            }
+        except Exception as exc:
+            logger.warning("agent_pool_status_unavailable error=%s", exc)
+            return {
+                "pool_status": "unavailable",
+                "error": str(exc),
+                "total_agents": 0,
+                "available_agents": 0,
+                "free_agents_available": 0,
+                "agents": [],
+            }
+
     async def handle_hints(request: web.Request) -> web.Response:
         """POST /hints or GET /hints?q= — return ranked workflow hints for any agent.
 
         Phase 19.3.2: When format=continue (GET param) or body contains 'fullInput'
         (Continue.dev HTTP context provider), returns [{"name","description","content"}].
+
+        Phase 20.1: Returns agent availability and rate-limit status in metadata.
         """
         try:
             async with _agent_lessons_lock:
@@ -6543,6 +6590,9 @@ async def run_http_mode(port: int) -> None:
                     "query": query,
                     "error": f"hints_engine unavailable: {exc}",
                 }
+
+            # Phase 20.1 — Attach remote agent status to hint responses
+            result["agent_status"] = _get_remote_agent_status()
 
             # Phase 19.3.2 — Continue.dev HTTP context provider format
             if is_continue:
@@ -6653,6 +6703,48 @@ async def run_http_mode(port: int) -> None:
         if lesson_refs:
             payload["active_lesson_refs"] = lesson_refs
         return web.json_response(payload)
+
+    async def handle_agent_status(request: web.Request) -> web.Response:
+        """GET/POST /agent-status — return remote agent pool availability and rate-limit status.
+
+        Phase 20.1: Provides explicit endpoint for agents to check remote pool status.
+        Returns ETA for rate-limited agents and availability counts.
+        """
+        try:
+            detail = request.rel_url.query.get("detail", "0").strip().lower() in {"1", "true", "yes"}
+            if request.method == "POST":
+                try:
+                    body = await request.json()
+                except Exception:
+                    body = {}
+                detail = detail or bool(body.get("detail", False))
+                agent_filter = body.get("agent_id", "") or body.get("agent", "")
+            else:
+                agent_filter = request.rel_url.query.get("agent_id", "") or request.rel_url.query.get("agent", "")
+
+            status_data = _get_remote_agent_status()
+
+            if agent_filter:
+                # Return status for specific agent
+                matching = [a for a in status_data["agents"] if a["agent_id"] == agent_filter or a["name"].lower() == agent_filter.lower()]
+                if not matching:
+                    return web.json_response({
+                        "error": f"agent not found: {agent_filter}",
+                        "available_agents": status_data["available_agents"],
+                        "hint": "Use GET /agent-status without filter to see all agents",
+                    }, status=404)
+                status_data["agents"] = matching
+                status_data["filtered"] = True
+
+            if not detail:
+                # Compact view — remove verbose fields
+                for agent in status_data.get("agents", []):
+                    agent.pop("last_rate_limit", None)
+
+            return web.json_response(status_data)
+        except Exception as exc:
+            logger.error("handle_agent_status error=%s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
 
     async def handle_workflow_plan(request: web.Request) -> web.Response:
         """Build a structured phase plan with explicit tool assignments."""
@@ -10581,6 +10673,8 @@ asyncio.run(run())
     http_app.router.add_post("/hints", handle_hints)           # Phase 19.2.1
     http_app.router.add_get("/hints", handle_hints)            # Phase 19.2.2
     http_app.router.add_post("/hints/feedback", handle_hints_feedback)
+    http_app.router.add_get("/agent-status", handle_agent_status)      # Phase 20.1
+    http_app.router.add_post("/agent-status", handle_agent_status)     # Phase 20.1
     http_app.router.add_post("/workflow/plan", handle_workflow_plan)
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
     http_app.router.add_post("/workflow/tooling-manifest", handle_workflow_tooling_manifest)
