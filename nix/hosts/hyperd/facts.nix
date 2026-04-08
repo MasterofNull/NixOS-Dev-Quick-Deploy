@@ -1,4 +1,5 @@
-{...}: {
+{ ... }:
+{
   mySystem = {
     hostName = "hyperd";
     primaryUser = "hyperd";
@@ -28,7 +29,7 @@
       layout = "none";
       device = "/dev/disk/by-id/CHANGE-ME";
       luks.enable = false;
-      btrfsSubvolumes = ["@root" "@home" "@nix"];
+      btrfsSubvolumes = [ "@root" "@home" "@nix" ];
     };
     secureboot.enable = false;
     # ── AI Stack model configuration (Phase 20.2) ──────────────────────
