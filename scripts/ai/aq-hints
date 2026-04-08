@@ -70,6 +70,78 @@ def _load_hybrid_api_key() -> str:
     except Exception:
         return ""
 
+
+def _fetch_agent_status() -> Optional[Dict[str, Any]]:
+    """Fetch remote agent pool status from /agent-status endpoint."""
+    url = f"{HYBRID_URL}/agent-status"
+    try:
+        headers = {"Accept": "application/json"}
+        api_key = _load_hybrid_api_key()
+        if api_key:
+            headers["X-API-Key"] = api_key
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def _format_agent_status_summary(status: Dict[str, Any]) -> str:
+    """Format agent status into a human-readable summary."""
+    lines = []
+    pool_status = status.get("pool_status", "unknown")
+    total = status.get("total_agents", 0)
+    available = status.get("available_agents", 0)
+    free = status.get("free_agents_available", 0)
+
+    lines.append(f"\n  Agent Pool Status: {pool_status}")
+    lines.append(f"    Total agents: {total} | Available: {available} | Free tier: {free}")
+
+    agents = status.get("agents", [])
+    rate_limited = [a for a in agents if a.get("is_rate_limited")]
+    unavailable = [a for a in agents if not a.get("is_available") and not a.get("is_rate_limited")]
+
+    if rate_limited:
+        lines.append(f"    Rate-limited agents: {len(rate_limited)}")
+        for agent in rate_limited[:3]:  # Show top 3
+            eta = agent.get("eta_available_minutes")
+            eta_str = f" (ETA: {eta} min)" if eta else " (ETA: unknown)"
+            lines.append(f"      - {agent.get('name', agent.get('agent_id'))}{eta_str}")
+
+    if unavailable:
+        lines.append(f"    Unavailable agents: {len(unavailable)}")
+        for agent in unavailable[:3]:  # Show top 3
+            lines.append(f"      - {agent.get('name', agent.get('agent_id'))}: {agent.get('status', 'unknown')}")
+
+    if rate_limited or unavailable:
+        lines.append("")
+        lines.append("  Action: Wait for rate limits to reset or use available agents.")
+
+    return "\n".join(lines)
+
+
+def _format_error_with_agent_status(result: Dict[str, Any], status: Dict[str, Any]) -> str:
+    """Format error message with agent status context."""
+    http_status = result.get("http_status", 0)
+    error = result.get("error", "Unknown error")
+
+    if http_status == 429:
+        retry_after = result.get("retry_after", "")
+        base_msg = f"Rate limited (HTTP 429). {error}"
+        if retry_after:
+            base_msg += f" Retry after: {retry_after}s."
+        base_msg += _format_agent_status_summary(status)
+        return base_msg
+    elif http_status == 503:
+        base_msg = f"Service unavailable (HTTP 503). {error}"
+        base_msg += _format_agent_status_summary(status)
+        return base_msg
+    else:
+        base_msg = f"{error}"
+        base_msg += _format_agent_status_summary(status)
+        return base_msg
+
+
 # ---------------------------------------------------------------------------
 # Arg parsing
 # ---------------------------------------------------------------------------
@@ -166,6 +238,23 @@ def _fetch_rest(
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        # Phase 20.1: Capture HTTP errors (429 rate limit, 503 unavailable, etc.)
+        error_body = ""
+        try:
+            error_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        return {
+            "status": "error",
+            "hints": [],
+            "query": query,
+            "agent_type": agent,
+            "http_status": exc.code,
+            "error": f"harness HTTP {exc.code}: {exc.reason}",
+            "error_detail": error_body[:500] if error_body else "",
+            "retry_after": exc.headers.get("Retry-After", ""),
+        }
     except Exception:
         return None
 
@@ -179,6 +268,9 @@ def get_hints(
         or _fetch_rest(query, context, max_hints, agent, debug_meta, compact, max_tokens, escalate)
     )
     if result is None:
+        # Phase 20.1: Try to fetch agent status for better error messages
+        agent_status = _fetch_agent_status()
+
         # Graceful degradation: return offline marker instead of hard-failing.
         # Agents should proceed locally when harness is unreachable.
         offline = {
@@ -193,6 +285,12 @@ def get_hints(
                 "Proceed locally and retry before commit."
             ),
         }
+
+        # Phase 20.1: Add agent status if available
+        if agent_status:
+            offline["agent_status"] = agent_status
+            offline["offline_notice"] += _format_agent_status_summary(agent_status)
+
         print(
             "WARN: Harness unreachable — returning offline mode.",
             file=sys.stderr,
@@ -203,6 +301,14 @@ def get_hints(
             file=sys.stderr,
         )
         return offline
+
+    # Phase 20.1: If result has error status (e.g., 429 rate limit), add agent status context
+    if result.get("status") == "error" and result.get("http_status"):
+        agent_status = _fetch_agent_status()
+        if agent_status:
+            result["agent_status"] = agent_status
+            result["error_message"] = _format_error_with_agent_status(result, agent_status)
+
     return result
 
 
@@ -300,6 +406,25 @@ def _format_text(result: Dict[str, Any], agent: str, debug_meta: bool = False) -
         lines.append(query_line)
     lines.append("")
 
+    # Phase 20.1: Display error with agent status if present
+    if result.get("status") == "error" and result.get("error_message"):
+        lines.append(_c("\033[1;31m", "  ERROR:"))
+        lines.append(f"    {result['error_message']}")
+        lines.append("")
+    elif result.get("status") == "error":
+        error = result.get("error", "Unknown error")
+        http_status = result.get("http_status", 0)
+        if http_status:
+            lines.append(_c("\033[1;31m", f"  HTTP Error {http_status}:"))
+            lines.append(f"    {error}")
+            retry_after = result.get("retry_after", "")
+            if retry_after:
+                lines.append(f"    Retry-After: {retry_after}s")
+        else:
+            lines.append(_c("\033[1;31m", "  Error:"))
+            lines.append(f"    {error}")
+        lines.append("")
+
     if not hints:
         lines.append("  No hints found. Run `scripts/ai/aq-prompt-eval` to score registry prompts,")
         lines.append("  or check that the hybrid-coordinator is running for gap data.")
@@ -360,6 +485,27 @@ def _format_text(result: Dict[str, Any], agent: str, debug_meta: bool = False) -
         suggested_prompt = str(coaching.get("suggested_prompt", "") or "")
         if suggested_prompt:
             lines.append(f"     Suggested prompt: {suggested_prompt[:140]}{'…' if len(suggested_prompt) > 140 else ''}")
+        lines.append("")
+
+    # Phase 20.1: Display agent status if present
+    agent_status = result.get("agent_status")
+    if agent_status and isinstance(agent_status, dict):
+        lines.append(_c(_ANSI_BOLD, "  Remote Agent Status"))
+        pool = agent_status.get("pool_status", "unknown")
+        total = agent_status.get("total_agents", 0)
+        available = agent_status.get("available_agents", 0)
+        free = agent_status.get("free_agents_available", 0)
+        lines.append(f"    Pool: {_c(_ANSI_GREEN if pool == 'ok' else '\033[1;31m', pool)}")
+        lines.append(f"    Total: {total} | Available: {available} | Free: {free}")
+
+        agents = agent_status.get("agents", [])
+        rate_limited = [a for a in agents if a.get("is_rate_limited")]
+        if rate_limited:
+            lines.append(f"    Rate-limited: {len(rate_limited)} agent(s)")
+            for ag in rate_limited[:3]:
+                eta = ag.get("eta_available_minutes")
+                eta_str = f" (~{eta} min)" if eta else ""
+                lines.append(f"      - {ag.get('name', ag.get('agent_id'))}{eta_str}")
         lines.append("")
 
     lines.append(_c(_ANSI_BOLD, sep))
