@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+#
+# Local Orchestrator CLI
+#
+# Primary interface for all AI tasks - routes through local Gemma model
+# with MCP tools, RAG, and remote agent delegation.
+#
+# Usage:
+#   local-orchestrator                    # Interactive mode
+#   local-orchestrator "prompt"           # Single prompt
+#   local-orchestrator --status           # Show status
+#   local-orchestrator --plan "objective" # Create plan
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Add to Python path
+export PYTHONPATH="${REPO_ROOT}/ai-stack:${PYTHONPATH:-}"
+
+# Service URLs (configurable)
+export HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
+export AIDB_URL="${AIDB_URL:-http://127.0.0.1:8002}"
+export LLAMA_URL="${LLAMA_URL:-http://127.0.0.1:8080}"
+
+# Parse arguments
+MODE="interactive"
+PROMPT=""
+OBJECTIVE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --status|-s)
+            MODE="status"
+            shift
+            ;;
+        --plan|-p)
+            MODE="plan"
+            OBJECTIVE="${2:-}"
+            shift 2 || true
+            ;;
+        --help|-h)
+            echo "Local Orchestrator CLI"
+            echo ""
+            echo "Usage:"
+            echo "  local-orchestrator                     Interactive mode"
+            echo "  local-orchestrator \"prompt\"           Single prompt"
+            echo "  local-orchestrator --status            Show status"
+            echo "  local-orchestrator --plan \"objective\" Create plan"
+            echo ""
+            echo "Environment:"
+            echo "  HYBRID_URL   Hybrid coordinator URL (default: http://127.0.0.1:8003)"
+            echo "  AIDB_URL     AIDB URL (default: http://127.0.0.1:8002)"
+            echo "  LLAMA_URL    Llama.cpp URL (default: http://127.0.0.1:8080)"
+            exit 0
+            ;;
+        *)
+            PROMPT="$1"
+            MODE="single"
+            shift
+            ;;
+    esac
+done
+
+# Check services
+check_services() {
+    local all_ok=true
+
+    if ! curl -sf --max-time 2 "${LLAMA_URL}/health" > /dev/null 2>&1; then
+        echo "WARNING: llama-cpp not reachable at ${LLAMA_URL}" >&2
+        all_ok=false
+    fi
+
+    if ! curl -sf --max-time 2 "${HYBRID_URL}/health" > /dev/null 2>&1; then
+        echo "WARNING: hybrid-coordinator not reachable at ${HYBRID_URL}" >&2
+        all_ok=false
+    fi
+
+    if ! curl -sf --max-time 2 "${AIDB_URL}/health" > /dev/null 2>&1; then
+        echo "WARNING: AIDB not reachable at ${AIDB_URL}" >&2
+        all_ok=false
+    fi
+
+    if [[ "$all_ok" == false ]]; then
+        echo "" >&2
+        echo "Some services are unavailable. Run: systemctl status llama-cpp hybrid-coordinator aidb" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+# Status mode
+if [[ "$MODE" == "status" ]]; then
+    echo "Local Orchestrator Status"
+    echo "========================="
+    echo ""
+
+    echo "Services:"
+    if curl -sf --max-time 2 "${LLAMA_URL}/health" > /dev/null 2>&1; then
+        model=$(curl -sf "${LLAMA_URL}/v1/models" 2>/dev/null | jq -r '.data[0].id // "unknown"')
+        echo "  llama-cpp: OK (model: $model)"
+    else
+        echo "  llama-cpp: UNREACHABLE"
+    fi
+
+    if curl -sf --max-time 2 "${HYBRID_URL}/health" > /dev/null 2>&1; then
+        echo "  hybrid-coordinator: OK"
+    else
+        echo "  hybrid-coordinator: UNREACHABLE"
+    fi
+
+    if curl -sf --max-time 2 "${AIDB_URL}/health" > /dev/null 2>&1; then
+        echo "  AIDB: OK"
+    else
+        echo "  AIDB: UNREACHABLE"
+    fi
+
+    exit 0
+fi
+
+# Plan mode
+if [[ "$MODE" == "plan" ]]; then
+    if [[ -z "$OBJECTIVE" ]]; then
+        echo "Usage: local-orchestrator --plan \"objective\"" >&2
+        exit 1
+    fi
+
+    check_services || true
+
+    python3 -c "
+import asyncio
+import sys
+sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from local_orchestrator import get_orchestrator
+
+async def main():
+    orch = get_orchestrator()
+    response = await orch.plan_task('$OBJECTIVE')
+    print(response.content)
+
+asyncio.run(main())
+"
+    exit 0
+fi
+
+# Single prompt mode
+if [[ "$MODE" == "single" ]]; then
+    check_services || true
+
+    python3 -c "
+import asyncio
+import sys
+sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from local_orchestrator import get_orchestrator
+
+async def main():
+    orch = get_orchestrator()
+    response = await orch.process('''$PROMPT''')
+    print(response.content)
+    print()
+    print(f'[{response.backend_used}, {response.execution_time:.2f}s, \${response.cost_usd:.4f}]')
+
+asyncio.run(main())
+"
+    exit 0
+fi
+
+# Interactive mode
+check_services || true
+
+exec python3 -c "
+import asyncio
+import sys
+sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from local_orchestrator.orchestrator import main
+asyncio.run(main())
+"
