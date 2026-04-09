@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 from unittest.mock import MagicMock
 
@@ -14,6 +15,7 @@ sys.modules["config"].Config = MagicMock(
 
 import ai_coordinator
 from ai_coordinator import (
+    Config,
     build_messages,
     build_reasoning_finalization_messages,
     build_tool_call_finalization_messages,
@@ -367,3 +369,71 @@ def test_build_messages_adds_default_constraints_and_tool_completion_rules():
     assert "Evidence requirements:" in body
     assert "- cite concrete files, commands, or runtime facts when available" in body
     assert "Tool-calling completion rules:" in body
+
+
+def test_build_messages_uses_local_harness_prompt_for_local_profiles():
+    original_builder = Config.build_local_system_prompt
+    Config.build_local_system_prompt = staticmethod(lambda: "Local harness contact prompt")
+    try:
+        default_messages = build_messages("Inspect the local harness lane", profile="default")
+        tool_messages = build_messages("Prepare tool plan", profile="local-tool-calling")
+    finally:
+        Config.build_local_system_prompt = original_builder
+
+    assert default_messages[0]["content"] == "Local harness contact prompt"
+    assert tool_messages[0]["content"] == "Local harness contact prompt"
+
+
+def test_infer_profile_supports_openclaude_aliases_when_frontdoor_routing_enabled():
+    original = {key: os.environ.get(key) for key in (
+        "AI_LOCAL_FRONTDOOR_ROUTING_ENABLE",
+        "AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE",
+        "AI_LOCAL_FRONTDOOR_PLAN_PROFILE",
+    )}
+    os.environ["AI_LOCAL_FRONTDOOR_ROUTING_ENABLE"] = "true"
+    os.environ["AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE"] = "default"
+    os.environ["AI_LOCAL_FRONTDOOR_PLAN_PROFILE"] = "remote-reasoning"
+    try:
+        assert ai_coordinator.infer_profile("Explore the current stack behavior", requested_profile="Explore") == "default"
+        assert ai_coordinator.infer_profile("Plan the next slice", requested_profile="Plan") == "remote-reasoning"
+    finally:
+        for key, value in original.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def test_route_by_complexity_uses_frontdoor_route_map():
+    original = {key: os.environ.get(key) for key in (
+        "AI_LOCAL_FRONTDOOR_ROUTING_ENABLE",
+        "AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE",
+        "AI_LOCAL_FRONTDOOR_PLAN_PROFILE",
+        "AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE",
+        "AI_LOCAL_FRONTDOOR_REASONING_PROFILE",
+        "AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE",
+    )}
+    os.environ["AI_LOCAL_FRONTDOOR_ROUTING_ENABLE"] = "true"
+    os.environ["AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE"] = "default"
+    os.environ["AI_LOCAL_FRONTDOOR_PLAN_PROFILE"] = "default"
+    os.environ["AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE"] = "remote-coding"
+    os.environ["AI_LOCAL_FRONTDOOR_REASONING_PROFILE"] = "remote-reasoning"
+    os.environ["AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE"] = "local-tool-calling"
+    try:
+        planning = route_by_complexity("Plan the next deployment validation wave", prefer_local=False)
+        retrieval = route_by_complexity("Search the docs for the local agent wiring", prefer_local=False)
+        implementation = route_by_complexity("Implement the local agent adapter patch", prefer_local=False)
+        reasoning = route_by_complexity("Review the architecture tradeoff for the front-door layer", prefer_local=False)
+        tool_calling = route_by_complexity("Call tools to inspect the local harness status", prefer_local=False)
+    finally:
+        for key, value in original.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    assert planning["recommended_profile"] == "default"
+    assert retrieval["recommended_profile"] == "default"
+    assert implementation["recommended_profile"] == "remote-coding"
+    assert reasoning["recommended_profile"] == "remote-reasoning"
+    assert tool_calling["recommended_profile"] == "local-tool-calling"

@@ -16,6 +16,44 @@ from typing import Any, Dict, List, Optional
 from config import Config
 
 
+_ALLOWED_ROUTING_PROFILES = {
+    "default",
+    "local-tool-calling",
+    "remote-free",
+    "remote-coding",
+    "remote-reasoning",
+    "remote-tool-calling",
+}
+
+
+def _frontdoor_routing_enabled() -> bool:
+    return str(os.getenv("AI_LOCAL_FRONTDOOR_ROUTING_ENABLE", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _profile_env(name: str, fallback: str) -> str:
+    value = str(os.getenv(name, fallback) or fallback).strip().lower()
+    return value if value in _ALLOWED_ROUTING_PROFILES else fallback
+
+
+def _frontdoor_profile(route_name: str) -> str:
+    mapping = {
+        "default": ("AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "default"),
+        "explore": ("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "default"),
+        "plan": ("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "default"),
+        "implementation": ("AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE", "remote-coding"),
+        "reasoning": ("AI_LOCAL_FRONTDOOR_REASONING_PROFILE", "remote-reasoning"),
+        "tool-calling": ("AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE", "local-tool-calling"),
+        "continuation": ("AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE", "default"),
+    }
+    env_name, fallback = mapping.get(route_name, ("AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "default"))
+    return _profile_env(env_name, fallback)
+
+
 def _runtime_record(
     runtime_id: str,
     *,
@@ -224,7 +262,11 @@ def prune_runtime_registry(registry: Dict[str, Any], now: int | None = None) -> 
 def infer_profile(task: str, requested_profile: str = "") -> str:
     profile = str(requested_profile or "").strip().lower()
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
-        return "default"
+        return _frontdoor_profile("default") if _frontdoor_routing_enabled() else "default"
+    if profile in {"explore", "exploration", "discover", "discovery"}:
+        return _frontdoor_profile("explore") if _frontdoor_routing_enabled() else "remote-free"
+    if profile in {"plan", "planner", "planning"}:
+        return _frontdoor_profile("plan") if _frontdoor_routing_enabled() else "remote-free"
     if profile == "local-tool-calling":
         return "local-tool-calling"
     if profile in {"remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
@@ -407,36 +449,50 @@ def route_by_complexity(
     model_class = "balanced"
 
     if task_archetype == "tool-calling":
-        recommended = "local-tool-calling" if prefer_local else "remote-tool-calling"
+        if _frontdoor_routing_enabled():
+            recommended = _frontdoor_profile("tool-calling")
+        else:
+            recommended = "local-tool-calling" if prefer_local else "remote-tool-calling"
         model_class = "tool-calling"
     elif task_archetype in {"planning", "retrieval"}:
-        recommended = "default" if prefer_local else "remote-free"
+        if _frontdoor_routing_enabled():
+            route_name = "plan" if task_archetype == "planning" else "explore"
+            recommended = _frontdoor_profile(route_name)
+        else:
+            recommended = "default" if prefer_local else "remote-free"
         model_class = "lightweight"
     elif task_archetype == "continuation" and complexity != "architecture":
-        recommended = "default"
+        recommended = _frontdoor_profile("continuation") if _frontdoor_routing_enabled() else "default"
         model_class = "lightweight"
     elif task_archetype == "implementation":
-        if prefer_local and complexity == "simple":
+        if _frontdoor_routing_enabled():
+            recommended = _frontdoor_profile("implementation")
+            if prefer_local and complexity == "simple" and recommended == "remote-coding":
+                recommended = _frontdoor_profile("default")
+        elif prefer_local and complexity == "simple":
             recommended = "default"
             model_class = "lightweight"
         else:
             recommended = "remote-coding"
             model_class = "coding"
     elif task_archetype == "architecture-review" or complexity == "architecture":
-        recommended = "remote-reasoning"
+        recommended = _frontdoor_profile("reasoning") if _frontdoor_routing_enabled() else "remote-reasoning"
         model_class = "heavy-reasoning"
     elif complexity == "simple":
-        recommended = "default" if prefer_local else "remote-free"
+        recommended = _frontdoor_profile("explore") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-free")
         model_class = "lightweight"
     elif complexity == "medium":
-        recommended = "default" if prefer_local else "remote-free"
+        recommended = _frontdoor_profile("default") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-free")
         model_class = "lightweight"
     else:
-        recommended = "remote-coding"
+        recommended = _frontdoor_profile("implementation") if _frontdoor_routing_enabled() else "remote-coding"
         model_class = "coding"
 
     if continuation and complexity != "architecture" and task_archetype != "tool-calling":
-        recommended = "default" if prefer_local or task_archetype != "implementation" else recommended
+        if _frontdoor_routing_enabled():
+            recommended = _frontdoor_profile("continuation")
+        else:
+            recommended = "default" if prefer_local or task_archetype != "implementation" else recommended
         if recommended == "default":
             model_class = "lightweight"
 
@@ -881,7 +937,13 @@ def build_messages(
     profile: str = "remote-free",
 ) -> List[Dict[str, str]]:
     messages: List[Dict[str, str]] = []
-    sys_prompt = system_prompt.strip() if system_prompt.strip() else _delegation_system_prompt(profile)
+    normalized_profile = str(profile or "").strip().lower()
+    if system_prompt.strip():
+        sys_prompt = system_prompt.strip()
+    elif normalized_profile in {"default", "local-tool-calling"}:
+        sys_prompt = Config.build_local_system_prompt() or _delegation_system_prompt(profile)
+    else:
+        sys_prompt = _delegation_system_prompt(profile)
     messages.append({"role": "system", "content": sys_prompt})
     body = _delegation_contract_block(str(task or ""), profile, context)
     extra_context = context.get("extra_context") if isinstance(context, dict) else None
