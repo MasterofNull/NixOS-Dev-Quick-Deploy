@@ -260,6 +260,13 @@ class Config:
         os.getenv("AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS", "8000")
     )
     AI_LOCAL_SYSTEM_PROMPT = os.getenv("AI_LOCAL_SYSTEM_PROMPT", "true").lower() == "true"
+    AI_LOCAL_SYSTEM_PROMPT_IDENTITY = os.getenv(
+        "AI_LOCAL_SYSTEM_PROMPT_IDENTITY",
+        (
+            "You are the local AI harness contact layer for NixOS-Dev-Quick-Deploy. "
+            "Act as the primary human-to-LLM interface for repo, system, and locally hosted agent work."
+        ),
+    )
     AI_LOCAL_SYSTEM_PROMPT_RULES = _json_str_list_env(
         "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON",
         default=[
@@ -267,6 +274,24 @@ class Config:
             "Never hardcode ports, URLs, API keys, passwords, or tokens; use typed options or injected env vars.",
             "Respond concisely first and expand only when requested or when evidence requires detail.",
             "Return validation evidence and rollback guidance instead of claiming completion from edits alone.",
+        ],
+    )
+    AI_LOCAL_SYSTEM_PROMPT_WORKFLOW = _json_str_list_env(
+        "AI_LOCAL_SYSTEM_PROMPT_WORKFLOW_JSON",
+        default=[
+            "Lock onto objective, repo scope, constraints, and acceptance checks before mutating work.",
+            "Use repo and harness tools before guessing; prefer hints, search, manifests, and workflow planning.",
+            "Treat tool access as the default path for local tasks and only delegate when a narrower specialist lane is justified.",
+            "Do not invent files, commands, test results, or runtime state; state what is missing when evidence is absent.",
+        ],
+    )
+    AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS = _json_str_list_env(
+        "AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS_JSON",
+        default=[
+            "result",
+            "evidence",
+            "validation",
+            "rollback_or_next_step",
         ],
     )
     AI_SPECULATIVE_DECODING_ENABLED = os.getenv("AI_SPECULATIVE_DECODING_ENABLED", "false").lower() == "true"
@@ -285,22 +310,39 @@ class Config:
         """
         Build optimized system prompt for local model.
 
-        Uses "structured" format from autoresearch optimization (0.71 efficiency vs 0.24 minimal).
-        See: .agents/plans/SYSTEM-IMPROVEMENT-ROADMAP-2026-03.md autoresearch results.
+        Uses a compact first-layer harness contract so the local model behaves as
+        the main contact point for human requests while remaining tool-first and
+        evidence-bound.
         """
         if not cls.AI_LOCAL_SYSTEM_PROMPT:
             return ""
+        identity = str(cls.AI_LOCAL_SYSTEM_PROMPT_IDENTITY or "").strip()
         rules = [rule for rule in cls.AI_LOCAL_SYSTEM_PROMPT_RULES if rule]
-        if not rules:
+        workflow = [step for step in cls.AI_LOCAL_SYSTEM_PROMPT_WORKFLOW if step]
+        output_sections = [section for section in cls.AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS if section]
+        if not identity and not rules and not workflow and not output_sections:
             return ""
-        bullets = "\n".join(f"- {rule}" for rule in rules[:3])  # Limit to 3 for efficiency
-        return (
-            "You are the NixOS AI stack coordinator. Format responses as:\n"
-            "1. Brief answer\n"
-            "2. Code (if needed)\n"
-            "3. One-line explanation\n\n"
-            f"Repo rules:\n{bullets}"
+        lines = []
+        if identity:
+            lines.append(identity)
+        if rules:
+            lines.append("Non-negotiables:")
+            lines.extend(f"- {rule}" for rule in rules[:4])
+        if workflow:
+            lines.append("Workflow:")
+            lines.extend(f"- {step}" for step in workflow[:4])
+        lines.extend(
+            [
+                "Tool contract:",
+                "- Use approved local tools and harness surfaces before fallback prose.",
+                "- Keep answers grounded in observed repo state and captured command evidence.",
+                "- When specialization is needed, hand off only through approved coordinator lanes.",
+            ]
         )
+        if output_sections:
+            lines.append("Output sections:")
+            lines.extend(f"- {section}" for section in output_sections[:5])
+        return "\n".join(lines)
 
 
 def _read_secret(path: str) -> str:

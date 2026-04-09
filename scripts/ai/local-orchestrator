@@ -25,6 +25,16 @@ export HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
 export AIDB_URL="${AIDB_URL:-http://127.0.0.1:8002}"
 export LLAMA_URL="${LLAMA_URL:-http://127.0.0.1:8080}"
 
+# OpenClaude-style front-door routing aliases, translated onto harness profiles.
+export AI_LOCAL_FRONTDOOR_ROUTING_ENABLE="${AI_LOCAL_FRONTDOOR_ROUTING_ENABLE:-true}"
+export AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE="${AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE:-default}"
+export AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE="${AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE:-default}"
+export AI_LOCAL_FRONTDOOR_PLAN_PROFILE="${AI_LOCAL_FRONTDOOR_PLAN_PROFILE:-default}"
+export AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE="${AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE:-remote-coding}"
+export AI_LOCAL_FRONTDOOR_REASONING_PROFILE="${AI_LOCAL_FRONTDOOR_REASONING_PROFILE:-remote-reasoning}"
+export AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE="${AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE:-local-tool-calling}"
+export AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE="${AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE:-default}"
+
 # Parse arguments
 MODE="interactive"
 PROMPT=""
@@ -54,6 +64,7 @@ while [[ $# -gt 0 ]]; do
             echo "  HYBRID_URL   Hybrid coordinator URL (default: http://127.0.0.1:8003)"
             echo "  AIDB_URL     AIDB URL (default: http://127.0.0.1:8002)"
             echo "  LLAMA_URL    Llama.cpp URL (default: http://127.0.0.1:8080)"
+            echo "  AI_LOCAL_FRONTDOOR_*  Optional OpenClaude-style route mapping overrides"
             exit 0
             ;;
         *)
