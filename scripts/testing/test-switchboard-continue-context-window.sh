@@ -38,6 +38,8 @@ headers_file="${TMP_DIR}/headers.txt"
 body_file="${TMP_DIR}/body.json"
 http_code="$(
   curl -sS -D "${headers_file}" -o "${body_file}" \
+    --connect-timeout 5 \
+    --max-time 45 \
     -H 'Content-Type: application/json' \
     -H 'X-AI-Profile: continue-local' \
     "${SWB_URL}/v1/chat/completions" \
