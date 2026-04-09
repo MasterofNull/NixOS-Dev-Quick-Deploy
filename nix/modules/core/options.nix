@@ -2042,6 +2042,17 @@
               '';
             };
 
+            identity = lib.mkOption {
+              type = lib.types.str;
+              default = ''
+                You are the local AI harness contact layer for NixOS-Dev-Quick-Deploy. Act as the primary human-to-LLM interface for repo, system, and locally hosted agent work.
+              '';
+              description = ''
+                Primary identity line injected into the local harness system
+                prompt. Keep it focused on the local-first contact-layer role.
+              '';
+            };
+
             rules = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [
@@ -2054,6 +2065,138 @@
                 Short rule list injected into the local LLM system prompt.
                 Keep entries concise so the prompt remains lightweight.
               '';
+            };
+
+            workflow = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [
+                "Lock onto objective, repo scope, constraints, and acceptance checks before mutating work."
+                "Use repo and harness tools before guessing; prefer hints, search, manifests, and workflow planning."
+                "Treat tool access as the default path for local tasks and only delegate when a narrower specialist lane is justified."
+                "Do not invent files, commands, test results, or runtime state; state what is missing when evidence is absent."
+              ];
+              description = ''
+                Ordered workflow expectations for the local harness contact
+                layer. These instructions should stay short and operational.
+              '';
+            };
+
+            outputSections = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [
+                "result"
+                "evidence"
+                "validation"
+                "rollback_or_next_step"
+              ];
+              description = ''
+                Output sections requested from the local harness contact layer
+                when it provides a substantive answer.
+              '';
+            };
+          };
+
+          localFrontdoorRouting = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Enable OpenClaude-style first-layer routing aliases for the
+                local harness contact point. This maps intents such as Explore
+                and Plan onto existing harness profiles without introducing a
+                separate routing stack.
+              '';
+            };
+
+            defaultProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "default";
+              description = "Profile used for the default front-door route.";
+            };
+
+            explorationProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "default";
+              description = "Profile used for Explore/discovery style prompts.";
+            };
+
+            planningProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "default";
+              description = "Profile used for Plan/workflow decomposition prompts.";
+            };
+
+            implementationProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "remote-coding";
+              description = "Profile used for implementation and patch generation prompts.";
+            };
+
+            reasoningProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "remote-reasoning";
+              description = "Profile used for architecture, policy, and risk reasoning prompts.";
+            };
+
+            toolCallingProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "local-tool-calling";
+              description = "Profile used for explicit tool-calling prompts.";
+            };
+
+            continuationProfile = lib.mkOption {
+              type = lib.types.enum [
+                "default"
+                "local-tool-calling"
+                "remote-free"
+                "remote-coding"
+                "remote-reasoning"
+                "remote-tool-calling"
+              ];
+              default = "default";
+              description = "Profile used for follow-up and continuation prompts.";
             };
           };
 
