@@ -128,6 +128,39 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     return dot_product / (magnitude1 * magnitude2)
 
 
+def _query_qdrant_points(
+    collection: str,
+    embedding: List[float],
+    *,
+    limit: int,
+    score_threshold: Optional[float] = None,
+) -> List[Any]:
+    """Support both legacy and current Qdrant client query APIs."""
+    query_points = getattr(_qdrant, "query_points", None)
+    if callable(query_points):
+        result = query_points(
+            collection_name=collection,
+            query=embedding,
+            limit=limit,
+            score_threshold=score_threshold,
+        )
+        return list(getattr(result, "points", []) or [])
+
+    legacy_search = getattr(_qdrant, "search", None)
+    if callable(legacy_search):
+        return list(
+            legacy_search(
+                collection_name=collection,
+                query_vector=embedding,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
+            or []
+        )
+
+    raise AttributeError("Qdrant client supports neither query_points nor search")
+
+
 async def _check_memory_duplicate(
     collection: str,
     embedding: List[float],
@@ -135,9 +168,9 @@ async def _check_memory_duplicate(
 ) -> bool:
     """Check if a similar memory already exists. Returns True if duplicate found."""
     try:
-        search_results = _qdrant.search(
-            collection_name=collection,
-            query_vector=embedding,
+        search_results = _query_qdrant_points(
+            collection,
+            embedding,
             limit=1,
         )
         if search_results and len(search_results) > 0:
