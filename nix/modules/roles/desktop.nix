@@ -249,6 +249,26 @@ in
         seed_file "$base/com.system76.CosmicTk/v1/apply_theme_global" 'true'
         seed_file "$base/com.system76.CosmicTk/v1/header_size" 'Spacious'
         seed_file "$base/com.system76.CosmicTk/v1/interface_density" 'Spacious'
+        seed_file "$base/com.system76.CosmicComp/v1/pinned_workspaces" '[]'
+        seed_file "$base/com.system76.CosmicComp/v1/input_default" '()'
+        seed_file "$base/com.system76.CosmicComp/v1/input_touchpad_override" 'None'
+        seed_file "$base/com.system76.CosmicComp/v1/input_devices" '{}'
+        seed_file "$base/com.system76.CosmicComp/v1/keyboard_config" '(
+            rules: "",
+            model: "pc104",
+            layout: "us",
+            variant: "",
+            options: Some("terminate:ctrl_alt_bksp"),
+            repeat_delay: 600,
+            repeat_rate: 25,
+        )'
+        seed_file "$base/com.system76.CosmicComp/v1/autotile" 'false'
+        seed_file "$base/com.system76.CosmicComp/v1/cursor_follows_focus" 'false'
+        seed_file "$base/com.system76.CosmicComp/v1/focus_follows_cursor_delay" '250'
+        seed_file "$base/com.system76.CosmicComp/v1/descale_xwayland" 'false'
+        seed_file "$base/com.system76.CosmicComp/v1/xwayland_eavesdropping" 'false'
+        seed_file "$base/com.system76.CosmicComp/v1/edge_snap_threshold" '10'
+        seed_file "$base/com.system76.CosmicComp/v1/accessibility_zoom" '1.0'
         seed_file "$base/com.system76.CosmicComp/v1/focus_follows_cursor" 'false'
         seed_file "$base/com.system76.CosmicComp/v1/workspaces" '(
             workspace_mode: OutputBound,

@@ -3091,7 +3091,10 @@ prompt_model_selection() {
     fi
   else
     # Same model — check if file is already on disk
-    local chat_info="${MODEL_CATALOG_CHAT[$new_chat_key]:-}"
+    local chat_info=""
+    if [[ -n "$new_chat_key" ]]; then
+      chat_info="${MODEL_CATALOG_CHAT[$new_chat_key]:-}"
+    fi
     if [[ -n "$chat_info" ]]; then
       local chat_file="${chat_info#*|}"; chat_file="${chat_file%%|*}"
       if [[ -f "/var/lib/llama-cpp/models/$chat_file" ]]; then
@@ -3100,6 +3103,8 @@ prompt_model_selection() {
         download_chat=true
         log "  Chat model file missing — will download"
       fi
+    else
+      log "  Chat model key unresolved — leaving current on-disk model unchanged"
     fi
   fi
 
@@ -3111,7 +3116,10 @@ prompt_model_selection() {
       log "  Embedding model removed from config"
     fi
   else
-    local embed_info="${MODEL_CATALOG_EMBED[$new_embed_key]:-}"
+    local embed_info=""
+    if [[ -n "$new_embed_key" ]]; then
+      embed_info="${MODEL_CATALOG_EMBED[$new_embed_key]:-}"
+    fi
     if [[ -n "$embed_info" ]]; then
       local embed_file="${embed_info#*|}"; embed_file="${embed_file%%|*}"
       if [[ -f "/var/lib/llama-cpp/models/$embed_file" ]]; then
@@ -3120,6 +3128,8 @@ prompt_model_selection() {
         download_embed=true
         log "  Embedding model file missing — will download"
       fi
+    else
+      log "  Embedding model key unresolved — leaving current on-disk model unchanged"
     fi
   fi
 

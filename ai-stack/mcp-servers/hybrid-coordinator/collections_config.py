@@ -160,9 +160,14 @@ MEMORY_COLLECTIONS: Dict[str, str] = {
     "procedural": "agent-memory-procedural",
 }
 
+REPAIRABLE_DIMENSION_MISMATCH_COLLECTIONS = set(MEMORY_COLLECTIONS.values()) | {
+    # Learning feedback is also mirrored into PostgreSQL, so it can be safely
+    # recreated when the embedding model dimension changes across deployments.
+    "learning-feedback",
+}
 
-def _is_repairable_memory_collection(collection_name: str) -> bool:
-    return collection_name in MEMORY_COLLECTIONS.values()
+def _is_repairable_dimension_mismatch_collection(collection_name: str) -> bool:
+    return collection_name in REPAIRABLE_DIMENSION_MISMATCH_COLLECTIONS
 
 
 def _create_collection(qdrant_client: Any, collection_name: str, schema: Dict[str, Any]) -> None:
@@ -236,14 +241,14 @@ async def initialize_collections(qdrant_client: Any) -> None:
                 if current_size is not None and current_size != expected_size:
                     if (
                         points_count > 0
-                        and _is_repairable_memory_collection(collection_name)
+                        and _is_repairable_dimension_mismatch_collection(collection_name)
                         and Config.AI_MEMORY_REPAIR_MISMATCHED_COLLECTIONS
                     ):
                         _recreate_collection(
                             qdrant_client,
                             collection_name,
                             schema,
-                            reason="memory_dimension_mismatch",
+                            reason="dimension_mismatch_repairable",
                             points_count=points_count,
                         )
                     elif points_count > 0:
