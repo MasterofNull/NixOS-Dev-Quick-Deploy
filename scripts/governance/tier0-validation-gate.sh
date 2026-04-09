@@ -162,7 +162,14 @@ gate_qa_phase0() {
   log "Running QA phase 0..."
   local output
   local passes
-  output=$("${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1)
+  local qa_timeout="${TIER0_AQ_QA_TIMEOUT_SECONDS:-180}"
+  local status=0
+  output=$(timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1) || status=$?
+  if [[ "${status}" -eq 124 ]]; then
+    log "Debug output: $(echo "$output" | tail -3)"
+    fail "QA phase 0 timed out after ${qa_timeout}s"
+    return 1
+  fi
   if echo "$output" | grep -qE "[0-9]+ passed.*0 failed"; then
     passes=$(echo "$output" | grep -oE '[0-9]+ passed' | head -1 | awk '{print $1}')
     pass "QA phase 0 (${passes:-unknown} checks)"

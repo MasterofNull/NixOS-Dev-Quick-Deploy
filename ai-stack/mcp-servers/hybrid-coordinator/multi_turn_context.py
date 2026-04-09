@@ -266,11 +266,11 @@ class MultiTurnContextManager:
                 # Search collection
                 if query_embedding and len(query_embedding) > 0 and query_embedding[0] != 0.0:
                     # Vector search (if embeddings available)
-                    results = self.qdrant.search(
-                        collection_name=collection,
-                        query_vector=query_embedding,
+                    results = self._query_points(
+                        collection,
+                        query_embedding,
                         limit=limit_per_collection,
-                        score_threshold=0.7
+                        score_threshold=0.7,
                     )
                 else:
                     # Fallback: scroll through collection (no vector search)
@@ -302,6 +302,39 @@ class MultiTurnContextManager:
         all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         return all_results
+
+    def _query_points(
+        self,
+        collection: str,
+        embedding: List[float],
+        *,
+        limit: int,
+        score_threshold: Optional[float] = None,
+    ) -> List[Any]:
+        """Support both legacy and current Qdrant client query APIs."""
+        query_points = getattr(self.qdrant, "query_points", None)
+        if callable(query_points):
+            result = query_points(
+                collection_name=collection,
+                query=embedding,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
+            return list(getattr(result, "points", []) or [])
+
+        legacy_search = getattr(self.qdrant, "search", None)
+        if callable(legacy_search):
+            return list(
+                legacy_search(
+                    collection_name=collection,
+                    query_vector=embedding,
+                    limit=limit,
+                    score_threshold=score_threshold,
+                )
+                or []
+            )
+
+        raise AttributeError("Qdrant client supports neither query_points nor search")
 
     async def compress_to_budget(
         self,
