@@ -1,0 +1,475 @@
+#!/usr/bin/env python3
+"""
+aq-memory - Memory management CLI for AI harness
+
+Phase 1 Slice 1.4: Memory CLI Tool Suite
+
+Command-line interface for managing temporal facts in the AI harness.
+Provides operations for adding, searching, listing, and managing memory facts.
+
+Usage:
+    aq-memory add "fact content" --project ai-stack --topic memory --type decision
+    aq-memory search "query text" --project ai-stack --limit 10
+    aq-memory list --project ai-stack --type decision
+    aq-memory expire FACT_ID --until 2026-12-31 --reason "superseded"
+    aq-memory agent-diary qwen --topic coding --limit 20
+    aq-memory stats --project ai-stack
+
+Examples:
+    # Add a decision fact
+    aq-memory add "Using JWT with 7-day expiry for auth" \\
+        --project ai-stack --topic auth --type decision --tags security,auth
+
+    # Search for facts
+    aq-memory search "authentication JWT" --project ai-stack --limit 5
+
+    # List all current decisions
+    aq-memory list --type decision --valid-now
+
+    # Expire a fact
+    aq-memory expire abc123 --until "2026-12-31 23:59:59" --reason "superseded by new approach"
+
+    # View agent diary
+    aq-memory agent-diary qwen --topic python --type discovery
+"""
+
+import sys
+import argparse
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import List, Optional
+import json
+
+# Add ai-stack to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack"))
+
+from aidb.temporal_facts import TemporalFact, get_valid_facts, get_stale_facts
+from aidb.temporal_query import (
+    filter_facts_by_project,
+    filter_facts_by_topic,
+    filter_facts_by_type,
+    filter_facts_by_tags,
+    filter_facts_by_confidence,
+)
+
+
+class InMemoryFactStore:
+    """
+    Simple in-memory fact store for CLI demonstration.
+
+    In production, this would connect to a real database (PostgreSQL with pgvector).
+    For now, we store facts in a JSON file for persistence.
+    """
+
+    def __init__(self, storage_file: str = ".aidb/temporal_facts.json"):
+        self.storage_file = Path(storage_file)
+        self.facts: List[TemporalFact] = []
+        self._load()
+
+    def _load(self):
+        """Load facts from storage file"""
+        if self.storage_file.exists():
+            try:
+                with open(self.storage_file, 'r') as f:
+                    data = json.load(f)
+                    self.facts = [TemporalFact.from_dict(item) for item in data]
+            except Exception as e:
+                print(f"Warning: Could not load facts from {self.storage_file}: {e}", file=sys.stderr)
+                self.facts = []
+        else:
+            self.facts = []
+
+    def _save(self):
+        """Save facts to storage file"""
+        self.storage_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(self.storage_file, 'w') as f:
+                data = [fact.to_dict() for fact in self.facts]
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Error: Could not save facts to {self.storage_file}: {e}", file=sys.stderr)
+
+    def add(self, fact: TemporalFact) -> str:
+        """Add a new fact"""
+        self.facts.append(fact)
+        self._save()
+        return fact.fact_id
+
+    def get_all(self) -> List[TemporalFact]:
+        """Get all facts"""
+        return self.facts
+
+    def get_by_id(self, fact_id: str) -> Optional[TemporalFact]:
+        """Get fact by ID"""
+        for fact in self.facts:
+            if fact.fact_id == fact_id or fact.fact_id.startswith(fact_id):
+                return fact
+        return None
+
+    def update(self, fact: TemporalFact):
+        """Update a fact"""
+        for i, f in enumerate(self.facts):
+            if f.fact_id == fact.fact_id:
+                self.facts[i] = fact
+                self._save()
+                return
+        raise ValueError(f"Fact {fact.fact_id} not found")
+
+
+def cmd_add(args, store: InMemoryFactStore):
+    """Add a new fact"""
+    # Parse dates if provided
+    valid_from = None
+    valid_until = None
+
+    if args.valid_from:
+        valid_from = datetime.fromisoformat(args.valid_from.replace('Z', '+00:00'))
+        if valid_from.tzinfo is None:
+            valid_from = valid_from.replace(tzinfo=timezone.utc)
+
+    if args.valid_until:
+        valid_until = datetime.fromisoformat(args.valid_until.replace('Z', '+00:00'))
+        if valid_until.tzinfo is None:
+            valid_until = valid_until.replace(tzinfo=timezone.utc)
+
+    # Create fact
+    fact = TemporalFact(
+        content=args.content,
+        project=args.project,
+        topic=args.topic,
+        type=args.type,
+        valid_from=valid_from or datetime.now(timezone.utc),
+        valid_until=valid_until,
+        agent_owner=args.agent_owner,
+        tags=args.tags.split(',') if args.tags else [],
+        confidence=args.confidence,
+        source=args.source or "aq-memory-cli",
+        created_by=args.created_by,
+    )
+
+    fact_id = store.add(fact)
+
+    if args.json:
+        print(json.dumps({"fact_id": fact_id, "status": "added"}))
+    else:
+        print(f"✅ Added fact {fact_id[:8]}")
+        print(f"   Project: {fact.project}")
+        print(f"   Topic: {fact.topic or '(none)'}")
+        print(f"   Type: {fact.type}")
+        print(f"   Content: {fact.content[:60]}{'...' if len(fact.content) > 60 else ''}")
+
+
+def cmd_search(args, store: InMemoryFactStore):
+    """Search for facts by content"""
+    all_facts = store.get_all()
+
+    # Filter to valid facts if requested
+    if args.valid_now:
+        now = datetime.now(timezone.utc)
+        all_facts = get_valid_facts(all_facts, at_time=now)
+
+    # Apply filters
+    if args.project:
+        all_facts = filter_facts_by_project(all_facts, args.project)
+    if args.topic:
+        all_facts = filter_facts_by_topic(all_facts, args.topic)
+    if args.type:
+        all_facts = filter_facts_by_type(all_facts, args.type)
+    if args.tags:
+        tags = args.tags.split(',')
+        all_facts = filter_facts_by_tags(all_facts, tags, match_all=True)
+
+    # Simple text search (case-insensitive)
+    query = args.query.lower()
+    matches = [f for f in all_facts if query in f.content.lower()]
+
+    # Sort by creation date (newest first)
+    matches.sort(key=lambda f: f.created_at, reverse=True)
+
+    # Limit results
+    matches = matches[:args.limit]
+
+    if args.json:
+        print(json.dumps([f.to_dict() for f in matches], indent=2))
+    else:
+        print(f"Found {len(matches)} matching facts:\n")
+        for fact in matches:
+            status = "✅" if fact.is_valid_at(datetime.now(timezone.utc)) else "⏱️"
+            print(f"{status} {fact.fact_id[:8]} | {fact.project}/{fact.topic or 'general'} | {fact.type}")
+            print(f"   {fact.content[:80]}{'...' if len(fact.content) > 80 else ''}")
+            print(f"   Created: {fact.created_at.strftime('%Y-%m-%d %H:%M')}")
+            if fact.valid_until:
+                print(f"   Valid until: {fact.valid_until.strftime('%Y-%m-%d %H:%M')}")
+            print()
+
+
+def cmd_list(args, store: InMemoryFactStore):
+    """List facts with filters"""
+    all_facts = store.get_all()
+
+    # Filter by validity
+    if args.valid_now:
+        now = datetime.now(timezone.utc)
+        all_facts = get_valid_facts(all_facts, at_time=now)
+    elif args.stale:
+        now = datetime.now(timezone.utc)
+        all_facts = get_stale_facts(all_facts, current_time=now)
+
+    # Apply filters
+    if args.project:
+        all_facts = filter_facts_by_project(all_facts, args.project)
+    if args.topic:
+        all_facts = filter_facts_by_topic(all_facts, args.topic)
+    if args.type:
+        all_facts = filter_facts_by_type(all_facts, args.type)
+    if args.agent_owner is not None:  # Allow empty string for shared memory
+        all_facts = [f for f in all_facts if f.agent_owner == args.agent_owner or args.agent_owner == '']
+
+    # Sort
+    all_facts.sort(key=lambda f: f.created_at, reverse=True)
+
+    # Limit
+    all_facts = all_facts[:args.limit]
+
+    if args.json:
+        print(json.dumps([f.to_dict() for f in all_facts], indent=2))
+    else:
+        print(f"Listing {len(all_facts)} facts:\n")
+        for fact in all_facts:
+            now = datetime.now(timezone.utc)
+            if fact.is_stale(now):
+                status = "🔴"  # Stale
+            elif fact.is_valid_at(now):
+                status = "✅"  # Valid
+            else:
+                status = "⏰"  # Future
+
+            owner = f"[{fact.agent_owner}]" if fact.agent_owner else "[shared]"
+            print(f"{status} {fact.fact_id[:8]} | {fact.project}/{fact.topic or 'general'} | {fact.type} {owner}")
+            print(f"   {fact.content[:80]}{'...' if len(fact.content) > 80 else ''}")
+            if fact.tags:
+                print(f"   Tags: {', '.join(fact.tags)}")
+            print()
+
+
+def cmd_expire(args, store: InMemoryFactStore):
+    """Expire a fact"""
+    fact = store.get_by_id(args.fact_id)
+    if not fact:
+        print(f"Error: Fact {args.fact_id} not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Parse until date
+    until = datetime.fromisoformat(args.until.replace('Z', '+00:00'))
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+
+    # Expire the fact
+    fact.expire(until, reason=args.reason)
+    fact.updated_by = args.updated_by
+
+    store.update(fact)
+
+    if args.json:
+        print(json.dumps({"fact_id": fact.fact_id, "status": "expired", "until": until.isoformat()}))
+    else:
+        print(f"✅ Expired fact {fact.fact_id[:8]}")
+        print(f"   Until: {until.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        if args.reason:
+            print(f"   Reason: {args.reason}")
+
+
+def cmd_agent_diary(args, store: InMemoryFactStore):
+    """View agent-specific diary"""
+    all_facts = store.get_all()
+
+    # Filter to agent's diary
+    diary_facts = [
+        f for f in all_facts
+        if f.agent_owner == args.agent_name and f.project == f"agent-{args.agent_name}"
+    ]
+
+    # Filter by validity
+    if args.valid_now:
+        now = datetime.now(timezone.utc)
+        diary_facts = get_valid_facts(diary_facts, at_time=now)
+
+    # Apply additional filters
+    if args.topic:
+        diary_facts = filter_facts_by_topic(diary_facts, args.topic)
+    if args.type:
+        diary_facts = filter_facts_by_type(diary_facts, args.type)
+
+    # Sort by creation date
+    diary_facts.sort(key=lambda f: f.created_at, reverse=True)
+    diary_facts = diary_facts[:args.limit]
+
+    if args.json:
+        print(json.dumps([f.to_dict() for f in diary_facts], indent=2))
+    else:
+        print(f"{args.agent_name}'s diary ({len(diary_facts)} entries):\n")
+        for fact in diary_facts:
+            print(f"📝 {fact.fact_id[:8]} | {fact.topic or 'general'} | {fact.type}")
+            print(f"   {fact.content}")
+            print(f"   Created: {fact.created_at.strftime('%Y-%m-%d %H:%M')}")
+            print()
+
+
+def cmd_stats(args, store: InMemoryFactStore):
+    """Show statistics about facts"""
+    all_facts = store.get_all()
+    now = datetime.now(timezone.utc)
+
+    # Filter by project if specified
+    if args.project:
+        all_facts = filter_facts_by_project(all_facts, args.project)
+
+    # Calculate stats
+    total = len(all_facts)
+    valid = len(get_valid_facts(all_facts, at_time=now))
+    stale = len(get_stale_facts(all_facts, current_time=now))
+    future = total - valid - stale
+
+    # By type
+    by_type = {}
+    for fact in all_facts:
+        by_type[fact.type] = by_type.get(fact.type, 0) + 1
+
+    # By agent
+    shared = len([f for f in all_facts if f.agent_owner is None])
+    by_agent = {}
+    for fact in all_facts:
+        if fact.agent_owner:
+            by_agent[fact.agent_owner] = by_agent.get(fact.agent_owner, 0) + 1
+
+    if args.json:
+        print(json.dumps({
+            "total": total,
+            "valid": valid,
+            "stale": stale,
+            "future": future,
+            "by_type": by_type,
+            "shared": shared,
+            "by_agent": by_agent
+        }, indent=2))
+    else:
+        title = f"Statistics{' for ' + args.project if args.project else ''}:"
+        print(title)
+        print("=" * len(title))
+        print(f"\nTotal facts: {total}")
+        print(f"  Valid now:  {valid} ({valid/total*100:.1f}%)" if total > 0 else "  Valid now: 0")
+        print(f"  Stale:      {stale} ({stale/total*100:.1f}%)" if total > 0 else "  Stale: 0")
+        print(f"  Future:     {future} ({future/total*100:.1f}%)" if total > 0 else "  Future: 0")
+
+        print(f"\nBy type:")
+        for ftype, count in sorted(by_type.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {ftype:12} {count:4} ({count/total*100:.1f}%)")
+
+        print(f"\nOwnership:")
+        print(f"  Shared:      {shared} ({shared/total*100:.1f}%)" if total > 0 else "  Shared: 0")
+        for agent, count in sorted(by_agent.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {agent:12} {count:4} ({count/total*100:.1f}%)")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Memory management CLI for AI harness",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+
+    parser.add_argument('--storage', default='.aidb/temporal_facts.json',
+                       help='Path to fact storage file (default: .aidb/temporal_facts.json)')
+    parser.add_argument('--json', action='store_true',
+                       help='Output in JSON format')
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # Add command
+    add_parser = subparsers.add_parser('add', help='Add a new fact')
+    add_parser.add_argument('content', help='Fact content')
+    add_parser.add_argument('--project', required=True, help='Project name')
+    add_parser.add_argument('--topic', help='Topic/category')
+    add_parser.add_argument('--type', default='fact',
+                           choices=['decision', 'preference', 'discovery', 'event', 'advice', 'fact'],
+                           help='Fact type (default: fact)')
+    add_parser.add_argument('--valid-from', help='Start of validity (ISO format)')
+    add_parser.add_argument('--valid-until', help='End of validity (ISO format)')
+    add_parser.add_argument('--agent-owner', help='Agent that owns this fact')
+    add_parser.add_argument('--tags', help='Comma-separated tags')
+    add_parser.add_argument('--confidence', type=float, default=1.0,
+                           help='Confidence score 0.0-1.0 (default: 1.0)')
+    add_parser.add_argument('--source', help='Source of this fact')
+    add_parser.add_argument('--created-by', help='Creator identifier')
+
+    # Search command
+    search_parser = subparsers.add_parser('search', help='Search for facts')
+    search_parser.add_argument('query', help='Search query')
+    search_parser.add_argument('--project', help='Filter by project')
+    search_parser.add_argument('--topic', help='Filter by topic')
+    search_parser.add_argument('--type', help='Filter by type')
+    search_parser.add_argument('--tags', help='Filter by tags (comma-separated)')
+    search_parser.add_argument('--valid-now', action='store_true',
+                              help='Only show currently valid facts')
+    search_parser.add_argument('--limit', type=int, default=10,
+                              help='Maximum results (default: 10)')
+
+    # List command
+    list_parser = subparsers.add_parser('list', help='List facts with filters')
+    list_parser.add_argument('--project', help='Filter by project')
+    list_parser.add_argument('--topic', help='Filter by topic')
+    list_parser.add_argument('--type', help='Filter by type')
+    list_parser.add_argument('--agent-owner', help='Filter by agent owner (empty string for shared)')
+    list_parser.add_argument('--valid-now', action='store_true',
+                            help='Only show currently valid facts')
+    list_parser.add_argument('--stale', action='store_true',
+                            help='Only show stale facts')
+    list_parser.add_argument('--limit', type=int, default=50,
+                            help='Maximum results (default: 50)')
+
+    # Expire command
+    expire_parser = subparsers.add_parser('expire', help='Expire a fact')
+    expire_parser.add_argument('fact_id', help='Fact ID (or prefix)')
+    expire_parser.add_argument('--until', required=True,
+                              help='Expiration date (ISO format)')
+    expire_parser.add_argument('--reason', help='Reason for expiration')
+    expire_parser.add_argument('--updated-by', help='Who is expiring this fact')
+
+    # Agent diary command
+    diary_parser = subparsers.add_parser('agent-diary', help='View agent diary')
+    diary_parser.add_argument('agent_name', help='Agent name (qwen, codex, claude, gemini)')
+    diary_parser.add_argument('--topic', help='Filter by topic')
+    diary_parser.add_argument('--type', help='Filter by type')
+    diary_parser.add_argument('--valid-now', action='store_true',
+                             help='Only show currently valid entries')
+    diary_parser.add_argument('--limit', type=int, default=20,
+                             help='Maximum results (default: 20)')
+
+    # Stats command
+    stats_parser = subparsers.add_parser('stats', help='Show statistics')
+    stats_parser.add_argument('--project', help='Filter by project')
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    # Initialize store
+    store = InMemoryFactStore(args.storage)
+
+    # Dispatch to command handler
+    commands = {
+        'add': cmd_add,
+        'search': cmd_search,
+        'list': cmd_list,
+        'expire': cmd_expire,
+        'agent-diary': cmd_agent_diary,
+        'stats': cmd_stats,
+    }
+
+    commands[args.command](args, store)
+
+
+if __name__ == '__main__':
+    main()
