@@ -254,11 +254,14 @@ let
   vscodiumSettingsJSON = pkgs.writeText "vscodium-settings-baseline.json"
     (builtins.toJSON vscodiumSettings);
   vscodiumArgvJSON = pkgs.writeText "vscodium-argv-baseline.json"
-    (builtins.toJSON {
+    (builtins.toJSON ({
       # Mitigate Codium + Wayland + amdgpu freezes under memory pressure by
       # forcing software rendering for the Electron shell.
       "disable-hardware-acceleration" = true;
-    });
+      # Force the editor onto XWayland on the Renoir/COSMIC workstation until
+      # Electron-on-Wayland stops destabilizing the desktop session.
+      "ozone-platform" = "x11";
+    }));
   vscodeMutableRuntimeExtensions = [
     "ms-python.debugpy"
     "ms-toolsai.jupyter"
@@ -288,7 +291,10 @@ let
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild        = ''
       wrapProgram $out/bin/codium \
-        --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}
+        --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]} \
+        --unset NIXOS_OZONE_WL \
+        --unset ELECTRON_OZONE_PLATFORM_HINT \
+        --add-flags --ozone-platform=x11
     '';
   }) // { inherit (pkgs.vscodium) version pname; meta = pkgs.vscodium.meta // { mainProgram = "codium"; }; };
 
@@ -1032,7 +1038,9 @@ PYEOF
       #!/usr/bin/env bash
       # VSCodium wrapper — prepends nix-managed tool paths.
       export PATH="${vsWrapperPath}:$PATH"
-      exec ${pkgs.vscodium}/bin/codium "$@"
+      unset NIXOS_OZONE_WL
+      unset ELECTRON_OZONE_PLATFORM_HINT
+      exec ${pkgs.vscodium}/bin/codium --ozone-platform=x11 "$@"
     '';
   };
 

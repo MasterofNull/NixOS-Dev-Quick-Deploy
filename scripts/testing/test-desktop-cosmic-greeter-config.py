@@ -36,6 +36,24 @@ def main() -> int:
         'rm -rf "$base/com.system76.CosmicTheme.Dark.Builder/v1"' in text,
         "COSMIC greeter config seed should wipe stale builder files before startup",
     )
+    for key in (
+        'pinned_workspaces',
+        'input_default',
+        'input_touchpad_override',
+        'input_devices',
+        'keyboard_config',
+        'autotile',
+        'cursor_follows_focus',
+        'focus_follows_cursor_delay',
+        'descale_xwayland',
+        'xwayland_eavesdropping',
+        'edge_snap_threshold',
+        'accessibility_zoom',
+    ):
+        assert_true(
+            f'CosmicComp/v1/{key}' in text,
+            f"COSMIC greeter config seed should provide the {key} compositor key",
+        )
     assert_true(
         'configFile."cosmic/com.system76.CosmicTheme.Dark.Builder/v1/palette"' not in home_text,
         "Home Manager should not write the obsolete COSMIC ThemeBuilder palette file",

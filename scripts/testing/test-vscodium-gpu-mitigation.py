@@ -12,6 +12,8 @@ BASE_NIX = REPO_ROOT / "nix" / "home" / "base.nix"
 REQUIRED_SNIPPETS = [
     'vscodiumArgvJSON = pkgs.writeText "vscodium-argv-baseline.json"',
     '"disable-hardware-acceleration" = true;',
+    '"ozone-platform" = "x11";',
+    '--add-flags --ozone-platform=x11',
     'home.file.".config/VSCodium/User/argv.json".source = vscodiumArgvJSON;',
 ]
 
