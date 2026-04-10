@@ -4468,7 +4468,7 @@ def format_md(
             )
         lines += [
             "",
-            "*Import suggestion: `aidb import --query \"<query text>\"` to pull relevant docs.*",
+            "*Import suggestion: `scripts/ai/aq-knowledge-import.sh \"<query text>\"` to pull relevant docs.*",
         ]
     else:
         lines.append("*No query gaps found (Postgres unreachable or table empty).*")

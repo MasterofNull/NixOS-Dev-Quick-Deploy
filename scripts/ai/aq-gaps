@@ -113,6 +113,6 @@ echo ""
 for row in "${FILTERED_ROWS[@]}"; do
     IFS=$'\t' read -r count min_score max_score query_text <<< "$row"
     echo "# [${count}x, best score=${max_score}] ${query_text}"
-    echo "# Suggested: aidb import --collection nixos-docs --query \"${query_text}\""
+    echo "# Suggested: scripts/ai/aq-knowledge-import.sh \"${query_text}\" --project nixos-docs"
     echo ""
 done

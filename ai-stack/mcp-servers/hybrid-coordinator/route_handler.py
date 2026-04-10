@@ -547,8 +547,10 @@ def _select_local_inference_lane(
     if str(getattr(complexity, "reason", "") or "") == "continuation_within_local_capacity":
         if (
             _deep_continuation_query(query)
-            or token_estimate >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS)
-            or compressed_tokens >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS)
+            or (
+                token_estimate >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS)
+                and compressed_tokens >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS)
+            )
         ):
             return "reasoning", "continuation_reasoning_lane"
         return "default", "light_continuation_default_lane"
@@ -557,7 +559,7 @@ def _select_local_inference_lane(
         _strong_reasoning_query(query)
         and (
             token_estimate >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS)
-            or compressed_tokens >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS)
+            and compressed_tokens >= int(Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS)
         )
     ):
         return "reasoning", "deep_reasoning_lane"
@@ -596,7 +598,7 @@ def _use_classifier_optimized_prompt(
     """Keep the hottest local reasoning lane on the tighter route-level prompt contract."""
     if complexity is None or not getattr(complexity, "optimized_prompt", None):
         return False
-    return str(lane_reason or "").strip().lower() != "bounded_reasoning_default_lane"
+    return True
 
 
 def init(

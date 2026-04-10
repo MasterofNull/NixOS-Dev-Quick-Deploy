@@ -2085,7 +2085,7 @@ class HintsEngine:
         strength = _AGENT_STRENGTHS.get(recommended_agent, _AGENT_STRENGTHS["codex"])
         token_discipline = self._build_token_discipline(query_text, query_lower, missing, recommended_agent)
         compact_template = (
-            "Objective | Constraints | Context | Validation"
+            "Objective | Constraints/Guardrails | Context (files/data) | Validation"
             f" | Route: {recommended_agent}"
             f" | Token plan: {token_discipline['spend_tier']} first"
         )
@@ -3240,7 +3240,7 @@ class HintsEngine:
             safe_gap = gap_text[:60]
             snippet = (
                 f"Recurring gap ({occurrences}x): consider "
-                f"'aidb import --query \"{safe_gap}\"'"
+                f"'scripts/ai/aq-knowledge-import.sh \"{safe_gap}\"'"
             )
             hint_id = "gap_" + re.sub(r"[^a-z0-9]", "_", gap_lower[:40])
 

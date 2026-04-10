@@ -117,6 +117,30 @@ def _summarize_results(items: List[Dict[str, Any]], max_items: int = 3) -> str:
     return "\n".join(lines) if lines else "No results."
 
 
+def _failure_fix_hint(failure_category: str) -> str:
+    category = str(failure_category or "").strip().lower()
+    if category == "evaluation_timeout":
+        return "Reduce eval breadth or timeout-sensitive work before retrying route_search."
+    if category == "latency_slo_exceeded":
+        return "Check retrieval fan-out, reasoning-lane routing, and context budget before widening prompts."
+    if category == "low_relevance":
+        return "Inspect retrieval context quality and prompt grounding before adjusting acceptance thresholds."
+    if category == "empty_response":
+        return "Check model availability, prompt construction, and backend fallback behavior."
+    return "Inspect failed case evidence before changing prompts or thresholds."
+
+
+def _append_recent_failure(case: Dict[str, Any]) -> None:
+    if not isinstance(_HARNESS_STATS, dict):
+        return
+    recent = _HARNESS_STATS.setdefault("recent_failures", [])
+    if not isinstance(recent, list):
+        recent = []
+        _HARNESS_STATS["recent_failures"] = recent
+    recent.append(case)
+    del recent[:-10]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -190,6 +214,16 @@ async def run_harness_evaluation(
         _HARNESS_STATS["total_runs"] += 1
         _HARNESS_STATS["failed"] += 1
         _HARNESS_STATS["last_run_at"] = datetime.now(timezone.utc).isoformat()
+        _append_recent_failure(
+            {
+                "query": query[:200],
+                "mode": mode,
+                "failure_category": failure_category,
+                "metrics": metrics,
+                "root_cause_hint": "route_search exceeded the harness eval timeout budget",
+                "suggested_fix": _failure_fix_hint(failure_category),
+            }
+        )
         _record_telemetry(
             "harness_eval",
             {
@@ -243,6 +277,29 @@ async def run_harness_evaluation(
         _HARNESS_STATS["failure_taxonomy"][failure_category] = (
             _HARNESS_STATS["failure_taxonomy"].get(failure_category, 0) + 1
         )
+        _append_recent_failure(
+            {
+                "query": query[:200],
+                "mode": mode,
+                "failure_category": failure_category,
+                "metrics": metrics,
+                "result_summary": _summarize_results(
+                    (
+                        (result.get("results") or {}).get("combined_results")
+                        or (result.get("results") or {}).get("semantic_results")
+                        or (result.get("results") or {}).get("keyword_results")
+                        or []
+                    ),
+                    max_items=2,
+                ),
+                "root_cause_hint": (
+                    "retrieval quality is weak for this eval case"
+                    if failure_category == "low_relevance"
+                    else "response path violated acceptance checks"
+                ),
+                "suggested_fix": _failure_fix_hint(failure_category),
+            }
+        )
 
     _HARNESS_STATS["total_runs"] += 1
     _HARNESS_STATS["passed"] += 1 if passed else 0
@@ -288,6 +345,23 @@ def build_harness_scorecard() -> Dict[str, Any]:
     discovery_error_rate = (discovery_errors / discovery_total) if discovery_total else 0.0
     safety_ok = discovery_error_rate <= 0.05
     _HARNESS_STATS["scorecards_generated"] = int(_HARNESS_STATS.get("scorecards_generated", 0) or 0) + 1
+    recent_failures = _HARNESS_STATS.get("recent_failures", [])
+    if not isinstance(recent_failures, list):
+        recent_failures = []
+    compact_failures = []
+    for item in recent_failures[-5:]:
+        if not isinstance(item, dict):
+            continue
+        compact_failures.append(
+            {
+                "query": str(item.get("query", "") or "")[:200],
+                "mode": str(item.get("mode", "auto") or "auto"),
+                "failure_category": str(item.get("failure_category", "unknown") or "unknown"),
+                "root_cause_hint": str(item.get("root_cause_hint", "") or "").strip(),
+                "suggested_fix": str(item.get("suggested_fix", "") or "").strip(),
+                "metrics": item.get("metrics", {}) if isinstance(item.get("metrics"), dict) else {},
+            }
+        )
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "acceptance": {
@@ -312,5 +386,10 @@ def build_harness_scorecard() -> Dict[str, Any]:
             "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
             "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
+        },
+        "failures": {
+            "taxonomy": dict(_HARNESS_STATS.get("failure_taxonomy", {}) or {}),
+            "recent_failed_cases": compact_failures,
+            "analysis_ready": bool(compact_failures),
         },
     }
