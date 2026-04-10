@@ -65,28 +65,87 @@ class LLMClient:
             raise ValueError(f"Unknown provider: {provider}")
 
     def _get_api_key(self, provider: str) -> Optional[str]:
-        """Get API key from environment or file"""
+        """
+        Get API key from environment or file.
+
+        Priority order:
+        1. Environment variable (*_API_KEY)
+        2. Explicit file path (*_API_KEY_FILE)
+        3. sops-nix decrypted secret (/run/secrets/*)
+        4. Local development file (~/.config/*)
+        """
         if provider == "anthropic":
-            # Try environment variable first
+            # 1. Environment variable
             key = os.getenv("ANTHROPIC_API_KEY")
             if key:
+                logger.debug("Using Anthropic API key from ANTHROPIC_API_KEY")
                 return key
 
-            # Try file
+            # 2. Explicit file path
             key_file = os.getenv("ANTHROPIC_API_KEY_FILE", "")
             if key_file and os.path.exists(key_file):
+                logger.debug(f"Using Anthropic API key from {key_file}")
                 with open(key_file) as f:
                     return f.read().strip()
+
+            # 3. sops-nix decrypted secret (NixOS deployment)
+            sops_paths = [
+                "/run/secrets/anthropic_api_key",
+                "/run/secrets/remote_llm_api_key",  # Reuse existing remote LLM key
+                "/run/secrets/workflow_executor_api_key",  # Dedicated executor key
+            ]
+            for sops_path in sops_paths:
+                if os.path.exists(sops_path):
+                    logger.info(f"Using Anthropic API key from sops-nix: {sops_path}")
+                    with open(sops_path) as f:
+                        return f.read().strip()
+
+            # 4. Local development file (fallback)
+            dev_paths = [
+                os.path.expanduser("~/.config/anthropic/api-key"),
+                os.path.expanduser("~/.anthropic-api-key"),
+            ]
+            for dev_path in dev_paths:
+                if os.path.exists(dev_path):
+                    logger.debug(f"Using Anthropic API key from {dev_path}")
+                    with open(dev_path) as f:
+                        return f.read().strip()
 
         elif provider == "openai":
+            # 1. Environment variable
             key = os.getenv("OPENAI_API_KEY")
             if key:
+                logger.debug("Using OpenAI API key from OPENAI_API_KEY")
                 return key
 
+            # 2. Explicit file path
             key_file = os.getenv("OPENAI_API_KEY_FILE", "")
             if key_file and os.path.exists(key_file):
+                logger.debug(f"Using OpenAI API key from {key_file}")
                 with open(key_file) as f:
                     return f.read().strip()
+
+            # 3. sops-nix decrypted secret
+            sops_paths = [
+                "/run/secrets/openai_api_key",
+                "/run/secrets/remote_llm_api_key",
+            ]
+            for sops_path in sops_paths:
+                if os.path.exists(sops_path):
+                    logger.info(f"Using OpenAI API key from sops-nix: {sops_path}")
+                    with open(sops_path) as f:
+                        return f.read().strip()
+
+            # 4. Local development file
+            dev_paths = [
+                os.path.expanduser("~/.config/openai/api-key"),
+                os.path.expanduser("~/.openai-api-key"),
+            ]
+            for dev_path in dev_paths:
+                if os.path.exists(dev_path):
+                    logger.debug(f"Using OpenAI API key from {dev_path}")
+                    with open(dev_path) as f:
+                        return f.read().strip()
 
         return None
 
