@@ -45,6 +45,11 @@ let
     Use brief answers first, expand only when requested.
     Avoid restating long policy docs unless explicitly asked.
   '';
+  remoteGeminiCard = ''
+    [profile-card:remote-gemini]
+    Use Gemini as the front-door remote orchestration lane for discovery, planning, and synthesis.
+    Keep the output handoff-ready and explicitly trigger local tools, embeddings, or local models when they should take over.
+  '';
   remoteFreeCard = ''
     [profile-card:remote-free]
     Use low-cost or free remote capacity for probing, not for unrestricted context bloat.
@@ -148,6 +153,7 @@ let
     EMBEDDED_ASSIST_MAX_MESSAGES = max(2, int(os.environ.get("SWB_EMBEDDED_ASSIST_MAX_MESSAGES", "10")))
     CARD_CONTINUE_LOCAL = ${builtins.toJSON continueLocalCard}
     CARD_REMOTE_DEFAULT = ${builtins.toJSON remoteDefaultCard}
+    CARD_REMOTE_GEMINI = ${builtins.toJSON remoteGeminiCard}
     CARD_REMOTE_FREE = ${builtins.toJSON remoteFreeCard}
     CARD_REMOTE_CODING = ${builtins.toJSON remoteCodingCard}
     CARD_REMOTE_REASONING = ${builtins.toJSON remoteReasoningCard}
@@ -156,6 +162,7 @@ let
     CARD_EMBEDDING_LOCAL = ${builtins.toJSON embeddingLocalCard}
     _LOCAL_TOOL_REGISTRY = None
     REMOTE_MODEL_ALIASES_ENABLED = os.environ.get("SWB_REMOTE_MODEL_ALIASES_ENABLED", "1").strip() not in ("0", "false", "no")
+    REMOTE_MODEL_ALIAS_GEMINI = os.environ.get("SWB_REMOTE_MODEL_ALIAS_GEMINI", "").strip() or os.environ.get("SWB_REMOTE_MODEL_ALIAS_FREE", "").strip()
     REMOTE_MODEL_ALIAS_FREE = os.environ.get("SWB_REMOTE_MODEL_ALIAS_FREE", "").strip()
     REMOTE_MODEL_ALIAS_CODING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_CODING", "").strip()
     REMOTE_MODEL_ALIAS_REASONING = os.environ.get("SWB_REMOTE_MODEL_ALIAS_REASONING", "").strip()
@@ -223,6 +230,7 @@ let
                 "default": {"force_provider": None, "inject_hints": HINTS_INJECT},
                 "continue-local": {"force_provider": "local", "inject_hints": False},
                 "remote-default": {"force_provider": "remote", "inject_hints": False},
+                "remote-gemini": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_GEMINI or None},
                 "remote-free": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_FREE or None},
                 "remote-coding": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_CODING or None},
                 "remote-reasoning": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_REASONING or None},
@@ -254,7 +262,7 @@ let
     def _route_target(request: Request, payload: dict | None, profile: str) -> str:
         if profile == "continue-local":
             return "local"
-        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"):
+        if profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"):
             return "remote" if REMOTE_URL else "local"
         if profile == "local-tool-calling":
             return "local"
@@ -290,6 +298,8 @@ let
         lowered = (name or "").strip().lower()
         if lowered in ("free", "budget", "cheap"):
             return REMOTE_MODEL_ALIAS_FREE
+        if lowered in ("gemini", "google", "planner", "general"):
+            return REMOTE_MODEL_ALIAS_GEMINI
         if lowered in ("coding", "code", "coder"):
             return REMOTE_MODEL_ALIAS_CODING
         if lowered in ("reasoning", "architecture", "thinking"):
@@ -304,7 +314,9 @@ let
         model = str(payload.get("model", ""))
         alias_model = ""
         if REMOTE_MODEL_ALIASES_ENABLED:
-            if profile == "remote-free":
+            if profile == "remote-gemini":
+                alias_model = REMOTE_MODEL_ALIAS_GEMINI
+            elif profile == "remote-free":
                 alias_model = REMOTE_MODEL_ALIAS_FREE
             elif profile == "remote-coding":
                 alias_model = REMOTE_MODEL_ALIAS_CODING
@@ -328,7 +340,7 @@ let
         profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
         if not profile:
             profile = request.query_params.get("ai_profile", "").strip().lower()
-        allowed = ("continue-local", "local-tool-calling", "remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling", "embedding-local", "embedded-assist", "default")
+        allowed = ("continue-local", "local-tool-calling", "remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling", "embedding-local", "embedded-assist", "default")
         return profile if profile in allowed else "default"
 
     def _budget_state_current() -> dict:
@@ -881,6 +893,8 @@ let
             return CARD_CONTINUE_LOCAL.strip()
         if profile == "remote-default":
             return CARD_REMOTE_DEFAULT.strip()
+        if profile == "remote-gemini":
+            return CARD_REMOTE_GEMINI.strip()
         if profile == "remote-free":
             return CARD_REMOTE_FREE.strip()
         if profile == "remote-coding":
@@ -963,7 +977,7 @@ let
         profile = _effective_profile(request)
         target_type = _route_target(request, payload, profile)
         target = REMOTE_URL if target_type == "remote" and REMOTE_URL else LLAMA_URL
-        if profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
+        if profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
             return JSONResponse(
                 status_code=503,
                 content={
@@ -1030,7 +1044,7 @@ let
         remote_budget = None
         payload_model = str(payload.get("model", "")).strip().lower() if isinstance(payload, dict) else ""
         explicit_remote = (
-            profile in ("remote-default", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling")
+            profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling")
             or request.headers.get(ROUTE_HINT_HEADER, "").strip().lower() == "remote"
             or request.headers.get(PROVIDER_HINT_HEADER, "").strip().lower() == "remote"
             or any(payload_model.startswith(prefix) for prefix in REMOTE_MODEL_PREFIXES)
@@ -1246,6 +1260,7 @@ in
           "DEFAULT_PROVIDER=${swb.defaultProvider}"
           "REMOTE_LLM_URL=${remoteUrl}"
           "REMOTE_LLM_API_KEY_FILE=${remoteKeyFile}"
+          "SWB_REMOTE_MODEL_ALIAS_GEMINI=${if swb.remoteModelAliases.gemini != null then swb.remoteModelAliases.gemini else if swb.remoteModelAliases.free != null then swb.remoteModelAliases.free else ""}"
           "SWB_REMOTE_MODEL_ALIASES_ENABLED=${if swb.remoteModelAliases.enable then "1" else "0"}"
           "SWB_REMOTE_MODEL_ALIAS_FREE=${if swb.remoteModelAliases.free != null then swb.remoteModelAliases.free else ""}"
           "SWB_REMOTE_MODEL_ALIAS_CODING=${if swb.remoteModelAliases.coding != null then swb.remoteModelAliases.coding else ""}"

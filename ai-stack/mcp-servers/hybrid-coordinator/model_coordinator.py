@@ -228,6 +228,15 @@ DEFAULT_PROFILES: Dict[str, ModelProfile] = {
         max_context_tokens=128000,
         cost_per_1k_tokens=0.0,
     ),
+    "gemini-orchestrator": ModelProfile(
+        name="gemini-orchestrator",
+        role=ModelRole.ORCHESTRATOR,
+        endpoint="openrouter",
+        capabilities={"planning", "synthesis", "discovery", "delegation"},
+        preferred_domains={"ai-harness", "research", "planning"},
+        max_context_tokens=1048576,
+        cost_per_1k_tokens=0.0,
+    ),
     "llama-cpp-local": ModelProfile(
         name="llama-cpp-local",
         role=ModelRole.FAST_CHAT,

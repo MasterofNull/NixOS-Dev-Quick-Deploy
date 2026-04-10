@@ -854,6 +854,7 @@ in
             "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
             "SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"
             "SWITCHBOARD_REMOTE_URL=${if ai.switchboard.remoteUrl != null then ai.switchboard.remoteUrl else ""}"
+            "SWITCHBOARD_REMOTE_ALIAS_GEMINI=${if ai.switchboard.remoteModelAliases.gemini != null then ai.switchboard.remoteModelAliases.gemini else if ai.switchboard.remoteModelAliases.free != null then ai.switchboard.remoteModelAliases.free else ""}"
             "SWITCHBOARD_REMOTE_ALIAS_FREE=${if ai.switchboard.remoteModelAliases.free != null then ai.switchboard.remoteModelAliases.free else ""}"
             "SWITCHBOARD_REMOTE_ALIAS_CODING=${if ai.switchboard.remoteModelAliases.coding != null then ai.switchboard.remoteModelAliases.coding else ""}"
             "SWITCHBOARD_REMOTE_ALIAS_REASONING=${if ai.switchboard.remoteModelAliases.reasoning != null then ai.switchboard.remoteModelAliases.reasoning else ""}"
