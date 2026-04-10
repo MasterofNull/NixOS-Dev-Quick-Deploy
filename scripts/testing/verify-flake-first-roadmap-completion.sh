@@ -280,7 +280,7 @@ check_pattern "scripts/ai/aq-report" 'Latency context: \{_tool_latency_context\(
 check_pattern "scripts/ai/aq-report" 'Recent context: \{_autorun_block_context\(recent_semantic_autorun\)\}' 'aq-report autorun security recommendations include recent-window context'
 check_pattern "scripts/ai/aq-report" 'total_injections >= 10 and recent_total >= 5' 'aq-report only promotes hint diversity recommendations when concentration is recent'
 check_pattern "scripts/ai/aq-report" 'fresh is None or int\(fresh\.get\("calls", 0\) or 0\) == 0' 'aq-report suppresses historical-only slow and flaky tool recommendations when recent calls are absent'
-check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'Objective \| Constraints \| Context \| Validation' 'Prompt coaching uses compact progressive-disclosure template by default'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'Objective \| Constraints(/Guardrails)? \| Context( \(files/data\))? \| Validation' 'Prompt coaching uses compact progressive-disclosure template by default'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_is_curated_stale_gap' 'Hints engine suppresses curated stale gap topics'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" '_is_synthetic_gap' 'Hints engine suppresses synthetic gap topics'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py" 'When enough non-overused candidates exist' 'Hints engine keeps dominant hints out when enough alternatives exist'
