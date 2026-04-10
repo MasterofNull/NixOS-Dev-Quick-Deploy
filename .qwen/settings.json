@@ -63,7 +63,11 @@
       "Bash(nix *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(nix-instantiate *)"
+      "Bash(nix-instantiate *)",
+      "Bash(python *)",
+      "Bash(node *)",
+      "Bash(chmod *)",
+      "Bash(git reset *)"
     ]
   }
 }
