@@ -1,0 +1,186 @@
+────────────────────────────────────────────────────────────
+  AI STACK PERFORMANCE REPORT — last 1d
+  Generated: 2026-04-10 04:59 UTC
+────────────────────────────────────────────────────────────
+
+[ 1. Tool Call Performance ]
+  Tool                            Valid   P50ms   P95ms    OK%   Err   4xx
+  ────────────────────────────── ────── ─────── ─────── ────── ───── ─────
+  a2a_agent_card                   1859       0       0 100.0%     0     0
+  hints                            1513     151     272 100.0%     0     0
+  discovery                         247      12      22 100.0%     0     0
+  route_search                      241     413   19740 100.0%     0     0
+  workflow_plan                     109       4       8 100.0%     0     0
+  recall_agent_memory               106      37    5079 100.0%     0     0
+  workflow_run_start                 26     123     285 100.0%     0     1
+  hints_feedback                      7       1       1 100.0%     0     0
+  tree_search                         3    2820    3507 100.0%     0     0
+  run_harness_eval                    3      11      15 100.0%     0     0
+  Valid counts backend-attributable calls only; invalid client requests are shown in 4xx.
+  Ignored client-side 4xx rows: 1
+
+[ 2. Routing Split ]
+  Local:     241  (100.0%)
+  Remote:      0  (0.0%)
+  Recent context: recent 1h routing: local=11 remote=0 (100.0% local)
+  1h: local 11 (100.0%), remote 0 (0.0%)
+  24h: local 241 (100.0%), remote 0 (0.0%)
+  7d (partial): local 241 (100.0%), remote 0 (0.0%)
+
+[ 3. Semantic Cache ]
+  Hits:    161
+  Misses:  44
+  Hit rate: 78.5%
+  Cache prewarm: enabled / active active
+
+[ 4. Eval Score Trend ]
+  Runs: 3  Latest: 50.0%  Mean: 50.0%  Range: 50.0–50.0%
+  Trend: STABLE
+
+[ 5. Strategy Leaderboard ]
+  No tagged strategies yet (use --strategy with run-eval.sh).
+
+[ 6. Recommended Prompts ]
+  100%  aider_task_systems_code  — Aider Systems Code Generation Task
+  100%  eval_scorecard_analysis  — Eval Scorecard Failure Analysis
+  67%  route_search_synthesis  — Route-Search Context Synthesis
+
+[ 7. Top Query Gaps ]
+  No gaps data (Postgres unavailable or table empty).
+
+[ 7b. RAG Posture ]
+  Status: healthy
+  Recent retrieval calls: 19
+  Actionable gaps: 0
+  Recent retrieval mix: route_search=11, recall_agent_memory=8
+  Memory recall share: 42.1%
+  Memory recall miss rate: 0.0%
+  Memory recall diagnosis: healthy
+  Cache hit rate: 78.5%
+  Candidate prewarm prompts: route_search_synthesis
+
+[ 7c. Feedback Acceleration ]
+  Status: low_sample
+  Failure trend: healthy
+  Recent delegated failures: 0
+  Promotable lessons: 0
+
+[ 7d. Gap Remediation ]
+  Status: healthy
+  Candidate count: 0
+
+[ 8. Recent Health Snapshot (1h) ]
+  No active slow or flaky tools in the recent window.
+
+[ 8a. Continue/Editor Health ]
+  Healthy: yes (6/6 checks passed)
+  1h: healthy 100.0% across 9 snapshot(s); latest failures 0/6
+  24h: healthy 100.0% across 50 snapshot(s); latest failures 0/6
+  7d (partial): healthy 100.0% across 153 snapshot(s); latest failures 0/6
+
+[ 8ab. Shared Skill Registry ]
+  Healthy: yes (27/26 shared skills visible in AIDB)
+
+[ 8ac. Llama Benchmark Runs ]
+  No saved llama benchmark runs in this window.
+
+[ 8aa. Delegated Prompt Failures ]
+  No delegated prompt failures recorded in this window.
+  Failure trend: 24h=0 (n/a salvageable)  7d=0 (n/a salvageable)
+  Failure trend status: healthy
+  Failure trend note: no delegated prompt failures recorded in the compared windows
+
+[ 8aaa. Remote Profile Utilization (1h) ]
+  Calls: 0
+  Success: n/a
+  Fallback applied: 0
+  Finalization applied: 0
+  Coordinator handoff requested: 0 (n/a)
+
+[ 8aaab. Remote Profile Trends ]
+  1h: calls 0, success n/a, top profile n/a
+  24h: calls 0, success n/a, top profile n/a
+  7d (partial): calls 0, success n/a, top profile n/a
+
+[ 8aaac. Route Search Latency Decomposition (1d) ]
+  Overall p50/p95: 413ms / 19740ms
+  Actionable p50/p95: 413ms / 19740ms across 241 non-4xx calls
+  Backend-valid p50/p95: 413ms / 19740ms across 241 local/remote-labeled calls
+    backend:local: calls 241, p50 413ms, p95 19740ms, success 100.0%
+    outcome:success: calls 241, p50 413ms, p95 19740ms, success 100.0%
+    request:retrieval_only: calls 160, p50 234ms, p95 3823ms, success 100.0%
+    local_lane:default: calls 81, p50 12510ms, p95 24904ms, success 100.0%
+    request:synthesis: calls 81, p50 12510ms, p95 24904ms, success 100.0%
+
+[ 8b. Retrieval Breadth (1h) ]
+  Avg collections/call: 1.82
+  Active profiles: continuation-memory-first(8), code-focused-detailed(3)
+  Retrieval breadth diagnosis: healthy
+
+[ 8bb. Retrieval Breadth Trends ]
+  1h: avg collections/call 1.82, top profile continuation-memory-first
+  24h: avg collections/call 2.22, top profile continuation-memory-first
+  7d (partial): avg collections/call 2.22, top profile continuation-memory-first
+
+[ 8c. Provider Fallback Recovery (1h) ]
+  No recovered remote-provider fallback events in this window.
+
+[ 8d. Historical Watchlist (7d) ]
+  No background watchlist items outside the recent window.
+
+[ 9. Workflow Recommendations ]
+  1. Local reasoning synthesis remains the route_search tail (reasoning
+     synthesis path p95 24974ms across 78 calls). Prefer lookup/format
+     lanes for bounded tasks, keep reasoning prompts compact, and
+     remeasure before changing retrieval breadth.
+  2. Bounded local reasoning on the default lane is still expensive
+     (24974ms p95 across 78 calls). Prefer a shorter reasoning context
+     excerpt and keep bounded explanations compact before revisiting
+     local/remote routing.
+  3. Cache is healthy (78.5%) and local routing is strong (100.0%).
+     Prefer local-first retrieval for recurring queries; remote spend is
+     unnecessary for cached patterns.
+  4. Workflow intent-contract coverage is low (86.7% over 30 runs),
+     including 4 run record(s) with no intent_contract object. Backfill
+     legacy workflow-sessions records and ensure /workflow/run/start
+     always sends intent_contract fields (user_intent,
+     definition_of_done, depth_expectation, spirit_constraints,
+     no_early_exit_without).
+
+[ 10. Hint Adoption (aq-hints → aider-wrapper) ]
+  No hint-injected aider tasks in this window.
+
+[ 11. Intent Contract Compliance ]
+  Runs: 30
+  With contract: 26
+  Coverage: 86.7%
+  Depth mix: minimum:20, standard:6
+  Reviewer gate: required=0 reviewed=0 accepted=0 rejected=0 pending=0
+  Requester roles: orchestrator(26)
+
+[ 12. Tool Security Auditor ]
+  Decisions: 1560
+  Approved: 1556
+  Blocked: 4
+  Cache hits: 1555  (99.7%)
+  First-seen audits: 5
+
+[ 13. Semantic Tooling Autorun ]
+  Route calls: 241
+  Route calls with metadata: 241
+  Autorun enabled: 241  (100.0%)
+  Avg planned tools/call: 4.04
+  Avg executed tools/call: 2.4
+  Security blocks during autorun: 0
+
+[ 14. Hint Diversity ]
+  No hint-injection activity in this window.
+
+[ 14b. Historical Hint Watchlist (7d) ]
+  No historical hint concentration issues outside the recent window.
+
+[ 14c. Agent Lesson Promotion Candidates ]
+  No cross-agent lesson candidates met the promotion threshold in this window.
+  Registry: pending=0 promoted=1 avoided=0 rejected=0
+
+────────────────────────────────────────────────────────────
