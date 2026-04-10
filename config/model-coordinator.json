@@ -60,6 +60,21 @@
         "fallback_model": "qwen-coder"
       }
     },
+    "gemini-orchestrator": {
+      "role": "orchestrator",
+      "endpoint": "openrouter",
+      "capabilities": ["planning", "synthesis", "discovery", "delegation"],
+      "preferred_domains": ["ai-harness", "planning", "research"],
+      "max_context_tokens": 1048576,
+      "is_local": false,
+      "cost_per_1k_tokens": 0.0,
+      "priority": 2,
+      "availability": {
+        "check_endpoint": null,
+        "fallback_model": "claude-orchestrator"
+      },
+      "notes": "Gemini-backed orchestration lane for front-door planning and synthesis"
+    },
     "llama-cpp-local": {
       "role": "fast_chat",
       "endpoint": "http://127.0.0.1:8080",

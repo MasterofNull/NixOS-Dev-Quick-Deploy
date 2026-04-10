@@ -1474,6 +1474,16 @@
             description = "Enable declarative remote model aliases such as free/coding/reasoning in switchboard.";
           };
 
+          gemini = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "google/gemini-2.5-pro";
+            description = ''
+              Remote model alias used for Gemini-backed orchestration, planning,
+              and synthesis requests routed through the harness front door.
+            '';
+          };
+
           free = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
@@ -2112,6 +2122,7 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
@@ -2125,12 +2136,13 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
                 "remote-tool-calling"
               ];
-              default = "default";
+              default = "remote-gemini";
               description = "Profile used for Explore/discovery style prompts.";
             };
 
@@ -2138,12 +2150,13 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
                 "remote-tool-calling"
               ];
-              default = "default";
+              default = "remote-gemini";
               description = "Profile used for Plan/workflow decomposition prompts.";
             };
 
@@ -2151,6 +2164,7 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
@@ -2164,6 +2178,7 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
@@ -2177,6 +2192,7 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
@@ -2190,6 +2206,7 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
