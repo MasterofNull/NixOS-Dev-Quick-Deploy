@@ -2815,20 +2815,92 @@ def _coerce_orchestration_context(incoming: Any) -> Dict[str, Any]:
     return _ai_coordinator_coerce_orchestration_context(normalized)
 
 
-def _validate_orchestration_policy(policy: Any) -> Dict[str, Any]:
+def _orchestration_prefers_local_handoff(query: str) -> bool:
+    normalized = str(query or "").strip().lower()
+    if not normalized:
+        return False
+    tokens = (
+        "embedded",
+        "embedding",
+        "local tool",
+        "local tools",
+        "local model",
+        "local models",
+        "continue-local",
+        "handoff to local",
+    )
+    return any(token in normalized for token in tokens)
+
+
+def _default_orchestration_policy_for_query(query: str) -> Dict[str, Any]:
+    base = {
+        "primary_lane": "implementation",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "collaborator_lanes": [],
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "orchestrator-first",
+        "allow_parallel_subagents": False,
+        "max_parallel_subagents": 1,
+    }
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return base
+
+    routing = _ai_coordinator_route_by_complexity(normalized_query, "", False)
+    profile = str(routing.get("recommended_profile", "") or "").strip().lower()
+    task_archetype = str(routing.get("task_archetype", "general") or "general").strip().lower()
+    local_handoff = _orchestration_prefers_local_handoff(normalized_query)
+
+    if profile == "remote-gemini" or task_archetype in {"planning", "retrieval"}:
+        base.update(
+            {
+                "primary_lane": "research",
+                "escalation_lane": "none",
+                "selection_strategy": "evidence-first",
+                "allow_parallel_subagents": True,
+                "max_parallel_subagents": 2,
+                "collaborator_lanes": ["diagnostics" if local_handoff else "implementation"],
+            }
+        )
+    elif profile == "remote-reasoning" or task_archetype == "architecture-review":
+        base.update(
+            {
+                "primary_lane": "reasoning",
+                "selection_strategy": "escalate-on-complexity",
+                "allow_parallel_subagents": True,
+                "max_parallel_subagents": 2,
+                "collaborator_lanes": ["research"],
+            }
+        )
+    elif profile == "local-tool-calling" or task_archetype == "tool-calling":
+        base.update(
+            {
+                "primary_lane": "diagnostics",
+                "selection_strategy": "local-first",
+                "allow_parallel_subagents": True,
+                "max_parallel_subagents": 2,
+                "collaborator_lanes": ["implementation"],
+            }
+        )
+    elif local_handoff:
+        base.update(
+            {
+                "selection_strategy": "evidence-first",
+                "allow_parallel_subagents": True,
+                "max_parallel_subagents": 2,
+                "collaborator_lanes": ["diagnostics"],
+            }
+        )
+
+    return base
+
+
+def _validate_orchestration_policy(policy: Any, query: str = "") -> Dict[str, Any]:
     base = {
         "ok": True,
         "errors": [],
-        "normalized": {
-            "primary_lane": "implementation",
-            "reviewer_lane": "codex-review",
-            "escalation_lane": "remote-reasoning",
-            "collaborator_lanes": [],
-            "consensus_mode": "reviewer-gate",
-            "selection_strategy": "orchestrator-first",
-            "allow_parallel_subagents": False,
-            "max_parallel_subagents": 1,
-        },
+        "normalized": _default_orchestration_policy_for_query(query),
     }
     if policy is None:
         return base
@@ -2930,7 +3002,10 @@ def _load_and_validate_workflow_blueprints() -> Dict[str, Any]:
         if not intent_validation["ok"]:
             joined = "; ".join(intent_validation["errors"])
             base["errors"].append(f"blueprint '{blueprint_id}' invalid intent_contract: {joined}")
-        policy_validation = _validate_orchestration_policy(item.get("orchestration_policy"))
+        policy_validation = _validate_orchestration_policy(
+            item.get("orchestration_policy"),
+            str(item.get("title") or item.get("objective") or item.get("description") or blueprint_id),
+        )
         if not policy_validation["ok"]:
             joined = "; ".join(policy_validation["errors"])
             base["errors"].append(f"blueprint '{blueprint_id}' invalid orchestration_policy: {joined}")
@@ -3828,17 +3903,48 @@ def _evaluation_history_bias(registry: Dict[str, Any], agent: str, profile: str,
     }
 
 
+def _agent_for_orchestration_lane(lane: str, requested_by: str, role: str) -> str:
+    normalized_lane = str(lane or "").strip().lower()
+    normalized_role = _normalize_agent_role(role)
+    if normalized_role == "reviewer":
+        return "codex"
+    if normalized_lane == "research":
+        return "gemini"
+    if normalized_lane == "reasoning" or normalized_lane in _ORCHESTRATION_ESCALATION_LANES:
+        return "remote"
+    return requested_by
+
+
+def _profile_for_orchestration_lane(lane: str, role: str, objective: str) -> str:
+    normalized_lane = str(lane or "").strip().lower()
+    normalized_role = _normalize_agent_role(role)
+    local_handoff = _orchestration_prefers_local_handoff(objective)
+    if normalized_lane == "research":
+        return "remote-gemini"
+    if normalized_lane == "reasoning" or normalized_lane in _ORCHESTRATION_ESCALATION_LANES:
+        return "remote-reasoning"
+    if normalized_lane == "diagnostics":
+        return "local-tool-calling" if local_handoff or normalized_role == "collaborator" else "default"
+    if normalized_lane in {"implementation", "hardening", "operations", "self-improvement"}:
+        if local_handoff and normalized_role == "collaborator":
+            return "local-tool-calling"
+        return "remote-coding" if normalized_role == "orchestrator" else "default"
+    return "default"
+
+
 def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]) -> Dict[str, Any]:
     strategy = str(policy.get("selection_strategy", "orchestrator-first") or "orchestrator-first").strip()
     consensus_mode = str(policy.get("consensus_mode", "reviewer-gate") or "reviewer-gate").strip()
     requested_by = str(orchestration.get("requested_by", "human") or "human").strip() or "human"
     requester_role = str(orchestration.get("requester_role", "orchestrator") or "orchestrator").strip() or "orchestrator"
+    objective = str(orchestration.get("objective") or orchestration.get("query") or "").strip()
     evaluation_registry = _load_agent_evaluations_registry_sync()
 
     candidates: List[Dict[str, Any]] = []
 
     def _add_candidate(candidate_id: str, lane: str, agent: str, role: str, components: Dict[str, float], basis: str) -> None:
-        history = _evaluation_history_bias(evaluation_registry, agent, lane, role)
+        profile = _profile_for_orchestration_lane(lane, role, objective)
+        history = _evaluation_history_bias(evaluation_registry, agent, profile, role)
         components = dict(components)
         components["historical_review"] = history["review_score"]
         components["historical_selection"] = history["selection_score"]
@@ -3850,6 +3956,8 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
                 "lane": lane,
                 "agent": agent,
                 "role": role,
+                "profile": profile,
+                "runtime_id": _ai_coordinator_default_runtime_id_for_profile(profile),
                 "basis": basis,
                 "score": score,
                 "score_components": {key: round(float(value), 4) for key, value in components.items()},
@@ -3866,7 +3974,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
     _add_candidate(
         "primary",
         primary_lane,
-        requested_by,
+        _agent_for_orchestration_lane(primary_lane, requested_by, requester_role),
         requester_role,
         {
             "strategy_fit": 0.4,
@@ -3879,7 +3987,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
     _add_candidate(
         "reviewer",
         reviewer_lane,
-        "codex",
+        _agent_for_orchestration_lane(reviewer_lane, requested_by, "reviewer"),
         "reviewer",
         {
             "strategy_fit": 0.2,
@@ -3894,7 +4002,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
         _add_candidate(
             "escalation",
             escalation_lane,
-            "remote",
+            _agent_for_orchestration_lane(escalation_lane, requested_by, "escalation"),
             "escalation",
             {
                 "strategy_fit": remote_weight,
@@ -3905,7 +4013,7 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
             "escalation lane candidate",
         )
     for idx, lane in enumerate(collaborator_lanes, start=1):
-        collaborator_agent = "remote" if lane in _ORCHESTRATION_ESCALATION_LANES else requested_by
+        collaborator_agent = _agent_for_orchestration_lane(lane, requested_by, "collaborator")
         collaborator_locality = 0.05 if lane in _ORCHESTRATION_ESCALATION_LANES else 0.2
         collaborator_strategy_fit = 0.25 if strategy in {"evidence-first", "escalate-on-complexity"} else 0.18
         _add_candidate(
@@ -3946,6 +4054,8 @@ def _seed_agent_evaluation(policy: Dict[str, Any], orchestration: Dict[str, Any]
         "selected_lane": selected.get("lane"),
         "selected_agent": selected.get("agent"),
         "selected_role": selected.get("role"),
+        "selected_profile": selected.get("profile"),
+        "selected_runtime_id": selected.get("runtime_id"),
         "candidates": candidates,
         "history": [],
         "arbiter": arbiter_state,
@@ -3991,6 +4101,8 @@ def _build_orchestration_team(
                 "lane": str(candidate.get("lane", "") or "").strip(),
                 "agent": str(candidate.get("agent", "") or "").strip(),
                 "role": str(candidate.get("role", "") or "").strip(),
+                "profile": str(candidate.get("profile", "") or "").strip(),
+                "runtime_id": str(candidate.get("runtime_id", "") or "").strip(),
                 "score": round(float(candidate.get("score", 0.0) or 0.0), 4),
                 "required": required,
                 "activation_reason": activation_reason,
@@ -4107,6 +4219,8 @@ def _apply_consensus_update(
     consensus["selected_lane"] = selected_candidate.get("lane")
     consensus["selected_agent"] = selected_candidate.get("agent")
     consensus["selected_role"] = selected_candidate.get("role")
+    consensus["selected_profile"] = selected_candidate.get("profile")
+    consensus["selected_runtime_id"] = selected_candidate.get("runtime_id")
     history = consensus.get("history") if isinstance(consensus.get("history"), list) else []
     history.append(
         {
@@ -4200,6 +4314,8 @@ def _apply_arbiter_update(
             "selected_lane": selected_candidate.get("lane"),
             "selected_agent": selected_candidate.get("agent"),
             "selected_role": selected_candidate.get("role"),
+            "selected_profile": selected_candidate.get("profile"),
+            "selected_runtime_id": selected_candidate.get("runtime_id"),
             "last_decision": decision,
             "history": history[-10:],
         }
@@ -4210,6 +4326,8 @@ def _apply_arbiter_update(
     consensus["selected_lane"] = selected_candidate.get("lane")
     consensus["selected_agent"] = selected_candidate.get("agent")
     consensus["selected_role"] = selected_candidate.get("role")
+    consensus["selected_profile"] = selected_candidate.get("profile")
+    consensus["selected_runtime_id"] = selected_candidate.get("runtime_id")
     consensus_history = consensus.get("history") if isinstance(consensus.get("history"), list) else []
     consensus_history.append(
         {
@@ -4290,6 +4408,8 @@ def _ensure_session_runtime_fields(session: Dict[str, Any]) -> None:
         )
         if selected_candidate:
             consensus["selected_role"] = str(selected_candidate.get("role", "") or "").strip()
+            consensus["selected_profile"] = str(selected_candidate.get("profile", "") or "").strip()
+            consensus["selected_runtime_id"] = str(selected_candidate.get("runtime_id", "") or "").strip()
             session["consensus"] = consensus
     team = session.get("team") if isinstance(session.get("team"), dict) else {}
     if not team:
@@ -4308,8 +4428,13 @@ def _build_workflow_run_session(
     if incoming_contract is None and selected_blueprint:
         incoming_contract = selected_blueprint.get("intent_contract", {})
     validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
+    orchestration_payload = dict(orchestration)
+    orchestration_payload.setdefault("query", query)
+    orchestration_payload.setdefault("objective", query)
     policy_validation = _validate_orchestration_policy(
         selected_blueprint.get("orchestration_policy", {}) if isinstance(selected_blueprint, dict) else None
+        ,
+        query=query,
     )
     session_id = str(uuid4())
     plan = _build_workflow_plan(query)
@@ -4326,8 +4451,8 @@ def _build_workflow_run_session(
             }
         )
 
-    seeded_consensus = _seed_agent_evaluation(policy_validation["normalized"], orchestration)
-    seeded_team = _build_orchestration_team(policy_validation["normalized"], orchestration, seeded_consensus)
+    seeded_consensus = _seed_agent_evaluation(policy_validation["normalized"], orchestration_payload)
+    seeded_team = _build_orchestration_team(policy_validation["normalized"], orchestration_payload, seeded_consensus)
     reasoning_pattern = (
         ((plan.get("metadata") or {}) if isinstance(plan.get("metadata"), dict) else {}).get("reasoning_pattern", {})
     )
@@ -4348,7 +4473,7 @@ def _build_workflow_run_session(
             else ""
         ) or None,
         "intent_contract": validation["normalized"],
-        "orchestration": orchestration,
+        "orchestration": orchestration_payload,
         "orchestration_policy": policy_validation["normalized"],
         "consensus": seeded_consensus,
         "team": seeded_team,
@@ -4533,6 +4658,8 @@ def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, 
             "consensus_mode": str(consensus.get("consensus_mode", "") or "").strip(),
             "selected_agent": str(consensus.get("selected_agent", "") or "").strip(),
             "selected_lane": str(consensus.get("selected_lane", "") or "").strip(),
+            "selected_profile": str(consensus.get("selected_profile", "") or "").strip(),
+            "selected_runtime_id": str(consensus.get("selected_runtime_id", "") or "").strip(),
             "active_member_count": len(members),
             "deferred_member_count": len(deferred_members),
             "queue_size": delegation_status.get("queue_size", 0),
