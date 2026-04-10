@@ -71,6 +71,7 @@ class MAMLLearner:
 
         self.adaptation_steps = 5
         self.task_models: Dict[str, Dict[str, float]] = {}
+        self.update_history: List[Dict[str, Any]] = []
 
         logger.info(
             f"MAML Learner initialized "

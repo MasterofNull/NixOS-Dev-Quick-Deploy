@@ -156,3 +156,4 @@ nix/hosts/*/.sops.yaml
 .claude/settings.json
 .upstream/
 .forks/
+.workflow-sessions.json
