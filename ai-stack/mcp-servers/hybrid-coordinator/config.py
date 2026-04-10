@@ -281,6 +281,7 @@ class Config:
         "AI_LOCAL_SYSTEM_PROMPT_WORKFLOW_JSON",
         default=[
             "Lock onto objective, repo scope, constraints, and acceptance checks before mutating work.",
+            "Translate underspecified requests into Objective -> Constraints -> Context -> Validation -> Route before execution.",
             "Use repo and harness tools before guessing; prefer hints, search, manifests, and workflow planning.",
             "Treat tool access as the default path for local tasks and only delegate when a narrower specialist lane is justified.",
             "Do not invent files, commands, test results, or runtime state; state what is missing when evidence is absent.",

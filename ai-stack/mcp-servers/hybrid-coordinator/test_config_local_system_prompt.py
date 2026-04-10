@@ -44,3 +44,12 @@ def test_build_local_system_prompt_includes_contact_layer_contract():
     assert "- Use tools first." in prompt
     assert "Tool contract:" in prompt
     assert "Output sections:" in prompt
+
+
+def test_default_local_prompt_workflow_includes_structured_request_scaffold():
+    workflow = Config.AI_LOCAL_SYSTEM_PROMPT_WORKFLOW
+
+    assert any(
+        "Objective -> Constraints -> Context -> Validation -> Route" in step
+        for step in workflow
+    )

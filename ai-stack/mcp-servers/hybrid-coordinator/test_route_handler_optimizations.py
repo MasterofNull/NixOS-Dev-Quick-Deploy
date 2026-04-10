@@ -424,7 +424,7 @@ class TestCollectionSelectionHelpers:
         )
 
         assert deep_lane == ("reasoning", "continuation_reasoning_lane")
-        assert bounded_lane == ("reasoning", "continuation_reasoning_lane")
+        assert bounded_lane == ("default", "light_continuation_default_lane")
 
     def test_prompt_helpers_trim_bounded_reasoning_context_and_gate_classifier_prompt(self):
         trimmed = route_handler._prompt_context_for_lane_reason(
@@ -444,7 +444,7 @@ class TestCollectionSelectionHelpers:
 
         assert trimmed == "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:40]
         assert "under 120 words" in instruction
-        assert route_handler._use_classifier_optimized_prompt(optimized, "bounded_reasoning_default_lane") is False
+        assert route_handler._use_classifier_optimized_prompt(optimized, "bounded_reasoning_default_lane") is True
         assert route_handler._use_classifier_optimized_prompt(optimized, "deep_reasoning_lane") is True
 
 
