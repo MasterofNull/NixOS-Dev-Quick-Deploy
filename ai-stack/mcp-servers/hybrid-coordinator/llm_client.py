@@ -329,7 +329,24 @@ class PromptBuilder:
         safety_mode = context.get("safety_mode", "plan-readonly")
         phase_id = phase.get("id", "unknown")
 
-        # System prompt
+        # System prompt with git discipline enforcement
+        git_discipline = """
+
+REQUIRED WORKFLOW DISCIPLINE (for execute modes):
+You MUST follow this workflow for all implementation tasks:
+
+1. Context Gathering: Read relevant files and understand existing code before making changes
+2. Research: Use grep/find to locate related code, understand patterns and conventions
+3. Implementation: Write code following existing patterns, run tests after changes
+4. Validation: Run tests, check syntax, verify changes work as expected
+5. Git Commit: CRITICAL REQUIREMENT - You MUST commit your changes before completion:
+   - Stage files: run_command("git add <modified-files>")
+   - Create commit: run_command('git commit -m "type(scope): description\\n\\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"')
+   - Use conventional commit format (feat/fix/docs/chore/test)
+   - Include Co-Authored-By trailer
+
+FAILURE TO COMMIT = INCOMPLETE TASK. Do NOT mark work complete without a git commit."""
+
         system = f"""You are an AI assistant executing a workflow task.
 
 Current phase: {phase_id}
@@ -341,7 +358,7 @@ Follow these guidelines:
 2. Use available tools when needed
 3. Provide clear reasoning for your actions
 4. Stay within the specified safety constraints
-5. Be concise and efficient"""
+5. Be concise and efficient{git_discipline if 'execute' in safety_mode else ''}"""
 
         # User prompt
         user = f"""Please complete the following task:

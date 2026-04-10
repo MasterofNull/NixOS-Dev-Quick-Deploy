@@ -76,7 +76,8 @@ repo/
 2. **Plan** - Decompose into discrete delegatable slices
 3. **Delegate** - Route implementation to sub-agents (qwen/codex)
 4. **Audit** - Review outputs, validate, approve or request revision
-5. **Minimize token usage** - Only execute directly when delegation overhead exceeds task
+5. **Commit** - Ensure all completed work is committed with git discipline (see Task completion defaults)
+6. **Minimize token usage** - Only execute directly when delegation overhead exceeds task
 
 **Delegation routing:**
 | Task Type | Route To | Orchestrator Role |
@@ -99,11 +100,19 @@ repo/
 - `/workflow/plan` for structured execution
 - Check memory recall for prior solutions
 
-**Task completion defaults:**
-- Commit all changes with descriptive comments
-- Include Co-Authored-By trailer
-- Run validation before commit
-- Update todo list to reflect completion
+**Task completion defaults (MANDATORY WORKFLOW):**
+1. Context gathering: Read files, understand patterns
+2. Research: Use grep/glob, understand conventions
+3. Implementation: Code following existing patterns
+4. Validation: Run tests, check syntax
+5. Git commit: REQUIRED for all completed work
+   - `git add <files> && git commit -m "type(scope): msg\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"`
+   - Use feat/fix/docs/chore/test prefix
+   - Include Co-Authored-By trailer
+   - Run validation before commit
+6. Update todo list to reflect completion
+
+CRITICAL: Uncommitted changes = Incomplete task
 
 ## Validation
 

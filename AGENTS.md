@@ -161,11 +161,30 @@ aq-hints "nixos service conflict" --format=json --agent=codex
 curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
 ```
 
-## Commit Discipline
-- One logical task per commit.
-- When completing work, document the changes made and commit the relevant changes.
-- Include validation evidence in message/body or linked notes.
-- Do not push if mandatory gates fail.
+## Commit Discipline (MANDATORY WORKFLOW)
+All agent work MUST follow this complete workflow:
+
+1. **Context Gathering**: Read relevant files, understand existing patterns before changes
+2. **Research**: Use grep/glob to locate related code, understand conventions
+3. **Implementation**: Write code following existing patterns, maintain consistency
+4. **Validation**: Run tests, check syntax, verify changes work as expected
+5. **Git Commit**: REQUIRED - Every completed task MUST be committed:
+   ```bash
+   git add <modified-files>
+   git commit -m "type(scope): description
+
+   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+   ```
+
+**Commit Format Requirements:**
+- Use conventional commit types: feat/fix/docs/chore/test/refactor
+- One logical task per commit
+- Include validation evidence in commit body or linked notes
+- ALWAYS include Co-Authored-By trailer for agent work
+- Run `scripts/governance/tier0-validation-gate.sh --pre-commit` before commit
+- Do not push if mandatory gates fail
+
+**CRITICAL**: Uncommitted changes = Incomplete task. Do not mark work complete without a git commit.
 
 ## CI Safety Contract (Always Applied)
 - Isolate CI fixes from unrelated feature or refactor work; do not mix them in one commit.
