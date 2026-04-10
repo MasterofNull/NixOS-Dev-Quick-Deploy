@@ -435,9 +435,15 @@ class WorkflowPhaseExecutor:
 
 # Standalone execution entry point
 async def run_standalone_executor(
-    sessions_file: str = ".workflow-sessions.json",
+    sessions_file: str = None,
     poll_interval: float = 2.0,
 ):
+    # Use coordinator's sessions file by default
+    if sessions_file is None:
+        import os
+        from pathlib import Path
+        data_dir = Path(os.path.expanduser(os.getenv("DATA_DIR", "~/.local/share/nixos-ai-stack/hybrid")))
+        sessions_file = str(data_dir / "workflow-sessions.json")
     """
     Run executor as standalone process.
 
