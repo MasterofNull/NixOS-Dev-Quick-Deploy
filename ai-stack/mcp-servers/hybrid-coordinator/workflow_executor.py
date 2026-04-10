@@ -23,6 +23,12 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 
+try:
+    from llm_client import LLMClient, PromptBuilder
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
+
 logger = logging.getLogger("workflow-executor")
 
 
@@ -41,6 +47,8 @@ class WorkflowExecutor:
         sessions_file: str = ".workflow-sessions.json",
         poll_interval: float = 2.0,
         max_concurrent: int = 3,
+        llm_provider: str = "anthropic",
+        use_llm: bool = True,
     ):
         """
         Initialize workflow executor.
@@ -49,12 +57,28 @@ class WorkflowExecutor:
             sessions_file: Path to workflow sessions JSON file
             poll_interval: Seconds between polls for new work
             max_concurrent: Maximum concurrent executions
+            llm_provider: LLM provider ("anthropic", "openai", "local")
+            use_llm: Whether to use real LLM (False = mock execution)
         """
         self.sessions_file = Path(sessions_file)
         self.poll_interval = poll_interval
         self.max_concurrent = max_concurrent
         self.running_sessions: Dict[str, asyncio.Task] = {}
         self.should_stop = False
+
+        # Initialize LLM client
+        self.use_llm = use_llm and LLM_AVAILABLE
+        if self.use_llm:
+            try:
+                self.llm_client = LLMClient(provider=llm_provider)
+                logger.info(f"LLM client initialized (provider: {llm_provider})")
+            except Exception as e:
+                logger.warning(f"Failed to initialize LLM client: {e}. Using mock execution.")
+                self.llm_client = None
+                self.use_llm = False
+        else:
+            self.llm_client = None
+            logger.info("Mock execution mode (no LLM)")
 
     async def run(self):
         """
@@ -173,8 +197,8 @@ class WorkflowExecutor:
 
         This is where the actual work happens:
         1. Get current phase
-        2. Execute phase steps
-        3. Update session state
+        2. Execute phase steps using LLM
+        3. Update session state with results
         4. Move to next phase or complete
         """
         try:
@@ -183,28 +207,74 @@ class WorkflowExecutor:
             objective = session.get("objective", "")
             safety_mode = session.get("safety_mode", "plan-readonly")
             budget = session.get("budget", {})
+            phase_index = session.get("current_phase_index", 0)
+            plan = session.get("plan", {})
+            phases = plan.get("phases", [])
 
-            # For now, we'll implement a simple mock execution
-            # In production, this would call LLM APIs, execute tools, etc.
+            # Get current phase
+            if phase_index < len(phases):
+                current_phase = phases[phase_index]
+            else:
+                current_phase = {"id": f"phase-{phase_index}"}
 
-            # Add execution event
-            event = {
+            trajectory = session.get("trajectory", [])
+            usage = session.get("usage", {"tokens_used": 0, "tool_calls_used": 0})
+
+            # Add execution started event
+            trajectory.append({
                 "ts": time.time(),
                 "event_type": "execution_started",
-                "phase_id": f"phase-{session.get('current_phase_index', 0)}",
+                "phase_id": current_phase.get("id"),
                 "detail": "Executor processing session",
-                "executor_version": "1.0.0",
-            }
-
-            # Simulate some work
-            await asyncio.sleep(1.0)
-
-            # Update session
-            await self._update_session(session_id, {
-                "status": "completed",
-                "trajectory": session.get("trajectory", []) + [event],
-                "completed_at": time.time(),
+                "executor_version": "2.0.0",  # LLM-enabled
+                "use_llm": self.use_llm,
             })
+
+            # Execute with LLM or mock
+            if self.use_llm and self.llm_client:
+                result = await self._execute_with_llm(
+                    objective, current_phase, session
+                )
+
+                # Update usage
+                usage["tokens_used"] += result.get("tokens_used", 0)
+                usage["tool_calls_used"] += result.get("tool_calls_made", 0)
+
+                # Add completion event
+                trajectory.append({
+                    "ts": time.time(),
+                    "event_type": "llm_response",
+                    "phase_id": current_phase.get("id"),
+                    "detail": result.get("summary", "LLM execution completed"),
+                    "tokens": result.get("tokens_used", 0),
+                    "model": result.get("model", "unknown"),
+                })
+
+                # Update session
+                await self._update_session(session_id, {
+                    "status": "completed",
+                    "trajectory": trajectory,
+                    "usage": usage,
+                    "result": result.get("output", ""),
+                    "completed_at": time.time(),
+                })
+
+            else:
+                # Mock execution
+                await asyncio.sleep(1.0)
+
+                trajectory.append({
+                    "ts": time.time(),
+                    "event_type": "mock_execution",
+                    "phase_id": current_phase.get("id"),
+                    "detail": "Mock execution completed (no LLM)",
+                })
+
+                await self._update_session(session_id, {
+                    "status": "completed",
+                    "trajectory": trajectory,
+                    "completed_at": time.time(),
+                })
 
             logger.info(f"Completed session {session_id[:8]}")
 
@@ -217,6 +287,66 @@ class WorkflowExecutor:
                 "error": str(e),
                 "failed_at": time.time(),
             })
+
+    async def _execute_with_llm(
+        self,
+        objective: str,
+        phase: Dict[str, Any],
+        session: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Execute workflow phase using LLM.
+
+        Args:
+            objective: Workflow objective
+            phase: Current phase definition
+            session: Full session context
+
+        Returns:
+            Execution result with output, tokens, etc.
+        """
+        try:
+            # Build prompt
+            system_prompt, user_prompt = PromptBuilder.build_workflow_prompt(
+                objective, phase, session
+            )
+
+            # Get tool definitions (if safety mode allows)
+            safety_mode = session.get("safety_mode", "plan-readonly")
+            tools = None
+            if "execute" in safety_mode:
+                tools = PromptBuilder.build_tool_definitions()
+
+            # Call LLM
+            logger.debug(f"Calling LLM for objective: {objective[:60]}...")
+            response = await self.llm_client.create_message(
+                prompt=user_prompt,
+                system=system_prompt,
+                max_tokens=session.get("budget", {}).get("token_limit", 4096),
+                tools=tools,
+            )
+
+            # Process response
+            result = {
+                "output": response.content,
+                "tokens_used": response.usage["total_tokens"],
+                "tool_calls_made": len(response.tool_calls),
+                "model": response.model,
+                "stop_reason": response.stop_reason,
+                "summary": f"LLM response: {response.content[:100]}...",
+            }
+
+            # Log tool calls
+            if response.tool_calls:
+                logger.info(f"LLM requested {len(response.tool_calls)} tool calls")
+                for tool_call in response.tool_calls:
+                    logger.debug(f"  - {tool_call['name']}: {tool_call['input']}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"LLM execution error: {e}", exc_info=True)
+            raise
 
     async def _update_session(self, session_id: str, updates: Dict[str, Any]):
         """
