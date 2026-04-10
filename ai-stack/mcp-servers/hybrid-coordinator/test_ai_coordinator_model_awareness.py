@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 sys.modules["config"] = MagicMock()
 sys.modules["config"].Config = MagicMock(
     SWITCHBOARD_REMOTE_URL="https://openrouter.example/api",
+    SWITCHBOARD_REMOTE_ALIAS_GEMINI="google/gemini-2.5-pro",
     SWITCHBOARD_REMOTE_ALIAS_FREE="openrouter/free",
     SWITCHBOARD_REMOTE_ALIAS_CODING="openrouter/coding",
     SWITCHBOARD_REMOTE_ALIAS_REASONING="openrouter/reasoning",
@@ -40,7 +41,7 @@ def test_planning_defaults_to_lightweight_lane():
 
     assert decision["task_archetype"] == "planning"
     assert decision["model_class"] == "lightweight"
-    assert decision["recommended_profile"] == "remote-free"
+    assert decision["recommended_profile"] == "remote-gemini"
 
 
 def test_retrieval_prefers_local_when_requested():
@@ -239,12 +240,19 @@ def test_route_openai_chat_payload_uses_prompt_and_ignores_none_tool_choice():
     )
 
     assert decision["task"] == "Find the current deployment summary."
-    assert decision["recommended_profile"] == "remote-free"
+    assert decision["recommended_profile"] == "remote-gemini"
     assert decision["tool_choice_requested"] is False
 
 
 def test_default_runtime_id_for_profile_falls_back_to_remote_free():
-    assert default_runtime_id_for_profile("unknown-profile") == "openrouter-free"
+    assert default_runtime_id_for_profile("unknown-profile") == "openrouter-gemini"
+
+
+def test_runtime_defaults_expose_gemini_lane():
+    records = {item["runtime_id"]: item for item in runtime_defaults(now=123)}
+
+    assert records["openrouter-gemini"]["profile"] == "remote-gemini"
+    assert records["openrouter-gemini"]["model_alias"] == "google/gemini-2.5-pro"
 
 
 def test_get_routing_stats_rolls_up_recent_decisions():
@@ -268,7 +276,7 @@ def test_infer_profile_covers_requested_profile_and_task_fallbacks():
     assert ai_coordinator.infer_profile("Please call tools for this workflow") == "remote-tool-calling"
     assert ai_coordinator.infer_profile("Review the architecture tradeoff") == "remote-reasoning"
     assert ai_coordinator.infer_profile("Implement and debug the patch") == "remote-coding"
-    assert ai_coordinator.infer_profile("Collect bounded research findings") == "remote-free"
+    assert ai_coordinator.infer_profile("Collect bounded research findings") == "remote-gemini"
 
 
 def test_coerce_orchestration_context_normalizes_invalid_roles():
@@ -329,12 +337,14 @@ def test_build_reasoning_finalization_messages_truncates_excerpt_and_preserves_c
 
 
 def test_profile_completion_rules_cover_specialized_profiles():
+    gemini_rules = ai_coordinator._profile_completion_rules("remote-gemini")
     reasoning_rules = ai_coordinator._profile_completion_rules("remote-reasoning")
     free_rules = ai_coordinator._profile_completion_rules("remote-free")
     local_tool_rules = ai_coordinator._profile_completion_rules("local-tool-calling")
     remote_tool_rules = ai_coordinator._profile_completion_rules("remote-tool-calling")
     default_rules = ai_coordinator._profile_completion_rules("unknown")
 
+    assert any("local tool" in rule.lower() for rule in gemini_rules)
     assert any("recommended direction" in rule for rule in reasoning_rules)
     assert any("main finding" in rule for rule in free_rules)
     assert any("OpenAI-compatible tool contract" in rule for rule in local_tool_rules)

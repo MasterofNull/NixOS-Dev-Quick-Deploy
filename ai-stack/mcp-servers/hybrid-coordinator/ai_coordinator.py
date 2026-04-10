@@ -19,6 +19,7 @@ from config import Config
 _ALLOWED_ROUTING_PROFILES = {
     "default",
     "local-tool-calling",
+    "remote-gemini",
     "remote-free",
     "remote-coding",
     "remote-reasoning",
@@ -43,8 +44,8 @@ def _profile_env(name: str, fallback: str) -> str:
 def _frontdoor_profile(route_name: str) -> str:
     mapping = {
         "default": ("AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "default"),
-        "explore": ("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "default"),
-        "plan": ("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "default"),
+        "explore": ("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "remote-gemini"),
+        "plan": ("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "remote-gemini"),
         "implementation": ("AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE", "remote-coding"),
         "reasoning": ("AI_LOCAL_FRONTDOOR_REASONING_PROFILE", "remote-reasoning"),
         "tool-calling": ("AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE", "local-tool-calling"),
@@ -93,6 +94,10 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
     # (wired into handle_ai_coordinator_delegate — spawns actual subprocess agents)
     local_tool_calling_status = "ready"
 
+    remote_gemini_alias = Config.SWITCHBOARD_REMOTE_ALIAS_GEMINI or Config.SWITCHBOARD_REMOTE_ALIAS_FREE
+    remote_gemini_status = "ready" if remote_configured and remote_gemini_alias else (
+        "degraded" if remote_configured else "offline"
+    )
     remote_free_status = "ready" if remote_configured and Config.SWITCHBOARD_REMOTE_ALIAS_FREE else (
         "degraded" if remote_configured else "offline"
     )
@@ -128,6 +133,20 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
                 "Local agent lane with subprocess spawning. Delegates to switchboard "
                 "for tool-augmented execution via llama.cpp."
             ),
+            now=now_ts,
+        ),
+        _runtime_record(
+            "openrouter-gemini",
+            name="OpenRouter Gemini Agent Lane",
+            profile="remote-gemini",
+            runtime_class="remote-agent",
+            tags=["remote", "openrouter", "gemini", "planner", "synthesis"],
+            status=remote_gemini_status,
+            note=(
+                "Uses the Gemini-oriented remote lane for discovery, planning, and "
+                "general orchestration while preserving local tool and embedding fallbacks."
+            ),
+            model_alias=remote_gemini_alias,
             now=now_ts,
         ),
         _runtime_record(
@@ -264,12 +283,12 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
         return _frontdoor_profile("default") if _frontdoor_routing_enabled() else "default"
     if profile in {"explore", "exploration", "discover", "discovery"}:
-        return _frontdoor_profile("explore") if _frontdoor_routing_enabled() else "remote-free"
+        return _frontdoor_profile("explore") if _frontdoor_routing_enabled() else "remote-gemini"
     if profile in {"plan", "planner", "planning"}:
-        return _frontdoor_profile("plan") if _frontdoor_routing_enabled() else "remote-free"
+        return _frontdoor_profile("plan") if _frontdoor_routing_enabled() else "remote-gemini"
     if profile == "local-tool-calling":
         return "local-tool-calling"
-    if profile in {"remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
+    if profile in {"remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
         return profile
 
     lowered = str(task or "").lower()
@@ -281,7 +300,9 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
         return "remote-reasoning"
     if any(token in lowered for token in ("code", "patch", "implement", "refactor", "fix", "debug")):
         return "remote-coding"
-    return "remote-free"
+    if any(token in lowered for token in ("gemini", "discover", "discovery", "research", "explore", "synthesize", "synthesis")):
+        return "remote-gemini"
+    return "remote-gemini"
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +480,7 @@ def route_by_complexity(
             route_name = "plan" if task_archetype == "planning" else "explore"
             recommended = _frontdoor_profile(route_name)
         else:
-            recommended = "default" if prefer_local else "remote-free"
+            recommended = "default" if prefer_local else "remote-gemini"
         model_class = "lightweight"
     elif task_archetype == "continuation" and complexity != "architecture":
         recommended = _frontdoor_profile("continuation") if _frontdoor_routing_enabled() else "default"
@@ -479,10 +500,10 @@ def route_by_complexity(
         recommended = _frontdoor_profile("reasoning") if _frontdoor_routing_enabled() else "remote-reasoning"
         model_class = "heavy-reasoning"
     elif complexity == "simple":
-        recommended = _frontdoor_profile("explore") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-free")
+        recommended = _frontdoor_profile("explore") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-gemini")
         model_class = "lightweight"
     elif complexity == "medium":
-        recommended = _frontdoor_profile("default") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-free")
+        recommended = _frontdoor_profile("default") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-gemini")
         model_class = "lightweight"
     else:
         recommended = _frontdoor_profile("implementation") if _frontdoor_routing_enabled() else "remote-coding"
@@ -638,12 +659,13 @@ def default_runtime_id_for_profile(profile: str) -> str:
         "local-hybrid": "local-hybrid",
         "continue-local": "local-hybrid",
         "local-tool-calling": "local-tool-calling",
+        "remote-gemini": "openrouter-gemini",
         "remote-free": "openrouter-free",
         "remote-coding": "openrouter-coding",
         "remote-reasoning": "openrouter-reasoning",
         "remote-tool-calling": "openrouter-tool-calling",
     }
-    return mapping.get(str(profile or "").strip().lower(), "openrouter-free")
+    return mapping.get(str(profile or "").strip().lower(), "openrouter-gemini")
 
 
 def coerce_orchestration_context(incoming: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -671,6 +693,7 @@ def coerce_orchestration_context(incoming: Optional[Dict[str, Any]]) -> Dict[str
 
 def _delegation_system_prompt(profile: str) -> str:
     role = {
+        "remote-gemini": "gemini orchestration sub-agent",
         "remote-coding": "implementation sub-agent",
         "remote-reasoning": "architecture/review sub-agent",
         "remote-tool-calling": "tool-calling sub-agent",
@@ -716,6 +739,12 @@ def _profile_completion_rules(profile: str) -> List[str]:
             "- return a recommended direction first, then the top risks and tradeoffs",
             "- keep architecture/review notes concrete and bounded to the stated task",
             "- do not drift into patch design unless the task explicitly asks for it",
+        ]
+    if normalized == "remote-gemini":
+        return [
+            "- optimize for orchestration-ready synthesis that can hand off cleanly to local tools or downstream agents",
+            "- prefer concise plans, explicit evidence, and the next harness action over broad exposition",
+            "- call out when local tool, embedding, or local-model follow-up should be triggered",
         ]
     if normalized == "remote-free":
         return [
@@ -793,6 +822,7 @@ def _delegation_contract_block(task: str, profile: str, context: Dict[str, Any] 
     output_format = str(ctx.get("output_format") or "").strip()
 
     default_artifact = {
+        "remote-gemini": "bounded orchestration synthesis with explicit handoff to local tools or embedded models when useful",
         "remote-coding": "small patch plan or implementation sketch tied to existing repo paths",
         "remote-reasoning": "design/review notes with concrete risks and recommended direction",
         "remote-tool-calling": "bounded tool-calling plan or tool-use-ready task output with strict arguments",

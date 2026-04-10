@@ -33,6 +33,7 @@ def main() -> int:
     runtime_ids = set((merged.get("runtimes", {}) or {}).keys())
     assert_true("local-hybrid" in runtime_ids, "local-hybrid default missing")
     assert_true("local-tool-calling" in runtime_ids, "local-tool-calling default missing")
+    assert_true("openrouter-gemini" in runtime_ids, "openrouter-gemini default missing")
     assert_true("openrouter-free" in runtime_ids, "openrouter-free default missing")
     assert_true("openrouter-coding" in runtime_ids, "openrouter-coding default missing")
     assert_true("openrouter-reasoning" in runtime_ids, "openrouter-reasoning default missing")
@@ -40,7 +41,7 @@ def main() -> int:
 
     assert_true(infer_profile("review architecture tradeoffs") == "remote-reasoning", "reasoning profile inference failed")
     assert_true(infer_profile("implement patch for service failure") == "remote-coding", "coding profile inference failed")
-    assert_true(infer_profile("gather quick external context") == "remote-free", "free profile inference failed")
+    assert_true(infer_profile("gather quick external context") == "remote-gemini", "gemini profile inference failed")
     assert_true(infer_profile("prepare a local tool call for a future model") == "local-tool-calling", "local tool-calling profile inference failed")
     assert_true(infer_profile("use a tool call against the remote lane") == "remote-tool-calling", "remote tool-calling profile inference failed")
     assert_true(infer_profile("use the local lane", "continue-local") == "default", "continue-local should map to default lane")
@@ -61,6 +62,7 @@ def main() -> int:
     assert_true(local_runtime["name"] == "Local Hybrid Coordinator", "default runtime record did not refresh")
     assert_true(local_runtime["created_at"] == 123, "refresh should preserve created_at")
 
+    assert_true(default_runtime_id_for_profile("remote-gemini") == "openrouter-gemini", "gemini runtime mapping failed")
     assert_true(default_runtime_id_for_profile("remote-free") == "openrouter-free", "free runtime mapping failed")
     assert_true(default_runtime_id_for_profile("remote-coding") == "openrouter-coding", "coding runtime mapping failed")
     assert_true(default_runtime_id_for_profile("remote-reasoning") == "openrouter-reasoning", "reasoning runtime mapping failed")
@@ -147,6 +149,14 @@ def main() -> int:
     )
     assert_true("main finding, evidence, and one next step" in free_messages[1]["content"].lower(), "remote free contract should stay compact")
 
+    gemini_messages = build_messages(
+        "Plan the next harness slice and note when the local embedding or tool lanes should take over.",
+        context={"constraints": ["keep the handoff explicit"]},
+        profile="remote-gemini",
+    )
+    assert_true("gemini orchestration sub-agent" in gemini_messages[0]["content"].lower(), "remote gemini system prompt missing")
+    assert_true("local tools or embedded models" in gemini_messages[1]["content"].lower(), "remote gemini contract should mention local handoff")
+
     deploy_messages = build_messages(
         "Deploy this service safely and include rollback plus live verification.",
         context={"constraints": ["keep the deploy bounded to one service"]},
@@ -160,7 +170,11 @@ def main() -> int:
         context={"constraints": ["return explicit fallback if tools are unsupported"]},
         profile="local-tool-calling",
     )
-    assert_true("local tool-calling prep sub-agent" in local_messages[0]["content"].lower(), "local tool-calling system prompt missing")
+    local_system_prompt = local_messages[0]["content"].lower()
+    assert_true(
+        "local ai harness contact layer" in local_system_prompt or "local tool-calling prep sub-agent" in local_system_prompt,
+        "local tool-calling system prompt missing",
+    )
     assert_true("fallback" in local_messages[1]["content"].lower(), "local tool-calling artifact contract should mention fallback")
     assert_true("approved harness capabilities" in local_messages[1]["content"].lower(), "local tool-calling contract should stay bounded")
 

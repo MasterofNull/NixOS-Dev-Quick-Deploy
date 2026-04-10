@@ -489,6 +489,7 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     state: Dict[str, Any] = {
         "remote_configured": bool(Config.SWITCHBOARD_REMOTE_URL),
         "remote_aliases": {
+            "gemini": Config.SWITCHBOARD_REMOTE_ALIAS_GEMINI or Config.SWITCHBOARD_REMOTE_ALIAS_FREE or None,
             "free": Config.SWITCHBOARD_REMOTE_ALIAS_FREE or None,
             "coding": Config.SWITCHBOARD_REMOTE_ALIAS_CODING or None,
             "reasoning": Config.SWITCHBOARD_REMOTE_ALIAS_REASONING or None,
@@ -504,6 +505,7 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
         profiles = payload.get("profiles", {}) if isinstance(payload, dict) else {}
         state["remote_configured"] = bool(payload.get("remote_configured", state["remote_configured"]))
         state["remote_aliases"] = {
+            "gemini": ((profiles.get("remote-gemini") or {}).get("model_alias")) or state["remote_aliases"]["gemini"],
             "free": ((profiles.get("remote-free") or {}).get("model_alias")) or state["remote_aliases"]["free"],
             "coding": ((profiles.get("remote-coding") or {}).get("model_alias")) or state["remote_aliases"]["coding"],
             "reasoning": ((profiles.get("remote-reasoning") or {}).get("model_alias")) or state["remote_aliases"]["reasoning"],
@@ -644,7 +646,10 @@ def _apply_remote_runtime_status(
     remote_aliases: Dict[str, Any],
     remote_configured: bool,
 ) -> Dict[str, Any]:
-    if runtime_id == "openrouter-free":
+    if runtime_id == "openrouter-gemini":
+        runtime["status"] = "ready" if remote_configured and remote_aliases.get("gemini") else "offline"
+        runtime["model_alias"] = remote_aliases.get("gemini") or ""
+    elif runtime_id == "openrouter-free":
         runtime["status"] = "ready" if remote_configured and remote_aliases.get("free") else "offline"
         runtime["model_alias"] = remote_aliases.get("free") or ""
     elif runtime_id == "openrouter-coding":
@@ -740,27 +745,27 @@ def _select_agent_pool_candidate(
 # Task type to agent capability mapping
 _TASK_TYPE_CAPABILITIES = {
     "coding": {
-        "priority_profiles": ["remote-coding", "remote-free", "local-tool-calling", "default"],
+        "priority_profiles": ["remote-coding", "remote-gemini", "remote-free", "local-tool-calling", "default"],
         "required_context_window": 8192,
         "prefer_free_first": False,
     },
     "reasoning": {
-        "priority_profiles": ["remote-reasoning", "remote-free", "default"],
+        "priority_profiles": ["remote-reasoning", "remote-gemini", "remote-free", "default"],
         "required_context_window": 8192,
         "prefer_free_first": False,
     },
     "tool-calling": {
-        "priority_profiles": ["remote-tool-calling", "local-tool-calling", "remote-free", "default"],
+        "priority_profiles": ["remote-tool-calling", "local-tool-calling", "remote-gemini", "remote-free", "default"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
     "simple": {
-        "priority_profiles": ["remote-free", "default", "local-tool-calling"],
+        "priority_profiles": ["remote-gemini", "remote-free", "default", "local-tool-calling"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
     "default": {
-        "priority_profiles": ["remote-free", "default"],
+        "priority_profiles": ["remote-gemini", "remote-free", "default", "local-tool-calling"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
@@ -835,6 +840,7 @@ def _build_delegation_fallback_chain(
         except Exception:
             # Fallback mapping
             runtime_map = {
+                "remote-gemini": "openrouter-gemini",
                 "remote-free": "openrouter-free",
                 "remote-coding": "openrouter-coding",
                 "remote-reasoning": "openrouter-reasoning",
@@ -1423,6 +1429,7 @@ async def _apply_meta_learning(
         return {"available": False}
 
     domain_map = {
+        "remote-gemini": TaskDomain.PLANNING,
         "remote-coding": TaskDomain.CODE_GENERATION,
         "remote-reasoning": TaskDomain.PLANNING,
         "remote-tool-calling": TaskDomain.CONFIGURATION,
@@ -1465,7 +1472,7 @@ def _optimize_delegated_messages(
 
     optimized = [dict(message) for message in messages]
     original_tokens = _estimate_message_tokens(optimized)
-    token_budget = 900 if str(profile_name or "").strip() == "remote-free" else 1200
+    token_budget = 900 if str(profile_name or "").strip() in {"remote-gemini", "remote-free"} else 1200
     compressed_messages = 0
 
     for idx, message in enumerate(list(optimized)):
@@ -6808,7 +6815,7 @@ async def run_http_mode(port: int) -> None:
                 }])
 
             # Agent-type-specific augmentation
-            if result.get("hints") and agent_type in ("claude", "codex", "qwen", "aider"):
+            if result.get("hints") and agent_type in ("claude", "codex", "qwen", "aider", "gemini"):
                 top = result["hints"][0]
                 result["inject_prefix"] = top.get("snippet", "")[:150]
             result["active_lesson_refs"] = lesson_refs
@@ -9166,7 +9173,7 @@ asyncio.run(run())
                     )
                 else:
                     # No failover available, fall back to old behavior
-                    if selected_runtime_id in {"openrouter-coding", "openrouter-reasoning", "openrouter-tool-calling"} and remote_configured and remote_aliases.get("free"):
+                    if selected_runtime_id in {"openrouter-gemini", "openrouter-coding", "openrouter-reasoning", "openrouter-tool-calling"} and remote_configured and remote_aliases.get("free"):
                         effective_profile = "remote-free"
                         effective_runtime_id = "openrouter-free"
                         fallback_applied = True
