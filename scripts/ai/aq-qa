@@ -248,6 +248,12 @@ _flagship_cli_surface_smoke() {
   bash "${REPO_ROOT}/scripts/testing/smoke-flagship-cli-surfaces.sh"
 }
 
+_gemini_cli_health_check() {
+  AQ_PRIMARY_USER="$(_primary_user)" \
+  AQ_PRIMARY_HOME="$(_primary_home)" \
+  bash "${REPO_ROOT}/scripts/health/gemini-cli-health.sh" --check
+}
+
 _aq_report_snapshot() {
   if [[ -n "${AQ_QA_AQ_REPORT_JSON:-}" ]]; then
     printf '%s' "${AQ_QA_AQ_REPORT_JSON}"
@@ -356,6 +362,7 @@ run_phase_0() {
 
   # 0.6 Flagship agent CLI surface basics
   _check "0.6.1" "flagship agent CLI help smokes" _flagship_cli_surface_smoke
+  _check "0.6.2" "gemini CLI live-state health check" _gemini_cli_health_check
 }
 
 # ---------------------------------------------------------------------------
