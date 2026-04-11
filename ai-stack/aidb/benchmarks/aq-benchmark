@@ -1,0 +1,530 @@
+#!/usr/bin/env python3
+"""
+aq-benchmark - Memory Benchmark CLI Tool
+
+Phase 1 Slice 1.5: Benchmark harness for memory system testing
+
+Commands:
+    run         Run full benchmark suite
+    recall      Run recall accuracy tests
+    perf        Run performance tests
+    report      Generate benchmark report
+
+Usage:
+    aq-benchmark run --corpus memory-benchmark-corpus.json --output results.json
+    aq-benchmark recall --baseline
+    aq-benchmark recall --metadata
+    aq-benchmark perf --latency
+    aq-benchmark report results.json --format html
+
+Examples:
+    # Run full benchmark suite
+    aq-benchmark run --corpus benchmarks/memory-benchmark-corpus.json
+
+    # Run only recall accuracy tests
+    aq-benchmark recall --all
+
+    # Run performance benchmarks
+    aq-benchmark perf --all
+
+    # Generate HTML report
+    aq-benchmark report results/baseline-2026-04-11.json --format html
+"""
+
+import sys
+import argparse
+from pathlib import Path
+from datetime import datetime
+import json
+import logging
+
+# Add ai-stack to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from benchmarks.recall_accuracy import RecallBenchmark
+from benchmarks.performance_bench import PerformanceBenchmark
+
+
+def setup_logging(verbose: bool = False):
+    """Setup logging configuration"""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+
+def cmd_run(args):
+    """Run full benchmark suite"""
+    print("=== Running Full Benchmark Suite ===\n")
+
+    # Find corpus file
+    corpus_file = Path(args.corpus)
+    if not corpus_file.exists():
+        print(f"Error: Corpus file not found: {corpus_file}", file=sys.stderr)
+        sys.exit(1)
+
+    # Run recall benchmarks
+    print("1. Running recall accuracy benchmarks...")
+    recall_bench = RecallBenchmark(str(corpus_file))
+    recall_results = recall_bench.run_all(limit=args.limit)
+
+    print(f"   Baseline accuracy:  {recall_results['summary']['baseline_accuracy']:.2%}")
+    print(f"   Metadata accuracy:  {recall_results['summary']['metadata_accuracy']:.2%}")
+    print(f"   Temporal accuracy:  {recall_results['summary']['temporal_accuracy']:.2%}")
+
+    # Run performance benchmarks
+    print("\n2. Running performance benchmarks...")
+    perf_bench = PerformanceBenchmark(corpus_file=str(corpus_file))
+    perf_results = perf_bench.run_all()
+
+    print(f"   p95 latency:        {perf_results['summary']['p95_latency_ms']:.2f} ms")
+    print(f"   Throughput:         {perf_results['summary']['throughput_qps']:.1f} qps")
+
+    # Combine results
+    combined_results = {
+        "timestamp": datetime.now().isoformat(),
+        "corpus_file": str(corpus_file),
+        "recall": recall_results,
+        "performance": perf_results,
+    }
+
+    # Save results
+    if args.output:
+        output_file = Path(args.output)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, 'w') as f:
+            json.dump(combined_results, f, indent=2)
+
+        print(f"\n✅ Results saved to: {output_file}")
+    else:
+        # Default output file
+        output_file = Path(__file__).parent / "results" / f"benchmark-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, 'w') as f:
+            json.dump(combined_results, f, indent=2)
+
+        print(f"\n✅ Results saved to: {output_file}")
+
+    # Check targets
+    print("\n=== Target Comparison ===")
+    check_targets(recall_results, perf_results)
+
+
+def cmd_recall(args):
+    """Run recall accuracy benchmarks"""
+    print("=== Recall Accuracy Benchmarks ===\n")
+
+    # Find corpus file
+    corpus_file = Path(args.corpus)
+    if not corpus_file.exists():
+        print(f"Error: Corpus file not found: {corpus_file}", file=sys.stderr)
+        sys.exit(1)
+
+    benchmark = RecallBenchmark(str(corpus_file))
+
+    results = {}
+
+    if args.baseline or args.all:
+        print("Running baseline recall test (semantic only)...")
+        baseline = benchmark.run_baseline(limit=args.limit)
+        results["baseline"] = baseline
+        print(f"  Accuracy: {baseline['accuracy']:.2%}")
+        print(f"  MRR:      {baseline['mrr']:.3f}")
+
+    if args.metadata or args.all:
+        print("\nRunning metadata-enhanced recall test...")
+        metadata = benchmark.run_metadata_enhanced(limit=args.limit)
+        results["metadata_enhanced"] = metadata
+        print(f"  Accuracy: {metadata['accuracy']:.2%}")
+        print(f"  MRR:      {metadata['mrr']:.3f}")
+
+    if args.temporal or args.all:
+        print("\nRunning temporal recall test...")
+        temporal = benchmark.run_temporal(limit=args.limit)
+        results["temporal"] = temporal
+        print(f"  Accuracy: {temporal['accuracy']:.2%}")
+        print(f"  MRR:      {temporal['mrr']:.3f}")
+
+    # Save results if requested
+    if args.output:
+        output_file = Path(args.output)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        print(f"\n✅ Results saved to: {output_file}")
+
+
+def cmd_perf(args):
+    """Run performance benchmarks"""
+    print("=== Performance Benchmarks ===\n")
+
+    # Find corpus file
+    corpus_file = Path(args.corpus)
+    corpus_path = str(corpus_file) if corpus_file.exists() else None
+
+    benchmark = PerformanceBenchmark(corpus_file=corpus_path)
+
+    results = {}
+
+    if args.latency or args.all:
+        print("Running latency test (warm cache)...")
+        latency = benchmark.run_latency_test(queries=args.queries, cold_cache=False)
+        results["latency_warm"] = latency
+        print(f"  p50: {latency['p50']:.2f} ms")
+        print(f"  p95: {latency['p95']:.2f} ms")
+        print(f"  p99: {latency['p99']:.2f} ms")
+
+        if args.cold:
+            print("\nRunning latency test (cold cache)...")
+            latency_cold = benchmark.run_latency_test(queries=args.queries, cold_cache=True)
+            results["latency_cold"] = latency_cold
+            print(f"  p50: {latency_cold['p50']:.2f} ms")
+            print(f"  p95: {latency_cold['p95']:.2f} ms")
+            print(f"  p99: {latency_cold['p99']:.2f} ms")
+
+    if args.throughput or args.all:
+        print("\nRunning throughput test...")
+        throughput = benchmark.run_throughput_test(duration_sec=args.duration)
+        results["throughput"] = throughput
+        print(f"  QPS: {throughput['qps']:.1f}")
+        print(f"  Total queries: {throughput['queries']}")
+
+    if args.concurrency or args.all:
+        print(f"\nRunning concurrency test ({args.workers} workers)...")
+        concurrency = benchmark.run_concurrency_test(
+            num_workers=args.workers,
+            queries_per_worker=args.queries_per_worker
+        )
+        results["concurrency"] = concurrency
+        print(f"  Overall QPS: {concurrency['overall_qps']:.1f}")
+        print(f"  Median p95 latency: {concurrency['median_p95_latency']:.2f} ms")
+
+    if args.storage or args.all:
+        print("\nRunning storage efficiency test...")
+        storage = benchmark.run_storage_efficiency_test()
+        results["storage"] = storage
+        if "error" not in storage:
+            print(f"  File size: {storage['file_size_mb']:.2f} MB")
+            print(f"  Facts: {storage['num_facts']}")
+            print(f"  Avg fact size: {storage['avg_fact_size_bytes']:.0f} bytes")
+
+    if args.memory or args.all:
+        print("\nRunning memory usage test...")
+        memory = benchmark.run_memory_usage_test()
+        results["memory"] = memory
+        if "error" not in memory:
+            print(f"  Baseline: {memory['baseline_mb']:.1f} MB")
+            print(f"  After load: {memory['after_load_mb']:.1f} MB")
+            print(f"  Load increase: {memory['load_increase_mb']:.1f} MB")
+
+    # Save results if requested
+    if args.output:
+        output_file = Path(args.output)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        print(f"\n✅ Results saved to: {output_file}")
+
+
+def cmd_report(args):
+    """Generate benchmark report"""
+    results_file = Path(args.results_file)
+
+    if not results_file.exists():
+        print(f"Error: Results file not found: {results_file}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(results_file, 'r') as f:
+        results = json.load(f)
+
+    if args.format == "text":
+        print_text_report(results)
+    elif args.format == "html":
+        generate_html_report(results, args.output or "benchmark-report.html")
+    elif args.format == "json":
+        print(json.dumps(results, indent=2))
+
+
+def print_text_report(results: dict):
+    """Print text format report"""
+    print("=== Benchmark Report ===\n")
+    print(f"Timestamp: {results.get('timestamp', 'N/A')}\n")
+
+    # Recall results
+    if "recall" in results:
+        print("## Recall Accuracy")
+        recall = results["recall"]
+        if "summary" in recall:
+            summary = recall["summary"]
+            print(f"  Baseline:  {summary.get('baseline_accuracy', 0):.2%} (MRR: {summary.get('baseline_mrr', 0):.3f})")
+            print(f"  Metadata:  {summary.get('metadata_accuracy', 0):.2%} (MRR: {summary.get('metadata_mrr', 0):.3f})")
+            print(f"  Temporal:  {summary.get('temporal_accuracy', 0):.2%} (MRR: {summary.get('temporal_mrr', 0):.3f})")
+        print()
+
+    # Performance results
+    if "performance" in results:
+        print("## Performance")
+        perf = results["performance"]
+        if "summary" in perf:
+            summary = perf["summary"]
+            print(f"  p50 Latency:  {summary.get('p50_latency_ms', 0):.2f} ms")
+            print(f"  p95 Latency:  {summary.get('p95_latency_ms', 0):.2f} ms")
+            print(f"  p99 Latency:  {summary.get('p99_latency_ms', 0):.2f} ms")
+            print(f"  Throughput:   {summary.get('throughput_qps', 0):.1f} qps")
+            print(f"  Storage:      {summary.get('storage_mb', 0):.2f} MB")
+        print()
+
+
+def generate_html_report(results: dict, output_file: str):
+    """Generate HTML format report"""
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Memory Benchmark Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1 {{ color: #333; }}
+        h2 {{ color: #666; margin-top: 30px; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+        th {{ background-color: #f2f2f2; }}
+        .pass {{ color: green; font-weight: bold; }}
+        .fail {{ color: red; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <h1>Memory Benchmark Report</h1>
+    <p><strong>Generated:</strong> {results.get('timestamp', 'N/A')}</p>
+    <p><strong>Corpus:</strong> {results.get('corpus_file', 'N/A')}</p>
+
+    <h2>Recall Accuracy</h2>
+    <table>
+        <tr>
+            <th>Strategy</th>
+            <th>Accuracy</th>
+            <th>MRR</th>
+            <th>Target</th>
+            <th>Status</th>
+        </tr>
+"""
+
+    if "recall" in results and "summary" in results["recall"]:
+        summary = results["recall"]["summary"]
+        baseline_acc = summary.get("baseline_accuracy", 0)
+        metadata_acc = summary.get("metadata_accuracy", 0)
+
+        html += f"""
+        <tr>
+            <td>Baseline</td>
+            <td>{baseline_acc:.2%}</td>
+            <td>{summary.get('baseline_mrr', 0):.3f}</td>
+            <td>85%+</td>
+            <td class="{'pass' if baseline_acc >= 0.85 else 'fail'}">
+                {'PASS' if baseline_acc >= 0.85 else 'FAIL'}
+            </td>
+        </tr>
+        <tr>
+            <td>Metadata-Enhanced</td>
+            <td>{metadata_acc:.2%}</td>
+            <td>{summary.get('metadata_mrr', 0):.3f}</td>
+            <td>90%+</td>
+            <td class="{'pass' if metadata_acc >= 0.90 else 'fail'}">
+                {'PASS' if metadata_acc >= 0.90 else 'FAIL'}
+            </td>
+        </tr>
+"""
+
+    html += """
+    </table>
+
+    <h2>Performance</h2>
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Value</th>
+            <th>Target</th>
+            <th>Status</th>
+        </tr>
+"""
+
+    if "performance" in results and "summary" in results["performance"]:
+        summary = results["performance"]["summary"]
+        p95_latency = summary.get("p95_latency_ms", 0)
+
+        html += f"""
+        <tr>
+            <td>p95 Latency</td>
+            <td>{p95_latency:.2f} ms</td>
+            <td>&lt; 500 ms</td>
+            <td class="{'pass' if p95_latency < 500 else 'fail'}">
+                {'PASS' if p95_latency < 500 else 'FAIL'}
+            </td>
+        </tr>
+        <tr>
+            <td>Throughput</td>
+            <td>{summary.get('throughput_qps', 0):.1f} qps</td>
+            <td>50+ qps</td>
+            <td class="{'pass' if summary.get('throughput_qps', 0) >= 50 else 'fail'}">
+                {'PASS' if summary.get('throughput_qps', 0) >= 50 else 'FAIL'}
+            </td>
+        </tr>
+"""
+
+    html += """
+    </table>
+</body>
+</html>
+"""
+
+    with open(output_file, 'w') as f:
+        f.write(html)
+
+    print(f"✅ HTML report generated: {output_file}")
+
+
+def check_targets(recall_results: dict, perf_results: dict):
+    """Check if results meet targets"""
+    targets_met = []
+    targets_failed = []
+
+    # Recall targets
+    if "summary" in recall_results:
+        summary = recall_results["summary"]
+
+        if summary.get("baseline_accuracy", 0) >= 0.85:
+            targets_met.append("✅ Baseline recall >= 85%")
+        else:
+            targets_failed.append(f"❌ Baseline recall: {summary.get('baseline_accuracy', 0):.2%} (target: 85%)")
+
+        if summary.get("metadata_accuracy", 0) >= 0.90:
+            targets_met.append("✅ Metadata recall >= 90%")
+        else:
+            targets_failed.append(f"❌ Metadata recall: {summary.get('metadata_accuracy', 0):.2%} (target: 90%)")
+
+    # Performance targets
+    if "summary" in perf_results:
+        summary = perf_results["summary"]
+
+        if summary.get("p95_latency_ms", float('inf')) < 500:
+            targets_met.append("✅ p95 latency < 500ms")
+        else:
+            targets_failed.append(f"❌ p95 latency: {summary.get('p95_latency_ms', 0):.2f}ms (target: <500ms)")
+
+        if summary.get("throughput_qps", 0) >= 50:
+            targets_met.append("✅ Throughput >= 50 qps")
+        else:
+            targets_failed.append(f"❌ Throughput: {summary.get('throughput_qps', 0):.1f} qps (target: 50+)")
+
+    # Print results
+    for target in targets_met:
+        print(target)
+
+    for target in targets_failed:
+        print(target)
+
+    if not targets_failed:
+        print("\n🎉 All targets met!")
+    else:
+        print(f"\n⚠️  {len(targets_failed)} target(s) not met")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Memory benchmark CLI tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+
+    parser.add_argument('-v', '--verbose', action='store_true',
+                       help='Enable verbose logging')
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # Run command
+    run_parser = subparsers.add_parser('run', help='Run full benchmark suite')
+    run_parser.add_argument('--corpus', default='benchmarks/memory-benchmark-corpus.json',
+                           help='Path to benchmark corpus')
+    run_parser.add_argument('--output', help='Output file for results')
+    run_parser.add_argument('--limit', type=int, default=10,
+                           help='Result limit per query (default: 10)')
+
+    # Recall command
+    recall_parser = subparsers.add_parser('recall', help='Run recall accuracy tests')
+    recall_parser.add_argument('--corpus', default='benchmarks/memory-benchmark-corpus.json',
+                              help='Path to benchmark corpus')
+    recall_parser.add_argument('--baseline', action='store_true',
+                              help='Run baseline test only')
+    recall_parser.add_argument('--metadata', action='store_true',
+                              help='Run metadata-enhanced test only')
+    recall_parser.add_argument('--temporal', action='store_true',
+                              help='Run temporal test only')
+    recall_parser.add_argument('--all', action='store_true',
+                              help='Run all recall tests')
+    recall_parser.add_argument('--limit', type=int, default=10,
+                              help='Result limit per query (default: 10)')
+    recall_parser.add_argument('--output', help='Output file for results')
+
+    # Perf command
+    perf_parser = subparsers.add_parser('perf', help='Run performance tests')
+    perf_parser.add_argument('--corpus', default='benchmarks/memory-benchmark-corpus.json',
+                            help='Path to benchmark corpus')
+    perf_parser.add_argument('--latency', action='store_true',
+                            help='Run latency test only')
+    perf_parser.add_argument('--throughput', action='store_true',
+                            help='Run throughput test only')
+    perf_parser.add_argument('--concurrency', action='store_true',
+                            help='Run concurrency test only')
+    perf_parser.add_argument('--storage', action='store_true',
+                            help='Run storage test only')
+    perf_parser.add_argument('--memory', action='store_true',
+                            help='Run memory test only')
+    perf_parser.add_argument('--all', action='store_true',
+                            help='Run all performance tests')
+    perf_parser.add_argument('--queries', type=int, default=1000,
+                            help='Number of queries for latency test (default: 1000)')
+    perf_parser.add_argument('--duration', type=int, default=10,
+                            help='Duration for throughput test in seconds (default: 10)')
+    perf_parser.add_argument('--workers', type=int, default=10,
+                            help='Number of workers for concurrency test (default: 10)')
+    perf_parser.add_argument('--queries-per-worker', type=int, default=100,
+                            help='Queries per worker (default: 100)')
+    perf_parser.add_argument('--cold', action='store_true',
+                            help='Also run cold cache test')
+    perf_parser.add_argument('--output', help='Output file for results')
+
+    # Report command
+    report_parser = subparsers.add_parser('report', help='Generate benchmark report')
+    report_parser.add_argument('results_file', help='Benchmark results JSON file')
+    report_parser.add_argument('--format', choices=['text', 'html', 'json'], default='text',
+                              help='Report format (default: text)')
+    report_parser.add_argument('--output', help='Output file (for HTML format)')
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    # Setup logging
+    setup_logging(args.verbose)
+
+    # Dispatch to command handler
+    commands = {
+        'run': cmd_run,
+        'recall': cmd_recall,
+        'perf': cmd_perf,
+        'report': cmd_report,
+    }
+
+    commands[args.command](args)
+
+
+if __name__ == '__main__':
+    main()
