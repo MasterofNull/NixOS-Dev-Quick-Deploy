@@ -32,5 +32,9 @@
       btrfsSubvolumes = [ "@root" "@home" "@nix" ];
     };
     secureboot.enable = false;
+    aiStack = {
+      llamaCpp.activeModel = "gemma4-e4b";
+      embeddingServer.activeModel = "bge-m3";
+    };
   };
 }
