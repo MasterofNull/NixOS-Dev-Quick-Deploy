@@ -1,0 +1,38 @@
+name: Memory Benchmarks
+
+on:
+  push:
+    branches: [ main, develop, cursor/* ]
+    paths:
+      - "ai-stack/aidb/**"
+      - "scripts/testing/memory-regression-tests.py"
+      - ".github/workflows/memory-benchmarks.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "ai-stack/aidb/**"
+      - "scripts/testing/memory-regression-tests.py"
+      - ".github/workflows/memory-benchmarks.yml"
+  workflow_dispatch:
+
+jobs:
+  memory-benchmark-regressions:
+    name: Memory Benchmark Regressions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml psutil
+
+      - name: Run memory benchmark regression checks
+        run: |
+          python scripts/testing/memory-regression-tests.py
