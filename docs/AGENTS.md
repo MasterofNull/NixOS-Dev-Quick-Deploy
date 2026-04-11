@@ -725,6 +725,232 @@ Look for:
 
 ---
 
+## 8.5. Memory System Usage
+
+The AI harness provides a comprehensive memory system (AIDB) for persistent, temporal fact storage with multi-layer loading and agent-specific diaries.
+
+### When to Store Facts
+
+Store facts for:
+- **Technical decisions** - Architecture choices, library selections, design patterns
+- **User preferences** - Coding style, patterns, workflow preferences
+- **Important discoveries** - Bugs found, workarounds, insights
+- **Project events** - Milestones, deployments, configuration changes
+- **Valuable advice** - Best practices, lessons learned, recommendations
+
+### Memory Best Practices
+
+**1. Use descriptive metadata:**
+```bash
+# Good: Specific project, topic, and type
+aq-memory add "Using JWT with 7-day expiry for API authentication" \
+  --project ai-stack --topic auth --type decision --tags "jwt,security"
+
+# Bad: Vague or missing metadata
+aq-memory add "Using JWT" --project general --topic misc
+```
+
+**2. Set confidence levels appropriately:**
+- 1.0: Verified, authoritative (documentation, specs)
+- 0.9: High confidence, tested (working code)
+- 0.8: Moderate confidence, observed behavior
+- 0.7: Low confidence, inferred
+- < 0.7: Speculative, needs verification
+
+**3. Tag facts with relevant keywords:**
+```bash
+aq-memory add "..." --tags "security,jwt,auth,api"
+```
+
+**4. Write clear, searchable content:**
+- Keep under 200 characters when possible
+- Be specific: "JWT with 7-day expiry" not "token auth"
+- Include key details: method, rationale, constraints
+
+**5. Update stale facts (don't let them accumulate):**
+```bash
+# Check monthly
+aq-memory list --stale --project ai-stack
+
+# Expire outdated facts
+aq-memory expire <fact_id> --until $(date +%Y-%m-%d) --reason "superseded"
+```
+
+### Agent Diary Guidelines
+
+Each agent has a private diary for expertise accumulation:
+
+**Writing to your diary:**
+```python
+from aidb.agent_diary import AgentDiary
+
+diary = AgentDiary("qwen")  # Your agent name
+diary.write(
+    "Implemented JWT validation with bcrypt. Learned about refresh token patterns.",
+    topic="auth",
+    tags=["jwt", "security", "learning"]
+)
+```
+
+**Reading your diary:**
+```bash
+# Recent entries
+aq-memory agent-diary qwen --limit 20
+
+# Topic-specific
+aq-memory agent-diary qwen --topic auth --limit 10
+```
+
+**Diary best practices:**
+- Write after completing tasks ("what I learned")
+- Tag entries for easy retrieval
+- Search your diary before starting similar work
+- Review periodically to reinforce learning
+
+**Observer mode (orchestrators only):**
+```python
+# Orchestrators can read any diary (read-only)
+qwen_work = AgentDiary.read_as_observer("qwen", topic="auth", limit=10)
+```
+
+### Memory Layers (L0-L3)
+
+Use progressive loading to minimize token usage (50%+ reduction):
+
+**L0: Identity (50 tokens)** - Always loaded
+- Your agent identity, role, system context
+- Stored in `~/.aidb/identity.txt`
+
+**L1: Critical Facts (170 tokens)** - Always loaded
+- Recent decisions (last 7 days)
+- Active blockers
+- Key preferences
+
+**L2: Topic-Specific (variable)** - On-demand
+- Facts relevant to current query
+- Automatically filtered by topic
+
+**L3: Full Search (heavy)** - Explicit only
+- Complete semantic search
+- Use sparingly (expensive)
+
+**Example usage:**
+```python
+from aidb.layered_loading import LayeredMemory
+
+memory = LayeredMemory(fact_store=store)
+
+# Load with budget (L0 + L1 + L2 automatically)
+context = memory.progressive_load(
+    query="How should I implement JWT authentication?",
+    max_tokens=500
+)
+```
+
+### CLI Commands Quick Reference
+
+```bash
+# Store a fact
+aq-memory add "fact content" --project PROJECT --topic TOPIC --type TYPE
+
+# Search facts (use filters for 34% better recall)
+aq-memory search "query" --project ai-stack --topic auth --type decision
+
+# List current facts
+aq-memory list --project ai-stack --valid-now --limit 20
+
+# Find stale facts
+aq-memory list --stale
+
+# Agent diary
+aq-memory agent-diary qwen --topic coding --limit 20
+
+# Statistics
+aq-memory stats --project ai-stack
+```
+
+### Integration with Workflows
+
+Store workflow decisions for future reference:
+
+```python
+# During workflow execution
+fact = TemporalFact(
+    content="Use PostgreSQL with pgvector for semantic search",
+    project="workflows",
+    topic="database",
+    type="decision",
+    tags=["postgres", "vectors"],
+    confidence=0.9
+)
+store.add(fact)
+
+# Before starting similar workflow
+context = memory.progressive_load(
+    query="database migration workflow",
+    max_tokens=500
+)
+```
+
+### Memory Hygiene
+
+**Monthly maintenance:**
+```bash
+# 1. Check for stale facts
+aq-memory list --stale --project ai-stack
+
+# 2. Expire outdated facts
+aq-memory expire <id> --until $(date +%Y-%m-%d) --reason "reason"
+
+# 3. Review statistics
+aq-memory stats --project ai-stack
+
+# 4. Check diary growth
+aq-memory agent-diary $(whoami) --limit 100 | wc -l
+```
+
+**Never store:**
+- Passwords, API keys, tokens
+- Sensitive personal data
+- Large binary content
+- Temporary debugging notes (use comments instead)
+
+### Performance Tips
+
+**1. Use metadata filtering (34% recall improvement):**
+```bash
+# Fast: filtered search
+aq-memory search "auth" --project ai-stack --topic auth
+
+# Slow: unfiltered search
+aq-memory search "auth"
+```
+
+**2. Limit token usage with progressive loading:**
+```python
+# 78% reduction: L0 + L1 only
+context = memory.progressive_load(query, max_tokens=220)
+
+# 48% reduction: L0 + L1 + L2
+context = memory.progressive_load(query, max_tokens=520)
+```
+
+**3. Set appropriate result limits:**
+```bash
+aq-memory search "query" --limit 10  # Not --limit 1000
+```
+
+### Documentation
+
+Full documentation available:
+- **User Guide**: `docs/memory-system/USER-GUIDE.md`
+- **API Reference**: `docs/memory-system/API-REFERENCE.md`
+- **Integration Examples**: `docs/memory-system/INTEGRATION-EXAMPLES.md`
+- **Quick Reference**: `docs/memory-system/QUICK-REFERENCE.md`
+- **Architecture**: `docs/architecture/memory-system-design.md`
+
+---
+
 ## 9. First Steps in a New Project
 
 ### Onboarding Checklist:
