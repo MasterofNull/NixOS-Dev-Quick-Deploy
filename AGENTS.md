@@ -48,6 +48,13 @@ aq-hints "<task summary>" --format=json --agent=codex  # get ranked workflow hin
 4. Execute task slices
 5. Reviewer gate (accept/reject) with explicit reasons via `/review/acceptance`
 
+**Long-running context-heavy tasks:**
+- Prefer the harness-native context-offload path before increasing remote context budgets.
+- Start with `aq-context-bootstrap --task "<task>" --scope context-offload --format json`.
+- Use `aq-context-manage check` to keep compaction active during long runs.
+- Use `aq-memory search "<task or decision>" --project ai-stack --limit 5` before replaying old prompt history.
+- Start persisted runs with `harness-rpc.js run-start --query "<task>" --blueprint long-running-context-offload --intent-depth standard` when the task will span many turns or phases.
+
 **If the harness is unreachable:** proceed with local execution but log the outage and attempt harness connection again before commit. Do not block on harness downtime.
 
 **Required evidence per task:**
@@ -56,6 +63,12 @@ aq-hints "<task summary>" --format=json --agent=codex  # get ranked workflow hin
 - tests run
 - evidence output
 - rollback note
+
+**Utilization contract for new capabilities:**
+- Do not stop at backend implementation. When you add or change a system capability, also wire the entrypoints that make it discoverable and usable.
+- Cover the relevant user-facing surfaces: frontend/dashboard hooks, API route exposure, CLI/workflow entrypoints, docs/runbook updates, and validation.
+- Reject backend-only changes when the feature cannot be reached, inspected, or operated through the system’s normal interfaces.
+- For AI harness features, prefer exposing them through context cards, bootstrap routes, workflow blueprints, dashboard/API surfaces, and `aq-*` tooling rather than leaving them as hidden internals.
 
 **Batch deploy cadence:**
 - Prefer 3-5 repo-only slices per batch before running `nixos-quick-deploy.sh`.
