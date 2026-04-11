@@ -252,13 +252,26 @@ class LayeredMemory:
 
         # Simple keyword matching (would be vector search in production)
         query_lower = query.lower()
+        # Split query into keywords for better matching
+        query_keywords = [w.strip() for w in query_lower.split() if len(w.strip()) > 2]
+
         scored_facts = []
         for fact in valid_facts:
             content_lower = fact.content.lower()
-            if query_lower in content_lower:
-                # Simple relevance score based on position
-                position = content_lower.index(query_lower)
-                score = 1.0 / (position + 1)
+
+            # Score based on keyword matches
+            matched_keywords = 0
+            total_position = 0
+
+            for keyword in query_keywords:
+                if keyword in content_lower:
+                    matched_keywords += 1
+                    total_position += content_lower.index(keyword)
+
+            # Only include facts that match at least one keyword
+            if matched_keywords > 0:
+                # Score: higher for more matches, earlier positions
+                score = matched_keywords / (total_position / matched_keywords + 1)
                 scored_facts.append((score, fact))
 
         # Sort by score and take top results
