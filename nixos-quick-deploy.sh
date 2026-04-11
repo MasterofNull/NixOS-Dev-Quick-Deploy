@@ -121,6 +121,7 @@ declare -a AUTO_STAGED_FLAKE_FILES=()
 RESTORE_GENERATED_REPO_FILES="${RESTORE_GENERATED_REPO_FILES:-auto}"
 GENERATED_FILE_SNAPSHOT_DIR=""
 declare -a GENERATED_FILE_SNAPSHOT_TARGETS=()
+FLAKE_PROJECTION_DIR=""
 
 usage() {
   cat <<'USAGE'
@@ -386,6 +387,37 @@ mark_discovery_cache() {
   cache_root="$(dirname "${cache_file}")"
   mkdir -p "${cache_root}" 2>/dev/null || true
   date +%s > "${cache_file}" 2>/dev/null || true
+}
+
+prepare_filtered_flake_projection() {
+  local flake_path
+  flake_path="$(resolve_local_flake_path "${FLAKE_REF}")"
+  [[ -n "${flake_path}" && -d "${flake_path}" ]] || return 0
+
+  if [[ -n "${FLAKE_PROJECTION_DIR}" && -d "${FLAKE_PROJECTION_DIR}" ]]; then
+    rm -rf "${FLAKE_PROJECTION_DIR}" >/dev/null 2>&1 || true
+    FLAKE_PROJECTION_DIR=""
+  fi
+
+  FLAKE_PROJECTION_DIR="$(mktemp -d)"
+  (
+    cd "${flake_path}"
+    tar \
+      --exclude=.git \
+      --exclude=.aidb \
+      --exclude=.coverage \
+      --exclude=.cache \
+      --exclude=.direnv \
+      --exclude=result \
+      --exclude='result-*' \
+      -cf - .
+  ) | (
+    cd "${FLAKE_PROJECTION_DIR}"
+    tar -xf -
+  )
+
+  FLAKE_REF="path:${FLAKE_PROJECTION_DIR}"
+  log "Prepared filtered flake projection for evaluation/builds at ${FLAKE_PROJECTION_DIR}"
 }
 
 print_deploy_completion_summary() {
@@ -1590,6 +1622,9 @@ cleanup_on_exit() {
   fi
   cleanup_auto_staged_flake_files
   restore_generated_repo_files
+  if [[ -n "${FLAKE_PROJECTION_DIR}" && -d "${FLAKE_PROJECTION_DIR}" ]]; then
+    rm -rf "${FLAKE_PROJECTION_DIR}" >/dev/null 2>&1 || true
+  fi
 }
 
 on_unexpected_error() {
@@ -3469,6 +3504,8 @@ section "Preflight Validation"
 if [[ "$RUN_DISCOVERY" == true ]]; then
   run_timed_step "Hardware Discovery" run_discovery_step
 fi
+
+prepare_filtered_flake_projection
 
 ensure_host_facts_access
 assert_host_storage_config
