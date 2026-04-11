@@ -3771,18 +3771,23 @@ verify_or_download_ai_models() {
   local embed_model_path=""
   local embed_meta_path=""
 
-  # Get chat model path from llama-cpp-model-fetch ExecStart
-  if systemctl show llama-cpp-model-fetch.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
-    # Extract model path: the first /var/lib/llama-cpp/... path in ExecStart
+  # Prefer the actual runtime units after switch, then fall back to fetch
+  # units, then finally to the legacy default paths.
+  if systemctl show llama-cpp.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
+    chat_model_path="$(systemctl show llama-cpp.service -p ExecStart 2>/dev/null | grep -oP '/var/lib/llama-cpp/models/\S+\.gguf' | head -1 || true)"
+  fi
+  if [[ -z "$chat_model_path" ]] && systemctl show llama-cpp-model-fetch.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
     chat_model_path="$(systemctl show llama-cpp-model-fetch.service -p ExecStart 2>/dev/null | grep -oP '/var/lib/llama-cpp/models/\S+\.gguf' | head -1 || true)"
   fi
 
-  # Get embedding model path from llama-cpp-embed-model-fetch ExecStart
-  if systemctl show llama-cpp-embed-model-fetch.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
+  if systemctl show llama-cpp-embed.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
+    embed_model_path="$(systemctl show llama-cpp-embed.service -p ExecStart 2>/dev/null | grep -oP '/var/lib/llama-cpp/models/\S+\.gguf' | head -1 || true)"
+  fi
+  if [[ -z "$embed_model_path" ]] && systemctl show llama-cpp-embed-model-fetch.service -p ExecStart 2>/dev/null | grep -qo '/var/lib/llama-cpp'; then
     embed_model_path="$(systemctl show llama-cpp-embed-model-fetch.service -p ExecStart 2>/dev/null | grep -oP '/var/lib/llama-cpp/models/\S+\.gguf' | head -1 || true)"
   fi
 
-  # Fallback to default paths if extraction failed
+  # Fallback to default paths only if extraction failed everywhere.
   [[ -z "$chat_model_path" ]] && chat_model_path="/var/lib/llama-cpp/models/model.gguf"
   [[ -z "$embed_model_path" ]] && embed_model_path="/var/lib/llama-cpp/models/embed.gguf"
   chat_meta_path="${chat_model_path}.source-meta"
