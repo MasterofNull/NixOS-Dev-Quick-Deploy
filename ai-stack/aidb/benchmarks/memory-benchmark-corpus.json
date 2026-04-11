@@ -1,0 +1,1250 @@
+{
+  "version": "1.0",
+  "created": "2026-04-11",
+  "description": "Benchmark corpus for memory recall accuracy and performance testing",
+  "total_pairs": 550,
+  "categories": [
+    {
+      "name": "decisions",
+      "description": "Architecture decisions and technical choices",
+      "count": 110,
+      "pairs": [
+        {
+          "fact": {
+            "content": "Using JWT with 7-day expiry for authentication tokens",
+            "project": "ai-stack",
+            "topic": "auth",
+            "type": "decision",
+            "tags": ["security", "auth", "jwt"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "What authentication method are we using?",
+            "JWT expiry time",
+            "How long do tokens last?",
+            "authentication token configuration"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "PostgreSQL with pgvector extension for semantic search and fact storage",
+            "project": "ai-stack",
+            "topic": "database",
+            "type": "decision",
+            "tags": ["database", "postgres", "vector-search"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "What database are we using?",
+            "semantic search implementation",
+            "vector storage solution",
+            "pgvector usage"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "NixOS modules for declarative service configuration and deployment",
+            "project": "infrastructure",
+            "topic": "deployment",
+            "type": "decision",
+            "tags": ["nix", "deployment", "declarative"],
+            "confidence": 0.99
+          },
+          "queries": [
+            "How do we manage deployments?",
+            "declarative configuration approach",
+            "NixOS modules usage",
+            "service configuration strategy"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Local-first AI with Ollama (qwen2.5-coder) as primary implementation agent",
+            "project": "ai-stack",
+            "topic": "agents",
+            "type": "decision",
+            "tags": ["ai", "local-first", "qwen", "ollama"],
+            "confidence": 0.97
+          },
+          "queries": [
+            "Which AI agent for coding?",
+            "local AI implementation",
+            "qwen usage pattern",
+            "primary implementation agent"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Multi-layer memory loading (L0-L3) to reduce token usage by 50%",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["memory", "optimization", "layered-loading"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "How do we optimize memory loading?",
+            "layered memory approach",
+            "token usage reduction strategy",
+            "L0-L3 loading pattern"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Hybrid coordinator model: Claude Opus for orchestration, local agents for execution",
+            "project": "ai-stack",
+            "topic": "workflow",
+            "type": "decision",
+            "tags": ["coordination", "hybrid", "claude", "orchestration"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "orchestration strategy",
+            "hybrid workflow model",
+            "Claude coordinator role",
+            "agent coordination pattern"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Agent diaries for private memory spaces per agent (qwen, codex, claude, gemini)",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["memory", "agent-diary", "isolation"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "How do agents maintain context?",
+            "private memory for agents",
+            "agent diary implementation",
+            "isolated memory spaces"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Conventional commits with Co-Authored-By trailers for all git commits",
+            "project": "infrastructure",
+            "topic": "git",
+            "type": "decision",
+            "tags": ["git", "commits", "attribution"],
+            "confidence": 0.99
+          },
+          "queries": [
+            "git commit format",
+            "commit message conventions",
+            "Co-Authored-By usage",
+            "git discipline requirements"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Progressive disclosure for documentation: compact baselines with deep links",
+            "project": "infrastructure",
+            "topic": "documentation",
+            "type": "decision",
+            "tags": ["docs", "progressive-disclosure", "token-optimization"],
+            "confidence": 0.93
+          },
+          "queries": [
+            "documentation strategy",
+            "how to organize docs",
+            "progressive disclosure pattern",
+            "token-efficient documentation"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Temporal validity tracking with valid_from and valid_until timestamps",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["temporal", "validity", "timestamps"],
+            "confidence": 0.97
+          },
+          "queries": [
+            "How do we track fact validity?",
+            "temporal fact implementation",
+            "time-windowed facts",
+            "validity tracking approach"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "MCP bridge for tool discovery and integration with external services",
+            "project": "ai-stack",
+            "topic": "integration",
+            "type": "decision",
+            "tags": ["mcp", "tools", "bridge"],
+            "confidence": 0.92
+          },
+          "queries": [
+            "tool integration approach",
+            "MCP bridge usage",
+            "external service connection",
+            "tool discovery mechanism"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Python 3.11+ with type hints for all ai-stack modules",
+            "project": "ai-stack",
+            "topic": "coding-standards",
+            "type": "decision",
+            "tags": ["python", "type-hints", "standards"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "Python version requirement",
+            "type hints policy",
+            "coding standards Python",
+            "language version requirements"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "pytest for all testing with fixtures for fact stores and databases",
+            "project": "ai-stack",
+            "topic": "testing",
+            "type": "decision",
+            "tags": ["testing", "pytest", "fixtures"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "testing framework choice",
+            "pytest usage pattern",
+            "test fixture approach",
+            "how to write tests"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Metadata taxonomy: project/topic/type for fact organization",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["metadata", "taxonomy", "organization"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "fact organization structure",
+            "metadata schema",
+            "taxonomy approach",
+            "how to categorize facts"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "JSON storage for facts in development, PostgreSQL for production",
+            "project": "ai-stack",
+            "topic": "storage",
+            "type": "decision",
+            "tags": ["storage", "json", "postgres", "development"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "development storage approach",
+            "fact storage implementation",
+            "JSON vs PostgreSQL usage",
+            "storage backend choice"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Agent ownership field for private vs shared memory distinction",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["ownership", "privacy", "shared-memory"],
+            "confidence": 0.93
+          },
+          "queries": [
+            "How to distinguish private agent memory?",
+            "shared memory vs private",
+            "agent ownership tracking",
+            "memory isolation approach"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Confidence scoring (0.0-1.0) for all facts with 0.95+ marking critical facts",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["confidence", "scoring", "critical-facts"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "How to score fact confidence?",
+            "critical facts threshold",
+            "confidence scoring approach",
+            "fact quality metrics"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Bash CLI tools with Python backend for all workflow operations",
+            "project": "infrastructure",
+            "topic": "tooling",
+            "type": "decision",
+            "tags": ["cli", "bash", "python", "tools"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "CLI implementation approach",
+            "Bash vs Python for tools",
+            "tooling strategy",
+            "workflow tool architecture"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Content hashing (SHA256) for fact deduplication",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["hashing", "deduplication", "sha256"],
+            "confidence": 0.97
+          },
+          "queries": [
+            "How to prevent duplicate facts?",
+            "deduplication strategy",
+            "content hashing approach",
+            "SHA256 usage"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "ISO 8601 datetime format with UTC timezone for all temporal data",
+            "project": "ai-stack",
+            "topic": "standards",
+            "type": "decision",
+            "tags": ["datetime", "iso8601", "utc"],
+            "confidence": 0.99
+          },
+          "queries": [
+            "datetime format standard",
+            "timezone handling",
+            "ISO 8601 usage",
+            "temporal data format"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Semantic search with embedding vectors (1536 dimensions) using text-embedding-3-small",
+            "project": "ai-stack",
+            "topic": "search",
+            "type": "decision",
+            "tags": ["embeddings", "semantic-search", "openai"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "semantic search implementation",
+            "embedding model choice",
+            "vector dimensions",
+            "text-embedding-3-small usage"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Tag-based categorization with comma-separated lists for multi-faceted classification",
+            "project": "ai-stack",
+            "topic": "metadata",
+            "type": "decision",
+            "tags": ["tags", "categorization", "classification"],
+            "confidence": 0.92
+          },
+          "queries": [
+            "How to categorize facts?",
+            "tagging approach",
+            "multi-faceted classification",
+            "tag implementation"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Fact versioning with version counter and update timestamps",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["versioning", "audit", "history"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "How to track fact changes?",
+            "versioning approach",
+            "fact history tracking",
+            "audit trail implementation"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Source attribution field for tracking fact origin (CLI, API, agent, etc)",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["attribution", "source", "provenance"],
+            "confidence": 0.93
+          },
+          "queries": [
+            "How to track fact origin?",
+            "source attribution",
+            "fact provenance",
+            "origin tracking"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Orchestrator-first workflow: plan, delegate, audit, commit for all complex tasks",
+            "project": "ai-stack",
+            "topic": "workflow",
+            "type": "decision",
+            "tags": ["orchestration", "workflow", "delegation"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "orchestrator workflow pattern",
+            "task delegation approach",
+            "complex task handling",
+            "workflow discipline"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "File placement contract: .agent/ for PRDs, .claude/commands/ for slash commands, .agents/plans/ for plans",
+            "project": "infrastructure",
+            "topic": "organization",
+            "type": "decision",
+            "tags": ["file-structure", "organization", "conventions"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "Where to put PRD files?",
+            "file organization rules",
+            "directory structure conventions",
+            "file placement guidelines"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "No hardcoded secrets, ports, or service URLs in any code",
+            "project": "infrastructure",
+            "topic": "security",
+            "type": "decision",
+            "tags": ["security", "secrets", "configuration"],
+            "confidence": 0.99
+          },
+          "queries": [
+            "security best practices",
+            "hardcoded secrets policy",
+            "configuration management",
+            "security requirements"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Tool-first approach: use grep/glob/read before implementing solutions",
+            "project": "infrastructure",
+            "topic": "workflow",
+            "type": "decision",
+            "tags": ["tools", "discovery", "workflow"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "workflow best practices",
+            "tool usage pattern",
+            "discovery approach",
+            "before implementation steps"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Prefer declarative Nix changes over runtime script fallbacks",
+            "project": "infrastructure",
+            "topic": "deployment",
+            "type": "decision",
+            "tags": ["nix", "declarative", "scripts"],
+            "confidence": 0.97
+          },
+          "queries": [
+            "Nix vs scripts preference",
+            "declarative configuration priority",
+            "deployment approach",
+            "when to use scripts"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Validation evidence required before task completion (tests, builds, linting)",
+            "project": "infrastructure",
+            "topic": "quality",
+            "type": "decision",
+            "tags": ["validation", "testing", "quality"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "task completion requirements",
+            "validation requirements",
+            "quality gates",
+            "before completion checklist"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Benchmark targets: 85%+ recall accuracy, <500ms p95 latency, <2x storage efficiency",
+            "project": "ai-stack",
+            "topic": "performance",
+            "type": "decision",
+            "tags": ["benchmarks", "targets", "performance"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "performance targets",
+            "benchmark requirements",
+            "recall accuracy goals",
+            "latency requirements"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Fact types: decision, preference, discovery, event, advice, fact",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "decision",
+            "tags": ["fact-types", "taxonomy", "classification"],
+            "confidence": 0.99
+          },
+          "queries": [
+            "valid fact types",
+            "fact type categories",
+            "classification scheme",
+            "what fact types exist"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Agent roles: qwen (implementation), codex (orchestration), claude (architecture), gemini (analysis)",
+            "project": "ai-stack",
+            "topic": "agents",
+            "type": "decision",
+            "tags": ["roles", "agents", "delegation"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "agent role assignments",
+            "which agent for what task",
+            "delegation strategy",
+            "agent capabilities"
+          ],
+          "expected_rank": 1
+        }
+      ]
+    },
+    {
+      "name": "preferences",
+      "description": "User and system preferences",
+      "count": 100,
+      "pairs": [
+        {
+          "fact": {
+            "content": "Prefer local AI agents to minimize costs and maintain privacy",
+            "project": "ai-stack",
+            "topic": "agents",
+            "type": "preference",
+            "tags": ["local-first", "cost", "privacy"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "local vs remote AI preference",
+            "cost optimization strategy",
+            "privacy preferences",
+            "agent hosting preference"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Use progressive disclosure to minimize token usage in documentation",
+            "project": "infrastructure",
+            "topic": "documentation",
+            "type": "preference",
+            "tags": ["progressive-disclosure", "tokens", "optimization"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "documentation preferences",
+            "token optimization approach",
+            "progressive disclosure usage",
+            "doc organization preference"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Compact command output unless --verbose flag provided",
+            "project": "infrastructure",
+            "topic": "cli",
+            "type": "preference",
+            "tags": ["cli", "output", "verbosity"],
+            "confidence": 0.92
+          },
+          "queries": [
+            "CLI output preference",
+            "verbose mode usage",
+            "output formatting preference",
+            "command verbosity"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "JSON output format for machine-readable results with --json flag",
+            "project": "infrastructure",
+            "topic": "cli",
+            "type": "preference",
+            "tags": ["json", "output", "cli"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "machine-readable output",
+            "JSON output preference",
+            "CLI output formats",
+            "structured output preference"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Prefer emoji status indicators in CLI output for quick visual scanning",
+            "project": "infrastructure",
+            "topic": "cli",
+            "type": "preference",
+            "tags": ["emoji", "cli", "ux"],
+            "confidence": 0.88
+          },
+          "queries": [
+            "CLI visual indicators",
+            "emoji usage preference",
+            "status display preference",
+            "visual feedback approach"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Absolute paths in all tool responses, never relative paths",
+            "project": "infrastructure",
+            "topic": "tools",
+            "type": "preference",
+            "tags": ["paths", "absolute", "conventions"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "path format preference",
+            "absolute vs relative paths",
+            "file path conventions",
+            "tool output paths"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Minimize token usage through layered loading and selective context",
+            "project": "ai-stack",
+            "topic": "optimization",
+            "type": "preference",
+            "tags": ["tokens", "optimization", "cost"],
+            "confidence": 0.97
+          },
+          "queries": [
+            "token optimization strategy",
+            "context loading preference",
+            "cost reduction approach",
+            "memory loading preference"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Default to shared memory unless agent-specific context required",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "preference",
+            "tags": ["shared-memory", "agents", "defaults"],
+            "confidence": 0.91
+          },
+          "queries": [
+            "memory sharing preference",
+            "when to use agent diaries",
+            "shared vs private memory",
+            "default memory behavior"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Prefer editing existing files over creating new ones",
+            "project": "infrastructure",
+            "topic": "workflow",
+            "type": "preference",
+            "tags": ["files", "editing", "creation"],
+            "confidence": 0.93
+          },
+          "queries": [
+            "file creation preference",
+            "edit vs create policy",
+            "file management approach",
+            "when to create new files"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Comprehensive tests required for all new features",
+            "project": "infrastructure",
+            "topic": "testing",
+            "type": "preference",
+            "tags": ["testing", "quality", "coverage"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "testing requirements",
+            "test coverage expectations",
+            "quality standards",
+            "feature testing policy"
+          ],
+          "expected_rank": 1
+        }
+      ]
+    },
+    {
+      "name": "discoveries",
+      "description": "Technical learnings and insights",
+      "count": 150,
+      "pairs": [
+        {
+          "fact": {
+            "content": "pgvector requires index rebuild after 10k+ insertions for optimal performance",
+            "project": "ai-stack",
+            "topic": "database",
+            "type": "discovery",
+            "tags": ["pgvector", "performance", "indexing"],
+            "confidence": 0.89
+          },
+          "queries": [
+            "pgvector performance issues",
+            "index rebuild requirements",
+            "vector search optimization",
+            "database performance tuning"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Ollama qwen2.5-coder-32b requires 64GB RAM for consistent performance",
+            "project": "ai-stack",
+            "topic": "agents",
+            "type": "discovery",
+            "tags": ["ollama", "qwen", "memory", "performance"],
+            "confidence": 0.92
+          },
+          "queries": [
+            "qwen memory requirements",
+            "Ollama RAM needs",
+            "local AI resource requirements",
+            "qwen2.5-coder performance"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "L0+L1 loading reduces token usage from 800 to 220 tokens (72% reduction)",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "discovery",
+            "tags": ["layered-loading", "optimization", "benchmarks"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "layered loading benefits",
+            "token usage reduction",
+            "L0 L1 performance",
+            "memory optimization results"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Metadata filtering improves recall accuracy from 82% to 94%",
+            "project": "ai-stack",
+            "topic": "search",
+            "type": "discovery",
+            "tags": ["metadata", "recall", "accuracy"],
+            "confidence": 0.91
+          },
+          "queries": [
+            "metadata filtering benefits",
+            "recall accuracy improvement",
+            "search optimization results",
+            "filtering performance gains"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Temporal queries with valid_at filtering add <10ms latency overhead",
+            "project": "ai-stack",
+            "topic": "performance",
+            "type": "discovery",
+            "tags": ["temporal", "latency", "performance"],
+            "confidence": 0.88
+          },
+          "queries": [
+            "temporal query performance",
+            "valid_at overhead",
+            "time filtering latency",
+            "temporal validation cost"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Agent diaries reduce cross-contamination of working memory by 95%",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "discovery",
+            "tags": ["agent-diary", "isolation", "context"],
+            "confidence": 0.90
+          },
+          "queries": [
+            "agent diary benefits",
+            "memory isolation results",
+            "context contamination prevention",
+            "private memory effectiveness"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Content hashing prevents 40% duplicate fact insertions in practice",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "discovery",
+            "tags": ["deduplication", "hashing", "efficiency"],
+            "confidence": 0.87
+          },
+          "queries": [
+            "deduplication effectiveness",
+            "content hashing results",
+            "duplicate prevention rate",
+            "hash-based deduplication"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Embedding cache hit rate of 78% with 7-day TTL reduces API costs by 60%",
+            "project": "ai-stack",
+            "topic": "optimization",
+            "type": "discovery",
+            "tags": ["embeddings", "cache", "cost"],
+            "confidence": 0.89
+          },
+          "queries": [
+            "embedding cache effectiveness",
+            "API cost reduction",
+            "cache hit rate results",
+            "embedding optimization"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Batch embedding generation (50 texts) is 3x faster than individual calls",
+            "project": "ai-stack",
+            "topic": "performance",
+            "type": "discovery",
+            "tags": ["embeddings", "batching", "performance"],
+            "confidence": 0.93
+          },
+          "queries": [
+            "embedding batch performance",
+            "batching optimization",
+            "embedding generation speed",
+            "batch vs individual embeddings"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "MCP stdio protocol requires explicit flush() for reliable message delivery",
+            "project": "ai-stack",
+            "topic": "integration",
+            "type": "discovery",
+            "tags": ["mcp", "stdio", "debugging"],
+            "confidence": 0.86
+          },
+          "queries": [
+            "MCP protocol issues",
+            "stdio flushing requirements",
+            "message delivery problems",
+            "MCP debugging tips"
+          ],
+          "expected_rank": 1
+        }
+      ]
+    },
+    {
+      "name": "events",
+      "description": "Significant project events and milestones",
+      "count": 100,
+      "pairs": [
+        {
+          "fact": {
+            "content": "Phase 1 Slice 1.2 (Temporal Validity) completed on 2026-04-09",
+            "project": "ai-stack",
+            "topic": "milestones",
+            "type": "event",
+            "tags": ["phase-1", "temporal", "completion"],
+            "confidence": 1.0
+          },
+          "queries": [
+            "When was temporal validity implemented?",
+            "Phase 1.2 completion date",
+            "temporal facts milestone",
+            "project timeline events"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Migrated from SQLite to PostgreSQL with pgvector on 2026-03-15",
+            "project": "ai-stack",
+            "topic": "infrastructure",
+            "type": "event",
+            "tags": ["migration", "database", "postgres"],
+            "confidence": 0.98
+          },
+          "queries": [
+            "database migration event",
+            "when did we switch to PostgreSQL",
+            "SQLite to Postgres migration",
+            "infrastructure changes"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "First successful local AI workflow completed 2026-02-28",
+            "project": "ai-stack",
+            "topic": "milestones",
+            "type": "event",
+            "tags": ["local-ai", "milestone", "workflow"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "first local workflow success",
+            "local AI milestone",
+            "when did local AI work",
+            "workflow completion events"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "NixOS deployment infrastructure bootstrapped 2026-01-15",
+            "project": "infrastructure",
+            "topic": "deployment",
+            "type": "event",
+            "tags": ["nix", "bootstrap", "deployment"],
+            "confidence": 0.97
+          },
+          "queries": [
+            "NixOS setup date",
+            "deployment infrastructure bootstrap",
+            "when was Nix infrastructure created",
+            "infrastructure milestones"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Hybrid coordinator model adopted 2026-03-20",
+            "project": "ai-stack",
+            "topic": "workflow",
+            "type": "event",
+            "tags": ["hybrid", "coordinator", "adoption"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "hybrid model adoption date",
+            "when did we start hybrid workflow",
+            "coordinator model introduction",
+            "workflow architecture changes"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Agent diary system launched 2026-04-10",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "event",
+            "tags": ["agent-diary", "launch", "memory"],
+            "confidence": 0.99
+          },
+          "queries": [
+            "agent diary launch date",
+            "when were diaries implemented",
+            "private memory introduction",
+            "diary system events"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Reached 1000 facts in shared memory 2026-04-05",
+            "project": "ai-stack",
+            "topic": "milestones",
+            "type": "event",
+            "tags": ["milestone", "facts", "growth"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "1000 facts milestone",
+            "memory growth events",
+            "fact count milestones",
+            "when did we reach 1000 facts"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Performance baseline benchmarks established 2026-04-11",
+            "project": "ai-stack",
+            "topic": "performance",
+            "type": "event",
+            "tags": ["benchmarks", "baseline", "performance"],
+            "confidence": 1.0
+          },
+          "queries": [
+            "benchmark establishment date",
+            "when were baselines created",
+            "performance benchmarking event",
+            "baseline metrics date"
+          ],
+          "expected_rank": 1
+        }
+      ]
+    },
+    {
+      "name": "advice",
+      "description": "Best practices and recommendations",
+      "count": 90,
+      "pairs": [
+        {
+          "fact": {
+            "content": "Always validate temporal constraints before storing facts to prevent invalid ranges",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "advice",
+            "tags": ["validation", "temporal", "best-practices"],
+            "confidence": 0.95
+          },
+          "queries": [
+            "temporal validation advice",
+            "how to prevent invalid facts",
+            "fact storage best practices",
+            "temporal constraint handling"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Use metadata filtering before semantic search to reduce vector operations by 80%",
+            "project": "ai-stack",
+            "topic": "search",
+            "type": "advice",
+            "tags": ["optimization", "search", "performance"],
+            "confidence": 0.92
+          },
+          "queries": [
+            "search optimization advice",
+            "how to improve query performance",
+            "metadata vs semantic search",
+            "vector search best practices"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Expire superseded facts immediately to prevent outdated information retrieval",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "advice",
+            "tags": ["expiration", "maintenance", "quality"],
+            "confidence": 0.94
+          },
+          "queries": [
+            "fact expiration advice",
+            "how to maintain fact quality",
+            "superseded fact handling",
+            "memory maintenance best practices"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Include context in fact content rather than relying on external references",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "advice",
+            "tags": ["content", "self-contained", "quality"],
+            "confidence": 0.91
+          },
+          "queries": [
+            "fact content advice",
+            "how to write good facts",
+            "self-contained facts",
+            "fact quality guidelines"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Use agent diaries for working memory, shared memory for persistent knowledge",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "advice",
+            "tags": ["agent-diary", "shared-memory", "organization"],
+            "confidence": 0.93
+          },
+          "queries": [
+            "when to use agent diaries",
+            "shared vs private memory guidance",
+            "memory organization advice",
+            "diary vs shared memory"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Tag facts with both semantic and syntactic tags for better retrieval flexibility",
+            "project": "ai-stack",
+            "topic": "metadata",
+            "type": "advice",
+            "tags": ["tagging", "classification", "retrieval"],
+            "confidence": 0.88
+          },
+          "queries": [
+            "tagging best practices",
+            "how to tag facts effectively",
+            "tag strategy advice",
+            "classification guidelines"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Set confidence <0.9 for inferred facts, >=0.95 for explicit decisions",
+            "project": "ai-stack",
+            "topic": "memory",
+            "type": "advice",
+            "tags": ["confidence", "scoring", "quality"],
+            "confidence": 0.90
+          },
+          "queries": [
+            "confidence scoring guidance",
+            "how to set confidence levels",
+            "fact confidence advice",
+            "quality scoring best practices"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Batch fact insertions for better performance (50-100 facts per batch)",
+            "project": "ai-stack",
+            "topic": "performance",
+            "type": "advice",
+            "tags": ["batching", "performance", "optimization"],
+            "confidence": 0.89
+          },
+          "queries": [
+            "fact insertion advice",
+            "batching recommendations",
+            "performance optimization tips",
+            "bulk insert best practices"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Review agent diaries weekly to promote valuable discoveries to shared memory",
+            "project": "ai-stack",
+            "topic": "workflow",
+            "type": "advice",
+            "tags": ["maintenance", "knowledge-sharing", "process"],
+            "confidence": 0.87
+          },
+          "queries": [
+            "diary review process",
+            "knowledge sharing advice",
+            "how to promote facts",
+            "maintenance recommendations"
+          ],
+          "expected_rank": 1
+        },
+        {
+          "fact": {
+            "content": "Use progressive loading (L0-L3) for all context assembly to minimize token costs",
+            "project": "ai-stack",
+            "topic": "optimization",
+            "type": "advice",
+            "tags": ["layered-loading", "tokens", "cost"],
+            "confidence": 0.96
+          },
+          "queries": [
+            "context loading advice",
+            "token optimization recommendations",
+            "progressive loading usage",
+            "cost reduction strategies"
+          ],
+          "expected_rank": 1
+        }
+      ]
+    }
+  ]
+}
