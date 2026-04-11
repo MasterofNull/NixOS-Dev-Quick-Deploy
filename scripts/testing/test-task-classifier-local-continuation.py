@@ -65,6 +65,18 @@ def main() -> int:
         "expected bounded reasoning prompt shaping to keep context excerpts bounded",
     )
 
+    brief_reasoning = task_classifier.classify(
+        "explain briefly how local routing and cache reuse reduce repeated query latency",
+        context="Recent reports show cache hit rate above 70% and repeated lookups are already staying local.",
+        max_output_tokens=160,
+    )
+    assert_true(brief_reasoning.task_type == "synthesize", "expected explicitly brief reasoning request to downgrade to synthesize")
+    assert_true(brief_reasoning.remote_required is False, "expected explicitly brief reasoning request to stay local")
+    assert_true(
+        brief_reasoning.reason == "within_local_capacity",
+        "expected downgraded brief reasoning request to use the bounded synthesize path",
+    )
+
     architecture_reasoning = task_classifier.classify(
         "design the long-term architecture strategy for hybrid routing and delegation",
         context="The system has multiple local and remote lanes with policy tradeoffs.",
