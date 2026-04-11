@@ -548,13 +548,13 @@ async def initialize_server():
 
     # Initialize llama.cpp client (system-configured loopback service; no SSRF check needed)
     llama_cpp_client = httpx.AsyncClient(base_url=Config.LLAMA_CPP_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
-    if Config.LLAMA_CPP_DEEPSEEK_URL == Config.LLAMA_CPP_URL:
-        llama_cpp_reasoning_client = llama_cpp_client
-    else:
+    if Config.LLAMA_CPP_REASONING_URL and Config.LLAMA_CPP_REASONING_URL != Config.LLAMA_CPP_URL:
         llama_cpp_reasoning_client = httpx.AsyncClient(
-            base_url=Config.LLAMA_CPP_DEEPSEEK_URL,
+            base_url=Config.LLAMA_CPP_REASONING_URL,
             timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
         )
+    else:
+        llama_cpp_reasoning_client = None
     # Switchboard client — routes complex tasks to remote LLM via x-ai-route header
     switchboard_client = httpx.AsyncClient(base_url=Config.SWITCHBOARD_URL, timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT)
 

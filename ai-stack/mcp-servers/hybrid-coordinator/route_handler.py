@@ -540,6 +540,9 @@ def _select_local_inference_lane(
     compressed_tokens: int,
     reasoning_client_available: bool,
 ) -> tuple[str, str]:
+    # Treat an aliased/default local client as "not available" for the dedicated
+    # reasoning lane. Without a distinct backend, wider reasoning prompts only
+    # add latency and token pressure without changing model capability.
     if complexity is None or complexity.task_type != "reasoning" or not reasoning_client_available:
         return "default", "default_local_lane"
 
@@ -896,6 +899,9 @@ async def route_search(
         llama_cpp_reasoning_client = (
             _llama_cpp_reasoning_client_ref() if _llama_cpp_reasoning_client_ref else None
         )
+        distinct_reasoning_client_available = (
+            llama_cpp_reasoning_client is not None and llama_cpp_reasoning_client is not llama_cpp_client
+        )
         context_compressor = _context_compressor_ref()
         if generate_response and llama_cpp_client:
             discovery_context = capability_discovery.format_context(_cap_disc)
@@ -994,7 +1000,7 @@ async def route_search(
                         query,
                         _complexity,
                         compressed_tokens,
-                        llama_cpp_reasoning_client is not None,
+                        distinct_reasoning_client_available,
                     )
                     _inference_client = (
                         llama_cpp_reasoning_client

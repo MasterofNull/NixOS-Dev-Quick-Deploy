@@ -11,6 +11,12 @@ with lib;
 
 let
   cfg = config.services.hybridLearning;
+  reasoningUrl =
+    if cfg.llamaCpp.reasoningUrl != null
+    then cfg.llamaCpp.reasoningUrl
+    else if cfg.llamaCpp.deepseekUrl != null
+    then cfg.llamaCpp.deepseekUrl
+    else "";
 
   # Python environment with all dependencies
   pythonEnv = pkgs.python3.withPackages (ps: with ps; [
@@ -30,7 +36,8 @@ let
     export QDRANT_API_KEY="${cfg.qdrant.apiKey or ""}"
     export LLAMA_CPP_BASE_URL="${cfg.llamaCpp.baseUrl}"
     export LLAMA_CPP_CODER_URL="${cfg.llamaCpp.coderUrl}"
-    export LLAMA_CPP_DEEPSEEK_URL="${cfg.llamaCpp.deepseekUrl}"
+    export LLAMA_CPP_REASONING_URL="${reasoningUrl}"
+    export LLAMA_CPP_DEEPSEEK_URL="${reasoningUrl}"
     export LOCAL_CONFIDENCE_THRESHOLD="${toString cfg.learning.localConfidenceThreshold}"
     export HIGH_VALUE_THRESHOLD="${toString cfg.learning.highValueThreshold}"
     export PATTERN_EXTRACTION_ENABLED="${if cfg.learning.patternExtractionEnabled then "true" else "false"}"
@@ -133,10 +140,15 @@ in {
         default = "http://localhost:8001/api/v1";
         description = "llama.cpp coder inference URL (optional)";
       };
+      reasoningUrl = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Dedicated local reasoning inference URL (optional)";
+      };
       deepseekUrl = mkOption {
-        type = types.str;
-        default = "http://localhost:8003/api/v1";
-        description = "llama.cpp deepseek inference URL (optional)";
+        type = types.nullOr types.str;
+        default = null;
+        description = "Deprecated alias for the dedicated local reasoning inference URL";
       };
     };
 
