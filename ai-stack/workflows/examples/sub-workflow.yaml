@@ -1,0 +1,96 @@
+name: multi-service-deployment
+version: 1.0
+description: Deploy multiple services using sub-workflow composition
+
+inputs:
+  services:
+    type: array
+    description: List of services to deploy
+  environment:
+    type: string
+    description: Target environment
+
+nodes:
+  # Step 1: Pre-deployment validation
+  - id: validate-environment
+    agent: qwen
+    prompt: |
+      Validate environment ${inputs.environment} is ready for deployment:
+      - Check infrastructure
+      - Verify dependencies
+      - Confirm capacity
+    outputs:
+      - validation_status
+      - capacity_available
+
+  # Step 2: Deploy each service (sub-workflow)
+  - id: deploy-services
+    agent: qwen
+    depends_on: [validate-environment]
+    loop:
+      prompt: |
+        Deploy service ${state.current_service} using deployment workflow:
+
+        Call sub-workflow: resilient-deployment.yaml
+        Parameters:
+          service_name: ${state.current_service}
+          environment: ${inputs.environment}
+
+        Track progress: ${state.deployed_count}/${state.total_count}
+      until: ALL_SERVICES_DEPLOYED
+      max_iterations: 50
+      fresh_context: true
+    memory:
+      layers: [L0, L1]
+      max_tokens: 400
+    outputs:
+      - deployment_results
+      - deployed_services
+
+  # Step 3: Integration tests across services
+  - id: integration-tests
+    agent: qwen
+    depends_on: [deploy-services]
+    prompt: |
+      Run integration tests across deployed services:
+      Services: ${deploy-services.deployed_services}
+      Environment: ${inputs.environment}
+
+      Test:
+      - Service-to-service communication
+      - End-to-end workflows
+      - Data consistency
+    retry:
+      max_attempts: 3
+      on_failure: [test_flake]
+    outputs:
+      - integration_results
+
+  # Step 4: Update routing/load balancer
+  - id: update-routing
+    agent: qwen
+    depends_on: [integration-tests]
+    condition: ${integration-tests.integration_results == 'passed'}
+    prompt: |
+      Update routing configuration for:
+      Environment: ${inputs.environment}
+      Services: ${deploy-services.deployed_services}
+    outputs:
+      - routing_status
+
+  # Step 5: Rollback on failure (conditional)
+  - id: rollback-all
+    agent: qwen
+    depends_on: [integration-tests]
+    condition: ${integration-tests.integration_results == 'failed'}
+    prompt: |
+      Rollback all deployed services due to integration test failure:
+      Services: ${deploy-services.deployed_services}
+      Failure details: ${integration-tests.integration_results}
+    outputs:
+      - rollback_status
+
+outputs:
+  deployment_status: ${deploy-services.deployment_results}
+  integration_status: ${integration-tests.integration_results}
+  routing: ${update-routing.routing_status}

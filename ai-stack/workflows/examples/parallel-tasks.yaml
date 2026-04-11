@@ -1,0 +1,95 @@
+name: parallel-analysis
+version: 1.0
+description: Analyze codebase from multiple perspectives in parallel
+
+inputs:
+  codebase_path:
+    type: string
+    description: Path to codebase to analyze
+
+nodes:
+  # Run these three analyses in parallel
+  - id: security-scan
+    agent: claude
+    prompt: |
+      Perform security audit of codebase at:
+      ${inputs.codebase_path}
+
+      Focus on:
+      - Authentication and authorization
+      - Input validation
+      - SQL injection risks
+      - XSS vulnerabilities
+      - Secret exposure
+    parallel: true
+    memory:
+      layers: [L0, L1, L2]
+      topics: [security]
+      max_tokens: 500
+    outputs:
+      - security_issues
+      - severity_level
+
+  - id: performance-scan
+    agent: qwen
+    prompt: |
+      Perform performance analysis of codebase at:
+      ${inputs.codebase_path}
+
+      Focus on:
+      - Algorithmic complexity
+      - Database query efficiency
+      - Memory usage patterns
+      - Concurrency issues
+    parallel: true
+    memory:
+      layers: [L0, L1, L2]
+      topics: [performance]
+      max_tokens: 500
+    outputs:
+      - performance_issues
+      - optimization_opportunities
+
+  - id: code-quality-scan
+    agent: codex
+    prompt: |
+      Perform code quality review of codebase at:
+      ${inputs.codebase_path}
+
+      Focus on:
+      - Code organization and structure
+      - Naming conventions
+      - Error handling
+      - Test coverage
+      - Documentation quality
+    parallel: true
+    memory:
+      layers: [L0, L1, L2]
+      topics: [coding, testing]
+      max_tokens: 500
+    outputs:
+      - quality_issues
+      - recommendations
+
+  # Aggregate results after all parallel tasks complete
+  - id: aggregate
+    agent: claude
+    depends_on: [security-scan, performance-scan, code-quality-scan]
+    prompt: |
+      Aggregate findings from all scans and create a consolidated report:
+
+      Security: ${security-scan.security_issues} (Severity: ${security-scan.severity_level})
+      Performance: ${performance-scan.performance_issues}
+      Quality: ${code-quality-scan.quality_issues}
+
+      Provide:
+      - Executive summary
+      - Priority-ranked action items
+      - Estimated effort for fixes
+    outputs:
+      - consolidated_report
+      - priority_actions
+
+outputs:
+  report: ${aggregate.consolidated_report}
+  actions: ${aggregate.priority_actions}

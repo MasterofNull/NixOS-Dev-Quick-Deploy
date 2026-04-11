@@ -1,0 +1,116 @@
+name: resilient-deployment
+version: 1.0
+description: Deployment workflow with comprehensive error handling and retry logic
+
+inputs:
+  service_name:
+    type: string
+    description: Service to deploy
+  environment:
+    type: string
+    description: Target environment
+
+nodes:
+  # Step 1: Pre-deployment checks with retry
+  - id: preflight-checks
+    agent: qwen
+    prompt: |
+      Run pre-deployment checks for ${inputs.service_name}:
+      - Dependencies available
+      - Database accessible
+      - Configuration valid
+      - Resources sufficient
+    retry:
+      max_attempts: 3
+      on_failure: [connection_error, timeout]
+      backoff: exponential
+      backoff_base: 2
+    outputs:
+      - check_status
+      - issues_found
+
+  # Step 2: Deploy with error handling
+  - id: deploy
+    agent: qwen
+    depends_on: [preflight-checks]
+    prompt: |
+      Deploy ${inputs.service_name} to ${inputs.environment}
+    retry:
+      max_attempts: 5
+      on_failure: [deployment_timeout, resource_unavailable]
+      backoff: exponential
+    on_error:
+      handler: rollback
+      continue: false
+    outputs:
+      - deployment_id
+      - deployment_status
+
+  # Step 3: Health check with timeout
+  - id: health-check
+    agent: qwen
+    depends_on: [deploy]
+    prompt: |
+      Verify ${inputs.service_name} health after deployment:
+      Deployment ID: ${deploy.deployment_id}
+
+      Check:
+      - Service responding
+      - All endpoints functional
+      - No error logs
+    retry:
+      max_attempts: 10
+      on_failure: [service_not_ready]
+      backoff: linear
+      backoff_base: 3
+    on_error:
+      handler: rollback
+      continue: false
+    outputs:
+      - health_status
+
+  # Step 4: Smoke tests
+  - id: smoke-tests
+    agent: qwen
+    depends_on: [health-check]
+    prompt: |
+      Run smoke tests for ${inputs.service_name}
+    retry:
+      max_attempts: 3
+      on_failure: [test_flake]
+    on_error:
+      handler: investigate-failure
+      continue: true
+    outputs:
+      - test_results
+
+  # Error handler: Rollback
+  - id: rollback
+    agent: qwen
+    prompt: |
+      Rollback deployment of ${inputs.service_name}:
+      Failed deployment: ${deploy.deployment_id}
+      Error: ${deploy.error}
+    outputs:
+      - rollback_status
+
+  # Error handler: Investigate failure
+  - id: investigate-failure
+    agent: claude
+    prompt: |
+      Investigate smoke test failure:
+      Service: ${inputs.service_name}
+      Test results: ${smoke-tests.test_results}
+      Error: ${smoke-tests.error}
+
+      Provide:
+      - Root cause analysis
+      - Recommended actions
+    outputs:
+      - investigation_report
+      - recommended_actions
+
+outputs:
+  status: ${deploy.deployment_status}
+  health: ${health-check.health_status}
+  tests: ${smoke-tests.test_results}
