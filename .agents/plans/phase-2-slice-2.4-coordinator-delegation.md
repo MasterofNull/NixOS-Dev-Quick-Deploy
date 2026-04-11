@@ -14,7 +14,7 @@
 
 **Prerequisites:**
 - ✅ Slice 2.1: DSL Design complete
-- ✅ Slice 2.2: Parser & Validator (in progress)
+- ✅ Slice 2.2: Parser & Validator complete
 - ⏳ Slice 2.3: Workflow Executor (pending)
 
 **Your task:** Integrate the workflow engine with the existing harness coordinator, agent routing, memory system, and dashboard.
