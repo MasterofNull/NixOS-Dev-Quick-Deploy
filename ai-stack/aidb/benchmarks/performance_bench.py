@@ -26,6 +26,8 @@ Usage:
     print(f"Throughput: {throughput['qps']:.1f} qps")
 """
 
+import importlib.machinery
+import importlib.util
 import time
 import json
 import statistics
@@ -35,8 +37,34 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
+REPO_ROOT = Path(__file__).resolve().parents[3]
+AI_STACK_ROOT = REPO_ROOT / "ai-stack"
+AQ_MEMORY_PATH = REPO_ROOT / "scripts" / "ai" / "aq-memory"
+
+
+def _ensure_ai_stack_path() -> None:
+    """Make the ai-stack package importable in CLI and test contexts."""
+    root = str(AI_STACK_ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
+def _load_aq_memory_module():
+    """Load the aq-memory script even though it has no .py suffix."""
+    spec = importlib.util.spec_from_file_location("aq_memory", AQ_MEMORY_PATH)
+    if spec is None or spec.loader is None:
+        loader = importlib.machinery.SourceFileLoader("aq_memory", str(AQ_MEMORY_PATH))
+        spec = importlib.util.spec_from_loader("aq_memory", loader)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load aq-memory module from {AQ_MEMORY_PATH}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault(spec.name, module)
+    spec.loader.exec_module(module)
+    return module
 
 
 @dataclass
@@ -74,18 +102,8 @@ class PerformanceBenchmark:
 
     def _get_default_fact_store(self):
         """Get default in-memory fact store"""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "scripts" / "ai"))
-
         try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(
-                "aq_memory",
-                Path(__file__).parent.parent.parent.parent / "scripts" / "ai" / "aq-memory"
-            )
-            aq_memory = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(aq_memory)
+            aq_memory = _load_aq_memory_module()
             return aq_memory.InMemoryFactStore()
         except Exception as e:
             logger.warning(f"Could not load default fact store: {e}")
@@ -135,6 +153,7 @@ class PerformanceBenchmark:
 
     def _populate_fact_store(self, num_facts: int = 100):
         """Populate fact store with test data"""
+        _ensure_ai_stack_path()
         from aidb.temporal_facts import TemporalFact
 
         if not self.fact_store:
