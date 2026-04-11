@@ -1,0 +1,83 @@
+name: conditional-deployment
+version: 1.0
+description: Deploy application with conditional testing and approval
+
+inputs:
+  environment:
+    type: string
+    description: Target environment
+  run_tests:
+    type: boolean
+    default: true
+  require_approval:
+    type: boolean
+    default: true
+
+nodes:
+  # Step 1: Build the application
+  - id: build
+    agent: qwen
+    prompt: |
+      Build the application for environment: ${inputs.environment}
+    outputs:
+      - build_status
+      - artifacts
+
+  # Step 2: Run tests (conditional)
+  - id: test
+    agent: qwen
+    depends_on: [build]
+    condition: ${inputs.run_tests}
+    prompt: |
+      Run test suite for build: ${build.artifacts}
+    retry:
+      max_attempts: 3
+      on_failure: [test_failure]
+    outputs:
+      - test_results
+      - coverage
+
+  # Step 3: Request approval (conditional)
+  - id: approval
+    agent: claude
+    depends_on: [build, test]
+    condition: ${inputs.require_approval}
+    prompt: |
+      Review deployment request:
+      Environment: ${inputs.environment}
+      Build: ${build.build_status}
+      Tests: ${test.test_results}
+      Coverage: ${test.coverage}
+
+      Approve deployment? (yes/no)
+    outputs:
+      - decision
+      - comments
+
+  # Step 4: Deploy (conditional based on approval)
+  - id: deploy
+    agent: qwen
+    depends_on: [approval]
+    condition: ${approval.decision == 'yes'}
+    prompt: |
+      Deploy to ${inputs.environment}:
+      Artifacts: ${build.artifacts}
+    outputs:
+      - deployment_status
+      - deployment_url
+
+  # Step 5: Send notifications
+  - id: notify
+    agent: qwen
+    depends_on: [deploy]
+    prompt: |
+      Send deployment notification:
+      Environment: ${inputs.environment}
+      Status: ${deploy.deployment_status}
+      URL: ${deploy.deployment_url}
+    outputs:
+      - notification_sent
+
+outputs:
+  status: ${deploy.deployment_status}
+  url: ${deploy.deployment_url}

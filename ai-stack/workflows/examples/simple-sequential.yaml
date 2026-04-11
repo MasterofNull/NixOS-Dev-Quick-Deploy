@@ -1,0 +1,48 @@
+name: simple-sequential
+version: 1.0
+description: Basic sequential workflow execution example
+
+inputs:
+  task_description:
+    type: string
+    description: Description of the task to complete
+
+nodes:
+  # Step 1: Analyze the task
+  - id: analyze
+    agent: qwen
+    prompt: |
+      Analyze the following task and break it down into steps:
+      ${inputs.task_description}
+    memory:
+      layers: [L0, L1]
+      max_tokens: 300
+    outputs:
+      - steps
+      - estimated_effort
+
+  # Step 2: Execute the task
+  - id: execute
+    agent: qwen
+    depends_on: [analyze]
+    prompt: |
+      Execute the task based on the analysis:
+      Steps: ${analyze.steps}
+    outputs:
+      - result
+
+  # Step 3: Validate the result
+  - id: validate
+    agent: codex
+    depends_on: [execute]
+    prompt: |
+      Validate the execution result:
+      Result: ${execute.result}
+      Original task: ${inputs.task_description}
+    outputs:
+      - validation_status
+      - issues_found
+
+outputs:
+  final_result: ${execute.result}
+  validation: ${validate.validation_status}

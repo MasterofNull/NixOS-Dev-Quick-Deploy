@@ -1,0 +1,121 @@
+name: feature-implementation
+version: 1.0
+description: Implement a new feature from specification with tests and review
+
+inputs:
+  feature_spec:
+    type: string
+    description: Feature specification or description
+  tests_required:
+    type: boolean
+    default: true
+  review_required:
+    type: boolean
+    default: true
+
+agents:
+  implementer: qwen
+  reviewer: codex
+
+nodes:
+  # Step 1: Analyze feature specification
+  - id: analyze
+    agent: ${agents.implementer}
+    prompt: |
+      Analyze the following feature specification and create an implementation plan.
+      Break it down into concrete, testable tasks.
+
+      Feature Spec: ${inputs.feature_spec}
+    memory:
+      layers: [L0, L1, L2]
+      topics: [architecture, patterns, conventions]
+      max_tokens: 500
+    outputs:
+      - analysis
+      - task_list
+
+  # Step 2: Implement tasks in loop
+  - id: implement
+    agent: ${agents.implementer}
+    depends_on: [analyze]
+    loop:
+      prompt: |
+        Implement the next task from the plan.
+        Completed tasks: ${state.completed_tasks}
+        Remaining tasks: ${state.remaining_tasks}
+      until: ALL_TASKS_COMPLETE
+      max_iterations: 20
+      fresh_context: true
+    memory:
+      layers: [L0, L1, L2]
+      topics: [coding]
+    outputs:
+      - implementation
+      - files_changed
+
+  # Step 3: Write tests (conditional)
+  - id: test
+    agent: ${agents.implementer}
+    depends_on: [implement]
+    condition: ${inputs.tests_required}
+    prompt: |
+      Write comprehensive tests for the implemented feature.
+      Files changed: ${implement.files_changed}
+    retry:
+      max_attempts: 3
+      on_failure: [test_failure]
+    outputs:
+      - test_results
+      - coverage
+
+  # Step 4: Review (conditional)
+  - id: review
+    agent: ${agents.reviewer}
+    depends_on: [implement, test]
+    condition: ${inputs.review_required}
+    prompt: |
+      Review the implementation and tests.
+
+      Implementation: ${implement.implementation}
+      Tests: ${test.test_results}
+      Coverage: ${test.coverage}
+
+      Check for:
+      - Code quality
+      - Security issues
+      - Performance concerns
+      - Test coverage
+    outputs:
+      - decision
+      - feedback
+
+  # Step 5: Revise based on feedback (conditional loop)
+  - id: revise
+    agent: ${agents.implementer}
+    depends_on: [review]
+    condition: ${review.decision == 'needs_revision'}
+    prompt: |
+      Address the review feedback:
+      ${review.feedback}
+    outputs:
+      - revision
+    goto: review
+
+  # Step 6: Final validation
+  - id: validate
+    agent: ${agents.implementer}
+    depends_on: [review]
+    condition: ${review.decision == 'approve'}
+    prompt: |
+      Run final validation checks:
+      - All tests passing
+      - Linter checks passing
+      - Documentation updated
+    outputs:
+      - validation_status
+
+outputs:
+  final_implementation: ${implement.implementation}
+  test_report: ${test.test_results}
+  review_status: ${review.decision}
+  files_changed: ${implement.files_changed}
