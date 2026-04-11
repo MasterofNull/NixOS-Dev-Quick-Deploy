@@ -26,6 +26,7 @@ Purpose:
 | Aider | Declarative package via nixpkgs when available | Active | host home package, local model defaults, aider wrapper service | `aider --help` or package presence |
 | OpenRouter remote profiles | Declarative Nix config + SOPS secret | Active | switchboard routing profiles, hybrid-coordinator remote fallback | deploy verification, `/query`, `/workflow/plan` |
 | Hybrid-coordinator local harness | Declarative system service | Active | workflow plan, hints, query, qa, learning/export | `aq-qa 0`, deploy capability verification |
+| Local orchestrator (`local-orchestrator`) | Repo-local shell front door | Active, primary human-facing contact layer | front-door alias routing, hybrid-coordinator, AIDB, llama.cpp | `scripts/ai/local-orchestrator --status` |
 
 ## Required Next Steps
 
@@ -45,6 +46,7 @@ Purpose:
 3. Claude native/external classification with stronger validation
 4. pi agent declarative packaging or scaffold downgrade until hashes/runtime are fixed
 5. OpenRouter multi-agent/tool-calling profile validation through the local harness
+6. Dashboard-first visibility for front-door routing, primary contact surfaces, and runtime lane status
 
 ## AI Harness CLI Tools (aq-*)
 
