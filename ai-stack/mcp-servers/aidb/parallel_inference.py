@@ -67,9 +67,12 @@ class ParallelInferenceEngine:
                 use_case="Specialized code generation and refactoring"
             ),
             ModelRole.CODE_ANALYSIS: ModelEndpoint(
-                name="Deepseek-Coder",
+                name="Local Code Analysis",
                 role=ModelRole.CODE_ANALYSIS,
-                base_url=os.getenv("LLAMA_CPP_DEEPSEEK_URL", "http://llama-cpp:8080"),
+                base_url=os.getenv(
+                    "LLAMA_CPP_REASONING_URL",
+                    os.getenv("LLAMA_CPP_DEEPSEEK_URL", "http://llama-cpp:8080"),
+                ),
                 use_case="Deep code understanding and bug detection"
             )
         }
