@@ -19,6 +19,9 @@
    - `POST /workflow/plan`
    - `POST /workflow/run/start` (must include `intent_contract`)
    - `GET/POST /hints`
+   - for long-running, context-heavy work, prefer `aq-context-bootstrap --task "<task>" --scope context-offload --format json`
+   - use `aq-context-manage check` and `aq-memory search "<task or decision>" --project ai-stack --limit 5` before expanding remote context
+   - start persisted runs with `harness-rpc.js run-start --query "<task>" --blueprint long-running-context-offload --intent-depth standard` when the task will span many turns or phases
 2. Decompose into small task slices with explicit owner and reviewer gate.
 3. Enforce evidence contract per slice:
    - files changed
@@ -37,6 +40,19 @@
 7. Close out completed work explicitly:
    - document what changed and the validation evidence.
    - commit the relevant changes.
+
+## Capability Utilization Contract
+
+- Do not treat backend completion as task completion.
+- When you add or change a capability, also wire the surfaces that make it usable in normal system operation.
+- Cover the relevant access paths:
+  - frontend/dashboard hooks when operators or users need visibility or control
+  - API routes and response fields when other services need to call the feature
+  - CLI and harness workflow entrypoints when agents need to discover and use it
+  - docs, runbooks, and quick-reference updates when operators need to execute it reliably
+  - validation that proves the capability is reachable through those surfaces
+- Reject backend-only work when the new capability cannot be reached, inspected, or exercised through the intended interface.
+- For AI harness features specifically, prefer exposing them through context cards, bootstrap scopes, workflow blueprints, dashboard/API surfaces, and `aq-*` tooling rather than leaving them as hidden internals.
 
 ## Orchestrator vs Sub-Agent Enforcement (Mandatory)
 
