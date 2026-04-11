@@ -601,6 +601,11 @@ def _use_classifier_optimized_prompt(
     """Keep the hottest local reasoning lane on the tighter route-level prompt contract."""
     if complexity is None or not getattr(complexity, "optimized_prompt", None):
         return False
+    # The bounded default lane is the current local synthesis tail in live aq-report
+    # telemetry. Prefer the tighter route-level prompt contract there so the model
+    # sees less context and a stronger brevity constraint.
+    if str(lane_reason or "").strip().lower() == "bounded_reasoning_default_lane":
+        return False
     return True
 
 
