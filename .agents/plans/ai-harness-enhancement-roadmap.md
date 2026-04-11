@@ -419,6 +419,9 @@ aq-qa --phase=memory-system
 
 ### Slice 2.2: Workflow Parser & Validator
 
+**Status:** Complete
+**Completion Evidence:** Commit `53fc1fa`; `python -m pytest ai-stack/workflows/tests` -> 66 passed
+
 **Owner:** qwen (implementation)
 **Type:** Code implementation
 **Estimated Effort:** 4-5 days
@@ -432,10 +435,10 @@ aq-qa --phase=memory-system
 4. Implement topological sorting for execution order
 
 **Deliverables:**
-- [ ] `ai-stack/workflows/parser.py` - YAML parser
-- [ ] `ai-stack/workflows/validator.py` - Schema + DAG validator
-- [ ] `ai-stack/workflows/models.py` - Workflow data models
-- [ ] Unit tests for all edge cases
+- [x] `ai-stack/workflows/parser.py` - YAML parser
+- [x] `ai-stack/workflows/validator.py` - Schema + DAG validator
+- [x] `ai-stack/workflows/models.py` - Workflow data models
+- [x] Unit tests for all edge cases
 
 **Validation:**
 - Parses valid workflows correctly
@@ -465,6 +468,8 @@ python -m ai_stack.workflows.validator examples/workflows/feature-implementation
 ---
 
 ### Slice 2.3: Workflow Executor
+
+**Status:** Ready to Delegate
 
 **Owner:** qwen (implementation)
 **Type:** Code implementation

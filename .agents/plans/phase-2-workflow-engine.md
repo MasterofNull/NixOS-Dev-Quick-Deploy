@@ -1,6 +1,6 @@
 # Phase 2: Workflow Engine Implementation Plan
 
-**Status:** Ready for Execution
+**Status:** In Progress
 **Timeline:** Weeks 5-7 (3 weeks)
 **Priority:** P0 (Critical Path)
 **Created:** 2026-04-11
@@ -24,15 +24,20 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 
 | Slice | Owner | Effort | Priority | Status |
 |-------|-------|--------|----------|--------|
-| 2.1 | claude (architecture) | 4-5 days | P0 | Ready |
-| 2.2 | qwen (implementation) | 5-6 days | P0 | Blocked by 2.1 |
-| 2.3 | qwen (implementation) | 6-7 days | P0 | Blocked by 2.2 |
+| 2.1 | claude (architecture) | 4-5 days | P0 | Complete |
+| 2.2 | qwen (implementation) | 5-6 days | P0 | Complete |
+| 2.3 | qwen (implementation) | 6-7 days | P0 | Ready |
 | 2.4 | codex (integration) | 5-6 days | P0 | Blocked by 2.3 |
 | 2.5 | codex (templates) | 4-5 days | P1 | Blocked by 2.3 |
 | 2.6 | qwen (CLI) | 3-4 days | P1 | Blocked by 2.3 |
 | 2.7 | qwen (docs) | 2-3 days | P2 | Blocked by all |
 
 **Total Effort:** 29-36 days (~5-7 weeks with parallelization)
+
+**Completion Evidence:**
+- Slice 2.1 completed in commit `6a3103d`
+- Slice 2.2 completed in commit `53fc1fa`
+- Slice 2.2 validation re-run: `python -m pytest ai-stack/workflows/tests` -> 66 passed
 
 ---
 
