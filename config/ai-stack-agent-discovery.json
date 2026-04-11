@@ -10,6 +10,11 @@
 
   "tools": {
     "cli": {
+      "aq-session-zero": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/aq-session-zero",
+        "description": "Mandatory session-zero harness bootstrap for local and delegated agents",
+        "usage": "aq-session-zero [--brief|--json]"
+      },
       "aqd": {
         "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
         "description": "Main workflow CLI wrapper for AI stack operations",
@@ -48,6 +53,11 @@
         "args": ["workflows", "brownfield"],
         "description": "Existing project improvement workflow",
         "usage": "workflow-brownfield --target DIR --objective TEXT"
+      },
+      "local-orchestrator": {
+        "path": "/opt/nixos-quick-deploy/scripts/ai/local-orchestrator",
+        "description": "Primary human-facing local harness entrypoint with front-door route alias support",
+        "usage": "local-orchestrator [--status|--plan TEXT|PROMPT]"
       }
     },
     "http": {
@@ -72,6 +82,18 @@
         "url": "http://127.0.0.1:8003/workflow/plan",
         "method": "POST",
         "description": "Create workflow execution plan",
+        "content_type": "application/json"
+      },
+      "workflow_run_start": {
+        "url": "http://127.0.0.1:8003/workflow/run/start",
+        "method": "POST",
+        "description": "Start a persisted workflow run with intent contract",
+        "content_type": "application/json"
+      },
+      "review_acceptance": {
+        "url": "http://127.0.0.1:8003/review/acceptance",
+        "method": "POST",
+        "description": "Reviewer gate for explicit accept/reject decisions",
         "content_type": "application/json"
       },
       "workflow_orchestrate": {
@@ -154,7 +176,7 @@
     "codex": {
       "config_path": null,
       "type": "shell",
-      "notes": "Uses shell commands via PATH"
+      "notes": "Uses aq-session-zero, aq-hints, harness-rpc, and local-orchestrator via PATH; treat local-orchestrator as the first human-facing layer"
     },
     "aider": {
       "config_path": "~/.aider.conf.yml",
@@ -183,9 +205,34 @@
     }
   },
 
+  "primary_contact": {
+    "human_frontdoor": "local-orchestrator",
+    "bootstrap": [
+      "aq-session-zero",
+      "aq-hints \"<task summary>\" --format=json --agent=codex"
+    ],
+    "workflow_loop": [
+      "POST /workflow/plan",
+      "POST /workflow/run/start",
+      "GET/POST /hints",
+      "POST /review/acceptance"
+    ],
+    "routing_aliases": {
+      "default": "default",
+      "Explore": "default",
+      "Plan": "default",
+      "Implementation": "remote-coding",
+      "Reasoning": "remote-reasoning",
+      "ToolCalling": "local-tool-calling",
+      "Continuation": "default"
+    }
+  },
+
   "quick_start": {
     "shell": "source /etc/profile.d/aq-path.sh && ai_stack_tools",
     "check_health": "curl -sf http://127.0.0.1:8003/health",
+    "bootstrap": "aq-session-zero && aq-hints 'your task description here' --format=json --agent=codex",
+    "human_frontdoor": "local-orchestrator \"your task description here\"",
     "get_hints": "aq-hints 'your task description here'",
     "init_project": "project-init --target ./new-project --name my-project --goal 'project goal'"
   }

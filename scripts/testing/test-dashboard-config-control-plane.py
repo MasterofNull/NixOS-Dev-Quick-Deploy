@@ -53,6 +53,27 @@ def main() -> int:
 
             assert_true(payload.get("dashboard_runtime", {}).get("rate_limit") == 60, "dashboard runtime should expose legacy config values")
             assert_true(payload.get("harness_runtime", {}).get("settings", {}).get("enabled") is True, "live harness state should be exposed")
+            assert_true(payload.get("frontdoor_routing", {}).get("enabled") is True, "front-door routing should default to enabled")
+            assert_true(
+                any(item.get("route") == "Implementation" and item.get("profile") == "remote-coding" for item in (payload.get("frontdoor_routing", {}).get("aliases") or [])),
+                "front-door routing should expose implementation alias mapping",
+            )
+            assert_true(
+                payload.get("primary_contact", {}).get("human_frontdoor") == "local-orchestrator",
+                "primary contact should expose the local orchestrator",
+            )
+            assert_true(
+                "POST /workflow/run/start" in (payload.get("harness_workflow", {}).get("workflow_loop") or []),
+                "harness workflow should expose the canonical persisted run step",
+            )
+            assert_true(
+                any("aq-qa 0 --json" in item for item in (payload.get("harness_workflow", {}).get("required_commands") or [])),
+                "harness workflow should expose required validation commands",
+            )
+            assert_true(
+                any(item.get("label") == "Harness-First Runbook" for item in (payload.get("documentation_sources") or [])),
+                "documentation sources should include the harness runbook",
+            )
             assert_true(
                 any(item.get("workflow_id") == "bounded-research-review" for item in (payload.get("workflow_blueprints") or [])),
                 "workflow blueprints should include bounded-research-review policy",
@@ -60,6 +81,10 @@ def main() -> int:
             assert_true(
                 any(item.get("status") == "misleading" for item in (payload.get("control_plane_inventory", {}).get("known_gaps") or [])),
                 "control-plane inventory should expose known dashboard gaps",
+            )
+            assert_true(
+                any(item.get("surface") == "AI_LOCAL_FRONTDOOR_*" for item in (payload.get("control_plane_inventory", {}).get("live_runtime_sources") or [])),
+                "control-plane inventory should list front-door routing as a live source",
             )
 
             update_response = client.post(
@@ -88,6 +113,15 @@ def main() -> int:
             preview_data = blueprint_preview.json()
             assert_true(preview_data.get("redeploy_required") is True, "workflow blueprint preview should be marked redeploy-required")
             assert_true("bounded-research-review" in str(preview_data.get("content") or ""), "workflow blueprint preview should expose file contents")
+
+            discovery_preview = client.get("/api/config/ai-stack-agent-discovery.json")
+            assert_true(discovery_preview.status_code == 200, "agent discovery preview should succeed")
+            assert_true(discovery_preview.json().get("redeploy_required") is True, "agent discovery preview should be marked redeploy-required")
+
+            runbook_preview = client.get("/api/config/HARNESS-FIRST-RUNBOOK.md")
+            assert_true(runbook_preview.status_code == 200, "runbook preview should succeed")
+            assert_true(runbook_preview.json().get("redeploy_required") is False, "runbook preview should be marked docs-only")
+            assert_true("Harness-First Operations Runbook" in str(runbook_preview.json().get("content") or ""), "runbook preview should expose markdown content")
 
             unsupported = client.put("/api/config/unsupported.json", params={"content": "{}"})
             assert_true(unsupported.status_code == 501, "unsupported config writes should be rejected")

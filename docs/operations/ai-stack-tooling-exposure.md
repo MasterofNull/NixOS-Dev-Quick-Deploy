@@ -45,6 +45,7 @@ CLI tools are available system-wide for any agent that can execute shell command
 | Tool | Description |
 |------|-------------|
 | `aqd` | Main workflow CLI wrapper |
+| `aq-session-zero` | Session-zero harness bootstrap and readiness check |
 | `aq-hints` | Get ranked AI workflow hints |
 | `aq-report` | AI stack health and metrics |
 | `aq-qa` | Run QA workflow |
@@ -52,11 +53,18 @@ CLI tools are available system-wide for any agent that can execute shell command
 | `workflow-primer` | Read-only session priming |
 | `workflow-brownfield` | Existing project improvement |
 | `harness-rpc` | Node.js harness RPC bridge |
+| `local-orchestrator` | Primary human-facing local harness entrypoint |
 
 **Any agent** (GPT, Codex, Qwen, Gemini, etc.) can use these:
 ```bash
+# Mandatory bootstrap for local agent sessions
+aq-session-zero
+
 # Get hints for a task
 aq-hints "how do I configure NixOS services"
+
+# Use the local harness as the human-facing front door
+local-orchestrator "summarize the current harness routing posture"
 
 # Initialize a new project
 project-init --target ./my-project --name my-project --goal "build an app"
@@ -104,6 +112,8 @@ Any agent with HTTP capabilities can call these endpoints directly:
 | `/hints` | GET | Get workflow hints |
 | `/query` | POST | Hybrid routing query |
 | `/workflow/plan` | POST | Create execution plan |
+| `/workflow/run/start` | POST | Start a persisted workflow run with intent contract |
+| `/review/acceptance` | POST | Record reviewer accept/reject decision |
 | `/qa/check` | POST | Run bounded `aq-qa` validation via hybrid coordinator |
 | `/research/web/fetch` | POST | Bounded polite public-web fetch -> extract lane for explicit URLs |
 | `/research/web/browser-fetch` | POST | Bounded browser-assisted fetch -> extract lane for JS-heavy public pages |
@@ -158,6 +168,27 @@ The hybrid coordinator SDKs now expose both planning and the coached query path:
 - Python: `HarnessClient.curated_research_fetch(...)` for manifest-backed bounded research packs
 
 That means SDK consumers receive the same `prompt_coaching` and token-discipline guidance that raw `POST /query` returns.
+
+## Primary Human Contact Layer
+
+The local harness should be the first contact point for humans and local agents:
+
+- `local-orchestrator` is the preferred front door for interactive human-to-agent work
+- `aq-session-zero` is the required bootstrap before deeper task execution
+- `aq-hints` provides the first ranked workflow steer before mutation
+- `POST /workflow/plan` and `POST /workflow/run/start` are the persisted orchestration entry points
+
+The current compatibility alias map is:
+
+| Front-Door Route | Harness Profile |
+| --- | --- |
+| `default` | `default` |
+| `Explore` | `default` |
+| `Plan` | `default` |
+| `Implementation` | `remote-coding` |
+| `Reasoning` | `remote-reasoning` |
+| `ToolCalling` | `local-tool-calling` |
+| `Continuation` | `default` |
 
 ## Bounded Web Research Lane
 

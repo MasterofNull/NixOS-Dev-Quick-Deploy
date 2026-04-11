@@ -2868,6 +2868,46 @@
                         </div>
 
                         <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Local Front-Door Routing</div>
+                            <div id="frontdoorRoutingConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading first-layer route aliases...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Primary Human Contact Surfaces</div>
+                            <div id="primaryContactConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading primary contact surfaces...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Canonical Harness Workflow</div>
+                            <div id="harnessWorkflowConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading harness workflow contract...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Harness Documentation Sources</div>
+                            <div id="harnessDocsConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading harness documentation sources...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
                             <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Workflow Blueprint Orchestration (Redeploy Required)</div>
                             <div id="workflowBlueprintConfig" class="data-list">
                                 <div class="data-item">
@@ -9745,6 +9785,10 @@
 
         function renderControlPlaneLists(snapshot) {
             const harnessContainer = document.getElementById('liveHarnessConfig');
+            const frontdoorContainer = document.getElementById('frontdoorRoutingConfig');
+            const primaryContactContainer = document.getElementById('primaryContactConfig');
+            const workflowContainer = document.getElementById('harnessWorkflowConfig');
+            const docsContainer = document.getElementById('harnessDocsConfig');
             const blueprintContainer = document.getElementById('workflowBlueprintConfig');
             const findingsContainer = document.getElementById('controlSurfaceFindings');
             const notice = document.getElementById('configScopeNotice');
@@ -9768,6 +9812,106 @@
                     </div>
                 `).join('')
                 : `<div class="data-item"><span>Live harness state unavailable</span><span class="data-meta">${escapeHtml(harnessSource)}</span></div>`;
+
+            const frontdoor = snapshot?.frontdoor_routing || {};
+            const aliasEntries = Array.isArray(frontdoor.aliases) ? frontdoor.aliases : [];
+            frontdoorContainer.innerHTML = aliasEntries.length
+                ? aliasEntries.map((entry) => `
+                    <div class="data-item">
+                        <span>${escapeHtml(String(entry.route || 'route'))}</span>
+                        <span class="data-meta">${escapeHtml(String(entry.profile || '--'))}</span>
+                    </div>
+                `).join('')
+                : `<div class="data-item"><span>Front-door routing unavailable</span><span class="data-meta">${escapeHtml(String(frontdoor.source || 'AI_LOCAL_FRONTDOOR_*'))}</span></div>`;
+
+            const primaryContact = snapshot?.primary_contact || {};
+            const bootstrap = Array.isArray(primaryContact.bootstrap) ? primaryContact.bootstrap.join(' | ') : '';
+            const workflowLoop = Array.isArray(primaryContact.workflow_loop) ? primaryContact.workflow_loop.join(' | ') : '';
+            const contactRows = [];
+            if (primaryContact.human_frontdoor) {
+                contactRows.push(`
+                    <div class="data-item">
+                        <span>human_frontdoor</span>
+                        <span class="data-meta">${escapeHtml(String(primaryContact.human_frontdoor))}</span>
+                    </div>
+                `);
+            }
+            if (bootstrap) {
+                contactRows.push(`
+                    <div class="data-item">
+                        <span>bootstrap</span>
+                        <span class="data-meta">${escapeHtml(bootstrap)}</span>
+                    </div>
+                `);
+            }
+            if (workflowLoop) {
+                contactRows.push(`
+                    <div class="data-item">
+                        <span>workflow_loop</span>
+                        <span class="data-meta">${escapeHtml(workflowLoop)}</span>
+                    </div>
+                `);
+            }
+            primaryContactContainer.innerHTML = contactRows.length
+                ? contactRows.join('')
+                : `<div class="data-item"><span>Primary contact surfaces unavailable</span><span class="data-meta">${escapeHtml(String(primaryContact.source || 'config/ai-stack-agent-discovery.json'))}</span></div>`;
+
+            const harnessWorkflow = snapshot?.harness_workflow || {};
+            const workflowRows = [];
+            const canonicalLoop = Array.isArray(harnessWorkflow.workflow_loop) ? harnessWorkflow.workflow_loop.join(' → ') : '';
+            const bootstrapCommands = Array.isArray(harnessWorkflow.bootstrap_commands) ? harnessWorkflow.bootstrap_commands.join(' | ') : '';
+            const requiredCommands = Array.isArray(harnessWorkflow.required_commands) ? harnessWorkflow.required_commands.join(' | ') : '';
+            const requiredEvidence = Array.isArray(harnessWorkflow.required_evidence_sections) ? harnessWorkflow.required_evidence_sections.join(' | ') : '';
+            if (canonicalLoop) {
+                workflowRows.push(`
+                    <div class="data-item">
+                        <span>task_lifecycle</span>
+                        <span class="data-meta">${escapeHtml(canonicalLoop)}</span>
+                    </div>
+                `);
+            }
+            if (bootstrapCommands) {
+                workflowRows.push(`
+                    <div class="data-item">
+                        <span>bootstrap</span>
+                        <span class="data-meta">${escapeHtml(bootstrapCommands)}</span>
+                    </div>
+                `);
+            }
+            if (requiredCommands) {
+                workflowRows.push(`
+                    <div class="data-item">
+                        <span>required_commands</span>
+                        <span class="data-meta">${escapeHtml(requiredCommands)}</span>
+                    </div>
+                `);
+            }
+            if (requiredEvidence) {
+                workflowRows.push(`
+                    <div class="data-item">
+                        <span>evidence_contract</span>
+                        <span class="data-meta">${escapeHtml(requiredEvidence)}</span>
+                    </div>
+                `);
+            }
+            workflowContainer.innerHTML = workflowRows.length
+                ? workflowRows.join('')
+                : `<div class="data-item"><span>Harness workflow unavailable</span><span class="data-meta">${escapeHtml(String(harnessWorkflow.source || 'config/harness-first-policy.json'))}</span></div>`;
+
+            const documentationSources = Array.isArray(snapshot?.documentation_sources) ? snapshot.documentation_sources : [];
+            docsContainer.innerHTML = documentationSources.length
+                ? documentationSources.map((entry) => {
+                    const preview = Array.isArray(entry.preview_lines) && entry.preview_lines.length
+                        ? entry.preview_lines.slice(0, 2).join(' / ')
+                        : entry.path || 'path unavailable';
+                    return `
+                        <div class="data-item">
+                            <span>${escapeHtml(String(entry.label || 'document'))}</span>
+                            <span class="data-meta">${escapeHtml(preview)}</span>
+                        </div>
+                    `;
+                }).join('')
+                : '<div class="data-item"><span>Harness documentation unavailable</span><span class="data-meta">docs/harness-first</span></div>';
 
             const blueprints = Array.isArray(snapshot?.workflow_blueprints) ? snapshot.workflow_blueprints : [];
             blueprintContainer.innerHTML = blueprints.length
