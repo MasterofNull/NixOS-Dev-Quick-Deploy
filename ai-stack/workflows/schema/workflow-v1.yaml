@@ -1,0 +1,239 @@
+# JSON Schema for Workflow DSL v1
+# Validates workflow YAML files against the workflow specification
+
+$schema: http://json-schema.org/draft-07/schema#
+$id: https://nixos-dev-quick-deploy/workflow-v1.schema.json
+title: Workflow DSL v1
+description: Schema for declarative AI task orchestration workflows
+type: object
+
+required:
+  - name
+  - version
+  - nodes
+
+properties:
+  # Workflow metadata
+  name:
+    type: string
+    description: Unique workflow identifier
+    pattern: ^[a-z][a-z0-9-]*$
+    minLength: 3
+    maxLength: 64
+
+  version:
+    type: string
+    description: Semantic version
+    pattern: ^\d+\.\d+(\.\d+)?$
+
+  description:
+    type: string
+    description: Human-readable workflow description
+    maxLength: 500
+
+  # Input parameters
+  inputs:
+    type: object
+    description: Workflow input parameters
+    patternProperties:
+      ^[a-zA-Z_][a-zA-Z0-9_]*$:
+        oneOf:
+          - type: string
+            enum: [string, number, boolean, object, array]
+          - type: object
+            required: [type]
+            properties:
+              type:
+                type: string
+                enum: [string, number, boolean, object, array]
+              default:
+                description: Default value for parameter
+              description:
+                type: string
+                maxLength: 200
+
+  # Agent role definitions
+  agents:
+    type: object
+    description: Agent role to agent ID mapping
+    patternProperties:
+      ^[a-zA-Z_][a-zA-Z0-9_]*$:
+        type: string
+        enum: [qwen, codex, claude, gemini]
+
+  # Workflow execution nodes
+  nodes:
+    type: array
+    description: Workflow execution nodes
+    minItems: 1
+    items:
+      type: object
+      required:
+        - id
+        - agent
+        - prompt
+      properties:
+        id:
+          type: string
+          description: Unique node identifier
+          pattern: ^[a-z][a-z0-9-]*$
+
+        agent:
+          type: string
+          description: Agent to execute this node
+          pattern: ^(qwen|codex|claude|gemini|\$\{agents\.[a-zA-Z_][a-zA-Z0-9_]*\})$
+
+        prompt:
+          type: string
+          description: Task prompt with variable substitution
+          minLength: 10
+
+        depends_on:
+          type: array
+          description: List of node IDs that must complete first
+          items:
+            type: string
+          uniqueItems: true
+
+        condition:
+          type: string
+          description: Boolean expression for conditional execution
+          pattern: ^\$\{.+\}$
+
+        memory:
+          type: object
+          description: Memory configuration for this node
+          properties:
+            layers:
+              type: array
+              description: Memory layers to load
+              items:
+                type: string
+                enum: [L0, L1, L2, L3]
+              uniqueItems: true
+
+            topics:
+              type: array
+              description: Topic filters for L2
+              items:
+                type: string
+              uniqueItems: true
+
+            max_tokens:
+              type: integer
+              description: Token budget for memory
+              minimum: 50
+              maximum: 10000
+
+            isolation:
+              type: string
+              description: Memory isolation mode
+              enum: [agent, global]
+
+            diary_only:
+              type: boolean
+              description: Only load agent diary, no shared facts
+
+        loop:
+          type: object
+          description: Loop configuration
+          required:
+            - until
+            - max_iterations
+          properties:
+            prompt:
+              type: string
+              description: Prompt for each iteration
+
+            until:
+              type: string
+              description: Termination condition
+
+            max_iterations:
+              type: integer
+              description: Safety limit for iterations
+              minimum: 1
+              maximum: 100
+
+            fresh_context:
+              type: boolean
+              description: Reset context each iteration
+              default: false
+
+        retry:
+          type: object
+          description: Retry configuration
+          properties:
+            max_attempts:
+              type: integer
+              minimum: 1
+              maximum: 10
+              default: 3
+
+            on_failure:
+              type: array
+              description: Error types to retry
+              items:
+                type: string
+
+            backoff:
+              type: string
+              description: Backoff strategy
+              enum: [constant, linear, exponential]
+              default: exponential
+
+            backoff_base:
+              type: number
+              description: Base backoff time in seconds
+              minimum: 0.1
+              default: 1
+
+        parallel:
+          type: boolean
+          description: Execute in parallel with other parallel nodes
+          default: false
+
+        outputs:
+          type: array
+          description: Output variable names
+          items:
+            type: string
+            pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+          uniqueItems: true
+
+        goto:
+          type: string
+          description: Node ID to jump to after completion
+
+        on_error:
+          type: object
+          description: Error handler configuration
+          properties:
+            handler:
+              type: string
+              description: Handler node ID
+
+            continue:
+              type: boolean
+              description: Continue workflow on error
+              default: false
+
+  # Workflow outputs
+  outputs:
+    type: object
+    description: Workflow output definitions
+    patternProperties:
+      ^[a-zA-Z_][a-zA-Z0-9_]*$:
+        type: string
+        description: Reference to node output
+        pattern: ^\$\{[a-z][a-z0-9-]*\.[a-zA-Z_][a-zA-Z0-9_]*\}$
+
+# Additional validation rules
+definitions:
+  variable_reference:
+    type: string
+    pattern: ^\$\{[a-zA-Z_][a-zA-Z0-9_.]*\}$
+
+  node_id_reference:
+    type: string
+    pattern: ^[a-z][a-z0-9-]*$

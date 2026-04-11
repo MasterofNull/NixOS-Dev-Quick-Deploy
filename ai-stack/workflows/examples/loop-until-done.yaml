@@ -1,0 +1,85 @@
+name: iterative-refactoring
+version: 1.0
+description: Refactor code iteratively until quality standards are met
+
+inputs:
+  file_path:
+    type: string
+    description: File to refactor
+  quality_threshold:
+    type: number
+    default: 8.0
+    description: Minimum quality score (0-10)
+
+nodes:
+  # Step 1: Initial quality assessment
+  - id: initial-assessment
+    agent: codex
+    prompt: |
+      Assess code quality of ${inputs.file_path}
+
+      Rate on scale 0-10:
+      - Readability
+      - Maintainability
+      - Test coverage
+      - Documentation
+
+      Provide overall score and specific issues to address.
+    outputs:
+      - quality_score
+      - issues
+
+  # Step 2: Iterative refactoring loop
+  - id: refactor
+    agent: qwen
+    depends_on: [initial-assessment]
+    loop:
+      prompt: |
+        Refactor ${inputs.file_path} to address the following issues:
+        Remaining issues: ${state.remaining_issues}
+        Current quality score: ${state.current_score}
+        Target: ${inputs.quality_threshold}
+
+        Make one focused improvement per iteration.
+      until: ${state.current_score >= inputs.quality_threshold}
+      max_iterations: 10
+      fresh_context: true
+    memory:
+      layers: [L0, L1, L2]
+      topics: [refactoring, coding]
+      max_tokens: 600
+    outputs:
+      - refactored_code
+      - changes_made
+
+  # Step 3: Final quality check
+  - id: final-assessment
+    agent: codex
+    depends_on: [refactor]
+    prompt: |
+      Perform final quality assessment of refactored code:
+      Original score: ${initial-assessment.quality_score}
+      Changes made: ${refactor.changes_made}
+
+      Verify:
+      - All issues addressed
+      - No new issues introduced
+      - Quality threshold met
+    outputs:
+      - final_score
+      - assessment_report
+
+  # Step 4: Generate tests
+  - id: generate-tests
+    agent: qwen
+    depends_on: [final-assessment]
+    prompt: |
+      Generate comprehensive unit tests for the refactored code:
+      ${refactor.refactored_code}
+    outputs:
+      - test_suite
+
+outputs:
+  refactored_code: ${refactor.refactored_code}
+  quality_improvement: ${final-assessment.final_score}
+  tests: ${generate-tests.test_suite}
