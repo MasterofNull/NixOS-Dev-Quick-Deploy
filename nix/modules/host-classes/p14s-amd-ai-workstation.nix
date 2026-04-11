@@ -24,7 +24,7 @@ in
         activeModel = lib.mkDefault "gemma4-e4b";
         extraArgs = lib.mkDefault [
           "--timeout" "120"
-          "--parallel" "2"
+          "--parallel" "1"
           "--batch-size" "512"
           "--ubatch-size" "64"
           "--threads" "8"
