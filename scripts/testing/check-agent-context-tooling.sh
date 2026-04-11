@@ -11,7 +11,9 @@ tmp_deep="$(mktemp)"
 tmp_recommend="$(mktemp)"
 tmp_rust="$(mktemp)"
 tmp_nix="$(mktemp)"
-trap 'rm -f "${tmp_list}" "${tmp_brief}" "${tmp_deep}" "${tmp_recommend}" "${tmp_rust}" "${tmp_nix}"' EXIT
+tmp_offload="$(mktemp)"
+tmp_offload_card="$(mktemp)"
+trap 'rm -f "${tmp_list}" "${tmp_brief}" "${tmp_deep}" "${tmp_recommend}" "${tmp_rust}" "${tmp_nix}" "${tmp_offload}" "${tmp_offload_card}"' EXIT
 
 python3 "${TOOL}" --list --format json > "${tmp_list}"
 python3 "${TOOL}" --card repo-baseline --level brief --format json > "${tmp_brief}"
@@ -19,8 +21,10 @@ python3 "${TOOL}" --card repo-baseline --level deep --format json > "${tmp_deep}
 python3 "${TOOL}" --recommend "debug failing nixos service with apparmor and runtime probe mismatch" --level brief --format json > "${tmp_recommend}"
 python3 "${TOOL}" --recommend "resume declarative rust system integration" --context-language rust --context-file Cargo.toml --level brief --format json > "${tmp_rust}"
 python3 "${TOOL}" --recommend "debug a nixos rebuild activation failure" --context-language nix --context-application nixos --context-file nix/modules/core/options.nix --level brief --format json > "${tmp_nix}"
+python3 "${TOOL}" --recommend "offload long-running prompt history into local harness memory with frequent compaction" --level brief --format json > "${tmp_offload}"
+python3 "${TOOL}" --card context-offload --level standard --format json > "${tmp_offload_card}"
 
-python3 - "${tmp_list}" "${tmp_brief}" "${tmp_deep}" "${tmp_recommend}" "${tmp_rust}" "${tmp_nix}" <<'PY'
+python3 - "${tmp_list}" "${tmp_brief}" "${tmp_deep}" "${tmp_recommend}" "${tmp_rust}" "${tmp_nix}" "${tmp_offload}" "${tmp_offload_card}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -31,10 +35,12 @@ deep = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
 recommend = json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
 rust = json.loads(Path(sys.argv[5]).read_text(encoding="utf-8"))
 nix = json.loads(Path(sys.argv[6]).read_text(encoding="utf-8"))
+offload = json.loads(Path(sys.argv[7]).read_text(encoding="utf-8"))
+offload_card_payload = json.loads(Path(sys.argv[8]).read_text(encoding="utf-8"))
 
 cards = listing.get("cards", [])
 card_ids = {card.get("id") for card in cards}
-required = {"repo-baseline", "runtime-incident", "token-discipline", "capability-gap", "system-fix", "prsi-operations"}
+required = {"repo-baseline", "runtime-incident", "token-discipline", "capability-gap", "system-fix", "prsi-operations", "context-offload"}
 if not required.issubset(card_ids):
     print("ERROR: context-card listing is missing required cards", file=sys.stderr)
     raise SystemExit(1)
@@ -94,6 +100,17 @@ if [card["id"] for card in nix.get("cards", [])[:2]].count("nix-module-change") 
 nix_mod = next(card for card in nix.get("cards", []) if card["id"] == "nix-module-change")
 if "nix build .#nixosConfigurations.nixos-ai-dev.config.system.build.toplevel --no-link" not in nix_mod.get("commands", []):
     print("ERROR: context-card did not merge Nix overlay commands into nix-module-change", file=sys.stderr)
+    raise SystemExit(1)
+offload_top = [card["id"] for card in offload.get("cards", [])[:2]]
+if "context-offload" not in offload_top:
+    print("ERROR: context-card did not rank context-offload near the top for long-running offload work", file=sys.stderr)
+    raise SystemExit(1)
+offload_card = offload_card_payload["cards"][0]
+if "aq-context-manage check" not in offload_card.get("commands", []):
+    print("ERROR: context-offload card did not expose compaction tooling", file=sys.stderr)
+    raise SystemExit(1)
+if "aq-memory search \"<task or decision>\" --project ai-stack --limit 5" not in offload_card.get("commands", []):
+    print("ERROR: context-offload card did not expose harness memory recall guidance", file=sys.stderr)
     raise SystemExit(1)
 
 print("PASS: agent context tooling validated")

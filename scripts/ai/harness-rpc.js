@@ -93,8 +93,12 @@ function defaultIntentContract(query) {
     spirit_constraints: [
       "follow declarative-first policy",
       "capture validation evidence",
+      "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
     ],
-    no_early_exit_without: ["all requested checks complete"],
+    no_early_exit_without: [
+      "all requested checks complete",
+      "context strategy or blocker documented when the task is long-running",
+    ],
   };
 }
 

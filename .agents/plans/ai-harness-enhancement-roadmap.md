@@ -18,6 +18,29 @@ This roadmap implements selected features from MemPalace (memory system) and Arc
 - Enable concurrent agent work via clear slice boundaries
 - Validate at each phase before proceeding
 
+## Recommended Avenue: Harness-Native Context Offload
+
+**Decision:** Use the existing harness session, context-card, memory recall, progressive disclosure, and compaction surfaces as the primary long-running memory path. Do **not** introduce a second standalone history store unless the current harness path proves insufficient under measurement.
+
+**Why this is the best avenue:**
+- The repo already has the core primitives: `aq-context-card`, `aq-context-bootstrap`, `aq-context-manage`, `aq-memory`, workflow sessions, intent contracts, and progressive context injection in the hybrid coordinator.
+- This keeps one source of truth for prior work: workflow run state plus local memory retrieval, instead of duplicating state across prompts, agent clients, and a new persistence tier.
+- It matches the existing progressive-disclosure model: send only compact intent plus the active slice to remote models, then rehydrate prior context from the harness on demand.
+
+**Target operating pattern:**
+1. Start long-running work through harness bootstrap plus a workflow run with an explicit context-offload contract.
+2. Store durable discoveries, decisions, blockers, and evidence in harness memory rather than relying on transcript replay.
+3. Trigger remote compaction frequently, preserving only summary state and next actions.
+4. On later turns, recall context from local memory/session state first; widen retrieval breadth only when recall is insufficient.
+5. Re-measure latency, retrieval quality, and token savings before adding new storage mechanisms.
+
+**Preferred integration points:**
+- `scripts/ai/aq-context-bootstrap` for routing into a context-offload workflow
+- `config/agent-context-cards.json` for the compact operator contract
+- `config/workflow-blueprints.json` for long-running run defaults
+- `ai-stack/mcp-servers/hybrid-coordinator/http_server.py` for default intent-contract pressure toward retrieval-first context reuse
+- `scripts/ai/harness-rpc.js` for caller-side defaults that keep runs aligned with the same contract
+
 ## Phase 0: Layer 1 Front-Door Routing
 
 **Objective:** Make the local harness the stable first contact point for human-to-LLM requests while translating OpenClaude-style route names onto existing harness profiles.

@@ -74,6 +74,16 @@ SCOPES = {
         ],
         "preferred_cards": ["harness-first", "repo-baseline", "token-discipline"],
     },
+    "context-offload": {
+        "summary": "Keep long-running task history in the harness and retrieve compact context on demand.",
+        "starter_commands": [
+            "aq-context-card --card context-offload --level standard",
+            "aq-context-manage check",
+            "aq-memory search \"<task or decision>\" --project ai-stack --limit 5",
+            "harness-rpc.js run-start --query \"<task>\" --blueprint long-running-context-offload --intent-depth standard",
+        ],
+        "preferred_cards": ["context-offload", "token-discipline", "harness-first"],
+    },
 }
 
 SCOPE_KEYWORDS = {
@@ -82,9 +92,11 @@ SCOPE_KEYWORDS = {
     "system-fix": ["nixos", "rebuild", "switch", "rollback", "system", "boot", "activation", "flake"],
     "runtime-incident": ["runtime", "apparmor", "service", "health", "driver", "probe", "gpu", "vulkan"],
     "feature-development": ["feature", "implement", "build", "develop", "capability", "brownfield"],
+    "context-offload": ["offload", "memory", "history", "compact", "compaction", "long-running", "context window", "token usage"],
 }
 
 SCOPE_PRIORITY = [
+    "context-offload",
     "capability-gap",
     "runtime-incident",
     "prsi-operations",
@@ -179,6 +191,13 @@ def context_source_hints(scope: str, context: dict) -> list[str]:
         hints.extend(["scripts/testing/check-prsi-phase7-static-gates.sh", "docs/AGENTS.md"])
     if scope == "feature-development":
         hints.extend(["scripts/ai/aqd", "docs/AGENTS.md"])
+    if scope == "context-offload":
+        hints.extend([
+            "scripts/ai/aq-context-manage",
+            "scripts/ai/aq-memory",
+            "docs/operations/agent-context-progressive-disclosure.md",
+            "config/workflow-blueprints.json",
+        ])
 
     hints.append("AGENTS.md")
     seen: set[str] = set()
@@ -248,6 +267,12 @@ def detect_scope(task: str, context: dict) -> tuple[str, dict]:
     if any(token in lowered for token in ["implement", "build", "develop", "integration", "resume"]):
         scores["feature-development"] += 2
         reasons["feature-development"].append("task:development_signal")
+    if any(token in lowered for token in ["offload", "compact", "compaction", "history", "context window", "token usage"]):
+        scores["context-offload"] += 5
+        reasons["context-offload"].append("task:context_offload_signal")
+    if any(token in lowered for token in ["memory", "prompt history", "long running", "long-running"]):
+        scores["context-offload"] += 3
+        reasons["context-offload"].append("task:memory_signal")
 
     best_scope = "harness-first"
     best_score = 0

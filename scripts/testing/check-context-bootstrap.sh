@@ -11,7 +11,8 @@ tmp_prsi="$(mktemp)"
 tmp_gap="$(mktemp)"
 tmp_system_ctx="$(mktemp)"
 tmp_rust_ctx="$(mktemp)"
-trap 'rm -f "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}"' EXIT
+tmp_offload="$(mktemp)"
+trap 'rm -f "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" "${tmp_offload}"' EXIT
 
 python3 "${TOOL}" --task "debug a nixos rebuild activation failure and rollback safely" --format json > "${tmp_system}"
 python3 "${TOOL}" --task "implement a new feature in the brownfield AI workflow" --format json > "${tmp_feature}"
@@ -19,8 +20,9 @@ python3 "${TOOL}" --task "improve PRSI quarantine and budget gates" --format jso
 python3 "${TOOL}" --task "tool not available: aq-context-bootstrap" --format json > "${tmp_gap}"
 python3 "${TOOL}" --task "restore missing capability mm" --context-language nix --context-application nixos --context-file nix/modules/core/options.nix --format json > "${tmp_system_ctx}"
 python3 "${TOOL}" --task "restore missing rust build helper" --context-language rust --context-file Cargo.toml --format json > "${tmp_rust_ctx}"
+python3 "${TOOL}" --task "offload long-running agent prompt history into the local harness with frequent compaction and memory recall" --format json > "${tmp_offload}"
 
-python3 - "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" <<'PY'
+python3 - "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" "${tmp_offload}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -31,6 +33,7 @@ prsi = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
 gap = json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
 system_ctx = json.loads(Path(sys.argv[5]).read_text(encoding="utf-8"))
 rust_ctx = json.loads(Path(sys.argv[6]).read_text(encoding="utf-8"))
+offload = json.loads(Path(sys.argv[7]).read_text(encoding="utf-8"))
 
 if system.get("scope") != "system-fix":
     print("ERROR: system bootstrap did not classify as system-fix", file=sys.stderr)
@@ -145,6 +148,21 @@ if rust_ctx.get("recommended_next_mode") != "proceed_primary" or rust_ctx.get("r
     raise SystemExit(1)
 if rust_ctx.get("fallback_scope") not in {"", None}:
     print("ERROR: context bootstrap should not emit a fallback scope for high-confidence Rust routing", file=sys.stderr)
+    raise SystemExit(1)
+if offload.get("scope") != "context-offload":
+    print("ERROR: offload bootstrap did not classify as context-offload", file=sys.stderr)
+    raise SystemExit(1)
+if offload.get("recommended_card_order", [None])[0] != "context-offload":
+    print("ERROR: offload bootstrap did not prioritize the context-offload card", file=sys.stderr)
+    raise SystemExit(1)
+if not any("aq-context-manage check" in cmd for cmd in offload.get("starter_commands", [])):
+    print("ERROR: offload bootstrap did not expose compaction tooling", file=sys.stderr)
+    raise SystemExit(1)
+if not any("long-running-context-offload" in cmd for cmd in offload.get("starter_commands", [])):
+    print("ERROR: offload bootstrap did not expose the long-running context offload blueprint", file=sys.stderr)
+    raise SystemExit(1)
+if "scripts/ai/aq-memory" not in offload.get("source_hints", []):
+    print("ERROR: offload bootstrap did not emit harness memory source hints", file=sys.stderr)
     raise SystemExit(1)
 
 print("PASS: context bootstrap validated")
