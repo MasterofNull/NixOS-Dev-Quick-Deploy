@@ -21,10 +21,7 @@ in
       rocmGfxOverride = lib.mkDefault "9.0.0";
 
       llamaCpp = {
-        model = lib.mkDefault "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-        huggingFaceRepo = lib.mkDefault "unsloth/Qwen3-4B-Instruct-2507-GGUF";
-        huggingFaceFile = lib.mkDefault "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-        sha256 = lib.mkDefault "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597";
+        activeModel = lib.mkDefault "gemma4-e4b";
         extraArgs = lib.mkDefault [
           "--timeout" "120"
           "--parallel" "2"
@@ -34,18 +31,12 @@ in
           "--threads-batch" "8"
           "--flash-attn" "on"
           "--mlock"
-          "--reasoning-format" "deepseek"
         ];
       };
 
-      embeddingDimensions = lib.mkDefault 2560;
       embeddingServer = {
         enable = lib.mkDefault true;
-        model = lib.mkDefault "/var/lib/llama-cpp/models/Qwen3-Embedding-4B-q4_k_m.gguf";
-        huggingFaceRepo = lib.mkDefault "Mungert/Qwen3-Embedding-4B-GGUF";
-        huggingFaceFile = lib.mkDefault "Qwen3-Embedding-4B-q4_k_m.gguf";
-        sha256 = lib.mkDefault "2a91ec30c4c694af60cbedfc2f30d6aa5fd69a5286a8fb5544aa47868243054e";
-        pooling = lib.mkDefault "last";
+        activeModel = lib.mkDefault "bge-m3";
         extraArgs = lib.mkDefault [
           "--threads" "8"
           "--batch-size" "512"
