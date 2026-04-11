@@ -2656,6 +2656,14 @@ run_discovery_step() {
 
   log "Discovering hardware facts for host '${HOST_NAME}' profile '${PROFILE}'"
 
+  local facts_file previous_facts tmp_facts
+  facts_file="${REPO_ROOT}/nix/hosts/${HOST_NAME}/facts.nix"
+  previous_facts=""
+  if [[ -f "${facts_file}" ]]; then
+    previous_facts="$(mktemp)"
+    cp "${facts_file}" "${previous_facts}"
+  fi
+
   # AI stack discovery env — honour caller-supplied overrides or fall through
   # to the defaults in discover-system-facts.sh (auto from profile + RAM).
   local_ai_env=(
@@ -2682,6 +2690,81 @@ run_discovery_step() {
     PROFILE_OVERRIDE="${PROFILE}" \
     "${local_ai_env[@]}" \
     "${REPO_ROOT}/scripts/governance/discover-system-facts.sh"
+  fi
+
+  if [[ -n "${previous_facts}" && -f "${previous_facts}" && -f "${facts_file}" ]]; then
+    tmp_facts="$(mktemp)"
+    if python3 - "${previous_facts}" "${facts_file}" "${tmp_facts}" <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+old_path, new_path, out_path = sys.argv[1:4]
+old_content = Path(old_path).read_text()
+new_content = Path(new_path).read_text()
+
+
+def extract_aistack_block(text: str) -> str:
+    marker = "aiStack = {"
+    start = text.find(marker)
+    if start == -1:
+        return ""
+    brace_depth = 0
+    started = False
+    end = None
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if ch == "{":
+            brace_depth += 1
+            started = True
+        elif ch == "}":
+            brace_depth -= 1
+            if started and brace_depth == 0:
+                semi_idx = text.find(";", idx)
+                if semi_idx != -1:
+                    end = semi_idx + 1
+                    break
+    return text[start:end] if end else ""
+
+
+ai_block = extract_aistack_block(old_content)
+if not ai_block:
+    Path(out_path).write_text(new_content)
+    raise SystemExit(0)
+
+if "aiStack = {" in new_content:
+    replacement_pattern = re.compile(r"(?ms)^([ \t]*)aiStack = \{.*?^\1\};")
+    match = replacement_pattern.search(new_content)
+    if match:
+        indent = match.group(1)
+        indented_block = "\n".join(
+            f"{indent}{line}" if line.strip() else line
+            for line in ai_block.splitlines()
+        )
+        updated = new_content[:match.start()] + indented_block + new_content[match.end():]
+    else:
+        updated = new_content
+else:
+    closing = re.search(r"(?ms)^  \};\s*\n\}\s*$", new_content)
+    if closing:
+        indented_block = "\n".join(
+            f"    {line}" if line.strip() else line
+            for line in ai_block.splitlines()
+        )
+        updated = new_content[:closing.start()] + indented_block + "\n" + new_content[closing.start():]
+    else:
+        updated = new_content
+
+Path(out_path).write_text(updated)
+PYEOF
+    then
+      mv "${tmp_facts}" "${facts_file}"
+      log "Preserved existing AI stack selections in facts.nix after hardware discovery"
+    else
+      rm -f "${tmp_facts}"
+      log_warn "Could not preserve AI stack selections after hardware discovery"
+    fi
+    rm -f "${previous_facts}"
   fi
 
   mark_discovery_cache
