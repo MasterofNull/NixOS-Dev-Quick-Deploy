@@ -36,6 +36,10 @@ _ARCHITECTURE_HEAVY_RE = re.compile(
     r"\b(design|architect|strategy|trade.?off)\b",
     re.IGNORECASE,
 )
+_BOUNDED_REASONING_RE = re.compile(
+    r"\b(brief|briefly|short|succinct|concise|summary|summarize|summarise|one sentence|2-3 sentences)\b",
+    re.IGNORECASE,
+)
 _CONTINUATION_RE = re.compile(
     r"\b(resume|continue|follow[ -]?up|prior context|pick up where|last agent|left off|ongoing|current work|remaining work)\b",
     re.IGNORECASE,
@@ -76,6 +80,15 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
         task_type = "synthesize"
 
     continuation = bool(_CONTINUATION_RE.search(q))
+
+    # Treat explicitly brief explanation requests as bounded synthesis instead
+    # of heavier reasoning so they stay on the cheaper local lane.
+    if (
+        task_type == "reasoning"
+        and _BOUNDED_REASONING_RE.search(q)
+        and not _ARCHITECTURE_HEAVY_RE.search(q)
+    ):
+        task_type = "synthesize"
 
     # Routing decision
     if token_estimate > LOCAL_MAX_INPUT_TOKENS:

@@ -182,6 +182,18 @@ let
     else "";
   embedHfSha256Valid = embed.sha256 != null && builtins.match "^[a-fA-F0-9]{64}$" embed.sha256 != null;
 
+  # Large native context windows on modern chat models materially increase
+  # local latency and KV pressure on 24-32 GB laptops. Cap the inherited
+  # context window by RAM tier unless the user explicitly overrides ctxSize.
+  adaptiveChatCtxCap =
+    if cfg.hardware.systemRamGb <= 24
+    then 8192
+    else if cfg.hardware.systemRamGb <= 32
+    then 16384
+    else if cfg.hardware.systemRamGb <= 48
+    then 32768
+    else 65536;
+
   aiHarnessCliWrappers = pkgs.symlinkJoin {
     name = "ai-harness-cli-wrappers";
     paths = [
@@ -360,7 +372,7 @@ in {
           huggingFaceFile = entry.file;
           sha256 = entry.sha256;
           model = "/var/lib/llama-cpp/models/${entry.file}";
-          ctxSize = lib.mkDefault entry.contextSize;
+          ctxSize = lib.mkDefault (lib.min entry.contextSize adaptiveChatCtxCap);
         };
       warnings = let
         catalog = ai.llamaCpp.modelCatalog // defaultModelCatalog;
