@@ -444,7 +444,7 @@ class TestCollectionSelectionHelpers:
 
         assert trimmed == "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:40]
         assert "under 120 words" in instruction
-        assert route_handler._use_classifier_optimized_prompt(optimized, "bounded_reasoning_default_lane") is True
+        assert route_handler._use_classifier_optimized_prompt(optimized, "bounded_reasoning_default_lane") is False
         assert route_handler._use_classifier_optimized_prompt(optimized, "deep_reasoning_lane") is True
 
 
