@@ -12,12 +12,23 @@ DASHBOARD_HTML = REPO_ROOT / "dashboard.html"
 REQUIRED_SNIPPETS = [
     'id="configScopeNotice"',
     'id="liveHarnessConfig"',
+    'id="frontdoorRoutingConfig"',
+    'id="primaryContactConfig"',
+    'id="harnessWorkflowConfig"',
+    'id="harnessDocsConfig"',
     'id="workflowBlueprintConfig"',
     'id="controlSurfaceFindings"',
     'function renderControlPlaneLists(snapshot)',
     'Live AI Harness Runtime',
+    'Local Front-Door Routing',
+    'Primary Human Contact Surfaces',
+    'Canonical Harness Workflow',
+    'Harness Documentation Sources',
     'Workflow Blueprint Orchestration (Redeploy Required)',
     'Dashboard API Runtime Controls (Local Only)',
+    'task_lifecycle',
+    'required_commands',
+    'evidence_contract',
 ]
 
 
