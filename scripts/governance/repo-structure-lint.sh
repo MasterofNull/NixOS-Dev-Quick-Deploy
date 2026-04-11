@@ -9,7 +9,7 @@ MODE="all"
 
 DOC_ALLOWED_DIRS=(
   agent-guides api archive development generated harness-first prsi sql
-  operations architecture security testing roadmap
+  operations architecture security testing roadmap memory-system configuration user-guides
 )
 SCRIPT_ALLOWED_DIRS=(
   lib governance ai data deploy health security testing utils services
