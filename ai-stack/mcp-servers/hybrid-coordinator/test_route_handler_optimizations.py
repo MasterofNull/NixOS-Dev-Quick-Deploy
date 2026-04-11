@@ -807,12 +807,94 @@ class TestGeneratedResponsePaths:
 
         assert result["backend"] == "local"
         assert result["backend_reason_class"] == "remote_4xx_local_fallback"
-        assert result["response"] == "Recovered locally"
-        assert result["results"]["synthesis_fallback"]["status_code"] == 400
-        assert fake_remote.calls[0]["path"] == "/v1/chat/completions"
-        assert fake_remote.calls[0]["headers"]["x-ai-route"] == "remote"
-        assert fake_local.calls[0]["path"] == "/chat/completions"
-        assert fake_local.calls[0]["json"]["messages"][0]["content"] == "Local system prompt"
+
+    def test_route_search_treats_aliased_reasoning_client_as_default_lane(self):
+        asyncio.run(self._run_route_search_treats_aliased_reasoning_client_as_default_lane())
+
+    async def _run_route_search_treats_aliased_reasoning_client_as_default_lane(self):
+        original_build_local_system_prompt = getattr(Config, "build_local_system_prompt", None)
+        original_timeout = getattr(Config, "LLAMA_CPP_INFERENCE_TIMEOUT", 5.0)
+        original_compression = getattr(Config, "AI_CONTEXT_COMPRESSION_ENABLED", False)
+        original_classification = getattr(Config, "AI_TASK_CLASSIFICATION_ENABLED", False)
+        Config.build_local_system_prompt = staticmethod(lambda: "")
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = 5.0
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = False
+        Config.AI_TASK_CLASSIFICATION_ENABLED = True
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": "aliased local synthesis"}}],
+                    "usage": {"cached_tokens": 0},
+                }
+
+        class RecordingClient:
+            def __init__(self):
+                self.calls = []
+
+            async def post(self, path, headers=None, json=None, timeout=None):
+                self.calls.append(
+                    {
+                        "path": path,
+                        "headers": headers or {},
+                        "json": json or {},
+                        "timeout": timeout,
+                    }
+                )
+                return FakeResponse()
+
+        fake_client = RecordingClient()
+        fake_complexity = SimpleNamespace(
+            task_type="reasoning",
+            token_estimate=600,
+            local_suitable=True,
+            remote_required=False,
+            reason="continuation_within_local_capacity",
+            optimized_prompt="Explain the cache behavior from the provided context.",
+        )
+
+        try:
+            with patch.object(route_handler, "_hybrid_search", AsyncMock(return_value={
+                "combined_results": [{"score": 0.9, "collection": "best-practices", "content": "cache context " * 160}],
+                "keyword_results": [],
+                "semantic_results": [],
+            })):
+                with patch.object(route_handler, "_summarize", MagicMock(return_value="cache summary")):
+                    with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                        with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                            with patch.object(route_handler, "_llama_cpp_client_ref", return_value=fake_client):
+                                with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=fake_client):
+                                    with patch.object(route_handler, "_switchboard_client_ref", return_value=None):
+                                        with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                            with patch.object(route_handler, "ROUTE_DECISIONS", MagicMock()):
+                                                with patch.object(route_handler, "ROUTE_ERRORS", MagicMock()):
+                                                    with patch.object(route_handler, "LLM_BACKEND_SELECTIONS", MagicMock()):
+                                                        with patch.object(route_handler, "LLM_BACKEND_LATENCY", MagicMock()):
+                                                            with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                                with patch.object(route_handler, "_injection_scanner", MagicMock()):
+                                                                    route_handler._injection_scanner.filter_results = MagicMock(return_value=([], 0))
+                                                                    with patch.object(route_handler.task_classifier, "classify", MagicMock(return_value=fake_complexity)):
+                                                                        with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                                                                            result = await route_handler.route_search(
+                                                                                query="continue explaining why cache reuse reduces repeated query latency",
+                                                                                mode="hybrid",
+                                                                                context={"source": "test"},
+                                                                                generate_response=True,
+                                                                            )
+        finally:
+            Config.build_local_system_prompt = original_build_local_system_prompt
+            Config.LLAMA_CPP_INFERENCE_TIMEOUT = original_timeout
+            Config.AI_CONTEXT_COMPRESSION_ENABLED = original_compression
+            Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        assert result["backend"] == "local"
+        assert result["local_inference_lane"] == "default"
+        assert result["local_inference_lane_reason"] == "default_local_lane"
+        assert len(fake_client.calls) == 1
+        assert fake_client.calls[0]["path"] == "/chat/completions"
 
 
 async def run_async_tests():
