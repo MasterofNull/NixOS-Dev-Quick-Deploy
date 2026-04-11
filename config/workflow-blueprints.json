@@ -230,6 +230,82 @@
       ]
     },
     {
+      "id": "long-running-context-offload",
+      "title": "Long-Running Context Offload",
+      "description": "Keep remote runs lean by persisting decisions and history in the harness, recalling compact context on demand, and compacting often.",
+      "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "research",
+        "reviewer_lane": "codex-review",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "evidence-review",
+        "selection_strategy": "local-first",
+        "allow_parallel_subagents": true,
+        "max_parallel_subagents": 2,
+        "collaborator_lanes": [
+          "implementation",
+          "diagnostics"
+        ]
+      },
+      "intent_contract": {
+        "user_intent": "Reduce remote token consumption on long-running work by using the local harness as the primary memory and retrieval surface.",
+        "definition_of_done": "A harness-native context loop is in place with compact prompts, local recall path, validation evidence, and no performance regression note left unexamined.",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "Prefer harness memory recall, progressive context, and session state before resending old prompt history.",
+          "Compact often and preserve only durable decisions, blockers, evidence, and next actions.",
+          "Reuse existing cards, memory stores, workflow sessions, and retrieval endpoints before inventing new persistence paths.",
+          "Re-measure latency and retrieval quality when widening local context so token savings do not hide performance regressions."
+        ],
+        "no_early_exit_without": [
+          "documented retrieval-first flow",
+          "compaction cadence",
+          "validation evidence",
+          "rollback note"
+        ],
+        "anti_goals": [
+          "adding a second memory system without exhausting existing harness surfaces",
+          "replaying full prompt transcripts to remote models when harness recall could serve the same purpose"
+        ]
+      },
+      "phases": [
+        {
+          "id": "discover",
+          "tools": [
+            "hints",
+            "memory_recall",
+            "route_search"
+          ],
+          "exit_criteria": "Existing harness memory, session, and context surfaces are mapped before new storage is proposed."
+        },
+        {
+          "id": "plan",
+          "tools": [
+            "workflow_plan"
+          ],
+          "exit_criteria": "A retrieval-first, compaction-aware integration plan is defined with acceptance checks."
+        },
+        {
+          "id": "execute",
+          "tools": [
+            "memory_recall",
+            "route_search",
+            "feedback"
+          ],
+          "requires_approval": true,
+          "exit_criteria": "Minimal integration changes land on existing bootstrap, workflow, or memory surfaces."
+        },
+        {
+          "id": "validate",
+          "tools": [
+            "harness_eval",
+            "health"
+          ],
+          "exit_criteria": "Validation confirms context can be recalled compactly and the operator has a clear rollback path."
+        }
+      ]
+    },
+    {
       "id": "repo-refactor-guarded",
       "title": "Repository Refactor (Guarded)",
       "description": "Structured refactor flow with explicit invariants, reviewer gate, and regression evidence.",

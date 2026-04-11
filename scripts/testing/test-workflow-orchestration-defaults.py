@@ -52,6 +52,14 @@ def main() -> int:
         and '"selected_runtime_id": str(consensus.get("selected_runtime_id", "") or "").strip()' in text,
         "orchestration runtime contract should expose the selected profile and runtime id",
     )
+    assert_true(
+        '"prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history"' in text,
+        "workflow runtime default intent contract should bias long-running work toward harness-side context offload",
+    )
+    assert_true(
+        '"context strategy or blocker documented when the task is long-running"' in text,
+        "workflow runtime default intent contract should require a documented context strategy for long-running work",
+    )
 
     print("PASS: workflow-run orchestration defaults seed Gemini and local handoff metadata")
     return 0

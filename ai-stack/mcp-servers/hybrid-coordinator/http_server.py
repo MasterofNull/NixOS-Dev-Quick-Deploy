@@ -2765,10 +2765,12 @@ def _default_intent_contract(query: str) -> Dict[str, Any]:
         "spirit_constraints": [
             "follow declarative-first policy",
             "capture validation evidence for major actions",
+            "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
         ],
         "no_early_exit_without": [
             "all requested checks completed",
             "known blockers documented with remediation",
+            "context strategy or blocker documented when the task is long-running",
         ],
         "anti_goals": [],
     }

@@ -27,6 +27,7 @@ def main() -> int:
         "bounded-research-review",
         "remote-reasoning-escalation",
         "prsi-pessimistic-recursive-improvement",
+        "long-running-context-offload",
     }
     missing = sorted(required - ids)
     assert_true(not missing, f"missing required workflow blueprints: {', '.join(missing)}")
@@ -47,6 +48,18 @@ def main() -> int:
                 int(policy.get("max_parallel_subagents") or 0) >= 2,
                 f"blueprint {item.get('id')} must reserve at least one optional collaborator slot",
             )
+    offload = next((item for item in items if item.get("id") == "long-running-context-offload"), None)
+    assert_true(offload is not None, "long-running-context-offload blueprint must exist")
+    contract = offload.get("intent_contract") or {}
+    spirit_constraints = contract.get("spirit_constraints") or []
+    assert_true(
+        any("memory recall" in str(entry).lower() for entry in spirit_constraints),
+        "long-running-context-offload blueprint must steer runs toward harness memory recall",
+    )
+    assert_true(
+        any("compact" in str(entry).lower() for entry in spirit_constraints),
+        "long-running-context-offload blueprint must require frequent compaction",
+    )
     print("PASS: workflow blueprints cover the required harness task families")
     return 0
 

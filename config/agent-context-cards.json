@@ -439,6 +439,50 @@
         "runtime-incident",
         "nix-module-change"
       ]
+    },
+    {
+      "id": "context-offload",
+      "title": "Context Offload",
+      "summary": "Harness-native pattern for long-running work that keeps remote prompts lean by storing, recalling, and compacting context locally.",
+      "tags": ["context", "memory", "offload", "compaction", "history", "harness"],
+      "objective_patterns": ["offload", "memory", "history", "compact", "compaction", "long-running", "context window", "prompt cache"],
+      "use_when": [
+        "the task will span many turns or phases",
+        "remote context windows or token spend are becoming the bottleneck",
+        "you want the harness to serve prior context on demand instead of resending whole histories"
+      ],
+      "rules": [
+        "Prefer harness session state, memory recall, and context cards before resending old prompt history.",
+        "Compact often: preserve decisions, blockers, evidence, and next actions, not full conversational prose.",
+        "Store durable decisions and discoveries in shared or agent memory so later turns can retrieve them directly.",
+        "Use progressive disclosure: brief card first, then recall only the active layer from local retrieval.",
+        "Re-measure latency and recall quality after widening retrieval breadth; do not assume more context is better.",
+        "Keep remote prompts stable and compact so provider-side caching can work across turns."
+      ],
+      "commands": [
+        "aq-context-bootstrap --task \"<task>\" --scope context-offload --format json",
+        "aq-context-card --card context-offload --level standard",
+        "aq-context-manage check",
+        "aq-memory search \"<task or decision>\" --project ai-stack --limit 5",
+        "harness-rpc.js run-start --query \"<task>\" --blueprint long-running-context-offload --intent-depth standard"
+      ],
+      "paths": [
+        "scripts/ai/aq-context-bootstrap",
+        "scripts/ai/aq-context-manage",
+        "scripts/ai/aq-memory",
+        "config/workflow-blueprints.json",
+        "docs/operations/agent-context-progressive-disclosure.md"
+      ],
+      "anti_patterns": [
+        "resending full conversation history to a remote model every turn",
+        "treating compaction as an end-of-task activity instead of a running control loop",
+        "broad route_search before checking whether harness memory already holds the needed decision or discovery"
+      ],
+      "expands_to": [
+        "token-discipline",
+        "harness-first",
+        "task-execution"
+      ]
     }
   ]
 }
