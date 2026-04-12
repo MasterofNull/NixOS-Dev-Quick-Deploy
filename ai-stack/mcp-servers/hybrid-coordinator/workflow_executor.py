@@ -19,9 +19,12 @@ import asyncio
 import logging
 import time
 import json
+import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+
+import httpx
 
 try:
     from llm_client import LLMClient, PromptBuilder
@@ -65,6 +68,7 @@ class WorkflowExecutor:
         self.max_concurrent = max_concurrent
         self.running_sessions: Dict[str, asyncio.Task] = {}
         self.should_stop = False
+        self.coordinator_url = os.getenv("WORKFLOW_EXECUTOR_COORDINATOR_URL", "http://127.0.0.1:8003").rstrip("/")
 
         # Initialize LLM client
         self.use_llm = use_llm and LLM_AVAILABLE
@@ -79,6 +83,11 @@ class WorkflowExecutor:
         else:
             self.llm_client = None
             logger.info("Mock execution mode (no LLM)")
+
+        self.phase_executor = WorkflowPhaseExecutor(
+            llm_client=self.llm_client,
+            coordinator_url=self.coordinator_url,
+        )
 
     async def run(self):
         """
@@ -260,19 +269,27 @@ class WorkflowExecutor:
                 })
 
             else:
-                # Mock execution
-                await asyncio.sleep(1.0)
-
+                result = await self.phase_executor.execute_phase(
+                    current_phase,
+                    objective,
+                    session,
+                )
+                usage["tokens_used"] += result.get("tokens_used", 0)
+                usage["tool_calls_used"] += result.get("tool_calls_made", 0)
+                trajectory.extend(result.get("events", []))
                 trajectory.append({
                     "ts": time.time(),
-                    "event_type": "mock_execution",
+                    "event_type": "phase_execution",
                     "phase_id": current_phase.get("id"),
-                    "detail": "Mock execution completed (no LLM)",
+                    "detail": result.get("summary", "Phase execution completed"),
+                    "executor_mode": "delegated-local",
                 })
 
                 await self._update_session(session_id, {
                     "status": "completed",
                     "trajectory": trajectory,
+                    "usage": usage,
+                    "result": result.get("output", ""),
                     "completed_at": time.time(),
                 })
 
@@ -383,7 +400,7 @@ class WorkflowPhaseExecutor:
     - Error handling
     """
 
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client=None, coordinator_url: str = "http://127.0.0.1:8003"):
         """
         Initialize phase executor.
 
@@ -391,6 +408,72 @@ class WorkflowPhaseExecutor:
             llm_client: LLM client for API calls (future implementation)
         """
         self.llm_client = llm_client
+        self.coordinator_url = coordinator_url.rstrip("/")
+
+    def _build_phase_task(
+        self,
+        phase: Dict[str, Any],
+        objective: str,
+        context: Dict[str, Any],
+    ) -> str:
+        phase_id = str(phase.get("id", "unknown"))
+        phase_title = str(phase.get("title", "") or phase.get("name", "")).strip()
+        acceptance = phase.get("acceptance") or phase.get("goals") or []
+        acceptance_text = ", ".join(str(item).strip() for item in acceptance if str(item).strip()) if isinstance(acceptance, list) else str(acceptance).strip()
+        safety_mode = str(context.get("safety_mode", "plan-readonly"))
+        return (
+            f"Workflow objective: {objective}\n"
+            f"Phase id: {phase_id}\n"
+            f"Phase title: {phase_title or '[untitled]'}\n"
+            f"Safety mode: {safety_mode}\n"
+            f"Acceptance targets: {acceptance_text or '[none specified]'}\n"
+            "Return a concise result for this phase with explicit evidence and next action."
+        )
+
+    async def _delegate_phase_execution(
+        self,
+        phase: Dict[str, Any],
+        objective: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        task = self._build_phase_task(phase, objective, context)
+        payload = {
+            "role": "coordinator",
+            "task": task,
+            "system_prompt": (
+                "You are executing one bounded workflow phase through the local harness. "
+                "Return a concise result with evidence and next action only."
+            ),
+            "max_tokens": min(int(context.get("budget", {}).get("token_limit", 512) or 512), 768),
+            "temperature": 0.1,
+            "timeout": 20,
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.coordinator_url}/control/agents/spawn",
+                json=payload,
+            )
+        response.raise_for_status()
+        body = response.json()
+        content = ""
+        if isinstance(body, dict):
+            content = str(body.get("result") or body.get("content") or body.get("response") or "").strip()
+        if not content:
+            content = json.dumps(body)[:2000]
+        return {
+            "output": content,
+            "tokens_used": 0,
+            "tool_calls_made": 0,
+            "summary": f"Local harness phase execution completed: {content[:100]}",
+            "events": [
+                {
+                    "ts": time.time(),
+                    "event_type": "local_phase_execution",
+                    "phase_id": str(phase.get("id", "unknown")),
+                    "detail": "Phase executed via local harness sub-agent spawn",
+                }
+            ],
+        }
 
     async def execute_phase(
         self,
@@ -411,26 +494,17 @@ class WorkflowPhaseExecutor:
         """
         phase_id = phase.get("id", "unknown")
         logger.info(f"Executing phase: {phase_id}")
-
-        # TODO: Implement actual phase execution:
-        # 1. Generate phase prompt from objective + context
-        # 2. Call LLM API
-        # 3. Parse response for tool calls
-        # 4. Execute tools if in execute mode
-        # 5. Collect results
-        # 6. Validate against phase goals
-
-        # For now, return mock result
-        result = {
+        delegated = await self._delegate_phase_execution(phase, objective, context)
+        return {
             "phase_id": phase_id,
             "status": "completed",
-            "outputs": [],
-            "events": [],
-            "tokens_used": 0,
-            "tool_calls_made": 0,
+            "outputs": [delegated.get("output", "")],
+            "output": delegated.get("output", ""),
+            "events": delegated.get("events", []),
+            "tokens_used": delegated.get("tokens_used", 0),
+            "tool_calls_made": delegated.get("tool_calls_made", 0),
+            "summary": delegated.get("summary", f"Phase {phase_id} completed"),
         }
-
-        return result
 
 
 # Standalone execution entry point

@@ -469,7 +469,8 @@ python -m ai_stack.workflows.validator examples/workflows/feature-implementation
 
 ### Slice 2.3: Workflow Executor
 
-**Status:** Ready to Delegate
+**Status:** In Progress
+**Execution Note (2026-04-12):** Remote delegated completion is still blocked by stale pre-fix queue output and free-lane throttling, but the coordinator-side fallback executor shell has been reduced: `ai-stack/mcp-servers/hybrid-coordinator/workflow_executor.py` now executes bounded phases through the local harness sub-agent spawn path instead of returning a mock phase result.
 
 **Owner:** qwen (implementation)
 **Type:** Code implementation

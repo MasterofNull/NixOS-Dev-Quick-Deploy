@@ -9,7 +9,7 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from workflow_executor import WorkflowExecutor
+from workflow_executor import WorkflowExecutor, WorkflowPhaseExecutor
 
 # Enable pytest-asyncio
 pytestmark = pytest.mark.anyio
@@ -59,6 +59,21 @@ def test_executor_processes_session(temp_sessions_file):
     """Test that executor can process a session"""
     async def run_test():
         executor = WorkflowExecutor(sessions_file=temp_sessions_file, poll_interval=0.1)
+        executor.use_llm = False
+
+        async def fake_execute_phase(phase, objective, context):
+            return {
+                "phase_id": phase.get("id", "unknown"),
+                "status": "completed",
+                "outputs": ["delegated result"],
+                "output": "delegated result",
+                "events": [{"event_type": "delegated_phase_execution", "phase_id": phase.get("id", "unknown")}],
+                "tokens_used": 11,
+                "tool_calls_made": 0,
+                "summary": "delegated phase execution completed",
+            }
+
+        executor.phase_executor.execute_phase = fake_execute_phase
 
         # Run executor for a short time
         run_task = asyncio.create_task(executor.run())
@@ -77,6 +92,9 @@ def test_executor_processes_session(temp_sessions_file):
         assert session["status"] == "completed"
         assert "completed_at" in session
         assert len(session["trajectory"]) > 0
+        assert session["usage"]["tokens_used"] == 11
+        assert session["result"] == "delegated result"
+        assert any(item.get("event_type") == "phase_execution" for item in session["trajectory"])
 
     asyncio.run(run_test())
 
@@ -145,6 +163,37 @@ def test_executor_handles_errors():
 
         finally:
             Path(path).unlink(missing_ok=True)
+
+    asyncio.run(run_test())
+
+
+def test_workflow_phase_executor_uses_delegate_helper():
+    """WorkflowPhaseExecutor should return delegated output instead of mock placeholders."""
+    async def run_test():
+        executor = WorkflowPhaseExecutor(coordinator_url="http://127.0.0.1:8003")
+
+        async def fake_delegate(phase, objective, context):
+            return {
+                "output": "phase delegate output",
+                "tokens_used": 7,
+                "tool_calls_made": 1,
+                "summary": "Delegated phase execution completed",
+                "events": [{"event_type": "delegated_phase_execution", "phase_id": phase.get("id", "unknown")}],
+            }
+
+        executor._delegate_phase_execution = fake_delegate
+        result = await executor.execute_phase(
+            {"id": "discover", "title": "Discover"},
+            "Investigate current runtime status",
+            {"safety_mode": "plan-readonly", "budget": {"token_limit": 128}},
+        )
+
+        assert result["status"] == "completed"
+        assert result["output"] == "phase delegate output"
+        assert result["tokens_used"] == 7
+        assert result["tool_calls_made"] == 1
+        assert result["outputs"] == ["phase delegate output"]
+        assert result["events"][0]["event_type"] == "delegated_phase_execution"
 
     asyncio.run(run_test())
 
