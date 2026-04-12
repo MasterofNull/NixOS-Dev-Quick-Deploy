@@ -3334,6 +3334,118 @@ async def _save_runtime_registry(data: Dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _runtime_service_metadata(runtime_id: str) -> Dict[str, str]:
+    normalized = str(runtime_id or "").strip().lower()
+    switchboard_runtimes = {
+        "local-tool-calling",
+        "openrouter-gemini",
+        "openrouter-free",
+        "openrouter-coding",
+        "openrouter-reasoning",
+        "openrouter-tool-calling",
+    }
+    if normalized in switchboard_runtimes:
+        return {
+            "service_unit": "ai-switchboard.service",
+            "healthcheck_url": f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
+        }
+    return {}
+
+
+def _enrich_runtime_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(record)
+    metadata = _runtime_service_metadata(str(enriched.get("runtime_id", "")))
+    for key, value in metadata.items():
+        if value and not str(enriched.get(key, "") or "").strip():
+            enriched[key] = value
+    return enriched
+
+
+_RUNTIME_EXECUTION_ALLOWLIST = {
+    "ai-switchboard.service": {
+        "healthcheck_url": f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
+    },
+}
+
+
+async def _execute_runtime_service_action(
+    runtime: Dict[str, Any],
+    *,
+    action: str,
+) -> tuple[Dict[str, Any], int]:
+    service_unit = str(runtime.get("service_unit", "") or "").strip()
+    runtime_id = str(runtime.get("runtime_id", "") or "").strip()
+    if not service_unit:
+        return {
+            "status": "not_supported",
+            "runtime_id": runtime_id,
+            "action": action,
+            "reason": "runtime has no executable service_unit",
+        }, 409
+    if service_unit not in _RUNTIME_EXECUTION_ALLOWLIST:
+        return {
+            "status": "not_allowed",
+            "runtime_id": runtime_id,
+            "action": action,
+            "service_unit": service_unit,
+            "reason": "service_unit not in execution allowlist",
+        }, 403
+
+    started = time.time()
+    proc = await asyncio.create_subprocess_exec(
+        "systemctl",
+        "is-active",
+        service_unit,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    duration = round(time.time() - started, 2)
+    if proc.returncode != 0:
+        return {
+            "status": "failed",
+            "runtime_id": runtime_id,
+            "action": action,
+            "service_unit": service_unit,
+            "duration_seconds": duration,
+            "service_state": stdout.decode("utf-8", errors="replace").strip()[:120],
+            "error": stderr.decode("utf-8", errors="replace")[:500],
+        }, 500
+
+    healthcheck_url = str(
+        runtime.get("healthcheck_url")
+        or _RUNTIME_EXECUTION_ALLOWLIST.get(service_unit, {}).get("healthcheck_url")
+        or ""
+    ).strip()
+    health_result: Dict[str, Any] = {"checked": False}
+    if healthcheck_url:
+        health_result["checked"] = True
+        health_result["url"] = healthcheck_url
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(healthcheck_url)
+            health_result["status_code"] = response.status_code
+            health_result["ok"] = response.status_code < 400
+            health_result["body_preview"] = response.text[:300]
+        except Exception as exc:
+            health_result["ok"] = False
+            health_result["error"] = str(exc)
+    else:
+        health_result["ok"] = True
+
+    payload = {
+        "status": "verified" if health_result.get("ok") else "degraded",
+        "runtime_id": runtime_id,
+        "action": action,
+        "mode": "verify-service-and-health",
+        "service_unit": service_unit,
+        "service_state": stdout.decode("utf-8", errors="replace").strip()[:120] or "active",
+        "duration_seconds": duration,
+        "healthcheck": health_result,
+    }
+    return payload, 200 if health_result.get("ok") else 502
+
+
 def _is_continuation_query(query: str) -> bool:
     query_lower = str(query or "").lower()
     direct_tokens = (
@@ -4906,6 +5018,8 @@ async def run_http_mode(port: int) -> None:
                 "/control/agents/",
                 "/control/agents",
                 "/control/review/",
+                "/control/runtimes",
+                "/control/runtimes/",
                 "/memory/",
                 "/learning/",
                 "/cache/",
@@ -9955,11 +10069,14 @@ asyncio.run(run())
                 "runtime_class": str(data.get("runtime_class", "generic")),
                 "transport": str(data.get("transport", "http")),
                 "endpoint_env_var": str(data.get("endpoint_env_var", "")),
+                "service_unit": str(data.get("service_unit", "")),
+                "healthcheck_url": str(data.get("healthcheck_url", "")),
                 "tags": data.get("tags", []) if isinstance(data.get("tags", []), list) else [],
                 "updated_at": now,
                 "source": str(data.get("source", "runtime-register") or "runtime-register"),
                 "persistent": bool(data.get("persistent", False)),
             }
+            record = _enrich_runtime_record(record)
             async with _runtime_registry_lock:
                 registry = await _load_runtime_registry()
                 existing = registry["runtimes"].get(runtime_id, {})
@@ -9981,7 +10098,7 @@ asyncio.run(run())
         try:
             async with _runtime_registry_lock:
                 registry = await _load_runtime_registry()
-            items = list(registry.get("runtimes", {}).values())
+            items = [_enrich_runtime_record(item) for item in registry.get("runtimes", {}).values()]
             items.sort(key=lambda x: int(x.get("updated_at") or 0), reverse=True)
             payload = {"runtimes": items, "count": len(items)}
             async with _agent_lessons_lock:
@@ -10001,7 +10118,7 @@ asyncio.run(run())
                 runtime = registry.get("runtimes", {}).get(runtime_id)
             if not runtime:
                 return web.json_response({"error": "runtime not found"}, status=404)
-            payload = dict(runtime)
+            payload = _enrich_runtime_record(runtime)
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -10028,7 +10145,7 @@ asyncio.run(run())
                     runtime.setdefault("status_notes", []).append({"ts": int(time.time()), "text": note})
                 registry["runtimes"][runtime_id] = runtime
                 await _save_runtime_registry(registry)
-            payload = dict(runtime)
+            payload = _enrich_runtime_record(runtime)
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -10039,10 +10156,11 @@ asyncio.run(run())
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
     async def handle_runtime_deploy(request: web.Request) -> web.Response:
-        """Record deployment events for runtime rollout tracking."""
+        """Record deployment events and optionally execute bounded runtime activation."""
         try:
             runtime_id = request.match_info.get("runtime_id", "")
             data = await request.json()
+            execute = bool(data.get("execute", False))
             deployment = {
                 "deployment_id": str(data.get("deployment_id") or uuid4()),
                 "version": str(data.get("version", "")),
@@ -10057,8 +10175,21 @@ asyncio.run(run())
                 runtime = registry.get("runtimes", {}).get(runtime_id)
                 if not runtime:
                     return web.json_response({"error": "runtime not found"}, status=404)
+                runtime = _enrich_runtime_record(runtime)
+                action_result: Dict[str, Any] | None = None
+                response_status = 200
+                if execute:
+                    action_result, response_status = await _execute_runtime_service_action(runtime, action="deploy")
+                    deployment["execution"] = action_result
+                    deployment["status"] = "executed" if response_status == 200 else "activation_failed"
                 runtime.setdefault("deployments", []).append(deployment)
                 runtime["updated_at"] = int(time.time())
+                if execute and action_result:
+                    runtime["status"] = "ready" if response_status == 200 else "degraded"
+                    runtime.setdefault("status_notes", []).append({
+                        "ts": int(time.time()),
+                        "text": f"runtime deploy execute={execute} status={deployment['status']}",
+                    })
                 registry["runtimes"][runtime_id] = runtime
                 await _save_runtime_registry(registry)
             payload = {"runtime_id": runtime_id, "deployment": deployment}
@@ -10067,17 +10198,18 @@ asyncio.run(run())
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             if lesson_refs:
                 payload["active_lesson_refs"] = lesson_refs
-            return web.json_response(payload)
+            return web.json_response(payload, status=response_status)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
     async def handle_runtime_rollback(request: web.Request) -> web.Response:
-        """Record rollback requests against runtime deployment history."""
+        """Record rollback requests and optionally execute bounded runtime rollback."""
         try:
             runtime_id = request.match_info.get("runtime_id", "")
             data = await request.json()
             to_deployment_id = str(data.get("to_deployment_id", "")).strip()
             reason = str(data.get("reason", "")).strip()
+            execute = bool(data.get("execute", False))
             if not to_deployment_id:
                 return web.json_response({"error": "to_deployment_id required"}, status=400)
             async with _runtime_registry_lock:
@@ -10085,23 +10217,37 @@ asyncio.run(run())
                 runtime = registry.get("runtimes", {}).get(runtime_id)
                 if not runtime:
                     return web.json_response({"error": "runtime not found"}, status=404)
-                runtime.setdefault("rollbacks", []).append(
-                    {
-                        "to_deployment_id": to_deployment_id,
-                        "reason": reason,
-                        "created_at": int(time.time()),
-                    }
-                )
+                runtime = _enrich_runtime_record(runtime)
+                rollback_entry = {
+                    "to_deployment_id": to_deployment_id,
+                    "reason": reason,
+                    "created_at": int(time.time()),
+                }
+                action_result: Dict[str, Any] | None = None
+                response_status = 200
+                if execute:
+                    action_result, response_status = await _execute_runtime_service_action(runtime, action="rollback")
+                    rollback_entry["execution"] = action_result
+                    rollback_entry["status"] = "executed" if response_status == 200 else "rollback_failed"
+                runtime.setdefault("rollbacks", []).append(rollback_entry)
                 runtime["updated_at"] = int(time.time())
+                if execute and action_result:
+                    runtime["status"] = "ready" if response_status == 200 else "degraded"
+                    runtime.setdefault("status_notes", []).append({
+                        "ts": int(time.time()),
+                        "text": f"runtime rollback execute={execute} status={rollback_entry.get('status', 'recorded')}",
+                    })
                 registry["runtimes"][runtime_id] = runtime
                 await _save_runtime_registry(registry)
             payload = {"runtime_id": runtime_id, "to_deployment_id": to_deployment_id, "status": "recorded"}
+            if execute:
+                payload["execution"] = action_result
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
             if lesson_refs:
                 payload["active_lesson_refs"] = lesson_refs
-            return web.json_response(payload)
+            return web.json_response(payload, status=response_status)
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
