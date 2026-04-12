@@ -312,11 +312,16 @@ async function main() {
       });
     }
     case "orchestrate":
+      {
+        const orchestratePrompt =
+          args.prompt || args.task || args.query || args.q || "";
       return call("/workflow/orchestrate", "POST", {
-        task: args.task || args.query || args.q || "",
+        prompt: orchestratePrompt,
+        task: orchestratePrompt,
         priority: args.priority || "normal",
         agent: args.agent || "codex",
       });
+      }
     case "query":
       return call("/query", "POST", {
         query: args.query || args.q || "",

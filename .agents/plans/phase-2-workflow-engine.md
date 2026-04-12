@@ -39,6 +39,7 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 - Slice 2.2 completed in commit `53fc1fa`
 - Slice 2.2 validation re-run: `python -m pytest ai-stack/workflows/tests` -> 66 passed
 - Active Slice 2.3 run: `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc`
+- Active Slice 2.3 queue task: `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`completed`, pending output review)
 
 ---
 
