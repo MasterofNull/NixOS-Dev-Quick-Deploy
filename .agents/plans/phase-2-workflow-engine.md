@@ -38,8 +38,12 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 - Slice 2.1 completed in commit `6a3103d`
 - Slice 2.2 completed in commit `53fc1fa`
 - Slice 2.2 validation re-run: `python -m pytest ai-stack/workflows/tests` -> 66 passed
+- Queue compatibility repaired in commit `136346a`
+- Ralph delegation path repaired in commit `417280b`
+- Runtime activation refreshed on `2026-04-12` via `systemctl restart ai-switchboard ai-hybrid-coordinator ai-ralph-wiggum`
 - Active Slice 2.3 run: `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc`
-- Active Slice 2.3 queue task: `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`completed`, pending output review)
+- Active Slice 2.3 queue task: `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`completed`, stale pre-fix output)
+- Current blocker: delegated remote lanes now resolve to current models, but free-tier OpenRouter execution is returning live `429` rate limits; retry after rate-limit window or switch to BYOK/paid remote lanes before re-queueing Slice 2.3
 
 ---
 
