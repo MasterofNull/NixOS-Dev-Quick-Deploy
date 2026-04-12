@@ -26,7 +26,7 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 |-------|-------|--------|----------|--------|
 | 2.1 | claude (architecture) | 4-5 days | P0 | Complete |
 | 2.2 | qwen (implementation) | 5-6 days | P0 | Complete |
-| 2.3 | qwen (implementation) | 6-7 days | P0 | Ready |
+| 2.3 | qwen (implementation) | 6-7 days | P0 | In Progress (delegated) |
 | 2.4 | codex (integration) | 5-6 days | P0 | Blocked by 2.3 |
 | 2.5 | codex (templates) | 4-5 days | P1 | Blocked by 2.3 |
 | 2.6 | qwen (CLI) | 3-4 days | P1 | Blocked by 2.3 |
@@ -38,6 +38,7 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 - Slice 2.1 completed in commit `6a3103d`
 - Slice 2.2 completed in commit `53fc1fa`
 - Slice 2.2 validation re-run: `python -m pytest ai-stack/workflows/tests` -> 66 passed
+- Active Slice 2.3 run: `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc`
 
 ---
 

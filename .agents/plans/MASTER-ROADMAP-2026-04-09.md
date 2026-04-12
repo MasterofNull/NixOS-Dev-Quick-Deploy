@@ -24,8 +24,11 @@ This master roadmap consolidates findings from three comprehensive analyses:
 - Slice 1.5 benchmark harness exists and is operational
 - Slice 2.1 workflow DSL design is complete
 - Slice 2.2 workflow parser and validator are complete
-- Slice 2.3 workflow executor is delegated and active in harness run `70093571-a9d4-41fd-80d6-79167fda62fe`
+- Slice 2.3 workflow executor is delegated and active in harness run `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc`
 - Slice 4.4 memory system benchmarking is complete
+- Slice 4.1 tool discovery is delegated in harness run `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24`
+- Slice 4.3 conversation mining is delegated in harness run `f5205439-39ad-4d3a-bff9-06f1d8dbe849`
+- Phase 2 post-2.3 integration brief is delegated in harness run `fde78ec3-d847-42fc-9a8b-a9629f8712bf`
 
 Use this section as the execution checkpoint before starting new slices so completed work is not restarted.
 
@@ -53,12 +56,12 @@ Use this section as the execution checkpoint before starting new slices so compl
 
 ### Current Focus: Phase 2 Slice 2.3 + Phase 4 Slice 4.4 Follow-Through
 
-**IMMEDIATE ACTION:** Let Slice 2.3 run complete, then start the Phase 2 parallel follow-on slices (2.4, 2.5, 2.6)
+**IMMEDIATE ACTION:** Review active delegated runs, accept completed outputs, then start the Phase 2 parallel follow-on slices (2.4, 2.5, 2.6) as soon as Slice 2.3 clears reviewer gate
 
-**Delegate to:** qwen for 2.3 completion, codex/qwen for the 2.4-2.6 follow-on batch
-**Task:** Finish workflow executor, then execute integration/templates/CLI in parallel
+**Delegate to:** qwen for 2.3, 4.1, 4.3 implementation lanes; claude for 2.4-2.6 prep analysis; codex for reviewer gate and integration batch kickoff
+**Task:** Finish workflow executor, advance independent tooling slices, and prepare the post-2.3 execution batch
 **Timeline:** Current active phase
-**Output:** Workflow engine integration batch
+**Output:** Live delegated execution queue plus the next integration batch
 
 ### Concurrent Work Enabled
 
