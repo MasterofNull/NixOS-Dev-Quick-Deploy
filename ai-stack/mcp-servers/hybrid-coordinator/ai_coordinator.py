@@ -66,6 +66,8 @@ def _runtime_record(
     status: str,
     note: str = "",
     model_alias: str = "",
+    service_unit: str = "",
+    healthcheck_url: str = "",
     now: int,
 ) -> Dict[str, Any]:
     record: Dict[str, Any] = {
@@ -85,6 +87,10 @@ def _runtime_record(
         record["status_notes"] = [{"ts": now, "text": note}]
     if model_alias:
         record["model_alias"] = model_alias
+    if service_unit:
+        record["service_unit"] = service_unit
+    if healthcheck_url:
+        record["healthcheck_url"] = healthcheck_url
     return record
 
 
@@ -134,6 +140,8 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
                 "Local agent lane with subprocess spawning. Delegates to switchboard "
                 "for tool-augmented execution via llama.cpp."
             ),
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
             now=now_ts,
         ),
         _runtime_record(
@@ -148,6 +156,8 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
                 "general orchestration while preserving local tool and embedding fallbacks."
             ),
             model_alias=remote_gemini_alias,
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
             now=now_ts,
         ),
         _runtime_record(
@@ -159,6 +169,8 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             status=remote_free_status,
             note="Uses the free remote lane for bounded delegation and planning.",
             model_alias=Config.SWITCHBOARD_REMOTE_ALIAS_FREE,
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
             now=now_ts,
         ),
         _runtime_record(
@@ -170,6 +182,8 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             status=remote_coding_status,
             note="Uses the coding-optimized remote lane for implementation-heavy delegation.",
             model_alias=Config.SWITCHBOARD_REMOTE_ALIAS_CODING,
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
             now=now_ts,
         ),
         _runtime_record(
@@ -181,6 +195,8 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             status=remote_reasoning_status,
             note="Uses the higher-judgment remote lane for architecture and review tasks.",
             model_alias=Config.SWITCHBOARD_REMOTE_ALIAS_REASONING,
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
             now=now_ts,
         ),
         _runtime_record(
@@ -192,6 +208,8 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             status=remote_tool_calling_status,
             note="Uses the tool-calling oriented remote lane for bounded tool-use delegation.",
             model_alias=Config.SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING,
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
             now=now_ts,
         ),
     ]

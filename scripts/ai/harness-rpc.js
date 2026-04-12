@@ -229,6 +229,8 @@ async function main() {
         runtime_class: args["runtime-class"] || "generic",
         transport: args.transport || "http",
         endpoint_env_var: args["endpoint-env-var"] || "",
+        service_unit: args["service-unit"] || "",
+        healthcheck_url: args["healthcheck-url"] || "",
         tags: csv(args.tags),
       });
     case "runtime-list":
@@ -248,11 +250,13 @@ async function main() {
         target: args.target || "local",
         status: args.status || "deployed",
         note: args.note || "",
+        execute: args.execute === "true" || args.execute === true,
       });
     case "runtime-rollback":
       return call(`/control/runtimes/${args.id}/rollback`, "POST", {
         to_deployment_id: args["to-deployment-id"] || "",
         reason: args.reason || "",
+        execute: args.execute === "true" || args.execute === true,
       });
     case "runtime-schedule-policy":
       return call("/control/runtimes/schedule/policy", "GET");
