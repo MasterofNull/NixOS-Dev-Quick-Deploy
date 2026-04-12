@@ -89,12 +89,23 @@ node scripts/ai/harness-rpc.js review-handoff \
   --path ai-stack/mcp-servers/hybrid-coordinator/http_server.py \
   --criteria correctness,style \
   --timeout 20
+
+# List runtime lanes through the harness control plane
+node scripts/ai/harness-rpc.js runtime-list
+
+# Execute a bounded runtime verification for switchboard-backed lanes
+node scripts/ai/harness-rpc.js runtime-deploy \
+  --id local-tool-calling \
+  --deployment-id smoke-switchboard \
+  --version smoke \
+  --execute true
 ```
 
 Current limitation on `2026-04-12`:
 - Exact smoke-check prompts complete reliably.
 - Local team runs now execute member subprocess agents in parallel and return per-member status/results.
 - Local review handoffs now attempt delegated reviewer execution first, then fall back to manual accept/reject if the reviewer is inconclusive or times out.
+- Runtime control-plane deploy/rollback now supports bounded live verification only for allowlisted switchboard-backed runtime lanes; other runtimes remain registry-only.
 - Broader slice-planning prompts may time out or return empty content.
 - Use this lane for bounded prep, health checks, and short reviewer asks while remote lanes recover.
 
