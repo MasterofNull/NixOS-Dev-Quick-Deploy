@@ -1052,6 +1052,7 @@ aq-qa --phase=execution-isolation
 
 **Status:** Delegated
 **Active Run:** `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24`
+**Active Queue Task:** `20ac6d89-49d1-4e95-b0c3-008dbef34b30` (`running`)
 
 **Owner:** qwen (implementation)
 **Type:** CLI + Web UI
@@ -1154,6 +1155,7 @@ wscat -c ws://localhost:5173/api/ws/workflows
 
 **Status:** Delegated
 **Active Run:** `f5205439-39ad-4d3a-bff9-06f1d8dbe849`
+**Active Queue Task:** `f911847c-34c0-457b-a0f9-0c86439c6210` (`queued`)
 
 **Owner:** qwen (implementation)
 **Type:** Data processing
