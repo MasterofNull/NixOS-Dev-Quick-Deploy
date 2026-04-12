@@ -578,11 +578,15 @@ async function main() {
         session_id: args.session || args.id || "",
         artifact_type: args.type || "code", // code, config, docs, test
         artifact_path: args.path || "",
+        artifact_content: args.content || "",
         review_criteria: csv(args.criteria) || [
           "correctness",
           "style",
           "security",
         ],
+        timeout: args.timeout ? Number(args.timeout) : undefined,
+        max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
+        temperature: args.temperature ? Number(args.temperature) : undefined,
         auto_merge:
           args["auto-merge"] === "true" || args["auto-merge"] === true,
       });
