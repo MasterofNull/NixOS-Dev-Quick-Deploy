@@ -52,7 +52,7 @@ def test_retrieval_prefers_local_when_requested():
 
     assert decision["task_archetype"] == "retrieval"
     assert decision["model_class"] == "lightweight"
-    assert decision["recommended_profile"] == "default"
+    assert decision["recommended_profile"] == "embedded-assist"
 
 
 def test_implementation_routes_to_coding_lane():
@@ -130,8 +130,13 @@ def test_route_openai_chat_payload_routes_continue_planning_to_lightweight_lane(
         prefer_local=True,
     )
 
-    assert decision["recommended_profile"] == "default"
+    assert decision["recommended_profile"] == "embedded-assist"
     assert decision["model_class"] == "lightweight"
+
+
+def test_infer_profile_supports_embedded_assist_aliases():
+    assert ai_coordinator.infer_profile("ignored", requested_profile="embedded-assist") == "embedded-assist"
+    assert ai_coordinator.infer_profile("ignored", requested_profile="assist") == "embedded-assist"
 
 
 def test_runtime_defaults_mark_remote_lanes_offline_without_remote_url():
@@ -267,7 +272,7 @@ def test_get_routing_stats_rolls_up_recent_decisions():
 
     assert stats["total_decisions"] == 2
     assert stats["complexity_breakdown"]["simple"] >= 1
-    assert stats["profile_breakdown"]["default"] >= 1
+    assert stats["profile_breakdown"]["embedded-assist"] >= 1
 
 
 def test_infer_profile_covers_requested_profile_and_task_fallbacks():
