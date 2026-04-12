@@ -4905,6 +4905,7 @@ async def run_http_mode(port: int) -> None:
                 "/control/llm/",
                 "/control/agents/",
                 "/control/agents",
+                "/control/review/",
                 "/memory/",
                 "/learning/",
                 "/cache/",
@@ -11629,6 +11630,80 @@ asyncio.run(run())
     # ── Agent-to-Agent Review Handoff (IndyDevDan pattern) ─────────────────
     _REVIEW_QUEUE: Dict[str, Dict[str, Any]] = {}  # session_id -> review state
 
+    def _load_review_artifact_preview(
+        artifact_path: str,
+        inline_content: str,
+        max_chars: int = 6000,
+    ) -> Dict[str, Any]:
+        preview = str(inline_content or "").strip()
+        source = "inline"
+        resolved_path = str(artifact_path or "").strip()
+        if not preview and resolved_path:
+            candidate = Path(resolved_path)
+            candidate_paths = [candidate]
+            if not candidate.is_absolute():
+                candidate_paths.append(Path(__file__).resolve().parents[3] / candidate)
+            existing_candidate = next((item for item in candidate_paths if item.exists() and item.is_file()), None)
+            if existing_candidate:
+                try:
+                    preview = existing_candidate.read_text(encoding="utf-8", errors="replace")[:max_chars]
+                    source = "file"
+                    resolved_path = str(existing_candidate)
+                except Exception as exc:
+                    preview = f"[artifact preview unavailable: {exc}]"
+                    source = "error"
+        elif preview:
+            preview = preview[:max_chars]
+        return {
+            "artifact_path": resolved_path,
+            "preview": preview,
+            "preview_source": source,
+            "preview_truncated": len(preview) >= max_chars if preview else False,
+        }
+
+    def _parse_review_agent_result(result_text: str) -> Dict[str, Any]:
+        raw = str(result_text or "").strip()
+        parsed: Dict[str, Any] = {}
+        if not raw:
+            return {
+                "decision": "needs_manual_review",
+                "reason": "reviewer returned empty output",
+                "evidence": "",
+                "feedback": "",
+                "suggested_fixes": [],
+                "raw_result": raw,
+            }
+        try:
+            candidate = json.loads(raw)
+            if isinstance(candidate, dict):
+                parsed = candidate
+        except json.JSONDecodeError:
+            parsed = {}
+
+        decision = str(parsed.get("decision", "") or "").strip().lower()
+        if decision not in {"accept", "accepted", "approve", "approved", "reject", "rejected"}:
+            lowered = raw.lower()
+            if any(token in lowered for token in ("\"decision\":\"accept", "\"decision\": \"accept", "approved", "accept")):
+                decision = "accept"
+            elif any(token in lowered for token in ("\"decision\":\"reject", "\"decision\": \"reject", "rejected", "reject")):
+                decision = "reject"
+            else:
+                decision = "needs_manual_review"
+
+        return {
+            "decision": "accept" if decision.startswith("accept") or decision.startswith("approv") else (
+                "reject" if decision.startswith("reject") else "needs_manual_review"
+            ),
+            "reason": str(parsed.get("reason", "") or "").strip(),
+            "evidence": str(parsed.get("evidence", "") or "").strip(),
+            "feedback": str(parsed.get("feedback", "") or "").strip(),
+            "suggested_fixes": (
+                [str(item).strip() for item in parsed.get("suggested_fixes", []) if str(item).strip()]
+                if isinstance(parsed.get("suggested_fixes"), list) else []
+            ),
+            "raw_result": raw[:4000],
+        }
+
     async def handle_review_agent_handoff(request: web.Request) -> web.Response:
         """POST /control/review/agent-handoff — hand off work for review."""
         try:
@@ -11640,6 +11715,11 @@ asyncio.run(run())
             artifact_path = data.get("artifact_path", "")
             review_criteria = data.get("review_criteria", ["correctness", "style"])
             auto_merge = data.get("auto_merge", False)
+            timeout_sec = float(data.get("timeout", 45))
+            artifact_preview = _load_review_artifact_preview(
+                str(artifact_path or ""),
+                str(data.get("artifact_content") or data.get("artifact_excerpt") or ""),
+            )
 
             review = {
                 "session_id": session_id,
@@ -11647,9 +11727,10 @@ asyncio.run(run())
                 "to_agent": to_agent,
                 "artifact_type": artifact_type,
                 "artifact_path": artifact_path,
+                "artifact_preview_source": artifact_preview["preview_source"],
                 "review_criteria": review_criteria,
                 "auto_merge": auto_merge,
-                "status": "pending_review",
+                "status": "running_review",
                 "created_at": time.time(),
                 "history": [
                     {
@@ -11662,11 +11743,90 @@ asyncio.run(run())
             }
             _REVIEW_QUEUE[session_id] = review
 
+            reviewer_prompt = (
+                "Review the supplied artifact and return strict JSON only.\n"
+                "Schema:\n"
+                "{\"decision\":\"accept|reject\",\"reason\":\"...\",\"evidence\":\"...\","
+                "\"feedback\":\"...\",\"suggested_fixes\":[\"...\"]}\n"
+                "Use decision=accept only when the artifact meets the stated criteria."
+            )
+            review_task = (
+                f"Review handoff session: {session_id}\n"
+                f"From agent: {from_agent}\n"
+                f"Reviewer agent role requested: {to_agent}\n"
+                f"Artifact type: {artifact_type}\n"
+                f"Artifact path: {artifact_preview['artifact_path'] or '[none provided]'}\n"
+                f"Review criteria: {', '.join(str(item) for item in review_criteria)}\n"
+                "Artifact preview:\n"
+                f"{artifact_preview['preview'] or '[no artifact preview available]'}"
+            )
+            reviewer_instance, reviewer_status = await _spawn_local_agent_instance(
+                role="reviewer",
+                task_text=review_task,
+                system_prompt=reviewer_prompt,
+                max_tokens=int(data.get("max_tokens", 400)),
+                temperature=float(data.get("temperature", 0.1)),
+                timeout_sec=timeout_sec,
+            )
+            review["review_agent_instance_id"] = reviewer_instance.get("id")
+            review["review_agent_status"] = reviewer_instance.get("status")
+            review["review_agent_result"] = reviewer_instance.get("result", "")
+
+            if reviewer_status == 201 and reviewer_instance.get("status") == "completed":
+                parsed_result = _parse_review_agent_result(str(reviewer_instance.get("result", "")))
+                review["review_result"] = parsed_result
+                if parsed_result["decision"] == "accept":
+                    review["status"] = "accepted"
+                    review["accepted_at"] = time.time()
+                    review["accepted_by"] = to_agent
+                    review["acceptance_reason"] = parsed_result["reason"] or "accepted by delegated reviewer"
+                    review["acceptance_evidence"] = parsed_result["evidence"]
+                    review["history"].append({
+                        "event": "review_accepted",
+                        "by": to_agent,
+                        "reason": review["acceptance_reason"],
+                        "timestamp": time.time(),
+                    })
+                elif parsed_result["decision"] == "reject":
+                    review["status"] = "rejected"
+                    review["rejected_at"] = time.time()
+                    review["rejected_by"] = to_agent
+                    review["rejection_reason"] = parsed_result["reason"] or "rejected by delegated reviewer"
+                    review["feedback"] = parsed_result["feedback"]
+                    review["suggested_fixes"] = parsed_result["suggested_fixes"]
+                    review["history"].append({
+                        "event": "review_rejected",
+                        "by": to_agent,
+                        "reason": review["rejection_reason"],
+                        "timestamp": time.time(),
+                    })
+                else:
+                    review["status"] = "pending_review"
+                    review["history"].append({
+                        "event": "review_needs_manual_followup",
+                        "by": to_agent,
+                        "reason": parsed_result["reason"] or "delegated reviewer returned inconclusive output",
+                        "timestamp": time.time(),
+                    })
+            else:
+                review["status"] = "pending_review"
+                review["history"].append({
+                    "event": "review_agent_unavailable",
+                    "by": to_agent,
+                    "reason": f"delegated reviewer finished with status={reviewer_instance.get('status', 'unknown')}",
+                    "timestamp": time.time(),
+                })
+
             return web.json_response({
                 "status": "ok",
                 "session_id": session_id,
                 "review": review,
-                "next_action": f"Agent {to_agent} should review and call /control/review/accept or /control/review/reject",
+                "next_action": (
+                    "merge" if review.get("status") == "accepted" and review.get("auto_merge")
+                    else "manual merge required" if review.get("status") == "accepted"
+                    else f"Agent {from_agent} should address feedback and resubmit" if review.get("status") == "rejected"
+                    else f"Agent {to_agent} should review and call /control/review/accept or /control/review/reject"
+                ),
             })
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)

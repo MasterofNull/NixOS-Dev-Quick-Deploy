@@ -81,11 +81,20 @@ node scripts/ai/harness-rpc.js agent-team \
   --task "bounded local review task" \
   --roles coordinator,coder,reviewer \
   --timeout 20
+
+# Trigger a bounded local review handoff
+node scripts/ai/harness-rpc.js review-handoff \
+  --from-agent codex \
+  --to-agent reviewer \
+  --path ai-stack/mcp-servers/hybrid-coordinator/http_server.py \
+  --criteria correctness,style \
+  --timeout 20
 ```
 
 Current limitation on `2026-04-12`:
 - Exact smoke-check prompts complete reliably.
 - Local team runs now execute member subprocess agents in parallel and return per-member status/results.
+- Local review handoffs now attempt delegated reviewer execution first, then fall back to manual accept/reject if the reviewer is inconclusive or times out.
 - Broader slice-planning prompts may time out or return empty content.
 - Use this lane for bounded prep, health checks, and short reviewer asks while remote lanes recover.
 

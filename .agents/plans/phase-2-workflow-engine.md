@@ -43,6 +43,7 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 - Runtime activation refreshed on `2026-04-12` via `systemctl restart ai-switchboard ai-hybrid-coordinator ai-ralph-wiggum`
 - Local fallback lane available on `2026-04-12` via `harness-rpc.js agent-spawn --role coordinator|coder|reviewer` for bounded sub-agent prep/review tasks while remote queue lanes are rate-limited
 - Local team fallback available on `2026-04-12` via `harness-rpc.js agent-team --roles coordinator,coder,reviewer` for bounded parallel local sub-agent execution with aggregated member results
+- Local review fallback available on `2026-04-12` via `harness-rpc.js review-handoff --from-agent codex --to-agent reviewer` for bounded delegated local review before manual accept/reject override
 - Local routing improvement on `2026-04-12`: retrieval/planning prompts with `prefer_local=true` now route to `embedded-assist`, reducing unnecessary chat-lane usage for context-heavy harness work
 - Active Slice 2.3 run: `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc`
 - Active Slice 2.3 queue task: `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`completed`, stale pre-fix output)

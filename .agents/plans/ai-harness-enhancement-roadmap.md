@@ -1054,7 +1054,7 @@ aq-qa --phase=execution-isolation
 **Active Run:** `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24`
 **Active Queue Task:** `20ac6d89-49d1-4e95-b0c3-008dbef34b30` (`stale pre-fix queue task`)
 **Execution Note (2026-04-12):** Harness queue compatibility (`136346a`) and Ralph delegation (`417280b`) are fixed, but remote free lanes are currently blocked by live OpenRouter `429` rate limits after alias refresh. Do not restart this stale task; re-queue after rate-limit recovery or with a BYOK/paid remote lane.
-**Local Fallback (2026-04-12):** Use `harness-rpc.js agent-spawn` for bounded local sub-agent prep/review tasks and `harness-rpc.js agent-team` for bounded parallel local team execution while the remote queue lanes recover.
+**Local Fallback (2026-04-12):** Use `harness-rpc.js agent-spawn` for bounded local sub-agent prep/review tasks, `harness-rpc.js agent-team` for bounded parallel local team execution, and `harness-rpc.js review-handoff` for delegated local review while the remote queue lanes recover.
 
 **Owner:** qwen (implementation)
 **Type:** CLI + Web UI
@@ -1159,7 +1159,7 @@ wscat -c ws://localhost:5173/api/ws/workflows
 **Active Run:** `f5205439-39ad-4d3a-bff9-06f1d8dbe849`
 **Active Queue Task:** `f911847c-34c0-457b-a0f9-0c86439c6210` (`stale pre-fix queue task`)
 **Execution Note (2026-04-12):** Blocked by the same remote free-lane `429` limit observed during post-fix delegation smoke tests. Re-queue only after rate-limit recovery or alternate remote credentials are available.
-**Local Fallback (2026-04-12):** Use `harness-rpc.js agent-spawn` for bounded local sub-agent prep/review tasks while the remote queue lanes recover.
+**Local Fallback (2026-04-12):** Use `harness-rpc.js agent-spawn` for bounded local sub-agent prep/review tasks, `harness-rpc.js agent-team` for bounded parallel local team execution, and `harness-rpc.js review-handoff` for delegated local review while the remote queue lanes recover.
 
 **Owner:** qwen (implementation)
 **Type:** Data processing
