@@ -1050,6 +1050,9 @@ aq-qa --phase=execution-isolation
 
 ### Slice 4.1: Tool Discovery System
 
+**Status:** Delegated
+**Active Run:** `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24`
+
 **Owner:** qwen (implementation)
 **Type:** CLI + Web UI
 **Estimated Effort:** 4-5 days
@@ -1148,6 +1151,9 @@ wscat -c ws://localhost:5173/api/ws/workflows
 ---
 
 ### Slice 4.3: Conversation Mining Tool
+
+**Status:** Delegated
+**Active Run:** `f5205439-39ad-4d3a-bff9-06f1d8dbe849`
 
 **Owner:** qwen (implementation)
 **Type:** Data processing
