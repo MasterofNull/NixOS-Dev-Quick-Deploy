@@ -283,6 +283,30 @@ async function main() {
         max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
         temperature: args.temperature ? Number(args.temperature) : undefined,
       });
+    case "agent-spawn":
+    case "local-agent-spawn":
+      return call("/control/agents/spawn", "POST", {
+        role: args.role || "coordinator",
+        task: args.task || args.query || args.q || "",
+        system_prompt: args["system-prompt"] || "",
+        max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
+        temperature: args.temperature ? Number(args.temperature) : undefined,
+        timeout: args.timeout ? Number(args.timeout) : undefined,
+      });
+    case "agent-status":
+      return call(
+        `/control/agents${args.id ? `?id=${encodeURIComponent(args.id)}` : ""}`,
+        "GET"
+      );
+    case "agent-team":
+      return call("/control/agents/team", "POST", {
+        task: args.task || args.query || args.q || "",
+        roles: csv(args.roles || "coordinator,coder,reviewer"),
+        system_prompt: args["system-prompt"] || "",
+        max_tokens: args["max-tokens"] ? Number(args["max-tokens"]) : undefined,
+        temperature: args.temperature ? Number(args.temperature) : undefined,
+        timeout: args.timeout ? Number(args.timeout) : undefined,
+      });
 
     // ── Sub-agent delegation ─────────────────────────────────────────────
     case "sub-agent":
