@@ -30,7 +30,7 @@ This master roadmap consolidates findings from three comprehensive analyses:
 - Slice 4.3 conversation mining is delegated in harness run `f5205439-39ad-4d3a-bff9-06f1d8dbe849` and queue task `f911847c-34c0-457b-a0f9-0c86439c6210` (`stale pre-fix queue task`)
 - Phase 2 post-2.3 integration brief is delegated in harness run `fde78ec3-d847-42fc-9a8b-a9629f8712bf` and queue task `f8639992-df21-4f93-9546-a85d6ee0f849` (`stale pre-fix queue task`)
 - Harness blocker status (2026-04-12): queue compatibility fix `136346a` and Ralph delegation fix `417280b` are active; remaining blocker is live OpenRouter free-lane `429` rate limiting after alias refresh on `hyperd`
-- Local fallback status (2026-04-12): bounded local subprocess agents are usable through `/control/agents/spawn`; CLI exposure added via `harness-rpc.js agent-spawn` for continued sub-agent work while remote lanes recover
+- Local fallback status (2026-04-12): bounded local subprocess agents are usable through `/control/agents/spawn`; CLI exposure added via `harness-rpc.js agent-spawn` for continued sub-agent work while remote lanes recover. Exact smoke prompts are reliable; broader slice-planning asks may still time out or return empty content.
 
 Use this section as the execution checkpoint before starting new slices so completed work is not restarted.
 
