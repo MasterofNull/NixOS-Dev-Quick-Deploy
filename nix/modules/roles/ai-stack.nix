@@ -1260,7 +1260,7 @@ in {
           User = "root";
           ExecStart = let
             script = "${cfg.mcpServers.repoPath}/scripts/ai/aq-report";
-          in "${script} --since=7d --format=md --aidb-import";
+          in "${pkgs.python3}/bin/python3 ${script} --since=7d --format=md --aidb-import";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
