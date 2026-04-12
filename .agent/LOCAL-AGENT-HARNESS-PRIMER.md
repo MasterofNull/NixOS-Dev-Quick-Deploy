@@ -76,7 +76,7 @@ node scripts/ai/harness-rpc.js agent-spawn \
 # Check a spawned agent by id
 node scripts/ai/harness-rpc.js agent-status --id <agent-id>
 
-# Spawn a simple local team shell (status only; team members are listed)
+# Spawn a bounded local team and aggregate member results
 node scripts/ai/harness-rpc.js agent-team \
   --task "bounded local review task" \
   --roles coordinator,coder,reviewer \
@@ -85,6 +85,7 @@ node scripts/ai/harness-rpc.js agent-team \
 
 Current limitation on `2026-04-12`:
 - Exact smoke-check prompts complete reliably.
+- Local team runs now execute member subprocess agents in parallel and return per-member status/results.
 - Broader slice-planning prompts may time out or return empty content.
 - Use this lane for bounded prep, health checks, and short reviewer asks while remote lanes recover.
 
