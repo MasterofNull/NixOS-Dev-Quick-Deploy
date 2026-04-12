@@ -1506,9 +1506,22 @@ list_configuration_names() {
 has_configuration_name() {
   local attrset="$1"
   local target="$2"
-  local names
-  names="$(list_configuration_names "$attrset")"
-  [[ " ${names} " == *" ${target} "* ]]
+  case "$attrset" in
+    nixosConfigurations)
+      nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${target}\".config.system.stateVersion" >/dev/null 2>&1
+      ;;
+    homeConfigurations)
+      run_nix_eval_with_timeout \
+        nix eval --json \
+        "${FLAKE_REF}#homeConfigurations.\"${target}\".activationPackage.type" \
+        >/dev/null 2>&1
+      ;;
+    *)
+      local names
+      names="$(list_configuration_names "$attrset")"
+      [[ " ${names} " == *" ${target} "* ]]
+      ;;
+  esac
 }
 
 ensure_flake_visible_to_nix() {
