@@ -46,6 +46,7 @@ Phase 2 implements a declarative workflow engine that enables deterministic, com
 - Local review fallback available on `2026-04-12` via `harness-rpc.js review-handoff --from-agent codex --to-agent reviewer` for bounded delegated local review before manual accept/reject override
 - Runtime control-plane fallback available on `2026-04-12` via `harness-rpc.js runtime-list`, `runtime-deploy --execute true`, and `runtime-rollback --execute true` for allowlisted switchboard-backed lane verification; unsupported runtimes remain registry-only
 - Local routing improvement on `2026-04-12`: retrieval/planning prompts with `prefer_local=true` now route to `embedded-assist`, reducing unnecessary chat-lane usage for context-heavy harness work
+- Local executor improvement on `2026-04-12`: coordinator-side `workflow_executor.py` now routes bounded phase execution through `/control/agents/spawn` instead of returning a mock phase result
 - Active Slice 2.3 run: `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc`
 - Active Slice 2.3 queue task: `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`completed`, stale pre-fix output)
 - Current blocker: delegated remote lanes now resolve to current models, but free-tier OpenRouter execution is returning live `429` rate limits; retry after rate-limit window or switch to BYOK/paid remote lanes before re-queueing Slice 2.3
@@ -214,6 +215,9 @@ ai-stack/workflows/tests/test_validator.py
 ---
 
 ### Slice 2.3: Workflow Executor
+
+**Status:** In Progress
+**Execution Note (2026-04-12):** Remote delegated completion is still blocked by stale pre-fix queue output and free-lane throttling, but the coordinator-side fallback executor shell has been reduced: `ai-stack/mcp-servers/hybrid-coordinator/workflow_executor.py` now executes bounded phases through the local harness sub-agent spawn path and has focused regression coverage.
 
 **Owner:** qwen (implementation)
 **Depends On:** Slice 2.2
