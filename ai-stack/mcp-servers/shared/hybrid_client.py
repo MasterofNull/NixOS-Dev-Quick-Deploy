@@ -311,6 +311,56 @@ class HybridClient:
         else:
             return await _make_request()
 
+    async def delegate_task(
+        self,
+        task: str,
+        *,
+        profile: str = "",
+        prefer_local: bool = True,
+        context: Optional[Dict[str, Any]] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run a bounded delegated task through the hybrid coordinator.
+
+        Args:
+            task: Delegated task text
+            profile: Optional requested execution profile
+            prefer_local: Whether to prefer local runtimes
+            context: Additional task context
+            max_tokens: Optional completion cap
+            temperature: Optional sampling temperature
+
+        Returns:
+            JSON response from /control/ai-coordinator/delegate
+        """
+
+        async def _make_request():
+            payload: Dict[str, Any] = {
+                "task": task,
+                "prefer_local": prefer_local,
+            }
+            if profile:
+                payload["profile"] = profile
+            if context:
+                payload["context"] = context
+            if max_tokens is not None:
+                payload["max_tokens"] = max_tokens
+            if temperature is not None:
+                payload["temperature"] = temperature
+
+            response = await self._client.post(
+                f"{self.base_url}/control/ai-coordinator/delegate",
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        if self.enable_circuit_breaker:
+            return await self.circuit_breaker.call(_make_request)
+        return await _make_request()
+
     async def submit_feedback(
         self,
         interaction_id: str,
