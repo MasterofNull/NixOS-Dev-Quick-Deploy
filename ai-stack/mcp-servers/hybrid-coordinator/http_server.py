@@ -9063,6 +9063,12 @@ STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
 TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
 
+def _profile_for_role(role):
+    normalized = str(role or "").strip().lower()
+    if normalized == "coder":
+        return "local-tool-calling"
+    return "continue-local"
+
 def _write_state(state):
     if STATE_FILE:
         p = pathlib.Path(STATE_FILE)
@@ -9083,7 +9089,7 @@ async def run():
                 f"{SWITCHBOARD_URL}/v1/chat/completions",
                 json={"messages": messages, "temperature": TEMPERATURE,
                       "max_tokens": MAX_TOKENS, "stream": False},
-                headers={"X-AI-Profile": f"local-{os.environ['AGENT_ROLE']}",
+                headers={"X-AI-Profile": _profile_for_role(os.environ["AGENT_ROLE"]),
                          "X-AI-Route": "local"},
             )
             resp.raise_for_status()
@@ -11280,6 +11286,12 @@ STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
 TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
 
+def _profile_for_role(role):
+    normalized = str(role or "").strip().lower()
+    if normalized == "coder":
+        return "local-tool-calling"
+    return "continue-local"
+
 def _write_state(state):
     if STATE_FILE:
         p = pathlib.Path(STATE_FILE)
@@ -11300,7 +11312,7 @@ async def run():
                 f"{SWITCHBOARD_URL}/v1/chat/completions",
                 json={"messages": messages, "temperature": TEMPERATURE,
                       "max_tokens": MAX_TOKENS, "stream": False},
-                headers={"X-AI-Profile": f"local-{AGENT_ROLE}",
+                headers={"X-AI-Profile": _profile_for_role(AGENT_ROLE),
                          "X-AI-Route": "local"},
             )
             resp.raise_for_status()
