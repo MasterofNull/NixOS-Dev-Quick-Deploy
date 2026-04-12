@@ -11,6 +11,40 @@ import httpx
 logger = logging.getLogger("ralph_orchestrator")
 
 
+def _backend_to_profile(backend: str) -> str:
+    """Map Ralph backend names onto hybrid coordinator delegation profiles."""
+    normalized = str(backend or "").strip().lower()
+    if normalized in {"aider", "goose", "autogpt", "langchain"}:
+        return "local-tool-calling"
+    if normalized in {"continue", "continue-server"}:
+        return "default"
+    return "default"
+
+
+def _extract_delegate_content(payload: Dict[str, Any]) -> str:
+    """Pull assistant text from ai-coordinator delegate responses."""
+    if not isinstance(payload, dict):
+        return ""
+
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(message, dict):
+            return str(message.get("content") or "").strip()
+
+    result = payload.get("result")
+    if isinstance(result, dict):
+        content = result.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+
+    content = payload.get("content")
+    if isinstance(content, str):
+        return content.strip()
+
+    return ""
+
+
 @dataclass
 class TaskResult:
     success: bool
@@ -67,15 +101,25 @@ class RalphOrchestrator:
             # Merge task context with AIDB context
             merged_context = {**(context or {}), **aidb_context, "iteration": iteration}
 
-            # Step 2: Route through Hybrid Coordinator
-            routing_result = await self.hybrid.route_search(
-                prompt=prompt,
+            # Step 2: Delegate through Hybrid Coordinator when possible.
+            delegate_result = await self.hybrid.delegate_task(
+                task=prompt,
+                profile=_backend_to_profile(backend),
                 prefer_local=True,
                 context=merged_context,
             )
+            response_text = _extract_delegate_content(delegate_result)
+            route = "delegate"
 
-            route = routing_result.get("backend", "unknown")
-            response_text = routing_result.get("response", "")
+            # Fall back to retrieval only if delegation produced no usable text.
+            if not response_text:
+                routing_result = await self.hybrid.route_search(
+                    prompt=prompt,
+                    prefer_local=True,
+                    context=merged_context,
+                )
+                route = routing_result.get("backend", "unknown")
+                response_text = routing_result.get("response", "")
 
             logger.info(
                 "agent_iteration_completed backend=%s route=%s iteration=%d resp_len=%d",
