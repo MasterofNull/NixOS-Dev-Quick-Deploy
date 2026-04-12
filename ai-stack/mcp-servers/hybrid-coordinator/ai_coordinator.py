@@ -19,6 +19,7 @@ from config import Config
 _ALLOWED_ROUTING_PROFILES = {
     "default",
     "local-tool-calling",
+    "embedded-assist",
     "remote-gemini",
     "remote-free",
     "remote-coding",
@@ -282,6 +283,8 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
     profile = str(requested_profile or "").strip().lower()
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
         return _frontdoor_profile("default") if _frontdoor_routing_enabled() else "default"
+    if profile in {"embedded-assist", "embedded", "assist"}:
+        return "embedded-assist"
     if profile in {"explore", "exploration", "discover", "discovery"}:
         return _frontdoor_profile("explore") if _frontdoor_routing_enabled() else "remote-gemini"
     if profile in {"plan", "planner", "planning"}:
@@ -476,11 +479,13 @@ def route_by_complexity(
             recommended = "local-tool-calling" if prefer_local else "remote-tool-calling"
         model_class = "tool-calling"
     elif task_archetype in {"planning", "retrieval"}:
-        if _frontdoor_routing_enabled():
+        if prefer_local:
+            recommended = "embedded-assist"
+        elif _frontdoor_routing_enabled():
             route_name = "plan" if task_archetype == "planning" else "explore"
             recommended = _frontdoor_profile(route_name)
         else:
-            recommended = "default" if prefer_local else "remote-gemini"
+            recommended = "remote-gemini"
         model_class = "lightweight"
     elif task_archetype == "continuation" and complexity != "architecture":
         recommended = _frontdoor_profile("continuation") if _frontdoor_routing_enabled() else "default"
@@ -513,8 +518,11 @@ def route_by_complexity(
         if _frontdoor_routing_enabled():
             recommended = _frontdoor_profile("continuation")
         else:
-            recommended = "default" if prefer_local or task_archetype != "implementation" else recommended
-        if recommended == "default":
+            if prefer_local and task_archetype in {"planning", "retrieval", "continuation", "general"}:
+                recommended = "embedded-assist"
+            else:
+                recommended = "default" if prefer_local or task_archetype != "implementation" else recommended
+        if recommended in {"default", "embedded-assist"}:
             model_class = "lightweight"
 
     # Build rationale
