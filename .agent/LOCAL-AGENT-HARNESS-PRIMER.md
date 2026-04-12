@@ -161,6 +161,36 @@ run_terminal_command: scripts/ai/local-orchestrator --status
 run_terminal_command: scripts/ai/aq-qa 0 --json
 ```
 
+### Pattern 6: Git Commit After Task Completion (MANDATORY)
+
+```bash
+# Stage files explicitly
+run_terminal_command: git add <specific-files>
+
+# Review what will be committed
+run_terminal_command: git status --short && git diff --staged --stat
+
+# Commit with conventional format
+run_terminal_command: git commit -m "$(cat <<'EOF'
+feat(scope): brief description
+
+Detailed explanation if needed.
+
+Co-Authored-By: Continue Local <noreply@continue.dev>
+EOF
+)"
+
+# Verify commit
+run_terminal_command: git log -1 --oneline --stat
+```
+
+**IMPORTANT:**
+- **Uncommitted work = Incomplete task**
+- Always commit completed work before moving to next task
+- Use conventional commit format: `type(scope): description`
+- Include `Co-Authored-By: Continue Local <noreply@continue.dev>` trailer
+- Never use `git add .` or `git add -A` - stage specific files only
+
 ---
 
 ## Directory Reference
@@ -201,6 +231,66 @@ When using the MCP bridge, these tools are available:
 
 ---
 
+## Git Workflow Discipline (CRITICAL)
+
+**MANDATORY RULE: All completed work must be committed to git before moving to the next task.**
+
+### When to Commit
+
+Commit immediately after:
+- ✅ Completing a feature or fix
+- ✅ All tests pass
+- ✅ Validation checks pass
+- ✅ Code is working as expected
+
+### Commit Format (Required)
+
+```bash
+git commit -m "$(cat <<'EOF'
+type(scope): brief description (under 70 chars)
+
+Optional detailed explanation:
+- What changed
+- Why it changed
+- Important implementation notes
+
+Co-Authored-By: Continue Local <noreply@continue.dev>
+EOF
+)"
+```
+
+### Commit Types
+
+| Type | When to Use | Example |
+|------|-------------|---------|
+| `feat` | New feature or enhancement | `feat(auth): add JWT token validation` |
+| `fix` | Bug fix | `fix(api): handle null responses correctly` |
+| `docs` | Documentation only | `docs(readme): update installation steps` |
+| `test` | Add or fix tests | `test(parser): add edge case coverage` |
+| `chore` | Maintenance, deps, config | `chore(deps): update python dependencies` |
+| `refactor` | Code restructuring, no behavior change | `refactor(utils): simplify error handling` |
+
+### Git Safety Rules
+
+- ❌ **NEVER** use `git add .` or `git add -A` - Always stage specific files
+- ❌ **NEVER** skip the Co-Authored-By trailer
+- ❌ **NEVER** move to next task with uncommitted work
+- ✅ **ALWAYS** run `git status --short` before committing
+- ✅ **ALWAYS** review `git diff --staged` before committing
+- ✅ **ALWAYS** verify commit with `git log -1 --stat` after committing
+
+### Complete Workflow Loop
+
+```
+1. Read task → 2. Gather context → 3. Implement → 4. Test → 5. Commit → 6. Next task
+                                                              ↑
+                                          MANDATORY STEP - DO NOT SKIP
+```
+
+**Uncommitted changes = Incomplete task**
+
+---
+
 ## Common Workflows
 
 ### Starting a New Session
@@ -212,18 +302,75 @@ When using the MCP bridge, these tools are available:
 
 ### Implementing a Feature
 
-1. Get hints: `scripts/ai/aq-hints --query "implement X"`
-2. Search for patterns: Use `hybrid_search` or grep
-3. Create plan: `scripts/ai/local-orchestrator --plan "implement X"`
-4. Execute incrementally, storing decisions in memory
-5. Run validation: `scripts/governance/repo-structure-lint.sh --staged`
+**CRITICAL: Every completed task MUST be committed to git before moving to next task.**
+
+1. **Gather Context**: `scripts/ai/aq-hints --query "implement X"`
+2. **Search for Patterns**: Use `hybrid_search` or grep to understand existing code
+3. **Create Plan**: `scripts/ai/local-orchestrator --plan "implement X"`
+4. **Execute Incrementally**:
+   - Write code following existing patterns
+   - Add inline comments ONLY where logic isn't self-evident
+   - Store important decisions in memory
+5. **Validate**:
+   - Run tests: `pytest <test-file>` or relevant test command
+   - Check syntax: `python3 -m py_compile <file>` or `bash -n <script>`
+   - Lint repo structure: `scripts/governance/repo-structure-lint.sh --staged`
+6. **Commit to Git** (MANDATORY):
+   ```bash
+   # Stage specific files (prefer explicit over 'git add .')
+   git add <file1> <file2> <file3>
+
+   # Check what will be committed
+   git status --short
+   git diff --staged
+
+   # Commit with conventional format
+   git commit -m "$(cat <<'EOF'
+   type(scope): brief description
+
+   Optional detailed explanation of:
+   - What changed and why
+   - Any important implementation notes
+   - Related issues or decisions
+
+   Co-Authored-By: Continue Local <noreply@continue.dev>
+   EOF
+   )"
+   ```
+
+   **Commit Type Prefixes:**
+   - `feat`: New feature or enhancement
+   - `fix`: Bug fix
+   - `docs`: Documentation only
+   - `chore`: Maintenance (deps, config)
+   - `test`: Test additions/fixes
+   - `refactor`: Code restructuring
+
+7. **Verify Commit**: `git log -1 --stat` to confirm commit is complete
 
 ### Debugging an Issue
 
-1. Check logs: `journalctl -u <service> --since "5 min ago"`
-2. Search for error patterns in AIDB
-3. Recall any previous similar issues from memory
-4. Use QA tools: `scripts/ai/aq-qa 0`
+1. **Check Logs**: `journalctl -u <service> --since "5 min ago"`
+2. **Search for Error Patterns**: Query AIDB for similar issues
+3. **Recall Memory**: Check for previous similar issues
+4. **Run QA Tools**: `scripts/ai/aq-qa 0`
+5. **Implement Fix**: Make necessary code changes
+6. **Validate Fix**: Run tests, verify issue is resolved
+7. **Commit Fix** (MANDATORY):
+   ```bash
+   git add <fixed-files>
+   git commit -m "$(cat <<'EOF'
+   fix(component): brief description of fix
+
+   Explanation of:
+   - What was broken
+   - Root cause
+   - How the fix works
+
+   Co-Authored-By: Continue Local <noreply@continue.dev>
+   EOF
+   )"
+   ```
 
 ---
 
