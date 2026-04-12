@@ -59,6 +59,35 @@ scripts/ai/aqd workflows brownfield --target . --objective "implement feature X"
 scripts/ai/aqd workflows project-init --target <dir> --name <name> --goal <goal>
 ```
 
+### Local Sub-Agent Fallback
+
+Use this when remote queue lanes are rate-limited but you still need bounded local sub-agent work through the harness.
+
+```bash
+# Spawn one bounded local sub-agent
+node scripts/ai/harness-rpc.js agent-spawn \
+  --role coordinator \
+  --task "Reply with exactly AGENT_RPC_OK" \
+  --system-prompt "Reply with exactly AGENT_RPC_OK" \
+  --max-tokens 32 \
+  --temperature 0 \
+  --timeout 20
+
+# Check a spawned agent by id
+node scripts/ai/harness-rpc.js agent-status --id <agent-id>
+
+# Spawn a simple local team shell (status only; team members are listed)
+node scripts/ai/harness-rpc.js agent-team \
+  --task "bounded local review task" \
+  --roles coordinator,coder,reviewer \
+  --timeout 20
+```
+
+Current limitation on `2026-04-12`:
+- Exact smoke-check prompts complete reliably.
+- Broader slice-planning prompts may time out or return empty content.
+- Use this lane for bounded prep, health checks, and short reviewer asks while remote lanes recover.
+
 ### Local Orchestrator (NEW)
 
 ```bash
@@ -190,6 +219,18 @@ run_terminal_command: git log -1 --oneline --stat
 - Use conventional commit format: `type(scope): description`
 - Include `Co-Authored-By: Continue Local <noreply@continue.dev>` trailer
 - Never use `git add .` or `git add -A` - stage specific files only
+
+### Pattern 7: Local Sub-Agent Smoke
+
+```bash
+run_terminal_command: node scripts/ai/harness-rpc.js agent-spawn \
+  --role coordinator \
+  --task "Reply with exactly AGENT_RPC_OK" \
+  --system-prompt "Reply with exactly AGENT_RPC_OK" \
+  --max-tokens 32 \
+  --temperature 0 \
+  --timeout 20
+```
 
 ---
 
