@@ -24,11 +24,12 @@ This master roadmap consolidates findings from three comprehensive analyses:
 - Slice 1.5 benchmark harness exists and is operational
 - Slice 2.1 workflow DSL design is complete
 - Slice 2.2 workflow parser and validator are complete
-- Slice 2.3 workflow executor is delegated in harness run `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc` and queue task `1b43b0d6-c9b6-42ac-9926-f175c737c86d`
+- Slice 2.3 workflow executor is delegated in harness run `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc` and queue task `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`stale pre-fix output`)
 - Slice 4.4 memory system benchmarking is complete
-- Slice 4.1 tool discovery is delegated in harness run `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24` and queue task `20ac6d89-49d1-4e95-b0c3-008dbef34b30` (`running`)
-- Slice 4.3 conversation mining is delegated in harness run `f5205439-39ad-4d3a-bff9-06f1d8dbe849` and queue task `f911847c-34c0-457b-a0f9-0c86439c6210` (`queued`)
-- Phase 2 post-2.3 integration brief is delegated in harness run `fde78ec3-d847-42fc-9a8b-a9629f8712bf` and queue task `f8639992-df21-4f93-9546-a85d6ee0f849` (`queued`)
+- Slice 4.1 tool discovery is delegated in harness run `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24` and queue task `20ac6d89-49d1-4e95-b0c3-008dbef34b30` (`stale pre-fix queue task`)
+- Slice 4.3 conversation mining is delegated in harness run `f5205439-39ad-4d3a-bff9-06f1d8dbe849` and queue task `f911847c-34c0-457b-a0f9-0c86439c6210` (`stale pre-fix queue task`)
+- Phase 2 post-2.3 integration brief is delegated in harness run `fde78ec3-d847-42fc-9a8b-a9629f8712bf` and queue task `f8639992-df21-4f93-9546-a85d6ee0f849` (`stale pre-fix queue task`)
+- Harness blocker status (2026-04-12): queue compatibility fix `136346a` and Ralph delegation fix `417280b` are active; remaining blocker is live OpenRouter free-lane `429` rate limiting after alias refresh on `hyperd`
 
 Use this section as the execution checkpoint before starting new slices so completed work is not restarted.
 
@@ -56,7 +57,7 @@ Use this section as the execution checkpoint before starting new slices so compl
 
 ### Current Focus: Phase 2 Slice 2.3 + Phase 4 Slice 4.4 Follow-Through
 
-**IMMEDIATE ACTION:** Review active delegated runs, accept completed outputs, then start the Phase 2 parallel follow-on slices (2.4, 2.5, 2.6) as soon as Slice 2.3 clears reviewer gate
+**IMMEDIATE ACTION:** Wait for remote lane recovery or alternate remote credentials, then re-queue Slice 2.3/4.1/4.3 from clean task IDs and only start the Phase 2 follow-on slices (2.4, 2.5, 2.6) after Slice 2.3 clears reviewer gate
 
 **Delegate to:** qwen for 2.3, 4.1, 4.3 implementation lanes; claude for 2.4-2.6 prep analysis; codex for reviewer gate and integration batch kickoff
 **Task:** Finish workflow executor, advance independent tooling slices, and prepare the post-2.3 execution batch
