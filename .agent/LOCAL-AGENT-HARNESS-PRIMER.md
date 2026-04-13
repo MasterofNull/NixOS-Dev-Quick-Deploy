@@ -106,6 +106,7 @@ Current limitation on `2026-04-12`:
 - Local team runs now execute member subprocess agents in parallel and return per-member status/results.
 - Local review handoffs now attempt delegated reviewer execution first, then fall back to manual accept/reject if the reviewer is inconclusive or times out.
 - Runtime control-plane deploy/rollback now supports bounded live verification only for allowlisted switchboard-backed runtime lanes; other runtimes remain registry-only.
+- Coordinator-side `llm_client.py` now supports `provider="local"` through switchboard's `/v1/chat/completions` ingress; plain bounded prompts use `continue-local`, and requests with tools use `local-tool-calling`.
 - Broader slice-planning prompts may time out or return empty content.
 - Use this lane for bounded prep, health checks, and short reviewer asks while remote lanes recover.
 
