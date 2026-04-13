@@ -11,6 +11,7 @@ Purpose: Enable real workflow execution with LLM APIs
 import os
 import logging
 import json
+import httpx
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
@@ -34,7 +35,7 @@ class LLMClient:
     Supports:
     - Anthropic Claude API
     - OpenAI API (future)
-    - Local models via llama.cpp (future)
+    - Local models via switchboard OpenAI-compatible ingress
     """
 
     def __init__(
@@ -185,10 +186,23 @@ class LLMClient:
 
     def _init_local(self):
         """Initialize local model client"""
-        # Future: llama.cpp integration
-        self.client = None
+        switchboard_url = (
+            self.base_url
+            or os.getenv("SWITCHBOARD_URL")
+            or "http://127.0.0.1:8085"
+        ).rstrip("/")
+        if switchboard_url.endswith("/v1"):
+            self.base_url = switchboard_url
+        else:
+            self.base_url = f"{switchboard_url}/v1"
+        self.local_profile = os.getenv("LLM_CLIENT_LOCAL_PROFILE", "continue-local")
+        self.local_tool_profile = os.getenv(
+            "LLM_CLIENT_LOCAL_TOOL_PROFILE",
+            "local-tool-calling",
+        )
+        self.client = httpx.AsyncClient(timeout=120.0)
         self.default_model = "local"
-        logger.info("Local model support not yet implemented")
+        logger.info("Local model client initialized via switchboard at %s", self.base_url)
 
     async def create_message(
         self,
@@ -227,6 +241,10 @@ class LLMClient:
             )
         elif self.provider == "openai":
             return await self._openai_create_message(
+                prompt, model, max_tokens, temperature, tools, system
+            )
+        elif self.provider == "local":
+            return await self._local_create_message(
                 prompt, model, max_tokens, temperature, tools, system
             )
         else:
@@ -300,6 +318,92 @@ class LLMClient:
         """OpenAI-specific message creation"""
         # Future implementation
         raise NotImplementedError("OpenAI integration not yet implemented")
+
+    async def _local_create_message(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        tools: Optional[List[Dict[str, Any]]],
+        system: Optional[str],
+    ) -> LLMResponse:
+        """Switchboard-backed local message creation via OpenAI-compatible ingress."""
+        messages: List[Dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if tools:
+            payload["tools"] = tools
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-AI-Profile": (
+                self.local_tool_profile if tools else self.local_profile
+            ),
+            "X-AI-Route": "local",
+        }
+
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            body = response.json()
+        except Exception as e:
+            logger.error(f"Local switchboard API error: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to create local message: {e}")
+
+        choices = body.get("choices") or []
+        message = choices[0].get("message", {}) if choices else {}
+        usage = body.get("usage") or {}
+        tool_calls = []
+        for tool_call in message.get("tool_calls") or []:
+            function_payload = tool_call.get("function") or {}
+            raw_arguments = function_payload.get("arguments")
+            parsed_arguments: Any = raw_arguments
+            if isinstance(raw_arguments, str):
+                try:
+                    parsed_arguments = json.loads(raw_arguments)
+                except json.JSONDecodeError:
+                    parsed_arguments = raw_arguments
+            tool_calls.append(
+                {
+                    "id": tool_call.get("id"),
+                    "name": function_payload.get("name"),
+                    "input": parsed_arguments,
+                }
+            )
+
+        input_tokens = int(usage.get("prompt_tokens", 0) or 0)
+        output_tokens = int(usage.get("completion_tokens", 0) or 0)
+        total_tokens = int(
+            usage.get("total_tokens", input_tokens + output_tokens)
+            or (input_tokens + output_tokens)
+        )
+
+        return LLMResponse(
+            content=str(message.get("content") or ""),
+            tool_calls=tool_calls,
+            usage={
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+            },
+            stop_reason=str(
+                choices[0].get("finish_reason", "stop") if choices else "stop"
+            ),
+            model=str(body.get("model") or model),
+        )
 
 
 class PromptBuilder:
