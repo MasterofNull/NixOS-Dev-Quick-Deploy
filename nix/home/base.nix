@@ -464,6 +464,8 @@ in
       pytest
       ps."pytest-cov"
       ps."pytest-xdist"
+      ps."pytest-anyio"
+      ps.trio
       jupyterlab
       notebook
       transformers
