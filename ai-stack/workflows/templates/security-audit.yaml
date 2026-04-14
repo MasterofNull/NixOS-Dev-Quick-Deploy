@@ -1,0 +1,177 @@
+name: security-audit
+version: 1.0
+description: Comprehensive security audit and vulnerability assessment
+
+inputs:
+  target_scope:
+    type: string
+    description: Scope of security audit (component, module, or full system)
+  audit_depth:
+    type: string
+    enum: [quick, standard, comprehensive]
+    default: standard
+  include_dependencies:
+    type: boolean
+    default: true
+
+agents:
+  auditor: codex
+  vulnerability_scanner: qwen
+  remediation_planner: qwen
+
+nodes:
+  # Step 1: Scope and threat modeling
+  - id: threat_model
+    agent: ${agents.auditor}
+    prompt: |
+      Create threat model for:
+      ${inputs.target_scope}
+
+      Identify:
+      - Attack surfaces
+      - Trust boundaries
+      - Sensitive data flows
+      - Authentication/authorization points
+      - External interfaces
+      - Threat actors and scenarios
+    memory:
+      layers: [L0, L2]
+      topics: [security, threats, vulnerabilities]
+      max_tokens: 600
+    outputs:
+      - threat_model
+      - attack_surfaces
+      - sensitive_areas
+
+  # Step 2: Code security scan
+  - id: code_scan
+    agent: ${agents.auditor}
+    depends_on: [threat_model]
+    prompt: |
+      Scan code for security vulnerabilities.
+
+      Scope: ${inputs.target_scope}
+      Focus areas: ${threat_model.sensitive_areas}
+
+      Check for:
+      - SQL injection
+      - XSS vulnerabilities
+      - CSRF vulnerabilities
+      - Authentication bypasses
+      - Authorization flaws
+      - Insecure cryptography
+      - Hardcoded secrets
+      - Insecure deserialization
+      - Path traversal
+      - Command injection
+    outputs:
+      - vulnerabilities_found
+      - severity_breakdown
+
+  # Step 3: Dependency security scan (conditional)
+  - id: dependency_scan
+    agent: ${agents.vulnerability_scanner}
+    depends_on: [threat_model]
+    condition: ${inputs.include_dependencies}
+    prompt: |
+      Scan dependencies for known vulnerabilities.
+
+      Check:
+      - Outdated packages with CVEs
+      - Vulnerable dependency versions
+      - Transitive dependencies
+      - License compliance issues
+      - Supply chain risks
+    outputs:
+      - vulnerable_dependencies
+      - cve_list
+      - upgrade_recommendations
+
+  # Step 4: Configuration audit
+  - id: config_audit
+    agent: ${auditor}
+    depends_on: [threat_model]
+    prompt: |
+      Audit security configurations.
+
+      Check:
+      - HTTPS/TLS settings
+      - CORS policies
+      - Security headers
+      - Cookie security
+      - Session management
+      - Rate limiting
+      - Input validation
+      - Error handling (no info leakage)
+    outputs:
+      - config_issues
+      - misconfigurations
+
+  # Step 5: Access control review
+  - id: access_control
+    agent: ${agents.auditor}
+    depends_on: [threat_model]
+    prompt: |
+      Review access control mechanisms.
+
+      Verify:
+      - Authentication strength
+      - Authorization checks
+      - Principle of least privilege
+      - Role-based access control
+      - API endpoint protection
+      - Resource isolation
+    outputs:
+      - access_control_issues
+      - authorization_gaps
+
+  # Step 6: Prioritize findings
+  - id: prioritize
+    agent: ${agents.remediation_planner}
+    depends_on: [code_scan, dependency_scan, config_audit, access_control]
+    prompt: |
+      Prioritize security findings.
+
+      Code vulnerabilities: ${code_scan.vulnerabilities_found}
+      Dependencies: ${dependency_scan.vulnerable_dependencies}
+      Config issues: ${config_audit.config_issues}
+      Access control: ${access_control.access_control_issues}
+
+      Rank by:
+      - CVSS score / severity
+      - Exploitability
+      - Impact
+      - Ease of remediation
+    outputs:
+      - priority_list
+      - critical_issues
+      - high_risk_issues
+
+  # Step 7: Create remediation plan
+  - id: remediation_plan
+    agent: ${agents.remediation_planner}
+    depends_on: [prioritize]
+    prompt: |
+      Create remediation plan for security findings.
+
+      Critical issues: ${prioritize.critical_issues}
+      High risk: ${prioritize.high_risk_issues}
+
+      For each issue:
+      - Recommended fix
+      - Implementation steps
+      - Testing requirements
+      - Timeline estimate
+      - Workarounds if immediate fix not possible
+    outputs:
+      - remediation_steps
+      - quick_wins
+      - long_term_fixes
+
+outputs:
+  threat_model: ${threat_model.threat_model}
+  vulnerabilities: ${code_scan.vulnerabilities_found}
+  dependency_vulnerabilities: ${dependency_scan.vulnerable_dependencies}
+  critical_issues: ${prioritize.critical_issues}
+  remediation_plan: ${remediation_plan.remediation_steps}
+  quick_wins: ${remediation_plan.quick_wins}

@@ -1,0 +1,139 @@
+name: code-review
+version: 1.0
+description: Comprehensive code review workflow with automated checks
+
+inputs:
+  files_changed:
+    type: array
+    description: List of files to review
+  pr_description:
+    type: string
+    description: Pull request or change description
+    default: ""
+  review_depth:
+    type: string
+    enum: [quick, standard, thorough]
+    default: standard
+
+agents:
+  reviewer: codex
+  security_checker: codex
+  perf_analyzer: qwen
+
+nodes:
+  # Step 1: Automated checks
+  - id: automated_checks
+    agent: ${agents.reviewer}
+    prompt: |
+      Run automated code quality checks on changed files:
+      ${inputs.files_changed}
+
+      Checks to perform:
+      - Syntax validation
+      - Linting rules
+      - Code formatting
+      - Import organization
+      - Complexity metrics
+    outputs:
+      - check_results
+      - issues_found
+
+  # Step 2: Code quality review
+  - id: quality_review
+    agent: ${agents.reviewer}
+    depends_on: [automated_checks]
+    prompt: |
+      Review code quality and maintainability.
+
+      Files: ${inputs.files_changed}
+      PR Description: ${inputs.pr_description}
+      Automated issues: ${automated_checks.issues_found}
+
+      Review for:
+      - Code clarity and readability
+      - Naming conventions
+      - Documentation and comments
+      - Error handling
+      - Test coverage
+      - Design patterns adherence
+    memory:
+      layers: [L0, L1, L2]
+      topics: [patterns, conventions, best_practices]
+      max_tokens: 600
+    outputs:
+      - quality_score
+      - quality_issues
+      - recommendations
+
+  # Step 3: Security review
+  - id: security_review
+    agent: ${agents.security_checker}
+    depends_on: [automated_checks]
+    prompt: |
+      Perform security review of code changes.
+
+      Files: ${inputs.files_changed}
+
+      Check for:
+      - SQL injection vulnerabilities
+      - XSS vulnerabilities
+      - Authentication/authorization issues
+      - Secrets or credentials in code
+      - Input validation
+      - Insecure dependencies
+    memory:
+      layers: [L0, L2]
+      topics: [security, vulnerabilities]
+      max_tokens: 400
+    outputs:
+      - security_issues
+      - risk_level
+
+  # Step 4: Performance analysis (conditional)
+  - id: performance_analysis
+    agent: ${agents.perf_analyzer}
+    depends_on: [quality_review]
+    condition: ${inputs.review_depth == 'thorough'}
+    prompt: |
+      Analyze performance implications of changes.
+
+      Files: ${inputs.files_changed}
+
+      Look for:
+      - Algorithm complexity
+      - Database query efficiency
+      - Memory usage patterns
+      - Network call optimization
+      - Caching opportunities
+    outputs:
+      - performance_concerns
+      - optimization_suggestions
+
+  # Step 5: Synthesize review
+  - id: synthesize
+    agent: ${agents.reviewer}
+    depends_on: [quality_review, security_review, performance_analysis]
+    prompt: |
+      Synthesize a comprehensive review summary.
+
+      Quality: ${quality_review.quality_issues}
+      Security: ${security_review.security_issues}
+      Performance: ${performance_analysis.performance_concerns}
+
+      Create:
+      - Overall assessment
+      - Priority-ordered issue list
+      - Blocking vs non-blocking issues
+      - Approval recommendation
+    outputs:
+      - summary
+      - blocking_issues
+      - non_blocking_issues
+      - decision
+
+outputs:
+  review_summary: ${synthesize.summary}
+  quality_score: ${quality_review.quality_score}
+  security_risk: ${security_review.risk_level}
+  blocking_issues: ${synthesize.blocking_issues}
+  approval_decision: ${synthesize.decision}

@@ -1,0 +1,230 @@
+name: ci-cd-setup
+version: 1.0
+description: Set up CI/CD pipeline with best practices
+
+inputs:
+  platform:
+    type: string
+    enum: [github_actions, gitlab_ci, jenkins, circle_ci]
+    description: CI/CD platform to use
+  project_type:
+    type: string
+    description: Type of project (e.g., python, node, rust)
+  deployment_targets:
+    type: array
+    description: Deployment environments
+    default: [staging, production]
+
+agents:
+  analyzer: qwen
+  pipeline_designer: qwen
+  implementer: qwen
+  validator: codex
+
+nodes:
+  # Step 1: Analyze project requirements
+  - id: analyze
+    agent: ${agents.analyzer}
+    prompt: |
+      Analyze CI/CD requirements for ${inputs.project_type} project.
+
+      Platform: ${inputs.platform}
+      Deployment targets: ${inputs.deployment_targets}
+
+      Identify:
+      - Build steps
+      - Test requirements
+      - Deployment strategies
+      - Environment variables needed
+      - Secrets management
+      - Artifact storage
+    memory:
+      layers: [L0, L1, L2]
+      topics: [ci_cd, deployment, devops]
+      max_tokens: 600
+    outputs:
+      - requirements
+      - build_steps
+      - test_strategy
+
+  # Step 2: Design pipeline stages
+  - id: design
+    agent: ${agents.pipeline_designer}
+    depends_on: [analyze]
+    prompt: |
+      Design CI/CD pipeline stages.
+
+      Requirements: ${analyze.requirements}
+      Platform: ${inputs.platform}
+
+      Create stages:
+      1. Code checkout and setup
+      2. Dependencies installation
+      3. Linting and formatting
+      4. Unit tests
+      5. Integration tests
+      6. Build artifacts
+      7. Security scanning
+      8. Deployment
+      9. Post-deployment verification
+
+      Include:
+      - Parallel execution where possible
+      - Caching strategies
+      - Fail-fast mechanisms
+      - Rollback procedures
+    outputs:
+      - pipeline_design
+      - stages
+      - optimization_strategies
+
+  # Step 3: Implement build stage
+  - id: build_stage
+    agent: ${agents.implementer}
+    depends_on: [design]
+    prompt: |
+      Implement build stage configuration.
+
+      Platform: ${inputs.platform}
+      Project type: ${inputs.project_type}
+      Build steps: ${analyze.build_steps}
+
+      Configure:
+      - Environment setup
+      - Dependency caching
+      - Build commands
+      - Artifact generation
+      - Build matrix (if needed)
+    outputs:
+      - build_config
+      - cache_config
+
+  # Step 4: Implement test stage
+  - id: test_stage
+    agent: ${agents.implementer}
+    depends_on: [design]
+    prompt: |
+      Implement test stage configuration.
+
+      Test strategy: ${analyze.test_strategy}
+      Platform: ${inputs.platform}
+
+      Configure:
+      - Test runners
+      - Parallel test execution
+      - Coverage reporting
+      - Test result artifacts
+      - Failure notifications
+    outputs:
+      - test_config
+      - coverage_config
+
+  # Step 5: Implement deployment stages
+  - id: deployment_stages
+    agent: ${agents.implementer}
+    depends_on: [design]
+    loop:
+      prompt: |
+        Implement deployment for: ${inputs.deployment_targets[state.current_index]}
+
+        Environment: ${state.current_environment}
+
+        Configure:
+        - Deployment triggers
+        - Environment-specific variables
+        - Deployment strategy (blue-green, rolling, canary)
+        - Health checks
+        - Rollback automation
+      until: ALL_ENVIRONMENTS_CONFIGURED
+      max_iterations: 10
+    outputs:
+      - deployment_configs
+      - environment_variables
+
+  # Step 6: Add security and quality gates
+  - id: quality_gates
+    agent: ${agents.implementer}
+    depends_on: [design]
+    prompt: |
+      Add security and quality gates.
+
+      Configure:
+      - Dependency vulnerability scanning
+      - SAST (Static Application Security Testing)
+      - Code quality checks
+      - License compliance
+      - Branch protection rules
+      - Required approvals
+    outputs:
+      - security_config
+      - quality_rules
+
+  # Step 7: Create pipeline configuration file
+  - id: create_config
+    agent: ${agents.implementer}
+    depends_on: [build_stage, test_stage, deployment_stages, quality_gates]
+    prompt: |
+      Generate complete pipeline configuration file.
+
+      Platform: ${inputs.platform}
+      Build: ${build_stage.build_config}
+      Tests: ${test_stage.test_config}
+      Deployments: ${deployment_stages.deployment_configs}
+      Quality gates: ${quality_gates.security_config}
+
+      Create proper YAML/JSON configuration for ${inputs.platform}.
+    outputs:
+      - config_file
+      - config_filename
+
+  # Step 8: Validate configuration
+  - id: validate
+    agent: ${agents.validator}
+    depends_on: [create_config]
+    prompt: |
+      Validate CI/CD pipeline configuration.
+
+      Config: ${create_config.config_file}
+      Platform: ${inputs.platform}
+
+      Check:
+      - Syntax correctness
+      - Stage dependencies
+      - Required secrets defined
+      - Deployment safety
+      - Best practices followed
+      - No hardcoded credentials
+    outputs:
+      - validation_status
+      - issues_found
+      - recommendations
+
+  # Step 9: Create documentation
+  - id: document
+    agent: ${agents.implementer}
+    depends_on: [validate]
+    condition: ${validate.validation_status == 'valid'}
+    prompt: |
+      Create CI/CD pipeline documentation.
+
+      Pipeline: ${create_config.config_file}
+      Stages: ${design.stages}
+
+      Document:
+      - Pipeline overview
+      - Stage descriptions
+      - Environment variables required
+      - Secrets setup
+      - Deployment process
+      - Troubleshooting guide
+      - Rollback procedures
+    outputs:
+      - documentation
+      - setup_instructions
+
+outputs:
+  pipeline_config: ${create_config.config_file}
+  config_file_path: ${create_config.config_filename}
+  documentation: ${document.documentation}
+  validation_status: ${validate.validation_status}
+  setup_instructions: ${document.setup_instructions}

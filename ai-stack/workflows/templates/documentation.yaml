@@ -1,0 +1,148 @@
+name: documentation
+version: 1.0
+description: Generate and maintain project documentation
+
+inputs:
+  doc_type:
+    type: string
+    enum: [api, user_guide, architecture, readme]
+    description: Type of documentation to create
+  target_component:
+    type: string
+    description: Component or feature to document
+  include_examples:
+    type: boolean
+    default: true
+
+agents:
+  analyzer: qwen
+  writer: qwen
+  reviewer: codex
+
+nodes:
+  # Step 1: Analyze component
+  - id: analyze
+    agent: ${agents.analyzer}
+    prompt: |
+      Analyze the component to be documented:
+      ${inputs.target_component}
+
+      Gather information for ${inputs.doc_type} documentation:
+      - Public interfaces and APIs
+      - Key features and functionality
+      - Configuration options
+      - Dependencies
+      - Usage patterns
+    memory:
+      layers: [L0, L1, L2]
+      topics: [architecture, patterns]
+      max_tokens: 600
+    outputs:
+      - component_analysis
+      - public_apis
+      - features
+
+  # Step 2: Create documentation outline
+  - id: outline
+    agent: ${agents.writer}
+    depends_on: [analyze]
+    prompt: |
+      Create documentation outline for ${inputs.doc_type}.
+
+      Component: ${analyze.component_analysis}
+      Features: ${analyze.features}
+
+      Outline should include:
+      - Clear structure
+      - Logical flow
+      - All necessary sections
+      - Code example placeholders (if ${inputs.include_examples})
+    outputs:
+      - outline
+      - sections
+
+  # Step 3: Write documentation
+  - id: write
+    agent: ${agents.writer}
+    depends_on: [outline]
+    loop:
+      prompt: |
+        Write documentation section: ${outline.sections[state.current_section]}
+
+        Context: ${analyze.component_analysis}
+        Include:
+        - Clear, concise explanations
+        - Code examples (if applicable)
+        - Best practices
+        - Common pitfalls to avoid
+      until: ALL_SECTIONS_COMPLETE
+      max_iterations: 20
+    memory:
+      layers: [L0, L1]
+      topics: [documentation, best_practices]
+    outputs:
+      - documentation_content
+      - examples_included
+
+  # Step 4: Add code examples (conditional)
+  - id: examples
+    agent: ${agents.writer}
+    depends_on: [write]
+    condition: ${inputs.include_examples}
+    prompt: |
+      Create comprehensive code examples.
+
+      Documentation: ${write.documentation_content}
+      APIs: ${analyze.public_apis}
+
+      Examples should:
+      - Be complete and runnable
+      - Cover common use cases
+      - Show best practices
+      - Include error handling
+    outputs:
+      - code_examples
+      - example_count
+
+  # Step 5: Review documentation
+  - id: review
+    agent: ${agents.reviewer}
+    depends_on: [write, examples]
+    prompt: |
+      Review documentation for quality and accuracy.
+
+      Documentation: ${write.documentation_content}
+      Examples: ${examples.code_examples}
+
+      Check for:
+      - Technical accuracy
+      - Clarity and readability
+      - Completeness
+      - Proper formatting
+      - Working code examples
+      - Grammar and spelling
+    outputs:
+      - decision
+      - feedback
+      - issues_found
+
+  # Step 6: Revise based on feedback
+  - id: revise
+    agent: ${agents.writer}
+    depends_on: [review]
+    condition: ${review.decision == 'needs_revision'}
+    prompt: |
+      Revise documentation based on feedback:
+      ${review.feedback}
+
+      Issues to address:
+      ${review.issues_found}
+    outputs:
+      - revised_content
+    goto: review
+
+outputs:
+  documentation: ${write.documentation_content}
+  examples: ${examples.code_examples}
+  review_status: ${review.decision}
+  doc_type: ${inputs.doc_type}

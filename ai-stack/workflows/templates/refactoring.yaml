@@ -1,0 +1,160 @@
+name: refactoring
+version: 1.0
+description: Safe refactoring workflow with test preservation
+
+inputs:
+  target_code:
+    type: string
+    description: Code or component to refactor
+  refactoring_goal:
+    type: string
+    description: Goal of refactoring (e.g., improve readability, reduce complexity)
+  preserve_tests:
+    type: boolean
+    default: true
+
+agents:
+  analyzer: qwen
+  refactorer: qwen
+  validator: codex
+
+nodes:
+  # Step 1: Analyze current state
+  - id: analyze
+    agent: ${agents.analyzer}
+    prompt: |
+      Analyze the code to be refactored:
+      ${inputs.target_code}
+
+      Goal: ${inputs.refactoring_goal}
+
+      Provide:
+      1. Current code metrics (complexity, coupling, cohesion)
+      2. Test coverage analysis
+      3. Dependencies and side effects
+      4. Refactoring opportunities
+    memory:
+      layers: [L0, L1, L2]
+      topics: [architecture, patterns, refactoring]
+      max_tokens: 600
+    outputs:
+      - current_metrics
+      - test_coverage
+      - dependencies
+      - refactoring_plan
+
+  # Step 2: Create refactoring strategy
+  - id: plan
+    agent: ${agents.refactorer}
+    depends_on: [analyze]
+    prompt: |
+      Create a safe refactoring strategy.
+
+      Current state: ${analyze.current_metrics}
+      Dependencies: ${analyze.dependencies}
+      Goal: ${inputs.refactoring_goal}
+
+      Strategy should:
+      - Break refactoring into small, testable steps
+      - Preserve existing functionality
+      - Maintain test coverage
+      - Minimize risk
+    outputs:
+      - refactoring_steps
+      - risk_assessment
+
+  # Step 3: Execute refactoring in steps
+  - id: refactor
+    agent: ${agents.refactorer}
+    depends_on: [plan]
+    loop:
+      prompt: |
+        Execute next refactoring step.
+
+        Step: ${plan.refactoring_steps[state.current_step]}
+        Completed steps: ${state.completed_steps}
+
+        After each step:
+        - Ensure tests still pass
+        - Verify no functionality regression
+        - Commit changes incrementally
+      until: ALL_STEPS_COMPLETE
+      max_iterations: 15
+      fresh_context: false
+    memory:
+      layers: [L0, L1, L2]
+      topics: [coding, refactoring]
+    retry:
+      max_attempts: 2
+      on_failure: [refactoring_failure]
+    outputs:
+      - refactored_code
+      - changes_made
+
+  # Step 4: Validate refactoring
+  - id: validate
+    agent: ${agents.validator}
+    depends_on: [refactor]
+    prompt: |
+      Validate the refactoring:
+
+      Original code: ${inputs.target_code}
+      Refactored code: ${refactor.refactored_code}
+      Goal: ${inputs.refactoring_goal}
+
+      Verify:
+      1. All tests still pass
+      2. Functionality preserved
+      3. Goal achieved
+      4. Code metrics improved
+      5. No new bugs introduced
+    retry:
+      max_attempts: 2
+      on_failure: [validation_failure]
+    outputs:
+      - validation_status
+      - new_metrics
+      - test_results
+
+  # Step 5: Compare metrics
+  - id: compare
+    agent: ${agents.validator}
+    depends_on: [validate]
+    prompt: |
+      Compare before and after metrics.
+
+      Before: ${analyze.current_metrics}
+      After: ${validate.new_metrics}
+      Goal: ${inputs.refactoring_goal}
+
+      Determine:
+      - Did refactoring achieve the goal?
+      - Are metrics improved?
+      - Is code more maintainable?
+    outputs:
+      - improvement_summary
+      - goals_met
+      - recommendation
+
+  # Step 6: Revert if needed
+  - id: revert
+    agent: ${agents.refactorer}
+    depends_on: [compare]
+    condition: ${compare.goals_met == false}
+    prompt: |
+      Refactoring did not meet goals. Analyze what went wrong:
+      ${compare.improvement_summary}
+
+      Recommend:
+      - Alternative refactoring approach
+      - OR accept current code state
+    outputs:
+      - revert_reason
+      - alternative_approach
+
+outputs:
+  refactored_code: ${refactor.refactored_code}
+  success: ${compare.goals_met}
+  metrics_before: ${analyze.current_metrics}
+  metrics_after: ${validate.new_metrics}
+  improvement_summary: ${compare.improvement_summary}

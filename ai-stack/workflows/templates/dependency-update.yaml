@@ -1,0 +1,201 @@
+name: dependency-update
+version: 1.0
+description: Safe dependency update workflow with compatibility testing
+
+inputs:
+  update_type:
+    type: string
+    enum: [patch, minor, major, security]
+    default: minor
+    description: Type of dependency updates to apply
+  auto_merge:
+    type: boolean
+    default: false
+    description: Auto-merge if all tests pass
+  target_dependencies:
+    type: array
+    description: Specific dependencies to update (empty = all)
+    default: []
+
+agents:
+  analyzer: qwen
+  updater: qwen
+  tester: qwen
+  reviewer: codex
+
+nodes:
+  # Step 1: Analyze current dependencies
+  - id: analyze
+    agent: ${agents.analyzer}
+    prompt: |
+      Analyze project dependencies and check for updates.
+
+      Update type: ${inputs.update_type}
+      Target dependencies: ${inputs.target_dependencies}
+
+      Identify:
+      - Available updates
+      - Breaking changes
+      - Security vulnerabilities
+      - Deprecation warnings
+      - Change logs summary
+    memory:
+      layers: [L0, L1]
+      topics: [dependencies, compatibility]
+      max_tokens: 500
+    outputs:
+      - available_updates
+      - security_updates
+      - breaking_changes
+      - update_plan
+
+  # Step 2: Prioritize updates
+  - id: prioritize
+    agent: ${agents.analyzer}
+    depends_on: [analyze]
+    prompt: |
+      Prioritize dependency updates.
+
+      Available: ${analyze.available_updates}
+      Security: ${analyze.security_updates}
+      Breaking changes: ${analyze.breaking_changes}
+
+      Priority order:
+      1. Critical security fixes
+      2. Other security updates
+      3. Major version updates (if requested)
+      4. Minor updates
+      5. Patch updates
+    outputs:
+      - priority_list
+      - update_sequence
+
+  # Step 3: Apply updates incrementally
+  - id: update
+    agent: ${agents.updater}
+    depends_on: [prioritize]
+    loop:
+      prompt: |
+        Apply dependency update: ${prioritize.update_sequence[state.current_index]}
+
+        Current step: ${state.current_step}
+        Previous updates: ${state.completed_updates}
+
+        Update one dependency at a time for easier rollback if needed.
+      until: ALL_UPDATES_APPLIED
+      max_iterations: 50
+    outputs:
+      - updates_applied
+      - dependency_files_changed
+
+  # Step 4: Run compatibility tests
+  - id: test
+    agent: ${agents.tester}
+    depends_on: [update]
+    prompt: |
+      Run comprehensive compatibility tests.
+
+      Updates applied: ${update.updates_applied}
+
+      Test:
+      - Unit tests
+      - Integration tests
+      - Build process
+      - Type checking
+      - Linting
+      - Runtime compatibility
+    retry:
+      max_attempts: 2
+      on_failure: [test_failure]
+    outputs:
+      - test_results
+      - failing_tests
+      - compatibility_issues
+
+  # Step 5: Handle test failures
+  - id: fix_failures
+    agent: ${agents.updater}
+    depends_on: [test]
+    condition: ${test.failing_tests != []}
+    loop:
+      prompt: |
+        Fix compatibility issue: ${test.failing_tests[state.current_index]}
+
+        Issue: ${test.compatibility_issues[state.current_index]}
+        Updated dependency: ${state.related_dependency}
+
+        Options:
+        - Fix code to work with new version
+        - Pin to compatible version
+        - Find alternative dependency
+      until: ALL_TESTS_PASSING_OR_ROLLBACK_NEEDED
+      max_iterations: 10
+    outputs:
+      - fixes_applied
+      - rollback_needed
+    goto: test
+
+  # Step 6: Security validation
+  - id: security_check
+    agent: ${agents.analyzer}
+    depends_on: [test]
+    condition: ${test.failing_tests == []}
+    prompt: |
+      Validate updated dependencies for security.
+
+      Updates: ${update.updates_applied}
+
+      Verify:
+      - No new vulnerabilities introduced
+      - All security patches applied
+      - License compliance maintained
+      - No malicious packages
+    outputs:
+      - security_status
+      - new_vulnerabilities
+      - license_changes
+
+  # Step 7: Review changes
+  - id: review
+    agent: ${agents.reviewer}
+    depends_on: [security_check]
+    condition: ${inputs.auto_merge == false}
+    prompt: |
+      Review dependency updates.
+
+      Updates: ${update.updates_applied}
+      Breaking changes: ${analyze.breaking_changes}
+      Test results: ${test.test_results}
+      Security: ${security_check.security_status}
+
+      Verify:
+      - Updates are appropriate
+      - No unexpected changes
+      - Documentation updated
+      - Change log reviewed
+    outputs:
+      - decision
+      - review_notes
+
+  # Step 8: Rollback if needed
+  - id: rollback
+    agent: ${agents.updater}
+    depends_on: [fix_failures]
+    condition: ${fix_failures.rollback_needed == true}
+    prompt: |
+      Rollback problematic updates.
+
+      Failed updates: ${fix_failures.failed_dependencies}
+      Reason: ${fix_failures.rollback_reason}
+
+      Keep successful updates, rollback failures.
+    outputs:
+      - rollback_summary
+      - kept_updates
+
+outputs:
+  updates_applied: ${update.updates_applied}
+  test_results: ${test.test_results}
+  security_status: ${security_check.security_status}
+  review_decision: ${review.decision}
+  rollback_performed: ${fix_failures.rollback_needed}
