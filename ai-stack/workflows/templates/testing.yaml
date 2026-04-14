@@ -1,0 +1,158 @@
+name: testing
+version: 1.0
+description: Comprehensive testing workflow for code changes
+
+inputs:
+  target_code:
+    type: string
+    description: Code or component to test
+  test_types:
+    type: array
+    description: Types of tests to create
+    default: [unit, integration]
+  coverage_target:
+    type: number
+    default: 80
+
+agents:
+  test_designer: qwen
+  test_implementer: qwen
+  test_runner: qwen
+
+nodes:
+  # Step 1: Analyze code and design tests
+  - id: design
+    agent: ${agents.test_designer}
+    prompt: |
+      Analyze code and design comprehensive tests.
+
+      Code: ${inputs.target_code}
+      Test types needed: ${inputs.test_types}
+      Coverage target: ${inputs.coverage_target}%
+
+      Create:
+      1. Test plan with test cases
+      2. Edge cases and boundary conditions
+      3. Mock/stub requirements
+      4. Test data needs
+    memory:
+      layers: [L0, L1, L2]
+      topics: [testing, patterns]
+      max_tokens: 500
+    outputs:
+      - test_plan
+      - test_cases
+      - edge_cases
+
+  # Step 2: Implement unit tests
+  - id: unit_tests
+    agent: ${agents.test_implementer}
+    depends_on: [design]
+    condition: ${'unit' in inputs.test_types}
+    prompt: |
+      Implement unit tests based on the plan.
+
+      Test plan: ${design.test_plan}
+      Test cases: ${design.test_cases}
+
+      Tests should:
+      - Be isolated and fast
+      - Use appropriate mocking
+      - Cover happy paths and edge cases
+      - Follow testing best practices
+    retry:
+      max_attempts: 3
+      on_failure: [test_creation_failure]
+    outputs:
+      - unit_test_code
+      - unit_test_count
+
+  # Step 3: Implement integration tests
+  - id: integration_tests
+    agent: ${agents.test_implementer}
+    depends_on: [design]
+    condition: ${'integration' in inputs.test_types}
+    prompt: |
+      Implement integration tests.
+
+      Test plan: ${design.test_plan}
+      Edge cases: ${design.edge_cases}
+
+      Tests should:
+      - Test component interactions
+      - Use realistic test data
+      - Verify end-to-end flows
+      - Handle setup/teardown properly
+    retry:
+      max_attempts: 3
+      on_failure: [test_creation_failure]
+    outputs:
+      - integration_test_code
+      - integration_test_count
+
+  # Step 4: Run all tests
+  - id: run_tests
+    agent: ${agents.test_runner}
+    depends_on: [unit_tests, integration_tests]
+    prompt: |
+      Run all created tests and collect results.
+
+      Unit tests: ${unit_tests.unit_test_code}
+      Integration tests: ${integration_tests.integration_test_code}
+
+      Collect:
+      - Pass/fail status for each test
+      - Code coverage metrics
+      - Performance metrics
+      - Failure reasons if any
+    retry:
+      max_attempts: 2
+      on_failure: [test_execution_failure]
+    outputs:
+      - test_results
+      - coverage_report
+      - failing_tests
+
+  # Step 5: Fix failing tests
+  - id: fix_failures
+    agent: ${agents.test_implementer}
+    depends_on: [run_tests]
+    condition: ${run_tests.failing_tests != []}
+    loop:
+      prompt: |
+        Fix failing test: ${run_tests.failing_tests[state.current_index]}
+
+        Test failure: ${state.current_failure}
+        Root cause analysis needed
+      until: ALL_TESTS_PASSING
+      max_iterations: 10
+    outputs:
+      - fixes_applied
+    goto: run_tests
+
+  # Step 6: Verify coverage
+  - id: verify_coverage
+    agent: ${agents.test_runner}
+    depends_on: [run_tests]
+    condition: ${run_tests.failing_tests == []}
+    prompt: |
+      Verify test coverage meets target.
+
+      Coverage report: ${run_tests.coverage_report}
+      Target: ${inputs.coverage_target}%
+
+      If coverage is insufficient:
+      - Identify uncovered code paths
+      - Suggest additional test cases
+    outputs:
+      - coverage_met
+      - uncovered_areas
+      - recommendations
+
+outputs:
+  test_plan: ${design.test_plan}
+  unit_tests: ${unit_tests.unit_test_code}
+  integration_tests: ${integration_tests.integration_test_code}
+  test_results: ${run_tests.test_results}
+  coverage: ${run_tests.coverage_report}
+  coverage_target_met: ${verify_coverage.coverage_met}

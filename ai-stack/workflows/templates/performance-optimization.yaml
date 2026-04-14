@@ -1,0 +1,177 @@
+name: performance-optimization
+version: 1.0
+description: Identify and optimize performance bottlenecks
+
+inputs:
+  target_system:
+    type: string
+    description: System or component to optimize
+  performance_goal:
+    type: string
+    description: Performance goal (e.g., "reduce latency by 50%")
+  profiling_enabled:
+    type: boolean
+    default: true
+
+agents:
+  profiler: qwen
+  optimizer: qwen
+  validator: codex
+
+nodes:
+  # Step 1: Establish baseline
+  - id: baseline
+    agent: ${agents.profiler}
+    prompt: |
+      Establish performance baseline for:
+      ${inputs.target_system}
+
+      Measure:
+      - Response times / latency
+      - Throughput
+      - Resource usage (CPU, memory, I/O)
+      - Database query times
+      - Network calls
+    memory:
+      layers: [L0, L1, L2]
+      topics: [performance, optimization]
+      max_tokens: 500
+    outputs:
+      - baseline_metrics
+      - measurement_methodology
+
+  # Step 2: Profile and identify bottlenecks
+  - id: profile
+    agent: ${agents.profiler}
+    depends_on: [baseline]
+    condition: ${inputs.profiling_enabled}
+    prompt: |
+      Profile the system to identify performance bottlenecks.
+
+      System: ${inputs.target_system}
+      Baseline: ${baseline.baseline_metrics}
+
+      Identify:
+      - Hot code paths
+      - Slow database queries
+      - Inefficient algorithms
+      - Resource leaks
+      - Unnecessary I/O operations
+      - Network bottlenecks
+    outputs:
+      - bottlenecks
+      - hot_paths
+      - optimization_opportunities
+
+  # Step 3: Prioritize optimizations
+  - id: prioritize
+    agent: ${agents.optimizer}
+    depends_on: [profile]
+    prompt: |
+      Prioritize optimization opportunities.
+
+      Goal: ${inputs.performance_goal}
+      Bottlenecks: ${profile.bottlenecks}
+      Opportunities: ${profile.optimization_opportunities}
+
+      Rank by:
+      - Impact on goal
+      - Implementation effort
+      - Risk level
+      - Dependencies
+    outputs:
+      - optimization_plan
+      - priority_list
+
+  # Step 4: Implement optimizations
+  - id: optimize
+    agent: ${agents.optimizer}
+    depends_on: [prioritize]
+    loop:
+      prompt: |
+        Implement optimization: ${prioritize.priority_list[state.current_index]}
+
+        Current metrics: ${state.current_metrics}
+        Goal: ${inputs.performance_goal}
+
+        Optimization techniques:
+        - Algorithm improvements
+        - Caching strategies
+        - Database query optimization
+        - Lazy loading
+        - Parallel processing
+        - Resource pooling
+      until: GOAL_MET_OR_NO_MORE_OPTIMIZATIONS
+      max_iterations: 10
+    memory:
+      layers: [L0, L1, L2]
+      topics: [optimization, algorithms, caching]
+    outputs:
+      - optimizations_applied
+      - code_changes
+
+  # Step 5: Measure improvements
+  - id: measure
+    agent: ${agents.profiler}
+    depends_on: [optimize]
+    prompt: |
+      Measure performance after optimizations.
+
+      Baseline: ${baseline.baseline_metrics}
+      Optimizations: ${optimize.optimizations_applied}
+
+      Compare:
+      - Response times
+      - Throughput
+      - Resource usage
+      - Calculate improvement percentages
+    outputs:
+      - new_metrics
+      - improvement_summary
+      - goal_achieved
+
+  # Step 6: Validate correctness
+  - id: validate
+    agent: ${agents.validator}
+    depends_on: [measure]
+    prompt: |
+      Validate that optimizations didn't break functionality.
+
+      Changes: ${optimize.code_changes}
+
+      Verify:
+      - All tests still pass
+      - Functionality preserved
+      - No new bugs introduced
+      - Edge cases still handled
+    retry:
+      max_attempts: 2
+      on_failure: [validation_failure]
+    outputs:
+      - validation_status
+      - test_results
+
+  # Step 7: Rollback if needed
+  - id: rollback
+    agent: ${agents.optimizer}
+    depends_on: [validate]
+    condition: ${validate.validation_status == 'failed'}
+    prompt: |
+      Optimizations broke functionality. Analyze and rollback.
+
+      Issues: ${validate.test_results}
+
+      Determine:
+      - Which optimization caused the issue
+      - Safe optimizations to keep
+      - Rollback plan
+    outputs:
+      - rollback_plan
+      - safe_optimizations
+
+outputs:
+  baseline_metrics: ${baseline.baseline_metrics}
+  final_metrics: ${measure.new_metrics}
+  improvement: ${measure.improvement_summary}
+  goal_achieved: ${measure.goal_achieved}
+  optimizations: ${optimize.optimizations_applied}
