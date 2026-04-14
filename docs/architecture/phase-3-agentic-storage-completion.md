@@ -173,21 +173,29 @@ aq-index stats --collection codebase-context
    - Search executed without errors
 ```
 
-### Known Issues
+### Known Issues ~~(RESOLVED 2026-04-14)~~
 
-**Issue #1: Intermittent Embedding Service 500 Errors**
+**Issue #1: Intermittent Embedding Service 500 Errors** ✅ **RESOLVED**
 - **Severity:** Medium
 - **Impact:** Some embeddings fallback to zero vectors
 - **Frequency:** ~30-50% of requests during batch processing
-- **Root Cause:** Embedding service (port 8081) internal errors
-- **Workaround:** Retry logic, fallback chain
-- **Resolution:** Requires embedding service debugging (separate from Phase 3)
+- **Root Cause:** Embedding service batch size (512 tokens) too small for large code diffs
+- **Resolution Applied:**
+  - Increased batch size from 512 to 2048 tokens ([p14s-amd-ai-workstation.nix:42](../../nix/modules/host-classes/p14s-amd-ai-workstation.nix#L42))
+  - Added text truncation to 1800 tokens (safe margin) in both indexers
+  - Prevents batch size overflow while maintaining semantic quality
+- **Status:** Fixed, requires service restart to take effect
 
-**Issue #2: PostgreSQL Connection for Interactions**
+**Issue #2: PostgreSQL Connection for Interactions** ✅ **RESOLVED**
 - **Severity:** Low
 - **Impact:** Cannot index historical PostgreSQL interactions yet
 - **Cause:** Connection parameters not configured in CLI
-- **Resolution:** Add PostgreSQL connection string to aq-index CLI
+- **Resolution Applied:**
+  - Added PostgreSQL connection support to [aq-index](../../scripts/ai/aq-index) CLI
+  - Reads connection details from environment variables (AIDB_POSTGRES_*)
+  - Falls back gracefully when PostgreSQL is unavailable
+  - Supports password file for secure credential management
+- **Status:** Fixed, ready for use with proper environment configuration
 
 ---
 
@@ -308,13 +316,16 @@ Dashboard can now display:
 ## Files Modified/Created
 
 ### New Files
-1. `ai-stack/aidb/interaction_indexer.py` (450 lines) - Interaction vectorization
-2. `ai-stack/aidb/code_change_indexer.py` (550 lines) - Code change vectorization
-3. `scripts/ai/aq-index` (400 lines) - Unified CLI tool
-4. `docs/architecture/phase-3-agentic-storage-completion.md` (this file)
+1. [ai-stack/aidb/interaction_indexer.py](../../ai-stack/aidb/interaction_indexer.py) (470 lines) - Interaction vectorization
+2. [ai-stack/aidb/code_change_indexer.py](../../ai-stack/aidb/code_change_indexer.py) (570 lines) - Code change vectorization
+3. [scripts/ai/aq-index](../../scripts/ai/aq-index) (450 lines) - Unified CLI tool
+4. [docs/architecture/phase-3-agentic-storage-completion.md](../../docs/architecture/phase-3-agentic-storage-completion.md) (this file)
 
-### Modified Files
-None (all new functionality)
+### Modified Files (2026-04-14 - Issue Resolution)
+1. [nix/modules/host-classes/p14s-amd-ai-workstation.nix](../../nix/modules/host-classes/p14s-amd-ai-workstation.nix) - Increased embedding batch size to 2048
+2. [ai-stack/aidb/interaction_indexer.py](../../ai-stack/aidb/interaction_indexer.py) - Added text truncation method
+3. [ai-stack/aidb/code_change_indexer.py](../../ai-stack/aidb/code_change_indexer.py) - Added text truncation method
+4. [scripts/ai/aq-index](../../scripts/ai/aq-index) - Added PostgreSQL connection support
 
 ---
 
