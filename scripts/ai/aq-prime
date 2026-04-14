@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+"""
+aq-prime — Progressive disclosure agent onboarding CLI
+
+Provides minimal initial context and guides new agents through the
+full workflow cycle while minimizing token usage via progressive disclosure.
+
+Usage:
+    aq-prime                      # Quick onboarding (default)
+    aq-prime --objective "..."    # Onboard for specific task
+    aq-prime --role orchestrator  # Role-specific guidance
+    aq-prime --deep              # Load extended context (L2-L3)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+AGENT_DIR = REPO_ROOT / ".agent"
+AGENTS_DIR = REPO_ROOT / ".agents"
+PLANS_DIR = AGENTS_DIR / "plans"
+
+# Progressive disclosure levels (token budgets)
+DISCLOSURE_LEVELS = {
+    "minimal": {"budget": 500, "depth": "L0-L1", "cards": 1},
+    "quick": {"budget": 1500, "depth": "L1-L2", "cards": 2},
+    "standard": {"budget": 3000, "depth": "L2", "cards": 3},
+    "deep": {"budget": 8000, "depth": "L2-L3", "cards": 5},
+}
+
+# Role-specific guidance
+ROLE_GUIDANCE = {
+    "orchestrator": {
+        "summary": "Research → Plan → Delegate → Audit → Commit",
+        "key_tools": ["aq-hints", "aq-context-bootstrap", "aqd workflows"],
+        "token_discipline": "Minimize direct execution; delegate to sub-agents",
+        "workflow": "Use harness tools first; only execute when delegation overhead exceeds task complexity",
+    },
+    "implementer": {
+        "summary": "Execute assigned slice → Validate → Return results",
+        "key_tools": ["pytest", "bash", "git"],
+        "token_discipline": "Stay within assigned slice scope",
+        "workflow": "No re-scoping, no cross-agent routing, return to orchestrator on ambiguity",
+    },
+    "reviewer": {
+        "summary": "Audit code → Validate tests → Approve or request revision",
+        "key_tools": ["grep", "git diff", "test runners"],
+        "token_discipline": "Focus on validation, not implementation",
+        "workflow": "Check patterns, run tests, verify git discipline, approve or reject with specific feedback",
+    },
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Progressive disclosure agent onboarding CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  aq-prime                             # Quick onboarding
+  aq-prime --objective "fix bug X"     # Task-specific onboarding
+  aq-prime --role orchestrator         # Orchestrator mode
+  aq-prime --deep                      # Extended context loading
+        """,
+    )
+    parser.add_argument(
+        "--objective",
+        help="Task objective for context-aware onboarding",
+    )
+    parser.add_argument(
+        "--role",
+        choices=list(ROLE_GUIDANCE.keys()),
+        default="orchestrator",
+        help="Agent role (default: orchestrator)",
+    )
+    parser.add_argument(
+        "--level",
+        choices=list(DISCLOSURE_LEVELS.keys()),
+        default="quick",
+        help="Disclosure level (default: quick)",
+    )
+    parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="Load extended context (equivalent to --level deep)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format",
+    )
+    return parser.parse_args()
+
+
+def check_harness_health() -> dict[str, Any]:
+    """Check if AI harness is online and healthy."""
+    try:
+        result = subprocess.run(
+            ["curl", "-sf", "http://localhost:8003/discovery/capabilities?level=overview"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode == 0:
+            capabilities = json.loads(result.stdout)
+            return {
+                "status": "online",
+                "capabilities": capabilities.get("capabilities", []),
+            }
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        pass
+
+    return {"status": "offline", "capabilities": []}
+
+
+def get_project_identity() -> dict[str, Any]:
+    """Get compact project identity from PRD if available."""
+    prd_path = AGENT_DIR / "PROJECT-PRD.md"
+
+    identity = {
+        "name": "NixOS-Dev-Quick-Deploy",
+        "goal": "Nix-first deployment and AI-stack harness",
+        "stack": "NixOS + Python + Bash + Node + MCP",
+    }
+
+    if prd_path.exists():
+        try:
+            content = prd_path.read_text()
+            # Extract key facts from PRD (minimal parsing)
+            lines = content.split("\n")
+            for line in lines[:30]:  # Only check first 30 lines
+                if line.startswith("Project:"):
+                    identity["name"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Goal:"):
+                    identity["goal"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Stack:"):
+                    identity["stack"] = line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+
+    return identity
+
+
+def get_git_state() -> dict[str, Any]:
+    """Get compact git state."""
+    try:
+        # Current branch
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "unknown"
+
+        # Uncommitted changes count
+        status_result = subprocess.run(
+            ["git", "status", "--short"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        changes = len(status_result.stdout.strip().split("\n")) if status_result.stdout.strip() else 0
+
+        # Recent commit
+        log_result = subprocess.run(
+            ["git", "log", "-1", "--oneline"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        last_commit = log_result.stdout.strip() if log_result.returncode == 0 else "none"
+
+        return {
+            "branch": branch,
+            "uncommitted_changes": changes,
+            "last_commit": last_commit,
+        }
+    except Exception:
+        return {
+            "branch": "unknown",
+            "uncommitted_changes": 0,
+            "last_commit": "none",
+        }
+
+
+def get_active_plans() -> list[str]:
+    """Get active/recent plan files."""
+    if not PLANS_DIR.exists():
+        return []
+
+    plans = sorted(PLANS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [p.name for p in plans[:3]]  # Top 3 most recent
+
+
+def get_workflow_context(objective: str | None) -> dict[str, Any]:
+    """Get workflow context using aq-context-bootstrap."""
+    if not objective:
+        return {}
+
+    try:
+        result = subprocess.run(
+            [
+                "python3",
+                str(REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap"),
+                "--task",
+                objective,
+                "--level",
+                "brief",
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        pass
+
+    return {}
+
+
+def format_text_output(data: dict[str, Any]) -> str:
+    """Format output as compact text."""
+    lines = []
+
+    # Header
+    lines.append("=" * 60)
+    lines.append("AQ-PRIME: Agent Onboarding (Progressive Disclosure)")
+    lines.append("=" * 60)
+    lines.append("")
+
+    # Project Identity (L0)
+    lines.append("## Project Identity")
+    identity = data["identity"]
+    lines.append(f"Name: {identity['name']}")
+    lines.append(f"Goal: {identity['goal']}")
+    lines.append(f"Stack: {identity['stack']}")
+    lines.append("")
+
+    # Role Guidance
+    role = data["role"]
+    role_info = data["role_guidance"]
+    lines.append(f"## Your Role: {role}")
+    lines.append(f"Summary: {role_info['summary']}")
+    lines.append(f"Token Discipline: {role_info['token_discipline']}")
+    lines.append(f"Workflow: {role_info['workflow']}")
+    lines.append("")
+
+    # Git State (L1)
+    git = data["git_state"]
+    lines.append("## Git State")
+    lines.append(f"Branch: {git['branch']}")
+    lines.append(f"Uncommitted Changes: {git['uncommitted_changes']}")
+    lines.append(f"Last Commit: {git['last_commit']}")
+    lines.append("")
+
+    # Harness Status
+    harness = data["harness"]
+    lines.append("## AI Harness")
+    lines.append(f"Status: {harness['status']}")
+    if harness["status"] == "online":
+        cap_count = len(harness.get("capabilities", []))
+        lines.append(f"Capabilities: {cap_count} available")
+    lines.append("")
+
+    # Active Plans (L1)
+    if data["active_plans"]:
+        lines.append("## Active Plans")
+        for plan in data["active_plans"]:
+            lines.append(f"- .agents/plans/{plan}")
+        lines.append("")
+
+    # Workflow Context (L2)
+    if data.get("workflow_context"):
+        wf = data["workflow_context"]
+        lines.append("## Workflow Context")
+        lines.append(f"Scope: {wf.get('scope', 'unknown')}")
+        lines.append(f"Summary: {wf.get('scope_summary', 'N/A')}")
+        if wf.get("starter_commands"):
+            lines.append("Starter Commands:")
+            for cmd in wf["starter_commands"][:3]:
+                lines.append(f"  - {cmd}")
+        lines.append("")
+
+    # Key Tools
+    lines.append("## Key Tools")
+    for tool in role_info["key_tools"]:
+        lines.append(f"- {tool}")
+    lines.append("")
+
+    # Progressive Disclosure Guide
+    lines.append("## Progressive Disclosure Workflow")
+    lines.append("")
+    lines.append("1. CONTEXT GATHERING (use tools first!)")
+    lines.append("   - aq-hints --query \"<task>\" --format json")
+    lines.append("   - aq-context-bootstrap --task \"<task>\" --level brief")
+    lines.append("   - Read AGENTS.md for compact policy baseline")
+    lines.append("")
+    lines.append("2. PLANNING")
+    lines.append("   - aqd workflows brownfield --target . --objective \"<task>\"")
+    lines.append("   - Review .agents/plans/ for existing plans")
+    lines.append("   - Create todo list for complex tasks (TodoWrite tool)")
+    lines.append("")
+    lines.append("3. EXECUTION")
+    lines.append("   - Follow orchestrator protocol (delegate when possible)")
+    lines.append("   - Read files as needed (progressive, not bulk)")
+    lines.append("   - Validate continuously")
+    lines.append("")
+    lines.append("4. VALIDATION")
+    lines.append("   - Run tests (pytest, bash -n, etc.)")
+    lines.append("   - Check repo structure: scripts/governance/repo-structure-lint.sh")
+    lines.append("   - Verify git discipline")
+    lines.append("")
+    lines.append("5. COMMIT (MANDATORY for completed work)")
+    lines.append("   - git add <files>")
+    lines.append("   - git commit -m \"type(scope): msg")
+    lines.append("")
+    lines.append("     Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\"")
+    lines.append("   - Update todo list to reflect completion")
+    lines.append("")
+
+    # On-Demand Resources
+    lines.append("## On-Demand Resources (Load as Needed)")
+    lines.append("")
+    lines.append("Compact policy baseline:")
+    lines.append("  - AGENTS.md")
+    lines.append("")
+    lines.append("Canonical full policy:")
+    lines.append("  - docs/AGENTS.md")
+    lines.append("")
+    lines.append("Progressive guides:")
+    lines.append("  - docs/agent-guides/01-QUICK-START.md")
+    lines.append("  - docs/agent-guides/40-HYBRID-WORKFLOW.md")
+    lines.append("  - docs/agent-guides/12-DEBUGGING.md")
+    lines.append("  - docs/agent-guides/22-CONTINUOUS-LEARNING.md")
+    lines.append("")
+
+    # Disclosure Stats
+    level_info = data["level_info"]
+    lines.append("## Disclosure Stats")
+    lines.append(f"Level: {data['level']} (depth: {level_info['depth']})")
+    lines.append(f"Token Budget: ~{level_info['budget']} tokens")
+    lines.append(f"Estimated Usage: ~{data['estimated_tokens']} tokens")
+    lines.append("")
+
+    # Next Steps
+    lines.append("## Next Steps")
+    if data.get("objective"):
+        lines.append(f"Objective: {data['objective']}")
+        lines.append("1. Run: aq-hints --query \"<objective>\" --format json")
+        lines.append("2. Review workflow context above")
+        lines.append("3. Begin with tool-first approach")
+    else:
+        lines.append("1. Await user task assignment")
+        lines.append("2. Run: aq-hints --query \"<task>\" --format json")
+        lines.append("3. Follow progressive disclosure workflow above")
+    lines.append("")
+
+    lines.append("=" * 60)
+    lines.append("REMEMBER: Tools first, progressive disclosure, git discipline!")
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+
+    # Override level if --deep flag used
+    level = "deep" if args.deep else args.level
+    level_info = DISCLOSURE_LEVELS[level]
+
+    # Gather context progressively
+    identity = get_project_identity()
+    git_state = get_git_state()
+    harness = check_harness_health()
+    active_plans = get_active_plans()
+    role_guidance = ROLE_GUIDANCE[args.role]
+
+    # Get workflow context if objective provided (L2)
+    workflow_context = {}
+    if args.objective and level_info["budget"] >= 1500:
+        workflow_context = get_workflow_context(args.objective)
+
+    # Estimate token usage
+    estimated_tokens = 400  # Base
+    estimated_tokens += 100 * len(active_plans)
+    if workflow_context:
+        estimated_tokens += 500
+    if level == "deep":
+        estimated_tokens += 2000
+
+    # Build output data
+    output_data = {
+        "identity": identity,
+        "role": args.role,
+        "role_guidance": role_guidance,
+        "git_state": git_state,
+        "harness": harness,
+        "active_plans": active_plans,
+        "workflow_context": workflow_context,
+        "objective": args.objective,
+        "level": level,
+        "level_info": level_info,
+        "estimated_tokens": estimated_tokens,
+    }
+
+    # Output
+    if args.format == "json":
+        print(json.dumps(output_data, indent=2))
+    else:
+        print(format_text_output(output_data))
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
