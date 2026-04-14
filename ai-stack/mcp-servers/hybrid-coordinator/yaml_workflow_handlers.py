@@ -8,14 +8,9 @@ Phase 2.4: Coordinator Integration
 """
 
 import logging
-import sys
-from pathlib import Path
 from typing import Any, Dict
 
 from aiohttp import web
-
-# Add workflows package to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
     from workflows import WorkflowCoordinator, WorkflowExecutionHistory
