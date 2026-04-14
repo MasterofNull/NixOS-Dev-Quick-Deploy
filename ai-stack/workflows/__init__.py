@@ -18,6 +18,8 @@ from .models import (
 from .parser import WorkflowParser, ParseError
 from .validator import WorkflowValidator, ValidationError
 from .graph import DependencyGraph
+from .coordinator import WorkflowCoordinator
+from .persistence import WorkflowStateStore, WorkflowExecutionHistory
 
 __all__ = [
     "Workflow",
@@ -31,4 +33,7 @@ __all__ = [
     "WorkflowValidator",
     "ValidationError",
     "DependencyGraph",
+    "WorkflowCoordinator",
+    "WorkflowStateStore",
+    "WorkflowExecutionHistory",
 ]
