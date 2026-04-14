@@ -49,14 +49,18 @@ let
   # Nix store so they are declarative, reproducible, and rollback-capable.
   # The hybrid coordinator imports yaml_workflow_handlers dynamically; this
   # derivation ensures the code comes from /nix/store, not the mutable repo.
-  workflowHandlersPkg = pkgs.runCommand "yaml-workflow-handlers" {} ''
-    sp="${pkgs.python3.sitePackages}"
-    mkdir -p "$out/$sp/workflows"
-    cp ${mcp.repoPath}/ai-stack/workflows/*.py \
-      "$out/$sp/workflows/"
-    cp ${mcp.repoPath}/ai-stack/mcp-servers/hybrid-coordinator/yaml_workflow_handlers.py \
-      "$out/$sp/"
-  '';
+  workflowHandlersPkg =
+    pkgs.runCommand "yaml-workflow-handlers" {
+      src = builtins.path {
+        path = mcp.repoPath;
+        name = "yaml-workflow-handlers-src";
+      };
+    } ''
+      sp="${pkgs.python3.sitePackages}"
+      mkdir -p "$out/$sp/workflows"
+      cp $src/ai-stack/workflows/*.py "$out/$sp/workflows/"
+      cp $src/ai-stack/mcp-servers/hybrid-coordinator/yaml_workflow_handlers.py "$out/$sp/"
+    '';
 
   dataDir = mcp.dataDir;
   mutableStateDir = cfg.deployment.mutableSpaces.aiStackStateDir;
