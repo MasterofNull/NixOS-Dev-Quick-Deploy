@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""
+aq-index - Vector Indexing CLI Tool
+
+Indexes interactions and code changes into vector embeddings for semantic search.
+Part of Phase 3 Agentic Storage Implementation.
+
+Usage:
+    aq-index interactions [--since-days N] [--limit N]
+    aq-index code [--since "DATE"] [--limit N] [--path PATTERN]
+    aq-index stats [--collection NAME]
+    aq-index search QUERY [--type TYPE] [--limit N]
+
+Examples:
+    # Index last 30 days of interactions
+    aq-index interactions --since-days 30 --limit 1000
+
+    # Index last week of code changes
+    aq-index code --since "7 days ago" --limit 100
+
+    # Search interactions semantically
+    aq-index search "how to configure nixos modules" --type interactions
+
+    # Search code changes
+    aq-index search "authentication implementation" --type code
+
+    # View collection stats
+    aq-index stats --collection interaction-history
+"""
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+from pathlib import Path
+
+# Add parent directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack" / "aidb"))
+
+try:
+    from aidb.interaction_indexer import InteractionIndexer
+    from aidb.code_change_indexer import CodeChangeIndexer
+    from qdrant_client import QdrantClient
+except ImportError as e:
+    print(f"Error: Failed to import required modules: {e}")
+    print("Make sure you're running this from the repo root")
+    sys.exit(1)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+
+# Configuration
+QDRANT_URL = "http://localhost:6333"
+EMBEDDING_URL = "http://localhost:8081"
+REPO_PATH = "."
+
+
+async def index_interactions(args):
+    """Index interaction logs from PostgreSQL."""
+    print(f"🔍 Indexing interactions from last {args.since_days} days...")
+    print(f"   Limit: {args.limit}")
+    print(f"   Qdrant: {QDRANT_URL}")
+    print(f"   Embedding service: {EMBEDDING_URL}")
+    print()
+
+    qdrant = QdrantClient(url=QDRANT_URL)
+
+    # Note: PostgreSQL connection would need to be set up here
+    # For now, we'll just ensure the collection exists
+    indexer = InteractionIndexer(
+        qdrant_client=qdrant,
+        embedding_service_url=EMBEDDING_URL,
+        postgres_conn=None,  # TODO: Add PostgreSQL connection
+    )
+
+    await indexer.ensure_collection()
+
+    # Get stats before
+    stats_before = await indexer.get_stats()
+    print(f"📊 Collection stats before indexing:")
+    print(f"   Total interactions: {stats_before.get('total_interactions', 0)}")
+    print()
+
+    # Index interactions
+    # Note: Would call index_from_postgres here with actual connection
+    print("⚠️  PostgreSQL connection not configured")
+    print("   To enable interaction indexing, configure PostgreSQL connection")
+    print()
+
+    # Get stats after
+    stats_after = await indexer.get_stats()
+    print(f"📊 Final collection stats:")
+    print(f"   Total interactions: {stats_after.get('total_interactions', 0)}")
+    print(f"   Status: {stats_after.get('status', 'unknown')}")
+
+    await indexer.close()
+
+
+async def index_code(args):
+    """Index code changes from git history."""
+    print(f"🔍 Indexing code changes since '{args.since}'...")
+    print(f"   Limit: {args.limit}")
+    if args.path:
+        print(f"   Path filter: {args.path}")
+    print(f"   Repository: {Path(REPO_PATH).resolve()}")
+    print(f"   Qdrant: {QDRANT_URL}")
+    print(f"   Embedding service: {EMBEDDING_URL}")
+    print()
+
+    qdrant = QdrantClient(url=QDRANT_URL)
+    indexer = CodeChangeIndexer(
+        qdrant_client=qdrant,
+        embedding_service_url=EMBEDDING_URL,
+        repo_path=REPO_PATH,
+    )
+
+    await indexer.ensure_collection()
+
+    # Get stats before
+    stats_before = await indexer.get_stats()
+    print(f"📊 Collection stats before indexing:")
+    print(f"   Total changes: {stats_before.get('total_changes', 0)}")
+    print()
+
+    # Index commits
+    print("⏳ Indexing commits...")
+    successful, failed = await indexer.index_commits(
+        since=args.since,
+        limit=args.limit,
+        path_filter=args.path,
+    )
+
+    print()
+    print(f"✅ Indexing complete!")
+    print(f"   Successful: {successful}")
+    print(f"   Failed: {failed}")
+    print(f"   Total: {successful + failed}")
+    print()
+
+    # Get stats after
+    stats_after = await indexer.get_stats()
+    print(f"📊 Final collection stats:")
+    print(f"   Total changes: {stats_after.get('total_changes', 0)}")
+    print(f"   Status: {stats_after.get('status', 'unknown')}")
+
+    await indexer.close()
+
+
+async def show_stats(args):
+    """Show collection statistics."""
+    qdrant = QdrantClient(url=QDRANT_URL)
+
+    collections = [args.collection] if args.collection else [
+        "interaction-history",
+        "codebase-context",
+    ]
+
+    for collection in collections:
+        try:
+            info = qdrant.get_collection(collection)
+            print(f"📊 Collection: {collection}")
+            print(f"   Points: {info.points_count}")
+            print(f"   Vectors: {info.vectors_count}")
+            print(f"   Indexed: {info.indexed_vectors_count}")
+            print(f"   Status: {info.status}")
+            print()
+        except Exception as e:
+            print(f"⚠️  Collection {collection} not found or error: {e}")
+            print()
+
+
+async def search(args):
+    """Search indexed content."""
+    search_type = args.type
+
+    print(f"🔍 Searching {search_type}...")
+    print(f"   Query: \"{args.query}\"")
+    print(f"   Limit: {args.limit}")
+    print()
+
+    qdrant = QdrantClient(url=QDRANT_URL)
+
+    if search_type == "interactions":
+        indexer = InteractionIndexer(
+            qdrant_client=qdrant,
+            embedding_service_url=EMBEDDING_URL,
+        )
+        results = await indexer.search_interactions(
+            query=args.query,
+            limit=args.limit,
+        )
+        await indexer.close()
+
+        if not results:
+            print("No results found.")
+            return
+
+        print(f"Found {len(results)} matching interactions:\n")
+        for i, result in enumerate(results, 1):
+            print(f"{i}. [Score: {result['score']:.3f}] {result.get('query', 'N/A')[:100]}")
+            print(f"   Agent: {result.get('agent_type', 'unknown')}")
+            print(f"   Outcome: {result.get('outcome', 'unknown')}")
+            print()
+
+    elif search_type == "code":
+        indexer = CodeChangeIndexer(
+            qdrant_client=qdrant,
+            embedding_service_url=EMBEDDING_URL,
+            repo_path=REPO_PATH,
+        )
+        results = await indexer.search_code_changes(
+            query=args.query,
+            limit=args.limit,
+        )
+        await indexer.close()
+
+        if not results:
+            print("No results found.")
+            return
+
+        print(f"Found {len(results)} matching code changes:\n")
+        for i, result in enumerate(results, 1):
+            print(f"{i}. [Score: {result['score']:.3f}] {result.get('commit_subject', 'N/A')}")
+            print(f"   Commit: {result.get('commit_hash', 'N/A')[:12]}")
+            print(f"   Author: {result.get('author_name', 'unknown')}")
+            print(f"   Date: {result.get('date', 'unknown')}")
+            print(f"   Category: {result.get('category', 'other')}")
+            files = result.get('files_changed', [])
+            if files:
+                print(f"   Files: {', '.join(files[:3])}{' ...' if len(files) > 3 else ''}")
+            print()
+
+    else:
+        print(f"Error: Unknown search type '{search_type}'")
+        print("Valid types: interactions, code")
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Vector Indexing CLI - Index and search interactions and code changes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # Interactions indexing
+    interactions_parser = subparsers.add_parser(
+        "interactions",
+        help="Index interaction logs",
+    )
+    interactions_parser.add_argument(
+        "--since-days",
+        type=int,
+        default=30,
+        help="Index interactions from last N days (default: 30)",
+    )
+    interactions_parser.add_argument(
+        "--limit",
+        type=int,
+        default=1000,
+        help="Maximum interactions to index (default: 1000)",
+    )
+
+    # Code indexing
+    code_parser = subparsers.add_parser(
+        "code",
+        help="Index code changes from git",
+    )
+    code_parser.add_argument(
+        "--since",
+        default="30 days ago",
+        help="Index commits since this date (default: '30 days ago')",
+    )
+    code_parser.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Maximum commits to index (default: 100)",
+    )
+    code_parser.add_argument(
+        "--path",
+        help="Filter commits by file path pattern",
+    )
+
+    # Stats
+    stats_parser = subparsers.add_parser(
+        "stats",
+        help="Show collection statistics",
+    )
+    stats_parser.add_argument(
+        "--collection",
+        help="Show stats for specific collection (default: all)",
+    )
+
+    # Search
+    search_parser = subparsers.add_parser(
+        "search",
+        help="Search indexed content",
+    )
+    search_parser.add_argument(
+        "query",
+        help="Search query",
+    )
+    search_parser.add_argument(
+        "--type",
+        choices=["interactions", "code"],
+        default="code",
+        help="Type of content to search (default: code)",
+    )
+    search_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Maximum results (default: 10)",
+    )
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    # Run async command
+    if args.command == "interactions":
+        asyncio.run(index_interactions(args))
+    elif args.command == "code":
+        asyncio.run(index_code(args))
+    elif args.command == "stats":
+        asyncio.run(show_stats(args))
+    elif args.command == "search":
+        asyncio.run(search(args))
+
+
+if __name__ == "__main__":
+    main()
