@@ -55,7 +55,7 @@ nodes:
       - result
 
 outputs:
-  final_result: ${result}
+  final_result: ${task1.result}
 """
     workflow_file = tmp_path / "test-workflow.yaml"
     workflow_file.write_text(workflow_yaml)
