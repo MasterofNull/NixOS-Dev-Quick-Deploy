@@ -1,0 +1,150 @@
+name: bug-fix
+version: 1.0
+description: Diagnose, fix, and validate bug resolution with tests
+
+inputs:
+  bug_description:
+    type: string
+    description: Description of the bug to fix
+  error_details:
+    type: string
+    description: Error messages or stack traces (if available)
+    default: ""
+  add_regression_test:
+    type: boolean
+    default: true
+
+agents:
+  investigator: qwen
+  fixer: qwen
+  reviewer: codex
+
+nodes:
+  # Step 1: Investigate and reproduce the bug
+  - id: investigate
+    agent: ${agents.investigator}
+    prompt: |
+      Investigate the following bug and create a reproduction plan.
+
+      Bug: ${inputs.bug_description}
+      Error details: ${inputs.error_details}
+
+      Tasks:
+      1. Identify the root cause
+      2. Create steps to reproduce
+      3. List affected components
+    memory:
+      layers: [L0, L1, L2]
+      topics: [bugs, debugging, architecture]
+      max_tokens: 500
+    outputs:
+      - root_cause
+      - reproduction_steps
+      - affected_files
+
+  # Step 2: Develop the fix
+  - id: fix
+    agent: ${agents.fixer}
+    depends_on: [investigate]
+    prompt: |
+      Develop a fix for the identified bug.
+
+      Root cause: ${investigate.root_cause}
+      Affected files: ${investigate.affected_files}
+
+      Requirements:
+      - Fix should be minimal and targeted
+      - Avoid introducing side effects
+      - Follow existing code patterns
+    memory:
+      layers: [L0, L1, L2]
+      topics: [coding, patterns]
+    outputs:
+      - fix_description
+      - files_changed
+      - code_changes
+
+  # Step 3: Add regression test (conditional)
+  - id: test
+    agent: ${agents.fixer}
+    depends_on: [fix]
+    condition: ${inputs.add_regression_test}
+    prompt: |
+      Create a regression test for this bug fix.
+
+      Bug: ${inputs.bug_description}
+      Fix: ${fix.fix_description}
+      Reproduction steps: ${investigate.reproduction_steps}
+
+      The test should:
+      - Reproduce the original bug scenario
+      - Verify the fix prevents regression
+      - Be maintainable and clear
+    retry:
+      max_attempts: 3
+      on_failure: [test_failure]
+    outputs:
+      - test_file
+      - test_results
+
+  # Step 4: Verify fix
+  - id: verify
+    agent: ${agents.fixer}
+    depends_on: [fix, test]
+    prompt: |
+      Verify the bug fix works correctly:
+
+      1. Run all relevant tests
+      2. Check for side effects
+      3. Validate the fix in context
+
+      Fix: ${fix.fix_description}
+      Test results: ${test.test_results}
+    retry:
+      max_attempts: 2
+      on_failure: [verification_failure]
+    outputs:
+      - verification_status
+      - test_summary
+
+  # Step 5: Review
+  - id: review
+    agent: ${agents.reviewer}
+    depends_on: [verify]
+    prompt: |
+      Review the bug fix for quality and correctness.
+
+      Original bug: ${inputs.bug_description}
+      Root cause: ${investigate.root_cause}
+      Fix: ${fix.fix_description}
+      Files changed: ${fix.files_changed}
+      Tests: ${test.test_results}
+      Verification: ${verify.verification_status}
+
+      Check for:
+      - Fix correctness
+      - Test coverage
+      - Code quality
+      - Potential side effects
+    outputs:
+      - decision
+      - feedback
+
+  # Step 6: Revise if needed
+  - id: revise
+    agent: ${agents.fixer}
+    depends_on: [review]
+    condition: ${review.decision == 'needs_revision'}
+    prompt: |
+      Address the review feedback:
+      ${review.feedback}
+    outputs:
+      - revision
+    goto: verify
+
+outputs:
+  root_cause: ${investigate.root_cause}
+  fix_description: ${fix.fix_description}
+  files_changed: ${fix.files_changed}
+  test_results: ${test.test_results}
+  review_status: ${review.decision}
