@@ -225,6 +225,8 @@ let
     redis
     sqlalchemy
     beautifulsoup4
+    trio
+    pytest-anyio
   ]));
 
   ralphPython = pkgs.python3.withPackages (ps: sharedPythonPackages ps ++ (with ps; [
