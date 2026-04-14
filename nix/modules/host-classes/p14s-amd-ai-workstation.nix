@@ -39,7 +39,7 @@ in
         activeModel = lib.mkDefault "bge-m3";
         extraArgs = lib.mkDefault [
           "--threads" "8"
-          "--batch-size" "512"
+          "--batch-size" "2048"
           "--flash-attn" "on"
         ];
       };
