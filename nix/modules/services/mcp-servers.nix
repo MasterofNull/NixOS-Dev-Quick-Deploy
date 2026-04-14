@@ -265,7 +265,7 @@ let
       sqlalchemy
       beautifulsoup4
       trio
-      pytestAnyio
+      ps."pytest-anyio"
     ]));
 
   ralphPython = pkgs.python3.withPackages (ps:
