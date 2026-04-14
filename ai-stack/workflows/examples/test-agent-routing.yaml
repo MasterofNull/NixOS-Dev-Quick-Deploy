@@ -1,0 +1,130 @@
+name: agent-routing-test
+version: 1.0
+description: Test workflow for validating agent routing integration
+
+inputs:
+  task_description:
+    type: string
+    description: Task to route to different agents
+    default: "Implement a simple function"
+
+agents:
+  implementer: local
+  reviewer: local
+  analyzer: local
+
+nodes:
+  # Test routing to local agent (always available)
+  - id: route-to-local
+    agent: local
+    prompt: |
+      Test routing to local agent:
+      ${inputs.task_description}
+
+      Expected: Should execute on local agent
+    outputs:
+      - local_result
+
+  # Test routing via agent variable
+  - id: route-via-variable
+    agent: ${agents.implementer}
+    depends_on: [route-to-local]
+    prompt: |
+      Test routing via agent variable:
+      Previous result: ${route-to-local.local_result}
+
+      Expected: Should route to agent defined in ${agents.implementer}
+    outputs:
+      - variable_result
+
+  # Test routing to qwen (may not be available)
+  - id: route-to-qwen
+    agent: qwen
+    depends_on: [route-via-variable]
+    prompt: |
+      Test routing to qwen agent:
+      Task: ${inputs.task_description}
+
+      Expected: Should attempt to route to qwen agent
+      Note: May fall back to local if qwen not available
+    outputs:
+      - qwen_result
+
+  # Test routing to codex (may not be available)
+  - id: route-to-codex
+    agent: codex
+    depends_on: [route-to-qwen]
+    prompt: |
+      Test routing to codex agent:
+      Previous result: ${route-to-qwen.qwen_result}
+
+      Expected: Should attempt to route to codex agent
+      Note: May fall back to local if codex not available
+    outputs:
+      - codex_result
+
+  # Test routing to claude (may not be available)
+  - id: route-to-claude
+    agent: claude
+    depends_on: [route-to-codex]
+    prompt: |
+      Test routing to claude agent:
+      Previous result: ${route-to-codex.codex_result}
+
+      Expected: Should attempt to route to claude agent
+      Note: May fall back to local if claude not available
+    outputs:
+      - claude_result
+
+  # Test parallel routing to multiple agents
+  - id: parallel-route-implementer
+    agent: ${agents.implementer}
+    depends_on: [route-to-claude]
+    parallel: true
+    prompt: |
+      Parallel routing test (implementer):
+      ${inputs.task_description}
+    outputs:
+      - parallel_impl_result
+
+  - id: parallel-route-reviewer
+    agent: ${agents.reviewer}
+    depends_on: [route-to-claude]
+    parallel: true
+    prompt: |
+      Parallel routing test (reviewer):
+      ${inputs.task_description}
+    outputs:
+      - parallel_review_result
+
+  - id: parallel-route-analyzer
+    agent: ${agents.analyzer}
+    depends_on: [route-to-claude]
+    parallel: true
+    prompt: |
+      Parallel routing test (analyzer):
+      ${inputs.task_description}
+    outputs:
+      - parallel_analyze_result
+
+  # Final aggregation
+  - id: aggregate-results
+    agent: local
+    depends_on: [parallel-route-implementer, parallel-route-reviewer, parallel-route-analyzer]
+    prompt: |
+      Aggregate routing test results:
+      - Implementer: ${parallel-route-implementer.parallel_impl_result}
+      - Reviewer: ${parallel-route-reviewer.parallel_review_result}
+      - Analyzer: ${parallel-route-analyzer.parallel_analyze_result}
+    outputs:
+      - final_result
+
+outputs:
+  summary: |
+    Agent routing test completed:
+    - Local: ${route-to-local.local_result}
+    - Variable routing: ${route-via-variable.variable_result}
+    - Qwen: ${route-to-qwen.qwen_result}
+    - Codex: ${route-to-codex.codex_result}
+    - Claude: ${route-to-claude.claude_result}
+    - Parallel results: ${aggregate-results.final_result}

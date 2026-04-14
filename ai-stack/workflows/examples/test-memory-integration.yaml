@@ -1,0 +1,117 @@
+name: memory-integration-test
+version: 1.0
+description: Test workflow for validating memory system integration
+
+inputs:
+  test_task:
+    type: string
+    description: Task description for memory integration test
+    default: "Analyze the architecture patterns in this codebase"
+
+nodes:
+  # Test L0-L1 memory integration
+  - id: test-l0-l1
+    agent: local
+    prompt: |
+      Test L0-L1 memory loading:
+      ${inputs.test_task}
+
+      Expected: Should load L0 (session) and L1 (ephemeral) memory layers
+    memory:
+      layers: [L0, L1]
+      topics: [architecture]
+      max_tokens: 300
+    outputs:
+      - l0_l1_result
+
+  # Test L2 memory integration
+  - id: test-l2
+    agent: local
+    depends_on: [test-l0-l1]
+    prompt: |
+      Test L2 memory loading:
+      Previous result: ${test-l0-l1.l0_l1_result}
+
+      Expected: Should load L2 (persistent project) memory layer
+    memory:
+      layers: [L2]
+      topics: [architecture, patterns]
+      max_tokens: 500
+    outputs:
+      - l2_result
+
+  # Test L3 memory integration
+  - id: test-l3
+    agent: local
+    depends_on: [test-l2]
+    prompt: |
+      Test L3 memory loading:
+      Previous result: ${test-l2.l2_result}
+
+      Expected: Should load L3 (global cross-project) memory layer
+    memory:
+      layers: [L3]
+      topics: [architecture]
+      max_tokens: 200
+    outputs:
+      - l3_result
+
+  # Test all memory layers together
+  - id: test-all-layers
+    agent: local
+    depends_on: [test-l3]
+    prompt: |
+      Test all memory layers:
+      Task: ${inputs.test_task}
+
+      Expected: Should load all memory layers L0-L3
+    memory:
+      layers: [L0, L1, L2, L3]
+      topics: [architecture, patterns, best-practices]
+      max_tokens: 1000
+      isolation: agent
+    outputs:
+      - all_layers_result
+
+  # Test memory with isolation modes
+  - id: test-isolation
+    agent: local
+    depends_on: [test-all-layers]
+    prompt: |
+      Test memory isolation:
+      ${inputs.test_task}
+
+      Expected: Should respect agent-level memory isolation
+    memory:
+      layers: [L0, L1, L2]
+      topics: [architecture]
+      isolation: agent
+      diary_only: false
+    outputs:
+      - isolation_result
+
+  # Test diary-only mode
+  - id: test-diary-only
+    agent: local
+    depends_on: [test-isolation]
+    prompt: |
+      Test diary-only memory mode:
+      ${inputs.test_task}
+
+      Expected: Should only load diary entries, not full memory
+    memory:
+      layers: [L0, L1]
+      diary_only: true
+      max_tokens: 200
+    outputs:
+      - diary_result
+
+outputs:
+  summary: |
+    Memory integration test completed:
+    - L0-L1: ${test-l0-l1.l0_l1_result}
+    - L2: ${test-l2.l2_result}
+    - L3: ${test-l3.l3_result}
+    - All layers: ${test-all-layers.all_layers_result}
+    - Isolation: ${test-isolation.isolation_result}
+    - Diary-only: ${test-diary-only.diary_result}
