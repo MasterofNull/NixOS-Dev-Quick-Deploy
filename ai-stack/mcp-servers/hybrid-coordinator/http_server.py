@@ -128,6 +128,13 @@ from model_coordinator import (
 )
 import mcp_handlers
 
+# Phase 2.4: YAML Workflow Integration
+try:
+    import yaml_workflow_handlers
+    YAML_WORKFLOWS_AVAILABLE = True
+except ImportError:
+    YAML_WORKFLOWS_AVAILABLE = False
+
 # Phase 1: Alert Engine integration
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -10422,6 +10429,15 @@ asyncio.run(run())
     http_app = web.Application(
         middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
     )
+
+    # Phase 2.4: Initialize YAML workflow system
+    if YAML_WORKFLOWS_AVAILABLE:
+        try:
+            yaml_workflow_handlers.init(workflows_dir="ai-stack/workflows/examples")
+            logger.info("YAML workflow system initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize YAML workflows: {e}")
+
     # Phase 1: WebSocket alert handler
     async def handle_alerts_list(request: web.Request) -> web.Response:
         """Return active alert-engine alerts for dashboard and validation clients."""
@@ -12550,6 +12566,14 @@ asyncio.run(run())
     http_app.router.add_post("/control/rollback/register", handle_rollback_register)
     http_app.router.add_post("/control/rollback/execute", handle_rollback_execute)
     http_app.router.add_get("/control/rollback/status", handle_rollback_status)
+
+    # Phase 2.4: Register YAML workflow routes
+    if YAML_WORKFLOWS_AVAILABLE:
+        try:
+            yaml_workflow_handlers.register_routes(http_app)
+            logger.info("YAML workflow routes registered")
+        except Exception as e:
+            logger.error(f"Failed to register YAML workflow routes: {e}")
 
     runner = web.AppRunner(
         http_app,
