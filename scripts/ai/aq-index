@@ -38,11 +38,13 @@ from pathlib import Path
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack" / "aidb"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack" / "mcp-servers" / "shared"))
 
 try:
     from aidb.interaction_indexer import InteractionIndexer
     from aidb.code_change_indexer import CodeChangeIndexer
     from qdrant_client import QdrantClient
+    import psycopg
 except ImportError as e:
     print(f"Error: Failed to import required modules: {e}")
     print("Make sure you're running this from the repo root")
@@ -62,6 +64,21 @@ QDRANT_URL = "http://localhost:6333"
 EMBEDDING_URL = "http://localhost:8081"
 REPO_PATH = "."
 
+# PostgreSQL configuration from environment variables
+import os
+POSTGRES_HOST = os.getenv("AIDB_POSTGRES_HOST", "127.0.0.1")
+POSTGRES_PORT = os.getenv("AIDB_POSTGRES_PORT", "5432")
+POSTGRES_DB = os.getenv("AIDB_POSTGRES_DB", "ai_coordinator")
+POSTGRES_USER = os.getenv("AIDB_POSTGRES_USER", "ai_coordinator")
+POSTGRES_PASSWORD_FILE = os.getenv("AIDB_POSTGRES_PASSWORD_FILE")
+
+def get_postgres_password():
+    """Read PostgreSQL password from file if available."""
+    if POSTGRES_PASSWORD_FILE and Path(POSTGRES_PASSWORD_FILE).exists():
+        return Path(POSTGRES_PASSWORD_FILE).read_text().strip()
+    # Fallback to environment variable
+    return os.getenv("AIDB_POSTGRES_PASSWORD", "")
+
 
 async def index_interactions(args):
     """Index interaction logs from PostgreSQL."""
@@ -69,16 +86,33 @@ async def index_interactions(args):
     print(f"   Limit: {args.limit}")
     print(f"   Qdrant: {QDRANT_URL}")
     print(f"   Embedding service: {EMBEDDING_URL}")
+    print(f"   PostgreSQL: {POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
     print()
 
     qdrant = QdrantClient(url=QDRANT_URL)
 
-    # Note: PostgreSQL connection would need to be set up here
-    # For now, we'll just ensure the collection exists
+    # Set up PostgreSQL connection
+    postgres_password = get_postgres_password()
+    if not postgres_password:
+        print("⚠️  PostgreSQL password not configured")
+        print("   Set AIDB_POSTGRES_PASSWORD or AIDB_POSTGRES_PASSWORD_FILE")
+        print("   Continuing without PostgreSQL indexing...")
+        postgres_conn = None
+    else:
+        try:
+            # Create PostgreSQL connection
+            dsn = f"postgresql://{POSTGRES_USER}:{postgres_password}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+            postgres_conn = await psycopg.AsyncConnection.connect(dsn)
+            print("✅ PostgreSQL connection established")
+        except Exception as e:
+            logger.error(f"Failed to connect to PostgreSQL: {e}")
+            print("⚠️  PostgreSQL connection failed, continuing without it")
+            postgres_conn = None
+
     indexer = InteractionIndexer(
         qdrant_client=qdrant,
         embedding_service_url=EMBEDDING_URL,
-        postgres_conn=None,  # TODO: Add PostgreSQL connection
+        postgres_conn=postgres_conn,
     )
 
     await indexer.ensure_collection()
@@ -90,9 +124,25 @@ async def index_interactions(args):
     print()
 
     # Index interactions
-    # Note: Would call index_from_postgres here with actual connection
-    print("⚠️  PostgreSQL connection not configured")
-    print("   To enable interaction indexing, configure PostgreSQL connection")
+    if postgres_conn:
+        print("⏳ Indexing interactions from PostgreSQL...")
+        try:
+            successful, failed = await indexer.index_from_postgres(
+                since_days=args.since_days,
+                limit=args.limit,
+            )
+            print()
+            print(f"✅ Indexing complete!")
+            print(f"   Successful: {successful}")
+            print(f"   Failed: {failed}")
+            print(f"   Total: {successful + failed}")
+        except Exception as e:
+            logger.error(f"Failed to index from PostgreSQL: {e}")
+            print(f"❌ Indexing failed: {e}")
+        finally:
+            await postgres_conn.close()
+    else:
+        print("⚠️  Skipping PostgreSQL indexing (no connection)")
     print()
 
     # Get stats after

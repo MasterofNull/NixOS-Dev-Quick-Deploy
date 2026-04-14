@@ -67,6 +67,31 @@ class InteractionIndexer:
                 ),
             )
 
+    def truncate_text(self, text: str, max_tokens: int = 1800) -> str:
+        """
+        Truncate text to stay within token limit.
+
+        Uses a rough approximation: 1 token ≈ 4 characters.
+        Max tokens is set below the batch size to ensure safe margin.
+
+        Args:
+            text: Text to truncate
+            max_tokens: Maximum token count (default: 1800, well below 2048 batch size)
+
+        Returns:
+            Truncated text
+        """
+        max_chars = max_tokens * 4
+        if len(text) <= max_chars:
+            return text
+
+        truncated = text[:max_chars]
+        logger.warning(
+            f"Text truncated from {len(text)} to {max_chars} chars "
+            f"(~{max_tokens} tokens) to fit batch size"
+        )
+        return truncated
+
     async def embed_text(self, text: str) -> List[float]:
         """
         Generate embedding for text using the embedding service.
@@ -77,6 +102,9 @@ class InteractionIndexer:
         Returns:
             Embedding vector
         """
+        # Truncate text to prevent exceeding batch size
+        text = self.truncate_text(text)
+
         try:
             response = await self.http_client.post(
                 f"{self.embedding_url}/v1/embeddings",
