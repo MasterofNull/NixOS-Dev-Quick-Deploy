@@ -8,11 +8,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 DEFAULT_OUTPUT="${PROJECT_ROOT}/config/package-count-baseline.json"
-NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-45}"
+NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-120}"
 NIX_EXPERIMENTAL_FEATURES="nix-command flakes"
 
 FLAKE_REF="path:${PROJECT_ROOT}"
 OUTPUT_PATH=""
+PROJECTED_FLAKE_DIR=""
 
 usage() {
   cat <<'EOF'
@@ -25,7 +26,7 @@ Options:
   -h, --help        Show this help
 
 Environment:
-  NIX_EVAL_TIMEOUT_SECONDS  Timeout per nix eval call (default: 45)
+  NIX_EVAL_TIMEOUT_SECONDS  Timeout per nix eval call (default: 120)
 EOF
 }
 
@@ -44,32 +45,35 @@ nix_eval() {
   else
     "${nix_cmd[@]}"
   fi
+  printf '\n'
 }
 
-list_attrs() {
-  local attr="$1"
-  nix_eval --raw \
-    --apply 'attrs: builtins.concatStringsSep "\n" (builtins.sort builtins.lessThan (builtins.attrNames attrs))' \
-    "${FLAKE_REF}#${attr}"
+nix_eval_json() {
+  nix_eval --json "$@"
 }
 
-count_system_packages() {
-  local target="$1"
-  nix_eval --raw \
-    --apply 'pkgs: builtins.toString (builtins.length pkgs)' \
-    "${FLAKE_REF}#nixosConfigurations.\"${target}\".config.environment.systemPackages"
+cleanup() {
+  if [[ -n "${PROJECTED_FLAKE_DIR}" && -d "${PROJECTED_FLAKE_DIR}" ]]; then
+    rm -rf "${PROJECTED_FLAKE_DIR}"
+  fi
 }
 
-count_home_packages() {
-  local target="$1"
-  nix_eval --raw \
-    --apply 'pkgs: builtins.toString (builtins.length pkgs)' \
-    "${FLAKE_REF}#homeConfigurations.\"${target}\".config.home.packages"
-}
-
-get_primary_user() {
-  local target="$1"
-  nix_eval --raw "${FLAKE_REF}#nixosConfigurations.\"${target}\".config.mySystem.primaryUser"
+prepare_filtered_flake_ref() {
+  case "${FLAKE_REF}" in
+    "path:."|"path:${PROJECT_ROOT}")
+      PROJECTED_FLAKE_DIR="$(mktemp -d)"
+      tar \
+        --exclude='.git' \
+        --exclude='.aidb' \
+        --exclude='.coverage' \
+        --exclude='.cache' \
+        --exclude='.direnv' \
+        --exclude='result' \
+        --exclude='result-*' \
+        -cf - -C "${PROJECT_ROOT}" . | tar -xf - -C "${PROJECTED_FLAKE_DIR}"
+      FLAKE_REF="path:${PROJECTED_FLAKE_DIR}"
+      ;;
+  esac
 }
 
 avg_of() {
@@ -121,6 +125,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_command nix
+require_command jq
+prepare_filtered_flake_ref
+trap cleanup EXIT
 
 declare -A system_counts
 declare -A home_counts
@@ -141,15 +148,32 @@ combined_count=0
 combined_min=-1
 combined_max=0
 
-nixos_raw="$(list_attrs "nixosConfigurations")"
-home_raw="$(list_attrs "homeConfigurations")"
+nixos_json="$(
+  nix_eval_json \
+    --apply '
+      attrs:
+        builtins.mapAttrs (_name: cfg: {
+          systemPackages = builtins.length cfg.config.environment.systemPackages;
+          primaryUser = cfg.config.mySystem.primaryUser;
+        }) attrs
+    ' \
+    "${FLAKE_REF}#nixosConfigurations"
+)"
+home_json="$(
+  nix_eval_json \
+    --apply '
+      attrs:
+        builtins.mapAttrs (_name: cfg: builtins.length cfg.config.home.packages) attrs
+    ' \
+    "${FLAKE_REF}#homeConfigurations"
+)"
 
-mapfile -t nixos_targets <<<"$nixos_raw"
-mapfile -t home_targets <<<"$home_raw"
+mapfile -t nixos_targets < <(printf '%s\n' "$nixos_json" | jq -r 'keys[]')
+mapfile -t home_targets < <(printf '%s\n' "$home_json" | jq -r 'keys[]')
 
 for home_target in "${home_targets[@]}"; do
   [[ -z "$home_target" ]] && continue
-  count="$(count_home_packages "$home_target")"
+  count="$(printf '%s\n' "$home_json" | jq -r --arg target "$home_target" '.[$target]')"
   home_counts["$home_target"]="$count"
   home_total=$((home_total + count))
   home_count=$((home_count + 1))
@@ -163,7 +187,7 @@ done
 
 for nixos_target in "${nixos_targets[@]}"; do
   [[ -z "$nixos_target" ]] && continue
-  count="$(count_system_packages "$nixos_target")"
+  count="$(printf '%s\n' "$nixos_json" | jq -r --arg target "$nixos_target" '.[$target].systemPackages')"
   system_counts["$nixos_target"]="$count"
   system_total=$((system_total + count))
   system_count=$((system_count + 1))
@@ -175,7 +199,7 @@ for nixos_target in "${nixos_targets[@]}"; do
   fi
 
   host_name="${nixos_target%-*}"
-  primary_user="$(get_primary_user "$nixos_target")"
+  primary_user="$(printf '%s\n' "$nixos_json" | jq -r --arg target "$nixos_target" '.[$target].primaryUser')"
 
   preferred_home_target="${primary_user}-${host_name}"
   fallback_home_target="${primary_user}"
