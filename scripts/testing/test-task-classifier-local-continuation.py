@@ -49,20 +49,37 @@ def main() -> int:
     assert_true(continuation_reasoning.remote_required is False, "expected bounded continuation reasoning task to stay local")
 
     bounded_reasoning = task_classifier.classify(
-        "explain how local routing and cache reuse reduce repeated query latency",
+        "analyze repeated query latency across cache hits and misses after local retrieval warming in this stack",
         context="Recent reports show cache hit rate above 70% and most repeated queries already stay on the local lane.",
         max_output_tokens=240,
     )
-    assert_true(bounded_reasoning.task_type == "reasoning", "expected bounded reasoning task classification")
-    assert_true(bounded_reasoning.remote_required is False, "expected bounded reasoning task to stay local")
+    assert_true(bounded_reasoning.task_type == "reasoning", "expected longer bounded reasoning task classification")
+    assert_true(bounded_reasoning.remote_required is False, "expected longer bounded reasoning task to stay local")
     assert_true(
         bounded_reasoning.reason == "bounded_reasoning_within_local_capacity",
         "expected explicit bounded local reasoning reason",
     )
     assert_true(
         "Relevant context" in str(bounded_reasoning.optimized_prompt or "")
-        and len(str(bounded_reasoning.optimized_prompt or "")) < 900,
+        and len(str(bounded_reasoning.optimized_prompt or "")) < 750,
         "expected bounded reasoning prompt shaping to keep context excerpts bounded",
+    )
+
+    short_explanation = task_classifier.classify(
+        "explain how local routing and cache reuse reduce repeated query latency",
+        context="Recent reports show cache hit rate above 70% and most repeated queries already stay on the local lane.",
+        max_output_tokens=240,
+    )
+    assert_true(short_explanation.task_type == "synthesize", "expected short explanation task to downgrade to synthesize")
+    assert_true(short_explanation.remote_required is False, "expected short explanation task to stay local")
+    assert_true(
+        short_explanation.reason == "within_local_capacity",
+        "expected downgraded short explanation task to use the bounded synthesize path",
+    )
+    assert_true(
+        "one short paragraph under 70 words" in str(short_explanation.optimized_prompt or "")
+        and len(str(short_explanation.optimized_prompt or "")) < 700,
+        "expected short explanation synthesize prompt to stay compact",
     )
 
     brief_reasoning = task_classifier.classify(
