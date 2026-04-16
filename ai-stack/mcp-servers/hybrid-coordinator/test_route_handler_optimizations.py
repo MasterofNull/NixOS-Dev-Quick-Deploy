@@ -43,8 +43,8 @@ Config.AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION = 8
 Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS = 220
 Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP = 96
 Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT = 80
-Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING = 140
-Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = 160
+Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING = 96
+Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = 96
 Config.AI_CONTEXT_MAX_TOKENS = 1200
 Config.AI_CONTEXT_MAX_TOKENS_LOOKUP = 240
 Config.AI_CONTEXT_MAX_TOKENS_FORMAT = 320
@@ -398,7 +398,7 @@ class TestCollectionSelectionHelpers:
 
     def test_local_budget_helpers_use_task_specific_caps(self):
         assert route_handler._local_response_budget("lookup") == 96
-        assert route_handler._local_response_budget("reasoning") == 140
+        assert route_handler._local_response_budget("reasoning") == 96
         assert route_handler._context_budget_for_task("format") == 320
         assert route_handler._context_budget_for_task("synthesize") == 720
 
@@ -443,7 +443,7 @@ class TestCollectionSelectionHelpers:
         )
 
         assert trimmed == "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[:40]
-        assert "under 120 words" in instruction
+        assert "under 80 words" in instruction
         assert route_handler._use_classifier_optimized_prompt(optimized, "bounded_reasoning_default_lane") is False
         assert route_handler._use_classifier_optimized_prompt(optimized, "deep_reasoning_lane") is True
 

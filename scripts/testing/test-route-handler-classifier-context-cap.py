@@ -46,12 +46,12 @@ def load_route_handler():
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS=240,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=96,
                 AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=160,
-                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=128,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=96,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS=360,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS=850,
                 AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS=300,
-                AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS=700,
-                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=160,
+                AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS=480,
+                AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=96,
                 AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=400,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS=4.0,
                 AI_ROUTE_TIMEOUT_RETRIEVAL_HYBRID_SECONDS=6.0,
@@ -169,7 +169,7 @@ async def main_async() -> int:
     route_handler._switchboard_client_ref = lambda: remote_client
 
     result = await route_handler.route_search(
-        query="explain how cache reuse reduces repeated query latency",
+        query="analyze repeated query latency across cache hits and misses after local retrieval warming in this stack",
         mode="hybrid",
         prefer_local=True,
         context={"source": "test"},
@@ -189,7 +189,7 @@ async def main_async() -> int:
     assert_true(len(local_client.calls) == 1, "expected generic local client to handle bounded reasoning tasks")
     assert_true(len(remote_client.calls) == 0, "expected no remote synthesis call")
     assert_true(
-        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 128,
+        int((local_client.calls[0].get("json") or {}).get("max_tokens", 0)) == 96,
         "expected reasoning tasks to use the reduced local reasoning output budget",
     )
     bounded_prompt = str((((local_client.calls[0].get("json") or {}).get("messages") or [])[-1]).get("content", ""))
@@ -202,7 +202,7 @@ async def main_async() -> int:
         "expected bounded reasoning default-lane prompt to use the tighter route-level guidance",
     )
     assert_true(
-        "keep the answer under 120 words" in bounded_prompt,
+        "keep the answer under 80 words" in bounded_prompt,
         "expected bounded reasoning default-lane prompt to enforce a compact answer contract",
     )
 

@@ -49,7 +49,17 @@ LOCAL_CONTINUATION_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_INPU
 LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS", "400"))
 LOCAL_CONTINUATION_CONTEXT_CHARS = int(os.getenv("LOCAL_CONTINUATION_CONTEXT_CHARS", "700"))
 LOCAL_REASONING_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_REASONING_MAX_INPUT_TOKENS", "450"))
-LOCAL_REASONING_CONTEXT_CHARS = int(os.getenv("LOCAL_REASONING_CONTEXT_CHARS", "600"))
+LOCAL_REASONING_CONTEXT_CHARS = int(os.getenv("LOCAL_REASONING_CONTEXT_CHARS", "420"))
+LOCAL_SYNTHESIZE_CONTEXT_CHARS = int(os.getenv("LOCAL_SYNTHESIZE_CONTEXT_CHARS", "420"))
+LOCAL_SHORT_EXPLANATION_MAX_WORDS = int(os.getenv("LOCAL_SHORT_EXPLANATION_MAX_WORDS", "14"))
+_SHORT_EXPLANATION_RE = re.compile(
+    r"^\s*(explain|how does|how do|why does|why do|what makes|what causes|compare)\b",
+    re.IGNORECASE,
+)
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+\b", text or ""))
 
 
 @dataclass
@@ -87,6 +97,14 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
         task_type == "reasoning"
         and _BOUNDED_REASONING_RE.search(q)
         and not _ARCHITECTURE_HEAVY_RE.search(q)
+    ):
+        task_type = "synthesize"
+    elif (
+        task_type == "reasoning"
+        and not continuation
+        and not _ARCHITECTURE_HEAVY_RE.search(q)
+        and _SHORT_EXPLANATION_RE.search(q)
+        and _word_count(q) <= LOCAL_SHORT_EXPLANATION_MAX_WORDS
     ):
         task_type = "synthesize"
 
@@ -155,14 +173,14 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
         )
 
     # Build discrete, bounded prompt for local model
-    ctx = context[:800].strip() if context else ""
+    ctx = context[:LOCAL_SYNTHESIZE_CONTEXT_CHARS].strip() if context else ""
     if task_type == "lookup":
         optimized = f"Answer in one sentence: {q}\n\nFacts:\n{ctx}"
     elif task_type == "format":
         optimized = f"Output ONLY the requested data, no explanation:\n{q}\n\nInput:\n{ctx}"
     else:  # synthesize / summarize
         optimized = (
-            f"Using only the context below, answer in 2-3 sentences.\n"
+            f"Using only the strongest context below, answer in one short paragraph under 70 words.\n"
             f"Question: {q}\n\nContext:\n{ctx}"
         )
 
