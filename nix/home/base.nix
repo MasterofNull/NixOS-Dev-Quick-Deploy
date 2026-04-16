@@ -464,8 +464,8 @@ in
       pytest
       ps."pytest-cov"
       ps."pytest-xdist"
-      ps."pytest-anyio"
       ps.trio
+      # Note: pytest-anyio doesn't exist in nixpkgs; anyio includes pytest plugin
       jupyterlab
       notebook
       transformers
