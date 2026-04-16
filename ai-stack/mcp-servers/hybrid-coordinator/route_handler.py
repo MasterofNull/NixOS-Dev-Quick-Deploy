@@ -589,7 +589,7 @@ def _prompt_instruction_for_lane_reason(lane_reason: Optional[str]) -> str:
     if str(lane_reason or "").strip().lower() == "bounded_reasoning_default_lane":
         return (
             "Provide a concise response using only the strongest context. "
-            "Prefer 2-3 short bullets or a short paragraph, and keep the answer under 120 words."
+            "Prefer 1-2 short bullets or a short paragraph, and keep the answer under 80 words."
         )
     return "Provide a concise response using the context."
 
