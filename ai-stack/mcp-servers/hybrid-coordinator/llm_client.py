@@ -176,7 +176,10 @@ class LLMClient:
                 logger.warning("No OpenAI API key found")
                 self.client = None
             else:
-                self.client = AsyncOpenAI(api_key=self.api_key)
+                kwargs: Dict[str, Any] = {"api_key": self.api_key}
+                if self.base_url:
+                    kwargs["base_url"] = self.base_url
+                self.client = AsyncOpenAI(**kwargs)
 
             self.default_model = "gpt-4-turbo-preview"
 
@@ -316,8 +319,77 @@ class LLMClient:
         system: Optional[str],
     ) -> LLMResponse:
         """OpenAI-specific message creation"""
-        # Future implementation
-        raise NotImplementedError("OpenAI integration not yet implemented")
+        messages: List[Dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        try:
+            response = await self.client.chat.completions.create(**kwargs)
+            body = response.model_dump() if hasattr(response, "model_dump") else dict(response)
+        except Exception as e:
+            logger.error(f"OpenAI API error: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to create message: {e}")
+
+        return self._build_openai_compatible_response(body, fallback_model=model)
+
+    def _build_openai_compatible_response(
+        self,
+        body: Dict[str, Any],
+        *,
+        fallback_model: str,
+    ) -> LLMResponse:
+        """Normalize OpenAI-compatible chat completion payloads."""
+        choices = body.get("choices") or []
+        message = choices[0].get("message", {}) if choices else {}
+        usage = body.get("usage") or {}
+        tool_calls = []
+        for tool_call in message.get("tool_calls") or []:
+            function_payload = tool_call.get("function") or {}
+            raw_arguments = function_payload.get("arguments")
+            parsed_arguments: Any = raw_arguments
+            if isinstance(raw_arguments, str):
+                try:
+                    parsed_arguments = json.loads(raw_arguments)
+                except json.JSONDecodeError:
+                    parsed_arguments = raw_arguments
+            tool_calls.append(
+                {
+                    "id": tool_call.get("id"),
+                    "name": function_payload.get("name"),
+                    "input": parsed_arguments,
+                }
+            )
+
+        input_tokens = int(usage.get("prompt_tokens", 0) or 0)
+        output_tokens = int(usage.get("completion_tokens", 0) or 0)
+        total_tokens = int(
+            usage.get("total_tokens", input_tokens + output_tokens)
+            or (input_tokens + output_tokens)
+        )
+
+        return LLMResponse(
+            content=str(message.get("content") or ""),
+            tool_calls=tool_calls,
+            usage={
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+            },
+            stop_reason=str(
+                choices[0].get("finish_reason", "stop") if choices else "stop"
+            ),
+            model=str(body.get("model") or fallback_model),
+        )
 
     async def _local_create_message(
         self,
@@ -362,48 +434,7 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Local switchboard API error: {e}", exc_info=True)
             raise RuntimeError(f"Failed to create local message: {e}")
-
-        choices = body.get("choices") or []
-        message = choices[0].get("message", {}) if choices else {}
-        usage = body.get("usage") or {}
-        tool_calls = []
-        for tool_call in message.get("tool_calls") or []:
-            function_payload = tool_call.get("function") or {}
-            raw_arguments = function_payload.get("arguments")
-            parsed_arguments: Any = raw_arguments
-            if isinstance(raw_arguments, str):
-                try:
-                    parsed_arguments = json.loads(raw_arguments)
-                except json.JSONDecodeError:
-                    parsed_arguments = raw_arguments
-            tool_calls.append(
-                {
-                    "id": tool_call.get("id"),
-                    "name": function_payload.get("name"),
-                    "input": parsed_arguments,
-                }
-            )
-
-        input_tokens = int(usage.get("prompt_tokens", 0) or 0)
-        output_tokens = int(usage.get("completion_tokens", 0) or 0)
-        total_tokens = int(
-            usage.get("total_tokens", input_tokens + output_tokens)
-            or (input_tokens + output_tokens)
-        )
-
-        return LLMResponse(
-            content=str(message.get("content") or ""),
-            tool_calls=tool_calls,
-            usage={
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
-            },
-            stop_reason=str(
-                choices[0].get("finish_reason", "stop") if choices else "stop"
-            ),
-            model=str(body.get("model") or model),
-        )
+        return self._build_openai_compatible_response(body, fallback_model=model)
 
 
 class PromptBuilder:

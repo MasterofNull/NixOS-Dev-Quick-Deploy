@@ -27,6 +27,7 @@ This master roadmap consolidates findings from three comprehensive analyses:
 - Slice 2.3 workflow executor is delegated in harness run `391c2b34-44ba-4240-9cfd-f2f4f0b88bbc` and queue task `1b43b0d6-c9b6-42ac-9926-f175c737c86d` (`stale pre-fix output`)
 - Local coordinator-side workflow executor shell reduced on `2026-04-12`: `workflow_executor.py` now executes bounded phases through the local harness sub-agent spawn path instead of returning a mock phase result
 - Local `llm_client.py` shell reduced on `2026-04-13`: `provider=\"local\"` now uses switchboard's OpenAI-compatible ingress for bounded completions and local tool-calling instead of failing as unimplemented
+- Generic `llm_client.py` OpenAI shell reduced on `2026-04-16`: `provider=\"openai\"` now uses `AsyncOpenAI.chat.completions.create(...)` with shared OpenAI-compatible response parsing instead of raising `NotImplementedError`
 - Slice 4.4 memory system benchmarking is complete
 - Slice 4.1 tool discovery is delegated in harness run `aed542ba-eef7-4d0e-8f6d-dc7030ea6e24` and queue task `20ac6d89-49d1-4e95-b0c3-008dbef34b30` (`stale pre-fix queue task`)
 - Slice 4.3 conversation mining is delegated in harness run `f5205439-39ad-4d3a-bff9-06f1d8dbe849` and queue task `f911847c-34c0-457b-a0f9-0c86439c6210` (`stale pre-fix queue task`)
