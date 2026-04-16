@@ -125,6 +125,11 @@ docs/skill-dependency-lock.md
 docs/user-guides/quick-start.md
 docs/user-guides/keyboard-shortcuts.md
 
+# Phase 2: Workflow Engine Documentation
+docs/workflows/USER-GUIDE.md
+docs/workflows/TEMPLATE-CATALOG.md
+docs/workflows/BEST-PRACTICES.md
+
 # scripts root-file exceptions
 scripts/ai/ai-env-summary.sh
 scripts/ai/ai-metrics-auto-updater.sh
