@@ -184,6 +184,10 @@
               mySystem.hostName = lib.mkDefault hostName;
               mySystem.profile = lib.mkForce profile;
             })
+            # Pass flake self as flakeRepoPath for pure evaluation access to repo files
+            ({ ... }: {
+              mySystem.mcpServers.flakeRepoPath = self;
+            })
             ({ lib, ... }: {
               assertions =
                 [
