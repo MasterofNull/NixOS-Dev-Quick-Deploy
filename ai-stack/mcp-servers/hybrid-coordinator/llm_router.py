@@ -9,7 +9,8 @@ import asyncio
 import logging
 import sqlite3
 import json
-from typing import Dict, List, Optional, Tuple
+import os
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 
@@ -49,9 +50,9 @@ class LLMRouter:
 
     def __init__(self, metrics_db: str = None):
         # Service endpoints
-        self.local_llm_endpoint = "http://localhost:8080"
-        self.local_embed_endpoint = "http://localhost:8081"
-        self.hybrid_coordinator_endpoint = "http://localhost:8003"
+        self.local_llm_endpoint = os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+        self.local_embed_endpoint = os.getenv("EMBEDDING_SERVICE_URL", "http://127.0.0.1:8081").rstrip("/")
+        self.hybrid_coordinator_endpoint = os.getenv("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003").rstrip("/")
 
         # Routing metrics
         self.metrics_db = metrics_db or "routing_metrics.db"
@@ -268,18 +269,98 @@ class LLMRouter:
 
     async def _execute_free(self, task: Dict, model: str) -> str:
         """Execute task with free sub-agent"""
-        # Placeholder - integrate with actual free model APIs
-        # For now, fallback to local
-        logger.info(f"Free agent {model} not yet implemented, using local")
-        return await self._execute_local(task, "llama-cpp-local")
+        profile = "remote-coding" if "coder" in model else "remote-free"
+        return await self._execute_via_coordinator(task, model, profile=profile, prefer_local=False)
 
     async def _execute_paid(self, task: Dict, model: str) -> str:
         """Execute task with paid model (last resort)"""
-        # Placeholder - this would integrate with Claude API
-        raise NotImplementedError(
-            f"Paid model {model} execution should be rare. "
-            f"Consider if this task can be handled locally."
-        )
+        profile = "remote-reasoning" if model == "claude-sonnet" else "remote-gemini"
+        return await self._execute_via_coordinator(task, model, profile=profile, prefer_local=False)
+
+    async def _execute_via_coordinator(
+        self,
+        task: Dict[str, Any],
+        model: str,
+        *,
+        profile: str,
+        prefer_local: bool,
+    ) -> str:
+        """Delegate execution through the hybrid coordinator so router tiers reuse harness failover."""
+        prompt = self._build_prompt(task, optimize_for="remote")
+        timeout_s = float(task.get("timeout_s") or task.get("timeout") or 45.0)
+        payload: Dict[str, Any] = {
+            "task": str(task.get("description") or "").strip(),
+            "profile": profile,
+            "prefer_local": prefer_local,
+            "system_prompt": (
+                "You are executing a bounded routed task through the AI harness. "
+                "Return a direct, complete answer for the task."
+            ),
+            "context": dict(task.get("context") or {}),
+            "max_tokens": int(task.get("max_tokens") or 768),
+            "temperature": float(task.get("temperature") or 0.2),
+            "timeout_s": timeout_s,
+        }
+        payload["context"].setdefault("summary", prompt[:1200])
+        if task.get("tools"):
+            payload["tools"] = task["tools"]
+        if task.get("tool_choice") is not None:
+            payload["tool_choice"] = task["tool_choice"]
+        if task.get("model"):
+            payload["model"] = str(task["model"])
+
+        logger.info("Delegating routed task to coordinator profile=%s model=%s", profile, model)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.hybrid_coordinator_endpoint}/control/ai-coordinator/delegate",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=timeout_s + 5.0),
+            ) as resp:
+                body = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    raise Exception(
+                        f"Coordinator delegate returned {resp.status}: "
+                        f"{str(body)[:240]}"
+                    )
+
+        response_text = self._extract_response_text(body)
+        if not response_text:
+            raise Exception("Coordinator delegate returned no response text")
+        return response_text
+
+    def _extract_response_text(self, body: Any) -> str:
+        """Extract assistant text from common delegated/coordinator payloads."""
+        if isinstance(body, str):
+            return body.strip()
+        if not isinstance(body, dict):
+            return ""
+
+        direct_fields = ("result", "response", "output", "content", "text")
+        for field in direct_fields:
+            value = body.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        if isinstance(body.get("data"), dict):
+            nested = self._extract_response_text(body["data"])
+            if nested:
+                return nested
+
+        choices = body.get("choices")
+        if isinstance(choices, list) and choices:
+            message = choices[0].get("message") if isinstance(choices[0], dict) else None
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str) and content.strip():
+                    return content.strip()
+
+        result = body.get("result")
+        if isinstance(result, dict):
+            nested = self._extract_response_text(result)
+            if nested:
+                return nested
+
+        return ""
 
     async def _escalate(self, task: Dict, from_tier: AgentTier,
                        from_model: str, error: str) -> Dict:
