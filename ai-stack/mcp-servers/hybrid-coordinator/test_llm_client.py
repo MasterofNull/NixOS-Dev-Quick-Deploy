@@ -32,6 +32,26 @@ class _RecordingAsyncClient:
         return _FakeResponse(self.response_payload)
 
 
+class _FakeOpenAIResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def model_dump(self):
+        return self.payload
+
+
+class _RecordingOpenAIClient:
+    def __init__(self, response_payload):
+        self.response_payload = response_payload
+        self.calls = []
+        self.chat = self
+        self.completions = self
+
+    async def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeOpenAIResponse(self.response_payload)
+
+
 class LLMClientLocalTests(unittest.TestCase):
     def test_init_local_uses_switchboard_v1_base(self):
         with patch("llm_client.httpx.AsyncClient", return_value=_RecordingAsyncClient({})):
@@ -141,6 +161,79 @@ class LLMClientLocalTests(unittest.TestCase):
             recorder.calls[0]["json"]["tools"],
             [{"name": "read_file"}],
         )
+
+
+class LLMClientOpenAITests(unittest.TestCase):
+    def test_init_openai_passes_custom_base_url(self):
+        recorder = _RecordingOpenAIClient({"choices": [], "usage": {}})
+
+        with patch("openai.AsyncOpenAI", return_value=recorder) as patched_client:
+            client = LLMClient(
+                provider="openai",
+                api_key="test-key",
+                base_url="https://openai.example/v1",
+            )
+
+        self.assertIs(client.client, recorder)
+        patched_client.assert_called_once_with(
+            api_key="test-key",
+            base_url="https://openai.example/v1",
+        )
+
+    def test_create_message_uses_openai_chat_completions(self):
+        recorder = _RecordingOpenAIClient(
+            {
+                "model": "gpt-4-turbo-preview",
+                "choices": [
+                    {
+                        "message": {
+                            "content": "OPENAI_OK",
+                            "tool_calls": [
+                                {
+                                    "id": "call_2",
+                                    "function": {
+                                        "name": "list_files",
+                                        "arguments": "{\"path\":\".\"}",
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 4,
+                    "total_tokens": 16,
+                },
+            }
+        )
+
+        with patch("openai.AsyncOpenAI", return_value=recorder):
+            client = LLMClient(provider="openai", api_key="test-key")
+            response = asyncio.run(
+                client.create_message(
+                    prompt="Use the tool",
+                    system="Be concise.",
+                    max_tokens=48,
+                    temperature=0.2,
+                    tools=[{"name": "list_files"}],
+                )
+            )
+
+        self.assertEqual(response.content, "OPENAI_OK")
+        self.assertEqual(response.stop_reason, "tool_calls")
+        self.assertEqual(response.usage["total_tokens"], 16)
+        self.assertEqual(
+            response.tool_calls,
+            [{"id": "call_2", "name": "list_files", "input": {"path": "."}}],
+        )
+        self.assertEqual(len(recorder.calls), 1)
+        self.assertEqual(
+            recorder.calls[0]["messages"][0],
+            {"role": "system", "content": "Be concise."},
+        )
+        self.assertEqual(recorder.calls[0]["tools"], [{"name": "list_files"}])
 
 
 if __name__ == "__main__":
