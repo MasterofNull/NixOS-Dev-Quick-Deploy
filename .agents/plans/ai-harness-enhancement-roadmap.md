@@ -470,7 +470,7 @@ python -m ai_stack.workflows.validator examples/workflows/feature-implementation
 ### Slice 2.3: Workflow Executor
 
 **Status:** In Progress
-**Execution Note (2026-04-16):** Remote delegated completion is still blocked by stale pre-fix queue output and free-lane throttling, but the coordinator-side fallback executor shell has been reduced further: `ai-stack/mcp-servers/hybrid-coordinator/workflow_executor.py` now executes bounded phases through the local harness sub-agent spawn path instead of returning a mock phase result, `ai-stack/mcp-servers/hybrid-coordinator/llm_client.py` now executes `provider="local"` via switchboard's OpenAI-compatible ingress instead of failing as unimplemented, and the `provider="openai"` branch now executes through `AsyncOpenAI.chat.completions.create(...)` instead of raising `NotImplementedError`.
+**Execution Note (2026-04-16):** Remote delegated completion is still blocked by stale pre-fix queue output and free-lane throttling, but the coordinator-side fallback executor shell has been reduced further: `ai-stack/mcp-servers/hybrid-coordinator/workflow_executor.py` now executes bounded phases through the local harness sub-agent spawn path instead of returning a mock phase result, `ai-stack/mcp-servers/hybrid-coordinator/llm_client.py` now executes `provider="local"` via switchboard's OpenAI-compatible ingress instead of failing as unimplemented, the `provider="openai"` branch now executes through `AsyncOpenAI.chat.completions.create(...)` instead of raising `NotImplementedError`, and `ai-stack/mcp-servers/hybrid-coordinator/llm_router.py` now sends free/paid tier execution through the coordinator delegate path instead of placeholder branches.
 
 **Owner:** qwen (implementation)
 **Type:** Code implementation
