@@ -42,7 +42,18 @@ let
   # (nano→256M, micro→512M, small→1G, medium→2G, large→4G).
   hardenedBase = mkHardenedService {tier = cfg.hardwareTier;};
 
-  repoMcp = "${mcp.repoPath}/ai-stack/mcp-servers";
+  # Repo source for pure evaluation: use flakeRepoPath if set, otherwise import
+  # repoPath into Nix store via builtins.path. This allows access to repo files
+  # during pure evaluation without forbidden /home path access.
+  repoSource =
+    if mcp.flakeRepoPath != null
+    then mcp.flakeRepoPath
+    else builtins.path {
+      path = mcp.repoPath;
+      name = "nixos-quick-deploy-repo";
+    };
+
+  repoMcp = "${repoSource}/ai-stack/mcp-servers";
 
   # ── Phase 2.4: YAML workflow handlers + workflows package (Nix store) ───
   # Packages the workflows engine and YAML workflow HTTP handlers into the
@@ -51,10 +62,7 @@ let
   # derivation ensures the code comes from /nix/store, not the mutable repo.
   workflowHandlersPkg =
     pkgs.runCommand "yaml-workflow-handlers" {
-      src = builtins.path {
-        path = mcp.repoPath;
-        name = "yaml-workflow-handlers-src";
-      };
+      src = repoSource;
     } ''
       sp="${pkgs.python3.sitePackages}"
       mkdir -p "$out/$sp/workflows"
@@ -67,7 +75,7 @@ let
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
   mcpIntegrityBaseline = "${mutableStateDir}/mcp-source-baseline.sha256";
-  migrationsIni = "${mcp.repoPath}/ai-stack/migrations/alembic.ini";
+  migrationsIni = "${repoSource}/ai-stack/migrations/alembic.ini";
   aidbConfig = pkgs.writeText "aidb-config.yaml" ''
     server:
       host: 127.0.0.1
@@ -324,7 +332,7 @@ let
       # reading them while still blocking writes to /home.
       ProtectHome = "read-only";
       ReadWritePaths = serviceWritablePaths;
-      ReadOnlyPaths = [mcp.repoPath];
+      ReadOnlyPaths = [repoSource];
       WorkingDirectory = dataDir;
       # Phase 13.1.1 — restrict to necessary address families only
       RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6"];
@@ -1045,7 +1053,7 @@ in {
                 "AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.escapeShellArg (lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries)}"
                 "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
                 "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
-                "WORKFLOW_BLUEPRINTS_FILE=${mcp.repoPath}/config/workflow-blueprints.json"
+                "WORKFLOW_BLUEPRINTS_FILE=${repoSource}/config/workflow-blueprints.json"
                 "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
                 "PARITY_SCORECARD_FILE=${parityScorecardJson}"
                 "AI_TOOL_SECURITY_AUDIT_ENABLED=${
@@ -1326,7 +1334,7 @@ in {
             Type = "oneshot";
             ExecStart = lib.escapeShellArgs [
               "${pkgs.bash}/bin/bash"
-              "${mcp.repoPath}/scripts/data/sync-knowledge-sources"
+              "${repoSource}/scripts/data/sync-knowledge-sources"
             ];
             Environment =
               [
@@ -1380,7 +1388,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/security/security-audit.sh"
+            "${repoSource}/scripts/security/security-audit.sh"
             "--repo-root"
             mcp.repoPath
             "--output-dir"
@@ -1449,7 +1457,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/security/npm-security-monitor.sh"
+            "${repoSource}/scripts/security/npm-security-monitor.sh"
             "--repo-root"
             mcp.repoPath
             "--output-dir"
@@ -1523,7 +1531,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/automation/post-deploy-converge.sh"
+            "${repoSource}/scripts/automation/post-deploy-converge.sh"
           ];
           ReadOnlyPaths = ["/"];
           ReadWritePaths = ["${dataDir}"];
@@ -1643,7 +1651,7 @@ in {
             User = svcUser;
             Group = svcGroup;
             ProtectHome = "read-only";
-            ReadOnlyPaths = [mcp.repoPath];
+            ReadOnlyPaths = [repoSource];
             LogsDirectory = "ai-audit-sidecar";
             ExecStart = "${auditSidecarPython}/bin/python3 ${auditSidecarScript}";
             Restart = "on-failure";
@@ -1676,16 +1684,16 @@ in {
             ProtectHome = "read-only";
             StateDirectory = "ai-mcp-integrity";
             ReadOnlyPaths = [
-              mcp.repoPath
+              repoSource
               mcpIntegrityBaseline
             ];
             RestrictAddressFamilies = ["AF_UNIX"];
             SystemCallFilter = ["@system-service"];
             SystemCallErrorNumber = "EPERM";
-            ExecStart = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/testing/check-mcp-integrity.sh";
+            ExecStart = "${pkgs.bash}/bin/bash ${repoSource}/scripts/testing/check-mcp-integrity.sh";
             SuccessExitStatus = [0];
             Environment = [
-              "MCP_SERVER_DIR=${mcp.repoPath}/ai-stack/mcp-servers"
+              "MCP_SERVER_DIR=${repoSource}/ai-stack/mcp-servers"
               "MCP_INTEGRITY_BASELINE=${mcpIntegrityBaseline}"
               "MCP_INTEGRITY_ALERT_DIR=/var/lib/ai-mcp-integrity/alerts"
             ];
@@ -1731,7 +1739,7 @@ in {
             # Needs to read /proc and /sys/fs/cgroup; cannot use ProtectSystem=strict with these.
             ProtectSystem = "full";
             ReadOnlyPaths = ["/proc" "/sys/fs/cgroup"];
-            ExecStart = "${pkgs.bash}/bin/bash ${mcp.repoPath}/scripts/testing/check-mcp-processes.sh";
+            ExecStart = "${pkgs.bash}/bin/bash ${repoSource}/scripts/testing/check-mcp-processes.sh";
             SuccessExitStatus = [0];
             Environment = [
               "MCP_SERVICES=\"ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service ai-embeddings.service ai-audit-sidecar.service\""
@@ -1785,7 +1793,7 @@ in {
             /nix/store/**/bin/python3* ix,
 
             # Repo path (source code, scripts) — read-only
-            ${mcp.repoPath}/** r,
+            ${repoSource}/** r,
 
             # Service data directory (read-write)
             ${dataDir}/** rw,

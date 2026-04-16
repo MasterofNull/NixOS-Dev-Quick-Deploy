@@ -2747,6 +2747,16 @@
         '';
       };
 
+      flakeRepoPath = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = ''
+          Flake source path to the repository root. Set by the flake to
+          `self` so that pure-eval derivations can access repo files without
+          forbidden /home path access. Falls back to repoPath when null.
+        '';
+      };
+
       dataDir = lib.mkOption {
         type = lib.types.str;
         default = "/var/lib/ai-stack";

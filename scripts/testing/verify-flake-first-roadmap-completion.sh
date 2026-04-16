@@ -550,7 +550,7 @@ check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track F — BitNet Feasibility and Optional Runtime Integration' 'Detailed implementation roadmap covers BitNet integration planning'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Track A — Continue and Editor-Agent Runtime Stabilization' 'Detailed implementation roadmap treats Continue/editor support as a first-class track'
 check_pattern "docs/roadmap/AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03.md" 'Required Foundation — Declarative Agent CLI and IDE Surface' 'Detailed implementation roadmap treats declarative agent tooling as a required foundation'
-check_pattern "nix/modules/services/mcp-servers.nix" 'WORKFLOW_BLUEPRINTS_FILE=\$\{mcp\.repoPath\}/config/workflow-blueprints\.json' 'Hybrid coordinator reads workflow blueprints from the repo-backed path'
+check_pattern "nix/modules/services/mcp-servers.nix" 'WORKFLOW_BLUEPRINTS_FILE=\$\{repoSource\}/config/workflow-blueprints\.json' 'Hybrid coordinator reads workflow blueprints from the repo-backed path'
 check_pattern "scripts/testing/test-workflow-blueprints.py" 'bounded-research-review' 'Workflow blueprint test covers bounded research runtime family'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/workflow/run/start' 'Workflow review-contract smoke covers workflow run start'
 check_pattern "scripts/testing/smoke-workflow-review-contract.sh" '/review/acceptance' 'Workflow review-contract smoke covers reviewer acceptance persistence'
