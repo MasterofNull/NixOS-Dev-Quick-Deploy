@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+# aq-workflow: CLI tool for YAML workflow management
+# Phase 2.6: Workflow CLI
+#
+# Commands:
+#   list       - List available workflow templates
+#   validate   - Validate workflow YAML file
+#   run        - Execute a workflow
+#   status     - Check workflow execution status
+#   cancel     - Cancel a running workflow
+#   history    - Show workflow execution history
+#   create     - Create new workflow from template
+
+set -euo pipefail
+
+# Configuration
+COORDINATOR_URL="${COORDINATOR_URL:-http://127.0.0.1:8003}"
+WORKFLOWS_DIR="${WORKFLOWS_DIR:-ai-stack/workflows}"
+TEMPLATES_DIR="${TEMPLATES_DIR:-ai-stack/workflows/templates}"
+EXAMPLES_DIR="${EXAMPLES_DIR:-ai-stack/workflows/examples}"
+
+# Colors for output
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
+
+# Helper functions
+error() {
+    echo -e "${RED}Error: $*${NC}" >&2
+    exit 1
+}
+
+success() {
+    echo -e "${GREEN}$*${NC}"
+}
+
+info() {
+    echo -e "${BLUE}$*${NC}"
+}
+
+warn() {
+    echo -e "${YELLOW}$*${NC}"
+}
+
+# Check if coordinator is running
+check_coordinator() {
+    if ! curl -sf "${COORDINATOR_URL}/yaml-workflow/stats" >/dev/null 2>&1; then
+        error "Coordinator not accessible at ${COORDINATOR_URL}"
+    fi
+}
+
+# Usage information
+usage() {
+    cat <<EOF
+Usage: aq-workflow <command> [options]
+
+Commands:
+  list                          List available workflow templates
+  validate <file>               Validate workflow YAML file
+  run <file> [inputs]           Execute a workflow
+  status <execution-id>         Check workflow execution status
+  cancel <execution-id>         Cancel a running workflow
+  history [workflow-name]       Show workflow execution history
+  create <template> <output>    Create new workflow from template
+
+Environment Variables:
+  COORDINATOR_URL     Coordinator API URL (default: http://127.0.0.1:8003)
+  WORKFLOWS_DIR       Workflows directory (default: ai-stack/workflows)
+  TEMPLATES_DIR       Templates directory (default: ai-stack/workflows/templates)
+
+Examples:
+  # List all templates
+  aq-workflow list
+
+  # Validate a workflow
+  aq-workflow validate my-workflow.yaml
+
+  # Run a workflow
+  aq-workflow run feature-implementation.yaml '{"feature_spec":"Add login"}'
+
+  # Check execution status
+  aq-workflow status exec-123456
+
+  # View execution history
+  aq-workflow history feature-implementation
+
+EOF
+    exit 0
+}
+
+# Command: list
+cmd_list() {
+    info "Available Workflow Templates:"
+    echo
+
+    # List templates
+    if [[ -d "$TEMPLATES_DIR" ]]; then
+        find "$TEMPLATES_DIR" -name "*.yaml" -o -name "*.yml" | while read -r file; do
+            name=$(basename "$file" .yaml)
+            name=$(basename "$name" .yml)
+            description=$(grep "^description:" "$file" | sed 's/description: *//' || echo "No description")
+            echo -e "  ${GREEN}${name}${NC}"
+            echo -e "    ${description}"
+        done
+    fi
+
+    # List examples
+    echo
+    info "Example Workflows:"
+    echo
+    if [[ -d "$EXAMPLES_DIR" ]]; then
+        find "$EXAMPLES_DIR" -name "*.yaml" -o -name "*.yml" | while read -r file; do
+            name=$(basename "$file" .yaml)
+            name=$(basename "$name" .yml)
+            description=$(grep "^description:" "$file" | sed 's/description: *//' || echo "No description")
+            echo -e "  ${BLUE}${name}${NC}"
+            echo -e "    ${description}"
+        done
+    fi
+}
+
+# Command: validate
+cmd_validate() {
+    local file="${1:-}"
+    [[ -z "$file" ]] && error "Workflow file required. Usage: aq-workflow validate <file>"
+    [[ ! -f "$file" ]] && error "File not found: $file"
+
+    info "Validating workflow: $file"
+
+    # Use Python to validate the workflow
+    python3 -c "
+import sys
+import yaml
+from pathlib import Path
+
+# Add workflows package to path
+workflows_path = Path('$WORKFLOWS_DIR').resolve()
+sys.path.insert(0, str(workflows_path.parent))
+
+from workflows.parser import WorkflowParser
+from workflows.validator import WorkflowValidator
+
+try:
+    parser = WorkflowParser()
+    validator = WorkflowValidator()
+
+    workflow = parser.parse_file('$file')
+    errors = validator.validate_all(workflow)
+
+    if errors:
+        print('Validation failed:')
+        for error in errors:
+            print(f'  - {error}')
+        sys.exit(1)
+    else:
+        print('✓ Workflow is valid')
+        print(f'  Name: {workflow.name}')
+        print(f'  Version: {workflow.version}')
+        print(f'  Nodes: {len(workflow.nodes)}')
+except Exception as e:
+    print(f'Validation error: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+" || error "Validation failed"
+
+    success "✓ Workflow validated successfully"
+}
+
+# Command: run
+cmd_run() {
+    local file="${1:-}"
+    local inputs="${2:-{}}"
+    local async_mode="${3:-false}"
+
+    [[ -z "$file" ]] && error "Workflow file required. Usage: aq-workflow run <file> [inputs]"
+    [[ ! -f "$file" ]] && error "File not found: $file"
+
+    check_coordinator
+
+    info "Executing workflow: $file"
+
+    # Make absolute path
+    file=$(realpath "$file")
+
+    # Execute via HTTP API
+    response=$(curl -sf -X POST "${COORDINATOR_URL}/yaml-workflow/execute" \
+        -H "Content-Type: application/json" \
+        -d "{\"workflow_file\":\"$file\",\"inputs\":$inputs,\"async_mode\":$async_mode}" \
+        || error "Failed to execute workflow")
+
+    execution_id=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('execution_id', ''))")
+    status=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', ''))")
+
+    if [[ -n "$execution_id" ]]; then
+        success "✓ Workflow started"
+        echo "  Execution ID: $execution_id"
+        echo "  Status: $status"
+        echo
+        info "Check status with: aq-workflow status $execution_id"
+    else
+        error "Failed to start workflow: $response"
+    fi
+}
+
+# Command: status
+cmd_status() {
+    local exec_id="${1:-}"
+    [[ -z "$exec_id" ]] && error "Execution ID required. Usage: aq-workflow status <execution-id>"
+
+    check_coordinator
+
+    response=$(curl -sf "${COORDINATOR_URL}/yaml-workflow/${exec_id}/status" \
+        || error "Failed to get status for execution: $exec_id")
+
+    echo "$response" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print('Workflow Execution Status')
+print('=' * 40)
+print(f'Execution ID: {data.get(\"execution_id\", \"unknown\")}')
+print(f'Workflow: {data.get(\"workflow\", \"unknown\")}')
+print(f'Status: {data.get(\"status\", \"unknown\")}')
+print(f'Started: {data.get(\"started_at\", \"unknown\")}')
+if 'completed_at' in data:
+    print(f'Completed: {data[\"completed_at\"]}')
+if 'error' in data:
+    print(f'Error: {data[\"error\"]}')
+"
+}
+
+# Command: cancel
+cmd_cancel() {
+    local exec_id="${1:-}"
+    [[ -z "$exec_id" ]] && error "Execution ID required. Usage: aq-workflow cancel <execution-id>"
+
+    check_coordinator
+
+    response=$(curl -sf -X POST "${COORDINATOR_URL}/yaml-workflow/${exec_id}/cancel" \
+        || error "Failed to cancel execution: $exec_id")
+
+    status=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', ''))")
+
+    if [[ "$status" == "cancelled" ]]; then
+        success "✓ Workflow cancelled: $exec_id"
+    else
+        warn "Cancellation status: $status"
+    fi
+}
+
+# Command: history
+cmd_history() {
+    local workflow_name="${1:-}"
+    local limit="${2:-20}"
+
+    check_coordinator
+
+    if [[ -n "$workflow_name" ]]; then
+        url="${COORDINATOR_URL}/yaml-workflow/executions?workflow_name=${workflow_name}&limit=${limit}"
+    else
+        url="${COORDINATOR_URL}/yaml-workflow/executions?limit=${limit}"
+    fi
+
+    response=$(curl -sf "$url" || error "Failed to get execution history")
+
+    echo "$response" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+executions = data.get('executions', [])
+
+if not executions:
+    print('No executions found')
+    sys.exit(0)
+
+print('Workflow Execution History')
+print('=' * 80)
+for exec in executions:
+    exec_id = exec.get('execution_id', 'unknown')[:12]
+    workflow = exec.get('workflow', 'unknown')
+    status = exec.get('status', 'unknown')
+    started = exec.get('started_at', 'unknown')
+    print(f'{exec_id}  {workflow:30}  {status:15}  {started}')
+
+print(f'\nTotal: {len(executions)} executions')
+"
+}
+
+# Command: create
+cmd_create() {
+    local template="${1:-}"
+    local output="${2:-}"
+
+    [[ -z "$template" ]] && error "Template name required. Usage: aq-workflow create <template> <output>"
+    [[ -z "$output" ]] && error "Output file required. Usage: aq-workflow create <template> <output>"
+
+    template_file="${TEMPLATES_DIR}/${template}.yaml"
+    [[ ! -f "$template_file" ]] && error "Template not found: $template"
+
+    if [[ -f "$output" ]]; then
+        read -p "File exists. Overwrite? (y/N) " -n 1 -r
+        echo
+        [[ ! $REPLY =~ ^[Yy]$ ]] && error "Cancelled"
+    fi
+
+    cp "$template_file" "$output"
+    success "✓ Created workflow from template: $output"
+    info "Edit the file to customize inputs and parameters"
+}
+
+# Main command dispatcher
+main() {
+    [[ $# -eq 0 ]] && usage
+
+    local command="$1"
+    shift
+
+    case "$command" in
+        list)
+            cmd_list "$@"
+            ;;
+        validate)
+            cmd_validate "$@"
+            ;;
+        run)
+            cmd_run "$@"
+            ;;
+        status)
+            cmd_status "$@"
+            ;;
+        cancel)
+            cmd_cancel "$@"
+            ;;
+        history)
+            cmd_history "$@"
+            ;;
+        create)
+            cmd_create "$@"
+            ;;
+        help|--help|-h)
+            usage
+            ;;
+        *)
+            error "Unknown command: $command. Run 'aq-workflow help' for usage."
+            ;;
+    esac
+}
+
+main "$@"
