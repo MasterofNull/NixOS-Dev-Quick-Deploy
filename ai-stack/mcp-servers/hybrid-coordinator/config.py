@@ -215,7 +215,7 @@ class Config:
         os.getenv("AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS", "480")
     )
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE", "96")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE", "48")
     )
     AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS = int(
         os.getenv("AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS", "400")
@@ -263,6 +263,29 @@ class Config:
     AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS = int(
         os.getenv("AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS", "8000")
     )
+    # Advisor Strategy Configuration (Phase 2026-04-17)
+    AI_ADVISOR_ENABLED = os.getenv("AI_ADVISOR_ENABLED", "true").lower() == "true"
+    # Primary advisor model (defaults to highest-capability available)
+    AI_ADVISOR_MODEL = os.getenv("AI_ADVISOR_MODEL", "claude-opus-4-5")
+    AI_ADVISOR_ENDPOINT = os.getenv("AI_ADVISOR_ENDPOINT", "switchboard")  # anthropic, openrouter, local, switchboard
+    AI_ADVISOR_PROFILE = os.getenv("AI_ADVISOR_PROFILE", "remote-reasoning")
+    AI_ADVISOR_MAX_USES_PER_TASK = int(os.getenv("AI_ADVISOR_MAX_USES_PER_TASK", "3"))
+    AI_ADVISOR_TOKEN_BUDGET = int(os.getenv("AI_ADVISOR_TOKEN_BUDGET", "700"))
+    AI_ADVISOR_DECISION_THRESHOLD = float(os.getenv("AI_ADVISOR_DECISION_THRESHOLD", "0.7"))
+    # Decision-type specific advisor routing (optional overrides)
+    AI_ADVISOR_ARCHITECTURE_MODEL = os.getenv("AI_ADVISOR_ARCHITECTURE_MODEL", "").strip()  # e.g., claude-opus, gemini-2.0-flash-thinking
+    AI_ADVISOR_SECURITY_MODEL = os.getenv("AI_ADVISOR_SECURITY_MODEL", "").strip()  # e.g., claude-opus
+    AI_ADVISOR_PLANNING_MODEL = os.getenv("AI_ADVISOR_PLANNING_MODEL", "").strip()  # e.g., gpt-4o, gemini-2.0-flash-thinking
+    AI_ADVISOR_TRADEOFF_MODEL = os.getenv("AI_ADVISOR_TRADEOFF_MODEL", "").strip()  # e.g., claude-sonnet, gemini-2.0-flash-thinking
+    AI_ADVISOR_AMBIGUITY_MODEL = os.getenv("AI_ADVISOR_AMBIGUITY_MODEL", "").strip()  # e.g., claude-sonnet, gpt-4o
+    # Fallback advisor model tiers (tried in order if primary unavailable)
+    AI_ADVISOR_FALLBACK_MODELS = _json_str_list_env(
+        "AI_ADVISOR_FALLBACK_MODELS_JSON",
+        default=["claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking", "qwen-max", "deepseek-r1"]
+    )
+    # Local advisor support for fully local deployments
+    AI_ADVISOR_LOCAL_MODEL = os.getenv("AI_ADVISOR_LOCAL_MODEL", "deepseek-r1").strip()
+    AI_ADVISOR_LOCAL_URL = os.getenv("AI_ADVISOR_LOCAL_URL", LLAMA_CPP_REASONING_URL or "").strip()
     AI_LOCAL_SYSTEM_PROMPT = os.getenv("AI_LOCAL_SYSTEM_PROMPT", "true").lower() == "true"
     AI_LOCAL_SYSTEM_PROMPT_IDENTITY = os.getenv(
         "AI_LOCAL_SYSTEM_PROMPT_IDENTITY",
