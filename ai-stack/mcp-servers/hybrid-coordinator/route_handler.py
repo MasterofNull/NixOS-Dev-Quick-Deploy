@@ -261,6 +261,24 @@ def _runtime_context_blocks(context: Optional[Dict[str, Any]]) -> List[str]:
     return blocks
 
 
+def _prefer_compact_local_response_route(
+    query: str,
+    *,
+    token_count: int,
+    context: Optional[Dict[str, Any]],
+    generate_response: bool,
+) -> bool:
+    """Keep short local-safe answers off the heavier tree route."""
+    if not generate_response or token_count > 10:
+        return False
+    if _looks_like_continuation_query(query, context):
+        return False
+    complexity = task_classifier.classify(query, "", max_output_tokens=160)
+    if complexity.remote_required:
+        return False
+    return complexity.task_type in {"lookup", "synthesize", "format"}
+
+
 def _looks_like_continuation_query(query: str, context: Optional[Dict[str, Any]] = None) -> bool:
     """Detect continuation-style queries that should stay on the compact local path."""
     query_lower = str(query or "").lower()
@@ -426,6 +444,21 @@ def _select_route_collections(
         profile = "simple-query-optimized"
         global _collection_metrics
         _collection_metrics.simple_query_optimizations += 1
+
+    if (
+        generate_response
+        and not continuation
+        and not wants_history
+        and task_shape in {"lookup", "synthesize", "format"}
+        and token_count <= 10
+    ):
+        max_collections = min(max_collections, 2)
+        if profile == "standard":
+            profile = "response-compact"
+        elif profile == "lookup-focused":
+            profile = "lookup-focused-compact"
+        elif profile.endswith("-detailed"):
+            profile = profile.replace("-detailed", "-compact")
 
     return {
         "profile": profile,
@@ -671,6 +704,13 @@ async def route_search(
             token_count = len(_normalize_tokens(query))
             if token_count <= 3:
                 route = "keyword"
+            elif _prefer_compact_local_response_route(
+                query,
+                token_count=token_count,
+                context=context,
+                generate_response=generate_response,
+            ):
+                route = "hybrid"
             elif Config.AI_TREE_SEARCH_ENABLED and token_count >= 8 and not _looks_like_continuation_query(query, context):
                 route = "tree"
             else:
