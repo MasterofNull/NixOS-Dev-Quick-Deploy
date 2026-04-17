@@ -112,6 +112,19 @@ _CAPABILITY_DISCOVERY_QUERY_MARKERS = (
     "how should i do this",
 )
 
+_BRIEF_RESPONSE_MARKERS = (
+    "brief",
+    "briefly",
+    "concise",
+    "short answer",
+    "in short",
+    "quick summary",
+    "quickly explain",
+    "explain briefly",
+    "one paragraph",
+    "few bullets",
+)
+
 # ---------------------------------------------------------------------------
 # Injected dependencies
 # ---------------------------------------------------------------------------
@@ -269,7 +282,10 @@ def _prefer_compact_local_response_route(
     generate_response: bool,
 ) -> bool:
     """Keep short local-safe answers off the heavier tree route."""
-    if not generate_response or token_count > 10:
+    if not generate_response:
+        return False
+    brief_request = _wants_brief_local_response(query)
+    if token_count > 10 and not (brief_request and token_count <= 12):
         return False
     if _looks_like_continuation_query(query, context):
         return False
@@ -277,6 +293,13 @@ def _prefer_compact_local_response_route(
     if complexity.remote_required:
         return False
     return complexity.task_type in {"lookup", "synthesize", "format"}
+
+
+def _wants_brief_local_response(query: str) -> bool:
+    query_lower = str(query or "").strip().lower()
+    if not query_lower:
+        return False
+    return any(marker in query_lower for marker in _BRIEF_RESPONSE_MARKERS)
 
 
 def _looks_like_continuation_query(query: str, context: Optional[Dict[str, Any]] = None) -> bool:
@@ -358,6 +381,7 @@ def _select_route_collections(
         for term in ("pattern", "workflow", "best practice", "guide", "how", "approach", "strategy")
     )
     task_shape = task_classifier.classify(query, "", max_output_tokens=200).task_type
+    brief_request = _wants_brief_local_response(query)
 
     selected: List[str] = []
 
@@ -403,7 +427,7 @@ def _select_route_collections(
     elif task_shape == "reasoning":
         profile = "reasoning-focused"
         max_collections = 3
-    if route == "tree" or (generate_response and token_count >= 12 and task_shape not in {"lookup"}):
+    if route == "tree" or (generate_response and token_count >= 12 and task_shape not in {"lookup"} and not brief_request):
         max_collections = 4
         profile = "detailed" if profile == "standard" else f"{profile}-detailed"
     if wants_history:
@@ -449,8 +473,8 @@ def _select_route_collections(
         generate_response
         and not continuation
         and not wants_history
-        and task_shape in {"lookup", "synthesize", "format"}
-        and token_count <= 10
+        and (task_shape in {"lookup", "synthesize", "format"} or brief_request)
+        and token_count <= 12
     ):
         max_collections = min(max_collections, 2)
         if profile == "standard":
@@ -459,6 +483,8 @@ def _select_route_collections(
             profile = "lookup-focused-compact"
         elif profile.endswith("-detailed"):
             profile = profile.replace("-detailed", "-compact")
+        elif not profile.endswith("-compact"):
+            profile = "response-compact"
 
     return {
         "profile": profile,
@@ -615,6 +641,87 @@ def _prompt_context_for_lane_reason(
         if trimmed:
             return trimmed
     return compressed_context
+
+
+def _compact_text(value: Any, *, max_chars: int = 160) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _compact_result_line(item: Dict[str, Any]) -> str:
+    payload = item.get("payload") if isinstance(item, dict) else {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    title = _compact_text(
+        payload.get("commit_subject")
+        or payload.get("title")
+        or payload.get("name")
+        or payload.get("file_path")
+        or payload.get("relative_path")
+        or payload.get("skill_name")
+        or payload.get("error_type")
+        or payload.get("practice_name"),
+        max_chars=96,
+    )
+    detail = _compact_text(
+        payload.get("summary")
+        or payload.get("description")
+        or item.get("content")
+        or item.get("text")
+        or payload.get("content"),
+        max_chars=140,
+    )
+    file_hint = _compact_text(payload.get("file_path") or payload.get("relative_path"), max_chars=72)
+
+    if not title:
+        title = _compact_text(payload.get("category"), max_chars=64) or "result"
+    if detail and detail != title and detail not in title:
+        line = f"- {title}: {detail}"
+    else:
+        line = f"- {title}"
+    if file_hint and file_hint not in line:
+        line = f"{line} [{file_hint}]"
+    return line
+
+
+def _build_local_synthesis_context(
+    response_text: str,
+    results: Dict[str, Any],
+    *,
+    max_items: int = 3,
+    max_chars: int = 700,
+) -> str:
+    """Build a compact local prompt context from top retrieval hits."""
+    rows = (
+        (results or {}).get("combined_results")
+        or (results or {}).get("semantic_results")
+        or (results or {}).get("keyword_results")
+        or []
+    )
+    compact_lines: List[str] = []
+    if isinstance(rows, list):
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            line = _compact_result_line(item)
+            if line:
+                compact_lines.append(line)
+            if len(compact_lines) >= max_items:
+                break
+
+    compact_context = "\n".join(compact_lines).strip()
+    summary_text = _compact_text(response_text, max_chars=max_chars)
+
+    if compact_context and summary_text:
+        candidate = f"{summary_text}\n\nTop evidence:\n{compact_context}"
+    else:
+        candidate = compact_context or summary_text
+    return _compact_text(candidate, max_chars=max_chars)
 
 
 def _prompt_instruction_for_lane_reason(lane_reason: Optional[str]) -> str:
@@ -952,8 +1059,9 @@ async def route_search(
             discovery_context = capability_discovery.format_context(_cap_disc)
             runtime_context = "\n\n".join(_runtime_context_blocks(context))
             retrieval_summary_text = response_text
+            local_synthesis_context = _build_local_synthesis_context(response_text, results)
             combined_context = "\n\n".join(
-                part for part in (response_text, runtime_context, discovery_context) if part
+                part for part in (local_synthesis_context, runtime_context, discovery_context) if part
             ).strip()
             compressed_context = combined_context
             compressed_tokens = 0
