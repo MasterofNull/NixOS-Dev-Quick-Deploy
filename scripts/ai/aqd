@@ -145,6 +145,14 @@ prompt_if_empty() {
   printf '%s' "$value"
 }
 
+capture_limited_lines() {
+  local limit="${1:-0}"
+  shift || true
+
+  [[ "$limit" =~ ^[0-9]+$ ]] || die "capture_limited_lines requires a numeric limit"
+  "$@" 2>/dev/null | sed -n "1,${limit}p" || true
+}
+
 iso_utc_now() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
@@ -854,7 +862,7 @@ cmd_workflows_primer() {
 
   local agent_meta=""
   if [[ -d "$target_dir/.agent" ]]; then
-    agent_meta="$(find "$target_dir/.agent" -type f -printf '%P\t%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | head -n 200)"
+    agent_meta="$(capture_limited_lines 200 find "$target_dir/.agent" -type f -printf '%P\t%TY-%Tm-%TdT%TH:%TM:%TS\n')"
   fi
   local git_status=""
   if [[ -d "$target_dir/.git" ]]; then
@@ -957,6 +965,14 @@ cmd_workflows_brownfield() {
     changed_count="$(git -C "$target_dir" status --short 2>/dev/null | sed '/^\s*$/d' | wc -l | tr -d ' ')"
   fi
 
+  local key_directories=""
+  key_directories="$(
+    find "$target_dir" -maxdepth 2 -type d 2>/dev/null |
+      sed "s#^$target_dir#.#" |
+      sed -n '1,20p' |
+      sed 's/^/- /'
+  )"
+
   cat > "$pdr_file" <<EOF
 # Brownfield Product Development Record (PDR)
 
@@ -970,7 +986,7 @@ Mode: /brownfield
 - tracked_files: ${tracked_count}
 - changed_files: ${changed_count}
 - key_directories:
-$(find "$target_dir" -maxdepth 2 -type d 2>/dev/null | sed "s#^$target_dir#.#" | head -n 20 | sed 's/^/- /')
+${key_directories:-"- ."}
 
 ## Constraints
 - ${constraints}

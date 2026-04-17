@@ -64,3 +64,33 @@ def test_scorecard_includes_recent_failed_case_diagnostics():
     assert failures["taxonomy"]["empty_response"] == 1
     assert failures["recent_failed_cases"][0]["failure_category"] == "empty_response"
     assert "Check model availability" in failures["recent_failed_cases"][0]["suggested_fix"]
+
+
+def test_summarize_results_prefers_specific_payload_fields_over_category():
+    summary = _MODULE._summarize_results(
+        [
+            {
+                "score": 3.0,
+                "source": "keyword",
+                "payload": {
+                    "category": "feature",
+                    "commit_subject": "fix deploy flake projection",
+                    "file_path": "nixos-quick-deploy.sh",
+                },
+            },
+            {
+                "score": 2.5,
+                "source": "semantic",
+                "payload": {
+                    "category": "documentation",
+                    "title": "Advisor strategy design",
+                    "file_path": ".agent/workflows/advisor-strategy-design.md",
+                },
+            },
+        ]
+    )
+
+    assert "fix deploy flake projection [nixos-quick-deploy.sh]" in summary
+    assert "Advisor strategy design [.agent/workflows/advisor-strategy-design.md]" in summary
+    assert "feature (score=" not in summary
+    assert "documentation (score=" not in summary

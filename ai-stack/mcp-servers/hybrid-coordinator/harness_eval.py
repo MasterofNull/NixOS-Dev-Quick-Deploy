@@ -27,6 +27,18 @@ from config import Config
 
 logger = logging.getLogger("hybrid-coordinator")
 
+_GENERIC_SUMMARY_LABELS = {
+    "result",
+    "results",
+    "general",
+    "unknown",
+    "feature",
+    "documentation",
+    "docs",
+    "change",
+    "update",
+}
+
 # Injected from server.py
 _route_search: Optional[Callable] = None
 _record_telemetry: Optional[Callable] = None
@@ -99,19 +111,61 @@ def _classify_eval_failure(metrics: Dict[str, Any]) -> str:
     return "score_below_threshold"
 
 
+def _compact_summary_text(value: Any, *, max_len: int = 96) -> str:
+    if value is None:
+        return ""
+    text = " ".join(str(value).split()).strip()
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def _is_generic_summary_label(value: str) -> bool:
+    normalized = _compact_summary_text(value, max_len=64).lower()
+    return not normalized or normalized in _GENERIC_SUMMARY_LABELS
+
+
+def _result_summary_label(item: Dict[str, Any]) -> str:
+    payload = item.get("payload") if isinstance(item, dict) else {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    primary = (
+        payload.get("commit_subject")
+        or payload.get("title")
+        or payload.get("name")
+        or payload.get("file_path")
+        or payload.get("relative_path")
+        or payload.get("skill_name")
+        or payload.get("error_type")
+        or payload.get("practice_name")
+    )
+    primary_text = _compact_summary_text(primary)
+    file_hint = _compact_summary_text(payload.get("file_path") or payload.get("relative_path"), max_len=72)
+
+    if _is_generic_summary_label(primary_text):
+        primary_text = _compact_summary_text(
+            payload.get("summary")
+            or payload.get("description")
+            or item.get("content")
+            or payload.get("content")
+        )
+
+    if not primary_text:
+        primary_text = _compact_summary_text(payload.get("category")) or "result"
+
+    if file_hint and primary_text != file_hint and file_hint not in primary_text:
+        return f"{primary_text} [{file_hint}]"
+    return primary_text
+
+
 def _summarize_results(items: List[Dict[str, Any]], max_items: int = 3) -> str:
     lines: List[str] = []
     for item in items[:max_items]:
-        payload = item.get("payload") or {}
-        title = (
-            payload.get("title")
-            or payload.get("file_path")
-            or payload.get("skill_name")
-            or payload.get("error_type")
-            or payload.get("category")
-            or "result"
-        )
-        sources = item.get("sources") or [item.get("source")] if item.get("source") else []
+        title = _result_summary_label(item)
+        sources = item.get("sources") or ([item.get("source")] if item.get("source") else [])
         source_text = ",".join(sources) if isinstance(sources, list) else str(sources)
         lines.append(f"- {title} (score={item.get('score', 0):.2f}, source={source_text})")
     return "\n".join(lines) if lines else "No results."
