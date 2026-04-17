@@ -661,6 +661,67 @@ class TestRouteHeuristicHelpers:
         assert compact["profile"] == "response-compact"
         assert len(compact["collections"]) == 2
 
+    def test_brief_explanation_queries_stay_on_compact_profiles(self):
+        original_classifier = route_handler.task_classifier.classify
+        original_collections = dict(route_handler._COLLECTIONS)
+        try:
+            route_handler._COLLECTIONS = {
+                "codebase-context": {},
+                "error-solutions": {},
+                "best-practices": {},
+                "skills-patterns": {},
+            }
+            route_handler.task_classifier.classify = MagicMock(
+                side_effect=[
+                    SimpleNamespace(task_type="synthesize", remote_required=False),
+                    SimpleNamespace(task_type="reasoning", remote_required=False),
+                ]
+            )
+
+            assert route_handler._prefer_compact_local_response_route(
+                "briefly explain the current routing fallback behavior in one paragraph",
+                token_count=12,
+                context=None,
+                generate_response=True,
+            ) is True
+
+            compact = route_handler._select_route_collections(
+                "briefly explain the current routing fallback behavior in one paragraph",
+                route="hybrid",
+                context=None,
+                generate_response=True,
+            )
+        finally:
+            route_handler.task_classifier.classify = original_classifier
+            route_handler._COLLECTIONS = original_collections
+
+        assert compact["profile"] == "response-compact"
+        assert len(compact["collections"]) == 2
+
+    def test_build_local_synthesis_context_compacts_long_result_bodies(self):
+        context_text = route_handler._build_local_synthesis_context(
+            "fallback summary",
+            {
+                "combined_results": [
+                    {
+                        "score": 0.9,
+                        "content": "A" * 600,
+                        "payload": {
+                            "category": "feature",
+                            "commit_subject": "fix local retrieval fallback",
+                            "file_path": "route_handler.py",
+                        },
+                    }
+                ]
+            },
+            max_chars=240,
+        )
+
+        assert "fix local retrieval fallback" in context_text
+        assert "route_handler.py" in context_text
+        assert "A" * 200 not in context_text
+        assert len(context_text) <= 240
+
 
 class TestGeneratedResponsePaths:
     """Exercise local synthesis branches for measurable coverage lift."""
@@ -745,6 +806,88 @@ class TestGeneratedResponsePaths:
         assert fake_client.calls[0]["path"] == "/chat/completions"
         assert fake_client.calls[0]["json"]["messages"][0]["content"] == "Local system prompt"
         assert fake_client.calls[0]["json"]["temperature"] == 0.2
+
+    def test_route_search_uses_compact_local_synthesis_context_in_prompt(self):
+        asyncio.run(self._run_route_search_uses_compact_local_synthesis_context_in_prompt())
+
+    async def _run_route_search_uses_compact_local_synthesis_context_in_prompt(self):
+        original_build_local_system_prompt = getattr(Config, "build_local_system_prompt", None)
+        original_timeout = getattr(Config, "LLAMA_CPP_INFERENCE_TIMEOUT", 5.0)
+        original_compression = getattr(Config, "AI_CONTEXT_COMPRESSION_ENABLED", False)
+        original_classification = getattr(Config, "AI_TASK_CLASSIFICATION_ENABLED", False)
+        Config.build_local_system_prompt = staticmethod(lambda: "")
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = 5.0
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = False
+        Config.AI_TASK_CLASSIFICATION_ENABLED = False
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": "compact answer"}}],
+                    "usage": {"cached_tokens": 0},
+                }
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+
+            async def post(self, path, headers=None, json=None, timeout=None):
+                self.calls.append(json or {})
+                return FakeResponse()
+
+        fake_client = FakeClient()
+        hybrid_search_fn = AsyncMock(return_value={
+            "keyword_results": [],
+            "semantic_results": [],
+            "combined_results": [
+                {
+                    "score": 0.95,
+                    "content": "B" * 500,
+                    "payload": {
+                        "category": "feature",
+                        "commit_subject": "reduce prompt assembly size",
+                        "file_path": "route_handler.py",
+                    },
+                }
+            ],
+        })
+
+        with patch.object(route_handler, "_hybrid_search", hybrid_search_fn):
+            with patch.object(route_handler, "_summarize", MagicMock(return_value="fallback summary")):
+                with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                    with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                        with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                            with patch.object(route_handler, "_llama_cpp_client_ref", return_value=fake_client):
+                                with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=None):
+                                    with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                        with patch.object(route_handler, "ROUTE_DECISIONS", MagicMock()):
+                                            with patch.object(route_handler, "ROUTE_ERRORS", MagicMock()):
+                                                with patch.object(route_handler, "LLM_BACKEND_SELECTIONS", MagicMock()):
+                                                    with patch.object(route_handler, "LLM_BACKEND_LATENCY", MagicMock()):
+                                                        with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                            with patch.object(route_handler, "_injection_scanner", MagicMock()) as patched_injection_scanner:
+                                                                patched_injection_scanner.filter_results = MagicMock(
+                                                                    side_effect=lambda items, content_key="content": (items, 0)
+                                                                )
+                                                                await route_handler.route_search(
+                                                                    query="summarize the compact local prompt behavior",
+                                                                    mode="hybrid",
+                                                                    generate_response=True,
+                                                                )
+
+        if original_build_local_system_prompt is not None:
+            Config.build_local_system_prompt = original_build_local_system_prompt
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = original_timeout
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = original_compression
+        Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        prompt = fake_client.calls[0]["messages"][-1]["content"]
+        assert "reduce prompt assembly size" in prompt
+        assert "route_handler.py" in prompt
+        assert "B" * 200 not in prompt
 
     def test_route_search_falls_back_to_local_after_remote_4xx(self):
         asyncio.run(self._run_route_search_falls_back_to_local_after_remote_4xx())
