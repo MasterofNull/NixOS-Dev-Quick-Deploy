@@ -1085,7 +1085,31 @@ def _message_content_text(message: Dict[str, Any]) -> str:
     return ""
 
 
+def _content_has_only_text_blocks(content: Any) -> bool:
+    if isinstance(content, str):
+        return True
+    if not isinstance(content, list):
+        return False
+    return all(
+        isinstance(item, dict)
+        and item.get("type") == "text"
+        and isinstance(item.get("text"), str)
+        for item in content
+    )
+
+
+def _message_content_can_be_rewritten(message: Dict[str, Any]) -> bool:
+    role = str(message.get("role", "")).strip()
+    return role in {"system", "user"} and _content_has_only_text_blocks(message.get("content"))
+
+
+def _build_text_message(role: str, text: str) -> Dict[str, Any]:
+    return {"role": role, "content": text}
+
+
 def _replace_message_content(message: Dict[str, Any], text: str) -> Dict[str, Any]:
+    if not _message_content_can_be_rewritten(message):
+        return dict(message)
     updated = dict(message)
     if isinstance(updated.get("content"), list):
         updated["content"] = [{"type": "text", "text": text}]
@@ -1185,7 +1209,10 @@ async def _apply_progressive_context(
         f"Progressive context [{category}/{tier_decision.selected_tier.name.lower()}]:\n"
         f"{injection}"
     ).strip()
-    updated_messages[0] = _replace_message_content(updated_messages[0], progressive_prefix)
+    if _message_content_can_be_rewritten(updated_messages[0]):
+        updated_messages[0] = _replace_message_content(updated_messages[0], progressive_prefix)
+    else:
+        updated_messages.insert(0, _build_text_message("system", progressive_prefix))
 
     return updated_messages, {
         "applied": True,
@@ -1481,8 +1508,15 @@ def _optimize_delegated_messages(
     original_tokens = _estimate_message_tokens(optimized)
     token_budget = 900 if str(profile_name or "").strip() in {"remote-gemini", "remote-free"} else 1200
     compressed_messages = 0
+    protected_indexes = {
+        idx
+        for idx, message in enumerate(optimized)
+        if str(message.get("role", "")).strip() == "assistant" or not _message_content_can_be_rewritten(message)
+    }
 
     for idx, message in enumerate(list(optimized)):
+        if idx in protected_indexes:
+            continue
         text = _message_content_text(message).strip()
         if len(text) < 160:
             continue
@@ -1505,7 +1539,7 @@ def _optimize_delegated_messages(
                 anchor_text = _message_content_text(message).strip()
                 if anchor_text:
                     break
-        fixed_indexes = {0, len(optimized) - 1}
+        fixed_indexes = {0, len(optimized) - 1, *protected_indexes}
         fixed_tokens = sum(
             _DELEGATED_PROMPT_COMPRESSOR._estimate_tokens(_message_content_text(optimized[idx]))
             for idx in fixed_indexes
