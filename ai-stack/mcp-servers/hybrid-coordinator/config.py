@@ -272,17 +272,43 @@ class Config:
     AI_ADVISOR_MAX_USES_PER_TASK = int(os.getenv("AI_ADVISOR_MAX_USES_PER_TASK", "3"))
     AI_ADVISOR_TOKEN_BUDGET = int(os.getenv("AI_ADVISOR_TOKEN_BUDGET", "700"))
     AI_ADVISOR_DECISION_THRESHOLD = float(os.getenv("AI_ADVISOR_DECISION_THRESHOLD", "0.7"))
-    # Decision-type specific advisor routing (optional overrides)
-    AI_ADVISOR_ARCHITECTURE_MODEL = os.getenv("AI_ADVISOR_ARCHITECTURE_MODEL", "").strip()  # e.g., claude-opus, gemini-2.0-flash-thinking
-    AI_ADVISOR_SECURITY_MODEL = os.getenv("AI_ADVISOR_SECURITY_MODEL", "").strip()  # e.g., claude-opus
-    AI_ADVISOR_PLANNING_MODEL = os.getenv("AI_ADVISOR_PLANNING_MODEL", "").strip()  # e.g., gpt-4o, gemini-2.0-flash-thinking
-    AI_ADVISOR_TRADEOFF_MODEL = os.getenv("AI_ADVISOR_TRADEOFF_MODEL", "").strip()  # e.g., claude-sonnet, gemini-2.0-flash-thinking
-    AI_ADVISOR_AMBIGUITY_MODEL = os.getenv("AI_ADVISOR_AMBIGUITY_MODEL", "").strip()  # e.g., claude-sonnet, gpt-4o
-    # Fallback advisor model tiers (tried in order if primary unavailable)
-    AI_ADVISOR_FALLBACK_MODELS = _json_str_list_env(
-        "AI_ADVISOR_FALLBACK_MODELS_JSON",
+
+    # Ranked fallback chains per decision type (3-4 models tried in order)
+    # Format: JSON array of models, tried in order until one succeeds
+    AI_ADVISOR_ARCHITECTURE_MODELS = _json_str_list_env(
+        "AI_ADVISOR_ARCHITECTURE_MODELS_JSON",
+        default=["claude-opus-4-5", "gpt-4o", "claude-sonnet", "gemini-2.0-flash-thinking"]
+    )
+    AI_ADVISOR_SECURITY_MODELS = _json_str_list_env(
+        "AI_ADVISOR_SECURITY_MODELS_JSON",
+        default=["claude-opus-4-5", "gpt-4o", "claude-sonnet", "gemini-2.0-flash-thinking"]
+    )
+    AI_ADVISOR_PLANNING_MODELS = _json_str_list_env(
+        "AI_ADVISOR_PLANNING_MODELS_JSON",
+        default=["gemini-2.0-flash-thinking", "claude-sonnet", "gpt-4o", "qwen-max"]
+    )
+    AI_ADVISOR_TRADEOFF_MODELS = _json_str_list_env(
+        "AI_ADVISOR_TRADEOFF_MODELS_JSON",
+        default=["gpt-4o", "claude-sonnet", "gemini-2.0-flash-thinking", "qwen-max"]
+    )
+    AI_ADVISOR_AMBIGUITY_MODELS = _json_str_list_env(
+        "AI_ADVISOR_AMBIGUITY_MODELS_JSON",
+        default=["claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking", "qwen-max"]
+    )
+
+    # Global fallback chain (used if decision-type specific chain exhausted)
+    AI_ADVISOR_GLOBAL_FALLBACKS = _json_str_list_env(
+        "AI_ADVISOR_GLOBAL_FALLBACKS_JSON",
         default=["claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking", "qwen-max", "deepseek-r1"]
     )
+
+    # Legacy single-model overrides (deprecated in favor of ranked chains above)
+    AI_ADVISOR_ARCHITECTURE_MODEL = os.getenv("AI_ADVISOR_ARCHITECTURE_MODEL", "").strip()
+    AI_ADVISOR_SECURITY_MODEL = os.getenv("AI_ADVISOR_SECURITY_MODEL", "").strip()
+    AI_ADVISOR_PLANNING_MODEL = os.getenv("AI_ADVISOR_PLANNING_MODEL", "").strip()
+    AI_ADVISOR_TRADEOFF_MODEL = os.getenv("AI_ADVISOR_TRADEOFF_MODEL", "").strip()
+    AI_ADVISOR_AMBIGUITY_MODEL = os.getenv("AI_ADVISOR_AMBIGUITY_MODEL", "").strip()
+
     # Local advisor support for fully local deployments
     AI_ADVISOR_LOCAL_MODEL = os.getenv("AI_ADVISOR_LOCAL_MODEL", "deepseek-r1").strip()
     AI_ADVISOR_LOCAL_URL = os.getenv("AI_ADVISOR_LOCAL_URL", LLAMA_CPP_REASONING_URL or "").strip()
