@@ -951,6 +951,7 @@ async def route_search(
         if generate_response and llama_cpp_client:
             discovery_context = capability_discovery.format_context(_cap_disc)
             runtime_context = "\n\n".join(_runtime_context_blocks(context))
+            retrieval_summary_text = response_text
             combined_context = "\n\n".join(
                 part for part in (response_text, runtime_context, discovery_context) if part
             ).strip()
@@ -1108,6 +1109,12 @@ async def route_search(
                     llm_resp.raise_for_status()
                     llm_json = llm_resp.json()
                     response_text = llm_json["choices"][0]["message"]["content"]
+                    if selected_backend == "local" and not str(response_text or "").strip() and retrieval_summary_text:
+                        response_text = retrieval_summary_text
+                        results["synthesis_fallback"] = {
+                            "reason": "empty_local_response_retrieval_summary",
+                            "original_backend": "local",
+                        }
                     usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
                     cached_tokens = int(
                     usage.get("cached_tokens")
@@ -1156,6 +1163,12 @@ async def route_search(
                             llm_resp.raise_for_status()
                             llm_json = llm_resp.json()
                             response_text = llm_json["choices"][0]["message"]["content"]
+                            if not str(response_text or "").strip() and retrieval_summary_text:
+                                response_text = retrieval_summary_text
+                                results["synthesis_fallback"] = {
+                                    "reason": "empty_local_response_retrieval_summary",
+                                    "original_backend": "local",
+                                }
                             usage = llm_json.get("usage", {}) if isinstance(llm_json, dict) else {}
                             cached_tokens = int(
                                 usage.get("cached_tokens")
