@@ -44,7 +44,7 @@ Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS = 220
 Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP = 96
 Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT = 80
 Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING = 96
-Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = 96
+Config.AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = 48
 Config.AI_CONTEXT_MAX_TOKENS = 1200
 Config.AI_CONTEXT_MAX_TOKENS_LOOKUP = 240
 Config.AI_CONTEXT_MAX_TOKENS_FORMAT = 320
@@ -399,6 +399,7 @@ class TestCollectionSelectionHelpers:
     def test_local_budget_helpers_use_task_specific_caps(self):
         assert route_handler._local_response_budget("lookup") == 96
         assert route_handler._local_response_budget("reasoning") == 96
+        assert route_handler._local_response_budget("synthesize") == 48
         assert route_handler._context_budget_for_task("format") == 320
         assert route_handler._context_budget_for_task("synthesize") == 720
 
@@ -850,6 +851,69 @@ class TestGeneratedResponsePaths:
 
         assert result["backend"] == "local"
         assert result["backend_reason_class"] == "remote_4xx_local_fallback"
+
+    def test_route_search_uses_retrieval_summary_when_local_response_is_empty(self):
+        asyncio.run(self._run_route_search_uses_retrieval_summary_when_local_response_is_empty())
+
+    async def _run_route_search_uses_retrieval_summary_when_local_response_is_empty(self):
+        original_build_local_system_prompt = getattr(Config, "build_local_system_prompt", None)
+        original_timeout = getattr(Config, "LLAMA_CPP_INFERENCE_TIMEOUT", 5.0)
+        original_compression = getattr(Config, "AI_CONTEXT_COMPRESSION_ENABLED", False)
+        original_classification = getattr(Config, "AI_TASK_CLASSIFICATION_ENABLED", False)
+        Config.build_local_system_prompt = staticmethod(lambda: "")
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = 5.0
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = False
+        Config.AI_TASK_CLASSIFICATION_ENABLED = False
+
+        class EmptyResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": ""}}],
+                    "usage": {"cached_tokens": 0},
+                }
+
+        class EmptyClient:
+            async def post(self, path, headers=None, json=None, timeout=None):
+                return EmptyResponse()
+
+        hybrid_search_fn = AsyncMock(return_value={
+            "keyword_results": [],
+            "semantic_results": [],
+            "combined_results": [{"score": 0.9, "text": "important context"}],
+        })
+
+        with patch.object(route_handler, "_hybrid_search", hybrid_search_fn):
+            with patch.object(route_handler, "_summarize", MagicMock(return_value="retrieval summary fallback")):
+                with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                    with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                        with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                            with patch.object(route_handler, "_llama_cpp_client_ref", return_value=EmptyClient()):
+                                with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=None):
+                                    with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                        with patch.object(route_handler, "ROUTE_DECISIONS", MagicMock()):
+                                            with patch.object(route_handler, "ROUTE_ERRORS", MagicMock()):
+                                                with patch.object(route_handler, "LLM_BACKEND_SELECTIONS", MagicMock()):
+                                                    with patch.object(route_handler, "LLM_BACKEND_LATENCY", MagicMock()):
+                                                        with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                            with patch.object(route_handler, "_injection_scanner", MagicMock()) as patched_injection_scanner:
+                                                                patched_injection_scanner.filter_results = MagicMock(return_value=([], 0))
+                                                                result = await route_handler.route_search(
+                                                                    query="what reduces repeated query latency in the local route stack",
+                                                                    mode="hybrid",
+                                                                    generate_response=True,
+                                                                )
+
+        if original_build_local_system_prompt is not None:
+            Config.build_local_system_prompt = original_build_local_system_prompt
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = original_timeout
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = original_compression
+        Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        assert result["response"] == "retrieval summary fallback"
+        assert result["results"]["synthesis_fallback"]["reason"] == "empty_local_response_retrieval_summary"
 
     def test_route_search_treats_aliased_reasoning_client_as_default_lane(self):
         asyncio.run(self._run_route_search_treats_aliased_reasoning_client_as_default_lane())
