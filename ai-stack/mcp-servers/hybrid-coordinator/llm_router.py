@@ -148,12 +148,14 @@ class LLMRouter:
                 task_success BOOLEAN,
                 time_to_consult_ms INTEGER,
                 question TEXT,
-                guidance_summary TEXT
+                guidance_summary TEXT,
+                fallback_rank INTEGER DEFAULT 0
             );
 
             CREATE INDEX IF NOT EXISTS idx_advisor_task_id ON advisor_consultations(task_id);
             CREATE INDEX IF NOT EXISTS idx_advisor_decision_type ON advisor_consultations(decision_type);
             CREATE INDEX IF NOT EXISTS idx_advisor_timestamp ON advisor_consultations(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_advisor_fallback_rank ON advisor_consultations(fallback_rank);
         """)
         conn.commit()
         conn.close()
@@ -596,6 +598,8 @@ Consider edge cases and provide reasoning.
         """
         Consult advisor for guidance on decision point.
 
+        Uses ranked fallback chain - tries each model in order until one succeeds.
+
         The advisor provides:
         - Plan/approach recommendation
         - Corrections to executor's approach
@@ -614,7 +618,8 @@ Consider edge cases and provide reasoning.
                 "reasoning": str,
                 "model": str,
                 "tokens": int,
-                "cost": float
+                "cost": float,
+                "fallback_rank": int,  # 0 = primary, 1 = first fallback, etc.
             }
         """
         start_time = datetime.now()
@@ -622,51 +627,78 @@ Consider edge cases and provide reasoning.
         # Build advisor prompt
         advisor_prompt = self._build_advisor_prompt(decision_point)
 
-        # Determine advisor model based on decision type (with fallbacks)
-        advisor_model = self._select_advisor_model(decision_point.decision_type)
+        # Get ranked fallback chain for this decision type
+        advisor_models = self._get_advisor_model_chain(decision_point.decision_type)
         advisor_endpoint = getattr(Config, "AI_ADVISOR_ENDPOINT", "switchboard") if Config else "switchboard"
         max_tokens = getattr(Config, "AI_ADVISOR_TOKEN_BUDGET", 700) if Config else 700
 
-        # Execute advisor call
-        try:
-            if advisor_endpoint == "local" or advisor_endpoint == "switchboard":
-                # Use coordinator delegation for local or switchboard
-                advisor_response = await self._advisor_via_coordinator(
-                    advisor_prompt,
-                    advisor_model,
-                    max_tokens
-                )
-            else:
-                # Direct API call for remote advisors (future implementation)
-                advisor_response = await self._advisor_via_coordinator(
-                    advisor_prompt,
-                    advisor_model,
-                    max_tokens
+        # Try each model in the ranked chain until one succeeds
+        last_error = None
+        for fallback_rank, advisor_model in enumerate(advisor_models):
+            try:
+                logger.info(
+                    f"Attempting advisor consultation with {advisor_model} "
+                    f"(rank {fallback_rank}, decision_type={decision_point.decision_type})"
                 )
 
-            response_time = (datetime.now() - start_time).total_seconds() * 1000
+                # Execute advisor call
+                if advisor_endpoint == "local" or advisor_endpoint == "switchboard":
+                    advisor_response = await self._advisor_via_coordinator(
+                        advisor_prompt,
+                        advisor_model,
+                        max_tokens
+                    )
+                else:
+                    advisor_response = await self._advisor_via_coordinator(
+                        advisor_prompt,
+                        advisor_model,
+                        max_tokens
+                    )
 
-            # Parse advisor response
-            guidance = self._parse_advisor_response(advisor_response)
+                response_time = (datetime.now() - start_time).total_seconds() * 1000
 
-            # Record advisor consultation
-            self._record_advisor_consultation(
-                task_id=decision_point.task_id,
-                decision_type=decision_point.decision_type,
-                executor_tier=executor_tier,
-                executor_model=executor_model,
-                advisor_model=advisor_model,
-                advisor_tokens=len(advisor_response.split()) * 1.3,  # Rough token estimate
-                time_to_consult_ms=int(response_time),
-                question=decision_point.question,
-                guidance_summary=guidance.get("guidance", "")[:500]
-            )
+                # Parse advisor response
+                guidance = self._parse_advisor_response(advisor_response)
+                guidance["model"] = advisor_model
+                guidance["fallback_rank"] = fallback_rank
 
-            return guidance
+                # Record successful advisor consultation
+                self._record_advisor_consultation(
+                    task_id=decision_point.task_id,
+                    decision_type=decision_point.decision_type,
+                    executor_tier=executor_tier,
+                    executor_model=executor_model,
+                    advisor_model=advisor_model,
+                    advisor_tokens=len(advisor_response.split()) * 1.3,
+                    time_to_consult_ms=int(response_time),
+                    question=decision_point.question,
+                    guidance_summary=guidance.get("guidance", "")[:500],
+                    fallback_rank=fallback_rank
+                )
 
-        except Exception as e:
-            logger.error(f"Advisor consultation failed: {e}")
-            raise
+                logger.info(
+                    f"Advisor consultation succeeded with {advisor_model} "
+                    f"(rank {fallback_rank}, time={int(response_time)}ms)"
+                )
+
+                return guidance
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"Advisor {advisor_model} (rank {fallback_rank}) failed: {e}. "
+                    f"{'Trying next fallback...' if fallback_rank < len(advisor_models) - 1 else 'No more fallbacks.'}"
+                )
+                continue
+
+        # All models in the chain failed
+        logger.error(
+            f"All advisor models failed for {decision_point.decision_type}. "
+            f"Tried: {', '.join(advisor_models)}. Last error: {last_error}"
+        )
+        raise Exception(
+            f"All {len(advisor_models)} advisor models failed. Last error: {last_error}"
+        )
 
     async def _advisor_via_coordinator(
         self,
@@ -728,56 +760,77 @@ Consider edge cases and provide reasoning.
             raise Exception("Advisor coordinator returned no response text")
         return response_text
 
-    def _select_advisor_model(self, decision_type: str) -> str:
+    def _get_advisor_model_chain(self, decision_type: str) -> List[str]:
         """
-        Select appropriate advisor model based on decision type.
+        Get ranked fallback chain of advisor models for a decision type.
 
-        Supports decision-type specific routing with fallbacks:
-        1. Check for decision-type specific override (e.g., AI_ADVISOR_SECURITY_MODEL)
-        2. Fall back to primary advisor model (AI_ADVISOR_MODEL)
-        3. Fall back to fallback list (AI_ADVISOR_FALLBACK_MODELS)
+        Returns a list of 3-4 models to try in order. Strategy:
+        1. Decision-type specific ranked chain (e.g., AI_ADVISOR_SECURITY_MODELS)
+        2. Legacy single model override (e.g., AI_ADVISOR_SECURITY_MODEL) - prepended if set
+        3. Primary advisor model (AI_ADVISOR_MODEL) - added if not in chain
+        4. Global fallback chain (AI_ADVISOR_GLOBAL_FALLBACKS)
 
         Args:
             decision_type: Type of decision (architecture, security, planning, etc.)
 
         Returns:
-            Model name to use for advisor
+            List of model names to try in ranked order (3-4 models)
         """
         if not Config:
-            return "claude-opus-4-5"
+            return ["claude-opus-4-5", "claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking"]
 
-        # Decision-type specific models
-        decision_model_map = {
+        chain = []
+
+        # Decision-type specific ranked chains
+        decision_chain_map = {
+            "architecture": "AI_ADVISOR_ARCHITECTURE_MODELS",
+            "security": "AI_ADVISOR_SECURITY_MODELS",
+            "planning": "AI_ADVISOR_PLANNING_MODELS",
+            "tradeoff": "AI_ADVISOR_TRADEOFF_MODELS",
+            "ambiguity": "AI_ADVISOR_AMBIGUITY_MODELS",
+        }
+
+        # Get decision-specific ranked chain
+        chain_key = decision_chain_map.get(decision_type)
+        if chain_key:
+            decision_chain = getattr(Config, chain_key, [])
+            if decision_chain:
+                chain.extend(decision_chain)
+                logger.debug(f"Using ranked chain for {decision_type}: {decision_chain}")
+
+        # Legacy single model override (prepend if set and not already in chain)
+        legacy_model_map = {
             "architecture": "AI_ADVISOR_ARCHITECTURE_MODEL",
             "security": "AI_ADVISOR_SECURITY_MODEL",
             "planning": "AI_ADVISOR_PLANNING_MODEL",
             "tradeoff": "AI_ADVISOR_TRADEOFF_MODEL",
             "ambiguity": "AI_ADVISOR_AMBIGUITY_MODEL",
         }
+        legacy_key = legacy_model_map.get(decision_type)
+        if legacy_key:
+            legacy_model = getattr(Config, legacy_key, "").strip()
+            if legacy_model and legacy_model not in chain:
+                chain.insert(0, legacy_model)
+                logger.debug(f"Prepending legacy override: {legacy_model}")
 
-        # Try decision-specific model first
-        env_key = decision_model_map.get(decision_type)
-        if env_key:
-            specific_model = getattr(Config, env_key, "").strip()
-            if specific_model:
-                logger.info(f"Using decision-specific advisor: {specific_model} for {decision_type}")
-                return specific_model
-
-        # Fall back to primary advisor model
+        # Add primary advisor model if not already in chain
         primary_model = getattr(Config, "AI_ADVISOR_MODEL", "").strip()
-        if primary_model:
-            logger.info(f"Using primary advisor: {primary_model} for {decision_type}")
-            return primary_model
+        if primary_model and primary_model not in chain:
+            chain.append(primary_model)
 
-        # Fall back to first available fallback model
-        fallback_models = getattr(Config, "AI_ADVISOR_FALLBACK_MODELS", [])
-        if fallback_models and len(fallback_models) > 0:
-            logger.info(f"Using fallback advisor: {fallback_models[0]} for {decision_type}")
-            return fallback_models[0]
+        # Add global fallbacks (deduped)
+        global_fallbacks = getattr(Config, "AI_ADVISOR_GLOBAL_FALLBACKS", [])
+        for model in global_fallbacks:
+            if model and model not in chain:
+                chain.append(model)
 
-        # Ultimate fallback
-        logger.warning(f"No advisor model configured, using default: claude-opus-4-5")
-        return "claude-opus-4-5"
+        # Ensure we have at least one model
+        if not chain:
+            logger.warning("No advisor models configured, using default chain")
+            chain = ["claude-opus-4-5", "claude-sonnet", "gpt-4o", "gemini-2.0-flash-thinking"]
+
+        logger.info(f"Advisor chain for {decision_type}: {chain[:4]} ({len(chain)} total)")
+        return chain
 
     def _build_advisor_prompt(self, decision_point: DecisionPoint) -> str:
         """Build focused prompt for advisor consultation."""
@@ -844,7 +897,8 @@ Keep response under 500 words."""
         time_to_consult_ms: int,
         question: str,
         guidance_summary: str,
-        task_success: bool = None
+        task_success: bool = None,
+        fallback_rank: int = 0
     ):
         """Record advisor consultation for metrics."""
         # Estimate advisor cost (rough approximation)
@@ -855,12 +909,12 @@ Keep response under 500 words."""
             INSERT INTO advisor_consultations
             (task_id, decision_type, executor_tier, executor_model, advisor_model,
              advisor_tokens, advisor_cost, time_to_consult_ms, question, guidance_summary,
-             task_success)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             task_success, fallback_rank)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             task_id, decision_type, executor_tier, executor_model, advisor_model,
             int(advisor_tokens), advisor_cost, time_to_consult_ms, question, guidance_summary,
-            task_success
+            task_success, fallback_rank
         ))
         conn.commit()
         conn.close()
@@ -1012,6 +1066,22 @@ Keep response under 500 words."""
 
         consultation_rate = (total_consultations / total_tasks * 100) if total_tasks > 0 else 0
 
+        # Fallback usage statistics
+        cursor = conn.execute("""
+            SELECT fallback_rank, COUNT(*) as count
+            FROM advisor_consultations
+            GROUP BY fallback_rank
+            ORDER BY fallback_rank
+        """)
+        fallback_usage = {f"rank_{row[0]}": row[1] for row in cursor}
+
+        # Primary vs fallback success rate
+        primary_count = fallback_usage.get("rank_0", 0)
+        fallback_count = total_consultations - primary_count
+        primary_success_rate = (primary_count / total_consultations * 100) if total_consultations > 0 else 0
+
+        conn.close()
+
         return {
             "advisor_enabled": True,
             "total_consultations": total_consultations,
@@ -1022,7 +1092,10 @@ Keep response under 500 words."""
             "total_advisor_cost_usd": total_advisor_cost,
             "total_advisor_tokens": int(total_tokens),
             "avg_tokens_per_consultation": int(total_tokens / total_consultations) if total_consultations > 0 else 0,
-            "task_success_rate_percent": success_rate
+            "task_success_rate_percent": success_rate,
+            "fallback_usage": fallback_usage,
+            "primary_success_rate_percent": primary_success_rate,
+            "fallback_rate_percent": (fallback_count / total_consultations * 100) if total_consultations > 0 else 0
         }
 
 
