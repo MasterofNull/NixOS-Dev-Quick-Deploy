@@ -617,6 +617,49 @@ class TestRouteHeuristicHelpers:
         assert route_handler._prompt_instruction_for_lane_reason("deep_reasoning_lane") == "Provide a concise response using the context."
         assert route_handler._use_classifier_optimized_prompt(None, "deep_reasoning_lane") is False
 
+    def test_compact_local_response_helpers_avoid_tree_fanout_for_short_queries(self):
+        original_classifier = route_handler.task_classifier.classify
+        original_collections = dict(route_handler._COLLECTIONS)
+        try:
+            route_handler._COLLECTIONS = {
+                "codebase-context": {},
+                "error-solutions": {},
+                "best-practices": {},
+                "skills-patterns": {},
+            }
+            route_handler.task_classifier.classify = MagicMock(
+                side_effect=[
+                    SimpleNamespace(task_type="synthesize", remote_required=False),
+                    SimpleNamespace(task_type="reasoning", remote_required=True),
+                    SimpleNamespace(task_type="synthesize", remote_required=False),
+                ]
+            )
+            assert route_handler._prefer_compact_local_response_route(
+                "what reduces repeated query latency in the local route stack",
+                token_count=9,
+                context=None,
+                generate_response=True,
+            ) is True
+            assert route_handler._prefer_compact_local_response_route(
+                "compare the long-term routing architecture tradeoffs across the whole stack",
+                token_count=10,
+                context=None,
+                generate_response=True,
+            ) is False
+
+            compact = route_handler._select_route_collections(
+                "what reduces repeated query latency in the local route stack",
+                route="hybrid",
+                context=None,
+                generate_response=True,
+            )
+        finally:
+            route_handler.task_classifier.classify = original_classifier
+            route_handler._COLLECTIONS = original_collections
+
+        assert compact["profile"] == "response-compact"
+        assert len(compact["collections"]) == 2
+
 
 class TestGeneratedResponsePaths:
     """Exercise local synthesis branches for measurable coverage lift."""
