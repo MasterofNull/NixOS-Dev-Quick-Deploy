@@ -133,10 +133,16 @@ def _result_file_hint(payload: Dict[str, Any]) -> str:
         return direct
     files_changed = payload.get("files_changed")
     if isinstance(files_changed, list):
+        fallback = ""
         for entry in files_changed:
             compact = _compact_summary_text(entry, max_len=72)
-            if compact:
+            if not compact:
+                continue
+            fallback = fallback or compact
+            lowered = compact.lower()
+            if not any(marker in lowered for marker in (".agent/", ".agents/", "docs/", "readme.md", "primer", "workflow")):
                 return compact
+        return fallback
     return ""
 
 

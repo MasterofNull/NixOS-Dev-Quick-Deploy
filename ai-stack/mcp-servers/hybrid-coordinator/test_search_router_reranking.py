@@ -161,3 +161,126 @@ def test_rerank_combined_results_uses_files_changed_as_path_signal():
     )
 
     assert reranked[0]["id"] == "generic"
+
+
+def test_keyword_match_score_penalizes_docs_only_hits_for_technical_queries():
+    docs_heavy = {
+        "payload": {
+            "commit_subject": "docs(agent): add git workflow discipline to local agent primer",
+            "files_changed": [".agent/LOCAL-AGENT-HARNESS-PRIMER.md"],
+            "diff_preview": "document local workflow discipline and primer guidance",
+        },
+        "source": "keyword",
+    }
+    technical = {
+        "payload": {
+            "commit_subject": "feat(harness): execute local agent teams in parallel",
+            "files_changed": [
+                "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+            ],
+            "diff_preview": "improve local routing and query execution for hybrid coordinator cache behavior",
+        },
+        "source": "keyword",
+    }
+
+    docs_matched, docs_score = search_router.keyword_match_score(
+        "local routing cache query latency",
+        docs_heavy,
+    )
+    tech_matched, tech_score = search_router.keyword_match_score(
+        "local routing cache query latency",
+        technical,
+    )
+
+    assert docs_matched is True
+    assert tech_matched is True
+    assert tech_score > docs_score
+
+
+def test_keyword_match_score_prefers_keyword_hints_for_runtime_terms():
+    matched, score = search_router.keyword_match_score(
+        "switchboard routing cache",
+        {
+            "payload": {
+                "commit_subject": "feat: tune runtime behavior",
+                "keyword_hints": ["switchboard", "routing", "cache", "hybrid-coordinator"],
+                "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/http_server.py"],
+            },
+            "source": "keyword",
+        },
+    )
+
+    assert matched is True
+    assert score > 1.5
+
+
+def test_keyword_match_score_penalizes_doc_heavy_mixed_commits():
+    mixed = {
+        "payload": {
+            "commit_subject": "feat(harness): execute local agent teams in parallel",
+            "files_changed": [
+                ".agent/LOCAL-AGENT-HARNESS-PRIMER.md",
+                ".agents/plans/phase-2-workflow-engine.md",
+                "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
+            ],
+            "diff_preview": "route query cache local latency improvements",
+        },
+        "source": "keyword",
+    }
+    focused = {
+        "payload": {
+            "commit_subject": "feat: improve route search cache behavior",
+            "files_changed": [
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+            ],
+            "diff_preview": "route query cache local latency improvements",
+        },
+        "source": "keyword",
+    }
+
+    mixed_matched, mixed_score = search_router.keyword_match_score(
+        "local routing cache query latency",
+        mixed,
+    )
+    focused_matched, focused_score = search_router.keyword_match_score(
+        "local routing cache query latency",
+        focused,
+    )
+
+    assert mixed_matched is True
+    assert focused_matched is True
+    assert focused_score > mixed_score
+
+
+def test_keyword_match_score_penalizes_validation_noise_for_technical_queries():
+    noisy = {
+        "payload": {
+            "commit_subject": "fix: tune route handler retrieval quality",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"],
+            "diff_preview": "run pytest tier0-validation-gate --pre-commit after route cache change",
+        },
+        "source": "keyword",
+    }
+    focused = {
+        "payload": {
+            "commit_subject": "fix: tune route handler retrieval quality",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"],
+            "diff_preview": "reduce route cache latency by compacting retrieval context",
+        },
+        "source": "keyword",
+    }
+
+    noisy_matched, noisy_score = search_router.keyword_match_score(
+        "route cache latency",
+        noisy,
+    )
+    focused_matched, focused_score = search_router.keyword_match_score(
+        "route cache latency",
+        focused,
+    )
+
+    assert noisy_matched is True
+    assert focused_matched is True
+    assert focused_score > noisy_score

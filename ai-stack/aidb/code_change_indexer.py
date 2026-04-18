@@ -25,6 +25,32 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 
 logger = logging.getLogger(__name__)
 
+_STOPWORD_HINTS = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "when", "then",
+    "feat", "fix", "docs", "chore", "refactor", "test", "perf", "build", "ci",
+}
+_DOC_PATH_MARKERS = (
+    ".agent/",
+    ".agents/",
+    "docs/",
+    "readme.md",
+    "primer",
+    "workflow",
+    "roadmap",
+)
+_VALIDATION_NOISE_HINTS = {
+    "py_compile",
+    "pytest",
+    "pre-commit",
+    "pre-deploy",
+    "tier0-validation-gate",
+    "repo-structure-lint",
+    "nix-instantiate",
+    "bash -n",
+    "aq-qa",
+    "validation",
+}
+
 
 class CodeChangeIndexer:
     """Indexes code changes from git history into vector embeddings."""
@@ -330,6 +356,38 @@ class CodeChangeIndexer:
 
         return "other"
 
+    def build_keyword_hints(self, commit: Dict[str, Any], files: List[str], diff: str) -> List[str]:
+        """Build compact lexical hints to improve later keyword ranking."""
+        hints: List[str] = []
+        for file_path in files[:8]:
+            path = str(file_path).strip()
+            if not path:
+                continue
+            hints.append(path)
+            lowered_path = path.lower()
+            if any(marker in lowered_path for marker in _DOC_PATH_MARKERS):
+                continue
+            hints.extend(part for part in re.split(r"[/_.-]+", lowered_path) if len(part) >= 3)
+
+        subject = " ".join(str(commit.get("subject", "")).lower().split())
+        body = " ".join(str(commit.get("body", "")).lower().split())
+        diff_preview = " ".join(str(diff or "").lower().split())[:600]
+        for source in (subject, body, diff_preview):
+            for token in re.findall(r"[a-z0-9_/-]{3,}", source):
+                if token in _STOPWORD_HINTS or token in _VALIDATION_NOISE_HINTS:
+                    continue
+                if any(marker in token for marker in _DOC_PATH_MARKERS):
+                    continue
+                hints.append(token)
+
+        deduped: List[str] = []
+        for hint in hints:
+            normalized = hint.strip()
+            if not normalized or normalized in deduped:
+                continue
+            deduped.append(normalized)
+        return deduped[:40]
+
     def create_change_text(self, commit: Dict[str, Any], diff: str, files: List[str]) -> str:
         """
         Create searchable text from code change data.
@@ -407,6 +465,7 @@ class CodeChangeIndexer:
             "num_files": len(files),
             "category": self.categorize_change(commit, files),
             "diff_preview": diff[:500],  # Store small preview
+            "keyword_hints": self.build_keyword_hints(commit, files, diff),
         }
 
         # Store in Qdrant

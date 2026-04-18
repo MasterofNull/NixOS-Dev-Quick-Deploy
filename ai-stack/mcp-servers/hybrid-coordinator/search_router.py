@@ -46,6 +46,28 @@ _GENERIC_RESULT_LABELS = {
     "unknown",
 }
 _CONVENTIONAL_COMMIT_PREFIX = re.compile(r"^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([^)]*\))?:", re.IGNORECASE)
+_TECHNICAL_QUERY_TOKENS = {
+    "route", "routing", "router", "query", "cache", "cached", "latency", "prompt",
+    "context", "retrieval", "rag", "switchboard", "hybrid", "coordinator",
+    "llm", "model", "local", "runtime", "http", "server", "search",
+}
+_TECHNICAL_PATH_TOKENS = {
+    "route_handler", "search_router", "http_server", "switchboard", "hybrid-coordinator",
+    "llm_client", "semantic_cache", "cache", "routing", "retrieval", "query",
+}
+_DOC_PATH_MARKERS = (".agent/", ".agents/", "docs/", "README.md", "primer", "workflow")
+_VALIDATION_NOISE_TOKENS = (
+    "py_compile",
+    "pytest",
+    "tier0-validation-gate",
+    "repo-structure-lint",
+    "nix-instantiate",
+    "bash -n",
+    "aq-qa",
+    "validation gate",
+    "pre-commit",
+    "pre-deploy",
+)
 
 
 # ============================================================================
@@ -116,6 +138,122 @@ def _joined_file_hints(payload: Dict[str, Any]) -> str:
     return " ".join(hints)
 
 
+def _payload_content_text(item: Dict[str, Any], payload: Dict[str, Any]) -> str:
+    return (
+        item.get("content")
+        or item.get("text")
+        or payload.get("content")
+        or payload.get("usage_pattern")
+        or payload.get("diff_preview")
+        or ""
+    )
+
+
+def _query_is_technical(tokens: List[str]) -> bool:
+    return any(token in _TECHNICAL_QUERY_TOKENS for token in tokens)
+
+
+def _path_category_counts(payload: Dict[str, Any]) -> Tuple[int, int]:
+    code_paths = 0
+    doc_paths = 0
+    seen: List[str] = []
+    direct = payload.get("file_path") or payload.get("relative_path")
+    if isinstance(direct, str) and direct.strip():
+        seen.append(direct.strip())
+    files_changed = payload.get("files_changed")
+    if isinstance(files_changed, list):
+        seen.extend(str(entry).strip() for entry in files_changed[:8] if str(entry).strip())
+    for path in seen:
+        lowered = path.lower()
+        if any(marker.lower() in lowered for marker in _DOC_PATH_MARKERS):
+            doc_paths += 1
+        elif lowered.endswith((".py", ".nix", ".sh", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml")):
+            code_paths += 1
+    return code_paths, doc_paths
+
+
+def _preferred_file_hint(payload: Dict[str, Any]) -> str:
+    candidates: List[str] = []
+    direct = payload.get("file_path") or payload.get("relative_path")
+    if isinstance(direct, str) and direct.strip():
+        candidates.append(direct.strip())
+    files_changed = payload.get("files_changed")
+    if isinstance(files_changed, list):
+        candidates.extend(str(entry).strip() for entry in files_changed[:8] if str(entry).strip())
+    if not candidates:
+        return ""
+    for path in candidates:
+        lowered = path.lower()
+        if not any(marker.lower() in lowered for marker in _DOC_PATH_MARKERS):
+            return path
+    return candidates[0]
+
+
+def _validation_noise_count(text: Any) -> int:
+    normalized = str(text or "").lower()
+    if not normalized:
+        return 0
+    return sum(1 for token in _VALIDATION_NOISE_TOKENS if token in normalized)
+
+
+def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
+    tokens = normalize_tokens(query)
+    payload = item.get("payload") or {}
+    if not tokens or not isinstance(payload, dict):
+        return False, 0.0
+
+    title_text = (
+        payload.get("commit_subject")
+        or payload.get("title")
+        or payload.get("name")
+        or payload.get("skill_name")
+        or payload.get("error_type")
+        or ""
+    )
+    path_text = _joined_file_hints(payload)
+    preferred_path = _preferred_file_hint(payload).lower()
+    summary_text = payload.get("summary") or payload.get("description") or payload.get("solution") or ""
+    keyword_hint_text = " ".join(str(part) for part in (payload.get("keyword_hints") or []) if str(part).strip())
+    content_text = _payload_content_text(item, payload)
+
+    title_hits = _match_count(title_text, tokens)
+    path_hits = _match_count(path_text, tokens)
+    summary_hits = _match_count(summary_text, tokens)
+    keyword_hint_hits = _match_count(keyword_hint_text, tokens)
+    content_hits = _match_count(content_text, tokens)
+    lexical_hits = title_hits + path_hits + summary_hits + keyword_hint_hits + content_hits
+    if lexical_hits <= 0:
+        return False, 0.0
+
+    score = (
+        1.2 * path_hits
+        + 0.8 * title_hits
+        + 0.45 * keyword_hint_hits
+        + 0.25 * summary_hits
+        + 0.08 * content_hits
+    )
+
+    code_paths, doc_paths = _path_category_counts(payload)
+    if _query_is_technical(tokens):
+        score += 0.35 * code_paths
+        if doc_paths and code_paths == 0:
+            score -= min(0.9, 0.3 * doc_paths)
+        elif doc_paths > code_paths and code_paths > 0:
+            score -= min(1.8, 0.55 * doc_paths)
+        if any(token in path_text.lower() for token in _TECHNICAL_PATH_TOKENS):
+            score += 0.3
+        if preferred_path and any(token in preferred_path for token in _TECHNICAL_PATH_TOKENS):
+            score += 0.35
+        validation_noise = _validation_noise_count(title_text) + _validation_noise_count(summary_text) + _validation_noise_count(content_text)
+        if validation_noise:
+            score -= min(1.2, 0.3 * validation_noise)
+
+    if _CONVENTIONAL_COMMIT_PREFIX.match(str(title_text or "")) and title_hits == 0 and path_hits == 0:
+        score -= 0.12
+
+    return True, max(score, 0.0)
+
+
 def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Apply lightweight lexical+source-aware rerank over merged retrieval results."""
     tokens = normalize_tokens(query)
@@ -132,7 +270,7 @@ def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dic
         )
         path_text = _joined_file_hints(payload)
         summary_text = payload.get("summary") or payload.get("description") or payload.get("solution") or ""
-        content_text = item.get("content") or item.get("text") or payload.get("content") or payload.get("usage_pattern") or ""
+        content_text = _payload_content_text(item, payload)
 
         title_hits = _match_count(title_text, tokens)
         path_hits = _match_count(path_text, tokens)
@@ -337,7 +475,7 @@ class SearchRouter:
                         Config.AI_ROUTE_COLLECTION_KEYWORD_TIMEOUT_SECONDS,
                     )
                     for point in points:
-                        matched, score = payload_matches_tokens(point.payload or {}, tokens)
+                        matched, score = keyword_match_score(query, {"payload": point.payload or {}, "source": "keyword"})
                         if not matched:
                             continue
                         col_keyword.append({

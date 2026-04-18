@@ -659,11 +659,18 @@ def _compact_result_line(item: Dict[str, Any]) -> str:
 
     files_changed = payload.get("files_changed")
     changed_file_hint = ""
+    fallback_hint = ""
     if isinstance(files_changed, list):
         for entry in files_changed:
-            changed_file_hint = _compact_text(entry, max_chars=72)
-            if changed_file_hint:
+            candidate = _compact_text(entry, max_chars=72)
+            if not candidate:
+                continue
+            fallback_hint = fallback_hint or candidate
+            lowered = candidate.lower()
+            if not any(marker in lowered for marker in (".agent/", ".agents/", "docs/", "readme.md", "primer", "workflow")):
+                changed_file_hint = candidate
                 break
+    changed_file_hint = changed_file_hint or fallback_hint
 
     title = _compact_text(
         payload.get("commit_subject")
