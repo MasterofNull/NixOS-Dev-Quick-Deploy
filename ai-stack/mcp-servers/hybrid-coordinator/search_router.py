@@ -159,6 +159,11 @@ def _joined_file_hints(payload: Dict[str, Any]) -> str:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             hints.append(value.strip())
+    owner_paths = payload.get("owner_paths")
+    if isinstance(owner_paths, list):
+        for entry in owner_paths[:4]:
+            if isinstance(entry, str) and entry.strip():
+                hints.append(entry.strip())
     files_changed = payload.get("files_changed")
     if isinstance(files_changed, list):
         for entry in files_changed[:6]:
@@ -206,6 +211,9 @@ def _preferred_file_hint(payload: Dict[str, Any]) -> str:
     direct = payload.get("file_path") or payload.get("relative_path")
     if isinstance(direct, str) and direct.strip():
         candidates.append(direct.strip())
+    owner_paths = payload.get("owner_paths")
+    if isinstance(owner_paths, list):
+        candidates.extend(str(entry).strip() for entry in owner_paths[:4] if str(entry).strip())
     files_changed = payload.get("files_changed")
     if isinstance(files_changed, list):
         candidates.extend(str(entry).strip() for entry in files_changed[:8] if str(entry).strip())
@@ -279,6 +287,14 @@ def _doc_heavy_mixed_path_penalty(payload: Dict[str, Any], preferred_path: str) 
 
 
 def _route_stack_owner_match_bonus(payload: Dict[str, Any]) -> float:
+    owner_paths = payload.get("owner_paths")
+    if isinstance(owner_paths, list):
+        owner_matches = sum(
+            1 for entry in owner_paths[:6]
+            if any(owner in str(entry or "").lower() for owner in _ROUTE_STACK_OWNER_PATHS)
+        )
+        if owner_matches:
+            return min(2.2, 1.4 + 0.35 * max(0, owner_matches - 1))
     files_changed = payload.get("files_changed")
     if not isinstance(files_changed, list):
         direct = str(payload.get("file_path") or payload.get("relative_path") or "").lower()
@@ -355,14 +371,18 @@ def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
     preferred_path = _preferred_file_hint(payload).lower()
     summary_text = payload.get("summary") or payload.get("description") or payload.get("solution") or ""
     keyword_hint_text = " ".join(str(part) for part in (payload.get("keyword_hints") or []) if str(part).strip())
+    owner_hint_text = " ".join(str(part) for part in (payload.get("owner_paths") or []) if str(part).strip())
+    route_stack_hint_text = " ".join(str(part) for part in (payload.get("route_stack_hints") or []) if str(part).strip())
     content_text = _payload_content_text(item, payload)
 
     title_hits = _match_count(title_text, tokens)
     path_hits = _match_count(path_text, tokens)
     summary_hits = _match_count(summary_text, tokens)
     keyword_hint_hits = _match_count(keyword_hint_text, tokens)
+    owner_hint_hits = _match_count(owner_hint_text, tokens)
+    route_stack_hint_hits = _match_count(route_stack_hint_text, tokens)
     content_hits = _match_count(content_text, tokens)
-    lexical_hits = title_hits + path_hits + summary_hits + keyword_hint_hits + content_hits
+    lexical_hits = title_hits + path_hits + summary_hits + keyword_hint_hits + owner_hint_hits + route_stack_hint_hits + content_hits
     if lexical_hits <= 0:
         return False, 0.0
 
@@ -370,6 +390,8 @@ def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
         1.2 * path_hits
         + 0.8 * title_hits
         + 0.45 * keyword_hint_hits
+        + 1.15 * owner_hint_hits
+        + 0.95 * route_stack_hint_hits
         + 0.25 * summary_hits
         + 0.08 * content_hits
     )
