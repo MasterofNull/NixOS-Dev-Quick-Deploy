@@ -722,6 +722,27 @@ class TestRouteHeuristicHelpers:
         assert "A" * 200 not in context_text
         assert len(context_text) <= 240
 
+    def test_should_skip_local_brief_synthesis_only_for_brief_local_safe_queries(self):
+        allowed = route_handler._should_skip_local_brief_synthesis(
+            "briefly explain the current local routing behavior",
+            SimpleNamespace(task_type="synthesize", remote_required=False),
+            "bounded retrieval summary",
+        )
+        denied_reasoning = route_handler._should_skip_local_brief_synthesis(
+            "briefly explain the current routing tradeoffs",
+            SimpleNamespace(task_type="reasoning", remote_required=False),
+            "bounded retrieval summary",
+        )
+        denied_empty = route_handler._should_skip_local_brief_synthesis(
+            "briefly explain the current local routing behavior",
+            SimpleNamespace(task_type="synthesize", remote_required=False),
+            "",
+        )
+
+        assert allowed is True
+        assert denied_reasoning is False
+        assert denied_empty is False
+
 
 class TestGeneratedResponsePaths:
     """Exercise local synthesis branches for measurable coverage lift."""
@@ -888,6 +909,72 @@ class TestGeneratedResponsePaths:
         assert "reduce prompt assembly size" in prompt
         assert "route_handler.py" in prompt
         assert "B" * 200 not in prompt
+
+    def test_route_search_skips_local_llm_for_brief_retrieval_backed_queries(self):
+        asyncio.run(self._run_route_search_skips_local_llm_for_brief_retrieval_backed_queries())
+
+    async def _run_route_search_skips_local_llm_for_brief_retrieval_backed_queries(self):
+        original_build_local_system_prompt = getattr(Config, "build_local_system_prompt", None)
+        original_timeout = getattr(Config, "LLAMA_CPP_INFERENCE_TIMEOUT", 5.0)
+        original_compression = getattr(Config, "AI_CONTEXT_COMPRESSION_ENABLED", False)
+        original_classification = getattr(Config, "AI_TASK_CLASSIFICATION_ENABLED", False)
+        Config.build_local_system_prompt = staticmethod(lambda: "")
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = 5.0
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = False
+        Config.AI_TASK_CLASSIFICATION_ENABLED = True
+
+        class FailIfCalledClient:
+            async def post(self, path, headers=None, json=None, timeout=None):
+                raise AssertionError("local llm should not be called for brief retrieval summary fast path")
+
+        hybrid_search_fn = AsyncMock(return_value={
+            "keyword_results": [],
+            "semantic_results": [],
+            "combined_results": [{"score": 0.9, "text": "important context"}],
+        })
+        fake_complexity = SimpleNamespace(
+            task_type="synthesize",
+            token_estimate=80,
+            local_suitable=True,
+            remote_required=False,
+            reason="within_local_capacity",
+            optimized_prompt="brief optimized prompt",
+        )
+
+        with patch.object(route_handler, "_hybrid_search", hybrid_search_fn):
+            with patch.object(route_handler, "_summarize", MagicMock(return_value="retrieval summary fallback")):
+                with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                    with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                        with patch.object(route_handler.task_classifier, "classify", MagicMock(return_value=fake_complexity)):
+                            with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                                with patch.object(route_handler, "_llama_cpp_client_ref", return_value=FailIfCalledClient()):
+                                    with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=None):
+                                        with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                            with patch.object(route_handler, "ROUTE_DECISIONS", MagicMock()):
+                                                with patch.object(route_handler, "ROUTE_ERRORS", MagicMock()):
+                                                    with patch.object(route_handler, "LLM_BACKEND_SELECTIONS", MagicMock()):
+                                                        with patch.object(route_handler, "LLM_BACKEND_LATENCY", MagicMock()):
+                                                            with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                                with patch.object(route_handler, "_injection_scanner", MagicMock()) as patched_injection_scanner:
+                                                                    patched_injection_scanner.filter_results = MagicMock(return_value=([], 0))
+                                                                    result = await route_handler.route_search(
+                                                                        query="briefly explain the current local routing behavior",
+                                                                        mode="hybrid",
+                                                                        generate_response=True,
+                                                                    )
+
+        if original_build_local_system_prompt is not None:
+            Config.build_local_system_prompt = original_build_local_system_prompt
+        Config.LLAMA_CPP_INFERENCE_TIMEOUT = original_timeout
+        Config.AI_CONTEXT_COMPRESSION_ENABLED = original_compression
+        Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        assert result["response"] == "retrieval summary fallback"
+        assert result["backend"] == "local"
+        assert result["backend_reason_class"] == "brief_local_retrieval_summary"
+        assert result["results"]["synthesis_skipped"] is True
+        assert result["results"]["synthesis_fallback"]["reason"] == "brief_local_retrieval_summary"
+        assert result["local_inference_lane"] == "summary_only"
 
     def test_route_search_falls_back_to_local_after_remote_4xx(self):
         asyncio.run(self._run_route_search_falls_back_to_local_after_remote_4xx())
