@@ -724,6 +724,20 @@ def _build_local_synthesis_context(
     return _compact_text(candidate, max_chars=max_chars)
 
 
+def _should_skip_local_brief_synthesis(
+    query: str,
+    complexity: Optional[task_classifier.TaskComplexity],
+    retrieval_summary_text: str,
+) -> bool:
+    if not _wants_brief_local_response(query):
+        return False
+    if complexity is None or getattr(complexity, "remote_required", False):
+        return False
+    if str(getattr(complexity, "task_type", "") or "").strip().lower() not in {"lookup", "synthesize", "format"}:
+        return False
+    return bool(str(retrieval_summary_text or "").strip())
+
+
 def _prompt_instruction_for_lane_reason(lane_reason: Optional[str]) -> str:
     """Nudge bounded reasoning toward concise local answers without affecting deeper lanes."""
     if str(lane_reason or "").strip().lower() == "bounded_reasoning_default_lane":
@@ -1164,6 +1178,23 @@ async def route_search(
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
                     response_max_tokens = _local_response_budget(_complexity.task_type)
+                    if _should_skip_local_brief_synthesis(query, _complexity, retrieval_summary_text):
+                        response_text = retrieval_summary_text
+                        selected_backend = "local"
+                        backend_reason_class = "brief_local_retrieval_summary"
+                        local_inference_lane = "summary_only"
+                        local_inference_lane_reason = "brief_local_retrieval_summary"
+                        results["synthesis_skipped"] = True
+                        results["task_complexity"] = task_complexity_summary
+                        results["synthesis_fallback"] = {
+                            "reason": "brief_local_retrieval_summary",
+                            "original_backend": "local",
+                        }
+                        LLM_BACKEND_SELECTIONS.labels(
+                            backend=selected_backend,
+                            reason_class=backend_reason_class,
+                        ).inc()
+                        _skip_synthesis = True
             elif not _skip_synthesis:
                 _inference_client = llama_cpp_client
                 local_inference_lane = "default"
