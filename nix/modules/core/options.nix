@@ -1154,6 +1154,7 @@
             - gemma4-e2b: Gemma 4 E2B Instruct (2.3B active, 128K ctx, ~1.5GB Q4)
             - qwen3-4b: Qwen3 4B Instruct (4B, 262K ctx, ~2.5GB Q4)
             - qwen3-8b: Qwen3 8B Instruct (8B, 40K ctx, ~5GB Q4)
+            - qwen3.6-35b: Qwen3.6 35B A3B Instruct (35B/3B active MoE, 262K ctx, ~22GB Q4)
             - phi4-mini: Phi-4 Mini Instruct (3.8B, 128K ctx, ~2.5GB Q4)
           '';
         };
