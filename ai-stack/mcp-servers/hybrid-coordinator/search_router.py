@@ -244,6 +244,19 @@ def _expanded_query_for_search(query: str, tokens: List[str]) -> str:
     return f"{query} {suffix}".strip()
 
 
+def _route_stack_search_params(
+    query: str,
+    tokens: List[str],
+    *,
+    limit: int,
+    keyword_pool: int,
+    score_threshold: float,
+) -> Tuple[int, int, float]:
+    if not _query_targets_route_stack(tokens, query):
+        return limit, keyword_pool, score_threshold
+    return max(limit * 4, 12), max(keyword_pool * 3, 180), min(score_threshold, 0.45)
+
+
 def _doc_heavy_mixed_path_penalty(payload: Dict[str, Any], preferred_path: str) -> float:
     files_changed = payload.get("files_changed")
     if not isinstance(files_changed, list) or len(files_changed) < 2:
@@ -263,6 +276,19 @@ def _doc_heavy_mixed_path_penalty(payload: Dict[str, Any], preferred_path: str) 
     if any(owner in preferred_path for owner in _ROUTE_STACK_OWNER_PATHS):
         return 0.0
     return min(1.1, 0.22 * doc_paths)
+
+
+def _route_stack_owner_match_bonus(payload: Dict[str, Any]) -> float:
+    files_changed = payload.get("files_changed")
+    if not isinstance(files_changed, list):
+        direct = str(payload.get("file_path") or payload.get("relative_path") or "").lower()
+        return 1.1 if any(owner in direct for owner in _ROUTE_STACK_OWNER_PATHS) else 0.0
+    matches = 0
+    for entry in files_changed[:10]:
+        lowered = str(entry or "").lower()
+        if any(owner in lowered for owner in _ROUTE_STACK_OWNER_PATHS):
+            matches += 1
+    return min(1.8, 0.9 + 0.35 * max(0, matches - 1)) if matches else 0.0
 
 
 def _direct_runtime_path_adjustment(tokens: List[str], preferred_path: str, path_text: str) -> float:
@@ -302,6 +328,7 @@ def _route_stack_path_adjustment(query: str, tokens: List[str], payload: Dict[st
         score += 1.35
     elif any(path in lowered_path_text for path in _ROUTE_STACK_OWNER_PATHS):
         score += 0.55
+    score += _route_stack_owner_match_bonus(payload)
 
     if any(path in preferred_path for path in _ROUTE_STACK_DISTRACTOR_PATHS):
         score -= 0.65
@@ -545,6 +572,13 @@ class SearchRouter:
         collections = collections or list(self._collections.keys())
         tokens = normalize_tokens(query)
         expanded_query = _expanded_query_for_search(query, tokens)
+        semantic_limit, effective_keyword_pool, effective_score_threshold = _route_stack_search_params(
+            query,
+            tokens,
+            limit=limit,
+            keyword_pool=keyword_pool,
+            score_threshold=score_threshold,
+        )
         query_embedding = await self._embed(expanded_query)
         expanded_tokens = normalize_tokens(expanded_query)
 
@@ -564,8 +598,8 @@ class SearchRouter:
                     return self._qdrant.query_points(
                         collection_name=collection,
                         query=query_embedding,
-                        limit=limit,
-                        score_threshold=score_threshold,
+                        limit=semantic_limit,
+                        score_threshold=effective_score_threshold,
                     ).points
                 points = await _await_with_timeout(
                     self._call_breaker_safe("qdrant", _query_points),
@@ -588,7 +622,7 @@ class SearchRouter:
                     async def _scroll_points() -> Any:
                         return self._qdrant.scroll(
                             collection_name=collection,
-                            limit=keyword_pool,
+                            limit=effective_keyword_pool,
                             with_payload=True,
                             with_vectors=False,
                         )
