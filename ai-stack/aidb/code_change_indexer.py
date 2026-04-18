@@ -153,26 +153,31 @@ class CodeChangeIndexer:
         # Truncate text to prevent exceeding batch size
         text = self.truncate_text(text)
 
-        try:
-            response = await self.http_client.post(
-                f"{self.embedding_url}/v1/embeddings",
-                json={"input": text},
-            )
-            response.raise_for_status()
-            data = response.json()
+        for attempt in range(1, 4):
+            try:
+                response = await self.http_client.post(
+                    f"{self.embedding_url}/v1/embeddings",
+                    json={"input": text},
+                )
+                response.raise_for_status()
+                data = response.json()
 
-            # Handle different response formats
-            if "data" in data:
-                return data["data"][0]["embedding"]
-            elif "embeddings" in data:
-                return data["embeddings"][0]
-            else:
+                # Handle different response formats
+                if "data" in data:
+                    return data["data"][0]["embedding"]
+                if "embeddings" in data:
+                    return data["embeddings"][0]
                 logger.error(f"Unexpected embedding response format: {data.keys()}")
-                return [0.0] * self.embedding_dim
-
-        except Exception as e:
-            logger.error(f"Failed to generate embedding: {e}")
-            return [0.0] * self.embedding_dim
+                return []
+            except Exception as e:
+                logger.warning(
+                    "embedding_generation_failed attempt=%s error=%s",
+                    attempt,
+                    e,
+                )
+                if attempt < 3:
+                    await asyncio.sleep(0.5 * attempt)
+        return []
 
     def get_git_commits(
         self,

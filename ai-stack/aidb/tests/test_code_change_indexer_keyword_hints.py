@@ -1,6 +1,8 @@
+import asyncio
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 import sys
+import httpx
 
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -94,3 +96,23 @@ def test_build_payload_includes_route_stack_owner_metadata():
     assert "switchboard" in payload["subsystem_tags"]
     assert "route-stack" in payload["route_stack_hints"]
     assert "prompt_cache" in payload["route_stack_hints"]
+
+
+def test_embed_text_returns_empty_after_retries_on_http_error():
+    indexer = CodeChangeIndexer(
+        qdrant_client=Mock(),
+        embedding_service_url="http://localhost:8081",
+        repo_path=".",
+    )
+    response = Mock()
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "boom",
+        request=Mock(),
+        response=Mock(status_code=500),
+    )
+    indexer.http_client.post = AsyncMock(return_value=response)
+
+    embedding = asyncio.run(indexer.embed_text("route stack retrieval"))
+
+    assert embedding == []
+    assert indexer.http_client.post.await_count == 3
