@@ -68,6 +68,14 @@ _VALIDATION_NOISE_TOKENS = (
     "pre-commit",
     "pre-deploy",
 )
+_DIRECT_RUNTIME_PATH_BOOSTS = (
+    (("route", "routing", "router", "query", "retrieval", "search"), ("route_handler.py", "search_router.py"), 0.9),
+    (("cache", "cached", "latency", "prompt", "context"), ("semantic_cache.py", "route_handler.py", "search_router.py"), 0.9),
+    (("switchboard",), ("switchboard.nix", "llm_client.py"), 0.8),
+)
+_BROAD_RUNTIME_PATH_PENALTIES = (
+    (("route", "routing", "query", "cache", "cached", "latency"), ("ai_coordinator.py", "http_server.py"), 0.35),
+)
 
 
 # ============================================================================
@@ -196,6 +204,33 @@ def _validation_noise_count(text: Any) -> int:
     return sum(1 for token in _VALIDATION_NOISE_TOKENS if token in normalized)
 
 
+def _direct_runtime_path_adjustment(tokens: List[str], preferred_path: str, path_text: str) -> float:
+    if not tokens:
+        return 0.0
+    token_set = set(tokens)
+    lowered_path_text = path_text.lower()
+    score = 0.0
+
+    for query_terms, preferred_paths, boost in _DIRECT_RUNTIME_PATH_BOOSTS:
+        if not token_set.intersection(query_terms):
+            continue
+        if any(path in preferred_path for path in preferred_paths):
+            score += boost
+        elif any(path in lowered_path_text for path in preferred_paths):
+            score += boost * 0.45
+
+    for query_terms, broad_paths, penalty in _BROAD_RUNTIME_PATH_PENALTIES:
+        if not token_set.intersection(query_terms):
+            continue
+        explicit_focus = token_set.intersection({"coordinator", "http", "server"})
+        if explicit_focus:
+            continue
+        if any(path in preferred_path for path in broad_paths):
+            score -= penalty
+
+    return score
+
+
 def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
     tokens = normalize_tokens(query)
     payload = item.get("payload") or {}
@@ -244,6 +279,7 @@ def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
             score += 0.3
         if preferred_path and any(token in preferred_path for token in _TECHNICAL_PATH_TOKENS):
             score += 0.35
+        score += _direct_runtime_path_adjustment(tokens, preferred_path, path_text)
         validation_noise = _validation_noise_count(title_text) + _validation_noise_count(summary_text) + _validation_noise_count(content_text)
         if validation_noise:
             score -= min(1.2, 0.3 * validation_noise)
@@ -287,13 +323,16 @@ def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dic
         )
         keyword_bonus = 0.18 if item.get("source") == "keyword" or "keyword" in (item.get("sources") or []) else 0.0
         generic_penalty = 0.0
+        path_focus_bonus = 0.0
         if _CONVENTIONAL_COMMIT_PREFIX.match(str(title_text or "")) and title_hits == 0 and path_hits == 0:
             generic_penalty += 0.18
         if _is_generic_label(title_text) and path_hits == 0 and summary_hits == 0:
             generic_penalty += 0.12
         if lexical_hits == 0:
             generic_penalty += 0.10
-        rerank_score = base_score + field_bonus + keyword_bonus + source_bonus - generic_penalty
+        if _query_is_technical(tokens):
+            path_focus_bonus = _direct_runtime_path_adjustment(tokens, _preferred_file_hint(payload).lower(), path_text)
+        rerank_score = base_score + field_bonus + keyword_bonus + source_bonus + path_focus_bonus - generic_penalty
         reranked.append({**item, "rerank_score": round(rerank_score, 4)})
     reranked.sort(key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
     return reranked

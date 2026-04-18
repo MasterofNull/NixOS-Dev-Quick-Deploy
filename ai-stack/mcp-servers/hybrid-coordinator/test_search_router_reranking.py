@@ -284,3 +284,69 @@ def test_keyword_match_score_penalizes_validation_noise_for_technical_queries():
     assert noisy_matched is True
     assert focused_matched is True
     assert focused_score > noisy_score
+
+
+def test_keyword_match_score_boosts_direct_runtime_paths_over_broad_runtime_files():
+    broad = {
+        "payload": {
+            "commit_subject": "feat: improve runtime routing behavior",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py"],
+            "diff_preview": "reduce route cache latency in local runtime",
+        },
+        "source": "keyword",
+    }
+    direct = {
+        "payload": {
+            "commit_subject": "fix: compact route search cache prompts",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"],
+            "diff_preview": "reduce route cache latency in local runtime",
+        },
+        "source": "keyword",
+    }
+
+    broad_matched, broad_score = search_router.keyword_match_score(
+        "local route cache latency",
+        broad,
+    )
+    direct_matched, direct_score = search_router.keyword_match_score(
+        "local route cache latency",
+        direct,
+    )
+
+    assert broad_matched is True
+    assert direct_matched is True
+    assert direct_score > broad_score
+
+
+def test_rerank_combined_results_prefers_direct_route_stack_files():
+    broad = {
+        "collection": "codebase-context",
+        "id": "broad",
+        "score": 4.2,
+        "payload": {
+            "commit_subject": "feat: improve runtime routing behavior",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py"],
+            "diff_preview": "reduce route cache latency in local runtime",
+        },
+        "source": "keyword",
+        "sources": ["keyword"],
+    }
+    direct = {
+        "collection": "codebase-context",
+        "id": "direct",
+        "score": 3.9,
+        "payload": {
+            "commit_subject": "fix: compact route search cache prompts",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/search_router.py"],
+            "diff_preview": "reduce route cache latency in local runtime",
+        },
+        "source": "keyword",
+        "sources": ["keyword"],
+    }
+
+    reranked = search_router.rerank_combined_results(
+        "what reduces repeated query latency in the local route stack",
+        [broad, direct],
+    )
+
+    assert reranked[0]["id"] == "direct"
