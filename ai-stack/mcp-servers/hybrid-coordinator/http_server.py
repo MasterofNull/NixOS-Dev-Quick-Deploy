@@ -337,6 +337,25 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
     route_latency = payload.get("route_search_latency_decomposition") or {}
     delegation_windows = ((payload.get("delegated_prompt_failure_windows") or {}).get("windows") or {})
     delegation_trend = ((payload.get("delegated_prompt_failure_windows") or {}).get("trend") or {})
+    recommendations = [
+        str(item).strip()
+        for item in (payload.get("recommendations") or [])
+        if str(item).strip()
+    ]
+    structured_actions = payload.get("structured_actions") or []
+    compact_actions = []
+    for item in structured_actions[:3]:
+        if not isinstance(item, dict):
+            continue
+        compact_actions.append(
+            {
+                "type": str(item.get("type", "") or "").strip(),
+                "action": str(item.get("action", "") or "").strip(),
+                "reason": str(item.get("reason", "") or "").strip()[:180],
+                "confidence": float(item.get("confidence", 0.0) or 0.0),
+                "safe": bool(item.get("safe", False)),
+            }
+        )
 
     # Compute trend indicators for quick visibility
     def _trend_indicator(w1h: dict, w24h: dict, metric_key: str, higher_is_better: bool = True) -> str:
@@ -423,6 +442,13 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
             "top_review_types": (workflow_review.get("top_review_types") or [])[:3],
             "accepted_task_classes": (workflow_review.get("accepted_task_classes") or [])[:5],
             "accepted_by_reviewed_profile": (workflow_review.get("accepted_by_reviewed_profile") or [])[:5],
+        },
+        "optimization_watch": {
+            "available": bool(recommendations or compact_actions),
+            "recommendation_count": len(recommendations),
+            "structured_action_count": len(structured_actions),
+            "top_recommendations": recommendations[:3],
+            "top_actions": compact_actions,
         },
     }
 
@@ -3526,6 +3552,7 @@ def _build_workflow_plan(
     tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
     continuation_query = _is_continuation_query(query)
     reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, continuation_query)
+    aq_report_summary = _load_aq_report_status_summary()
 
     def pick_tool_names(names: set[str]) -> List[str]:
         return [name for name in tool_catalog if name in names]
@@ -3610,6 +3637,7 @@ def _build_workflow_plan(
             "created_epoch_s": int(time.time()),
             "memory_recall_priority": continuation_query,
             "reasoning_pattern": reasoning_pattern,
+            "optimization_watch": aq_report_summary.get("optimization_watch", {"available": False}),
         },
     }
 
