@@ -4271,10 +4271,10 @@ check_dashboard_postflight() {
     dashboard_api_url="${DASHBOARD_API_URL}"
   fi
 
-  local probe_url="${dashboard_api_url%/}/api/health/probe"
+  local probe_url="${dashboard_api_url%/}/api/health"
   local status
   if status="$(curl -fsS --max-time 15 --connect-timeout 3 "${probe_url}" 2>/dev/null \
-      | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("overall_status","unknown"))' 2>/dev/null)"; then
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status","unknown"))' 2>/dev/null)"; then
     log "Dashboard OK — ${dashboard_api_url%/} (status: ${status})"
   else
     log "WARNING: Dashboard did not respond at ${probe_url}"
