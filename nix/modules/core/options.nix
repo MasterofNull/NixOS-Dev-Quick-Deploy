@@ -1540,6 +1540,27 @@
             '';
           };
         };
+
+        continueLocal = {
+          maxInputTokens = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 2200;
+            description = ''
+              Maximum estimated input tokens the switchboard should preserve for
+              the `continue-local` profile before trimming older turns or large
+              messages. Tune this lower on memory-limited local chat runtimes.
+            '';
+          };
+
+          maxMessages = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 12;
+            description = ''
+              Maximum number of messages the switchboard should retain for the
+              `continue-local` profile before trimming older conversational turns.
+            '';
+          };
+        };
       };
 
       # ── AI harness architecture (memory + eval + tree-search retrieval) ─────
