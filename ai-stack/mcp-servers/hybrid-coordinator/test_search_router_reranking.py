@@ -350,3 +350,80 @@ def test_rerank_combined_results_prefers_direct_route_stack_files():
     )
 
     assert reranked[0]["id"] == "direct"
+
+
+def test_keyword_match_score_penalizes_route_stack_distractors_and_doc_heavy_mixes():
+    distractor = {
+        "payload": {
+            "commit_subject": "feat(harness): wire local llm client through switchboard",
+            "files_changed": [
+                ".agent/LOCAL-AGENT-HARNESS-PRIMER.md",
+                ".agents/plans/ai-harness-enhancement-roadmap.md",
+                "ai-stack/mcp-servers/hybrid-coordinator/llm_client.py",
+            ],
+            "diff_preview": "reduce repeated query latency in the local route stack",
+        },
+        "source": "keyword",
+    }
+    owner = {
+        "payload": {
+            "commit_subject": "fix: compact route search cache prompts",
+            "files_changed": [
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+            ],
+            "diff_preview": "reduce repeated query latency in the local route stack",
+        },
+        "source": "keyword",
+    }
+
+    distractor_matched, distractor_score = search_router.keyword_match_score(
+        "what reduces repeated query latency in the local route stack",
+        distractor,
+    )
+    owner_matched, owner_score = search_router.keyword_match_score(
+        "what reduces repeated query latency in the local route stack",
+        owner,
+    )
+
+    assert distractor_matched is True
+    assert owner_matched is True
+    assert owner_score > distractor_score
+
+
+def test_rerank_combined_results_demotes_route_stack_distractors():
+    distractor = {
+        "collection": "codebase-context",
+        "id": "distractor",
+        "score": 4.4,
+        "payload": {
+            "commit_subject": "feat(harness): wire local llm client through switchboard",
+            "files_changed": [
+                ".agent/LOCAL-AGENT-HARNESS-PRIMER.md",
+                ".agents/plans/ai-harness-enhancement-roadmap.md",
+                "ai-stack/mcp-servers/hybrid-coordinator/llm_client.py",
+            ],
+            "diff_preview": "reduce repeated query latency in the local route stack",
+        },
+        "source": "keyword",
+        "sources": ["keyword"],
+    }
+    owner = {
+        "collection": "codebase-context",
+        "id": "owner",
+        "score": 3.7,
+        "payload": {
+            "commit_subject": "fix: compact route search cache prompts",
+            "files_changed": ["ai-stack/mcp-servers/hybrid-coordinator/search_router.py"],
+            "diff_preview": "reduce repeated query latency in the local route stack",
+        },
+        "source": "keyword",
+        "sources": ["keyword"],
+    }
+
+    reranked = search_router.rerank_combined_results(
+        "what reduces repeated query latency in the local route stack",
+        [distractor, owner],
+    )
+
+    assert reranked[0]["id"] == "owner"

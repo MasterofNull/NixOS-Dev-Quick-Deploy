@@ -76,6 +76,19 @@ _DIRECT_RUNTIME_PATH_BOOSTS = (
 _BROAD_RUNTIME_PATH_PENALTIES = (
     (("route", "routing", "query", "cache", "cached", "latency"), ("ai_coordinator.py", "http_server.py"), 0.35),
 )
+_ROUTE_STACK_OWNER_PATHS = (
+    "route_handler.py",
+    "search_router.py",
+    "semantic_cache.py",
+    "switchboard.nix",
+)
+_ROUTE_STACK_DISTRACTOR_PATHS = (
+    "llm_client.py",
+    "orchestrator.py",
+    "hybrid_client.py",
+    "http_server.py",
+    "ai_coordinator.py",
+)
 
 
 # ============================================================================
@@ -204,6 +217,39 @@ def _validation_noise_count(text: Any) -> int:
     return sum(1 for token in _VALIDATION_NOISE_TOKENS if token in normalized)
 
 
+def _query_targets_route_stack(tokens: List[str], query: str = "") -> bool:
+    token_set = set(tokens)
+    if {"route", "stack"}.issubset(token_set):
+        return True
+    if {"cache", "latency"}.issubset(token_set):
+        return True
+    if {"retrieval", "context"}.issubset(token_set):
+        return True
+    normalized_query = str(query or "").lower()
+    return "route stack" in normalized_query or "prompt cache" in normalized_query
+
+
+def _doc_heavy_mixed_path_penalty(payload: Dict[str, Any], preferred_path: str) -> float:
+    files_changed = payload.get("files_changed")
+    if not isinstance(files_changed, list) or len(files_changed) < 2:
+        return 0.0
+    doc_paths = 0
+    code_paths = 0
+    for entry in files_changed[:8]:
+        lowered = str(entry or "").lower()
+        if not lowered:
+            continue
+        if any(marker.lower() in lowered for marker in _DOC_PATH_MARKERS):
+            doc_paths += 1
+        elif lowered.endswith((".py", ".nix", ".sh", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml")):
+            code_paths += 1
+    if doc_paths < 2 or code_paths == 0:
+        return 0.0
+    if any(owner in preferred_path for owner in _ROUTE_STACK_OWNER_PATHS):
+        return 0.0
+    return min(1.1, 0.22 * doc_paths)
+
+
 def _direct_runtime_path_adjustment(tokens: List[str], preferred_path: str, path_text: str) -> float:
     if not tokens:
         return 0.0
@@ -228,6 +274,24 @@ def _direct_runtime_path_adjustment(tokens: List[str], preferred_path: str, path
         if any(path in preferred_path for path in broad_paths):
             score -= penalty
 
+    return score
+
+
+def _route_stack_path_adjustment(query: str, tokens: List[str], payload: Dict[str, Any], preferred_path: str, path_text: str) -> float:
+    if not _query_targets_route_stack(tokens, query):
+        return 0.0
+    score = 0.0
+    lowered_path_text = path_text.lower()
+
+    if any(path in preferred_path for path in _ROUTE_STACK_OWNER_PATHS):
+        score += 1.35
+    elif any(path in lowered_path_text for path in _ROUTE_STACK_OWNER_PATHS):
+        score += 0.55
+
+    if any(path in preferred_path for path in _ROUTE_STACK_DISTRACTOR_PATHS):
+        score -= 0.65
+
+    score -= _doc_heavy_mixed_path_penalty(payload, preferred_path)
     return score
 
 
@@ -280,6 +344,7 @@ def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
         if preferred_path and any(token in preferred_path for token in _TECHNICAL_PATH_TOKENS):
             score += 0.35
         score += _direct_runtime_path_adjustment(tokens, preferred_path, path_text)
+        score += _route_stack_path_adjustment(query, tokens, payload, preferred_path, path_text)
         validation_noise = _validation_noise_count(title_text) + _validation_noise_count(summary_text) + _validation_noise_count(content_text)
         if validation_noise:
             score -= min(1.2, 0.3 * validation_noise)
@@ -332,6 +397,7 @@ def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dic
             generic_penalty += 0.10
         if _query_is_technical(tokens):
             path_focus_bonus = _direct_runtime_path_adjustment(tokens, _preferred_file_hint(payload).lower(), path_text)
+            path_focus_bonus += _route_stack_path_adjustment(query, tokens, payload, _preferred_file_hint(payload).lower(), path_text)
         rerank_score = base_score + field_bonus + keyword_bonus + source_bonus + path_focus_bonus - generic_penalty
         reranked.append({**item, "rerank_score": round(rerank_score, 4)})
     reranked.sort(key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
