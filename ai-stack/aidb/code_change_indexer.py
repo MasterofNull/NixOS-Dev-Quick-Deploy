@@ -115,7 +115,7 @@ class CodeChangeIndexer:
                 ),
             )
 
-    def truncate_text(self, text: str, max_tokens: int = 1800) -> str:
+    def truncate_text(self, text: str, max_tokens: int = 900) -> str:
         """
         Truncate text to stay within token limit.
 
@@ -124,7 +124,7 @@ class CodeChangeIndexer:
 
         Args:
             text: Text to truncate
-            max_tokens: Maximum token count (default: 1800, well below 2048 batch size)
+            max_tokens: Maximum token count (default: 900, keeping code-change embeds compact)
 
         Returns:
             Truncated text
@@ -534,7 +534,7 @@ class CodeChangeIndexer:
             parts.append(f"Retrieval Hints: {', '.join(route_stack_hints[:8])}")
 
         # Code context
-        code_context = self.extract_code_context(diff, max_length=1000)
+        code_context = self.extract_code_context(diff, max_length=600)
         if code_context:
             parts.append(f"Code:\n{code_context}")
 
