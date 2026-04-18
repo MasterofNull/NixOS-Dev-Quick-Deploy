@@ -135,8 +135,8 @@ let
     STREAM_READ_TIMEOUT_S = float(os.environ.get("SWB_STREAM_READ_TIMEOUT_S", "1800"))
     LOCAL_CONCURRENCY = max(1, int(os.environ.get("SWB_LOCAL_CONCURRENCY", "2")))
     REMOTE_CONCURRENCY = max(1, int(os.environ.get("SWB_REMOTE_CONCURRENCY", "4")))
-    CONTINUE_LOCAL_MAX_INPUT_TOKENS = max(256, int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS", "2200")))
-    CONTINUE_LOCAL_MAX_MESSAGES = max(2, int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_MESSAGES", "12")))
+    CONTINUE_LOCAL_MAX_INPUT_TOKENS = max(256, int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS", "${toString swb.continueLocal.maxInputTokens}")))
+    CONTINUE_LOCAL_MAX_MESSAGES = max(2, int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_MESSAGES", "${toString swb.continueLocal.maxMessages}")))
     REMOTE_DEFAULT_MAX_INPUT_TOKENS = max(256, int(os.environ.get("SWB_REMOTE_DEFAULT_MAX_INPUT_TOKENS", "3500")))
     REMOTE_DEFAULT_MAX_MESSAGES = max(2, int(os.environ.get("SWB_REMOTE_DEFAULT_MAX_MESSAGES", "16")))
     PROFILE_CARDS_ENABLED = os.environ.get("SWB_PROFILE_CARDS_ENABLED", "1").strip() not in ("0", "false", "no")
@@ -1269,6 +1269,8 @@ in
           "SWB_REMOTE_DAILY_TOKEN_CAP=${toString swb.remoteBudget.dailyTokenCap}"
           "SWB_REMOTE_BUDGET_FALLBACK_LOCAL=${if swb.remoteBudget.fallbackToLocal then "1" else "0"}"
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
+          "SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS=${toString swb.continueLocal.maxInputTokens}"
+          "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
           "LOCAL_AGENTS_PATH=${repoPath}/ai-stack/local-agents"

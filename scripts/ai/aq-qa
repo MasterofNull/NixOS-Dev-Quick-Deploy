@@ -78,6 +78,14 @@ _check_output() {
   fi
 }
 
+_output_contains() {
+  local pattern="$1"
+  shift
+  local out
+  out=$("$@" 2>/dev/null || true)
+  grep -qE "$pattern" <<<"$out"
+}
+
 _primary_user() {
   if [[ -n "${AQ_QA_PRIMARY_USER:-}" ]]; then
     printf '%s' "${AQ_QA_PRIMARY_USER}"
@@ -273,7 +281,7 @@ _port() {
   local delay="${AQ_QA_PORT_RETRY_DELAY_SECONDS:-1}"
   local i
   for ((i=1; i<=attempts; i++)); do
-    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+    if _output_contains ":${port} " ss -tlnp; then
       _pass "$id" "$desc"
       return 0
     fi
@@ -310,7 +318,7 @@ run_phase_0() {
   # 0.1.3 Timers scheduled
   for timer in ai-mcp-integrity-check.timer ai-mcp-process-watch.timer \
                 ai-weekly-report.timer; do
-    if systemctl list-timers "$timer" --no-legend 2>/dev/null | grep -q "$timer"; then
+    if _output_contains "$timer" systemctl list-timers "$timer" --no-legend; then
       _pass "0.1.3:$timer" "timer $timer scheduled"
     else
       _fail "0.1.3:$timer" "timer $timer scheduled" "not found in timers list"
@@ -328,10 +336,12 @@ run_phase_0() {
 
   # 0.2.2 Port 3000 belongs to Grafana (Open-WebUI must be on 3001, not 3000)
   # Use systemctl instead of ss process-name (requires no sudo)
+  local ss_listeners
+  ss_listeners="$(ss -tlnp 2>/dev/null || true)"
   if systemctl is-active --quiet grafana.service 2>/dev/null && \
-     ss -tlnp 2>/dev/null | grep -q ':3000 '; then
+     grep -q ':3000 ' <<<"${ss_listeners}"; then
     _pass "0.2.2" "port 3000 = Grafana (no Open-WebUI regression)"
-  elif ! ss -tlnp 2>/dev/null | grep -q ':3000 '; then
+  elif ! grep -q ':3000 ' <<<"${ss_listeners}"; then
     _skip "0.2.2" "port 3000 Grafana check" "port 3000 not bound (Grafana disabled?)"
   else
     _fail "0.2.2" "port 3000 Grafana check" "Grafana inactive but port 3000 is bound"
