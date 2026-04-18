@@ -89,6 +89,14 @@ _ROUTE_STACK_DISTRACTOR_PATHS = (
     "http_server.py",
     "ai_coordinator.py",
 )
+_ROUTE_STACK_QUERY_HINTS = (
+    "route_handler",
+    "search_router",
+    "semantic_cache",
+    "prompt_cache",
+    "retrieval_context",
+    "switchboard.nix",
+)
 
 
 # ============================================================================
@@ -229,6 +237,13 @@ def _query_targets_route_stack(tokens: List[str], query: str = "") -> bool:
     return "route stack" in normalized_query or "prompt cache" in normalized_query
 
 
+def _expanded_query_for_search(query: str, tokens: List[str]) -> str:
+    if not _query_targets_route_stack(tokens, query):
+        return query
+    suffix = " ".join(_ROUTE_STACK_QUERY_HINTS)
+    return f"{query} {suffix}".strip()
+
+
 def _doc_heavy_mixed_path_penalty(payload: Dict[str, Any], preferred_path: str) -> float:
     files_changed = payload.get("files_changed")
     if not isinstance(files_changed, list) or len(files_changed) < 2:
@@ -291,7 +306,7 @@ def _route_stack_path_adjustment(query: str, tokens: List[str], payload: Dict[st
     if any(path in preferred_path for path in _ROUTE_STACK_DISTRACTOR_PATHS):
         score -= 0.65
 
-    score -= _doc_heavy_mixed_path_penalty(payload, preferred_path)
+        score -= _doc_heavy_mixed_path_penalty(payload, preferred_path)
     return score
 
 
@@ -528,8 +543,10 @@ class SearchRouter:
     ) -> Dict[str, Any]:
         """Hybrid search combining vector similarity and keyword matching."""
         collections = collections or list(self._collections.keys())
-        query_embedding = await self._embed(query)
         tokens = normalize_tokens(query)
+        expanded_query = _expanded_query_for_search(query, tokens)
+        query_embedding = await self._embed(expanded_query)
+        expanded_tokens = normalize_tokens(expanded_query)
 
         semantic_results: List[Dict[str, Any]] = []
         keyword_results: List[Dict[str, Any]] = []
@@ -566,7 +583,7 @@ class SearchRouter:
                 logger.warning("semantic_search_failed collection=%s error=%s", collection, exc)
 
             # Keyword search
-            if tokens:
+            if expanded_tokens:
                 try:
                     async def _scroll_points() -> Any:
                         return self._qdrant.scroll(
@@ -580,7 +597,7 @@ class SearchRouter:
                         Config.AI_ROUTE_COLLECTION_KEYWORD_TIMEOUT_SECONDS,
                     )
                     for point in points:
-                        matched, score = keyword_match_score(query, {"payload": point.payload or {}, "source": "keyword"})
+                        matched, score = keyword_match_score(expanded_query, {"payload": point.payload or {}, "source": "keyword"})
                         if not matched:
                             continue
                         col_keyword.append({
