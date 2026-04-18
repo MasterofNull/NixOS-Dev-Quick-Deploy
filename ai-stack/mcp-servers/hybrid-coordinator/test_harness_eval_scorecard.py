@@ -94,3 +94,24 @@ def test_summarize_results_prefers_specific_payload_fields_over_category():
     assert "Advisor strategy design [.agent/workflows/advisor-strategy-design.md]" in summary
     assert "feature (score=" not in summary
     assert "documentation (score=" not in summary
+
+
+def test_summarize_results_uses_files_changed_when_commit_has_no_direct_file_path():
+    summary = _MODULE._summarize_results(
+        [
+            {
+                "score": 3.0,
+                "source": "keyword",
+                "payload": {
+                    "commit_subject": "feat(harness): execute local agent teams in parallel",
+                    "files_changed": [
+                        "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
+                        ".agent/LOCAL-AGENT-HARNESS-PRIMER.md",
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert "feat(harness): execute local agent teams in parallel" in summary
+    assert "[ai-stack/mcp-servers/hybrid-coordinator/http_server.py]" in summary
