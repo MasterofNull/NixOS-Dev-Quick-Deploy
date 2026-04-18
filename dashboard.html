@@ -6,6 +6,7 @@
     <title>NixOS System Command Center</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a0f14'/%3E%3Cpath d='M18 32h28M32 18v28' stroke='%2300d9ff' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
     <script src="./assets/vendor/chart.umd.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap');
 
@@ -1639,6 +1640,285 @@
             .deployment-grid {
                 grid-template-columns: 1fr;
             }
+        }
+
+        /* Workflow DAG Visualization Styles */
+        .workflow-graph-container {
+            height: 600px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .workflow-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-primary);
+            flex-wrap: wrap;
+        }
+
+        .workflow-select {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 0.25rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 250px;
+        }
+
+        .workflow-select:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+        }
+
+        .workflow-select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+        }
+
+        .workflow-button {
+            padding: 0.5rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            color: var(--text-primary);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .workflow-button:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+        }
+
+        .workflow-button:active {
+            transform: scale(0.98);
+        }
+
+        #workflowDagSvg {
+            width: 100%;
+            height: 100%;
+            background: var(--bg-secondary);
+        }
+
+        .dag-node {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .dag-node rect {
+            rx: 8;
+            ry: 8;
+            stroke-width: 2;
+            transition: all 0.2s ease;
+        }
+
+        .dag-node text {
+            pointer-events: none;
+            user-select: none;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+        }
+
+        .dag-node-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            fill: var(--text-primary);
+            text-anchor: middle;
+            dy: -1.5em;
+        }
+
+        .dag-node-agent {
+            font-size: 0.7rem;
+            fill: var(--text-secondary);
+            text-anchor: middle;
+            dy: 0em;
+        }
+
+        .dag-node-status {
+            font-size: 0.7rem;
+            fill: var(--text-muted);
+            text-anchor: middle;
+            dy: 1.5em;
+        }
+
+        .dag-node.pending rect {
+            fill: #2c3e50;
+            stroke: #34495e;
+        }
+
+        .dag-node.pending:hover rect {
+            stroke: var(--text-secondary);
+            filter: drop-shadow(0 0 8px rgba(136, 146, 166, 0.4));
+        }
+
+        .dag-node.running rect {
+            fill: #1a472a;
+            stroke: var(--status-online);
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+
+        .dag-node.running:hover rect {
+            filter: drop-shadow(0 0 12px rgba(0, 255, 136, 0.5));
+        }
+
+        .dag-node.success rect {
+            fill: #0f3d1f;
+            stroke: var(--status-online);
+        }
+
+        .dag-node.success:hover rect {
+            filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.4));
+        }
+
+        .dag-node.failure rect {
+            fill: #3d0f1f;
+            stroke: var(--status-error);
+            animation: pulse-glow 0.8s ease-in-out infinite;
+        }
+
+        .dag-node.failure:hover rect {
+            filter: drop-shadow(0 0 12px rgba(255, 0, 110, 0.5));
+        }
+
+        .dag-node.timeout rect {
+            fill: #3d2a0f;
+            stroke: var(--accent-yellow);
+        }
+
+        .dag-node.timeout:hover rect {
+            filter: drop-shadow(0 0 10px rgba(255, 190, 11, 0.4));
+        }
+
+        .dag-edge {
+            stroke: var(--border-primary);
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+            transition: all 0.2s ease;
+        }
+
+        .dag-edge:hover {
+            stroke: var(--accent-cyan);
+            stroke-width: 3;
+            filter: drop-shadow(0 0 6px rgba(0, 217, 255, 0.4));
+        }
+
+        #workflowTooltip {
+            position: absolute;
+            background: var(--bg-card);
+            border: 1px solid var(--accent-cyan);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
+            min-width: 250px;
+            max-width: 350px;
+            font-size: 0.85rem;
+        }
+
+        #workflowTooltip.visible {
+            display: block;
+        }
+
+        .tooltip-item {
+            margin: 0.5rem 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .tooltip-label {
+            color: var(--text-secondary);
+            min-width: 80px;
+        }
+
+        .tooltip-value {
+            color: var(--text-primary);
+            font-weight: 600;
+            text-align: right;
+            margin-left: 1rem;
+        }
+
+        .workflow-legend {
+            display: flex;
+            gap: 1.5rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border-primary);
+            flex-wrap: wrap;
+            font-size: 0.8rem;
+        }
+
+        .legend-item {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            border: 1px solid currentColor;
+        }
+
+        .legend-pending { color: #34495e; }
+        .legend-running { color: var(--status-online); }
+        .legend-success { color: var(--status-online); }
+        .legend-failure { color: var(--status-error); }
+        .legend-timeout { color: var(--accent-yellow); }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.3));
+                opacity: 1;
+            }
+            50% {
+                filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.6));
+                opacity: 0.9;
+            }
+        }
+
+        @keyframes pulse-error {
+            0%, 100% {
+                filter: drop-shadow(0 0 4px rgba(255, 0, 110, 0.3));
+                opacity: 1;
+            }
+            50% {
+                filter: drop-shadow(0 0 10px rgba(255, 0, 110, 0.6));
+                opacity: 0.9;
+            }
+        }
+
+        .dag-container {
+            overflow: auto;
+            width: 100%;
+            height: 100%;
+        }
+
+        .dag-svg-group {
+            cursor: grab;
+        }
+
+        .dag-svg-group:active {
+            cursor: grabbing;
         }
     </style>
 </head>
@@ -4015,6 +4295,59 @@
                                     <span>Loading...</span>
                                     <span class="data-meta">--</span>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workflow DAG Visualization -->
+            <div class="dashboard-section" id="section-workflow-dag">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Workflow DAG Visualization</h2>
+                        </div>
+                        <span class="card-badge">Graph</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="workflow-controls">
+                            <label style="font-size: 0.875rem; color: var(--text-secondary);">Execution:</label>
+                            <select id="workflowExecutionSelect" class="workflow-select">
+                                <option value="">Loading executions...</option>
+                            </select>
+                            <button id="workflowRefreshBtn" class="workflow-button" onclick="refreshWorkflowGraph()">
+                                ⟳ Refresh
+                            </button>
+                            <button id="workflowResetZoomBtn" class="workflow-button" onclick="resetWorkflowZoom()">
+                                ⊡ Reset Zoom
+                            </button>
+                        </div>
+                        <div class="workflow-graph-container">
+                            <svg id="workflowDagSvg"></svg>
+                            <div id="workflowTooltip"></div>
+                        </div>
+                        <div class="workflow-legend">
+                            <div class="legend-item">
+                                <div class="legend-dot legend-pending"></div>
+                                <span>Pending</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-dot legend-running"></div>
+                                <span>Running</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-dot legend-success"></div>
+                                <span>Success</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-dot legend-failure"></div>
+                                <span>Failed</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-dot legend-timeout"></div>
+                                <span>Timeout</span>
                             </div>
                         </div>
                     </div>
@@ -10930,6 +11263,440 @@
             addHelpTooltip('section-system-metrics', 'Monitor system resources and performance');
         }
 
+        // Workflow DAG Renderer Class
+        class WorkflowDAGRenderer {
+            constructor(containerId = 'workflowDagSvg') {
+                this.svgId = containerId;
+                this.tooltipId = 'workflowTooltip';
+                this.currentExecutionId = null;
+                this.pollInterval = null;
+                this.pollRate = 2000; // 2 seconds
+
+                // D3 elements
+                this.svg = null;
+                this.container = null;
+                this.width = 0;
+                this.height = 0;
+                this.zoom = null;
+                this.simulation = null;
+                this.nodes = [];
+                this.links = [];
+
+                this.initializeSvg();
+            }
+
+            initializeSvg() {
+                if (typeof d3 === 'undefined') {
+                    console.error('D3.js not loaded');
+                    return;
+                }
+
+                const svgElement = document.getElementById(this.svgId);
+                if (!svgElement) {
+                    console.error('SVG container not found:', this.svgId);
+                    return;
+                }
+
+                const containerElement = svgElement.parentElement;
+                this.width = containerElement.clientWidth || 800;
+                this.height = containerElement.clientHeight || 600;
+
+                // Clear existing
+                d3.select(svgElement).selectAll('*').remove();
+
+                // Create main SVG
+                this.svg = d3.select(svgElement)
+                    .attr('width', this.width)
+                    .attr('height', this.height);
+
+                // Define arrowhead marker
+                this.svg.append('defs').append('marker')
+                    .attr('id', 'arrowhead')
+                    .attr('markerWidth', 10)
+                    .attr('markerHeight', 10)
+                    .attr('refX', 9)
+                    .attr('refY', 3)
+                    .attr('orient', 'auto')
+                    .append('polygon')
+                    .attr('points', '0 0, 10 3, 0 6')
+                    .attr('fill', 'var(--border-primary)');
+
+                // Create zoom behavior
+                this.zoom = d3.zoom()
+                    .scaleExtent([0.1, 4])
+                    .on('zoom', (event) => {
+                        this.container.attr('transform', event.transform);
+                    });
+
+                this.svg.call(this.zoom);
+
+                // Create container group for zooming
+                this.container = this.svg.append('g')
+                    .attr('class', 'dag-svg-group');
+            }
+
+            async render(executionId) {
+                if (!executionId) {
+                    console.warn('No execution ID provided');
+                    return;
+                }
+
+                this.currentExecutionId = executionId;
+
+                try {
+                    const response = await fetch(`/api/workflows/executions/${executionId}/graph`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    this.renderGraph(data);
+                    this.startPolling();
+                } catch (error) {
+                    console.error('Failed to render workflow graph:', error);
+                    this.showError(`Failed to load graph: ${error.message}`);
+                }
+            }
+
+            renderGraph(data) {
+                if (!this.container) {
+                    console.error('Container not initialized');
+                    return;
+                }
+
+                // Clear previous graph
+                this.container.selectAll('*').remove();
+
+                if (!data || !data.levels) {
+                    this.showError('Invalid graph data');
+                    return;
+                }
+
+                const levels = data.levels;
+                const nodes = [];
+                const links = [];
+                const nodeMap = new Map();
+
+                // Calculate node positions based on levels
+                const levelHeight = this.height / (levels.length + 1);
+                const levelWidths = new Map();
+
+                // First pass: count nodes per level
+                levels.forEach((level) => {
+                    levelWidths.set(level, (level.nodes || []).length);
+                });
+
+                // Create nodes with calculated positions
+                levels.forEach((level, levelIndex) => {
+                    const levelNodes = level.nodes || [];
+                    const nodeCount = levelNodes.length;
+                    const nodeWidth = Math.min(160, (this.width - 100) / Math.max(nodeCount, 1));
+                    const spacing = (this.width - 100) / Math.max(nodeCount + 1, 1);
+
+                    levelNodes.forEach((nodeData, nodeIndex) => {
+                        const x = (nodeIndex + 1) * spacing;
+                        const y = (levelIndex + 1) * levelHeight;
+
+                        const node = {
+                            id: nodeData.id || `node-${levelIndex}-${nodeIndex}`,
+                            label: nodeData.name || nodeData.label || `Node ${levelIndex}-${nodeIndex}`,
+                            agent: nodeData.agent || 'unknown',
+                            status: nodeData.status || 'pending',
+                            x: x,
+                            y: y,
+                            progress: nodeData.progress || 0,
+                            duration: nodeData.duration || 0,
+                            retry_count: nodeData.retry_count || 0,
+                            outputs: nodeData.outputs || {},
+                            error: nodeData.error || null
+                        };
+
+                        nodes.push(node);
+                        nodeMap.set(node.id, node);
+                    });
+                });
+
+                // Create links
+                if (data.edges) {
+                    data.edges.forEach((edge) => {
+                        if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+                            links.push({
+                                source: nodeMap.get(edge.source),
+                                target: nodeMap.get(edge.target)
+                            });
+                        }
+                    });
+                }
+
+                this.nodes = nodes;
+                this.links = links;
+
+                // Render edges first (so they appear behind nodes)
+                const edgesGroup = this.container.selectAll('.dag-edge')
+                    .data(links)
+                    .enter()
+                    .append('path')
+                    .attr('class', 'dag-edge')
+                    .attr('d', (d) => {
+                        const dx = d.target.x - d.source.x;
+                        const dy = d.target.y - d.source.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const offsetX = (dx / distance) * 80;
+                        const offsetY = (dy / distance) * 40;
+
+                        return `M${d.source.x + offsetX},${d.source.y + offsetY}
+                                L${d.target.x - offsetX},${d.target.y - offsetY}`;
+                    });
+
+                // Render nodes
+                const nodesGroup = this.container.selectAll('.dag-node')
+                    .data(nodes)
+                    .enter()
+                    .append('g')
+                    .attr('class', (d) => `dag-node ${d.status}`)
+                    .attr('transform', (d) => `translate(${d.x},${d.y})`)
+                    .on('mouseover', (event, d) => this.showTooltip(event, d))
+                    .on('mouseout', () => this.hideTooltip())
+                    .on('click', (event, d) => this.handleNodeClick(d));
+
+                // Add node rectangles
+                nodesGroup.append('rect')
+                    .attr('x', -80)
+                    .attr('y', -40)
+                    .attr('width', 160)
+                    .attr('height', 80)
+                    .attr('rx', 8)
+                    .attr('ry', 8);
+
+                // Add node label
+                nodesGroup.append('text')
+                    .attr('class', 'dag-node-label')
+                    .attr('dy', '-15px')
+                    .text((d) => d.label)
+                    .call(this.wrapText.bind(this), 140);
+
+                // Add agent name
+                nodesGroup.append('text')
+                    .attr('class', 'dag-node-agent')
+                    .attr('dy', '0px')
+                    .text((d) => `[${d.agent}]`)
+                    .call(this.wrapText.bind(this), 140);
+
+                // Add status text
+                nodesGroup.append('text')
+                    .attr('class', 'dag-node-status')
+                    .attr('dy', '15px')
+                    .text((d) => this.getStatusText(d))
+                    .call(this.wrapText.bind(this), 140);
+            }
+
+            wrapText(selection, width) {
+                selection.each(function() {
+                    const text = d3.select(this);
+                    const words = text.text().split(/\s+/).reverse();
+                    let word;
+                    let line = [];
+                    const lineHeight = 1.2;
+                    const x = text.attr('x') || 0;
+                    const y = text.attr('y') || 0;
+
+                    while (word = words.pop()) {
+                        line.push(word);
+                        text.text(line.join(' '));
+
+                        if (text.node().getComputedTextLength() > width) {
+                            line.pop();
+                            text.text(line.join(' '));
+                            line = [word];
+                        }
+                    }
+                });
+            }
+
+            getStatusText(node) {
+                switch (node.status) {
+                    case 'pending':
+                        return '⋯ waiting';
+                    case 'running':
+                        return `⟳ ${node.progress || 0}%`;
+                    case 'success':
+                        return `✓ ${node.duration || 0}s`;
+                    case 'failure':
+                        return '✗ failed';
+                    case 'timeout':
+                        return '⏱ timeout';
+                    default:
+                        return node.status;
+                }
+            }
+
+            showTooltip(event, node) {
+                const tooltip = document.getElementById(this.tooltipId);
+                if (!tooltip) return;
+
+                const html = `
+                    <div class="tooltip-item">
+                        <span class="tooltip-label">Name:</span>
+                        <span class="tooltip-value">${node.label}</span>
+                    </div>
+                    <div class="tooltip-item">
+                        <span class="tooltip-label">Agent:</span>
+                        <span class="tooltip-value">${node.agent}</span>
+                    </div>
+                    <div class="tooltip-item">
+                        <span class="tooltip-label">Status:</span>
+                        <span class="tooltip-value">${node.status}</span>
+                    </div>
+                    <div class="tooltip-item">
+                        <span class="tooltip-label">Duration:</span>
+                        <span class="tooltip-value">${node.duration || '0'}s</span>
+                    </div>
+                    <div class="tooltip-item">
+                        <span class="tooltip-label">Progress:</span>
+                        <span class="tooltip-value">${node.progress || '0'}%</span>
+                    </div>
+                    <div class="tooltip-item">
+                        <span class="tooltip-label">Retries:</span>
+                        <span class="tooltip-value">${node.retry_count || 0}</span>
+                    </div>
+                    ${node.error ? `<div class="tooltip-item" style="color: var(--status-error);">
+                        <span class="tooltip-label">Error:</span>
+                        <span class="tooltip-value">${node.error}</span>
+                    </div>` : ''}
+                `;
+
+                tooltip.innerHTML = html;
+                tooltip.classList.add('visible');
+
+                const rect = event.target.getBoundingClientRect();
+                const tooltipWidth = 350;
+                let x = event.clientX + 10;
+                let y = event.clientY + 10;
+
+                if (x + tooltipWidth > window.innerWidth) {
+                    x = window.innerWidth - tooltipWidth - 10;
+                }
+
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = y + 'px';
+            }
+
+            hideTooltip() {
+                const tooltip = document.getElementById(this.tooltipId);
+                if (tooltip) {
+                    tooltip.classList.remove('visible');
+                }
+            }
+
+            handleNodeClick(node) {
+                console.log('Node clicked:', node);
+                showNotification(`Selected: ${node.label}`, 'info');
+            }
+
+            startPolling() {
+                this.stopPolling();
+                this.pollInterval = setInterval(() => {
+                    if (this.currentExecutionId) {
+                        fetch(`/api/workflows/executions/${this.currentExecutionId}/graph`)
+                            .then(r => r.json())
+                            .then(data => this.renderGraph(data))
+                            .catch(err => console.error('Polling error:', err));
+                    }
+                }, this.pollRate);
+            }
+
+            stopPolling() {
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                    this.pollInterval = null;
+                }
+            }
+
+            resetZoom() {
+                if (this.svg && this.zoom) {
+                    this.svg.transition()
+                        .duration(750)
+                        .call(this.zoom.transform, d3.zoomIdentity);
+                }
+            }
+
+            showError(message) {
+                const tooltip = document.getElementById(this.tooltipId);
+                if (tooltip) {
+                    tooltip.innerHTML = `<div style="color: var(--status-error);">${message}</div>`;
+                    tooltip.classList.add('visible');
+                }
+            }
+        }
+
+        // Global renderer instance
+        let workflowRenderer = null;
+
+        // Initialize Workflow DAG
+        function initializeWorkflowDAG() {
+            workflowRenderer = new WorkflowDAGRenderer('workflowDagSvg');
+            loadWorkflowExecutions();
+        }
+
+        // Load workflow executions
+        async function loadWorkflowExecutions() {
+            const select = document.getElementById('workflowExecutionSelect');
+            if (!select) return;
+
+            try {
+                const response = await fetch('/api/workflows/history?limit=20');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                const executions = data.executions || [];
+
+                select.innerHTML = '';
+                if (executions.length === 0) {
+                    select.innerHTML = '<option value="">No executions found</option>';
+                    return;
+                }
+
+                executions.forEach((exec) => {
+                    const option = document.createElement('option');
+                    option.value = exec.id;
+                    option.textContent = `${exec.name || exec.id} (${exec.status})`;
+                    select.appendChild(option);
+                });
+
+                // Auto-select first
+                if (executions.length > 0) {
+                    select.value = executions[0].id;
+                    select.dispatchEvent(new Event('change'));
+                }
+
+                // Load graph when selection changes
+                select.addEventListener('change', (e) => {
+                    if (e.target.value && workflowRenderer) {
+                        workflowRenderer.render(e.target.value);
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load workflow executions:', error);
+                select.innerHTML = '<option value="">Failed to load executions</option>';
+            }
+        }
+
+        // Refresh workflow graph
+        function refreshWorkflowGraph() {
+            const select = document.getElementById('workflowExecutionSelect');
+            if (select && select.value && workflowRenderer) {
+                workflowRenderer.render(select.value);
+                showNotification('Graph refreshed', 'success');
+            }
+        }
+
+        // Reset workflow zoom
+        function resetWorkflowZoom() {
+            if (workflowRenderer) {
+                workflowRenderer.resetZoom();
+                showNotification('Zoom reset', 'info');
+            }
+        }
+
         // Initial load when page loads
         document.addEventListener('DOMContentLoaded', function() {
             // Delay initial health check by 2 seconds to let other services load first
@@ -10943,6 +11710,9 @@
 
             // Initialize UX improvements
             initializeUXImprovements();
+
+            // Initialize Workflow DAG visualization
+            initializeWorkflowDAG();
 
             // Log performance report after initial load
             setTimeout(() => {
