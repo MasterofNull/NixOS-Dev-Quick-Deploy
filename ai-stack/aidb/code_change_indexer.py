@@ -21,7 +21,7 @@ from uuid import uuid4
 
 import httpx
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,26 @@ _VALIDATION_NOISE_HINTS = {
     "aq-qa",
     "validation",
 }
+_ROUTE_STACK_OWNER_PATHS = (
+    "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/semantic_cache.py",
+    "nix/modules/services/switchboard.nix",
+)
+_SUBSYSTEM_PATH_HINTS = (
+    ("route-stack", _ROUTE_STACK_OWNER_PATHS),
+    ("switchboard", ("nix/modules/services/switchboard.nix", "ai-stack/mcp-servers/hybrid-coordinator/llm_client.py")),
+    ("orchestration", ("ai-stack/mcp-servers/ralph-wiggum/orchestrator.py", "ai-stack/offloading/agent_pool_manager.py")),
+)
+_ROUTE_STACK_HINT_TOKENS = (
+    "route-stack",
+    "route_handler",
+    "search_router",
+    "semantic_cache",
+    "prompt_cache",
+    "retrieval_context",
+    "switchboard",
+)
 
 
 class CodeChangeIndexer:
@@ -388,6 +408,91 @@ class CodeChangeIndexer:
             deduped.append(normalized)
         return deduped[:40]
 
+    def build_owner_paths(self, files: List[str]) -> List[str]:
+        """Return direct owner paths that should outrank mixed roadmap/runtime commits."""
+        owners: List[str] = []
+        for file_path in files:
+            normalized = str(file_path).strip()
+            if not normalized:
+                continue
+            lowered = normalized.lower()
+            if any(owner in lowered for owner in _ROUTE_STACK_OWNER_PATHS):
+                owners.append(normalized)
+        deduped: List[str] = []
+        for owner in owners:
+            if owner not in deduped:
+                deduped.append(owner)
+        return deduped
+
+    def build_subsystem_tags(self, files: List[str], commit: Dict[str, Any], diff: str) -> List[str]:
+        """Tag commits by subsystem so retrieval can prefer direct ownership lanes."""
+        tags: List[str] = []
+        normalized_files = [str(file_path).strip().lower() for file_path in files if str(file_path).strip()]
+        merged_text = " ".join(
+            part for part in (
+                str(commit.get("subject", "")).lower(),
+                str(commit.get("body", "")).lower(),
+                str(diff or "").lower(),
+            ) if part
+        )
+        for tag, path_hints in _SUBSYSTEM_PATH_HINTS:
+            if any(hint in merged_text for hint in (tag.replace("-", " "), tag.replace("-", "_"))):
+                tags.append(tag)
+                continue
+            if any(any(path_hint in file_path for path_hint in path_hints) for file_path in normalized_files):
+                tags.append(tag)
+        deduped: List[str] = []
+        for tag in tags:
+            if tag not in deduped:
+                deduped.append(tag)
+        return deduped
+
+    def build_route_stack_hints(self, commit: Dict[str, Any], files: List[str], diff: str) -> List[str]:
+        """Build explicit route-stack retrieval hints for codebase-context payloads."""
+        owner_paths = self.build_owner_paths(files)
+        merged_text = " ".join(
+            part for part in (
+                str(commit.get("subject", "")).lower(),
+                str(commit.get("body", "")).lower(),
+                str(diff or "").lower(),
+            ) if part
+        )
+        hints: List[str] = []
+        if owner_paths:
+            hints.extend(_ROUTE_STACK_HINT_TOKENS)
+        if "route stack" in merged_text:
+            hints.append("route-stack")
+        if "prompt cache" in merged_text:
+            hints.append("prompt_cache")
+        if "retrieval context" in merged_text:
+            hints.append("retrieval_context")
+        if "switchboard" in merged_text:
+            hints.append("switchboard")
+        deduped: List[str] = []
+        for hint in hints:
+            if hint not in deduped:
+                deduped.append(hint)
+        return deduped
+
+    def build_payload(self, commit: Dict[str, Any], diff: str, files: List[str]) -> Dict[str, Any]:
+        """Build Qdrant payload for a code change entry."""
+        return {
+            "commit_hash": commit["hash"],
+            "commit_subject": commit["subject"],
+            "commit_body": commit.get("body", "")[:500],
+            "author_name": commit["author_name"],
+            "author_email": commit["author_email"],
+            "date": commit["date"],
+            "files_changed": files,
+            "num_files": len(files),
+            "category": self.categorize_change(commit, files),
+            "diff_preview": diff[:500],
+            "keyword_hints": self.build_keyword_hints(commit, files, diff),
+            "owner_paths": self.build_owner_paths(files),
+            "subsystem_tags": self.build_subsystem_tags(files, commit, diff),
+            "route_stack_hints": self.build_route_stack_hints(commit, files, diff),
+        }
+
     def create_change_text(self, commit: Dict[str, Any], diff: str, files: List[str]) -> str:
         """
         Create searchable text from code change data.
@@ -413,6 +518,15 @@ class CodeChangeIndexer:
         if files:
             files_text = ", ".join(files[:10])  # Limit file list
             parts.append(f"Files: {files_text}")
+        owner_paths = self.build_owner_paths(files)
+        if owner_paths:
+            parts.append(f"Owner Paths: {', '.join(owner_paths[:4])}")
+        subsystem_tags = self.build_subsystem_tags(files, commit, diff)
+        if subsystem_tags:
+            parts.append(f"Subsystems: {', '.join(subsystem_tags[:6])}")
+        route_stack_hints = self.build_route_stack_hints(commit, files, diff)
+        if route_stack_hints:
+            parts.append(f"Retrieval Hints: {', '.join(route_stack_hints[:8])}")
 
         # Code context
         code_context = self.extract_code_context(diff, max_length=1000)
@@ -453,20 +567,8 @@ class CodeChangeIndexer:
             logger.error(f"Invalid embedding vector for commit {commit_hash}")
             return None
 
-        # Prepare payload
-        payload = {
-            "commit_hash": commit_hash,
-            "commit_subject": commit["subject"],
-            "commit_body": commit.get("body", "")[:500],
-            "author_name": commit["author_name"],
-            "author_email": commit["author_email"],
-            "date": commit["date"],
-            "files_changed": files,
-            "num_files": len(files),
-            "category": self.categorize_change(commit, files),
-            "diff_preview": diff[:500],  # Store small preview
-            "keyword_hints": self.build_keyword_hints(commit, files, diff),
-        }
+        payload = self.build_payload(commit, diff, files)
+        await self.delete_existing_commit_points(commit_hash)
 
         # Store in Qdrant
         try:
@@ -479,6 +581,28 @@ class CodeChangeIndexer:
         except Exception as e:
             logger.error(f"Failed to index commit {commit_hash}: {e}")
             return None
+
+    async def delete_existing_commit_points(self, commit_hash: str) -> int:
+        """Delete any existing vectors for the same commit hash before reindexing."""
+        try:
+            points, _ = self.qdrant.scroll(
+                collection_name=self.collection,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="commit_hash", match=MatchValue(value=commit_hash))]
+                ),
+                limit=256,
+                with_payload=False,
+                with_vectors=False,
+            )
+        except Exception as exc:
+            logger.warning("existing_commit_lookup_failed commit=%s error=%s", commit_hash, exc)
+            return 0
+
+        existing_ids = [point.id for point in points if getattr(point, "id", None) is not None]
+        if not existing_ids:
+            return 0
+        self.qdrant.delete(collection_name=self.collection, points_selector=existing_ids)
+        return len(existing_ids)
 
     async def index_commits(
         self,

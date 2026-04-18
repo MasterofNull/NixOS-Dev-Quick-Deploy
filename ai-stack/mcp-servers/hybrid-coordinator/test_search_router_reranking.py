@@ -514,3 +514,45 @@ def test_hybrid_search_expands_route_stack_candidate_recall():
     assert qdrant.query_limits[-1] == 20
     assert qdrant.query_thresholds[-1] == 0.45
     assert qdrant.scroll_limits[-1] == 180
+
+
+def test_keyword_match_score_prefers_owner_paths_and_route_stack_hints():
+    owner = {
+        "payload": {
+            "commit_subject": "fix: compact route stack retrieval prompts",
+            "owner_paths": [
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+            ],
+            "route_stack_hints": ["route-stack", "prompt_cache", "retrieval_context"],
+            "files_changed": [
+                ".agents/plans/ai-harness-enhancement-roadmap.md",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+            ],
+        },
+        "source": "keyword",
+    }
+    distractor = {
+        "payload": {
+            "commit_subject": "feat(harness): wire local llm client through switchboard",
+            "files_changed": [
+                ".agents/plans/ai-harness-enhancement-roadmap.md",
+                "ai-stack/mcp-servers/hybrid-coordinator/llm_client.py",
+            ],
+            "route_stack_hints": [],
+        },
+        "source": "keyword",
+    }
+
+    owner_matched, owner_score = search_router.keyword_match_score(
+        "what reduces repeated query latency in the local route stack",
+        owner,
+    )
+    distractor_matched, distractor_score = search_router.keyword_match_score(
+        "what reduces repeated query latency in the local route stack",
+        distractor,
+    )
+
+    assert owner_matched is True
+    assert distractor_matched is True
+    assert owner_score > distractor_score
