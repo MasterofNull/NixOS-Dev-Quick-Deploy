@@ -657,6 +657,14 @@ def _compact_result_line(item: Dict[str, Any]) -> str:
     if not isinstance(payload, dict):
         payload = {}
 
+    files_changed = payload.get("files_changed")
+    changed_file_hint = ""
+    if isinstance(files_changed, list):
+        for entry in files_changed:
+            changed_file_hint = _compact_text(entry, max_chars=72)
+            if changed_file_hint:
+                break
+
     title = _compact_text(
         payload.get("commit_subject")
         or payload.get("title")
@@ -676,7 +684,10 @@ def _compact_result_line(item: Dict[str, Any]) -> str:
         or payload.get("content"),
         max_chars=140,
     )
-    file_hint = _compact_text(payload.get("file_path") or payload.get("relative_path"), max_chars=72)
+    file_hint = _compact_text(
+        payload.get("file_path") or payload.get("relative_path") or changed_file_hint,
+        max_chars=72,
+    )
 
     if not title:
         title = _compact_text(payload.get("category"), max_chars=64) or "result"

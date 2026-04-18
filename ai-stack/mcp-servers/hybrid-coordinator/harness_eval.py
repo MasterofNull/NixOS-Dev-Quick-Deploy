@@ -127,6 +127,19 @@ def _is_generic_summary_label(value: str) -> bool:
     return not normalized or normalized in _GENERIC_SUMMARY_LABELS
 
 
+def _result_file_hint(payload: Dict[str, Any]) -> str:
+    direct = _compact_summary_text(payload.get("file_path") or payload.get("relative_path"), max_len=72)
+    if direct:
+        return direct
+    files_changed = payload.get("files_changed")
+    if isinstance(files_changed, list):
+        for entry in files_changed:
+            compact = _compact_summary_text(entry, max_len=72)
+            if compact:
+                return compact
+    return ""
+
+
 def _result_summary_label(item: Dict[str, Any]) -> str:
     payload = item.get("payload") if isinstance(item, dict) else {}
     if not isinstance(payload, dict):
@@ -143,7 +156,7 @@ def _result_summary_label(item: Dict[str, Any]) -> str:
         or payload.get("practice_name")
     )
     primary_text = _compact_summary_text(primary)
-    file_hint = _compact_summary_text(payload.get("file_path") or payload.get("relative_path"), max_len=72)
+    file_hint = _result_file_hint(payload)
 
     if _is_generic_summary_label(primary_text):
         primary_text = _compact_summary_text(
