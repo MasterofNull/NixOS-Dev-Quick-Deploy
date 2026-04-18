@@ -1,7 +1,7 @@
 import asyncio
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 
 sys.modules["config"] = MagicMock()
@@ -56,10 +56,18 @@ def test_rerank_combined_results_prefers_specific_path_and_title_matches():
 
 
 class _FakeQdrant:
+    def __init__(self):
+        self.query_limits = []
+        self.query_thresholds = []
+        self.scroll_limits = []
+
     def query_points(self, **_kwargs):
+        self.query_limits.append(_kwargs.get("limit"))
+        self.query_thresholds.append(_kwargs.get("score_threshold"))
         return SimpleNamespace(points=[])
 
     def scroll(self, **_kwargs):
+        self.scroll_limits.append(_kwargs.get("limit"))
         return ([], None)
 
 
@@ -449,3 +457,60 @@ def test_expanded_query_for_search_leaves_non_route_queries_unchanged():
     )
 
     assert expanded == query
+
+
+def test_route_stack_search_params_expand_candidate_pool():
+    semantic_limit, keyword_pool, score_threshold = search_router._route_stack_search_params(
+        "what reduces repeated query latency in the local route stack",
+        search_router.normalize_tokens("what reduces repeated query latency in the local route stack"),
+        limit=5,
+        keyword_pool=60,
+        score_threshold=0.7,
+    )
+
+    assert semantic_limit == 20
+    assert keyword_pool == 180
+    assert score_threshold == 0.45
+
+
+def test_route_stack_owner_match_bonus_uses_all_changed_files():
+    bonus = search_router._route_stack_owner_match_bonus(
+        {
+            "files_changed": [
+                ".agents/plans/ai-harness-enhancement-roadmap.md",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+            ]
+        }
+    )
+
+    assert bonus > 1.0
+
+
+def test_hybrid_search_expands_route_stack_candidate_recall():
+    qdrant = _FakeQdrant()
+    router = search_router.SearchRouter(
+        qdrant_client=qdrant,
+        embed_fn=AsyncMock(return_value=[0.1, 0.2]),
+        call_breaker_fn=lambda _name, fn: fn(),
+        check_local_health_fn=MagicMock(),
+        wait_for_model_fn=MagicMock(),
+        get_local_loading_fn=lambda: False,
+        routing_config=MagicMock(),
+        record_telemetry_fn=lambda *args, **kwargs: None,
+        collections={"codebase-context": {}},
+    )
+
+    asyncio.run(
+        router.hybrid_search(
+            "what reduces repeated query latency in the local route stack",
+            collections=["codebase-context"],
+            limit=5,
+            keyword_pool=60,
+            score_threshold=0.7,
+        )
+    )
+
+    assert qdrant.query_limits[-1] == 20
+    assert qdrant.query_thresholds[-1] == 0.45
+    assert qdrant.scroll_limits[-1] == 180
