@@ -304,6 +304,17 @@ let
       type = "dense";
       recommended = false;
     };
+    "qwen3.6-35b" = {
+      name = "Qwen3.6 35B A3B Instruct";
+      repo = "unsloth/Qwen3.6-35B-A3B-GGUF";
+      file = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf";
+      sha256 = null;
+      params = "35B (3B active MoE)";
+      contextSize = 262144;
+      ramEstimate = "~22.1 GB Q4";
+      type = "moe";
+      recommended = false;
+    };
     "phi4-mini" = {
       name = "Phi-4 Mini Instruct";
       repo = "unsloth/phi-4-mini-instruct-GGUF";
