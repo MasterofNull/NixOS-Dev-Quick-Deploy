@@ -35,6 +35,18 @@ from metrics import AUTONOMY_BUDGET_EXCEEDED, LLM_BACKEND_SELECTIONS, ROUTE_DECI
 
 logger = logging.getLogger("hybrid-coordinator")
 
+_GENERIC_RESULT_LABELS = {
+    "feature",
+    "documentation",
+    "docs",
+    "update",
+    "change",
+    "result",
+    "general",
+    "unknown",
+}
+_CONVENTIONAL_COMMIT_PREFIX = re.compile(r"^(feat|fix|docs|chore|refactor|test|perf|ci|build)(\([^)]*\))?:", re.IGNORECASE)
+
 
 # ============================================================================
 # Stand-alone utility functions (no server-global dependencies)
@@ -78,20 +90,72 @@ def payload_matches_tokens(payload: Dict[str, Any], tokens: List[str]) -> Tuple[
     return matches > 0, matches
 
 
+def _match_count(text: Any, tokens: List[str]) -> int:
+    normalized = str(text or "").lower()
+    if not normalized or not tokens:
+        return 0
+    return sum(1 for token in tokens if token in normalized)
+
+
+def _is_generic_label(text: Any) -> bool:
+    normalized = str(text or "").strip().lower()
+    return not normalized or normalized in _GENERIC_RESULT_LABELS
+
+
+def _joined_file_hints(payload: Dict[str, Any]) -> str:
+    hints: List[str] = []
+    for key in ("file_path", "relative_path"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            hints.append(value.strip())
+    files_changed = payload.get("files_changed")
+    if isinstance(files_changed, list):
+        for entry in files_changed[:6]:
+            if isinstance(entry, str) and entry.strip():
+                hints.append(entry.strip())
+    return " ".join(hints)
+
+
 def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Apply lightweight lexical+source-aware rerank over merged retrieval results."""
     tokens = normalize_tokens(query)
     reranked: List[Dict[str, Any]] = []
     for item in items:
         payload = item.get("payload") or {}
-        text = " ".join(
-            str(payload.get(key, ""))
-            for key in ("title", "description", "content", "solution", "usage_pattern", "summary")
-        ).lower()
-        lexical_hits = sum(1 for token in tokens if token in text)
+        title_text = (
+            payload.get("commit_subject")
+            or payload.get("title")
+            or payload.get("name")
+            or payload.get("skill_name")
+            or payload.get("error_type")
+            or ""
+        )
+        path_text = _joined_file_hints(payload)
+        summary_text = payload.get("summary") or payload.get("description") or payload.get("solution") or ""
+        content_text = item.get("content") or item.get("text") or payload.get("content") or payload.get("usage_pattern") or ""
+
+        title_hits = _match_count(title_text, tokens)
+        path_hits = _match_count(path_text, tokens)
+        summary_hits = _match_count(summary_text, tokens)
+        content_hits = _match_count(content_text, tokens)
+        lexical_hits = title_hits + path_hits + summary_hits + content_hits
         source_bonus = len(item.get("sources", [])) * 0.1
         base_score = float(item.get("score", 0.0))
-        rerank_score = base_score + (0.05 * lexical_hits) + source_bonus
+        field_bonus = (
+            (0.32 * path_hits)
+            + (0.22 * title_hits)
+            + (0.10 * summary_hits)
+            + (0.03 * content_hits)
+        )
+        keyword_bonus = 0.18 if item.get("source") == "keyword" or "keyword" in (item.get("sources") or []) else 0.0
+        generic_penalty = 0.0
+        if _CONVENTIONAL_COMMIT_PREFIX.match(str(title_text or "")) and title_hits == 0 and path_hits == 0:
+            generic_penalty += 0.18
+        if _is_generic_label(title_text) and path_hits == 0 and summary_hits == 0:
+            generic_penalty += 0.12
+        if lexical_hits == 0:
+            generic_penalty += 0.10
+        rerank_score = base_score + field_bonus + keyword_bonus + source_bonus - generic_penalty
         reranked.append({**item, "rerank_score": round(rerank_score, 4)})
     reranked.sort(key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
     return reranked
@@ -378,7 +442,7 @@ class SearchRouter:
                 next_branches.extend(tree_expand_queries(branch_query, branch_factor))
             branches = next_branches
 
-        ranked = sorted(all_results.values(), key=lambda item: float(item.get("score", 0.0)), reverse=True)
+        ranked = rerank_combined_results(query, list(all_results.values()))
         ranked = ranked[: max(limit, keyword_limit, Config.AI_MEMORY_MAX_RECALL_ITEMS)]
         return {
             "query": query, "search_mode": "tree",
