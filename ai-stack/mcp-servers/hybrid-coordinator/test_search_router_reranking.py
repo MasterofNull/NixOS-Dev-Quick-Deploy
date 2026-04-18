@@ -427,3 +427,25 @@ def test_rerank_combined_results_demotes_route_stack_distractors():
     )
 
     assert reranked[0]["id"] == "owner"
+
+
+def test_expanded_query_for_search_adds_route_stack_owner_hints():
+    query = "what reduces repeated query latency in the local route stack"
+    expanded = search_router._expanded_query_for_search(
+        query,
+        search_router.normalize_tokens(query),
+    )
+
+    assert "route_handler" in expanded
+    assert "search_router" in expanded
+    assert "semantic_cache" in expanded
+
+
+def test_expanded_query_for_search_leaves_non_route_queries_unchanged():
+    query = "switchboard auth failure"
+    expanded = search_router._expanded_query_for_search(
+        query,
+        search_router.normalize_tokens(query),
+    )
+
+    assert expanded == query
