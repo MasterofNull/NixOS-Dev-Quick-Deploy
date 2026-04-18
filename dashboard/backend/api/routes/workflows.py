@@ -566,3 +566,131 @@ async def get_statistics():
     except Exception as e:
         logger.error(f"Error getting statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/executions/{execution_id}/graph")
+async def get_execution_graph(execution_id: str):
+    """
+    Get workflow execution graph data formatted for D3.js visualization.
+
+    Returns a JSON structure with nodes, edges, and hierarchical levels
+    suitable for DAG visualization in D3.js.
+    """
+    try:
+        logger.info(f"Fetching execution graph for {execution_id}")
+
+        # Fetch execution data
+        execution = workflow_executor.get_execution(execution_id)
+
+        if not execution:
+            # Try to load from store
+            execution = workflow_store.get_execution(execution_id)
+
+        if not execution:
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        # Handle both dict and object responses
+        execution_dict = execution if isinstance(execution, dict) else execution.to_dict()
+
+        # Extract workflow data
+        workflow_id = execution_dict.get("workflow_id")
+        workflow_data = workflow_store.get_workflow(workflow_id)
+
+        if not workflow_data:
+            raise HTTPException(status_code=400, detail="Associated workflow not found")
+
+        # Reconstruct workflow object for get_execution_order()
+        from workflows.workflow_generator import Workflow, Task, TaskType, AgentRole
+
+        tasks = []
+        for task_data in workflow_data.get("tasks", []):
+            task = Task(
+                id=task_data["id"],
+                name=task_data["name"],
+                description=task_data["description"],
+                task_type=TaskType(task_data["task_type"]),
+                agent_role=AgentRole(task_data["agent_role"]),
+                dependencies=task_data.get("dependencies", []),
+                estimated_duration=task_data.get("estimated_duration", 20),
+            )
+            tasks.append(task)
+
+        workflow = Workflow(
+            id=workflow_data["id"],
+            name=workflow_data["name"],
+            description=workflow_data["description"],
+            goal=workflow_data["goal"],
+            tasks=tasks,
+            created_at=workflow_data["created_at"],
+            metadata=workflow_data.get("metadata", {}),
+        )
+
+        # Get execution levels (hierarchical layout)
+        try:
+            levels = workflow.get_execution_order()
+        except Exception as e:
+            logger.warning(f"Could not compute execution levels: {e}")
+            levels = [[task.id for task in tasks]]
+
+        # Build nodes with execution status
+        nodes = []
+        task_executions = execution_dict.get("task_executions", {})
+
+        for task in tasks:
+            # Get task execution status
+            task_exec = task_executions.get(task.id, {})
+
+            # Format label (replace dashes with spaces, title case)
+            label = task.name.replace("-", " ").title() if task.name else task.id
+
+            # Truncate prompt/description to 200 chars
+            prompt = task.description or ""
+            prompt_truncated = (prompt[:200] + "...") if len(prompt) > 200 else prompt
+
+            # Get status from task execution
+            status = task_exec.get("status", "pending") if task_exec else "pending"
+
+            node = {
+                "id": task.id,
+                "label": label,
+                "agent": task.agent_role.value if task.agent_role else "unknown",
+                "status": status,
+                "progress": task_exec.get("progress", 0) if task_exec else 0,
+                "duration": task_exec.get("duration", 0) if task_exec else 0,
+                "retry_count": task_exec.get("retry_count", 0) if task_exec else 0,
+                "outputs": task_exec.get("output") if task_exec else None,
+                "prompt": prompt_truncated,
+                "error": task_exec.get("error_message") if task_exec else None,
+            }
+            nodes.append(node)
+
+        # Build edges from dependencies
+        edges = []
+        for task in tasks:
+            for dep in task.dependencies:
+                edge = {
+                    "source": dep,
+                    "target": task.id,
+                    "type": "dependency"
+                }
+                edges.append(edge)
+
+        # Build response
+        response = {
+            "execution_id": execution_id,
+            "workflow_name": workflow.name,
+            "workflow_id": workflow_id,
+            "status": execution_dict.get("status", "unknown"),
+            "nodes": nodes,
+            "edges": edges,
+            "levels": levels,
+        }
+
+        logger.info(f"Successfully built graph for execution {execution_id}")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting execution graph: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
