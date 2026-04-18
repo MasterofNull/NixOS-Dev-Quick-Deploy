@@ -1920,6 +1920,365 @@
         .dag-svg-group:active {
             cursor: grabbing;
         }
+
+        /* ====================================================================
+           EXECUTION HISTORY BROWSER STYLES (Phase B)
+           ==================================================================== */
+        .workflow-history-toolbar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            border: 1px solid var(--border-primary);
+        }
+
+        .toolbar-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .toolbar-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .toolbar-input,
+        .toolbar-select {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-primary);
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .toolbar-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .toolbar-input:focus,
+        .toolbar-select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.2);
+        }
+
+        .toolbar-button {
+            padding: 0.5rem 1rem;
+            background: var(--border-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-primary);
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            align-self: flex-end;
+        }
+
+        .toolbar-button:hover {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .toolbar-button.primary {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .toolbar-button.primary:hover {
+            background: #00b8d4;
+        }
+
+        .custom-date-inputs {
+            display: none;
+            grid-column: 1 / -1;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .custom-date-inputs.visible {
+            display: grid;
+        }
+
+        .history-table-container {
+            overflow-x: auto;
+            border-radius: 4px;
+            border: 1px solid var(--border-primary);
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .history-table thead {
+            background: var(--bg-secondary);
+        }
+
+        .history-table th {
+            padding: 0.75rem;
+            text-align: left;
+            color: var(--text-secondary);
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-primary);
+            white-space: nowrap;
+        }
+
+        .history-table tbody tr {
+            border-bottom: 1px solid var(--border-primary);
+            transition: background 0.15s;
+            cursor: pointer;
+        }
+
+        .history-table tbody tr:hover {
+            background: var(--bg-secondary);
+        }
+
+        .history-table tbody tr.selected {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--accent-cyan);
+        }
+
+        .history-table td {
+            padding: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 2px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid;
+        }
+
+        .status-badge.pending {
+            background: rgba(52, 73, 94, 0.3);
+            border-color: #34495e;
+            color: #95a5a6;
+        }
+
+        .status-badge.running {
+            background: rgba(0, 255, 136, 0.15);
+            border-color: var(--status-online);
+            color: var(--status-online);
+        }
+
+        .status-badge.success {
+            background: rgba(0, 255, 136, 0.15);
+            border-color: var(--status-online);
+            color: var(--status-online);
+        }
+
+        .status-badge.failure {
+            background: rgba(255, 0, 110, 0.15);
+            border-color: var(--status-error);
+            color: var(--status-error);
+        }
+
+        .status-badge.timeout {
+            background: rgba(255, 190, 11, 0.15);
+            border-color: var(--status-warning);
+            color: var(--status-warning);
+        }
+
+        .status-badge.cancelled {
+            background: rgba(100, 100, 100, 0.15);
+            border-color: #666;
+            color: #999;
+        }
+
+        .progress-bar-mini {
+            height: 4px;
+            background: var(--bg-secondary);
+            border-radius: 2px;
+            overflow: hidden;
+            width: 100%;
+            min-width: 80px;
+        }
+
+        .progress-bar-mini-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--status-online));
+            transition: width 0.3s;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-button {
+            padding: 0.25rem 0.5rem;
+            background: var(--border-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-primary);
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .action-button:hover {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .empty-state {
+            display: none;
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state.visible {
+            display: block;
+        }
+
+        .empty-state-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            border: 1px solid var(--border-primary);
+            flex-wrap: wrap;
+        }
+
+        .pagination-button {
+            padding: 0.5rem 1rem;
+            background: var(--border-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-primary);
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .pagination-button:hover:not(:disabled) {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .pagination-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination-info {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .pagination-select {
+            padding: 0.5rem;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-primary);
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        /* Header toolbar styles */
+        .history-header-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .history-header-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .history-header-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        /* Responsive design for mobile */
+        @media (max-width: 768px) {
+            .workflow-history-toolbar {
+                grid-template-columns: 1fr;
+            }
+
+            .custom-date-inputs {
+                grid-column: 1 / -1;
+                grid-template-columns: 1fr;
+            }
+
+            .history-table {
+                font-size: 0.75rem;
+            }
+
+            .history-table th,
+            .history-table td {
+                padding: 0.5rem;
+            }
+
+            .history-table th:nth-child(6),
+            .history-table td:nth-child(6),
+            .history-table th:nth-child(7),
+            .history-table td:nth-child(7) {
+                display: none;
+            }
+
+            .pagination-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .pagination-button {
+                width: 100%;
+            }
+
+            .history-header-toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .history-header-actions {
+                width: 100%;
+            }
+
+            .history-header-actions button {
+                flex: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -4349,6 +4708,142 @@
                                 <div class="legend-dot legend-timeout"></div>
                                 <span>Timeout</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Execution History Browser (Phase B-E) -->
+            <div class="dashboard-section" id="section-execution-history">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Execution History</h2>
+                        </div>
+                        <span class="card-badge">Browser</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Header Toolbar -->
+                        <div class="history-header-toolbar">
+                            <span class="history-header-title">Workflow Execution Records</span>
+                            <div class="history-header-actions">
+                                <button id="historyRefreshBtn" class="toolbar-button primary" onclick="loadHistoryData()">
+                                    ⟳ Refresh
+                                </button>
+                                <button id="historyExportBtn" class="toolbar-button" onclick="exportHistoryCSV()">
+                                    ↓ Export CSV
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filter Toolbar (Phase B) -->
+                        <div class="workflow-history-toolbar" id="historyFiltersContainer">
+                            <!-- Workflow Name Search -->
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Workflow Name</label>
+                                <input type="text" id="historyFilterWorkflow" class="toolbar-input"
+                                       placeholder="Search by name..." />
+                            </div>
+
+                            <!-- Status Filter -->
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Status</label>
+                                <select id="historyFilterStatus" class="toolbar-select">
+                                    <option value="">All Statuses</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="running">Running</option>
+                                    <option value="success">Success</option>
+                                    <option value="failure">Failure</option>
+                                    <option value="timeout">Timeout</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
+
+                            <!-- Agent Filter -->
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Agent</label>
+                                <select id="historyFilterAgent" class="toolbar-select">
+                                    <option value="">All Agents</option>
+                                </select>
+                            </div>
+
+                            <!-- Date Range Filter -->
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Date Range</label>
+                                <select id="historyFilterDateRange" class="toolbar-select">
+                                    <option value="all">All Time</option>
+                                    <option value="today">Today</option>
+                                    <option value="7days">Last 7 Days</option>
+                                    <option value="30days">Last 30 Days</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                            </div>
+
+                            <!-- Sort Filter -->
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Sort By</label>
+                                <select id="historyFilterSort" class="toolbar-select">
+                                    <option value="start_time:desc">Newest First</option>
+                                    <option value="start_time:asc">Oldest First</option>
+                                    <option value="duration:desc">Longest Duration</option>
+                                    <option value="duration:asc">Shortest Duration</option>
+                                </select>
+                            </div>
+
+                            <!-- Clear Filters -->
+                            <div class="toolbar-group">
+                                <button id="historyClearBtn" class="toolbar-button" onclick="clearHistoryFilters()">
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Custom Date Range Inputs (hidden by default) -->
+                        <div class="custom-date-inputs" id="customDateInputs">
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Start Date</label>
+                                <input type="date" id="historyCustomStartDate" class="toolbar-input" />
+                            </div>
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">End Date</label>
+                                <input type="date" id="historyCustomEndDate" class="toolbar-input" />
+                            </div>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div class="empty-state" id="historyEmptyState">
+                            <div class="empty-state-icon">⊘</div>
+                            <div>No execution records found</div>
+                            <div style="font-size: 0.85rem; margin-top: 0.5rem; color: var(--text-muted);">
+                                Try adjusting your filters or check back later
+                            </div>
+                        </div>
+
+                        <!-- History Table -->
+                        <div class="history-table-container" id="historyTableContainer" style="display: none;">
+                            <table class="history-table" id="executionHistoryTable">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Workflow</th>
+                                        <th>Execution ID</th>
+                                        <th>Duration</th>
+                                        <th>Started</th>
+                                        <th>Agent</th>
+                                        <th>Progress</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="executionHistoryTableBody">
+                                    <tr><td colspan="8" style="text-align: center; padding: 1rem; color: var(--text-muted);">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination Controls -->
+                        <div class="pagination-controls" id="historyPaginationControls">
+                            <!-- Will be populated by JavaScript -->
                         </div>
                     </div>
                 </div>
@@ -11697,6 +12192,588 @@
             }
         }
 
+        // ====================================================================
+        // EXECUTION HISTORY BROWSER (Phases C, D, E)
+        // ====================================================================
+
+        // State management (Phase C)
+        const historyState = {
+            currentPage: 1,
+            pageSize: 25,
+            filters: {
+                workflow_name: '',
+                status: '',
+                agent_id: '',
+                date_range: 'all',
+                start_date: null,
+                end_date: null,
+                sort_by: 'start_time',
+                order: 'desc'
+            },
+            data: [],
+            total: 0,
+            selectedExecutionId: null,
+            debouncedSearch: null
+        };
+
+        // Debounce helper
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Initialize history browser (Phase C)
+        async function initializeHistoryBrowser() {
+            try {
+                // Set up event listeners
+                const workflowInput = document.getElementById('historyFilterWorkflow');
+                if (workflowInput) {
+                    historyState.debouncedSearch = debounce(() => {
+                        historyState.filters.workflow_name = workflowInput.value.trim();
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    }, 300);
+                    workflowInput.addEventListener('input', historyState.debouncedSearch);
+                }
+
+                const statusSelect = document.getElementById('historyFilterStatus');
+                if (statusSelect) {
+                    statusSelect.addEventListener('change', (e) => {
+                        historyState.filters.status = e.target.value;
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    });
+                }
+
+                const agentSelect = document.getElementById('historyFilterAgent');
+                if (agentSelect) {
+                    agentSelect.addEventListener('change', (e) => {
+                        historyState.filters.agent_id = e.target.value;
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    });
+                }
+
+                const dateRangeSelect = document.getElementById('historyFilterDateRange');
+                if (dateRangeSelect) {
+                    dateRangeSelect.addEventListener('change', (e) => {
+                        const range = e.target.value;
+                        historyState.filters.date_range = range;
+                        applyDateRangePreset(range);
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    });
+                }
+
+                const sortSelect = document.getElementById('historyFilterSort');
+                if (sortSelect) {
+                    sortSelect.addEventListener('change', (e) => {
+                        const [field, order] = e.target.value.split(':');
+                        historyState.filters.sort_by = field;
+                        historyState.filters.order = order;
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    });
+                }
+
+                const customStartDate = document.getElementById('historyCustomStartDate');
+                const customEndDate = document.getElementById('historyCustomEndDate');
+                if (customStartDate && customEndDate) {
+                    customStartDate.addEventListener('change', () => {
+                        historyState.filters.start_date = customStartDate.value;
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    });
+                    customEndDate.addEventListener('change', () => {
+                        historyState.filters.end_date = customEndDate.value;
+                        historyState.currentPage = 1;
+                        loadHistoryData();
+                    });
+                }
+
+                // Load agent options
+                await loadAgentOptions();
+
+                // Load initial data
+                await loadHistoryData();
+            } catch (error) {
+                console.error('Failed to initialize history browser:', error);
+                showNotification('Failed to initialize history browser', 'error');
+            }
+        }
+
+        // Load history data (Phase C)
+        async function loadHistoryData() {
+            try {
+                const params = new URLSearchParams();
+                params.append('page', historyState.currentPage);
+                params.append('limit', historyState.pageSize);
+                if (historyState.filters.workflow_name) {
+                    params.append('workflow_name', historyState.filters.workflow_name);
+                }
+                if (historyState.filters.status) {
+                    params.append('status', historyState.filters.status);
+                }
+                if (historyState.filters.agent_id) {
+                    params.append('agent_id', historyState.filters.agent_id);
+                }
+                if (historyState.filters.start_date) {
+                    params.append('start_date', historyState.filters.start_date);
+                }
+                if (historyState.filters.end_date) {
+                    params.append('end_date', historyState.filters.end_date);
+                }
+                params.append('sort_by', historyState.filters.sort_by);
+                params.append('order', historyState.filters.order);
+
+                const response = await fetch(`/api/workflows/history?${params.toString()}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                historyState.data = data.executions || [];
+                historyState.total = data.total || 0;
+
+                renderHistoryTable();
+                renderHistoryPagination(data.has_more || false);
+                updateHistoryURL();
+            } catch (error) {
+                console.error('Failed to load history data:', error);
+                showNotification('Failed to load history data', 'error');
+                showEmptyState();
+            }
+        }
+
+        // Load agent options (Phase C)
+        async function loadAgentOptions() {
+            try {
+                const response = await fetch('/api/workflows/agents');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                const agents = data.agents || [];
+                const agentSelect = document.getElementById('historyFilterAgent');
+
+                if (agentSelect) {
+                    agentSelect.innerHTML = '<option value="">All Agents</option>';
+                    agents.forEach((agent) => {
+                        const option = document.createElement('option');
+                        option.value = agent.id;
+                        option.textContent = agent.name || agent.id;
+                        agentSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load agent options:', error);
+            }
+        }
+
+        // Render history table (Phase C)
+        function renderHistoryTable() {
+            const tbody = document.getElementById('executionHistoryTableBody');
+            const tableContainer = document.getElementById('historyTableContainer');
+            const emptyState = document.getElementById('historyEmptyState');
+
+            if (!tbody) return;
+
+            if (historyState.data.length === 0) {
+                showEmptyState();
+                return;
+            }
+
+            emptyState.classList.remove('visible');
+            tableContainer.style.display = '';
+
+            tbody.innerHTML = historyState.data.map((execution) => `
+                <tr onclick="selectExecution('${escapeHtml(execution.execution_id)}')"
+                    class="history-row ${execution.execution_id === historyState.selectedExecutionId ? 'selected' : ''}">
+                    <td><span class="status-badge ${execution.status.toLowerCase()}">${execution.status}</span></td>
+                    <td>${escapeHtml(execution.workflow_name || 'Unknown')}</td>
+                    <td><code style="font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(execution.execution_id.substring(0, 8))}</code></td>
+                    <td>${formatDuration(execution.duration_seconds || 0)}</td>
+                    <td>${formatDateTime(execution.start_time)}</td>
+                    <td>${escapeHtml(getMainAgent(execution) || '--')}</td>
+                    <td>
+                        <div class="progress-bar-mini">
+                            <div class="progress-bar-mini-fill" style="width: ${calculateProgress(execution)}%"></div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="action-button" onclick="event.stopPropagation(); viewExecutionDetails('${escapeHtml(execution.execution_id)}')">View</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Render pagination controls (Phase C)
+        function renderHistoryPagination(hasMore) {
+            const container = document.getElementById('historyPaginationControls');
+            if (!container) return;
+
+            const info = {
+                currentPage: historyState.currentPage,
+                pageSize: historyState.pageSize,
+                totalItems: historyState.total,
+                hasNext: hasMore,
+                hasPrev: historyState.currentPage > 1,
+                startIndex: (historyState.currentPage - 1) * historyState.pageSize + 1,
+                endIndex: Math.min(historyState.currentPage * historyState.pageSize, historyState.total)
+            };
+
+            container.innerHTML = `
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="pagination-button" onclick="prevHistoryPage()" ${!info.hasPrev ? 'disabled' : ''}>← Previous</button>
+                    <button class="pagination-button" onclick="nextHistoryPage()" ${!info.hasNext ? 'disabled' : ''}>Next →</button>
+                </div>
+                <div class="pagination-info">
+                    Page <strong>${info.currentPage}</strong> (${info.startIndex}-${info.endIndex} of ${info.totalItems})
+                </div>
+                <select class="pagination-select" onchange="changeHistoryPageSize(parseInt(this.value))">
+                    <option value="25" ${historyState.pageSize === 25 ? 'selected' : ''}>25 per page</option>
+                    <option value="50" ${historyState.pageSize === 50 ? 'selected' : ''}>50 per page</option>
+                    <option value="100" ${historyState.pageSize === 100 ? 'selected' : ''}>100 per page</option>
+                </select>
+            `;
+        }
+
+        // Apply date range preset (Phase C)
+        function applyDateRangePreset(range) {
+            const customInputs = document.getElementById('customDateInputs');
+            const customStart = document.getElementById('historyCustomStartDate');
+            const customEnd = document.getElementById('historyCustomEndDate');
+            const today = new Date();
+
+            if (range === 'custom') {
+                customInputs.classList.add('visible');
+                return;
+            } else {
+                customInputs.classList.remove('visible');
+            }
+
+            let startDate = null;
+            let endDate = null;
+
+            switch (range) {
+                case 'today':
+                    startDate = new Date(today);
+                    endDate = new Date(today);
+                    break;
+                case '7days':
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() - 7);
+                    endDate = new Date(today);
+                    break;
+                case '30days':
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() - 30);
+                    endDate = new Date(today);
+                    break;
+                default:
+                    startDate = null;
+                    endDate = null;
+            }
+
+            if (startDate && customStart) {
+                customStart.value = startDate.toISOString().split('T')[0];
+                historyState.filters.start_date = customStart.value;
+            }
+            if (endDate && customEnd) {
+                customEnd.value = endDate.toISOString().split('T')[0];
+                historyState.filters.end_date = customEnd.value;
+            }
+
+            if (range !== 'all') {
+                historyState.filters.start_date = startDate ? startDate.toISOString().split('T')[0] : null;
+                historyState.filters.end_date = endDate ? endDate.toISOString().split('T')[0] : null;
+            } else {
+                historyState.filters.start_date = null;
+                historyState.filters.end_date = null;
+            }
+        }
+
+        // Update history URL for bookmarking (Phase C)
+        function updateHistoryURL() {
+            const params = new URLSearchParams();
+            if (historyState.filters.workflow_name) {
+                params.append('history_workflow', historyState.filters.workflow_name);
+            }
+            if (historyState.filters.status) {
+                params.append('history_status', historyState.filters.status);
+            }
+            if (historyState.currentPage > 1) {
+                params.append('history_page', historyState.currentPage);
+            }
+            const queryString = params.toString();
+            if (queryString) {
+                window.history.replaceState({}, '', `?${queryString}`);
+            }
+        }
+
+        // Clear history filters (Phase C)
+        function clearHistoryFilters() {
+            historyState.filters = {
+                workflow_name: '',
+                status: '',
+                agent_id: '',
+                date_range: 'all',
+                start_date: null,
+                end_date: null,
+                sort_by: 'start_time',
+                order: 'desc'
+            };
+            historyState.currentPage = 1;
+
+            document.getElementById('historyFilterWorkflow').value = '';
+            document.getElementById('historyFilterStatus').value = '';
+            document.getElementById('historyFilterAgent').value = '';
+            document.getElementById('historyFilterDateRange').value = 'all';
+            document.getElementById('historyFilterSort').value = 'start_time:desc';
+
+            loadHistoryData();
+            showNotification('Filters cleared', 'info');
+        }
+
+        // Pagination helpers (Phase C)
+        function nextHistoryPage() {
+            historyState.currentPage++;
+            loadHistoryData();
+        }
+
+        function prevHistoryPage() {
+            if (historyState.currentPage > 1) {
+                historyState.currentPage--;
+                loadHistoryData();
+            }
+        }
+
+        function changeHistoryPageSize(size) {
+            historyState.pageSize = size;
+            historyState.currentPage = 1;
+            loadHistoryData();
+        }
+
+        // Show empty state (Phase C)
+        function showEmptyState() {
+            const tableContainer = document.getElementById('historyTableContainer');
+            const emptyState = document.getElementById('historyEmptyState');
+            if (tableContainer && emptyState) {
+                tableContainer.style.display = 'none';
+                emptyState.classList.add('visible');
+            }
+        }
+
+        // ====================================================================
+        // PHASE D: DAG Integration
+        // ====================================================================
+
+        async function selectExecution(executionId) {
+            try {
+                historyState.selectedExecutionId = executionId;
+
+                // Update table highlighting
+                document.querySelectorAll('.history-row').forEach(row => {
+                    row.classList.remove('selected');
+                });
+                event.target.closest('tr')?.classList.add('selected');
+
+                // Load in DAG visualization
+                if (workflowRenderer) {
+                    await workflowRenderer.render(executionId);
+                }
+
+                // Scroll to DAG section
+                const dagSection = document.getElementById('section-workflow-dag');
+                if (dagSection) {
+                    dagSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+
+                showNotification(`Execution ${executionId.substring(0, 8)} loaded`, 'info');
+            } catch (error) {
+                console.error('Failed to select execution:', error);
+                showNotification('Failed to load execution details', 'error');
+            }
+        }
+
+        function viewExecutionDetails(executionId) {
+            selectExecution(executionId);
+        }
+
+        // ====================================================================
+        // PHASE E: CSV Export
+        // ====================================================================
+
+        async function exportHistoryCSV() {
+            try {
+                showNotification('Preparing export...', 'info');
+
+                const params = new URLSearchParams();
+                params.append('limit', '10000');
+                if (historyState.filters.workflow_name) {
+                    params.append('workflow_name', historyState.filters.workflow_name);
+                }
+                if (historyState.filters.status) {
+                    params.append('status', historyState.filters.status);
+                }
+                if (historyState.filters.agent_id) {
+                    params.append('agent_id', historyState.filters.agent_id);
+                }
+                if (historyState.filters.start_date) {
+                    params.append('start_date', historyState.filters.start_date);
+                }
+                if (historyState.filters.end_date) {
+                    params.append('end_date', historyState.filters.end_date);
+                }
+                params.append('sort_by', historyState.filters.sort_by);
+                params.append('order', historyState.filters.order);
+
+                const response = await fetch(`/api/workflows/history?${params.toString()}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                const executions = data.executions || [];
+
+                if (executions.length === 0) {
+                    showNotification('No data to export', 'warning');
+                    return;
+                }
+
+                const csvContent = convertHistoryToCSV(executions);
+                downloadCSV(csvContent);
+
+                showNotification(`Exported ${executions.length} records`, 'success');
+            } catch (error) {
+                console.error('Failed to export history:', error);
+                showNotification('Failed to export CSV', 'error');
+            }
+        }
+
+        function convertHistoryToCSV(executions) {
+            const headers = [
+                'Execution ID',
+                'Workflow ID',
+                'Workflow Name',
+                'Status',
+                'Start Time',
+                'End Time',
+                'Duration (seconds)',
+                'Main Agent',
+                'Progress (%)',
+                'Total Tasks',
+                'Completed Tasks',
+                'Failed Tasks'
+            ];
+
+            const rows = executions.map(exec => [
+                exec.execution_id,
+                exec.workflow_id || '',
+                exec.workflow_name || '',
+                exec.status,
+                exec.start_time || '',
+                exec.end_time || '',
+                exec.duration_seconds || '0',
+                getMainAgent(exec) || '',
+                Math.round(calculateProgress(exec)),
+                exec.total_tasks || '0',
+                exec.completed_tasks || '0',
+                exec.failed_tasks || '0'
+            ]);
+
+            const csvLines = [
+                headers.map(h => `"${h}"`).join(','),
+                ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            ];
+
+            return csvLines.join('\n');
+        }
+
+        function downloadCSV(csvContent) {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            const filename = `workflow-history-${new Date().toISOString().split('T')[0]}.csv`;
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ====================================================================
+        // HELPER FUNCTIONS (Phase B-E)
+        // ====================================================================
+
+        function getStatusInfo(status) {
+            const statusMap = {
+                'pending': { icon: '⏳', label: 'Pending' },
+                'running': { icon: '▶', label: 'Running' },
+                'success': { icon: '✓', label: 'Success' },
+                'failure': { icon: '✗', label: 'Failure' },
+                'timeout': { icon: '⏱', label: 'Timeout' },
+                'cancelled': { icon: '⊗', label: 'Cancelled' }
+            };
+            return statusMap[status?.toLowerCase()] || { icon: '?', label: status };
+        }
+
+        function calculateProgress(execution) {
+            if (!execution.total_tasks || execution.total_tasks === 0) return 0;
+            const completed = execution.completed_tasks || 0;
+            return Math.round((completed / execution.total_tasks) * 100);
+        }
+
+        function getMainAgent(execution) {
+            if (execution.agents && Array.isArray(execution.agents)) {
+                return execution.agents[0]?.name || execution.agents[0]?.id || null;
+            }
+            return execution.main_agent || null;
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds || seconds === 0) return '--';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+        function formatDateTime(isoString) {
+            if (!isoString) return '--';
+            try {
+                const date = new Date(isoString);
+                const month = date.toLocaleDateString('en-US', { month: 'short' });
+                const day = date.getDate();
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${month} ${day}, ${hours}:${minutes}`;
+            } catch (e) {
+                return isoString;
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // Initial load when page loads
         document.addEventListener('DOMContentLoaded', function() {
             // Delay initial health check by 2 seconds to let other services load first
@@ -11713,6 +12790,9 @@
 
             // Initialize Workflow DAG visualization
             initializeWorkflowDAG();
+
+            // Initialize Execution History Browser (Phase B-E)
+            initializeHistoryBrowser();
 
             // Log performance report after initial load
             setTimeout(() => {
