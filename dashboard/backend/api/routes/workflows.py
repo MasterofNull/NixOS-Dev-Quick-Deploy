@@ -6,6 +6,7 @@ generation, optimization, templates, adaptation, prediction, and execution.
 """
 
 import asyncio
+import json
 import logging
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, Query
@@ -126,6 +127,8 @@ class WorkflowHistoryResponse(BaseModel):
     """Response with workflow history."""
     executions: List[Dict[str, Any]]
     total: int
+    has_more: bool = False
+    filters: Optional[Dict[str, Any]] = None
 
 
 # Routes
@@ -533,26 +536,216 @@ async def get_execution_status(execution_id: str):
 @router.get("/history", response_model=WorkflowHistoryResponse)
 async def get_workflow_history(
     workflow_id: Optional[str] = Query(None, description="Filter by workflow ID"),
+    workflow_name: Optional[str] = Query(None, description="Filter by workflow name (case-insensitive partial match)"),
     status: Optional[str] = Query(None, description="Filter by status"),
+    agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
+    start_date: Optional[str] = Query(None, description="Filter executions on or after this ISO date"),
+    end_date: Optional[str] = Query(None, description="Filter executions on or before this ISO date"),
+    sort_by: str = Query("start_time", description="Sort by: start_time or total_duration"),
+    order: str = Query("desc", description="Sort order: asc or desc"),
     limit: int = Query(50, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
 ):
-    """Get workflow execution history."""
+    """Get workflow execution history with enhanced filtering and sorting."""
     try:
-        executions = workflow_store.list_executions(
-            workflow_id=workflow_id,
-            status=status,
-            limit=limit,
-            offset=offset
-        )
+        # Validate sort_by parameter
+        valid_sort_fields = ["start_time", "total_duration"]
+        if sort_by not in valid_sort_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid sort_by: {sort_by}. Must be one of: {', '.join(valid_sort_fields)}"
+            )
+
+        # Validate order parameter
+        valid_orders = ["asc", "desc"]
+        if order.lower() not in valid_orders:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid order: {order}. Must be one of: {', '.join(valid_orders)}"
+            )
+
+        # Validate and parse date parameters
+        start_date_parsed = None
+        end_date_parsed = None
+
+        if start_date:
+            try:
+                from datetime import datetime as dt
+                start_date_parsed = dt.fromisoformat(start_date.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid start_date format. Use ISO format (e.g., 2026-04-01T00:00:00Z)"
+                )
+
+        if end_date:
+            try:
+                from datetime import datetime as dt
+                end_date_parsed = dt.fromisoformat(end_date.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid end_date format. Use ISO format (e.g., 2026-04-01T23:59:59Z)"
+                )
+
+        # Fetch from database with filters
+        import sqlite3
+        executions = []
+        total = 0
+        has_more = False
+
+        with workflow_store._get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Build WHERE clause
+            where_clauses = ["1=1"]
+            params = []
+
+            if workflow_id:
+                where_clauses.append("we.workflow_id = ?")
+                params.append(workflow_id)
+
+            if status:
+                where_clauses.append("we.status = ?")
+                params.append(status)
+
+            if start_date_parsed:
+                where_clauses.append("we.start_time >= ?")
+                params.append(start_date_parsed.isoformat())
+
+            if end_date_parsed:
+                where_clauses.append("we.start_time <= ?")
+                params.append(end_date_parsed.isoformat())
+
+            # Build the main query with JOINs for workflow_name and agent_id filters
+            if workflow_name or agent_id:
+                # Need to LEFT JOIN with workflows and task_executions tables
+                select_query = "SELECT DISTINCT we.data"
+                from_clause = "FROM workflow_executions we LEFT JOIN workflows w ON we.workflow_id = w.id"
+
+                if agent_id:
+                    from_clause += " LEFT JOIN task_executions te ON we.execution_id = te.workflow_execution_id"
+                    where_clauses.append("te.agent_id = ?")
+                    params.append(agent_id)
+
+                if workflow_name:
+                    where_clauses.append("LOWER(w.name) LIKE LOWER(?)")
+                    params.append(f"%{workflow_name}%")
+
+                # Build full query
+                query = f"{select_query} {from_clause} WHERE {' AND '.join(where_clauses)}"
+            else:
+                # Simple query without extra JOINs
+                query = f"SELECT we.data FROM workflow_executions we WHERE {' AND '.join(where_clauses)}"
+
+            # Get total count
+            count_query = query.replace("SELECT DISTINCT we.data", "SELECT COUNT(DISTINCT we.execution_id) as count")
+            count_query = count_query.replace("SELECT we.data", "SELECT COUNT(*) as count")
+
+            cursor.execute(count_query, params)
+            count_result = cursor.fetchone()
+            total = count_result["count"] if count_result else 0
+
+            # Add sorting
+            order_dir = "DESC" if order.lower() == "desc" else "ASC"
+            if sort_by == "start_time":
+                query += f" ORDER BY we.start_time {order_dir}"
+            elif sort_by == "total_duration":
+                query += f" ORDER BY we.total_duration {order_dir}"
+
+            # Fetch limit+1 to determine if there are more results
+            query += f" LIMIT ? OFFSET ?"
+            params.extend([limit + 1, offset])
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            # Check if there are more results
+            if len(rows) > limit:
+                has_more = True
+                rows = rows[:limit]
+
+            # Parse execution data
+            for row in rows:
+                try:
+                    executions.append(json.loads(row["data"]))
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Failed to parse execution data: {e}")
+                    continue
+
+        # Build filters dict for response
+        applied_filters = {}
+        if workflow_id:
+            applied_filters["workflow_id"] = workflow_id
+        if workflow_name:
+            applied_filters["workflow_name"] = workflow_name
+        if status:
+            applied_filters["status"] = status
+        if agent_id:
+            applied_filters["agent_id"] = agent_id
+        if start_date:
+            applied_filters["start_date"] = start_date
+        if end_date:
+            applied_filters["end_date"] = end_date
+        if sort_by != "start_time":
+            applied_filters["sort_by"] = sort_by
+        if order != "desc":
+            applied_filters["order"] = order
 
         return WorkflowHistoryResponse(
             executions=executions,
-            total=len(executions)
+            total=total,
+            has_more=has_more,
+            filters=applied_filters if applied_filters else None
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting workflow history: {e}")
+        logger.error(f"Error getting workflow history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents")
+async def get_workflow_agents():
+    """
+    Get distinct agent IDs from task executions for filter dropdown.
+
+    Returns a list of unique agent IDs sorted alphabetically.
+    This endpoint is used to populate the agent filter dropdown in the UI.
+    """
+    try:
+        agents = []
+
+        with workflow_store._get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Query distinct agent_ids from task_executions table
+            # Filter out None/empty values and sort alphabetically
+            cursor.execute("""
+                SELECT DISTINCT agent_id
+                FROM task_executions
+                WHERE agent_id IS NOT NULL AND agent_id != ''
+                ORDER BY agent_id ASC
+            """)
+
+            rows = cursor.fetchall()
+
+            # Convert rows to list of dicts
+            for row in rows:
+                agent_id = row["agent_id"]
+                if agent_id:  # Double-check it's not empty
+                    agents.append({"agent_id": agent_id})
+
+        logger.info(f"Retrieved {len(agents)} distinct agents")
+
+        return {
+            "agents": agents,
+            "total": len(agents)
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting workflow agents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
