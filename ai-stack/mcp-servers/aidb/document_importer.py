@@ -20,6 +20,13 @@ from qdrant_client.models import PointStruct
 
 logger = logging.getLogger("document-importer")
 
+_ROUTE_STACK_OWNER_PATHS = (
+    "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/semantic_cache.py",
+    "nix/modules/services/switchboard.nix",
+)
+
 
 class ChunkingStrategy:
     """Strategies for chunking different document types"""
@@ -245,6 +252,28 @@ class MetadataExtractor:
 
         return metadata
 
+    @staticmethod
+    def enrich_route_stack_metadata(file_path: Path) -> Dict[str, Any]:
+        """Attach explicit route-stack ownership metadata for direct retrieval."""
+        normalized = str(file_path).replace("\\", "/")
+        metadata: Dict[str, Any] = {}
+        owner_paths = [owner for owner in _ROUTE_STACK_OWNER_PATHS if owner in normalized]
+        if owner_paths:
+            metadata["owner_paths"] = owner_paths
+            metadata["route_stack_hints"] = [
+                "route-stack",
+                "route_handler",
+                "search_router",
+                "semantic_cache",
+                "prompt_cache",
+                "retrieval_context",
+                "switchboard",
+            ]
+            metadata["subsystem_tags"] = ["route-stack"]
+        elif "switchboard" in normalized:
+            metadata["subsystem_tags"] = ["switchboard"]
+        return metadata
+
 
 class DocumentImporter:
     """
@@ -396,6 +425,8 @@ class DocumentImporter:
             # Shouldn't reach here due to should_import check
             return
 
+        metadata.update(MetadataExtractor.enrich_route_stack_metadata(file_path))
+
         # Generate file hash for differential sync
         file_hash = hashlib.sha256(content.encode()).hexdigest()
 
@@ -404,6 +435,8 @@ class DocumentImporter:
         for idx, (chunk, chunk_meta) in enumerate(zip(chunks, chunk_metadata_list)):
             # Generate embedding
             embedding = await self.generate_embedding(chunk)
+            if not embedding:
+                raise Exception("Failed to generate embedding after retries")
 
             # Create point
             point = PointStruct(
@@ -441,44 +474,38 @@ class DocumentImporter:
         1. Hugging Face text-embeddings-inference (TEI) - default for port 8081
         2. OpenAI-compatible (llama.cpp) - fallback
         """
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Determine API format based on embedding_url
-                if ":8081" in self.embedding_url:
-                    # Hugging Face TEI API format
-                    response = await client.post(
-                        f"{self.embedding_url}/embed",
-                        json={"inputs": text}
-                    )
+        for attempt in range(1, 4):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    # Determine API format based on embedding_url
+                    if ":8081" in self.embedding_url:
+                        response = await client.post(
+                            f"{self.embedding_url}/embed",
+                            json={"inputs": text}
+                        )
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        # TEI returns list of embeddings directly
-                        if isinstance(data, list) and len(data) > 0:
-                            return data[0]
-                        else:
-                            logger.warning(f"Unexpected TEI response format: {data}")
-                            return [0.0] * 384
+                        if response.status_code == 200:
+                            data = response.json()
+                            if isinstance(data, list) and len(data) > 0:
+                                return data[0]
+                            logger.warning("Unexpected TEI response format: %s", data)
+                            return []
+                        logger.warning("TEI embedding failed: %s - %s", response.status_code, response.text[:160])
                     else:
-                        logger.warning(f"TEI embedding failed: {response.status_code} - {response.text}")
-                        return [0.0] * 384
-                else:
-                    # OpenAI-compatible API format (llama.cpp, etc.)
-                    response = await client.post(
-                        self.embedding_url,
-                        json={"input": text}
-                    )
+                        response = await client.post(
+                            self.embedding_url,
+                            json={"input": text}
+                        )
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data["data"][0]["embedding"]
-                    else:
-                        logger.warning(f"Embedding service unavailable: {response.status_code}")
-                        return [0.0] * 384
-
-        except Exception as e:
-            logger.warning(f"Embedding generation failed: {e}, using zero vector")
-            return [0.0] * 384
+                        if response.status_code == 200:
+                            data = response.json()
+                            return data["data"][0]["embedding"]
+                        logger.warning("Embedding service unavailable: %s", response.status_code)
+            except Exception as e:
+                logger.warning("Embedding generation failed attempt=%s error=%s", attempt, e)
+            if attempt < 3:
+                await asyncio.sleep(0.5 * attempt)
+        return []
 
     def get_stats(self) -> Dict[str, Any]:
         """Get import statistics"""
