@@ -33,8 +33,10 @@ class ChunkingStrategy:
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
-        """Rough token estimation: ~1.3 tokens per word"""
-        return int(len(text.split()) * 1.3)
+        """Conservative token estimation for mixed prose and code."""
+        word_estimate = int(len(text.split()) * 1.3)
+        char_estimate = max(1, len(text) // 4)
+        return max(word_estimate, char_estimate)
 
     @staticmethod
     def chunk_by_paragraphs(
@@ -83,6 +85,59 @@ class ChunkingStrategy:
         return chunks
 
     @staticmethod
+    def split_oversized_chunk(
+        text: str,
+        chunk_size: int,
+        overlap: int = 64
+    ) -> List[str]:
+        """Split an oversized chunk into bounded subchunks."""
+        if ChunkingStrategy.estimate_tokens(text) <= chunk_size:
+            return [text]
+
+        paragraph_chunks = ChunkingStrategy.chunk_by_paragraphs(text, chunk_size, overlap)
+        bounded_chunks: List[str] = []
+        for chunk in paragraph_chunks:
+            if ChunkingStrategy.estimate_tokens(chunk) <= chunk_size:
+                bounded_chunks.append(chunk)
+                continue
+
+            lines = [line for line in chunk.splitlines() if line.strip()]
+            current_lines: List[str] = []
+            for line in lines:
+                candidate = "\n".join(current_lines + [line]) if current_lines else line
+                if current_lines and ChunkingStrategy.estimate_tokens(candidate) > chunk_size:
+                    bounded_chunks.append("\n".join(current_lines))
+                    overlap_lines = current_lines[-overlap:] if overlap > 0 else []
+                    current_lines = overlap_lines + [line]
+                else:
+                    current_lines.append(line)
+
+            if current_lines:
+                bounded_chunks.append("\n".join(current_lines))
+
+        final_chunks: List[str] = []
+        for chunk in bounded_chunks:
+            if ChunkingStrategy.estimate_tokens(chunk) <= chunk_size:
+                final_chunks.append(chunk)
+                continue
+
+            words = chunk.split()
+            current_words: List[str] = []
+            for word in words:
+                candidate = " ".join(current_words + [word]) if current_words else word
+                if current_words and ChunkingStrategy.estimate_tokens(candidate) > chunk_size:
+                    final_chunks.append(" ".join(current_words))
+                    overlap_words = current_words[-overlap:] if overlap > 0 else []
+                    current_words = overlap_words + [word]
+                else:
+                    current_words.append(word)
+
+            if current_words:
+                final_chunks.append(" ".join(current_words))
+
+        return [chunk for chunk in final_chunks if chunk.strip()]
+
+    @staticmethod
     def chunk_code_by_functions(
         code: str,
         language: str,
@@ -111,7 +166,12 @@ class ChunkingStrategy:
                 name_match = re.search(r'(def|class)\s+(\w+)', first_line)
                 name = name_match.group(2) if name_match else "unknown"
 
-                chunks.append((func_code, {"type": name_match.group(1) if name_match else "code", "name": name}))
+                chunk_type = name_match.group(1) if name_match else "code"
+                for part_idx, part in enumerate(ChunkingStrategy.split_oversized_chunk(func_code, chunk_size)):
+                    chunk_meta = {"type": chunk_type, "name": name}
+                    if part_idx:
+                        chunk_meta["part"] = part_idx + 1
+                    chunks.append((part, chunk_meta))
 
         elif language in ["bash", "shell"]:
             # Split by function definitions
@@ -123,7 +183,11 @@ class ChunkingStrategy:
                 name_match = re.search(r'(?:function\s+)?(\w+)\s*\(\)', func_code)
                 name = name_match.group(1) if name_match else "unknown"
 
-                chunks.append((func_code, {"type": "function", "name": name}))
+                for part_idx, part in enumerate(ChunkingStrategy.split_oversized_chunk(func_code, chunk_size)):
+                    chunk_meta = {"type": "function", "name": name}
+                    if part_idx:
+                        chunk_meta["part"] = part_idx + 1
+                    chunks.append((part, chunk_meta))
 
         elif language == "nix":
             # Split by top-level attribute definitions
@@ -135,7 +199,11 @@ class ChunkingStrategy:
                 name_match = re.search(r'(\w+)\s*=', attr_code)
                 name = name_match.group(1) if name_match else "unknown"
 
-                chunks.append((attr_code, {"type": "attribute", "name": name}))
+                for part_idx, part in enumerate(ChunkingStrategy.split_oversized_chunk(attr_code, chunk_size)):
+                    chunk_meta = {"type": "attribute", "name": name}
+                    if part_idx:
+                        chunk_meta["part"] = part_idx + 1
+                    chunks.append((part, chunk_meta))
 
         # Fallback: if no logical blocks found, chunk by size
         if not chunks:
@@ -454,7 +522,6 @@ class DocumentImporter:
                 }
             )
             points.append(point)
-            self.stats["chunks_created"] += 1
 
         # Upsert to Qdrant
         try:
@@ -462,6 +529,7 @@ class DocumentImporter:
                 collection_name="codebase-context",
                 points=points
             )
+            self.stats["chunks_created"] += len(points)
             logger.info(f"  ✓ Imported {len(chunks)} chunks from {file_path.name}")
         except Exception as e:
             raise Exception(f"Failed to upsert to Qdrant: {e}")
