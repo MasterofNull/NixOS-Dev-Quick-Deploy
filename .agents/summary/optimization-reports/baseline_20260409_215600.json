@@ -1,0 +1,1036 @@
+{
+  "generated_at": "2026-04-10T04:56:15.599642+00:00",
+  "window": "7d",
+  "tool_call_basis": {
+    "calls": "backend-valid",
+    "actionable_calls": "backend-valid",
+    "observed_calls": "backend-valid-plus-client-error",
+    "client_error_count": "invalid-client-requests"
+  },
+  "tool_performance": {
+    "hints": {
+      "calls": 4190,
+      "actionable_calls": 4190,
+      "observed_calls": 4190,
+      "p50_ms": 146.78674900051192,
+      "p95_ms": 287.8396596003086,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "discovery": {
+      "calls": 887,
+      "actionable_calls": 887,
+      "observed_calls": 890,
+      "p50_ms": 11.266361002299163,
+      "p95_ms": 23.282729700622436,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 3,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "route_search": {
+      "calls": 868,
+      "actionable_calls": 868,
+      "observed_calls": 868,
+      "p50_ms": 1292.0594415000153,
+      "p95_ms": 22533.316173850322,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "a2a_agent_card": {
+      "calls": 4180,
+      "actionable_calls": 4180,
+      "observed_calls": 4180,
+      "p50_ms": 0.1485539996792795,
+      "p95_ms": 0.2930324023509458,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "hints_feedback": {
+      "calls": 26,
+      "actionable_calls": 26,
+      "observed_calls": 26,
+      "p50_ms": 0.6230374995084276,
+      "p95_ms": 1.9479687514376565,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "workflow_plan": {
+      "calls": 293,
+      "actionable_calls": 293,
+      "observed_calls": 293,
+      "p50_ms": 3.258834999996907,
+      "p95_ms": 7.241512598830012,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "tree_search": {
+      "calls": 14,
+      "actionable_calls": 14,
+      "observed_calls": 14,
+      "p50_ms": 2931.4876825000056,
+      "p95_ms": 4367.750218700046,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "recall_agent_memory": {
+      "calls": 323,
+      "actionable_calls": 323,
+      "observed_calls": 323,
+      "p50_ms": 38.50230600073701,
+      "p95_ms": 4322.273377800364,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "run_harness_eval": {
+      "calls": 14,
+      "actionable_calls": 14,
+      "observed_calls": 14,
+      "p50_ms": 11.121297498903004,
+      "p95_ms": 19.284646750003272,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "ai_coordinator_status": {
+      "calls": 2,
+      "actionable_calls": 2,
+      "observed_calls": 2,
+      "p50_ms": 246.64640799983317,
+      "p95_ms": 378.57091630039577,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "ai_coordinator_delegate": {
+      "calls": 7,
+      "actionable_calls": 7,
+      "observed_calls": 7,
+      "p50_ms": 227.8408340000624,
+      "p95_ms": 29874.50392149993,
+      "success_pct": 28.6,
+      "error_count": 5,
+      "client_error_count": 0,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "workflow_run_start": {
+      "calls": 25,
+      "actionable_calls": 25,
+      "observed_calls": 26,
+      "p50_ms": 127.8689605001091,
+      "p95_ms": 286.34229799899913,
+      "success_pct": 100.0,
+      "error_count": 0,
+      "client_error_count": 1,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    },
+    "loop_orchestrate": {
+      "calls": 0,
+      "actionable_calls": 0,
+      "observed_calls": 1,
+      "p50_ms": 0.23033999968902208,
+      "p95_ms": 0.23033999968902208,
+      "success_pct": 0.0,
+      "error_count": 0,
+      "client_error_count": 1,
+      "unknown_count": 0,
+      "recovered_fallback_count": 0
+    }
+  },
+  "routing": {
+    "local_n": 868,
+    "remote_n": 0,
+    "local_pct": 100.0,
+    "query_ok_n": 868,
+    "fallback_used": false,
+    "available": true,
+    "source": "tool_audit"
+  },
+  "recent_routing": {
+    "local_n": 6,
+    "remote_n": 0,
+    "local_pct": 100.0,
+    "query_ok_n": 6,
+    "fallback_used": false,
+    "available": true,
+    "source": "tool_audit",
+    "window": "1h"
+  },
+  "routing_windows": {
+    "available": true,
+    "windows": {
+      "1h": {
+        "local_n": 6,
+        "remote_n": 0,
+        "local_pct": 100.0,
+        "query_ok_n": 6,
+        "fallback_used": false,
+        "available": true,
+        "source": "tool_audit",
+        "window": "1h",
+        "partial_window": false
+      },
+      "24h": {
+        "local_n": 236,
+        "remote_n": 0,
+        "local_pct": 100.0,
+        "query_ok_n": 236,
+        "fallback_used": false,
+        "available": true,
+        "source": "tool_audit",
+        "window": "24h",
+        "partial_window": false
+      },
+      "7d": {
+        "local_n": 868,
+        "remote_n": 0,
+        "local_pct": 100.0,
+        "query_ok_n": 868,
+        "fallback_used": false,
+        "available": true,
+        "source": "tool_audit",
+        "window": "7d",
+        "partial_window": false
+      }
+    }
+  },
+  "cache": {
+    "hits": 145,
+    "misses": 44,
+    "sample_total": 189,
+    "hit_pct": 76.7,
+    "available": true,
+    "source": "embedding_cache_prometheus"
+  },
+  "cache_prewarm": {
+    "available": true,
+    "timer": "ai-cache-prewarm.timer",
+    "service": "ai-cache-prewarm.service",
+    "enabled": true,
+    "enabled_state": "enabled",
+    "active": true,
+    "active_state": "active"
+  },
+  "eval_trend": {
+    "available": true,
+    "source": "tool_audit",
+    "latest_pct": 50.0,
+    "mean_pct": 50.0,
+    "min_pct": 50.0,
+    "max_pct": 50.0,
+    "trend": "stable",
+    "n_runs": 14
+  },
+  "strategy_leaderboard": [],
+  "top_prompts": [
+    {
+      "id": "aider_task_systems_code",
+      "name": "Aider Systems Code Generation Task",
+      "mean_score": 1.0
+    },
+    {
+      "id": "eval_scorecard_analysis",
+      "name": "Eval Scorecard Failure Analysis",
+      "mean_score": 1.0
+    },
+    {
+      "id": "route_search_synthesis",
+      "name": "Route-Search Context Synthesis",
+      "mean_score": 0.667
+    }
+  ],
+  "query_gaps": [],
+  "rag_posture": {
+    "available": true,
+    "status": "healthy",
+    "recent_retrieval_calls": 9,
+    "total_retrieval_calls": 1205,
+    "actionable_gap_count": 0,
+    "cache_hit_pct": 76.7,
+    "cache_sample_total": 189,
+    "cache_context": null,
+    "retrieval_mix": {
+      "recent": {
+        "route_search": 6,
+        "tree_search": 0,
+        "recall_agent_memory": 3
+      },
+      "total": {
+        "route_search": 868,
+        "tree_search": 14,
+        "recall_agent_memory": 323
+      },
+      "dominant_recent": "route_search",
+      "dominant_total": "route_search"
+    },
+    "memory_recall_share_pct": 33.3,
+    "memory_recall_attempts": 3,
+    "memory_recall_misses": 0,
+    "memory_recall_miss_pct": 0.0,
+    "memory_recall_diagnosis": "healthy",
+    "memory_recall_actions": [],
+    "tree_search_share_pct": 0.0,
+    "prewarm_candidates": [
+      {
+        "id": "route_search_synthesis",
+        "name": "Route-Search Context Synthesis",
+        "score": 157,
+        "reason": "high route_search latency"
+      }
+    ],
+    "reasons": []
+  },
+  "recent_health": {
+    "available": true,
+    "window": "1h",
+    "slow_tools": [],
+    "flaky_tools": [],
+    "healthy": true
+  },
+  "continue_editor": {
+    "available": true,
+    "source": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-qa",
+    "healthy": true,
+    "total_checks": 6,
+    "passed_n": 6,
+    "failed_n": 0,
+    "skipped_n": 0,
+    "checks": [
+      {
+        "id": "0.5.1",
+        "description": "Continue CLI help works",
+        "status": "PASS",
+        "failure_category": "cli_runtime"
+      },
+      {
+        "id": "0.5.2",
+        "description": "Continue config targets switchboard ingress with continue-local lane",
+        "status": "PASS",
+        "failure_category": "config_generation"
+      },
+      {
+        "id": "0.5.3",
+        "description": "VSCodium has Continue extension installed",
+        "status": "PASS",
+        "failure_category": "editor_extension"
+      },
+      {
+        "id": "0.5.4",
+        "description": "continue-local switchboard smoke",
+        "status": "PASS",
+        "failure_category": "switchboard_routing"
+      },
+      {
+        "id": "0.5.5",
+        "description": "continue-local trims oversized dense prompts",
+        "status": "PASS",
+        "failure_category": "context_window_trimming"
+      },
+      {
+        "id": "0.5.6",
+        "description": "Continue/editor prompt to feedback smoke",
+        "status": "PASS",
+        "failure_category": "agent_flow"
+      }
+    ],
+    "failure_categories": [],
+    "top_failure_category": null
+  },
+  "continue_editor_windows": {
+    "available": true,
+    "source": "/var/lib/ai-stack/hybrid/telemetry/continue-editor-history.jsonl",
+    "windows": {
+      "1h": {
+        "available": true,
+        "window": "1h",
+        "partial_window": false,
+        "samples": 4,
+        "healthy_samples": 4,
+        "healthy_pct": 100.0,
+        "latest_healthy": true,
+        "latest_failed_n": 0,
+        "latest_total_checks": 6,
+        "latest_failure_categories": []
+      },
+      "24h": {
+        "available": true,
+        "window": "24h",
+        "partial_window": false,
+        "samples": 45,
+        "healthy_samples": 45,
+        "healthy_pct": 100.0,
+        "latest_healthy": true,
+        "latest_failed_n": 0,
+        "latest_total_checks": 6,
+        "latest_failure_categories": []
+      },
+      "7d": {
+        "available": true,
+        "window": "7d",
+        "partial_window": false,
+        "samples": 148,
+        "healthy_samples": 148,
+        "healthy_pct": 100.0,
+        "latest_healthy": true,
+        "latest_failed_n": 0,
+        "latest_total_checks": 6,
+        "latest_failure_categories": []
+      }
+    }
+  },
+  "shared_skill_registry": {
+    "available": true,
+    "source": "http://127.0.0.1:8002/skills",
+    "local_skill_count": 26,
+    "expected_skill_count": 27,
+    "approved_skill_count": 27,
+    "missing_in_aidb": [],
+    "extra_in_aidb": [],
+    "path_mismatches": [],
+    "healthy": true
+  },
+  "delegated_prompt_failures": {
+    "available": true,
+    "source": "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl",
+    "total_failures": 0,
+    "recovered_failures": 0,
+    "salvageable_failures": 0,
+    "top_failure_classes": [],
+    "top_profiles": [],
+    "recent_examples": []
+  },
+  "delegated_prompt_failure_windows": {
+    "available": true,
+    "windows": {
+      "1h": {
+        "available": true,
+        "source": "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl",
+        "total_failures": 0,
+        "recovered_failures": 0,
+        "salvageable_failures": 0,
+        "top_failure_classes": [],
+        "top_profiles": [],
+        "recent_examples": [],
+        "partial_window": false
+      },
+      "24h": {
+        "available": true,
+        "source": "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl",
+        "total_failures": 0,
+        "recovered_failures": 0,
+        "salvageable_failures": 0,
+        "top_failure_classes": [],
+        "top_profiles": [],
+        "recent_examples": [],
+        "partial_window": false
+      },
+      "7d": {
+        "available": true,
+        "source": "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl",
+        "total_failures": 0,
+        "recovered_failures": 0,
+        "salvageable_failures": 0,
+        "top_failure_classes": [],
+        "top_profiles": [],
+        "recent_examples": [],
+        "partial_window": false
+      }
+    },
+    "trend": {
+      "status": "healthy",
+      "summary": "no delegated prompt failures recorded in the compared windows",
+      "actions": []
+    }
+  },
+  "remote_profile_utilization": {
+    "available": true,
+    "source": "local_only_zero_remote",
+    "window": "1h",
+    "total_calls": 0,
+    "success_count": 0,
+    "success_pct": null,
+    "fallback_applied": 0,
+    "finalization_applied": 0,
+    "handoff_requested": 0,
+    "handoff_pct": null,
+    "top_profiles": [],
+    "top_runtime_ids": [],
+    "top_requester_roles": [],
+    "top_requesting_agents": [],
+    "handoff_by_requester_role": [],
+    "top_backend_reason_classes": [],
+    "top_task_complexity_types": [],
+    "top_task_complexity_reasons": [],
+    "top_response_max_tokens": [],
+    "zero_remote_calls": true,
+    "local_route_calls": 6,
+    "local_synthesis_calls": 3,
+    "status": "healthy_local_only"
+  },
+  "remote_profile_utilization_windows": {
+    "available": true,
+    "windows": {
+      "1h": {
+        "available": true,
+        "source": "local_only_zero_remote",
+        "window": "1h",
+        "total_calls": 0,
+        "success_count": 0,
+        "success_pct": null,
+        "fallback_applied": 0,
+        "finalization_applied": 0,
+        "handoff_requested": 0,
+        "handoff_pct": null,
+        "top_profiles": [],
+        "top_runtime_ids": [],
+        "top_requester_roles": [],
+        "top_requesting_agents": [],
+        "handoff_by_requester_role": [],
+        "top_backend_reason_classes": [],
+        "top_task_complexity_types": [],
+        "top_task_complexity_reasons": [],
+        "top_response_max_tokens": [],
+        "zero_remote_calls": true,
+        "local_route_calls": 6,
+        "local_synthesis_calls": 3,
+        "status": "healthy_local_only",
+        "partial_window": false
+      },
+      "24h": {
+        "available": true,
+        "source": "local_only_zero_remote",
+        "window": "24h",
+        "total_calls": 0,
+        "success_count": 0,
+        "success_pct": null,
+        "fallback_applied": 0,
+        "finalization_applied": 0,
+        "handoff_requested": 0,
+        "handoff_pct": null,
+        "top_profiles": [],
+        "top_runtime_ids": [],
+        "top_requester_roles": [],
+        "top_requesting_agents": [],
+        "handoff_by_requester_role": [],
+        "top_backend_reason_classes": [],
+        "top_task_complexity_types": [],
+        "top_task_complexity_reasons": [],
+        "top_response_max_tokens": [],
+        "zero_remote_calls": true,
+        "local_route_calls": 236,
+        "local_synthesis_calls": 81,
+        "status": "healthy_local_only",
+        "partial_window": false
+      },
+      "7d": {
+        "available": true,
+        "source": "local_only_zero_remote",
+        "window": "7d",
+        "total_calls": 0,
+        "success_count": 0,
+        "success_pct": null,
+        "fallback_applied": 0,
+        "finalization_applied": 0,
+        "handoff_requested": 0,
+        "handoff_pct": null,
+        "top_profiles": [],
+        "top_runtime_ids": [],
+        "top_requester_roles": [],
+        "top_requesting_agents": [],
+        "handoff_by_requester_role": [],
+        "top_backend_reason_classes": [],
+        "top_task_complexity_types": [],
+        "top_task_complexity_reasons": [],
+        "top_response_max_tokens": [],
+        "zero_remote_calls": true,
+        "local_route_calls": 868,
+        "local_synthesis_calls": 316,
+        "status": "healthy_local_only",
+        "partial_window": false
+      }
+    }
+  },
+  "route_search_latency_decomposition": {
+    "available": true,
+    "window": "7d",
+    "total_calls": 868,
+    "overall_p50_ms": 1292.0594415000153,
+    "overall_p95_ms": 22533.316173850322,
+    "actionable_calls": 868,
+    "actionable_p50_ms": 1292.0594415000153,
+    "actionable_p95_ms": 22533.316173850322,
+    "backend_valid_calls": 868,
+    "backend_valid_p50_ms": 1292.0594415000153,
+    "backend_valid_p95_ms": 22533.316173850322,
+    "synthesis_calls": 316,
+    "synthesis_p50_ms": 12988.382969000668,
+    "synthesis_p95_ms": 26859.177231000103,
+    "retrieval_only_calls": 552,
+    "retrieval_only_p50_ms": 262.4042110001028,
+    "retrieval_only_p95_ms": 3660.0280945001477,
+    "client_error_count": 0,
+    "backend_unclassified_count": 0,
+    "breakdown": [
+      {
+        "label": "backend:local",
+        "calls": 868,
+        "p50_ms": 1292.0594415000153,
+        "p95_ms": 22533.316173850322,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "outcome:success",
+        "calls": 868,
+        "p50_ms": 1292.0594415000153,
+        "p95_ms": 22533.316173850322,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "request:retrieval_only",
+        "calls": 552,
+        "p50_ms": 262.4042110001028,
+        "p95_ms": 3660.0280945001477,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "local_lane:default",
+        "calls": 316,
+        "p50_ms": 12988.382969000668,
+        "p95_ms": 26859.177231000103,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "request:synthesis",
+        "calls": 316,
+        "p50_ms": 12988.382969000668,
+        "p95_ms": 26859.177231000103,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "local_lane_reason:bounded_reasoning_default_lane",
+        "calls": 302,
+        "p50_ms": 13471.974232500088,
+        "p95_ms": 26991.24946499996,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "synthesis_type:reasoning",
+        "calls": 302,
+        "p50_ms": 13471.974232500088,
+        "p95_ms": 26991.24946499996,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "local_lane_reason:default_local_lane",
+        "calls": 14,
+        "p50_ms": 6187.34498850003,
+        "p95_ms": 12780.976763398392,
+        "success_pct": 100.0,
+        "error_count": 0
+      },
+      {
+        "label": "synthesis_type:lookup",
+        "calls": 14,
+        "p50_ms": 6187.34498850003,
+        "p95_ms": 12780.976763398392,
+        "success_pct": 100.0,
+        "error_count": 0
+      }
+    ]
+  },
+  "route_retrieval_breadth": {
+    "available": true,
+    "route_calls": 15,
+    "with_count": 6,
+    "avg_collection_count": 2.5,
+    "top_profiles": [
+      [
+        "code-focused-detailed",
+        3
+      ],
+      [
+        "continuation-memory-first",
+        3
+      ]
+    ],
+    "diagnosis": "healthy",
+    "actions": [],
+    "window": "1h"
+  },
+  "route_retrieval_breadth_windows": {
+    "available": true,
+    "windows": {
+      "1h": {
+        "available": true,
+        "route_calls": 15,
+        "with_count": 6,
+        "avg_collection_count": 2.5,
+        "top_profiles": [
+          [
+            "code-focused-detailed",
+            3
+          ],
+          [
+            "continuation-memory-first",
+            3
+          ]
+        ],
+        "diagnosis": "healthy",
+        "actions": [],
+        "window": "1h",
+        "partial_window": false
+      },
+      "24h": {
+        "available": true,
+        "route_calls": 603,
+        "with_count": 236,
+        "avg_collection_count": 2.25,
+        "top_profiles": [
+          [
+            "continuation-memory-first",
+            83
+          ],
+          [
+            "code-focused-detailed",
+            81
+          ],
+          [
+            "code-focused-compact",
+            27
+          ]
+        ],
+        "diagnosis": "healthy",
+        "actions": [],
+        "window": "24h",
+        "partial_window": false
+      },
+      "7d": {
+        "available": true,
+        "route_calls": 2057,
+        "with_count": 868,
+        "avg_collection_count": 2.37,
+        "top_profiles": [
+          [
+            "code-focused-detailed",
+            316
+          ],
+          [
+            "continuation-memory-first",
+            227
+          ],
+          [
+            "code-focused-compact",
+            126
+          ]
+        ],
+        "diagnosis": "healthy",
+        "actions": [],
+        "window": "7d",
+        "partial_window": false
+      }
+    }
+  },
+  "provider_fallback_recovery": {
+    "available": true,
+    "route_calls": 15,
+    "recovered_count": 0,
+    "recovered_pct": 0.0,
+    "status_counts": [],
+    "diagnosis": "healthy",
+    "actions": [],
+    "window": "1h"
+  },
+  "historical_watchlist": {
+    "available": true,
+    "window": "7d",
+    "slow_tools": [
+      {
+        "tool": "ai_coordinator_delegate",
+        "calls": 7,
+        "p95_ms": 29874.5
+      }
+    ],
+    "flaky_tools": [
+      {
+        "tool": "ai_coordinator_delegate",
+        "calls": 7,
+        "success_pct": 28.6,
+        "error_count": 5,
+        "client_error_count": 0,
+        "recovered_fallback_count": 0,
+        "active_incident": true,
+        "reliability_status": "active_backend_failures",
+        "reliability_note": "5 backend failures; no recent calls in the last hour"
+      }
+    ],
+    "has_items": true
+  },
+  "recommendations": [
+    "Local reasoning synthesis remains the route_search tail (reasoning synthesis path p95 26991ms across 302 calls). Prefer lookup/format lanes for bounded tasks, keep reasoning prompts compact, and remeasure before changing retrieval breadth.",
+    "Bounded local reasoning on the default lane is still expensive (26991ms p95 across 302 calls). Prefer a shorter reasoning context excerpt and keep bounded explanations compact before revisiting local/remote routing.",
+    "Cache is healthy (76.7%) and local routing is strong (100.0%). Prefer local-first retrieval for recurring queries; remote spend is unnecessary for cached patterns.",
+    "Workflow intent-contract coverage is low (86.2% over 29 runs), including 4 run record(s) with no intent_contract object. Backfill legacy workflow-sessions records and ensure /workflow/run/start always sends intent_contract fields (user_intent, definition_of_done, depth_expectation, spirit_constraints, no_early_exit_without)."
+  ],
+  "hint_adoption": {
+    "available": true,
+    "total": 0,
+    "accepted": 0,
+    "adoption_pct": null,
+    "top_hints": []
+  },
+  "recent_hint_adoption": {
+    "available": true,
+    "total": 0,
+    "accepted": 0,
+    "adoption_pct": null,
+    "top_hints": [],
+    "window": "1h"
+  },
+  "task_tooling_quality": {
+    "available": true,
+    "total": 0
+  },
+  "intent_contract_compliance": {
+    "available": true,
+    "source": "/var/lib/ai-stack/hybrid/workflow-sessions.json",
+    "total_runs": 29,
+    "with_contract": 25,
+    "missing_contract": 4,
+    "missing_contract_obj": 4,
+    "contract_coverage_pct": 86.2,
+    "depth_distribution": {
+      "minimum": 20,
+      "standard": 5
+    },
+    "top_blueprints": [],
+    "reviewer_gate_required_runs": 0,
+    "sessions_with_reviews": 0,
+    "accepted_reviews": 0,
+    "rejected_reviews": 0,
+    "pending_reviews": 0,
+    "top_requester_roles": [
+      [
+        "orchestrator",
+        25
+      ]
+    ],
+    "accepted_by_requester_role": [],
+    "rejected_by_requester_role": [],
+    "top_reviewers": [],
+    "top_review_types": [],
+    "accepted_blueprints": [],
+    "rejected_blueprints": [],
+    "accepted_patch_reviews": 0,
+    "rejected_patch_reviews": 0,
+    "patch_reviews_by_reviewed_agent": [],
+    "accepted_task_classes": [],
+    "rejected_task_classes": [],
+    "accepted_by_reviewed_profile": [],
+    "rejected_by_reviewed_profile": []
+  },
+  "tool_security_auditor": {
+    "available": true,
+    "events": 4858,
+    "approved": 4856,
+    "blocked": 2,
+    "cache_hits": 4843,
+    "first_seen": 15,
+    "cache_hit_pct": 99.7,
+    "top_blocked_tools": [
+      [
+        "ai_coordinator_delegate",
+        2
+      ]
+    ],
+    "top_block_reasons": [
+      [
+        "blocked_endpoint_pattern:/control/*",
+        2
+      ]
+    ]
+  },
+  "semantic_tooling_autorun": {
+    "available": true,
+    "route_calls": 868,
+    "with_metadata": 868,
+    "autorun_enabled_calls": 868,
+    "autorun_enabled_pct": 100.0,
+    "avg_planned_tools": 4.05,
+    "avg_executed_tools": 2.3,
+    "tool_security_blocked_total": 0,
+    "tool_security_cache_hits_total": 3506,
+    "tool_security_first_seen_total": 8,
+    "backend_counts": {
+      "local": 868
+    }
+  },
+  "hint_diversity": {
+    "available": true,
+    "total_injections": 0,
+    "unique_hints": 0,
+    "dominant_hint_id": null,
+    "dominant_share_pct": null,
+    "normalized_entropy_pct": null,
+    "effective_hints": null,
+    "status": "no_data"
+  },
+  "recent_hint_diversity": {
+    "available": true,
+    "total_injections": 0,
+    "unique_hints": 0,
+    "dominant_hint_id": null,
+    "dominant_share_pct": null,
+    "normalized_entropy_pct": null,
+    "effective_hints": null,
+    "status": "no_data",
+    "window": "1h"
+  },
+  "historical_hint_watchlist": {
+    "available": true,
+    "window": "7d",
+    "has_items": false,
+    "dominant_hint_id": null,
+    "dominant_share_pct": null,
+    "total_injections": 0,
+    "alternative_hints": []
+  },
+  "agent_lessons": {
+    "available": true,
+    "total_events": 0,
+    "candidates": [],
+    "registry": {
+      "available": true,
+      "path": "/var/lib/ai-stack/hybrid/agent-lessons.json",
+      "entries": [
+        {
+          "lesson_key": "codex::runtime-lesson-registry-smoke::promote",
+          "state": "promoted",
+          "first_seen_at": "2026-03-13T08:48:03.423289Z",
+          "agent": "codex",
+          "hint_id": "runtime_lesson_registry_smoke",
+          "recommended_direction": "promote",
+          "scope": "review",
+          "materialization": "quick_reference",
+          "confidence": 1.0,
+          "event_count": 3,
+          "evidence_count": 3,
+          "comments": [
+            "registry smoke",
+            "registry smoke"
+          ],
+          "preferred_tools": [
+            "route_search"
+          ],
+          "preferred_tags": [
+            "review"
+          ],
+          "traceability": {
+            "source_type": "hint_feedback",
+            "source_agent": "codex",
+            "source_hint_id": "runtime_lesson_registry_smoke",
+            "targets": [
+              "hint",
+              "reference"
+            ]
+          },
+          "validation_link": "scripts/ai/aq-report --format json | jq '.agent_lessons'",
+          "last_seen_at": "2026-03-20T07:31:07.449661Z",
+          "updated_at": "2026-03-20T07:31:07.449661Z",
+          "review": {
+            "reviewer": "codex",
+            "comment": "bounded smoke review",
+            "reviewed_at": "2026-03-15T04:57:20.947611Z"
+          }
+        }
+      ],
+      "counts": {
+        "total": 1,
+        "pending_review": 0,
+        "promoted": 1,
+        "avoided": 0,
+        "rejected": 0
+      },
+      "active_lessons": [
+        {
+          "lesson_key": "codex::runtime-lesson-registry-smoke::promote",
+          "agent": "codex",
+          "hint_id": "runtime_lesson_registry_smoke",
+          "state": "promoted",
+          "scope": "review",
+          "materialization": "quick_reference",
+          "updated_at": "2026-03-20T07:31:07.449661Z"
+        }
+      ]
+    }
+  },
+  "feedback_acceleration": {
+    "available": true,
+    "status": "low_sample",
+    "trend": "healthy",
+    "recent_failure_count": 0,
+    "total_failure_count": 0,
+    "recent_hint_total": 0,
+    "recent_hint_adoption_pct": null,
+    "promotable_lessons": 0,
+    "actions": []
+  },
+  "gap_remediation": {
+    "available": true,
+    "status": "healthy",
+    "candidate_count": 0,
+    "top_strategies": [],
+    "candidates": [],
+    "actions": []
+  },
+  "structured_actions": [
+    {
+      "type": "routing",
+      "action": "prefer_local",
+      "reason": "local_healthy_pct=100.0",
+      "safe": true,
+      "confidence": 0.75,
+      "env_overrides": {
+        "DEFAULT_PROVIDER": "local"
+      },
+      "services": [
+        "ai-hybrid-coordinator",
+        "ai-switchboard"
+      ]
+    }
+  ]
+}

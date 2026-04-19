@@ -1,123 +1,122 @@
 # `.agents/` Directory Structure
 
-This directory follows the **strands-agents SOP (Standard Operating Procedure)** pattern for organizing workflow artifacts and agent outputs, while preserving existing project-specific directories.
+Unified workflow artifact management following strands-agents SOP pattern.
 
 ## Directory Layout
 
 ```
 .agents/
-├── summary/      # [NEW] Documentation and summaries (always commit)
-├── planning/     # [NEW] Design decisions and plans (often commit)
-├── tasks/        # [NEW] Task breakdowns and checklists (optionally commit)
-├── scratchpad/   # [NEW] Working files and temporary artifacts (never commit - .gitignore)
-│
-├── plans/        # [EXISTING] Implementation plans and roadmaps
-├── reports/      # [EXISTING] Session and phase completion reports
-├── designs/      # [EXISTING] Architecture and design documents
-├── audits/       # [EXISTING] System and code audits
-├── research/     # [EXISTING] Research notes and investigations
-└── issues/       # [EXISTING] Tracked issues and problems
+├── summary/      # All final documentation, reports, analyses, audits
+├── planning/     # All designs, plans, research, architectural decisions  
+├── tasks/        # Task tracking, issues, checklists
+└── scratchpad/   # Temporary work files (gitignored)
 ```
 
-## Strands SOP Pattern (New Directories)
+## Categories
 
-## Usage Guidelines
+### `summary/` - Final Documentation
+**Git Policy**: Always commit
 
-### `summary/`
-- **Purpose**: Final documentation, executive summaries, and completed workflow reports
-- **Git Policy**: Always commit these files
-- **Examples**:
-  - Workflow completion reports
-  - Analysis summaries
-  - Decision records
-  - Post-mortem documentation
+All completed workflows, final reports, and documentation:
+- Workflow completion reports (brownfield PDRs, session summaries)
+- Analysis results and findings
+- Audit reports (`summary/audits/`)
+- Performance optimization reports
+- Decision records
+- Post-mortem documentation
 
-### `planning/`
-- **Purpose**: Design decisions, architectural plans, and implementation strategies
-- **Git Policy**: Often commit (team-reviewable planning artifacts)
-- **Examples**:
-  - Technical design documents
-  - Implementation roadmaps
-  - Architecture decision records (ADRs)
-  - Phased execution plans
+### `planning/` - Design & Strategy
+**Git Policy**: Often commit
 
-### `tasks/`
-- **Purpose**: Task breakdowns, checklists, and work-in-progress tracking
-- **Git Policy**: Optionally commit (depends on team workflow)
-- **Examples**:
-  - Sprint task lists
-  - Implementation checklists
-  - Bug tracking artifacts
-  - Test coverage plans
+All planning, design, and preparatory work:
+- Technical designs (`planning/designs/`)
+- Implementation plans and roadmaps (`planning/plans/`)
+- Research notes and investigations (`planning/research/`)
+- Architecture decision records
+- Strategy documents
 
-### `scratchpad/`
-- **Purpose**: Temporary working files, experiments, and transient artifacts
-- **Git Policy**: Never commit (excluded in .gitignore)
-- **Examples**:
-  - Draft notes
-  - Experimental code snippets
-  - Temporary analysis files
-  - Debug traces
+### `tasks/` - Work Tracking
+**Git Policy**: Optionally commit
 
-## Integration with AI Harness
+Task management and issue tracking:
+- Issue documentation and resolutions
+- Sprint task lists
+- Implementation checklists
+- Bug tracking artifacts
+- Test coverage plans
 
-This structure integrates with:
-- **MCP Client**: Helper functions in `ai-stack/local-orchestrator/mcp_client.py`
-- **SOP Engine**: Workflow execution writes artifacts to appropriate directories
-- **Hybrid Coordinator**: Workflow planning and execution APIs
+### `scratchpad/` - Temporary Work
+**Git Policy**: Never commit (excluded in .gitignore)
+
+Temporary working files:
+- Draft notes
+- Experimental code snippets
+- Temporary analysis files
+- Debug traces
+- Work-in-progress research
+
+## Usage
+
+### Via MCP Client
+
+```python
+from mcp_client import get_mcp_client
+
+client = get_mcp_client()
+
+# Write summary
+client.write_artifact("summary", "deployment-report.md", content)
+
+# Write planning doc
+client.write_artifact("planning", "architecture-design.md", content)
+
+# List artifacts
+summaries = client.list_artifacts("summary", "*.md")
+```
+
+### Direct File Access
+
+```python
+from pathlib import Path
+
+# Read summary
+report = Path(".agents/summary/deployment-report.md").read_text()
+
+# Write planning doc
+(Path(".agents/planning") / "new-design.md").write_text(content)
+```
 
 ## Strands-Agents Pattern
 
-This directory structure is inspired by the [strands-agents/agent-sop](https://github.com/strands-agents/agent-sop) pattern, which organizes agent workflow artifacts in a standardized, version-control-friendly manner.
+This structure is inspired by [strands-agents/agent-sop](https://github.com/strands-agents/agent-sop):
 
-Key principles:
-1. **Clear separation** between permanent and temporary artifacts
-2. **Git-friendly** organization that preserves important decisions
-3. **Consistent structure** across different workflows and agents
-4. **Self-documenting** hierarchy that explains artifact lifecycle
+**Key Principles**:
+1. Clear separation between permanent and temporary artifacts
+2. Git-friendly organization preserving important decisions
+3. Consistent structure across workflows
+4. Self-documenting hierarchy
 
-## Existing Project Directories (Preserved)
+**Integration**:
+- SOP workflows write to appropriate categories
+- Agent interface stores results in `summary/`
+- Workflow graphs log to `summary/`
+- Tool outputs saved based on permanence
 
-### `plans/`
-- **Purpose**: Implementation plans, roadmaps, and phase execution documents
-- **Legacy**: Contains historical project plans and phase completions
-- **Mapping**: Similar to `planning/` but more project-specific
+## Migration from Legacy
 
-### `reports/`
-- **Purpose**: Session completion reports, validation reports, and summaries
-- **Legacy**: Historical session summaries and phase validations
-- **Mapping**: Similar to `summary/` but for completion reports
+**Old structure** (now consolidated):
+- `.agent/workflows/` → `.agents/summary/`
+- `.agents/reports/` → `.agents/summary/`
+- `.agents/audits/` → `.agents/summary/audits/`
+- `.agents/designs/` → `.agents/planning/designs/`
+- `.agents/research/` → `.agents/planning/research/`
+- `.agents/plans/` → `.agents/planning/plans/`
+- `.agents/issues/` → `.agents/tasks/`
 
-### `designs/`
-- **Purpose**: Architectural designs and system integration documents
-- **Legacy**: Contains system architecture and integration designs
-- **Mapping**: Architectural subset of `planning/`
-
-### `audits/`
-- **Purpose**: System audits, code reviews, and assessment reports
-- **Legacy**: Contains deployment and feature audits
-- **Mapping**: Quality assurance artifacts (can go in `summary/` or separate)
-
-### `research/`
-- **Purpose**: Research notes, investigations, and exploratory work
-- **Legacy**: Technical research and exploration artifacts
-- **Mapping**: Can use `scratchpad/` for WIP research, `summary/` for conclusions
-
-### `issues/`
-- **Purpose**: Issue tracking, problem documentation, and resolutions
-- **Legacy**: Contains tracked issues and their resolutions
-- **Mapping**: Similar to `tasks/` but for issue tracking
-
-## Migration Strategy
-
-**For new workflows**: Use the strands SOP pattern (`summary/`, `planning/`, `tasks/`, `scratchpad/`)
-**For existing workflows**: Continue using existing directories as needed
-**Hybrid approach**: Workflows can use both structures as appropriate
-
-The strands pattern directories are optimized for SOP-based workflows, while existing directories preserve project history and domain-specific organization.
+**Single unified pattern** - no parallel systems, no confusion.
 
 ## Related Documentation
 
+- [50-STRANDS-INTEGRATION.md](../docs/agent-guides/50-STRANDS-INTEGRATION.md) - Integration guide
 - [CLAUDE.md](../CLAUDE.md) - Agent behavior and workflow guidance
-- [docs/agent-guides/40-HYBRID-WORKFLOW.md](../docs/agent-guides/40-HYBRID-WORKFLOW.md) - Hybrid workflow model
-- [.agent/workflows/](../.agent/workflows/) - Existing workflow evidence (alternate location)
+- [TOOL_DECORATORS.md](../ai-stack/local-orchestrator/TOOL_DECORATORS.md) - Tool system
