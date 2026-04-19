@@ -1,7 +1,7 @@
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 import sys
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -40,3 +40,25 @@ def test_import_file_skips_upsert_when_embeddings_fail():
             raise AssertionError("expected import_file to fail when embeddings are unavailable")
 
     qdrant.upsert.assert_not_called()
+
+
+def test_generate_embedding_uses_openai_embeddings_path_for_8081():
+    qdrant = Mock()
+    importer = DocumentImporter(
+        qdrant_client=qdrant,
+        embedding_url="http://127.0.0.1:8081",
+    )
+    response = Mock(status_code=200)
+    response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
+
+    client = Mock()
+    client.post = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("document_importer.httpx.AsyncClient", return_value=client):
+        embedding = asyncio.run(importer.generate_embedding("route stack"))
+
+    assert embedding == [0.1, 0.2, 0.3]
+    called_url = client.post.await_args.args[0]
+    assert called_url.endswith("/v1/embeddings")

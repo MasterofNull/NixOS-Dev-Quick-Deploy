@@ -478,19 +478,18 @@ class DocumentImporter:
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     # Determine API format based on embedding_url
-                    if ":8081" in self.embedding_url:
+                    if ":8081" in self.embedding_url and not self.embedding_url.rstrip("/").endswith("/v1/embeddings"):
                         response = await client.post(
-                            f"{self.embedding_url}/embed",
-                            json={"inputs": text}
+                            f"{self.embedding_url.rstrip('/')}/v1/embeddings",
+                            json={"input": text}
                         )
-
                         if response.status_code == 200:
                             data = response.json()
-                            if isinstance(data, list) and len(data) > 0:
-                                return data[0]
-                            logger.warning("Unexpected TEI response format: %s", data)
+                            if "data" in data and data["data"]:
+                                return data["data"][0]["embedding"]
+                            logger.warning("Unexpected OpenAI embedding response format: %s", data)
                             return []
-                        logger.warning("TEI embedding failed: %s - %s", response.status_code, response.text[:160])
+                        logger.warning("Embedding request failed: %s - %s", response.status_code, response.text[:160])
                     else:
                         response = await client.post(
                             self.embedding_url,
