@@ -378,3 +378,6 @@ scripts/kernel/ktest
 # Phase 31: Upstream contribution workflow
 scripts/upstream/track
 scripts/upstream/dev
+
+# System maintenance and update automation
+scripts/maintenance/system-update-full.sh
