@@ -524,6 +524,50 @@ def test_rerank_combined_results_demotes_broad_commits_when_direct_route_docs_ex
     assert reranked[0]["id"] == "direct-doc"
 
 
+def test_rerank_combined_results_normalizes_high_keyword_commit_scores_when_direct_docs_exist():
+    broad_commit = {
+        "collection": "codebase-context",
+        "id": "broad-commit",
+        "score": 36.32,
+        "payload": {
+            "commit_subject": "feat(ai-stack): complete parity depth slices and operational hardening",
+            "owner_paths": [
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+            ],
+            "files_changed": [
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+                "ai-stack/mcp-servers/aider-wrapper/server.py",
+                "config/runtime-isolation-profiles.json",
+            ],
+            "diff_preview": "reduce repeated query latency in the local route stack",
+        },
+        "source": "keyword",
+        "sources": ["keyword"],
+    }
+    direct_doc = {
+        "collection": "codebase-context",
+        "id": "direct-doc",
+        "score": 0.6855613,
+        "payload": {
+            "file_path": "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+            "chunk_type": "direct_code_context",
+            "owner_paths": ["ai-stack/mcp-servers/hybrid-coordinator/search_router.py"],
+            "content": "prompt cache reuse and bounded retrieval context reduce repeated query latency",
+        },
+        "source": "semantic",
+        "sources": ["semantic"],
+    }
+
+    reranked = search_router.rerank_combined_results(
+        "what reduces repeated query latency in the local route stack",
+        [broad_commit, direct_doc],
+    )
+
+    assert reranked[0]["id"] == "direct-doc"
+
+
 def test_expanded_query_for_search_adds_route_stack_owner_hints():
     query = "what reduces repeated query latency in the local route stack"
     expanded = search_router._expanded_query_for_search(
