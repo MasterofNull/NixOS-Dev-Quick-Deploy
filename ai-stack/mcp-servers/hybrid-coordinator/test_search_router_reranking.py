@@ -437,6 +437,49 @@ def test_rerank_combined_results_demotes_route_stack_distractors():
     assert reranked[0]["id"] == "owner"
 
 
+def test_rerank_combined_results_prefers_direct_code_context_over_commit_hits():
+    commit_hit = {
+        "collection": "codebase-context",
+        "id": "commit-hit",
+        "score": 5.8,
+        "payload": {
+            "commit_subject": "feat(ai-stack): complete parity depth slices and operational hardening",
+            "owner_paths": [
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+            ],
+            "files_changed": [
+                "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+                "ai-stack/mcp-servers/hybrid-coordinator/search_router.py",
+                "config/runtime-isolation-profiles.json",
+            ],
+            "diff_preview": "reduce repeated query latency in the local route stack",
+        },
+        "source": "keyword",
+        "sources": ["keyword"],
+    }
+    direct_doc = {
+        "collection": "codebase-context",
+        "id": "direct-doc",
+        "score": 5.0,
+        "payload": {
+            "file_path": "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+            "chunk_type": "direct_code_context",
+            "owner_paths": ["ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"],
+            "content": "prompt cache reuse and bounded retrieval context reduce repeated query latency",
+        },
+        "source": "semantic",
+        "sources": ["semantic"],
+    }
+
+    reranked = search_router.rerank_combined_results(
+        "what reduces repeated query latency in the local route stack",
+        [commit_hit, direct_doc],
+    )
+
+    assert reranked[0]["id"] == "direct-doc"
+
+
 def test_expanded_query_for_search_adds_route_stack_owner_hints():
     query = "what reduces repeated query latency in the local route stack"
     expanded = search_router._expanded_query_for_search(

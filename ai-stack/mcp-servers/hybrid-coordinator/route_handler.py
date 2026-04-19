@@ -372,10 +372,21 @@ def _select_route_collections(
         and any(term in q for term in ("history", "previous", "earlier", "last run", "prior interaction"))
     )
     wants_error = any(term in q for term in ("error", "failure", "fail", "timeout", "latency", "problem", "bug"))
+    route_stack_query = any(
+        phrase in q
+        for phrase in (
+            "route stack",
+            "routing cache",
+            "repeated query latency",
+            "prompt cache",
+            "retrieval context",
+            "switchboard routing cache",
+        )
+    )
     wants_code = any(
         term in q
         for term in ("file", "module", "service", "nixos", "patch", "config", "flake", "option", "systemd", "repo", "code")
-    )
+    ) or route_stack_query
     wants_patterns = has_discovery or any(
         term in q
         for term in ("pattern", "workflow", "best practice", "guide", "how", "approach", "strategy")
@@ -462,8 +473,14 @@ def _select_route_collections(
         elif not profile.endswith("-compact") and not profile.endswith("-optimized"):
             profile = f"{profile}-compact"
 
+    if route_stack_query and not generate_response and not continuation:
+        profile = "route-stack-direct"
+        max_collections = min(max_collections, 2)
+        selected = [name for name in selected if name != "codebase-context"]
+        selected.insert(0, "codebase-context")
+
     # Batch 2.2: Reduce fan-out for very simple queries (≤3 tokens)
-    if token_count <= 3 and not continuation and not generate_response:
+    if token_count <= 3 and not continuation and not generate_response and not route_stack_query:
         max_collections = 1
         profile = "simple-query-optimized"
         global _collection_metrics
