@@ -20,7 +20,7 @@ You have access to the following tools via the MCP bridge:
 
 ### Planning & Workflows
 - `workflow_plan(query)` - Create phased workflow plan
-- `workflow_run_start(query, safety_mode, token_limit, tool_call_limit, intent_contract)` - Start guarded workflow
+- `workflow_run_start(query, safety_mode, token_limit, tool_call_limit, intent_contract, blueprint_id, orchestration_policy, isolation_profile, workspace_root, network_policy)` - Start guarded workflow with blueprint, team policy, and isolation controls
 - `workflow_blueprints()` - Fetch available workflow templates
 - `aqd_workflows_list()` - List local AQD workflow catalog
 
