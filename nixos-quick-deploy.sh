@@ -3502,6 +3502,43 @@ PYEOF
     fi
   fi
 
+  # ── HuggingFace Cache Detection Functions ────────────────────────────────
+  # Check if model exists in HuggingFace cache to avoid re-downloading
+  check_hf_cache() {
+    local repo="$1"
+    local file="$2"
+    local cache_dir="${HOME}/.cache/huggingface/hub"
+
+    # HuggingFace cache structure: models--{owner}_{repo}/snapshots/{hash}/{file}
+    local repo_dir="models--${repo//\//_}"
+
+    # Find the file in any snapshot
+    if [[ -d "$cache_dir/$repo_dir/snapshots" ]]; then
+      local cached_file
+      cached_file=$(find "$cache_dir/$repo_dir/snapshots" -name "$file" -type f 2>/dev/null | head -1)
+      if [[ -n "$cached_file" && -f "$cached_file" ]]; then
+        echo "$cached_file"
+        return 0
+      fi
+    fi
+
+    return 1
+  }
+
+  copy_from_hf_cache() {
+    local cached_file="$1"
+    local dest="$2"
+
+    log "  Found in HuggingFace cache, copying instead of re-downloading..."
+    if run_privileged cp "$cached_file" "$dest"; then
+      run_privileged chmod 0644 "$dest"
+      log "  ✓ Model copied from cache: $(run_privileged du -h "$dest" | cut -f1)"
+      return 0
+    fi
+    log_warn "  Failed to copy from cache, will download instead"
+    return 1
+  }
+
   # ── Download models BEFORE rebuild (Phase 1) ─────────────────────────────
   # Models are downloaded immediately after user selection so they're available
   # for the rebuild. This is the PRIMARY download point - post-switch only
@@ -3532,35 +3569,46 @@ PYEOF
       local chat_dest="/var/lib/llama-cpp/models/$chat_file"
 
       if ! run_privileged test -f "$chat_dest"; then
-        log "Downloading chat model: $chat_repo / $chat_file"
-        local tmp_model
-        tmp_model="$(mktemp "/tmp/.dl-chat-model-XXXXXX")"
-        if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 7200 \
-            -o "$tmp_model" \
-            "https://huggingface.co/${chat_repo}/resolve/main/${chat_file}" 2>&1; then
-          local sz
-          sz="$(stat -c%s "$tmp_model" 2>/dev/null || echo 0)"
-          if [[ "$sz" -gt 10485760 ]]; then
-            run_privileged mv "$tmp_model" "$chat_dest"
-            run_privileged chmod 0644 "$chat_dest"
-            local actual_sha
-            actual_sha="$(run_privileged sha256sum "$chat_dest" | awk '{print $1}')"
-            log "  Chat model downloaded: $(run_privileged du -h "$chat_dest" | cut -f1) (sha256: ${actual_sha:0:16}...)"
-            run_privileged sh -c "printf '%s\n' '${chat_repo}:${chat_file}:${actual_sha}' > '${chat_dest}.source-meta'"
+        # Check HuggingFace cache first
+        local cached_model
+        if cached_model=$(check_hf_cache "$chat_repo" "$chat_file"); then
+          log "Chat model $chat_file found in HuggingFace cache"
+          if copy_from_hf_cache "$cached_model" "$chat_dest"; then
+            run_privileged sh -c "printf '%s\n' '${chat_repo}:${chat_file}:cached' > '${chat_dest}.source-meta'"
             run_privileged chmod 0644 "${chat_dest}.source-meta"
-          else
-            rm -f "$tmp_model"
-            log_warn "  Chat model download produced a small file ($sz bytes) — likely corrupt"
           fi
         else
-          rm -f "$tmp_model"
-          if [[ -z "$hf_token" ]]; then
-            log_warn "  Chat model download failed — may require HuggingFace authentication"
-            log_warn "  To authenticate: huggingface-cli login  OR  export HF_TOKEN=hf_..."
+          # Model not in cache, download
+          log "Downloading chat model: $chat_repo / $chat_file"
+          local tmp_model
+          tmp_model="$(mktemp "/tmp/.dl-chat-model-XXXXXX")"
+          if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 7200 \
+              -o "$tmp_model" \
+              "https://huggingface.co/${chat_repo}/resolve/main/${chat_file}" 2>&1; then
+            local sz
+            sz="$(stat -c%s "$tmp_model" 2>/dev/null || echo 0)"
+            if [[ "$sz" -gt 10485760 ]]; then
+              run_privileged mv "$tmp_model" "$chat_dest"
+              run_privileged chmod 0644 "$chat_dest"
+              local actual_sha
+              actual_sha="$(run_privileged sha256sum "$chat_dest" | awk '{print $1}')"
+              log "  Chat model downloaded: $(run_privileged du -h "$chat_dest" | cut -f1) (sha256: ${actual_sha:0:16}...)"
+              run_privileged sh -c "printf '%s\n' '${chat_repo}:${chat_file}:${actual_sha}' > '${chat_dest}.source-meta'"
+              run_privileged chmod 0644 "${chat_dest}.source-meta"
+            else
+              rm -f "$tmp_model"
+              log_warn "  Chat model download produced a small file ($sz bytes) — likely corrupt"
+            fi
           else
-            log_warn "  Chat model download failed (network error or invalid token)"
+            rm -f "$tmp_model"
+            if [[ -z "$hf_token" ]]; then
+              log_warn "  Chat model download failed — may require HuggingFace authentication"
+              log_warn "  To authenticate: huggingface-cli login  OR  export HF_TOKEN=hf_..."
+            else
+              log_warn "  Chat model download failed (network error or invalid token)"
+            fi
           fi
-        fi
+        fi  # close check_hf_cache if
       fi
     fi
 
@@ -3571,9 +3619,19 @@ PYEOF
       local embed_dest="/var/lib/llama-cpp/models/$embed_file"
 
       if ! run_privileged test -f "$embed_dest"; then
-        log "Downloading embedding model: $embed_repo / $embed_file"
-        local tmp_model
-        tmp_model="$(mktemp "/tmp/.dl-embed-model-XXXXXX")"
+        # Check HuggingFace cache first
+        local cached_model
+        if cached_model=$(check_hf_cache "$embed_repo" "$embed_file"); then
+          log "Embedding model $embed_file found in HuggingFace cache"
+          if copy_from_hf_cache "$cached_model" "$embed_dest"; then
+            run_privileged sh -c "printf '%s\n' '${embed_repo}:${embed_file}:cached' > '${embed_dest}.source-meta'"
+            run_privileged chmod 0644 "${embed_dest}.source-meta"
+          fi
+        else
+          # Model not in cache, download
+          log "Downloading embedding model: $embed_repo / $embed_file"
+          local tmp_model
+          tmp_model="$(mktemp "/tmp/.dl-embed-model-XXXXXX")"
         if curl -fL "${hf_auth_args[@]}" --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 3600 \
             -o "$tmp_model" \
             "https://huggingface.co/${embed_repo}/resolve/main/${embed_file}" 2>&1; then
@@ -3600,6 +3658,7 @@ PYEOF
             log_warn "  Embedding model download failed (network error or invalid token)"
           fi
         fi
+        fi  # close check_hf_cache if for embedding
       fi
     fi
   else
