@@ -1084,6 +1084,52 @@ let
         except Exception:
             return None
 
+    def _loading_error_payload(detail: dict | None = None) -> dict:
+        payload = {
+            "error": {
+                "message": "local model is still loading",
+                "type": "local_model_loading",
+                "target": "local",
+                "retry_after_s": 20,
+            }
+        }
+        if detail:
+            payload["error"]["detail"] = detail
+        return payload
+
+    def _is_local_loading_response(status_code: int, content: bytes) -> bool:
+        if status_code != 503:
+            return False
+        try:
+            body = json.loads(content.decode("utf-8", errors="replace"))
+        except Exception:
+            return False
+        error = body.get("error") if isinstance(body, dict) else None
+        message = str((error or {}).get("message") or "").strip().lower()
+        return "loading model" in message
+
+    async def _probe_local_upstream_state() -> dict | None:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)) as client:
+                resp = await client.get(f"{LLAMA_URL}/health")
+            if _is_local_loading_response(resp.status_code, resp.content):
+                return _loading_error_payload(
+                    {
+                        "health_status_code": resp.status_code,
+                    }
+                )
+        except httpx.HTTPError as exc:
+            return {
+                "error": {
+                    "message": "local upstream is not reachable yet",
+                    "type": "local_upstream_unreachable",
+                    "target": "local",
+                    "detail": str(exc),
+                    "retry_after_s": 10,
+                }
+            }
+        return None
+
     @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def proxy(path: str, request: Request):
         body = await request.body()
@@ -1300,6 +1346,12 @@ let
                                 content=body,
                                 params=dict(request.query_params),
                             )
+                        if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
+                            return JSONResponse(
+                                status_code=503,
+                                headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
+                                content=_loading_error_payload(),
+                            )
                         response = Response(
                             content=upstream.content,
                             status_code=upstream.status_code,
@@ -1317,6 +1369,18 @@ let
                 },
             )
         except httpx.HTTPError as exc:
+            if target_type == "local":
+                loading_state = await _probe_local_upstream_state()
+                if loading_state is not None:
+                    status_code = 503 if loading_state.get("error", {}).get("type") == "local_model_loading" else 502
+                    headers = {"Retry-After": "20" if status_code == 503 else "10"}
+                    if status_code == 503:
+                        headers["X-AI-Upstream-State"] = "loading"
+                    return JSONResponse(
+                        status_code=status_code,
+                        headers=headers,
+                        content=loading_state,
+                    )
             return JSONResponse(
                 status_code=502,
                 content={

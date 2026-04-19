@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +18,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, Field
+
+_MODULE_DIR = Path(__file__).resolve().parent
+_SHARED_PARENT = _MODULE_DIR.parent
+if str(_SHARED_PARENT) not in sys.path:
+    sys.path.insert(0, str(_SHARED_PARENT))
 
 from shared.stack_settings import HybridSettings
 
