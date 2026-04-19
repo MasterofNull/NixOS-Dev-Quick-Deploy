@@ -33,8 +33,8 @@
     };
     secureboot.enable = false;
     aiStack = {
-              llamaCpp.activeModel = "gemma4-e4b";
-              embeddingServer.activeModel = "bge-m3";
-            };
+                  llamaCpp.activeModel = "qwen3.6-35b";
+                  embeddingServer.activeModel = "bge-m3";
+                };
   };
 }
