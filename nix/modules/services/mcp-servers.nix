@@ -1015,6 +1015,10 @@ in {
                 "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
                 "AI_HARNESS_EVAL_TIMEOUT_S=${toString ai.aiHarness.eval.timeoutSeconds}"
                 "AI_HARNESS_EVAL_TIMEOUT_HARD_CAP_S=${toString ai.aiHarness.eval.timeoutHardCapSeconds}"
+                # Keep tool-oriented retrieval probes aligned with harness phase
+                # maintenance and dashboard operator workflows.
+                "AI_CAPABILITY_DISCOVERY_ENABLED=true"
+                "AI_CAPABILITY_DISCOVERY_ON_QUERY=true"
                 "AI_SEMANTIC_TOOLING_AUTORUN=${
                   if ai.aiHarness.runtime.semanticToolingAutorun
                   then "true"
