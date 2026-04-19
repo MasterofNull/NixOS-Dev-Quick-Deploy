@@ -157,3 +157,6 @@ nix/hosts/*/.sops.yaml
 .upstream/
 .forks/
 .workflow-sessions.json
+
+# Strands-style workflow artifacts (scratchpad is temporary working files)
+.agents/scratchpad/
