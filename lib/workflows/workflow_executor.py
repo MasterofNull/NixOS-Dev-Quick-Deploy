@@ -188,6 +188,7 @@ class TelemetryCollector:
     def __init__(self):
         """Initialize telemetry collector."""
         self.telemetry: List[Dict[str, Any]] = []
+        self.logs: List[Dict[str, Any]] = []
 
     def record_task_start(self, task_execution: TaskExecution):
         """Record task start."""
@@ -232,6 +233,41 @@ class TelemetryCollector:
     def get_telemetry(self) -> List[Dict[str, Any]]:
         """Get collected telemetry."""
         return self.telemetry
+
+    def log(
+        self,
+        execution_id: str,
+        task_id: str,
+        workflow_execution_id: str,
+        level: str,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Record a log message.
+
+        Args:
+            execution_id: Task execution ID
+            task_id: Task ID
+            workflow_execution_id: Workflow execution ID
+            level: Log level (DEBUG, INFO, WARN, ERROR)
+            message: Log message
+            context: Optional context metadata
+        """
+        log_entry = {
+            "execution_id": execution_id,
+            "task_id": task_id,
+            "workflow_execution_id": workflow_execution_id,
+            "level": level,
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+            "context": context,
+        }
+        self.logs.append(log_entry)
+
+    def get_logs(self) -> List[Dict[str, Any]]:
+        """Get collected logs."""
+        return self.logs
 
 
 class StateManager:
