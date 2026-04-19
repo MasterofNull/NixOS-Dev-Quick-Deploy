@@ -495,6 +495,18 @@ async def execute_workflow(request: ExecuteWorkflowRequest):
             workflow_store.save_execution(execution)
             workflow_store.save_telemetry(workflow_executor.get_telemetry())
 
+            # Save logs to database
+            for log_entry in workflow_executor.telemetry_collector.get_logs():
+                workflow_store.save_log(
+                    execution_id=log_entry["execution_id"],
+                    task_id=log_entry["task_id"],
+                    workflow_execution_id=log_entry["workflow_execution_id"],
+                    level=log_entry["level"],
+                    message=log_entry["message"],
+                    timestamp=log_entry["timestamp"],
+                    context=log_entry.get("context"),
+                )
+
         # Run in background
         asyncio.create_task(run_workflow())
 

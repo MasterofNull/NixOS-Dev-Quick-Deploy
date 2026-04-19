@@ -490,7 +490,23 @@ class WorkflowExecutor:
 
                 self.telemetry_collector.record_task_start(task_execution)
 
+                # Log task start
+                self.telemetry_collector.log(
+                    execution_id=task_execution.execution_id,
+                    task_id=task_execution.task_id,
+                    workflow_execution_id=task_execution.workflow_execution_id,
+                    level="INFO",
+                    message=f"Starting task: {task.name if hasattr(task, 'name') else task.id}",
+                )
+
                 # Dispatch to agent
+                self.telemetry_collector.log(
+                    execution_id=task_execution.execution_id,
+                    task_id=task_execution.task_id,
+                    workflow_execution_id=task_execution.workflow_execution_id,
+                    level="INFO",
+                    message=f"Dispatching to agent",
+                )
                 result = await asyncio.wait_for(
                     self.agent_dispatcher.dispatch(task, task_execution),
                     timeout=self.default_timeout
@@ -499,12 +515,32 @@ class WorkflowExecutor:
                 # Success
                 task_execution.status = ExecutionStatus.SUCCESS
                 task_execution.output = result
+
+                # Log success
+                self.telemetry_collector.log(
+                    execution_id=task_execution.execution_id,
+                    task_id=task_execution.task_id,
+                    workflow_execution_id=task_execution.workflow_execution_id,
+                    level="INFO",
+                    message="Task completed successfully",
+                )
+
                 break
 
             except asyncio.TimeoutError:
                 logger.error(f"Task {task.id} timed out")
                 task_execution.status = ExecutionStatus.TIMEOUT
                 task_execution.error_message = "Task execution timed out"
+
+                # Log timeout
+                self.telemetry_collector.log(
+                    execution_id=task_execution.execution_id,
+                    task_id=task_execution.task_id,
+                    workflow_execution_id=task_execution.workflow_execution_id,
+                    level="ERROR",
+                    message="Task execution timed out",
+                    context={"timeout": self.default_timeout},
+                )
 
                 # Retry if allowed
                 if self.retry_policy.should_retry(task_execution):
@@ -514,6 +550,17 @@ class WorkflowExecutor:
                         f"Retrying task {task.id} (attempt {task_execution.retry_count}) "
                         f"after {delay}s"
                     )
+
+                    # Log retry
+                    self.telemetry_collector.log(
+                        execution_id=task_execution.execution_id,
+                        task_id=task_execution.task_id,
+                        workflow_execution_id=task_execution.workflow_execution_id,
+                        level="WARN",
+                        message=f"Retrying task (attempt {task_execution.retry_count})",
+                        context={"delay": delay, "retry_count": task_execution.retry_count},
+                    )
+
                     await asyncio.sleep(delay)
                     continue
                 else:
@@ -524,6 +571,16 @@ class WorkflowExecutor:
                 task_execution.status = ExecutionStatus.FAILURE
                 task_execution.error_message = str(e)
 
+                # Log failure
+                self.telemetry_collector.log(
+                    execution_id=task_execution.execution_id,
+                    task_id=task_execution.task_id,
+                    workflow_execution_id=task_execution.workflow_execution_id,
+                    level="ERROR",
+                    message=f"Task failed: {str(e)}",
+                    context={"error_type": type(e).__name__},
+                )
+
                 # Retry if allowed
                 if self.retry_policy.should_retry(task_execution):
                     task_execution.retry_count += 1
@@ -532,6 +589,17 @@ class WorkflowExecutor:
                         f"Retrying task {task.id} (attempt {task_execution.retry_count}) "
                         f"after {delay}s"
                     )
+
+                    # Log retry
+                    self.telemetry_collector.log(
+                        execution_id=task_execution.execution_id,
+                        task_id=task_execution.task_id,
+                        workflow_execution_id=task_execution.workflow_execution_id,
+                        level="WARN",
+                        message=f"Retrying task (attempt {task_execution.retry_count})",
+                        context={"delay": delay, "retry_count": task_execution.retry_count},
+                    )
+
                     await asyncio.sleep(delay)
                     continue
                 else:
