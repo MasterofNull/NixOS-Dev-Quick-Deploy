@@ -326,6 +326,160 @@ let
       type = "dense";
       recommended = false;
     };
+    "smollm2-360m" = {
+      name = "SmolLM2 360M Instruct";
+      repo = "bartowski/SmolLM2-360M-Instruct-GGUF";
+      file = "SmolLM2-360M-Instruct-Q4_K_M.gguf";
+      sha256 = null;
+      params = "360M";
+      contextSize = 8192;
+      ramEstimate = "~0.4 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen2.5-0.5b" = {
+      name = "Qwen 2.5 0.5B Instruct";
+      repo = "Qwen/Qwen2.5-0.5B-Instruct-GGUF";
+      file = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+      sha256 = null;
+      params = "500M";
+      contextSize = 32768;
+      ramEstimate = "~0.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen2.5-1.5b" = {
+      name = "Qwen 2.5 1.5B Instruct";
+      repo = "Qwen/Qwen2.5-1.5B-Instruct-GGUF";
+      file = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+      sha256 = null;
+      params = "1.5B";
+      contextSize = 32768;
+      ramEstimate = "~1.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "llama-3.2-3b" = {
+      name = "Llama 3.2 3B Instruct";
+      repo = "bartowski/Llama-3.2-3B-Instruct-GGUF";
+      file = "Llama-3.2-3B-Instruct-Q4_K_M.gguf";
+      sha256 = null;
+      params = "3B";
+      contextSize = 131072;
+      ramEstimate = "~2.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "gemma3-4b" = {
+      name = "Gemma 3 4B Instruct";
+      repo = "bartowski/gemma-3-4b-it-GGUF";
+      file = "gemma-3-4b-it-Q4_K_M.gguf";
+      sha256 = null;
+      params = "4B";
+      contextSize = 128000;
+      ramEstimate = "~3.5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen2.5-coder-7b" = {
+      name = "Qwen 2.5 Coder 7B Instruct";
+      repo = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF";
+      file = "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+      sha256 = null;
+      params = "7B";
+      contextSize = 131072;
+      ramEstimate = "~5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "deepseek-r1-distill-7b" = {
+      name = "DeepSeek R1 Distill Qwen 7B";
+      repo = "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF";
+      file = "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf";
+      sha256 = null;
+      params = "7B";
+      contextSize = 32768;
+      ramEstimate = "~5 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen2.5-coder-14b" = {
+      name = "Qwen 2.5 Coder 14B Instruct";
+      repo = "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF";
+      file = "qwen2.5-coder-14b-instruct-q4_k_m.gguf";
+      sha256 = null;
+      params = "14B";
+      contextSize = 131072;
+      ramEstimate = "~9 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "deepseek-r1-distill-14b" = {
+      name = "DeepSeek R1 Distill Qwen 14B";
+      repo = "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF";
+      file = "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf";
+      sha256 = null;
+      params = "14B";
+      contextSize = 32768;
+      ramEstimate = "~9 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "phi-4" = {
+      name = "Phi-4";
+      repo = "bartowski/phi-4-GGUF";
+      file = "phi-4-Q4_K_M.gguf";
+      sha256 = null;
+      params = "14B";
+      contextSize = 16384;
+      ramEstimate = "~9 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "gemma3-12b" = {
+      name = "Gemma 3 12B Instruct";
+      repo = "bartowski/gemma-3-12b-it-GGUF";
+      file = "gemma-3-12b-it-Q4_K_M.gguf";
+      sha256 = null;
+      params = "12B";
+      contextSize = 128000;
+      ramEstimate = "~8 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "qwen2.5-coder-32b" = {
+      name = "Qwen 2.5 Coder 32B Instruct";
+      repo = "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF";
+      file = "qwen2.5-coder-32b-instruct-q4_k_m.gguf";
+      sha256 = null;
+      params = "32B";
+      contextSize = 131072;
+      ramEstimate = "~20 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "deepseek-r1-distill-32b" = {
+      name = "DeepSeek R1 Distill Qwen 32B";
+      repo = "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF";
+      file = "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf";
+      sha256 = null;
+      params = "32B";
+      contextSize = 32768;
+      ramEstimate = "~20 GB Q4";
+      type = "dense";
+      recommended = false;
+    };
+    "llama-3.3-70b-iq2" = {
+      name = "Llama 3.3 70B Instruct IQ2_M";
+      repo = "bartowski/Llama-3.3-70B-Instruct-GGUF";
+      file = "Llama-3.3-70B-Instruct-IQ2_M.gguf";
+      sha256 = null;
+      params = "70B";
+      contextSize = 131072;
+      ramEstimate = "~24 GB IQ2";
+      type = "dense";
+      recommended = false;
+    };
     # ── Embedding models ─────────────────────────────────────────────────
     "bge-m3" = {
       name = "BGE-M3";
