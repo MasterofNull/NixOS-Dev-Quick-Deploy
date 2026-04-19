@@ -374,6 +374,7 @@ def _direct_route_stack_doc_present(query: str, tokens: List[str], items: List[D
 def _route_stack_commit_competition_penalty(
     query: str,
     tokens: List[str],
+    item: Dict[str, Any],
     payload: Dict[str, Any],
     direct_doc_present: bool,
 ) -> float:
@@ -404,6 +405,11 @@ def _route_stack_commit_competition_penalty(
     if owner_bonus > 0.0:
         penalty += min(1.3, 0.45 + 0.35 * owner_bonus)
     penalty += _doc_heavy_mixed_path_penalty(payload, preferred_path) * 0.8
+    item_sources = item.get("sources") or []
+    item_source = str(item.get("source") or "").lower()
+    base_score = float(item.get("score", 0.0))
+    if item_source == "keyword" or "keyword" in item_sources:
+        penalty += min(28.0, max(4.0, base_score * 0.78))
     return penalty
 
 
@@ -521,9 +527,12 @@ def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dic
             path_focus_bonus += _route_stack_path_adjustment(query, tokens, payload, _preferred_file_hint(payload).lower(), path_text)
             if _is_direct_code_context(payload):
                 path_focus_bonus += 1.1
+                if direct_route_stack_doc_present and _query_targets_route_stack(tokens, query):
+                    path_focus_bonus += 7.5
         route_stack_commit_penalty = _route_stack_commit_competition_penalty(
             query,
             tokens,
+            item,
             payload,
             direct_route_stack_doc_present,
         )
