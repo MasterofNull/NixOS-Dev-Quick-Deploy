@@ -81,6 +81,57 @@ function csv(value) {
     .filter(Boolean);
 }
 
+function parseJsonArg(value, fallback = null) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(String(value));
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function parseBoolArg(value, fallback = false) {
+  if (value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function buildOrchestrationPolicy(args) {
+  const policy = parseJsonArg(args["orchestration-policy"], {});
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+    return undefined;
+  }
+
+  const assignments = [
+    ["primary_lane", args["primary-lane"]],
+    ["reviewer_lane", args["reviewer-lane"]],
+    ["escalation_lane", args["escalation-lane"]],
+    ["consensus_mode", args["consensus-mode"]],
+    ["selection_strategy", args["selection-strategy"]],
+  ];
+  for (const [key, value] of assignments) {
+    if (value) policy[key] = String(value);
+  }
+
+  if (args["collaborator-lanes"]) {
+    policy.collaborator_lanes = csv(args["collaborator-lanes"]);
+  }
+  if (args["allow-parallel-subagents"] !== undefined) {
+    policy.allow_parallel_subagents = parseBoolArg(
+      args["allow-parallel-subagents"],
+      false
+    );
+  }
+  if (args["max-parallel-subagents"]) {
+    policy.max_parallel_subagents = Number(args["max-parallel-subagents"]);
+  }
+
+  return Object.keys(policy).length > 0 ? policy : undefined;
+}
+
 function defaultIntentContract(query) {
   const normalized = String(query || "").trim() || "workflow run";
   return {
@@ -173,8 +224,10 @@ async function main() {
       if (spirit.length > 0) intentContract.spirit_constraints = spirit;
       const noExit = csv(args["intent-no-exit"]);
       if (noExit.length > 0) intentContract.no_early_exit_without = noExit;
+      const orchestrationPolicy = buildOrchestrationPolicy(args);
       return call("/workflow/run/start", "POST", {
         query,
+        blueprint_id: args.blueprint || args["blueprint-id"] || "",
         safety_mode: args["safety-mode"] || "plan-readonly",
         token_limit: args["token-limit"] ? Number(args["token-limit"]) : 8000,
         tool_call_limit: args["tool-call-limit"]
@@ -183,6 +236,10 @@ async function main() {
         requesting_agent: args.agent || "human",
         requester_role: args["requester-role"] || "orchestrator",
         intent_contract: intentContract,
+        orchestration_policy: orchestrationPolicy,
+        isolation_profile: args["isolation-profile"] || "",
+        workspace_root: args["workspace-root"] || "",
+        network_policy: args["network-policy"] || "",
       });
     }
     case "run-get":
@@ -327,8 +384,10 @@ async function main() {
         spirit_constraints: ["follow project conventions", "capture evidence"],
         no_early_exit_without: ["validation passes"],
       };
+      const orchestrationPolicy = buildOrchestrationPolicy(args);
       return call("/workflow/run/start", "POST", {
         query: spawnQuery,
+        blueprint_id: args.blueprint || args["blueprint-id"] || "",
         safety_mode: args["safety-mode"] || "execute-mutating",
         token_limit: args["token-limit"] ? Number(args["token-limit"]) : 4000,
         tool_call_limit: args["tool-call-limit"]
@@ -337,6 +396,10 @@ async function main() {
         requesting_agent: args.agent || "human",
         requester_role: args["requester-role"] || "orchestrator",
         intent_contract: spawnIntent,
+        orchestration_policy: orchestrationPolicy,
+        isolation_profile: args["isolation-profile"] || "",
+        workspace_root: args["workspace-root"] || "",
+        network_policy: args["network-policy"] || "",
       });
     }
     case "orchestrate":

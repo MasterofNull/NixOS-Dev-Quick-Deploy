@@ -4614,9 +4614,16 @@ def _build_workflow_run_session(
     orchestration_payload = dict(orchestration)
     orchestration_payload.setdefault("query", query)
     orchestration_payload.setdefault("objective", query)
+    incoming_policy = data.get("orchestration_policy")
+    effective_policy: Optional[Dict[str, Any]] = None
+    if isinstance(selected_blueprint, dict) and isinstance(selected_blueprint.get("orchestration_policy"), dict):
+        effective_policy = dict(selected_blueprint.get("orchestration_policy", {}))
+    if isinstance(incoming_policy, dict):
+        if effective_policy is None:
+            effective_policy = {}
+        effective_policy.update(incoming_policy)
     policy_validation = _validate_orchestration_policy(
-        selected_blueprint.get("orchestration_policy", {}) if isinstance(selected_blueprint, dict) else None
-        ,
+        effective_policy,
         query=query,
     )
     session_id = str(uuid4())
