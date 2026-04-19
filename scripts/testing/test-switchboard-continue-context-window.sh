@@ -30,6 +30,7 @@ payload = {
         {"role": "user", "content": "A" * 24000},
     ],
     "max_tokens": 32,
+    "n_predict": 32,
 }
 print(json.dumps(payload))
 PY

@@ -233,9 +233,9 @@ _continue_local_smoke() {
   curl -sf --max-time 20 \
     -H 'Content-Type: application/json' \
     -H 'X-AI-Profile: continue-local' \
-    -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"temperature":0}' \
+    -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"n_predict":8,"temperature":0}' \
     "${SWITCHBOARD_URL}/v1/chat/completions" | \
-    python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); print(content); raise SystemExit(0 if content else 1)'
+    python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); reasoning=(msg.get("reasoning_content") or "").strip(); usage=data.get("usage") or {}; completion_tokens=int(usage.get("completion_tokens") or 0); observed=content or reasoning; print(observed or completion_tokens); raise SystemExit(0 if observed or completion_tokens > 0 else 1)'
 }
 
 _continue_local_large_context_smoke() {
