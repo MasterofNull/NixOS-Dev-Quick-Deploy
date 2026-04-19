@@ -3064,12 +3064,35 @@ fi
 # ---------------------------------------------------------------------------
 
 declare -A MODEL_CATALOG_CHAT=(
-  ["gemma4-e4b"]="bartowski/google_gemma-4-E4B-it-GGUF|google_gemma-4-E4B-it-Q4_K_M.gguf|~5.2 GB|4.5B active / 128K ctx|Google Gemma 4 E4B — recommended"
-  ["gemma4-e2b"]="bartowski/google_gemma-4-E2B-it-GGUF|google_gemma-4-E2B-it-Q4_K_M.gguf|~2.5 GB|2.3B active / 128K ctx|Google Gemma 4 E2B — ultra-lightweight"
-  ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF|Qwen3-4B-Instruct-2507-Q4_K_M.gguf|~2.5 GB|4B / 262K ctx|Qwen3 4B — current system model"
-  ["qwen3-8b"]="unsloth/Qwen3-8B-Instruct-GGUF|Qwen3-8B-Instruct-Q4_K_M.gguf|~5 GB|8B / 40K ctx|Qwen3 8B — stronger reasoning"
-  ["qwen3.6-35b"]="unsloth/Qwen3.6-35B-A3B-GGUF|Qwen3.6-35B-A3B-UD-Q4_K_M.gguf|~22 GB|35B (3B active MoE) / 262K ctx|Qwen3.6 35B A3B — long-context MoE"
-  ["phi4-mini"]="unsloth/phi-4-mini-instruct-GGUF|phi-4-mini-instruct-Q4_K_M.gguf|~2.5 GB|3.8B / 128K ctx|Phi-4 Mini — Microsoft"
+  # Nano tier (<1GB) - Embedded devices, Pi 4, routing/classification
+  ["smollm2-360m"]="bartowski/SmolLM2-360M-Instruct-GGUF|SmolLM2-360M-Instruct-Q4_K_M.gguf|~0.4 GB|360M / 8K ctx|SmolLM2 360M [NANO] — Pi 4, draft model, routing"
+  ["qwen2.5-0.5b"]="Qwen/Qwen2.5-0.5B-Instruct-GGUF|qwen2.5-0.5b-instruct-q4_k_m.gguf|~0.5 GB|500M / 32K ctx|Qwen 2.5 0.5B [NANO] — 1-2GB RAM, embedded assistant"
+
+  # Micro tier (1-2GB) - Pi 5, SBC, budget systems
+  ["qwen2.5-1.5b"]="Qwen/Qwen2.5-1.5B-Instruct-GGUF|qwen2.5-1.5b-instruct-q4_k_m.gguf|~1.5 GB|1.5B / 32K ctx|Qwen 2.5 1.5B [MICRO] — 2-4GB RAM, SBC, light coding"
+  ["phi4-mini"]="unsloth/phi-4-mini-instruct-GGUF|phi-4-mini-instruct-Q4_K_M.gguf|~2.5 GB|3.8B / 128K ctx|Phi-4 Mini [MICRO] — 4-8GB RAM, reasoning"
+
+  # Small tier (2-6GB) - Laptops 8-16GB RAM
+  ["gemma4-e2b"]="bartowski/google_gemma-4-E2B-it-GGUF|google_gemma-4-E2B-it-Q4_K_M.gguf|~2.5 GB|2.3B active / 128K ctx|Gemma 4 E2B [SMALL] — 8GB RAM, fast general use"
+  ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF|Qwen3-4B-Instruct-2507-Q4_K_M.gguf|~2.5 GB|4B / 262K ctx|Qwen3 4B [SMALL] — 8GB RAM, 262K context"
+  ["llama-3.2-3b"]="bartowski/Llama-3.2-3B-Instruct-GGUF|Llama-3.2-3B-Instruct-Q4_K_M.gguf|~2.5 GB|3B / 131K ctx|Llama 3.2 3B [SMALL] — 8GB RAM, fast responses"
+  ["gemma3-4b"]="bartowski/gemma-3-4b-it-GGUF|gemma-3-4b-it-Q4_K_M.gguf|~3.5 GB|4B / 128K ctx|Gemma3 4B [SMALL] — 8GB RAM, 128K context"
+  ["qwen2.5-coder-7b"]="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF|qwen2.5-coder-7b-instruct-q4_k_m.gguf|~5 GB|7B / 131K ctx|Qwen 2.5 Coder 7B [SMALL/CODING] — 8-16GB RAM, best small coder"
+  ["deepseek-r1-distill-7b"]="bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF|DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf|~5 GB|7B / 32K ctx|DeepSeek R1 7B [SMALL/REASONING] — 8-16GB RAM, chain-of-thought"
+
+  # Medium tier (6-12GB) - Laptops 16-24GB RAM, workstations
+  ["gemma4-e4b"]="bartowski/google_gemma-4-E4B-it-GGUF|google_gemma-4-E4B-it-Q4_K_M.gguf|~5.2 GB|4.5B active / 128K ctx|Gemma 4 E4B [MEDIUM] — 16GB RAM, balanced performance"
+  ["qwen3-8b"]="unsloth/Qwen3-8B-Instruct-GGUF|Qwen3-8B-Instruct-Q4_K_M.gguf|~5 GB|8B / 40K ctx|Qwen3 8B [MEDIUM] — 16GB RAM, stronger reasoning"
+  ["qwen2.5-coder-14b"]="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF|qwen2.5-coder-14b-instruct-q4_k_m.gguf|~9 GB|14B / 131K ctx|Qwen 2.5 Coder 14B [MEDIUM/CODING] — 16-24GB RAM, complex coding"
+  ["deepseek-r1-distill-14b"]="bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF|DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf|~9 GB|14B / 32K ctx|DeepSeek R1 14B [MEDIUM/REASONING] — 16-24GB RAM, best medium reasoning"
+  ["phi-4"]="bartowski/phi-4-GGUF|phi-4-Q4_K_M.gguf|~9 GB|14B / 16K ctx|Phi-4 [MEDIUM/STEM] — 16-24GB RAM, math & structured output"
+  ["gemma3-12b"]="bartowski/gemma-3-12b-it-GGUF|gemma-3-12b-it-Q4_K_M.gguf|~8 GB|12B / 128K ctx|Gemma3 12B [MEDIUM] — 16-24GB RAM, long context"
+
+  # Large tier (20GB+) - Workstations 32GB+ RAM, servers
+  ["qwen2.5-coder-32b"]="Qwen/Qwen2.5-Coder-32B-Instruct-GGUF|qwen2.5-coder-32b-instruct-q4_k_m.gguf|~20 GB|32B / 131K ctx|Qwen 2.5 Coder 32B [LARGE/CODING] — 32GB+ RAM, production coding"
+  ["qwen3.6-35b"]="unsloth/Qwen3.6-35B-A3B-GGUF|Qwen3.6-35B-A3B-UD-Q4_K_M.gguf|~22 GB|35B (3B active MoE) / 262K ctx|Qwen3.6 35B A3B [LARGE/MoE] — 32GB+ RAM, 262K context reasoning"
+  ["deepseek-r1-distill-32b"]="bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF|DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf|~20 GB|32B / 32K ctx|DeepSeek R1 32B [LARGE/REASONING] — 32GB+ RAM, best reasoning <34B"
+  ["llama-3.3-70b-iq2"]="bartowski/Llama-3.3-70B-Instruct-GGUF|Llama-3.3-70B-Instruct-IQ2_M.gguf|~24 GB|70B / 131K ctx|Llama 3.3 70B [LARGE] — 32GB+ RAM CPU-only, highest quality"
 )
 declare -A MODEL_CATALOG_EMBED=(
   ["bge-m3"]="gpustack/bge-m3-GGUF|bge-m3-Q8_0.gguf|~0.6 GB|1024-dim / 8K ctx|BGE-M3 — recommended for RAG"
@@ -3155,7 +3178,61 @@ prompt_model_selection() {
 
   # ── Show available models ─────────────────────────────────────────────────
   log "=== AVAILABLE CHAT MODELS ==="
-  for key in "gemma4-e4b" "gemma4-e2b" "qwen3-4b" "qwen3-8b" "qwen3.6-35b" "phi4-mini"; do
+  log ""
+  log "NANO tier (<1GB RAM) - Embedded, Pi 4, routing:"
+  for key in "smollm2-360m" "qwen2.5-0.5b"; do
+    local info="${MODEL_CATALOG_CHAT[$key]}"
+    local repo="${info%%|*}"; info="${info#*|}"
+    local file="${info%%|*}"; info="${info#*|}"
+    local size="${info%%|*}"; info="${info#*|}"
+    local specs="${info%%|*}"; info="${info#*|}"
+    local desc="$info"
+    local marker=""
+    [[ "$key" == "$current_chat_key" ]] && marker=" ← CURRENT"
+    log "  [$key] $desc ($size, $specs)$marker"
+  done
+  log ""
+  log "MICRO tier (2-4GB RAM) - Pi 5, SBC:"
+  for key in "qwen2.5-1.5b" "phi4-mini"; do
+    local info="${MODEL_CATALOG_CHAT[$key]}"
+    local repo="${info%%|*}"; info="${info#*|}"
+    local file="${info%%|*}"; info="${info#*|}"
+    local size="${info%%|*}"; info="${info#*|}"
+    local specs="${info%%|*}"; info="${info#*|}"
+    local desc="$info"
+    local marker=""
+    [[ "$key" == "$current_chat_key" ]] && marker=" ← CURRENT"
+    log "  [$key] $desc ($size, $specs)$marker"
+  done
+  log ""
+  log "SMALL tier (8-16GB RAM) - Laptops:"
+  for key in "gemma4-e2b" "qwen3-4b" "llama-3.2-3b" "gemma3-4b" "qwen2.5-coder-7b" "deepseek-r1-distill-7b"; do
+    local info="${MODEL_CATALOG_CHAT[$key]}"
+    local repo="${info%%|*}"; info="${info#*|}"
+    local file="${info%%|*}"; info="${info#*|}"
+    local size="${info%%|*}"; info="${info#*|}"
+    local specs="${info%%|*}"; info="${info#*|}"
+    local desc="$info"
+    local marker=""
+    [[ "$key" == "$current_chat_key" ]] && marker=" ← CURRENT"
+    log "  [$key] $desc ($size, $specs)$marker"
+  done
+  log ""
+  log "MEDIUM tier (16-24GB RAM) - Workstations:"
+  for key in "gemma4-e4b" "qwen3-8b" "qwen2.5-coder-14b" "deepseek-r1-distill-14b" "phi-4" "gemma3-12b"; do
+    local info="${MODEL_CATALOG_CHAT[$key]}"
+    local repo="${info%%|*}"; info="${info#*|}"
+    local file="${info%%|*}"; info="${info#*|}"
+    local size="${info%%|*}"; info="${info#*|}"
+    local specs="${info%%|*}"; info="${info#*|}"
+    local desc="$info"
+    local marker=""
+    [[ "$key" == "$current_chat_key" ]] && marker=" ← CURRENT"
+    log "  [$key] $desc ($size, $specs)$marker"
+  done
+  log ""
+  log "LARGE tier (32GB+ RAM) - High-end workstations, servers:"
+  for key in "qwen2.5-coder-32b" "qwen3.6-35b" "deepseek-r1-distill-32b" "llama-3.3-70b-iq2"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
     local file="${info%%|*}"; info="${info#*|}"
