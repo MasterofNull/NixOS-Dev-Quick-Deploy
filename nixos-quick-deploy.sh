@@ -3095,9 +3095,11 @@ declare -A MODEL_CATALOG_CHAT=(
   ["llama-3.3-70b-iq2"]="bartowski/Llama-3.3-70B-Instruct-GGUF|Llama-3.3-70B-Instruct-IQ2_M.gguf|~24 GB|70B / 131K ctx|Llama 3.3 70B [LARGE] — 32GB+ RAM CPU-only, highest quality"
 )
 declare -A MODEL_CATALOG_EMBED=(
-  ["bge-m3"]="gpustack/bge-m3-GGUF|bge-m3-Q8_0.gguf|~0.6 GB|1024-dim / 8K ctx|BGE-M3 — recommended for RAG"
-  ["jina-v3"]="jinaai/jina-embeddings-v3-GGUF|jina-embeddings-v3-Q8_0.gguf|~0.8 GB|1024-dim / 8K ctx|Jina v3 — long-context docs"
-  ["nomic-embed"]="nomic-ai/nomic-embed-text-v1.5-GGUF|nomic-embed-text-v1.5.Q8_0.gguf|~0.5 GB|768-dim / 8K ctx|Nomic Embed v1.5"
+  # High-quality embedding models for RAG and semantic search
+  ["nomic-embed"]="nomic-ai/nomic-embed-text-v1.5-GGUF|nomic-embed-text-v1.5.Q8_0.gguf|~0.5 GB|768-dim / 8K ctx|Nomic Embed v1.5 [RECOMMENDED] — Fast, matryoshka embeddings, all tiers"
+  ["bge-m3"]="gpustack/bge-m3-GGUF|bge-m3-Q8_0.gguf|~0.6 GB|1024-dim / 8K ctx|BGE-M3 [ADVANCED] — Dense+sparse+colbert, best retrieval quality, 16GB+ RAM"
+  ["jina-v3"]="jinaai/jina-embeddings-v3-GGUF|jina-embeddings-v3-Q8_0.gguf|~0.8 GB|1024-dim / 8K ctx|Jina v3 [LONG-CONTEXT] — Excellent for documents, 16GB+ RAM"
+  ["all-minilm"]="sentence-transformers/all-MiniLM-L6-v2|all-MiniLM-L6-v2|~0.1 GB|384-dim / 512 ctx|all-MiniLM-L6-v2 [LEGACY] — Ultra-minimal, embedded only, 512 token limit"
 )
 
 prompt_model_selection() {
@@ -3171,15 +3173,22 @@ prompt_model_selection() {
 
   # ── Show current state ────────────────────────────────────────────────────
   echo ""
-  log "=== CURRENT MODEL STATE ==="
-  log "  Chat model:      ${current_chat_key:-unknown} (disk: ${disk_chat:-none})"
-  log "  Embedding model: ${current_embed_key:-unknown} (disk: ${disk_embed:-none})"
+  log "╔════════════════════════════════════════════════════════════════════════╗"
+  log "║                         CURRENT MODEL STATE                            ║"
+  log "╚════════════════════════════════════════════════════════════════════════╝"
+  log ""
+  log "  Chat Model:      ${current_chat_key:-none selected} ${disk_chat:+(on disk: $disk_chat)}"
+  log "  Embedding Model: ${current_embed_key:-none selected} ${disk_embed:+(on disk: $disk_embed)}"
   echo ""
 
   # ── Show available models ─────────────────────────────────────────────────
-  log "=== AVAILABLE CHAT MODELS ==="
+  log "╔════════════════════════════════════════════════════════════════════════╗"
+  log "║                      AVAILABLE CHAT MODELS                             ║"
+  log "╚════════════════════════════════════════════════════════════════════════╝"
   log ""
-  log "NANO tier (<1GB RAM) - Embedded, Pi 4, routing:"
+  log "┌─ NANO tier (<1GB RAM) ────────────────────────────────────────────────┐"
+  log "│  For: Embedded devices, Raspberry Pi 4, routing, classification       │"
+  log "└────────────────────────────────────────────────────────────────────────┘"
   for key in "smollm2-360m" "qwen2.5-0.5b"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
@@ -3192,7 +3201,9 @@ prompt_model_selection() {
     log "  [$key] $desc ($size, $specs)$marker"
   done
   log ""
-  log "MICRO tier (2-4GB RAM) - Pi 5, SBC:"
+  log "┌─ MICRO tier (2-4GB RAM) ──────────────────────────────────────────────┐"
+  log "│  For: Raspberry Pi 5, SBC, budget systems                             │"
+  log "└────────────────────────────────────────────────────────────────────────┘"
   for key in "qwen2.5-1.5b" "phi4-mini"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
@@ -3205,7 +3216,9 @@ prompt_model_selection() {
     log "  [$key] $desc ($size, $specs)$marker"
   done
   log ""
-  log "SMALL tier (8-16GB RAM) - Laptops:"
+  log "┌─ SMALL tier (8-16GB RAM) ─────────────────────────────────────────────┐"
+  log "│  For: Laptops, desktops with 8-16GB RAM                               │"
+  log "└────────────────────────────────────────────────────────────────────────┘"
   for key in "gemma4-e2b" "qwen3-4b" "llama-3.2-3b" "gemma3-4b" "qwen2.5-coder-7b" "deepseek-r1-distill-7b"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
@@ -3218,7 +3231,9 @@ prompt_model_selection() {
     log "  [$key] $desc ($size, $specs)$marker"
   done
   log ""
-  log "MEDIUM tier (16-24GB RAM) - Workstations:"
+  log "┌─ MEDIUM tier (16-24GB RAM) ───────────────────────────────────────────┐"
+  log "│  For: Workstations, gaming PCs with 16-24GB RAM                       │"
+  log "└────────────────────────────────────────────────────────────────────────┘"
   for key in "gemma4-e4b" "qwen3-8b" "qwen2.5-coder-14b" "deepseek-r1-distill-14b" "phi-4" "gemma3-12b"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
@@ -3231,7 +3246,9 @@ prompt_model_selection() {
     log "  [$key] $desc ($size, $specs)$marker"
   done
   log ""
-  log "LARGE tier (32GB+ RAM) - High-end workstations, servers:"
+  log "┌─ LARGE tier (32GB+ RAM) ──────────────────────────────────────────────┐"
+  log "│  For: High-end workstations, servers with 32GB+ RAM                   │"
+  log "└────────────────────────────────────────────────────────────────────────┘"
   for key in "qwen2.5-coder-32b" "qwen3.6-35b" "deepseek-r1-distill-32b" "llama-3.3-70b-iq2"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
@@ -3245,8 +3262,13 @@ prompt_model_selection() {
   done
   echo ""
 
-  log "=== AVAILABLE EMBEDDING MODELS ==="
-  for key in "bge-m3" "jina-v3" "nomic-embed"; do
+  log "╔════════════════════════════════════════════════════════════════════════╗"
+  log "║                    AVAILABLE EMBEDDING MODELS                          ║"
+  log "╠════════════════════════════════════════════════════════════════════════╣"
+  log "║  For: RAG (Retrieval Augmented Generation), semantic search, vectors  ║"
+  log "╚════════════════════════════════════════════════════════════════════════╝"
+  log ""
+  for key in "nomic-embed" "bge-m3" "jina-v3" "all-minilm"; do
     local info="${MODEL_CATALOG_EMBED[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
     local file="${info%%|*}"; info="${info#*|}"
