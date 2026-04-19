@@ -15,6 +15,20 @@ from typing import Any, Dict, List, Optional
 
 from config import Config
 
+# Phase 0 Slice 0.1: Route alias resolution for front-door routing
+try:
+    from route_aliases import resolve_route_alias, get_resolver
+    _ROUTE_ALIASES_AVAILABLE = True
+except ImportError:
+    _ROUTE_ALIASES_AVAILABLE = False
+    # Fallback if route_aliases module is not available
+    def resolve_route_alias(alias: str) -> str:
+        """Fallback alias resolver."""
+        return "default"
+    def get_resolver():
+        """Fallback resolver getter."""
+        return None
+
 
 _ALLOWED_ROUTING_PROFILES = {
     "default",
@@ -299,6 +313,18 @@ def prune_runtime_registry(registry: Dict[str, Any], now: int | None = None) -> 
 
 def infer_profile(task: str, requested_profile: str = "") -> str:
     profile = str(requested_profile or "").strip().lower()
+
+    # Phase 0 Slice 0.1: Try route alias resolution first
+    if _ROUTE_ALIASES_AVAILABLE and requested_profile:
+        # Check if this is a route alias (case-insensitive)
+        resolver = get_resolver()
+        if resolver and resolver.is_valid_alias(requested_profile):
+            resolved = resolve_route_alias(requested_profile)
+            # If resolution gives us a valid profile, use it
+            if resolved in _ALLOWED_ROUTING_PROFILES:
+                return resolved
+
+    # Existing profile resolution logic
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
         return _frontdoor_profile("default") if _frontdoor_routing_enabled() else "default"
     if profile in {"embedded-assist", "embedded", "assist"}:
