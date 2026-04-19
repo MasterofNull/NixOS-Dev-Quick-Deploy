@@ -3068,6 +3068,7 @@ declare -A MODEL_CATALOG_CHAT=(
   ["gemma4-e2b"]="bartowski/google_gemma-4-E2B-it-GGUF|google_gemma-4-E2B-it-Q4_K_M.gguf|~2.5 GB|2.3B active / 128K ctx|Google Gemma 4 E2B — ultra-lightweight"
   ["qwen3-4b"]="unsloth/Qwen3-4B-Instruct-2507-GGUF|Qwen3-4B-Instruct-2507-Q4_K_M.gguf|~2.5 GB|4B / 262K ctx|Qwen3 4B — current system model"
   ["qwen3-8b"]="unsloth/Qwen3-8B-Instruct-GGUF|Qwen3-8B-Instruct-Q4_K_M.gguf|~5 GB|8B / 40K ctx|Qwen3 8B — stronger reasoning"
+  ["qwen3.6-35b"]="unsloth/Qwen3.6-35B-A3B-GGUF|Qwen3.6-35B-A3B-UD-Q4_K_M.gguf|~22 GB|35B (3B active MoE) / 262K ctx|Qwen3.6 35B A3B — long-context MoE"
   ["phi4-mini"]="unsloth/phi-4-mini-instruct-GGUF|phi-4-mini-instruct-Q4_K_M.gguf|~2.5 GB|3.8B / 128K ctx|Phi-4 Mini — Microsoft"
 )
 declare -A MODEL_CATALOG_EMBED=(
@@ -3154,7 +3155,7 @@ prompt_model_selection() {
 
   # ── Show available models ─────────────────────────────────────────────────
   log "=== AVAILABLE CHAT MODELS ==="
-  for key in "gemma4-e4b" "gemma4-e2b" "qwen3-4b" "qwen3-8b" "phi4-mini"; do
+  for key in "gemma4-e4b" "gemma4-e2b" "qwen3-4b" "qwen3-8b" "qwen3.6-35b" "phi4-mini"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
     local file="${info%%|*}"; info="${info#*|}"
