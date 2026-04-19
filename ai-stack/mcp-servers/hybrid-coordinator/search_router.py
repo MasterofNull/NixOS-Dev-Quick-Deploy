@@ -360,6 +360,53 @@ def _route_stack_path_adjustment(query: str, tokens: List[str], payload: Dict[st
     return score
 
 
+def _direct_route_stack_doc_present(query: str, tokens: List[str], items: List[Dict[str, Any]]) -> bool:
+    if not _query_targets_route_stack(tokens, query):
+        return False
+    for item in items:
+        payload = item.get("payload") or {}
+        preferred_path = _preferred_file_hint(payload).lower()
+        if _is_direct_code_context(payload) and any(path in preferred_path for path in _ROUTE_STACK_OWNER_PATHS):
+            return True
+    return False
+
+
+def _route_stack_commit_competition_penalty(
+    query: str,
+    tokens: List[str],
+    payload: Dict[str, Any],
+    direct_doc_present: bool,
+) -> float:
+    if not direct_doc_present or not _query_targets_route_stack(tokens, query):
+        return 0.0
+    if _is_direct_code_context(payload):
+        return 0.0
+
+    title_text = str(
+        payload.get("commit_subject")
+        or payload.get("title")
+        or payload.get("name")
+        or ""
+    )
+    if not _CONVENTIONAL_COMMIT_PREFIX.match(title_text):
+        return 0.0
+
+    preferred_path = _preferred_file_hint(payload).lower()
+    owner_bonus = _route_stack_owner_match_bonus(payload)
+    changed_files = payload.get("files_changed")
+    changed_count = len(changed_files) if isinstance(changed_files, list) else 0
+
+    penalty = 0.0
+    if any(path in preferred_path for path in _ROUTE_STACK_DISTRACTOR_PATHS):
+        penalty += 0.9
+    if changed_count >= 3:
+        penalty += min(1.2, 0.25 * max(0, changed_count - 2))
+    if owner_bonus > 0.0:
+        penalty += min(1.3, 0.45 + 0.35 * owner_bonus)
+    penalty += _doc_heavy_mixed_path_penalty(payload, preferred_path) * 0.8
+    return penalty
+
+
 def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
     tokens = normalize_tokens(query)
     payload = item.get("payload") or {}
@@ -431,6 +478,7 @@ def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
 def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Apply lightweight lexical+source-aware rerank over merged retrieval results."""
     tokens = normalize_tokens(query)
+    direct_route_stack_doc_present = _direct_route_stack_doc_present(query, tokens, items)
     reranked: List[Dict[str, Any]] = []
     for item in items:
         payload = item.get("payload") or {}
@@ -473,7 +521,13 @@ def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dic
             path_focus_bonus += _route_stack_path_adjustment(query, tokens, payload, _preferred_file_hint(payload).lower(), path_text)
             if _is_direct_code_context(payload):
                 path_focus_bonus += 1.1
-        rerank_score = base_score + field_bonus + keyword_bonus + source_bonus + path_focus_bonus - generic_penalty
+        route_stack_commit_penalty = _route_stack_commit_competition_penalty(
+            query,
+            tokens,
+            payload,
+            direct_route_stack_doc_present,
+        )
+        rerank_score = base_score + field_bonus + keyword_bonus + source_bonus + path_focus_bonus - generic_penalty - route_stack_commit_penalty
         reranked.append({**item, "rerank_score": round(rerank_score, 4)})
     reranked.sort(key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
     return reranked

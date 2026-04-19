@@ -234,6 +234,7 @@ let
         // value)
       configuredSwitchboardProfiles;
   switchboardProfileCatalogJson = builtins.toJSON switchboardProfileCatalog;
+  switchboardProfileCatalogFile = pkgs.writeText "ai-switchboard-profile-catalog.json" switchboardProfileCatalogJson;
 
   switchboardPy = pkgs.python3.withPackages (ps: with ps; [
     fastapi
@@ -279,7 +280,25 @@ let
     HYBRID_URL      = os.environ.get("HYBRID_URL", "").rstrip("/")
     HINTS_INJECT    = os.environ.get("HINTS_INJECT", "1").strip() not in ("0", "false", "no")
     HINTS_LIMIT     = int(os.environ.get("HINTS_LIMIT", "2"))
-    PROFILE_CATALOG = json.loads(os.environ.get("SWB_PROFILE_CATALOG_JSON", "{}") or "{}")
+    def _load_profile_catalog() -> dict:
+        catalog_file = os.environ.get("SWB_PROFILE_CATALOG_JSON_FILE", "").strip()
+        if catalog_file:
+            try:
+                with open(catalog_file, "r", encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+                if isinstance(loaded, dict):
+                    return loaded
+            except (OSError, json.JSONDecodeError) as exc:
+                print(f"warning: failed to load switchboard profile catalog file: {exc}", file=sys.stderr)
+        raw_catalog = os.environ.get("SWB_PROFILE_CATALOG_JSON", "{}") or "{}"
+        try:
+            loaded = json.loads(raw_catalog)
+            return loaded if isinstance(loaded, dict) else {}
+        except json.JSONDecodeError as exc:
+            print(f"warning: invalid SWB_PROFILE_CATALOG_JSON, falling back to empty catalog: {exc}", file=sys.stderr)
+            return {}
+
+    PROFILE_CATALOG = _load_profile_catalog()
     LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", "${repoPath}/ai-stack/local-agents").strip()
     LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "8"))
     CONNECT_TIMEOUT_S = float(os.environ.get("SWB_CONNECT_TIMEOUT_S", "10"))
@@ -1379,7 +1398,7 @@ in
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
           "SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS=${toString swb.continueLocal.maxInputTokens}"
           "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
-          "SWB_PROFILE_CATALOG_JSON=${switchboardProfileCatalogJson}"
+          "SWB_PROFILE_CATALOG_JSON_FILE=${switchboardProfileCatalogFile}"
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
           "LOCAL_AGENTS_PATH=${repoPath}/ai-stack/local-agents"
