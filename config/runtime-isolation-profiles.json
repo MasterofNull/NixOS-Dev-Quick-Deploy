@@ -31,6 +31,22 @@
         "git"
       ],
       "network_policy": "loopback"
+    },
+    "worktree-guarded": {
+      "workspace_root": "/var/lib/nixos-ai-stack/mutable/program/agent-worktrees",
+      "allow_workspace_write": true,
+      "allowed_processes": [
+        "rg",
+        "cat",
+        "ls",
+        "jq",
+        "sed",
+        "bash",
+        "python3",
+        "node",
+        "git"
+      ],
+      "network_policy": "loopback"
     }
   }
 }
