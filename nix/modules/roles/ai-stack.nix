@@ -514,6 +514,17 @@ let
       pooling = "mean";
       recommended = false;
     };
+    "all-minilm" = {
+      name = "all-MiniLM-L6-v2";
+      repo = "sentence-transformers/all-MiniLM-L6-v2";
+      file = "all-MiniLM-L6-v2";
+      sha256 = null;
+      dimensions = 384;
+      maxTokens = 512;
+      ramEstimate = "~0.1 GB";
+      pooling = "mean";
+      recommended = false;
+    };
   };
 in {
   config = lib.mkMerge [
