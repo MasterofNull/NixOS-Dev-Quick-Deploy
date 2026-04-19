@@ -4028,6 +4028,7 @@
                             <button data-harness-action="improvement_pass" onclick="runHarnessMaintenance('improvement_pass')" class="action-btn" style="background: var(--accent-magenta); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Run Improvement Pass</button>
                             <div id="harnessActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
                         </div>
+                        <div id="harnessActionDetail" style="margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;">Harness actions execute repo-maintained scripts through the dashboard API. The latest result and any failure excerpt will appear here.</div>
                     </div>
                 </div>
             </div>
@@ -4076,6 +4077,7 @@
                             <button onclick="executePrsiQueue()" class="action-btn" style="background: var(--accent-magenta); color: var(--bg-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 600;">Execute Approved</button>
                             <div id="prsiActionStatus" style="margin-left: auto; font-size: 0.8rem; color: var(--text-muted);"></div>
                         </div>
+                        <div id="prsiPolicyHint" style="margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;">PRSI approvals and execution guidance will appear here once the queue loads.</div>
                     </div>
                 </div>
             </div>
@@ -7793,6 +7795,13 @@
             return actionName.replaceAll('_', ' ');
         }
 
+        function summarizePrsiGate(action) {
+            const gate = action?.execution_gate || {};
+            if (gate?.detail) return gate.detail;
+            if (gate?.executable) return 'Approved and eligible for execution.';
+            return 'Execution eligibility has not been reported yet.';
+        }
+
         function buildPrsiFingerprint(action) {
             const raw = action?.raw_action || {};
             return JSON.stringify({
@@ -7922,8 +7931,9 @@
             const confidence = Number.isFinite(Number(action?.confidence ?? raw.confidence))
                 ? `Confidence: ${Math.round(Number(action?.confidence ?? raw.confidence) * 100)}%.`
                 : '';
-            const estimatedCost = Number.isFinite(Number(raw.estimated_token_cost))
-                ? `Estimated token cost: ${Number(raw.estimated_token_cost).toLocaleString()}.`
+            const estimatedTokenCost = action?.estimated_token_cost ?? raw.estimated_token_cost;
+            const estimatedCost = Number.isFinite(Number(estimatedTokenCost))
+                ? `Estimated token cost: ${Number(estimatedTokenCost).toLocaleString()}.`
                 : '';
             const services = Array.isArray(raw.services) && raw.services.length
                 ? `Targets: ${raw.services.join(', ')}.`
@@ -7952,10 +7962,50 @@
             ].filter(Boolean).join(' ');
         }
 
+        async function reviewPrsiGroup(serializedIds, decision) {
+            const statusEl = document.getElementById('prsiActionStatus');
+            const policyHintEl = document.getElementById('prsiPolicyHint');
+            const ids = JSON.parse(serializedIds);
+            const verb = decision === 'approve' ? 'Approving' : 'Rejecting';
+            const note = window.prompt(`${decision === 'approve' ? 'Approval' : 'Rejection'} note (optional):`, '') || '';
+            if (statusEl) {
+                statusEl.textContent = `${verb} ${ids.length} queue entr${ids.length === 1 ? 'y' : 'ies'}...`;
+                statusEl.style.color = 'var(--status-warning)';
+            }
+            try {
+                for (const actionId of ids) {
+                    const response = await fetch(`${FASTAPI_BASE}/api/prsi/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action_id: actionId, decision, by: 'dashboard', note })
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(parseApiErrorPayload(payload, `HTTP ${response.status}`));
+                    }
+                }
+                if (statusEl) {
+                    statusEl.textContent = `${decision === 'approve' ? 'Approved' : 'Rejected'} ${ids.length} queue entr${ids.length === 1 ? 'y' : 'ies'}.`;
+                    statusEl.style.color = 'var(--status-online)';
+                }
+                if (policyHintEl && decision === 'approve') {
+                    policyHintEl.textContent = 'Approvals recorded. Execute only runs approved actions that still pass PRSI policy gates.';
+                }
+                await refreshDashboard();
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = `${decision === 'approve' ? 'Approval' : 'Rejection'} failed: ${error.message}`;
+                    statusEl.style.color = 'var(--status-error)';
+                }
+                console.error(`PRSI ${decision} failed:`, error);
+            }
+        }
+
         function updatePRSIQueue(data) {
             const prsi = data?.prsi || {};
             const counts = prsi.counts || {};
             const actions = Array.isArray(prsi.actions) ? prsi.actions : [];
+            const policy = prsi.policy || {};
             document.getElementById('prsiPendingCount').textContent = counts.pending_approval ?? 0;
             document.getElementById('prsiApprovedCount').textContent = counts.approved ?? 0;
             document.getElementById('prsiExecutedCount').textContent = counts.executed ?? 0;
@@ -7966,19 +8016,40 @@
             if (badge) {
                 const pending = Number(counts.pending_approval ?? 0);
                 const approved = Number(counts.approved ?? 0);
-                if (pending > 0) {
+                const executableApproved = Number(counts.executable_approved ?? 0);
+                const blockedApproved = Number(counts.blocked_approved ?? 0);
+                if (executableApproved > 0) {
+                    badge.textContent = `${executableApproved} Executable`;
+                    badge.style.background = 'var(--accent-cyan)';
+                    badge.style.color = 'var(--bg-primary)';
+                } else if (pending > 0) {
                     badge.textContent = `${pending} Pending Approval`;
                     badge.style.background = 'var(--status-warning)';
                     badge.style.color = 'var(--bg-primary)';
-                } else if (approved > 0) {
-                    badge.textContent = `${approved} Ready`;
-                    badge.style.background = 'var(--accent-cyan)';
+                } else if (approved > 0 || blockedApproved > 0) {
+                    badge.textContent = blockedApproved > 0 ? `${blockedApproved} Policy Blocked` : `${approved} Approved`;
+                    badge.style.background = 'var(--status-warning)';
                     badge.style.color = 'var(--bg-primary)';
                 } else {
                     badge.textContent = 'In Sync';
                     badge.style.background = 'var(--status-online)';
                     badge.style.color = 'var(--bg-primary)';
                 }
+            }
+
+            const policyHint = document.getElementById('prsiPolicyHint');
+            if (policyHint) {
+                const allowedTypes = Array.isArray(policy.allow_action_types) && policy.allow_action_types.length
+                    ? policy.allow_action_types.join(', ')
+                    : 'policy-managed action types';
+                const executableApproved = Number(counts.executable_approved ?? 0);
+                const blockedApproved = Number(counts.blocked_approved ?? 0);
+                policyHint.textContent =
+                    executableApproved > 0
+                        ? `Execute Approved will run ${executableApproved} eligible action${executableApproved === 1 ? '' : 's'}. Allowed types: ${allowedTypes}.`
+                        : blockedApproved > 0
+                            ? `There are ${blockedApproved} approved action${blockedApproved === 1 ? '' : 's'} that still fail PRSI policy gates. Allowed types: ${allowedTypes}.`
+                            : `Approve pending items here, then execute only the actions that match policy-allowed types: ${allowedTypes}.`;
             }
 
             const list = document.getElementById('prsiActionList');
@@ -8014,12 +8085,33 @@
             list.innerHTML = top.map((group) => {
                 const a = group.exemplar;
                 const queueEntries = group.items.length;
+                const pendingItems = group.items.filter((item) => (item.status || '') === 'pending_approval');
+                const approvedItems = group.items.filter((item) => (item.status || '') === 'approved');
+                const executableItems = approvedItems.filter((item) => item.execution_gate?.executable);
+                const blockedApprovedItems = approvedItems.filter((item) => !item.execution_gate?.executable);
+                const serializedPendingIds = JSON.stringify(pendingItems.map((item) => item.id));
+                const gateSummary = summarizePrsiGate(a);
+                const reviewControls = pendingItems.length
+                    ? `
+                        <div style="display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.5rem;">
+                            <button onclick='reviewPrsiGroup(${JSON.stringify(serializedPendingIds)}, "approve")' class="action-btn" style="background: var(--accent-cyan); color: var(--bg-primary); border: none; padding: 0.35rem 0.65rem; border-radius: 4px; cursor: pointer; font-family: \"JetBrains Mono\", monospace; font-size: 0.74rem; font-weight: 600;">Approve ${pendingItems.length}</button>
+                            <button onclick='reviewPrsiGroup(${JSON.stringify(serializedPendingIds)}, "reject")' class="action-btn" style="background: transparent; color: var(--text-primary); border: 1px solid var(--border-primary); padding: 0.35rem 0.65rem; border-radius: 4px; cursor: pointer; font-family: \"JetBrains Mono\", monospace; font-size: 0.74rem;">Reject ${pendingItems.length}</button>
+                        </div>
+                    `
+                    : '';
+                const executionState = executableItems.length
+                    ? `${executableItems.length} executable now`
+                    : blockedApprovedItems.length
+                        ? `${blockedApprovedItems.length} approved but blocked by policy`
+                        : gateSummary;
                 return `
                 <div class="data-item">
                     <div style="display:flex; flex-direction:column; gap:0.25rem; max-width:80%;">
                         <span>${formatPrsiActionTitle(a)} · ${(a.type || 'change')}</span>
                         <span style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">${summarizePrsiIntent(a)}</span>
                         <span style="font-size:0.72rem; color:var(--text-muted);">${queueEntries} matching queue entr${queueEntries === 1 ? 'y' : 'ies'} • Seen ${group.seenCount} time(s) • Updated ${formatTimestampWithStaleness(group.latestAt, 240)}</span>
+                        <span style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(executionState)}</span>
+                        ${reviewControls}
                     </div>
                     <span class="data-meta">${(a.status || 'review pending')} · ${(a.risk || 'risk review pending')} · ${(a.safe === false ? 'manual gate required' : 'safe change')}</span>
                 </div>
@@ -8054,6 +8146,7 @@
 
         async function executePrsiQueue() {
             const statusEl = document.getElementById('prsiActionStatus');
+            const policyHintEl = document.getElementById('prsiPolicyHint');
             if (statusEl) {
                 statusEl.textContent = 'Executing approved actions...';
                 statusEl.style.color = 'var(--status-warning)';
@@ -8072,6 +8165,9 @@
                     statusEl.textContent = payload?.execute_result?.message || 'Approved actions executed';
                     statusEl.style.color = 'var(--status-online)';
                 }
+                if (policyHintEl && payload?.execute_result?.message === 'no actions selected after policy gates') {
+                    policyHintEl.textContent = 'No approved actions are currently executable. Review the queue details for the policy gate that blocked them.';
+                }
                 await refreshDashboard();
             } catch (error) {
                 if (statusEl) {
@@ -8084,9 +8180,14 @@
 
         async function runHarnessMaintenance(action) {
             const statusEl = document.getElementById('harnessActionStatus');
+            const detailEl = document.getElementById('harnessActionDetail');
             if (statusEl) {
                 statusEl.textContent = `Running ${action}...`;
                 statusEl.style.color = 'var(--status-warning)';
+            }
+            if (detailEl) {
+                detailEl.textContent = 'Waiting for script output from the dashboard API...';
+                detailEl.style.color = 'var(--text-secondary)';
             }
             try {
                 const response = await fetch(`${FASTAPI_BASE}/api/harness/maintenance/run`, {
@@ -8098,18 +8199,28 @@
                     throw new Error('maintenance endpoint not available in current API build');
                 }
                 const payload = await response.json();
+                const stdoutTail = String(payload.stdout || '').trim().split('\n').filter(Boolean).slice(-2).join(' | ');
                 if (!response.ok || !payload.success) {
-                    throw new Error(parseApiErrorPayload(payload, `HTTP ${response.status}`));
+                    const failureDetail = payload.stderr || payload.error || payload.message || stdoutTail || `HTTP ${response.status}`;
+                    throw new Error(failureDetail);
                 }
                 if (statusEl) {
                     statusEl.textContent = `${action}: success (${Math.round((payload.duration_ms || 0) / 1000)}s)`;
                     statusEl.style.color = 'var(--status-online)';
+                }
+                if (detailEl) {
+                    detailEl.textContent = stdoutTail || 'Script completed successfully.';
+                    detailEl.style.color = 'var(--text-secondary)';
                 }
                 await refreshDashboard();
             } catch (error) {
                 if (statusEl) {
                     statusEl.textContent = `${action}: ${error.message}`;
                     statusEl.style.color = 'var(--status-error)';
+                }
+                if (detailEl) {
+                    detailEl.textContent = `Failure detail: ${error.message}`;
+                    detailEl.style.color = 'var(--status-error)';
                 }
                 console.error(`Harness maintenance action failed (${action}):`, error);
             }

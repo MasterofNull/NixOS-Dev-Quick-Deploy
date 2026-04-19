@@ -351,6 +351,96 @@ def _weekly_research_state() -> Dict[str, Any]:
         }
 
 
+def _prsi_policy_path() -> Path:
+    return _repo_root() / "config" / "runtime-prsi-policy.json"
+
+
+def _load_prsi_policy() -> Dict[str, Any]:
+    try:
+        payload = json.loads(_prsi_policy_path().read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _prsi_policy_summary(policy: Dict[str, Any]) -> Dict[str, Any]:
+    gates = policy.get("gates", {}) if isinstance(policy.get("gates"), dict) else {}
+    allow_types = gates.get("allow_action_types", [])
+    return {
+        "allow_action_types": [str(item) for item in allow_types] if isinstance(allow_types, list) else [],
+        "block_high_risk_without_approval": bool(gates.get("block_high_risk_without_approval", True)),
+        "require_independent_verifier_for_high_risk": bool(
+            gates.get("require_independent_verifier_for_high_risk", False)
+        ),
+    }
+
+
+def _prsi_execution_gate(row: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]:
+    gates = policy.get("gates", {}) if isinstance(policy.get("gates"), dict) else {}
+    action = row.get("raw_action") if isinstance(row.get("raw_action"), dict) else {}
+    action_type = str(row.get("type") or action.get("type") or "").strip().lower()
+    status = str(row.get("status") or "").strip().lower()
+    risk = str(row.get("risk") or "").strip().lower()
+    approval = row.get("approval") if isinstance(row.get("approval"), dict) else {}
+    allowed_types = {
+        str(item).strip().lower()
+        for item in gates.get("allow_action_types", [])
+        if str(item).strip()
+    } if isinstance(gates.get("allow_action_types"), list) else set()
+
+    if status == "pending_approval":
+        return {
+            "executable": False,
+            "code": "approval_required",
+            "detail": "Pending operator approval.",
+        }
+    if status == "rejected":
+        return {
+            "executable": False,
+            "code": "rejected",
+            "detail": "Rejected actions are not executable.",
+        }
+    if status == "executed":
+        return {
+            "executable": False,
+            "code": "already_executed",
+            "detail": "Action has already been executed.",
+        }
+    if status == "counterfactual_queued":
+        return {
+            "executable": False,
+            "code": "counterfactual_queued",
+            "detail": "Queued for counterfactual sampling instead of direct execution.",
+        }
+    if status != "approved":
+        return {
+            "executable": False,
+            "code": "status_not_executable",
+            "detail": f"Status '{status or 'unknown'}' is not executable.",
+        }
+    if allowed_types and action_type not in allowed_types:
+        allowed_list = ", ".join(sorted(allowed_types))
+        return {
+            "executable": False,
+            "code": "type_blocked_by_policy",
+            "detail": f"Action type '{action_type or 'unknown'}' is blocked by policy. Allowed types: {allowed_list}.",
+        }
+    if bool(gates.get("require_independent_verifier_for_high_risk", False)) and risk == "high":
+        if not approval.get("verifier_by"):
+            return {
+                "executable": False,
+                "code": "verifier_required",
+                "detail": "High-risk action needs an independent verifier before execution.",
+            }
+    return {
+        "executable": True,
+        "code": "ready",
+        "detail": "Approved and eligible for execution.",
+    }
+
+
 async def _run_harness_script(
     script_name: str,
     args: Optional[List[str]] = None,
@@ -1770,6 +1860,7 @@ async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[st
 @router.get("/prsi/actions")
 async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = None) -> Dict[str, Any]:
     """List PRSI queued actions and counts."""
+    policy = _load_prsi_policy()
     args = ["list"]
     if status:
         args.extend(["--status", status])
@@ -1781,9 +1872,39 @@ async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = N
     payload = result.get("payload", {})
     if not isinstance(payload, dict):
         payload = {}
+    actions = payload.get("actions", [])
+    if not isinstance(actions, list):
+        actions = []
+    normalized_actions: List[Dict[str, Any]] = []
+    executable_approved = 0
+    blocked_approved = 0
+    for row in actions:
+        if not isinstance(row, dict):
+            continue
+        normalized = dict(row)
+        gate = _prsi_execution_gate(normalized, policy)
+        normalized["execution_gate"] = gate
+        if str(normalized.get("status") or "").strip().lower() == "approved":
+            if gate.get("executable"):
+                executable_approved += 1
+            else:
+                blocked_approved += 1
+        normalized_actions.append(normalized)
+    counts = payload.get("counts", {})
+    if not isinstance(counts, dict):
+        counts = {}
     return {
         "status": "ok",
-        "prsi": payload,
+        "prsi": {
+            **payload,
+            "actions": normalized_actions,
+            "counts": {
+                **counts,
+                "executable_approved": executable_approved,
+                "blocked_approved": blocked_approved,
+            },
+            "policy": _prsi_policy_summary(policy),
+        },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
