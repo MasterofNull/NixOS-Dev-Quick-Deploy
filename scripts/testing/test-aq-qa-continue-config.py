@@ -25,6 +25,10 @@ def main() -> int:
         "aq-qa should validate switchboard ingress for at least the base model, lane-specific model, and tab autocomplete",
     )
     assert_true(
+        '/health' in script and 'expected_context' in script and 'expected_chat_max_tokens' in script,
+        "aq-qa should derive Continue context and token expectations from live switchboard profile health instead of hardcoded floors",
+    )
+    assert_true(
         '"continue-local"' in script,
         "aq-qa should keep the continue-local lane requirement in the config validator",
     )

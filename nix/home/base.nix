@@ -39,11 +39,24 @@ let
   aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] (getRegistryPort "switchboard") systemConfig;
   aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] (getRegistryPort "llamaCpp") systemConfig;
   aiLlamaModel = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "model" ] "local-model" systemConfig;
+  aiLlamaCtxSize = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "ctxSize" ] 16384 systemConfig;
   aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] (getRegistryPort "mcpHybrid") systemConfig;
   aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (getRegistryPort "mcpAidb") systemConfig;
   aiRalphPort = lib.attrByPath [ "mySystem" "mcpServers" "ralphPort" ] (getRegistryPort "mcpRalph") systemConfig;
   aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
+  switchboardProfiles = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "profiles" ] { } systemConfig;
+  continueLocalProfile = lib.attrByPath [ "continue-local" ] { } switchboardProfiles;
+  defaultSwitchboardProfile = lib.attrByPath [ "default" ] { } switchboardProfiles;
+  continueContextLength =
+    lib.attrByPath [ "advertisedContextWindow" ]
+      (lib.attrByPath [ "advertisedContextWindow" ] aiLlamaCtxSize defaultSwitchboardProfile)
+      continueLocalProfile;
+  continueChatMaxTokens =
+    lib.attrByPath [ "maxOutputTokens" ]
+      (lib.attrByPath [ "maxOutputTokens" ] 768 defaultSwitchboardProfile)
+      continueLocalProfile;
+  continueTabMaxTokens = lib.min 96 (lib.max 32 continueChatMaxTokens);
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   # Continue uses the switchboard OpenAI-compatible proxy directly because the
   # hybrid coordinator's /v1 ingress is protected and returns 401 to editor
@@ -1123,7 +1136,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="23.0"
+    _config_version="24.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1141,7 +1154,7 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "23.0",
+  "__configVersion": "24.0",
   "models": [
     {
       "title": "Switchboard Router (Authoritative)",
@@ -1149,8 +1162,8 @@ PYEOF
       "apiKey": "local-llama-cpp",
       "apiBase": "${continueApiBase}",
       "model": "${aiLlamaModel}",
-      "contextLength": 16384,
-      "maxTokens": 768
+      "contextLength": ${toString continueContextLength},
+      "maxTokens": ${toString continueChatMaxTokens}
     },
     {
       "title": "Local Stable (Continue Local)",
@@ -1163,8 +1176,8 @@ PYEOF
           "X-AI-Profile": "continue-local"
         }
       },
-      "contextLength": 16384,
-      "maxTokens": 768
+      "contextLength": ${toString continueContextLength},
+      "maxTokens": ${toString continueChatMaxTokens}
     }
   ],
   "tabAutocompleteModel": {
@@ -1178,7 +1191,8 @@ PYEOF
         "X-AI-Profile": "continue-local"
       }
     },
-    "maxTokens": 48
+    "contextLength": ${toString continueContextLength},
+    "maxTokens": ${toString continueTabMaxTokens}
   },
   "contextProviders": [
     {

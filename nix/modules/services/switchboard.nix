@@ -80,6 +80,160 @@ let
     Embeddings profile: retrieval/ranking only, not chat reasoning.
     Prioritize progressive disclosure by selecting only relevant chunks.
   '';
+  embeddedAssistCard = ''
+    [profile-card:embedded-assist]
+    Use compact reasoning and progressive disclosure.
+    Prefer hybrid retrieval (semantic + lexical), then ask for clarification on low confidence.
+    Do not expand full policy docs unless explicitly requested.
+  '';
+  switchboardProfileDefaults = {
+    default = {
+      forceProvider = null;
+      injectHints = true;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = null;
+      maxMessages = null;
+      maxOutputTokens = 768;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = null;
+    };
+    "continue-local" = {
+      forceProvider = "local";
+      injectHints = false;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = swb.continueLocal.maxInputTokens;
+      maxMessages = swb.continueLocal.maxMessages;
+      maxOutputTokens = 768;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = continueLocalCard;
+    };
+    "remote-default" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias = null;
+      advertisedContextWindow = null;
+      maxInputTokens = 3500;
+      maxMessages = 16;
+      maxOutputTokens = 1024;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteDefaultCard;
+    };
+    "remote-gemini" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias =
+        if swb.remoteModelAliases.gemini != null
+        then swb.remoteModelAliases.gemini
+        else swb.remoteModelAliases.free;
+      advertisedContextWindow = null;
+      maxInputTokens = 3500;
+      maxMessages = 16;
+      maxOutputTokens = 1400;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteGeminiCard;
+    };
+    "remote-free" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias = swb.remoteModelAliases.free;
+      advertisedContextWindow = null;
+      maxInputTokens = 3500;
+      maxMessages = 16;
+      maxOutputTokens = 1200;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteFreeCard;
+    };
+    "remote-coding" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias = swb.remoteModelAliases.coding;
+      advertisedContextWindow = null;
+      maxInputTokens = 5000;
+      maxMessages = 20;
+      maxOutputTokens = 1800;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteCodingCard;
+    };
+    "remote-reasoning" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias = swb.remoteModelAliases.reasoning;
+      advertisedContextWindow = null;
+      maxInputTokens = 6000;
+      maxMessages = 20;
+      maxOutputTokens = 1800;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteReasoningCard;
+    };
+    "remote-tool-calling" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias = swb.remoteModelAliases.toolCalling;
+      advertisedContextWindow = null;
+      maxInputTokens = 3500;
+      maxMessages = 16;
+      maxOutputTokens = 900;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteToolCallingCard;
+    };
+    "local-tool-calling" = {
+      forceProvider = "local";
+      injectHints = false;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = 2400;
+      maxMessages = 12;
+      maxOutputTokens = 768;
+      embeddingsOnly = false;
+      toolExecution = "built-in";
+      profileCard = localToolCallingCard;
+    };
+    "embedding-local" = {
+      forceProvider = "local";
+      injectHints = false;
+      modelAlias = null;
+      advertisedContextWindow = 512;
+      maxInputTokens = 512;
+      maxMessages = 8;
+      maxOutputTokens = 256;
+      embeddingsOnly = true;
+      toolExecution = null;
+      profileCard = embeddingLocalCard;
+    };
+    "embedded-assist" = {
+      forceProvider = "local";
+      injectHints = false;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = 1800;
+      maxMessages = 10;
+      maxOutputTokens = 512;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = embeddedAssistCard;
+    };
+  };
+  configuredSwitchboardProfiles = swb.profiles;
+  switchboardProfileCatalog =
+    switchboardProfileDefaults
+    // lib.mapAttrs
+      (name: value:
+        (if builtins.hasAttr name switchboardProfileDefaults
+         then switchboardProfileDefaults.${name}
+         else {})
+        // value)
+      configuredSwitchboardProfiles;
+  switchboardProfileCatalogJson = builtins.toJSON switchboardProfileCatalog;
 
   switchboardPy = pkgs.python3.withPackages (ps: with ps; [
     fastapi
@@ -125,6 +279,7 @@ let
     HYBRID_URL      = os.environ.get("HYBRID_URL", "").rstrip("/")
     HINTS_INJECT    = os.environ.get("HINTS_INJECT", "1").strip() not in ("0", "false", "no")
     HINTS_LIMIT     = int(os.environ.get("HINTS_LIMIT", "2"))
+    PROFILE_CATALOG = json.loads(os.environ.get("SWB_PROFILE_CATALOG_JSON", "{}") or "{}")
     LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", "${repoPath}/ai-stack/local-agents").strip()
     LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "8"))
     CONNECT_TIMEOUT_S = float(os.environ.get("SWB_CONNECT_TIMEOUT_S", "10"))
@@ -198,6 +353,11 @@ let
 
     REMOTE_URL = _normalize_remote_url(REMOTE_URL)
 
+    if not isinstance(PROFILE_CATALOG, dict):
+        PROFILE_CATALOG = {}
+    if "default" not in PROFILE_CATALOG or not isinstance(PROFILE_CATALOG.get("default"), dict):
+        PROFILE_CATALOG["default"] = {}
+
     if LOCAL_AGENTS_PATH and LOCAL_AGENTS_PATH not in sys.path:
         sys.path.insert(0, LOCAL_AGENTS_PATH)
 
@@ -226,26 +386,9 @@ let
                 "remote": REMOTE_URL if REMOTE_URL else None,
             },
             "remote_configured": bool(REMOTE_URL),
-            "profiles": {
-                "default": {"force_provider": None, "inject_hints": HINTS_INJECT},
-                "continue-local": {"force_provider": "local", "inject_hints": False},
-                "remote-default": {"force_provider": "remote", "inject_hints": False},
-                "remote-gemini": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_GEMINI or None},
-                "remote-free": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_FREE or None},
-                "remote-coding": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_CODING or None},
-                "remote-reasoning": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_REASONING or None},
-                "remote-tool-calling": {"force_provider": "remote", "inject_hints": False, "model_alias": REMOTE_MODEL_ALIAS_TOOL_CALLING or None},
-                "local-tool-calling": {"force_provider": "local", "inject_hints": False, "tool_execution": "built-in"},
-                "embedding-local": {"force_provider": "local", "inject_hints": False, "embeddings_only": True},
-                "embedded-assist": {"force_provider": "local", "inject_hints": False, "embeddings_only": False},
-            },
+            "profiles": PROFILE_CATALOG,
             "policies": {
-                "continue_local_max_input_tokens": CONTINUE_LOCAL_MAX_INPUT_TOKENS,
-                "continue_local_max_messages": CONTINUE_LOCAL_MAX_MESSAGES,
-                "remote_default_max_input_tokens": REMOTE_DEFAULT_MAX_INPUT_TOKENS,
-                "remote_default_max_messages": REMOTE_DEFAULT_MAX_MESSAGES,
-                "embedded_assist_max_input_tokens": EMBEDDED_ASSIST_MAX_INPUT_TOKENS,
-                "embedded_assist_max_messages": EMBEDDED_ASSIST_MAX_MESSAGES,
+                "profile_catalog_enabled": bool(PROFILE_CATALOG),
                 "profile_cards_enabled": PROFILE_CARDS_ENABLED,
                 "semantic_prune_enabled": SEMANTIC_PRUNE_ENABLED,
                 "reasoning_mode": REASONING_MODE,
@@ -259,17 +402,22 @@ let
             "remote_budget": budget_state,
         }
 
+    def _profile_settings(profile: str) -> dict:
+        settings = PROFILE_CATALOG.get(profile)
+        if not isinstance(settings, dict):
+            settings = PROFILE_CATALOG.get("default", {})
+        return settings if isinstance(settings, dict) else {}
+
+    def _profile_flag(profile: str, key: str, fallback):
+        value = _profile_settings(profile).get(key, fallback)
+        return fallback if value is None else value
+
     def _route_target(request: Request, payload: dict | None, profile: str) -> str:
-        if profile == "continue-local":
+        profile_provider = str(_profile_settings(profile).get("forceProvider") or "").strip().lower()
+        if profile_provider == "local":
             return "local"
-        if profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"):
+        if profile_provider == "remote":
             return "remote" if REMOTE_URL else "local"
-        if profile == "local-tool-calling":
-            return "local"
-        if profile == "embedding-local":
-            return "local"
-        if profile == "embedded-assist":
-            return "local"
 
         route_hint = request.headers.get(ROUTE_HINT_HEADER, "").strip().lower()
         provider_hint = request.headers.get(PROVIDER_HINT_HEADER, "").strip().lower()
@@ -314,16 +462,7 @@ let
         model = str(payload.get("model", ""))
         alias_model = ""
         if REMOTE_MODEL_ALIASES_ENABLED:
-            if profile == "remote-gemini":
-                alias_model = REMOTE_MODEL_ALIAS_GEMINI
-            elif profile == "remote-free":
-                alias_model = REMOTE_MODEL_ALIAS_FREE
-            elif profile == "remote-coding":
-                alias_model = REMOTE_MODEL_ALIAS_CODING
-            elif profile == "remote-reasoning":
-                alias_model = REMOTE_MODEL_ALIAS_REASONING
-            elif profile == "remote-tool-calling":
-                alias_model = REMOTE_MODEL_ALIAS_TOOL_CALLING
+            alias_model = str(_profile_settings(profile).get("modelAlias") or "").strip()
         for prefix in REMOTE_MODEL_PREFIXES:
             if model.lower().startswith(prefix):
                 suffix = model[len(prefix):] or "default"
@@ -340,7 +479,7 @@ let
         profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
         if not profile:
             profile = request.query_params.get("ai_profile", "").strip().lower()
-        allowed = ("continue-local", "local-tool-calling", "remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling", "embedding-local", "embedded-assist", "default")
+        allowed = tuple(PROFILE_CATALOG.keys()) or ("default",)
         return profile if profile in allowed else "default"
 
     def _budget_state_current() -> dict:
@@ -808,16 +947,10 @@ let
         if not isinstance(messages, list):
             return messages, False, 0, 0, "none", 1.0, False
 
-        if profile == "continue-local":
-            max_tokens = CONTINUE_LOCAL_MAX_INPUT_TOKENS
-            max_messages = CONTINUE_LOCAL_MAX_MESSAGES
-        elif profile == "remote-default":
-            max_tokens = REMOTE_DEFAULT_MAX_INPUT_TOKENS
-            max_messages = REMOTE_DEFAULT_MAX_MESSAGES
-        elif profile == "embedded-assist":
-            max_tokens = EMBEDDED_ASSIST_MAX_INPUT_TOKENS
-            max_messages = EMBEDDED_ASSIST_MAX_MESSAGES
-        else:
+        profile_settings = _profile_settings(profile)
+        max_tokens = profile_settings.get("maxInputTokens")
+        max_messages = profile_settings.get("maxMessages")
+        if not isinstance(max_tokens, int) or not isinstance(max_messages, int):
             return messages, False, 0, 0, "none", 1.0, False
 
         before = _estimate_messages_tokens(messages)
@@ -889,32 +1022,7 @@ let
     def _profile_card(profile: str) -> str:
         if not PROFILE_CARDS_ENABLED:
             return ""
-        if profile == "continue-local":
-            return CARD_CONTINUE_LOCAL.strip()
-        if profile == "remote-default":
-            return CARD_REMOTE_DEFAULT.strip()
-        if profile == "remote-gemini":
-            return CARD_REMOTE_GEMINI.strip()
-        if profile == "remote-free":
-            return CARD_REMOTE_FREE.strip()
-        if profile == "remote-coding":
-            return CARD_REMOTE_CODING.strip()
-        if profile == "remote-reasoning":
-            return CARD_REMOTE_REASONING.strip()
-        if profile == "remote-tool-calling":
-            return CARD_REMOTE_TOOL_CALLING.strip()
-        if profile == "local-tool-calling":
-            return CARD_LOCAL_TOOL_CALLING.strip()
-        if profile == "embedding-local":
-            return CARD_EMBEDDING_LOCAL.strip()
-        if profile == "embedded-assist":
-            return (
-                "[profile-card:embedded-assist]\n"
-                "Use compact reasoning and progressive disclosure.\n"
-                "Prefer hybrid retrieval (semantic + lexical), then ask for clarification on low confidence.\n"
-                "Do not expand full policy docs unless explicitly requested."
-            )
-        return ""
+        return str(_profile_settings(profile).get("profileCard") or "").strip()
 
     def _ensure_profile_card(messages: list, profile: str) -> tuple[list, bool]:
         if not isinstance(messages, list):
@@ -1044,7 +1152,7 @@ let
         remote_budget = None
         payload_model = str(payload.get("model", "")).strip().lower() if isinstance(payload, dict) else ""
         explicit_remote = (
-            profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling")
+            str(_profile_settings(profile).get("forceProvider") or "").strip().lower() == "remote"
             or request.headers.get(ROUTE_HINT_HEADER, "").strip().lower() == "remote"
             or request.headers.get(PROVIDER_HINT_HEADER, "").strip().lower() == "remote"
             or any(payload_model.startswith(prefix) for prefix in REMOTE_MODEL_PREFIXES)
@@ -1067,7 +1175,7 @@ let
                         },
                     )
 
-        use_hints = HINTS_INJECT and profile != "continue-local"
+        use_hints = bool(_profile_flag(profile, "injectHints", HINTS_INJECT))
         if use_hints and path == "chat/completions" and isinstance(payload, dict):
             messages = payload.get("messages") or []
             first_user = next(
@@ -1271,6 +1379,7 @@ in
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
           "SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS=${toString swb.continueLocal.maxInputTokens}"
           "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
+          "SWB_PROFILE_CATALOG_JSON=${switchboardProfileCatalogJson}"
           "HYBRID_URL=${hybridUrl}"
           "HYBRID_API_KEY_FILE=${hybridKeyFile}"
           "LOCAL_AGENTS_PATH=${repoPath}/ai-stack/local-agents"

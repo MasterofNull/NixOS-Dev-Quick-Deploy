@@ -183,22 +183,45 @@ _http_health() {
 _continue_config_ok() {
   local cfg="$(_primary_home)/.continue/config.json"
   [[ -f "$cfg" ]] || return 1
-  python3 - "$cfg" <<'PY'
+  python3 - "$cfg" "${SWITCHBOARD_URL}" <<'PY'
 import json, sys
+from urllib.request import urlopen
 
 cfg_path = sys.argv[1]
+switchboard_url = sys.argv[2].rstrip("/")
 with open(cfg_path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-if data.get("__configVersion") != "23.0":
+if str(data.get("__configVersion") or "") not in {"23.0", "24.0"}:
     raise SystemExit(1)
+
+with urlopen(f"{switchboard_url}/health", timeout=5) as response:
+    health = json.load(response)
+
+profiles = health.get("profiles") or {}
+continue_profile = profiles.get("continue-local") or {}
+default_profile = profiles.get("default") or {}
+
+expected_context = continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
+expected_chat_max_tokens = continue_profile.get("maxOutputTokens") or default_profile.get("maxOutputTokens")
+expected_context = int(expected_context) if expected_context is not None else None
+expected_chat_max_tokens = int(expected_chat_max_tokens) if expected_chat_max_tokens is not None else None
+expected_tab_max_tokens = max(32, min(96, expected_chat_max_tokens)) if expected_chat_max_tokens is not None else None
 
 models = data.get("models") or []
 if not any(
     isinstance(model, dict)
     and model.get("apiBase") == "http://127.0.0.1:8085/v1"
-    and int(model.get("contextLength") or 0) >= 12000
-    and int(model.get("maxTokens") or 0) >= 512
+    and (
+        int(model.get("contextLength") or 0) == expected_context
+        if expected_context is not None
+        else int(model.get("contextLength") or 0) >= 12000
+    )
+    and (
+        int(model.get("maxTokens") or 0) == expected_chat_max_tokens
+        if expected_chat_max_tokens is not None
+        else int(model.get("maxTokens") or 0) >= 512
+    )
     for model in models
 ):
     raise SystemExit(1)
@@ -207,8 +230,16 @@ if not any(
     isinstance(model, dict)
     and model.get("apiBase") == "http://127.0.0.1:8085/v1"
     and ((model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") == "continue-local"
-    and int(model.get("contextLength") or 0) >= 12000
-    and int(model.get("maxTokens") or 0) >= 512
+    and (
+        int(model.get("contextLength") or 0) == expected_context
+        if expected_context is not None
+        else int(model.get("contextLength") or 0) >= 12000
+    )
+    and (
+        int(model.get("maxTokens") or 0) == expected_chat_max_tokens
+        if expected_chat_max_tokens is not None
+        else int(model.get("maxTokens") or 0) >= 512
+    )
     for model in models
 ):
     raise SystemExit(1)
@@ -218,11 +249,18 @@ if tab_model.get("apiBase") != "http://127.0.0.1:8085/v1":
     raise SystemExit(1)
 if ((tab_model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") != "continue-local":
     raise SystemExit(1)
+if expected_context is not None and int(tab_model.get("contextLength") or 0) != expected_context:
+    raise SystemExit(1)
+if (
+    int(tab_model.get("maxTokens") or 0)
+    != (expected_tab_max_tokens if expected_tab_max_tokens is not None else max(32, int(tab_model.get("maxTokens") or 0)))
+):
+    raise SystemExit(1)
 providers = data.get("contextProviders") or []
 if not any(
     isinstance(provider, dict)
     and provider.get("name") == "aq-hints"
-    and ((provider.get("params") or {}).get("endpoint") == "http://127.0.0.1:8003/hints")
+        and ((provider.get("params") or {}).get("endpoint") == "http://127.0.0.1:8003/hints")
     for provider in providers
 ):
     raise SystemExit(1)
