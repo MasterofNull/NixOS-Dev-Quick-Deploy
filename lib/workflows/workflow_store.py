@@ -27,8 +27,15 @@ class WorkflowStore:
         Args:
             db_path: Path to SQLite database
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = Path(db_path) if db_path != ":memory:" else db_path
+        if self.db_path != ":memory:":
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Cache connection for in-memory databases
+        self._cached_conn = None
+        if db_path == ":memory:":
+            self._cached_conn = sqlite3.connect(":memory:")
+            self._cached_conn.row_factory = sqlite3.Row
 
         self._init_database()
 
@@ -95,6 +102,21 @@ class WorkflowStore:
                 )
             """)
 
+            # Task logs table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS task_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    execution_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    workflow_execution_id TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    level TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    context TEXT,
+                    FOREIGN KEY (execution_id) REFERENCES task_executions(execution_id)
+                )
+            """)
+
             # Create indices
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_executions_workflow_id
@@ -121,6 +143,26 @@ class WorkflowStore:
                 ON telemetry(execution_id)
             """)
 
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_task_logs_execution
+                ON task_logs(execution_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_task_logs_workflow
+                ON task_logs(workflow_execution_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_task_logs_timestamp
+                ON task_logs(timestamp)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_task_logs_level
+                ON task_logs(level)
+            """)
+
             conn.commit()
 
         logger.info(f"Initialized workflow store at {self.db_path}")
@@ -128,12 +170,16 @@ class WorkflowStore:
     @contextmanager
     def _get_connection(self):
         """Get database connection context manager."""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-        finally:
-            conn.close()
+        # Use cached connection for in-memory databases
+        if self._cached_conn is not None:
+            yield self._cached_conn
+        else:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            try:
+                yield conn
+            finally:
+                conn.close()
 
     def save_workflow(self, workflow: Any):
         """
@@ -539,6 +585,143 @@ class WorkflowStore:
             f"{task_executions_deleted} task executions, "
             f"{telemetry_deleted} telemetry events"
         )
+
+    def save_log(
+        self,
+        execution_id: str,
+        task_id: str,
+        workflow_execution_id: str,
+        level: str,
+        message: str,
+        timestamp: str,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Save a task log entry.
+
+        Args:
+            execution_id: Task execution ID
+            task_id: Task ID
+            workflow_execution_id: Parent workflow execution ID
+            level: Log level (DEBUG, INFO, WARN, ERROR)
+            message: Log message
+            timestamp: ISO format timestamp
+            context: Optional context metadata
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO task_logs
+                (execution_id, task_id, workflow_execution_id, timestamp, level, message, context)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                execution_id,
+                task_id,
+                workflow_execution_id,
+                timestamp,
+                level,
+                message,
+                json.dumps(context) if context else None,
+            ))
+            conn.commit()
+
+        logger.debug(f"Saved log for {execution_id}: {level} {message}")
+
+    def get_task_logs(
+        self,
+        execution_id: str,
+        task_id: Optional[str] = None,
+        level: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get task logs with filtering and pagination.
+
+        Args:
+            execution_id: Task execution ID (or workflow execution ID)
+            task_id: Optional task ID filter
+            level: Optional log level filter
+            search: Optional search query
+            limit: Maximum number of logs
+            offset: Offset for pagination
+
+        Returns:
+            List of log dictionaries
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Support querying by either task execution_id or workflow execution_id
+            query = "SELECT * FROM task_logs WHERE (execution_id = ? OR workflow_execution_id = ?)"
+            params = [execution_id, execution_id]
+
+            if task_id:
+                query += " AND task_id = ?"
+                params.append(task_id)
+
+            if level:
+                query += " AND level = ?"
+                params.append(level)
+
+            if search:
+                query += " AND message LIKE ?"
+                params.append(f"%{search}%")
+
+            query += " ORDER BY timestamp ASC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+            cursor.execute(query, params)
+
+            logs = []
+            for row in cursor.fetchall():
+                log = dict(row)
+                if log.get("context"):
+                    log["context"] = json.loads(log["context"])
+                logs.append(log)
+
+            return logs
+
+    def count_task_logs(
+        self,
+        execution_id: str,
+        task_id: Optional[str] = None,
+        level: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> int:
+        """
+        Count task logs with filtering.
+
+        Args:
+            execution_id: Task execution ID (or workflow execution ID)
+            task_id: Optional task ID filter
+            level: Optional log level filter
+            search: Optional search query
+
+        Returns:
+            Count of matching logs
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            query = "SELECT COUNT(*) FROM task_logs WHERE (execution_id = ? OR workflow_execution_id = ?)"
+            params = [execution_id, execution_id]
+
+            if task_id:
+                query += " AND task_id = ?"
+                params.append(task_id)
+
+            if level:
+                query += " AND level = ?"
+                params.append(level)
+
+            if search:
+                query += " AND message LIKE ?"
+                params.append(f"%{search}%")
+
+            cursor.execute(query, params)
+            return cursor.fetchone()[0]
 
 
 def main():

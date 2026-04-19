@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 # Import workflow automation library
@@ -42,6 +42,11 @@ workflow_adapter = WorkflowAdapter()
 success_predictor = SuccessPredictor()
 workflow_executor = WorkflowExecutor()
 workflow_store = WorkflowStore()
+
+# WebSocket connections for real-time log streaming
+# Maps execution_id -> list of WebSocket connections
+log_connections: Dict[str, List[WebSocket]] = {}
+log_connections_lock = asyncio.Lock()
 
 
 # Pydantic models for API
@@ -887,3 +892,214 @@ async def get_execution_graph(execution_id: str):
     except Exception as e:
         logger.error(f"Error getting execution graph: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Log Retrieval Endpoints
+# ============================================================================
+
+@router.get("/executions/{execution_id}/logs")
+async def get_execution_logs(
+    execution_id: str,
+    task_id: Optional[str] = Query(None, description="Filter by task ID"),
+    level: Optional[str] = Query(None, description="Filter by log level"),
+    search: Optional[str] = Query(None, description="Search in log messages"),
+    limit: int = Query(500, description="Max logs to return"),
+    offset: int = Query(0, description="Offset for pagination"),
+):
+    """
+    Get logs for a task execution.
+
+    Supports filtering by task ID, log level, and text search.
+    Returns logs with pagination support.
+
+    Args:
+        execution_id: Task execution ID or workflow execution ID
+        task_id: Optional task ID filter
+        level: Optional log level filter (DEBUG, INFO, WARN, ERROR)
+        search: Optional search query (case-insensitive)
+        limit: Maximum number of logs to return (default 500)
+        offset: Offset for pagination (default 0)
+
+    Returns:
+        Dictionary with logs, total count, and pagination info
+    """
+    try:
+        # Verify execution exists
+        execution = workflow_store.get_execution(execution_id)
+        if not execution:
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        # Get logs from database
+        logs = workflow_store.get_task_logs(
+            execution_id=execution_id,
+            task_id=task_id,
+            level=level,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+
+        total = workflow_store.count_task_logs(
+            execution_id=execution_id,
+            task_id=task_id,
+            level=level,
+            search=search,
+        )
+
+        return {
+            "logs": logs,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(logs) < total,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting execution logs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# WebSocket Endpoints for Real-Time Log Streaming
+# ============================================================================
+
+@router.websocket("/ws/logs")
+async def websocket_logs(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time task execution logs.
+
+    Client sends subscription message:
+    {"action": "subscribe", "execution_id": "task-123_...", "task_id": "task-123"}
+
+    Server sends log messages:
+    {"type": "log", "level": "INFO", "message": "...", "timestamp": "..."}
+
+    Client sends unsubscribe:
+    {"action": "unsubscribe", "execution_id": "task-123_..."}
+    """
+    await websocket.accept()
+    subscribed_execution_ids = set()
+
+    logger.info("Log WebSocket client connected")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+
+            if msg.get("action") == "subscribe":
+                execution_id = msg.get("execution_id")
+                if execution_id:
+                    async with log_connections_lock:
+                        if execution_id not in log_connections:
+                            log_connections[execution_id] = []
+                        log_connections[execution_id].append(websocket)
+                    subscribed_execution_ids.add(execution_id)
+
+                    logger.info(f"Client subscribed to execution {execution_id}")
+
+                    # Send existing logs for this execution
+                    await send_historical_logs(websocket, execution_id)
+
+            elif msg.get("action") == "unsubscribe":
+                execution_id = msg.get("execution_id")
+                if execution_id:
+                    async with log_connections_lock:
+                        if execution_id in log_connections:
+                            if websocket in log_connections[execution_id]:
+                                log_connections[execution_id].remove(websocket)
+                            if not log_connections[execution_id]:
+                                del log_connections[execution_id]
+                    subscribed_execution_ids.discard(execution_id)
+
+                    logger.info(f"Client unsubscribed from execution {execution_id}")
+
+            elif msg.get("action") == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        # Clean up subscriptions
+        async with log_connections_lock:
+            for execution_id in subscribed_execution_ids:
+                if execution_id in log_connections:
+                    if websocket in log_connections[execution_id]:
+                        log_connections[execution_id].remove(websocket)
+                    if not log_connections[execution_id]:
+                        del log_connections[execution_id]
+        logger.info(f"Log WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"Log WebSocket error: {e}", exc_info=True)
+        async with log_connections_lock:
+            for execution_id in subscribed_execution_ids:
+                if execution_id in log_connections:
+                    if websocket in log_connections[execution_id]:
+                        log_connections[execution_id].remove(websocket)
+                    if not log_connections[execution_id]:
+                        del log_connections[execution_id]
+
+
+async def send_historical_logs(websocket: WebSocket, execution_id: str):
+    """Send existing logs when client first subscribes."""
+    try:
+        # Query last 100 logs from database
+        logs = workflow_store.get_task_logs(execution_id, limit=100)
+        for log in logs:
+            await websocket.send_json({
+                "type": "log",
+                "level": log["level"],
+                "message": log["message"],
+                "timestamp": log["timestamp"],
+                "context": log.get("context"),
+            })
+        logger.debug(f"Sent {len(logs)} historical logs for {execution_id}")
+    except Exception as e:
+        logger.error(f"Error sending historical logs: {e}", exc_info=True)
+
+
+async def broadcast_task_log(
+    execution_id: str,
+    level: str,
+    message: str,
+    context: Optional[Dict[str, Any]] = None
+):
+    """
+    Broadcast log message to all subscribed WebSocket clients.
+
+    Args:
+        execution_id: Task execution ID
+        level: Log level (DEBUG, INFO, WARN, ERROR)
+        message: Log message
+        context: Optional context metadata
+    """
+    from datetime import datetime, UTC
+
+    if execution_id not in log_connections:
+        return
+
+    log_msg = {
+        "type": "log",
+        "level": level,
+        "message": message,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "context": context,
+    }
+
+    disconnected = []
+    async with log_connections_lock:
+        connections = log_connections.get(execution_id, [])
+        for connection in connections:
+            try:
+                await connection.send_json(log_msg)
+            except Exception as e:
+                logger.error(f"Failed to send log to WebSocket client: {e}")
+                disconnected.append(connection)
+
+        # Clean up disconnected
+        for conn in disconnected:
+            if conn in connections:
+                connections.remove(conn)
+        if execution_id in log_connections and not log_connections[execution_id]:
+            del log_connections[execution_id]
