@@ -7,7 +7,7 @@ import sys
 TESTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TESTS_DIR))
 
-from document_importer import DocumentImporter, MetadataExtractor
+from document_importer import ChunkingStrategy, DocumentImporter, MetadataExtractor
 
 
 def test_enrich_route_stack_metadata_marks_owner_files():
@@ -62,3 +62,31 @@ def test_generate_embedding_uses_openai_embeddings_path_for_8081():
     assert embedding == [0.1, 0.2, 0.3]
     called_url = client.post.await_args.args[0]
     assert called_url.endswith("/v1/embeddings")
+
+
+def test_chunk_code_by_functions_splits_oversized_python_blocks():
+    large_body = "\n".join(f"    value_{i} = {i}" for i in range(900))
+    code = f"def route_search():\n{large_body}\n    return True\n"
+
+    chunks = ChunkingStrategy.chunk_code_by_functions(code, "python", chunk_size=320)
+
+    assert len(chunks) > 1
+    for chunk_text, _ in chunks:
+        assert ChunkingStrategy.estimate_tokens(chunk_text) <= 320
+
+
+def test_chunks_created_only_counts_successful_upserts():
+    qdrant = Mock()
+    importer = DocumentImporter(qdrant_client=qdrant, embedding_url="http://127.0.0.1:8081")
+    importer.generate_embedding = AsyncMock(return_value=[])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = Path(tmpdir) / "route_handler.py"
+        file_path.write_text("def route_search():\n    return True\n", encoding="utf-8")
+
+        try:
+            asyncio.run(importer.import_file(file_path))
+        except Exception:
+            pass
+
+    assert importer.stats["chunks_created"] == 0
