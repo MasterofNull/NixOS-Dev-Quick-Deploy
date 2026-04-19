@@ -4010,11 +4010,11 @@ verify_or_download_ai_models() {
   # does a fresh comparison against the NEW config.
   if [[ -f "$chat_meta_path" ]]; then
     log "Model verification: removing stale chat model metadata"
-    rm -f "$chat_meta_path"
+    run_privileged rm -f "$chat_meta_path"
   fi
   if [[ -f "$embed_meta_path" ]]; then
     log "Model verification: removing stale embedding model metadata"
-    rm -f "$embed_meta_path"
+    run_privileged rm -f "$embed_meta_path"
   fi
 
   # Also remove old model files at default paths that may be from a different config
@@ -4022,12 +4022,12 @@ verify_or_download_ai_models() {
   local old_default_model="/var/lib/llama-cpp/models/model.gguf"
   if [[ -f "$old_default_model" && "$chat_model_path" != "$old_default_model" ]]; then
     log "Model verification: removing old model at $old_default_model (config changed to $chat_model_path)"
-    rm -f "$old_default_model" "${old_default_model}.source-meta"
+    run_privileged rm -f "$old_default_model" "${old_default_model}.source-meta"
   fi
   local old_default_embed="/var/lib/llama-cpp/models/embed.gguf"
   if [[ -f "$old_default_embed" && "$embed_model_path" != "$old_default_embed" ]]; then
     log "Model verification: removing old embedding model at $old_default_embed (config changed to $embed_model_path)"
-    rm -f "$old_default_embed" "${old_default_embed}.source-meta"
+    run_privileged rm -f "$old_default_embed" "${old_default_embed}.source-meta"
   fi
 
   local chat_model_present=false
