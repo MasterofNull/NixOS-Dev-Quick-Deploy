@@ -376,6 +376,49 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "list_sops",
+        "description": (
+            "List available SOP (Standard Operating Procedure) templates. "
+            "SOPs are markdown-based workflows with RFC 2119 constraints "
+            "(MUST, SHOULD, MAY) for systematic task execution."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "parse_sop",
+        "description": (
+            "Parse an SOP file and extract structure, steps, and RFC 2119 "
+            "constraints. Returns sections, steps, and constraint analysis."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sop_name": {"type": "string", "description": "SOP filename (e.g., 'codebase-analysis.sop.md')"},
+            },
+            "required": ["sop_name"],
+        },
+    },
+    {
+        "name": "execute_sop",
+        "description": (
+            "Execute an SOP workflow with validation and logging. "
+            "Simulates step execution and validates against RFC 2119 constraints. "
+            "Returns execution summary and validation results."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sop_name": {"type": "string", "description": "SOP filename to execute"},
+                "context": {"type": "object", "description": "Execution context (parameters)"},
+            },
+            "required": ["sop_name"],
+        },
+    },
 ]
 
 
@@ -554,6 +597,100 @@ def _call_tool(name: str, args: dict) -> str:
             "limit": args.get("limit", 5),
         }, AIDB_KEY)
         return _format_result(r)
+
+    if name == "list_sops":
+        from pathlib import Path
+        sop_dir = Path(REPO_ROOT) / "ai-stack" / "sop-templates"
+        if not sop_dir.exists():
+            return _format_result({"sops": [], "count": 0})
+
+        sops = []
+        for sop_file in sop_dir.glob("*.sop.md"):
+            sops.append({
+                "name": sop_file.name,
+                "path": str(sop_file),
+            })
+
+        return _format_result({"sops": sops, "count": len(sops)})
+
+    if name == "parse_sop":
+        from pathlib import Path
+        import sys
+
+        # Add local-orchestrator to path for sop_engine import
+        orchestrator_path = str(Path(REPO_ROOT) / "ai-stack" / "local-orchestrator")
+        if orchestrator_path not in sys.path:
+            sys.path.insert(0, orchestrator_path)
+
+        from sop_engine import parse_sop
+
+        sop_name = args.get("sop_name", "")
+        sop_path = Path(REPO_ROOT) / "ai-stack" / "sop-templates" / sop_name
+
+        if not sop_path.exists():
+            return _format_result({"error": f"SOP not found: {sop_name}"})
+
+        try:
+            sop = parse_sop(sop_path)
+
+            # Convert to JSON-serializable format
+            result = {
+                "name": sop.name,
+                "description": sop.description,
+                "version": sop.version,
+                "parameters": sop.parameters,
+                "sections": [
+                    {
+                        "title": section.title,
+                        "level": section.level,
+                        "steps": [
+                            {
+                                "number": step.number,
+                                "title": step.title,
+                                "constraint": step.constraint.value,
+                                "is_required": step.is_required(),
+                                "is_optional": step.is_optional(),
+                            }
+                            for step in section.steps
+                        ],
+                    }
+                    for section in sop.sections
+                ],
+                "required_steps": len(sop.get_required_steps()),
+                "optional_steps": len(sop.get_optional_steps()),
+            }
+
+            return _format_result(result)
+        except Exception as e:
+            return _format_result({"error": f"Failed to parse SOP: {str(e)}"})
+
+    if name == "execute_sop":
+        from pathlib import Path
+        import sys
+
+        # Add local-orchestrator to path
+        orchestrator_path = str(Path(REPO_ROOT) / "ai-stack" / "local-orchestrator")
+        if orchestrator_path not in sys.path:
+            sys.path.insert(0, orchestrator_path)
+
+        from sop_engine import parse_sop, execute_sop
+
+        sop_name = args.get("sop_name", "")
+        sop_path = Path(REPO_ROOT) / "ai-stack" / "sop-templates" / sop_name
+
+        if not sop_path.exists():
+            return _format_result({"error": f"SOP not found: {sop_name}"})
+
+        try:
+            sop = parse_sop(sop_path)
+            context = args.get("context", {})
+
+            # Execute with default executor (marks all steps as completed)
+            result = execute_sop(sop, context)
+
+            return _format_result(result)
+        except Exception as e:
+            return _format_result({"error": f"Failed to execute SOP: {str(e)}"})
 
     return _format_result({"error": f"unknown tool: {name}"})
 
