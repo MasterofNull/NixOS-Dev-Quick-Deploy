@@ -53,7 +53,7 @@ let
       name = "nixos-quick-deploy-repo";
     };
 
-  repoMcp = "${repoSource}/ai-stack/mcp-servers";
+  repoMcp = "${toString repoSource}/ai-stack/mcp-servers";
 
   # ── Phase 2.4: YAML workflow handlers + workflows package (Nix store) ───
   # Packages the workflows engine and YAML workflow HTTP handlers into the
@@ -75,7 +75,7 @@ let
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
   mcpIntegrityBaseline = "${mutableStateDir}/mcp-source-baseline.sha256";
-  migrationsIni = "${repoSource}/ai-stack/migrations/alembic.ini";
+  migrationsIni = "${toString repoSource}/ai-stack/migrations/alembic.ini";
   aidbConfig = pkgs.writeText "aidb-config.yaml" ''
     server:
       host: 127.0.0.1
@@ -1057,7 +1057,7 @@ in {
                 "AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.escapeShellArg (lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries)}"
                 "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
                 "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
-                "WORKFLOW_BLUEPRINTS_FILE=${repoSource}/config/workflow-blueprints.json"
+                "WORKFLOW_BLUEPRINTS_FILE=${toString repoSource}/config/workflow-blueprints.json"
                 "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
                 "PARITY_SCORECARD_FILE=${parityScorecardJson}"
                 "AI_TOOL_SECURITY_AUDIT_ENABLED=${
@@ -1338,7 +1338,7 @@ in {
             Type = "oneshot";
             ExecStart = lib.escapeShellArgs [
               "${pkgs.bash}/bin/bash"
-              "${repoSource}/scripts/data/sync-knowledge-sources"
+              "${toString repoSource}/scripts/data/sync-knowledge-sources"
             ];
             Environment =
               [
@@ -1392,7 +1392,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${repoSource}/scripts/security/security-audit.sh"
+            "${toString repoSource}/scripts/security/security-audit.sh"
             "--repo-root"
             mcp.repoPath
             "--output-dir"
@@ -1461,7 +1461,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${repoSource}/scripts/security/npm-security-monitor.sh"
+            "${toString repoSource}/scripts/security/npm-security-monitor.sh"
             "--repo-root"
             mcp.repoPath
             "--output-dir"
@@ -1535,7 +1535,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${repoSource}/scripts/automation/post-deploy-converge.sh"
+            "${toString repoSource}/scripts/automation/post-deploy-converge.sh"
           ];
           ReadOnlyPaths = ["/"];
           ReadWritePaths = ["${dataDir}"];
@@ -1694,10 +1694,10 @@ in {
             RestrictAddressFamilies = ["AF_UNIX"];
             SystemCallFilter = ["@system-service"];
             SystemCallErrorNumber = "EPERM";
-            ExecStart = "${pkgs.bash}/bin/bash ${repoSource}/scripts/testing/check-mcp-integrity.sh";
+            ExecStart = "${pkgs.bash}/bin/bash ${toString repoSource}/scripts/testing/check-mcp-integrity.sh";
             SuccessExitStatus = [0];
             Environment = [
-              "MCP_SERVER_DIR=${repoSource}/ai-stack/mcp-servers"
+              "MCP_SERVER_DIR=${toString repoSource}/ai-stack/mcp-servers"
               "MCP_INTEGRITY_BASELINE=${mcpIntegrityBaseline}"
               "MCP_INTEGRITY_ALERT_DIR=/var/lib/ai-mcp-integrity/alerts"
             ];
@@ -1743,7 +1743,7 @@ in {
             # Needs to read /proc and /sys/fs/cgroup; cannot use ProtectSystem=strict with these.
             ProtectSystem = "full";
             ReadOnlyPaths = ["/proc" "/sys/fs/cgroup"];
-            ExecStart = "${pkgs.bash}/bin/bash ${repoSource}/scripts/testing/check-mcp-processes.sh";
+            ExecStart = "${pkgs.bash}/bin/bash ${toString repoSource}/scripts/testing/check-mcp-processes.sh";
             SuccessExitStatus = [0];
             Environment = [
               "MCP_SERVICES=\"ai-aidb.service ai-hybrid-coordinator.service ai-ralph-wiggum.service ai-embeddings.service ai-audit-sidecar.service\""
