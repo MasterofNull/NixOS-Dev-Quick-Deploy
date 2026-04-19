@@ -1,0 +1,35 @@
+{
+  "$schema": "./schemas/route-aliases.schema.json",
+  "version": "1.0.0",
+  "description": "Route alias mapping configuration for Layer 1 Front-Door Routing. Maps OpenClaude-style route names to existing harness profiles.",
+  "aliases": {
+    "default": "default",
+    "Explore": "default",
+    "Plan": "default",
+    "Implementation": "remote-coding",
+    "Reasoning": "remote-reasoning",
+    "ToolCalling": "local-tool-calling",
+    "Continuation": "default"
+  },
+  "validation": {
+    "allowed_profiles": [
+      "default",
+      "local-tool-calling",
+      "embedded-assist",
+      "remote-gemini",
+      "remote-free",
+      "remote-coding",
+      "remote-reasoning",
+      "remote-tool-calling"
+    ]
+  },
+  "metadata": {
+    "created": "2026-04-19",
+    "purpose": "Layer 1 front-door routing system for consistent request handling",
+    "phase": "Phase 0 Slice 0.1",
+    "related_docs": [
+      "docs/architecture/front-door-routing.md",
+      ".agents/planning/high-value-improvements-plan-2026-04-19.md"
+    ]
+  }
+}
