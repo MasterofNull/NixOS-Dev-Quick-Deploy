@@ -1562,6 +1562,83 @@
             '';
           };
         };
+
+        profiles = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule {
+            options = {
+              forceProvider = lib.mkOption {
+                type = lib.types.nullOr (lib.types.enum [ "local" "remote" ]);
+                default = null;
+                description = "Override the switchboard provider for this profile. null preserves the default routing flow.";
+              };
+
+              injectHints = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = "Whether switchboard should inject aq-hints guidance for this profile.";
+              };
+
+              modelAlias = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Optional remote model alias to inject when this profile is selected.";
+              };
+
+              advertisedContextWindow = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.positive;
+                default = null;
+                description = ''
+                  Context window advertised to editor clients and health surfaces
+                  for this profile. Use this to keep model swaps from inheriting a
+                  stale context length.
+                '';
+              };
+
+              maxInputTokens = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.positive;
+                default = null;
+                description = "Optional estimated input-token retention cap enforced by switchboard for this profile.";
+              };
+
+              maxMessages = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.positive;
+                default = null;
+                description = "Optional maximum conversational message count retained by switchboard for this profile.";
+              };
+
+              maxOutputTokens = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.positive;
+                default = null;
+                description = "Optional output-token budget advertised and enforced for this profile's clients.";
+              };
+
+              embeddingsOnly = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = "Whether the profile is intended for embeddings-only traffic.";
+              };
+
+              toolExecution = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Optional tool-execution mode exposed in switchboard health for this profile.";
+              };
+
+              profileCard = lib.mkOption {
+                type = lib.types.nullOr lib.types.lines;
+                default = null;
+                description = "Optional profile card text injected as a system message for this profile.";
+              };
+            };
+          });
+          default = {};
+          description = ''
+            Declarative switchboard profile catalog. Use this to tune per-profile
+            provider routing, context window, input/output token budgets, remote
+            aliases, and profile-card behavior without patching embedded Python
+            defaults when swapping local or remote models.
+          '';
+        };
       };
 
       # ── AI harness architecture (memory + eval + tree-search retrieval) ─────
