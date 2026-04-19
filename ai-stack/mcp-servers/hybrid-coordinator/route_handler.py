@@ -931,13 +931,15 @@ async def route_search(
             generate_response=generate_response,
         )
 
-        # Retrieval-only requests do not use capability discovery in the response path,
-        # so skip that extra fan-out unless the caller already provided discovery context.
+        # Retrieval-only requests usually skip capability discovery, but retain it
+        # for explicitly tool-oriented probes so autonomous maintenance checks and
+        # operator discovery flows can inspect capability metadata without paying
+        # for local generation.
         should_run_capability_discovery = (
             Config.AI_CAPABILITY_DISCOVERY_ON_QUERY
             and (
                 bool((context or {}).get("tool_discovery"))
-                or (generate_response and _query_wants_capability_discovery(query, context))
+                or _query_wants_capability_discovery(query, context)
             )
         )
 

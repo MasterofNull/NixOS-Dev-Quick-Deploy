@@ -150,6 +150,23 @@ async def main_async() -> int:
     assert_true(retrieval_only.get("backend") == "local", "expected retrieval-only route_search to stay local")
     assert_true(not discovery_calls, "retrieval-only route_search should skip capability discovery")
 
+    retrieval_tool_oriented = await route_handler.route_search(
+        query="which workflow or tool should i use to debug nixos networking options",
+        mode="hybrid",
+        prefer_local=True,
+        context={"source": "test"},
+        limit=3,
+        keyword_limit=3,
+        score_threshold=0.7,
+        generate_response=False,
+    )
+    assert_true(retrieval_tool_oriented is not None, "expected retrieval-only tool-oriented route_search result")
+    assert_true(
+        discovery_calls == ["which workflow or tool should i use to debug nixos networking options"],
+        "tool-oriented retrieval-only route_search should still run capability discovery",
+    )
+    discovery_calls.clear()
+
     generated = await route_handler.route_search(
         query="summarize nixos module options for networking",
         mode="hybrid",
