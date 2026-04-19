@@ -597,4 +597,4 @@ export ALERT_SUPPRESSION_ENABLED=false
 
 ## See Also
 
-- [System Excellence Roadmap](../../.agents/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md)
+- [System Excellence Roadmap](../../.agents/planning/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md)
