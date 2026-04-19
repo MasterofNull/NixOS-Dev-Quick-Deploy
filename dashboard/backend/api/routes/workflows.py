@@ -495,7 +495,7 @@ async def execute_workflow(request: ExecuteWorkflowRequest):
             workflow_store.save_execution(execution)
             workflow_store.save_telemetry(workflow_executor.get_telemetry())
 
-            # Save logs to database
+            # Save logs to database and broadcast via WebSocket
             for log_entry in workflow_executor.telemetry_collector.get_logs():
                 workflow_store.save_log(
                     execution_id=log_entry["execution_id"],
@@ -505,6 +505,15 @@ async def execute_workflow(request: ExecuteWorkflowRequest):
                     message=log_entry["message"],
                     timestamp=log_entry["timestamp"],
                     context=log_entry.get("context"),
+                )
+
+                # Broadcast to WebSocket subscribers
+                await broadcast_task_log(
+                    execution_id=log_entry["execution_id"],
+                    level=log_entry["level"],
+                    message=log_entry["message"],
+                    context=log_entry.get("context"),
+                    task_id=log_entry["task_id"],
                 )
 
         # Run in background
@@ -1004,6 +1013,7 @@ async def websocket_logs(websocket: WebSocket):
 
             if msg.get("action") == "subscribe":
                 execution_id = msg.get("execution_id")
+                task_id = msg.get("task_id")
                 if execution_id:
                     async with log_connections_lock:
                         if execution_id not in log_connections:
@@ -1011,10 +1021,10 @@ async def websocket_logs(websocket: WebSocket):
                         log_connections[execution_id].append(websocket)
                     subscribed_execution_ids.add(execution_id)
 
-                    logger.info(f"Client subscribed to execution {execution_id}")
+                    logger.info(f"Client subscribed to execution {execution_id}" + (f" task {task_id}" if task_id else ""))
 
-                    # Send existing logs for this execution
-                    await send_historical_logs(websocket, execution_id)
+                    # Send existing logs for this execution (filtered by task_id if provided)
+                    await send_historical_logs(websocket, execution_id, task_id)
 
             elif msg.get("action") == "unsubscribe":
                 execution_id = msg.get("execution_id")
@@ -1053,11 +1063,11 @@ async def websocket_logs(websocket: WebSocket):
                         del log_connections[execution_id]
 
 
-async def send_historical_logs(websocket: WebSocket, execution_id: str):
+async def send_historical_logs(websocket: WebSocket, execution_id: str, task_id: Optional[str] = None):
     """Send existing logs when client first subscribes."""
     try:
         # Query last 100 logs from database
-        logs = workflow_store.get_task_logs(execution_id, limit=100)
+        logs = workflow_store.get_task_logs(execution_id, task_id=task_id, limit=100)
         for log in logs:
             await websocket.send_json({
                 "type": "log",
@@ -1065,8 +1075,9 @@ async def send_historical_logs(websocket: WebSocket, execution_id: str):
                 "message": log["message"],
                 "timestamp": log["timestamp"],
                 "context": log.get("context"),
+                "task_id": log.get("task_id"),
             })
-        logger.debug(f"Sent {len(logs)} historical logs for {execution_id}")
+        logger.debug(f"Sent {len(logs)} historical logs for {execution_id}" + (f" task {task_id}" if task_id else ""))
     except Exception as e:
         logger.error(f"Error sending historical logs: {e}", exc_info=True)
 
@@ -1075,7 +1086,8 @@ async def broadcast_task_log(
     execution_id: str,
     level: str,
     message: str,
-    context: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None,
+    task_id: Optional[str] = None
 ):
     """
     Broadcast log message to all subscribed WebSocket clients.
@@ -1085,6 +1097,7 @@ async def broadcast_task_log(
         level: Log level (DEBUG, INFO, WARN, ERROR)
         message: Log message
         context: Optional context metadata
+        task_id: Optional task ID for filtering
     """
     from datetime import datetime, UTC
 
@@ -1097,6 +1110,7 @@ async def broadcast_task_log(
         "message": message,
         "timestamp": datetime.now(UTC).isoformat(),
         "context": context,
+        "task_id": task_id,
     }
 
     disconnected = []
