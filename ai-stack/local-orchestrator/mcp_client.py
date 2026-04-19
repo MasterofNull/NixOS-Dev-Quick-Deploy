@@ -10,6 +10,7 @@ import os
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
@@ -343,6 +344,11 @@ class MCPClient:
         token_limit: int = 8000,
         tool_call_limit: int = 40,
         intent_contract: Optional[Dict[str, Any]] = None,
+        blueprint_id: Optional[str] = None,
+        orchestration_policy: Optional[Dict[str, Any]] = None,
+        isolation_profile: Optional[str] = None,
+        workspace_root: Optional[str] = None,
+        network_policy: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Start guarded workflow run.
@@ -353,6 +359,11 @@ class MCPClient:
             token_limit: Maximum tokens for run
             tool_call_limit: Maximum tool calls
             intent_contract: Optional intent contract override
+            blueprint_id: Optional workflow blueprint to seed intent/policy
+            orchestration_policy: Optional run-level policy overrides
+            isolation_profile: Optional isolation profile name
+            workspace_root: Optional workspace root override
+            network_policy: Optional network policy override
 
         Returns:
             Run result with status and outputs
@@ -375,10 +386,15 @@ class MCPClient:
             f"{self.hybrid_url}/workflow/run/start",
             {
                 "query": query,
+                "blueprint_id": blueprint_id or "",
                 "safety_mode": safety_mode,
                 "token_limit": token_limit,
                 "tool_call_limit": tool_call_limit,
                 "intent_contract": intent_contract,
+                "orchestration_policy": orchestration_policy,
+                "isolation_profile": isolation_profile or "",
+                "workspace_root": workspace_root or "",
+                "network_policy": network_policy or "",
             },
             HYBRID_KEY,
         )
@@ -485,6 +501,105 @@ class MCPClient:
     def get_stats(self) -> Dict[str, int]:
         """Get usage statistics."""
         return dict(self._stats)
+
+    # ── Artifact Management (Strands SOP Pattern) ─────────────────────────
+
+    def get_agents_dir(self, workspace_root: Optional[str] = None) -> Path:
+        """
+        Get the .agents/ directory path.
+
+        Args:
+            workspace_root: Optional workspace root override
+
+        Returns:
+            Path to .agents/ directory
+        """
+        root = Path(workspace_root) if workspace_root else Path.cwd()
+        return root / ".agents"
+
+    def write_artifact(
+        self,
+        category: str,
+        filename: str,
+        content: str,
+        workspace_root: Optional[str] = None,
+    ) -> Path:
+        """
+        Write an artifact to the appropriate .agents/ subdirectory.
+
+        Args:
+            category: Subdirectory (summary, planning, tasks, scratchpad)
+            filename: Name of the artifact file
+            content: File content to write
+            workspace_root: Optional workspace root override
+
+        Returns:
+            Path to written artifact
+        """
+        valid_categories = {"summary", "planning", "tasks", "scratchpad"}
+        if category not in valid_categories:
+            raise ValueError(
+                f"Invalid category '{category}'. Must be one of: {valid_categories}"
+            )
+
+        agents_dir = self.get_agents_dir(workspace_root)
+        category_dir = agents_dir / category
+        category_dir.mkdir(parents=True, exist_ok=True)
+
+        artifact_path = category_dir / filename
+        artifact_path.write_text(content, encoding="utf-8")
+
+        return artifact_path
+
+    def read_artifact(
+        self,
+        category: str,
+        filename: str,
+        workspace_root: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Read an artifact from the .agents/ directory.
+
+        Args:
+            category: Subdirectory (summary, planning, tasks, scratchpad)
+            filename: Name of the artifact file
+            workspace_root: Optional workspace root override
+
+        Returns:
+            File content if exists, None otherwise
+        """
+        agents_dir = self.get_agents_dir(workspace_root)
+        artifact_path = agents_dir / category / filename
+
+        if not artifact_path.exists():
+            return None
+
+        return artifact_path.read_text(encoding="utf-8")
+
+    def list_artifacts(
+        self,
+        category: str,
+        pattern: str = "*",
+        workspace_root: Optional[str] = None,
+    ) -> List[str]:
+        """
+        List artifacts in a .agents/ subdirectory.
+
+        Args:
+            category: Subdirectory (summary, planning, tasks, scratchpad)
+            pattern: Glob pattern for filtering (default: all files)
+            workspace_root: Optional workspace root override
+
+        Returns:
+            List of artifact filenames
+        """
+        agents_dir = self.get_agents_dir(workspace_root)
+        category_dir = agents_dir / category
+
+        if not category_dir.exists():
+            return []
+
+        return [f.name for f in category_dir.glob(pattern) if f.is_file()]
 
 
 # Singleton instance
