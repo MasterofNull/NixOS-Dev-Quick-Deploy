@@ -3083,6 +3083,7 @@ declare -A MODEL_CATALOG_CHAT=(
   # Medium tier (6-12GB) - Laptops 16-24GB RAM, workstations
   ["gemma4-e4b"]="bartowski/google_gemma-4-E4B-it-GGUF|google_gemma-4-E4B-it-Q4_K_M.gguf|~5.2 GB|4.5B active / 128K ctx|Gemma 4 E4B [MEDIUM] — 16GB RAM, balanced performance"
   ["qwen3-8b"]="unsloth/Qwen3-8B-Instruct-GGUF|Qwen3-8B-Instruct-Q4_K_M.gguf|~5 GB|8B / 40K ctx|Qwen3 8B [MEDIUM] — 16GB RAM, stronger reasoning"
+  ["qwen3.6-14b"]="unsloth/Qwen3.6-14B-A2B-GGUF|Qwen3.6-14B-A2B-UD-Q4_K_M.gguf|~8 GB|14B (2B active MoE) / 262K ctx|Qwen3.6 14B A2B [MEDIUM/MoE] — 16-24GB RAM, 262K context, faster than 35B"
   ["qwen2.5-coder-14b"]="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF|qwen2.5-coder-14b-instruct-q4_k_m.gguf|~9 GB|14B / 131K ctx|Qwen 2.5 Coder 14B [MEDIUM/CODING] — 16-24GB RAM, complex coding"
   ["deepseek-r1-distill-14b"]="bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF|DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf|~9 GB|14B / 32K ctx|DeepSeek R1 14B [MEDIUM/REASONING] — 16-24GB RAM, best medium reasoning"
   ["phi-4"]="bartowski/phi-4-GGUF|phi-4-Q4_K_M.gguf|~9 GB|14B / 16K ctx|Phi-4 [MEDIUM/STEM] — 16-24GB RAM, math & structured output"
@@ -3234,7 +3235,7 @@ prompt_model_selection() {
   log "┌─ MEDIUM tier (16-24GB RAM) ───────────────────────────────────────────┐"
   log "│  For: Workstations, gaming PCs with 16-24GB RAM                       │"
   log "└────────────────────────────────────────────────────────────────────────┘"
-  for key in "gemma4-e4b" "qwen3-8b" "qwen2.5-coder-14b" "deepseek-r1-distill-14b" "phi-4" "gemma3-12b"; do
+  for key in "gemma4-e4b" "qwen3-8b" "qwen3.6-14b" "qwen2.5-coder-14b" "deepseek-r1-distill-14b" "phi-4" "gemma3-12b"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
     local file="${info%%|*}"; info="${info#*|}"
@@ -3454,7 +3455,7 @@ with open(facts_path) as f:
 # Build replacement aiStack block
 aiblock = '    # ── AI Stack model configuration (Phase 20.2) ──────────────────────\n'
 aiblock += '    # Switch models by changing activeModel to any key from the catalog.\n'
-aiblock += '    # Available chat models: gemma4-e4b, gemma4-e2b, qwen3-4b, qwen3-8b, phi4-mini\n'
+aiblock += '    # Available chat models: gemma4-e4b, qwen3-8b, qwen3.6-14b, qwen3.6-35b, phi4-mini\n'
 aiblock += '    # Available embedding models: bge-m3, jina-v3, nomic-embed\n'
 aiblock += '    aiStack = {\n'
 aiblock += '      llamaCpp = {\n'
