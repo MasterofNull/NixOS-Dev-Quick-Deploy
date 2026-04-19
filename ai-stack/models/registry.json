@@ -216,6 +216,19 @@
       "speed_igpu_tok_s": "6-10",
       "recommended_for": ["desktop_workstation", "24GB VRAM", "production coding"],
       "notes": "Best full-stack coder at 32B. Target for high-end personal deployments."
+    },
+    "qwen3.6-35b": {
+      "tier": "large",
+      "hf_repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "hf_file": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 262144,
+      "ram_required_gb": 22,
+      "vram_required_gb": 22,
+      "speed_cpu_tok_s": "2-4",
+      "speed_igpu_tok_s": "5-9",
+      "recommended_for": ["desktop_workstation", "32GB+ RAM", "long context MoE", "production reasoning"],
+      "notes": "Qwen3.6 35B A3B (3B active MoE). 262K context. Efficient inference with sparse activation. Best reasoning/context ratio for high-end systems."
     }
   },
 
