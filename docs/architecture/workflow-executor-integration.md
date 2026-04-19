@@ -594,7 +594,7 @@ jq '.["<session-id>"].trajectory' .workflow-sessions.json
 
 - [Memory System Design](./memory-system-design.md)
 - [Harness Parity Analysis](../../.agent/workflows/ai-harness-comprehensive-analysis-v2-2026-04-09.md)
-- [Master Roadmap](../../.agents/plans/MASTER-ROADMAP-2026-04-09.md)
+- [Master Roadmap](../../.agents/planning/plans/MASTER-ROADMAP-2026-04-09.md)
 
 ---
 

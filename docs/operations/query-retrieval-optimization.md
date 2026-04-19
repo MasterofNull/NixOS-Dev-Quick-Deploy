@@ -507,7 +507,7 @@ Set up alerts for:
 
 ## References
 
-- [SYSTEM-EXCELLENCE-ROADMAP-2026-Q2](../../.agents/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md)
+- [SYSTEM-EXCELLENCE-ROADMAP-2026-Q2](../../.agents/planning/plans/SYSTEM-EXCELLENCE-ROADMAP-2026-Q2.md)
 - [Vector Search Optimizer](../../lib/search/vector_search_optimizer.py)
 - [Query Cache](../../lib/search/query_cache.py)
 - [Query Batcher](../../lib/search/query_batcher.py)
