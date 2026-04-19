@@ -1073,6 +1073,263 @@
             display: block;
         }
 
+        /* Log Viewer Modal */
+        .log-viewer-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-primary);
+            border: 2px solid var(--accent-cyan);
+            border-radius: 8px;
+            padding: 0;
+            z-index: 10001;
+            max-width: 90vw;
+            width: 1000px;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            display: none;
+            flex-direction: column;
+        }
+
+        .log-viewer-modal.active {
+            display: flex;
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        .log-viewer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
+        }
+
+        .log-viewer-title {
+            color: var(--accent-cyan);
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .log-viewer-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .log-viewer-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .log-viewer-toolbar {
+            display: flex;
+            gap: 1rem;
+            padding: 0.75rem 1.5rem;
+            border-bottom: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .log-viewer-toolbar select,
+        .log-viewer-toolbar input {
+            padding: 0.4rem 0.6rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .log-viewer-toolbar input {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .log-viewer-toolbar button {
+            padding: 0.4rem 0.8rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .log-viewer-toolbar button:hover {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .log-viewer-toolbar .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        .log-viewer-toolbar .connection-status.connected {
+            color: var(--status-online);
+        }
+
+        .log-viewer-toolbar .connection-status.disconnected {
+            color: var(--status-error);
+        }
+
+        .log-viewer-toolbar .connection-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--status-error);
+        }
+
+        .log-viewer-toolbar .connection-status.connected .connection-indicator {
+            background: var(--status-online);
+            animation: pulse 2s infinite;
+        }
+
+        .log-viewer-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            background: var(--bg-primary);
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        .log-viewer-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-viewer-content::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        .log-viewer-content::-webkit-scrollbar-thumb {
+            background: var(--border-primary);
+            border-radius: 4px;
+        }
+
+        .log-viewer-content::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+
+        .log-line {
+            padding: 0.25rem 0.5rem;
+            margin: 2px 0;
+            border-left: 3px solid transparent;
+            transition: background 0.1s;
+        }
+
+        .log-line:hover {
+            background: var(--bg-secondary);
+        }
+
+        .log-line.log-level-DEBUG {
+            border-left-color: var(--text-muted);
+            color: var(--text-muted);
+        }
+
+        .log-line.log-level-INFO {
+            border-left-color: var(--accent-cyan);
+            color: var(--text-primary);
+        }
+
+        .log-line.log-level-WARN {
+            border-left-color: var(--accent-yellow);
+            color: var(--accent-yellow);
+        }
+
+        .log-line.log-level-ERROR {
+            border-left-color: var(--status-error);
+            color: var(--status-error);
+        }
+
+        .log-timestamp {
+            color: var(--text-muted);
+            margin-right: 0.5rem;
+        }
+
+        .log-level {
+            display: inline-block;
+            width: 50px;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+
+        .log-message {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .log-viewer-footer {
+            padding: 0.75rem 1.5rem;
+            border-top: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-viewer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            display: none;
+        }
+
+        .log-viewer-overlay.active {
+            display: block;
+        }
+
+        .log-viewer-empty {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .log-viewer-loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .log-viewer-loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
         /* Context Help Tooltips */
         .help-tooltip {
             position: relative;
@@ -11591,6 +11848,484 @@
             }
         }
 
+        // Log Viewer Modal
+        class LogViewerModal {
+            constructor() {
+                this.modal = null;
+                this.overlay = null;
+                this.websocket = null;
+                this.executionId = null;
+                this.taskId = null;
+                this.logs = [];
+                this.filteredLogs = [];
+                this.currentFilter = 'ALL';
+                this.searchTerm = '';
+                this.autoScroll = true;
+                this.isConnected = false;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.reconnectDelay = 5000; // 5 seconds
+                this.searchDebounceTimer = null;
+            }
+
+            initialize() {
+                if (this.modal) return; // Already initialized
+
+                // Create overlay
+                this.overlay = document.createElement('div');
+                this.overlay.className = 'log-viewer-overlay';
+                document.body.appendChild(this.overlay);
+
+                // Create modal
+                this.modal = document.createElement('div');
+                this.modal.className = 'log-viewer-modal';
+                this.modal.innerHTML = `
+                    <div class="log-viewer-header">
+                        <h3 class="log-viewer-title" id="logViewerTitle">Task Logs</h3>
+                        <button class="log-viewer-close" id="logViewerClose">&times;</button>
+                    </div>
+                    <div class="log-viewer-toolbar">
+                        <select id="logLevelFilter">
+                            <option value="ALL">All Levels</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARN">WARN</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                        <input type="text" id="logSearchInput" placeholder="Search logs...">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="logAutoScroll" checked>
+                            <span style="font-size: 0.85rem;">Auto-scroll</span>
+                        </label>
+                        <button id="logDownloadBtn">Download</button>
+                        <button id="logClearBtn">Clear</button>
+                        <div class="connection-status" id="logConnectionStatus">
+                            <span class="connection-indicator"></span>
+                            <span id="logConnectionText">Disconnected</span>
+                        </div>
+                    </div>
+                    <div class="log-viewer-content" id="logViewerContent">
+                        <div class="log-viewer-empty">No logs available</div>
+                    </div>
+                    <div class="log-viewer-footer">
+                        <span id="logViewerCount">0 logs</span>
+                        <span id="logViewerStatus"></span>
+                    </div>
+                `;
+                document.body.appendChild(this.modal);
+
+                // Bind event listeners
+                this.bindEvents();
+            }
+
+            bindEvents() {
+                // Close button
+                document.getElementById('logViewerClose').addEventListener('click', () => this.close());
+
+                // Overlay click to close
+                this.overlay.addEventListener('click', () => this.close());
+
+                // Prevent modal content click from closing
+                this.modal.addEventListener('click', (e) => e.stopPropagation());
+
+                // Level filter
+                document.getElementById('logLevelFilter').addEventListener('change', (e) => {
+                    this.currentFilter = e.target.value;
+                    this.applyFilters();
+                });
+
+                // Search input with debounce
+                document.getElementById('logSearchInput').addEventListener('input', (e) => {
+                    clearTimeout(this.searchDebounceTimer);
+                    this.searchDebounceTimer = setTimeout(() => {
+                        this.searchTerm = e.target.value.toLowerCase();
+                        this.applyFilters();
+                    }, 300);
+                });
+
+                // Auto-scroll toggle
+                document.getElementById('logAutoScroll').addEventListener('change', (e) => {
+                    this.autoScroll = e.target.checked;
+                });
+
+                // Download button
+                document.getElementById('logDownloadBtn').addEventListener('click', () => this.downloadLogs());
+
+                // Clear button
+                document.getElementById('logClearBtn').addEventListener('click', () => this.clearLogs());
+
+                // Escape key to close
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && this.modal.classList.contains('active')) {
+                        this.close();
+                    }
+                });
+            }
+
+            async open(executionId, taskId, taskName = 'Task') {
+                if (!this.modal) {
+                    this.initialize();
+                }
+
+                this.executionId = executionId;
+                this.taskId = taskId;
+                this.logs = [];
+                this.filteredLogs = [];
+
+                // Update title
+                document.getElementById('logViewerTitle').textContent = `Task Logs: ${taskName}`;
+
+                // Show modal
+                this.modal.classList.add('active');
+                this.overlay.classList.add('active');
+
+                // Show loading
+                this.showLoading();
+
+                // Check if task is running (attempt WebSocket) or completed (use HTTP)
+                await this.determineConnectionStrategy();
+            }
+
+            async determineConnectionStrategy() {
+                try {
+                    // First, try to get execution status
+                    const response = await fetch(`/api/workflows/executions/${this.executionId}`);
+                    if (!response.ok) throw new Error('Failed to fetch execution status');
+
+                    const execution = await response.json();
+                    const taskExecution = execution.task_executions?.find(t => t.task_id === this.taskId);
+
+                    if (!taskExecution) {
+                        this.showError('Task execution not found');
+                        return;
+                    }
+
+                    // If task is running, use WebSocket
+                    if (taskExecution.status === 'running' || taskExecution.status === 'pending') {
+                        await this.connectWebSocket();
+                    } else {
+                        // Task is completed, use HTTP
+                        await this.loadHistoricalLogs();
+                    }
+                } catch (error) {
+                    console.error('Error determining connection strategy:', error);
+                    // Fallback to HTTP
+                    await this.loadHistoricalLogs();
+                }
+            }
+
+            async connectWebSocket() {
+                try {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/api/workflows/ws/logs`;
+
+                    this.websocket = new WebSocket(wsUrl);
+
+                    this.websocket.onopen = () => {
+                        console.log('WebSocket connected');
+                        this.isConnected = true;
+                        this.reconnectAttempts = 0;
+                        this.updateConnectionStatus(true);
+
+                        // Subscribe to logs
+                        this.websocket.send(JSON.stringify({
+                            action: 'subscribe',
+                            execution_id: this.executionId,
+                            task_id: this.taskId
+                        }));
+
+                        // Start heartbeat
+                        this.startHeartbeat();
+                    };
+
+                    this.websocket.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'log') {
+                            // Filter by task_id if we're subscribed to a specific task
+                            if (!this.taskId || data.task_id === this.taskId) {
+                                this.appendLog(data);
+                            }
+                        } else if (data.type === 'pong') {
+                            // Heartbeat response
+                        } else if (data.type === 'historical') {
+                            // Historical logs on subscribe
+                            if (data.logs && Array.isArray(data.logs)) {
+                                data.logs.forEach(log => {
+                                    if (!this.taskId || log.task_id === this.taskId) {
+                                        this.appendLog(log);
+                                    }
+                                });
+                            }
+                        }
+                    };
+
+                    this.websocket.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        this.updateConnectionStatus(false);
+                    };
+
+                    this.websocket.onclose = () => {
+                        console.log('WebSocket disconnected');
+                        this.isConnected = false;
+                        this.updateConnectionStatus(false);
+                        this.stopHeartbeat();
+
+                        // Attempt reconnect if modal is still open
+                        if (this.modal.classList.contains('active') && this.reconnectAttempts < this.maxReconnectAttempts) {
+                            this.reconnectAttempts++;
+                            setTimeout(() => {
+                                if (this.modal.classList.contains('active')) {
+                                    console.log(`Reconnecting... attempt ${this.reconnectAttempts}`);
+                                    this.connectWebSocket();
+                                }
+                            }, this.reconnectDelay);
+                        } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                            // Fallback to HTTP polling
+                            console.log('Max reconnect attempts reached, falling back to HTTP');
+                            this.loadHistoricalLogs();
+                        }
+                    };
+                } catch (error) {
+                    console.error('Failed to connect WebSocket:', error);
+                    this.updateConnectionStatus(false);
+                    // Fallback to HTTP
+                    await this.loadHistoricalLogs();
+                }
+            }
+
+            async loadHistoricalLogs() {
+                try {
+                    const response = await fetch(
+                        `/api/workflows/executions/${this.executionId}/logs?task_id=${this.taskId}&limit=1000`
+                    );
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    this.logs = [];
+                    this.filteredLogs = [];
+
+                    if (data.logs && data.logs.length > 0) {
+                        data.logs.forEach(log => this.appendLog(log, false));
+                        this.updateConnectionStatus(false, 'Historical');
+                    } else {
+                        this.showEmpty();
+                    }
+                } catch (error) {
+                    console.error('Failed to load historical logs:', error);
+                    this.showError(`Failed to load logs: ${error.message}`);
+                }
+            }
+
+            startHeartbeat() {
+                this.heartbeatInterval = setInterval(() => {
+                    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                        this.websocket.send(JSON.stringify({ action: 'ping' }));
+                    }
+                }, 30000); // 30 seconds
+            }
+
+            stopHeartbeat() {
+                if (this.heartbeatInterval) {
+                    clearInterval(this.heartbeatInterval);
+                    this.heartbeatInterval = null;
+                }
+            }
+
+            appendLog(logData, shouldRender = true) {
+                const log = {
+                    timestamp: logData.timestamp || new Date().toISOString(),
+                    level: logData.level || 'INFO',
+                    message: logData.message || '',
+                    context: logData.context || null
+                };
+
+                this.logs.push(log);
+
+                // Apply filters
+                if (this.shouldShowLog(log)) {
+                    this.filteredLogs.push(log);
+
+                    if (shouldRender) {
+                        this.renderLog(log);
+
+                        // Auto-scroll
+                        if (this.autoScroll) {
+                            const content = document.getElementById('logViewerContent');
+                            content.scrollTop = content.scrollHeight;
+                        }
+                    }
+                }
+
+                this.updateLogCount();
+            }
+
+            shouldShowLog(log) {
+                // Level filter
+                if (this.currentFilter !== 'ALL' && log.level !== this.currentFilter) {
+                    return false;
+                }
+
+                // Search filter
+                if (this.searchTerm && !log.message.toLowerCase().includes(this.searchTerm)) {
+                    return false;
+                }
+
+                return true;
+            }
+
+            renderLog(log) {
+                const content = document.getElementById('logViewerContent');
+
+                // Remove empty/loading states
+                const empty = content.querySelector('.log-viewer-empty, .log-viewer-loading');
+                if (empty) empty.remove();
+
+                const logLine = document.createElement('div');
+                logLine.className = `log-line log-level-${log.level}`;
+
+                const timestamp = new Date(log.timestamp).toLocaleTimeString('en-US', {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                logLine.innerHTML = `
+                    <span class="log-timestamp">[${timestamp}]</span>
+                    <span class="log-level">${log.level}</span>
+                    <span class="log-message">${this.escapeHtml(log.message)}</span>
+                `;
+
+                content.appendChild(logLine);
+
+                // Limit DOM to 1000 lines for performance
+                const lines = content.querySelectorAll('.log-line');
+                if (lines.length > 1000) {
+                    lines[0].remove();
+                }
+            }
+
+            applyFilters() {
+                // Re-filter all logs
+                this.filteredLogs = this.logs.filter(log => this.shouldShowLog(log));
+
+                // Re-render
+                const content = document.getElementById('logViewerContent');
+                content.innerHTML = '';
+
+                if (this.filteredLogs.length === 0) {
+                    this.showEmpty();
+                } else {
+                    this.filteredLogs.forEach(log => this.renderLog(log));
+                }
+
+                this.updateLogCount();
+            }
+
+            updateLogCount() {
+                const count = this.filteredLogs.length;
+                const total = this.logs.length;
+                document.getElementById('logViewerCount').textContent =
+                    count === total ? `${count} logs` : `${count} / ${total} logs`;
+            }
+
+            updateConnectionStatus(connected, label = null) {
+                const statusEl = document.getElementById('logConnectionStatus');
+                const textEl = document.getElementById('logConnectionText');
+
+                if (connected) {
+                    statusEl.className = 'connection-status connected';
+                    textEl.textContent = 'Connected';
+                } else {
+                    statusEl.className = 'connection-status disconnected';
+                    textEl.textContent = label || 'Disconnected';
+                }
+            }
+
+            downloadLogs() {
+                const content = this.filteredLogs.map(log => {
+                    const timestamp = new Date(log.timestamp).toISOString();
+                    return `[${timestamp}] ${log.level.padEnd(5)} ${log.message}`;
+                }).join('\n');
+
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `task-logs-${this.taskId}-${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                showNotification('Logs downloaded', 'success');
+            }
+
+            clearLogs() {
+                this.logs = [];
+                this.filteredLogs = [];
+                const content = document.getElementById('logViewerContent');
+                content.innerHTML = '<div class="log-viewer-empty">Logs cleared</div>';
+                this.updateLogCount();
+            }
+
+            showLoading() {
+                const content = document.getElementById('logViewerContent');
+                content.innerHTML = '<div class="log-viewer-loading">Loading logs</div>';
+            }
+
+            showEmpty() {
+                const content = document.getElementById('logViewerContent');
+                content.innerHTML = '<div class="log-viewer-empty">No logs available</div>';
+            }
+
+            showError(message) {
+                const content = document.getElementById('logViewerContent');
+                content.innerHTML = `<div class="log-viewer-empty" style="color: var(--status-error);">${this.escapeHtml(message)}</div>`;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            close() {
+                // Close WebSocket if connected
+                if (this.websocket) {
+                    this.websocket.close();
+                    this.websocket = null;
+                }
+
+                this.stopHeartbeat();
+
+                // Hide modal
+                this.modal.classList.remove('active');
+                this.overlay.classList.remove('active');
+
+                // Reset state
+                this.executionId = null;
+                this.taskId = null;
+                this.logs = [];
+                this.filteredLogs = [];
+                this.currentFilter = 'ALL';
+                this.searchTerm = '';
+                this.reconnectAttempts = 0;
+
+                // Reset UI
+                document.getElementById('logLevelFilter').value = 'ALL';
+                document.getElementById('logSearchInput').value = '';
+                document.getElementById('logAutoScroll').checked = true;
+                this.autoScroll = true;
+            }
+        }
+
+        // Global log viewer instance
+        let logViewer = null;
+
         // Progress tracker for long operations
         class ProgressTracker {
             static create(label, container) {
@@ -12084,7 +12819,13 @@
 
             handleNodeClick(node) {
                 console.log('Node clicked:', node);
-                showNotification(`Selected: ${node.label}`, 'info');
+
+                // Open log viewer modal
+                if (logViewer && this.currentExecutionId) {
+                    logViewer.open(this.currentExecutionId, node.id, node.label);
+                } else {
+                    showNotification(`Selected: ${node.label}`, 'info');
+                }
             }
 
             startPolling() {
@@ -12790,6 +13531,10 @@
 
             // Initialize Workflow DAG visualization
             initializeWorkflowDAG();
+
+            // Initialize Log Viewer Modal
+            logViewer = new LogViewerModal();
+            logViewer.initialize();
 
             // Initialize Execution History Browser (Phase B-E)
             initializeHistoryBrowser();
