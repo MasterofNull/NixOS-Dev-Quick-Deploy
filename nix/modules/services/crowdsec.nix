@@ -186,9 +186,9 @@ in
     };
 
     systemd.services.crowdsec-firewall-bouncer = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
-      after = [ "crowdsec-firewall-bouncer-key-sync.service" ];
-      wants = [ "crowdsec-firewall-bouncer-key-sync.service" ];
-      requires = [ "crowdsec-firewall-bouncer-key-sync.service" ];
+      after = [ "crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service" ];
+      wants = [ "crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service" ];
+      requires = [ "crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service" ];
     };
 
     # Open firewall for local API only (bouncer communication)
