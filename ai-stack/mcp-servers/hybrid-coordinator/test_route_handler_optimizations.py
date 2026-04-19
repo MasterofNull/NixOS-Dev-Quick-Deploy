@@ -396,6 +396,39 @@ class TestCollectionSelectionHelpers:
         assert single == 8
         assert compact == 12
 
+    def test_select_route_collections_keeps_codebase_context_for_route_stack_latency_queries(self):
+        original_collections = dict(route_handler._COLLECTIONS)
+        original_classifier = route_handler.task_classifier.classify
+        route_handler._COLLECTIONS = {
+            "codebase-context": {},
+            "error-solutions": {},
+            "best-practices": {},
+            "skills-patterns": {},
+        }
+        route_handler.task_classifier.classify = MagicMock(
+            return_value=SimpleNamespace(
+                token_estimate=90,
+                task_type="lookup",
+                local_suitable=True,
+                remote_required=False,
+                reason="within_local_capacity",
+            )
+        )
+        try:
+            selected = route_handler._select_route_collections(
+                "switchboard routing cache hybrid coordinator latency",
+                route="hybrid",
+                context=None,
+                generate_response=False,
+            )
+        finally:
+            route_handler._COLLECTIONS = original_collections
+            route_handler.task_classifier.classify = original_classifier
+
+        assert selected["profile"] == "route-stack-direct"
+        assert selected["collections"][0] == "codebase-context"
+        assert len(selected["collections"]) <= 2
+
     def test_local_budget_helpers_use_task_specific_caps(self):
         assert route_handler._local_response_budget("lookup") == 96
         assert route_handler._local_response_budget("reasoning") == 96

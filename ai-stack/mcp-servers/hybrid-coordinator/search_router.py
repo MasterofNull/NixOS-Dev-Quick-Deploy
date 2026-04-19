@@ -245,6 +245,10 @@ def _query_targets_route_stack(tokens: List[str], query: str = "") -> bool:
     return "route stack" in normalized_query or "prompt cache" in normalized_query
 
 
+def _is_direct_code_context(payload: Dict[str, Any]) -> bool:
+    return str(payload.get("chunk_type") or "").strip().lower() == "direct_code_context"
+
+
 def _expanded_query_for_search(query: str, tokens: List[str]) -> str:
     if not _query_targets_route_stack(tokens, query):
         return query
@@ -349,7 +353,10 @@ def _route_stack_path_adjustment(query: str, tokens: List[str], payload: Dict[st
     if any(path in preferred_path for path in _ROUTE_STACK_DISTRACTOR_PATHS):
         score -= 0.65
 
-        score -= _doc_heavy_mixed_path_penalty(payload, preferred_path)
+    if _is_direct_code_context(payload) and any(path in preferred_path for path in _ROUTE_STACK_OWNER_PATHS):
+        score += 3.2
+
+    score -= _doc_heavy_mixed_path_penalty(payload, preferred_path)
     return score
 
 
@@ -407,6 +414,8 @@ def keyword_match_score(query: str, item: Dict[str, Any]) -> Tuple[bool, float]:
             score += 0.3
         if preferred_path and any(token in preferred_path for token in _TECHNICAL_PATH_TOKENS):
             score += 0.35
+        if _is_direct_code_context(payload):
+            score += 0.55
         score += _direct_runtime_path_adjustment(tokens, preferred_path, path_text)
         score += _route_stack_path_adjustment(query, tokens, payload, preferred_path, path_text)
         validation_noise = _validation_noise_count(title_text) + _validation_noise_count(summary_text) + _validation_noise_count(content_text)
@@ -462,6 +471,8 @@ def rerank_combined_results(query: str, items: List[Dict[str, Any]]) -> List[Dic
         if _query_is_technical(tokens):
             path_focus_bonus = _direct_runtime_path_adjustment(tokens, _preferred_file_hint(payload).lower(), path_text)
             path_focus_bonus += _route_stack_path_adjustment(query, tokens, payload, _preferred_file_hint(payload).lower(), path_text)
+            if _is_direct_code_context(payload):
+                path_focus_bonus += 1.1
         rerank_score = base_score + field_bonus + keyword_bonus + source_bonus + path_focus_bonus - generic_penalty
         reranked.append({**item, "rerank_score": round(rerank_score, 4)})
     reranked.sort(key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
