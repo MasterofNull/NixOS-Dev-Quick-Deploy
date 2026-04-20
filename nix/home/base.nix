@@ -1136,7 +1136,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="24.0"
+    _config_version="25.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1154,7 +1154,7 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "24.0",
+  "__configVersion": "25.0",
   "models": [
     {
       "title": "Switchboard Router (Authoritative)",
@@ -1221,6 +1221,19 @@ PYEOF
   "slashCommands": [
     { "name": "edit", "description": "Edit highlighted code" },
     { "name": "comment", "description": "Add comments" }
+  ],
+  "mcpServers": [
+    {
+      "name": "Harness MCP",
+      "command": "python3",
+      "args": ["/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"],
+      "env": {
+        "HYBRID_URL": "http://127.0.0.1:8003",
+        "AIDB_URL": "http://127.0.0.1:8002",
+        "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
+        "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
+      }
+    }
   ],
   "allowAnonymousTelemetry": false
 }
