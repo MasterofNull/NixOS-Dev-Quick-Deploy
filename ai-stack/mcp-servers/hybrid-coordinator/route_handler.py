@@ -30,7 +30,7 @@ import hashlib
 import logging
 import os
 import time
-from collections import defaultdict, deque
+from collections import defaultdict, deque, OrderedDict
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional
@@ -156,8 +156,8 @@ _collection_metrics = CollectionLatencyMetrics()
 # Phase 5.2 Optimization 2: Backend selection caching
 @dataclass
 class BackendSelectionCache:
-    """LRU-style cache for backend selection decisions."""
-    cache: Dict[str, str] = field(default_factory=dict)
+    """FIFO cache for backend selection decisions (OrderedDict-backed, no storm eviction)."""
+    cache: OrderedDict = field(default_factory=OrderedDict)
     max_size: int = 1000
     access_count: int = 0
     hit_count: int = 0
@@ -190,9 +190,9 @@ def _cache_backend_selection(query: str, score: float, prefer_local: bool, backe
     """Store backend selection decision in cache."""
     global _backend_selection_cache
 
-    # Simple eviction: clear cache if it exceeds max_size
+    # FIFO eviction: remove only the oldest entry to avoid thundering-herd miss storms.
     if len(_backend_selection_cache.cache) >= _backend_selection_cache.max_size:
-        _backend_selection_cache.cache.clear()
+        _backend_selection_cache.cache.popitem(last=False)
 
     query_hash = hashlib.sha256(query.encode()).hexdigest()
     score_str = f"{int(score*100)}"
