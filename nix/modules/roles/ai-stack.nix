@@ -227,6 +227,24 @@ let
       (pkgs.writeShellScriptBin "workflow-retrofit" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" workflows retrofit "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-prime" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-prime" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-memory" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-memory" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-gaps" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-gaps" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-patterns" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-patterns" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-optimizer" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-optimizer" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-prompt-eval" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval" "$@"
+      '')
     ];
   };
 
@@ -1340,10 +1358,16 @@ in {
           ai_stack_tools() {
             cat <<'TOOLS'
           Available AI Stack Tools:
-            aqd              - Main workflow CLI wrapper
+            aqd              - Main workflow CLI wrapper (aqd workflows list)
+            aq-prime         - Progressive disclosure agent onboarding
             aq-hints         - Ranked AI workflow hints
             aq-report        - AI stack health and metrics
             aq-qa            - AI stack QA workflow
+            aq-memory        - Agent memory recall and storage
+            aq-gaps          - Knowledge gap analysis
+            aq-patterns      - Pattern usage and discovery
+            aq-optimizer     - Self-optimization loop
+            aq-prompt-eval   - Prompt quality evaluation
             project-init     - Initialize new AI-enabled projects
             workflow-primer  - Read-only session priming
             workflow-brownfield - Existing project improvement
@@ -1358,6 +1382,7 @@ in {
             $AI_STACK_INFERENCE_ENDPOINT - LLM inference
 
           Example usage:
+            aq-prime --help
             aq-hints "how do I configure NixOS services"
             curl -s "$AI_STACK_HINTS_ENDPOINT?query=nix+modules"
             aqd workflows list
