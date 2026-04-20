@@ -20,18 +20,32 @@ with declarative modules, operational scripts, and agent workflow tooling.
 ## Commands
 
 ```bash
-# Guided AI-layer bootstrap (empty directory)
-scripts/ai/aqd workflows project-init --target <dir> --name <name> --goal <goal>
+# Agent onboarding / session priming (use FIRST in any session)
+aq-prime                                              # progressive disclosure onboarding
+aqd workflows primer --target . --objective "<task>" # read-only session primer
 
-# Read-only session primer
-scripts/ai/aqd workflows primer --target <repo-dir> --objective "resume task"
+# Context & task scoping
+aq-context-bootstrap --task "<task>"   # minimal context + workflow recommendation
+aq-hints --query "<task>"              # ranked workflow hints from harness
 
-# Brownfield guided planning
-scripts/ai/aqd workflows brownfield --target <repo-dir> --objective "improve X"
+# Common workflow entry points
+aqd workflows project-init --target <dir> --name <name> --goal <goal>
+aqd workflows brownfield --target <repo-dir> --objective "improve X"
+aqd workflows list                     # full workflow catalog
 
-# Workflow catalog
-scripts/ai/aqd workflows list
+# Capability & runtime diagnosis
+aq-capability-gap --query "<task>"     # classify missing tools/skills
+aq-runtime-diagnose                    # service/runtime diagnosis loop
+aq-system-act --query "<task>"         # unified entrypoint: gaps + runtime
+
+# Reporting & QA
+aq-report                              # AI stack health digest
+aq-qa 0                                # phase-0 health checks
 ```
+
+`aqd` also exposes: `policy evaluate`, `reasoning route`, `parity *` (regression/chaos/SLO),
+`skill *` (validate/init/package/bundle), `mcp *` (scaffold/validate/deploy-aidb).
+Run `aqd --help` for the full subcommand tree.
 
 ## Project Structure
 
@@ -135,6 +149,7 @@ Load only what is needed:
 | Hybrid workflow model | `docs/agent-guides/40-HYBRID-WORKFLOW.md` |
 | Continuous learning | `docs/agent-guides/22-CONTINUOUS-LEARNING.md` |
 | Agentic bootstrap runbook | `docs/development/AGENTIC-WORKFLOW-BOOTSTRAP-2026-03-05.md` |
+| Switchboard profile matrix | `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` |
 | Preserved deep legacy guidance | `docs/agent-guides/99-CLAUDE-DETAILS-LEGACY.md` |
 
 ## Notes
