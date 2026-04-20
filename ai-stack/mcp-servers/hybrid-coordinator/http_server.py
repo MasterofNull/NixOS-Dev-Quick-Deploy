@@ -8925,6 +8925,61 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_prsi_pending(_request: web.Request) -> web.Response:
+        """
+        GET /control/prsi/pending — Fast read of pending PRSI actions from queue file.
+
+        Does NOT shell out to aq-report (which is slow). Reads the queue JSON
+        directly and returns only actions in a pending/awaiting-approval state.
+        Intended for local model context injection and MCP tool calls.
+        """
+        queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+        try:
+            if not queue_path.exists():
+                return web.json_response({
+                    "status": "ok",
+                    "pending": [],
+                    "count": 0,
+                    "queue_exists": False,
+                })
+
+            with open(queue_path) as f:
+                queue = json.load(f)
+
+            terminal_states = {"approved", "rejected", "executed", "completed",
+                               "failed", "counterfactual_queued"}
+            all_actions = queue.get("actions", [])
+            pending = [
+                {
+                    "id": a.get("id", ""),
+                    "type": a.get("type", ""),
+                    "risk_level": a.get("risk_level", ""),
+                    "state": a.get("state", ""),
+                    "summary": str(a.get("action_detail", {}).get("summary", ""))[:200],
+                    "created_at": a.get("created_at", ""),
+                }
+                for a in all_actions
+                if a.get("state") not in terminal_states
+            ]
+            state_counts = {}
+            for a in all_actions:
+                s = a.get("state", "unknown")
+                state_counts[s] = state_counts.get(s, 0) + 1
+
+            return web.json_response({
+                "status": "ok",
+                "pending": pending,
+                "count": len(pending),
+                "state_counts": state_counts,
+                "triage_cmd": "python3 scripts/automation/prsi-orchestrator.py list",
+                "approve_cmd": "python3 scripts/automation/prsi-orchestrator.py approve --id <id> --by <name>",
+                "execute_cmd": "python3 scripts/automation/prsi-orchestrator.py execute --limit 1",
+            })
+        except json.JSONDecodeError as exc:
+            return web.json_response({"status": "error", "error": f"malformed queue JSON: {exc}"}, status=500)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_prsi_actions_list(_request: web.Request) -> web.Response:
         """
         GET /control/prsi/actions — List available PRSI optimization actions.
@@ -11409,6 +11464,7 @@ asyncio.run(run())
     http_app.router.add_get("/control/autoresearch/status", handle_autoresearch_status)
     http_app.router.add_post("/control/autoresearch/run", handle_autoresearch_run)
     # Batch 3.2 — PRSI Action Execution endpoints
+    http_app.router.add_get("/control/prsi/pending", handle_prsi_pending)
     http_app.router.add_get("/control/prsi/actions", handle_prsi_actions_list)
     http_app.router.add_post("/control/prsi/actions/execute", handle_prsi_action_execute)
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)

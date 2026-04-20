@@ -65,23 +65,25 @@ let
 
     === TASK → FIRST ACTIONS ===
     PRSI / self-improvement / queue issues:
-      1. run: python3 scripts/automation/prsi-orchestrator.py list
-      2. read: /var/lib/nixos-ai-stack/prsi/action-queue.json
-      3. run: python3 scripts/automation/prsi-orchestrator.py sync --since=1d
-      Approval flow: verify --id <id> --by <name> → approve --id <id> --by <name> → execute --limit 1
+      MCP tool (preferred): get_prsi_pending  → then prsi_orchestrate {command:"approve",...}
+      Shell fallback: python3 scripts/automation/prsi-orchestrator.py list
+      Approval flow: prsi_orchestrate approve → prsi_orchestrate execute
 
     Service health / errors:
-      1. run: aq-qa 0
-      2. run: journalctl -u ai-*.service -n 50 --no-pager
-      3. run: systemctl status ai-hybrid-coordinator ai-aidb ai-ralph-wiggum
+      MCP tool (preferred): harness_health  → then journalctl -u ai-*.service -n 50 --no-pager
+      Shell fallback: aq-qa 0
 
     Unknown file / code location:
       1. run: grep -r "<keyword>" . --include="*.py" -l (targeted grep, NOT ls)
       2. read the file identified
 
     Harness workflow / hints:
-      1. run: aq-hints "<task summary>"
-      2. run: aq-context-bootstrap --task "<task>"
+      MCP tool (preferred): get_hints {q:"<task summary>"}
+      Shell fallback: aq-hints "<task summary>"
+
+    Knowledge search:
+      MCP tool: hybrid_search {query:"<question>"}
+      MCP tool: query_aidb {query:"<question>"}
 
     === KEY PATHS ===
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json

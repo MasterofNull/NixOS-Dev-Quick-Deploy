@@ -510,6 +510,67 @@ TOOLS = [
         },
     },
     {
+        "name": "get_prsi_pending",
+        "description": (
+            "Fetch pending PRSI (Pessimistic Recursive Self-Improvement) actions from the "
+            "local queue. Returns actions awaiting triage or approval with their type, "
+            "risk level, and summary. Call this first for any PRSI triage task instead "
+            "of running ls or reading the repo root. Fast — reads queue file directly."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "prsi_orchestrate",
+        "description": (
+            "Run a PRSI orchestrator command: sync (refresh queue from aq-report), "
+            "list (show all actions with optional risk filter), approve (mark an action "
+            "approved by a named reviewer), or execute (run up to N approved actions). "
+            "Use after get_prsi_pending to act on pending items."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "enum": ["sync", "list", "approve", "execute"],
+                    "description": "Orchestrator command to run",
+                },
+                "since":   {"type": "string", "default": "1d",
+                            "description": "Time window for sync (e.g. '1d', '7d')"},
+                "risk":    {"type": "string", "enum": ["low", "medium", "high"],
+                            "description": "Filter by risk level for list"},
+                "id":      {"type": "string", "description": "Action ID for approve"},
+                "by":      {"type": "string", "description": "Reviewer name for approve"},
+                "note":    {"type": "string", "description": "Reviewer note for approve"},
+                "limit":   {"type": "integer", "default": 1,
+                            "description": "Max actions for execute"},
+                "dry_run": {"type": "boolean", "default": True,
+                            "description": "Dry-run mode for execute"},
+            },
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "harness_health",
+        "description": (
+            "Run a quick AI stack health check (aq-qa phase 0). Returns pass/fail "
+            "counts for all services. Use to diagnose service issues before deeper "
+            "investigation. Equivalent to running aq-qa 0 in the terminal."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "phase": {"type": "integer", "default": 0,
+                          "description": "QA phase: 0=all services, 1=datastores only"},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "execute_sop",
         "description": (
             "Execute an SOP workflow with validation and logging. "
@@ -731,6 +792,37 @@ def _call_tool(name: str, args: dict) -> str:
     if name == "coordinator_lessons":
         limit = int(args.get("limit", 10))
         r = _get(f"{HYBRID_URL}/control/ai-coordinator/lessons?limit={limit}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "get_prsi_pending":
+        r = _get(f"{HYBRID_URL}/control/prsi/pending", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "prsi_orchestrate":
+        import shutil
+        command = args.get("command", "list")
+        orchestrator = os.path.join(REPO_ROOT, "scripts", "automation", "prsi-orchestrator.py")
+        python = shutil.which("python3") or sys.executable
+        argv = [python, orchestrator, command]
+        if command == "sync":
+            argv += ["--since", args.get("since", "1d")]
+        elif command == "list":
+            if args.get("risk"):
+                argv += ["--risk", args["risk"]]
+        elif command == "approve":
+            argv += ["--id", args.get("id", ""), "--by", args.get("by", "local-agent")]
+            if args.get("note"):
+                argv += ["--note", args["note"]]
+        elif command == "execute":
+            argv += ["--limit", str(args.get("limit", 1))]
+            if args.get("dry_run", True):
+                argv.append("--dry-run")
+        r = _run_local(argv)
+        return _format_result(r)
+
+    if name == "harness_health":
+        phase = int(args.get("phase", 0))
+        r = _post(f"{HYBRID_URL}/qa/check", {"phase": phase}, HYBRID_KEY)
         return _format_result(r)
 
     if name == "web_fetch":
