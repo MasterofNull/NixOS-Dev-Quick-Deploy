@@ -1178,6 +1178,20 @@ PYEOF
       },
       "contextLength": ${toString continueContextLength},
       "maxTokens": ${toString continueChatMaxTokens}
+    },
+    {
+      "title": "Local Agent (Harness-Aware)",
+      "provider": "openai",
+      "apiKey": "local-llama-cpp",
+      "apiBase": "${continueApiBase}",
+      "model": "${aiLlamaModel}",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "local-agent"
+        }
+      },
+      "contextLength": ${toString continueContextLength},
+      "maxTokens": 1024
     }
   ],
   "tabAutocompleteModel": {
