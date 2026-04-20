@@ -50,6 +50,9 @@
         "--n-gpu-layers" "12"
         "--flash-attn" "off"
         "--mlock"
+        # Enable jinja2 chat template so Qwen's built-in tool-calling template
+        # is active. Required for the switchboard local-tool-calling profile.
+        "--jinja"
       ];
       embeddingServer.activeModel = "bge-m3";
     };
