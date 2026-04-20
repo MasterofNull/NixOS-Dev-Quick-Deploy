@@ -36,9 +36,10 @@ The locally hosted AI harness is the **primary interface** for all agent operati
 
 **Session-zero bootstrap (first action on every session):**
 ```bash
-aq-session-zero              # verify harness health + load endpoints
-# or: source config/service-endpoints.sh && harness-rpc.js status
-aq-hints "<task summary>" --format=json --agent=codex  # get ranked workflow hints
+aq-prime                                               # progressive disclosure onboarding
+aq-session-zero                                        # verify harness health + load endpoints
+aq-hints "<task summary>" --format=json --agent=codex  # ranked workflow hints
+aq-context-bootstrap --task "<task>"                   # minimal context + workflow entrypoint
 ```
 
 **Standard workflow loop (every task):**
@@ -155,7 +156,12 @@ New service pattern:
 - `nix/modules/roles/ai-stack.nix` — AI stack wiring/env injection
 - `nix/modules/services/switchboard.nix` — profile router/policies
 - `config/service-endpoints.sh` — canonical endpoint definitions
-- `scripts/ai/aq-hints` — workflow hints CLI
+- `scripts/ai/aq-prime` — progressive disclosure agent onboarding (run first)
+- `scripts/ai/aq-hints` — ranked workflow hints CLI
+- `scripts/ai/aq-context-bootstrap` — minimal context + workflow recommendation
+- `scripts/ai/aq-system-act` — unified capability-gap + runtime entrypoint
+- `scripts/ai/mcp-bridge-hybrid.py` — MCP stdio bridge (Claude Code ↔ hybrid-coordinator)
+- `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` — switchboard profile selection guide
 - `scripts/governance/repo-structure-lint.sh` — enforced repository structure policy
 - `config/repo-structure-allowlist.txt` — grandfathered legacy path exceptions
 
@@ -173,6 +179,33 @@ scripts/governance/repo-structure-lint.sh --staged
 aq-hints "nixos service conflict" --format=json --agent=codex
 curl "http://127.0.0.1:8003/hints?q=nixos+conflict&agent=remote"
 ```
+
+## Harness CLI Reference (locally installed after nixos-rebuild)
+
+| Category | Commands |
+|----------|----------|
+| Onboarding | `aq-prime`, `aq-context-bootstrap`, `aq-context-card`, `aq-context-manage` |
+| Hints & search | `aq-hints`, `aq-index`, `aq-patterns`, `aq-autoresearch` |
+| Capability mgmt | `aq-capability-gap`, `aq-capability-plan`, `aq-capability-remediate`, `aq-capability-promote`, `aq-capability-stub` |
+| Runtime diagnosis | `aq-runtime-diagnose`, `aq-runtime-plan`, `aq-runtime-act`, `aq-runtime-remediate`, `aq-llama-debug` |
+| Unified entrypoint | `aq-system-act --query "<task>"` (gaps + runtime in one call) |
+| Knowledge | `aq-gaps`, `aq-gap-import`, `aq-gap-auto-remediate`, `aq-index` |
+| Cache / RAG | `aq-cache-warm`, `aq-cache-prewarm`, `aq-rag-prewarm` |
+| Self-improvement | `aq-autonomous-improve`, `aq-optimizer`, `aq-meta-optimize` |
+| Workflow | `aq-workflow`, `aq-collaborate`, `aqd workflows list` |
+| Reporting | `aq-report`, `aq-qa 0`, `aq-prompt-eval`, `aq-rate`, `aq-llm-monitor` |
+| Memory | `aq-memory search/add/list` |
+
+**MCP bridge tools** (Claude Code, via `hybrid-coordinator-bridge`):
+`hybrid_search`, `get_hints`, `augment_query`, `qa_check`, `hints_feedback`,
+`coordinator_status`, `coordinator_lessons`, `web_fetch`, `workflow_orchestrate`,
+`store_memory`, `recall_memory`, `query_aidb`, `workflow_plan`, `workflow_run_start`,
+`primer_workflow`, `brownfield_workflow`, `tooling_manifest`, `list_sops`, `execute_sop`
+
+**Switchboard profiles** — select via `x-ai-profile:` header:
+`continue-local` (IDE chat) · `local-tool-calling` · `embedded-assist` ·
+`remote-coding` · `remote-reasoning` · `remote-free` · `default`
+Full matrix: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
 
 ## Commit Discipline (MANDATORY WORKFLOW)
 All agent work MUST follow this complete workflow:
