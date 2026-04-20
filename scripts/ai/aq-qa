@@ -192,7 +192,7 @@ switchboard_url = sys.argv[2].rstrip("/")
 with open(cfg_path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-if str(data.get("__configVersion") or "") not in {"23.0", "24.0"}:
+if str(data.get("__configVersion") or "") not in {"23.0", "24.0", "25.0"}:
     raise SystemExit(1)
 
 with urlopen(f"{switchboard_url}/health", timeout=5) as response:
@@ -295,8 +295,10 @@ _flagship_cli_surface_smoke() {
 }
 
 _gemini_cli_health_check() {
+  local _primary_h; _primary_h="$(_primary_home)"
   AQ_PRIMARY_USER="$(_primary_user)" \
-  AQ_PRIMARY_HOME="$(_primary_home)" \
+  AQ_PRIMARY_HOME="${_primary_h}" \
+  PATH="${_primary_h}/.npm-global/bin:${PATH}" \
   bash "${REPO_ROOT}/scripts/health/gemini-cli-health.sh" --check
 }
 
