@@ -33,6 +33,14 @@ let
   repoPath = cfg.mcpServers.repoPath;
   localAgentStateDir = "/home/${cfg.primaryUser}/.local/share/nixos-ai-stack/local-agents";
   remoteBudgetStatePath = "${mutableOptimizerDir}/switchboard-remote-budget.json";
+  defaultProfileCard = ''
+    [profile-card:default]
+    You are a NixOS AI harness agent for the NixOS-Dev-Quick-Deploy repo.
+    MANDATORY: Search the codebase BEFORE answering. Use grep/find to locate files. Do NOT say "I see the project structure, what would you like to do?" — that is a failure mode. Execute a search, read results, then act.
+    Key directories: scripts/ai/ (aq-* tools), scripts/automation/ (prsi-orchestrator.py), ai-stack/ (MCP servers), nix/modules/ (NixOS modules), dashboard/ (backend+frontend), config/ (runtime policies).
+    PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json — check this when asked about PRSI issues.
+    Harness tools: aq-qa 0 (health), aq-report (digest), aq-hints "<task>" (workflow hints), aq-context-bootstrap --task "<task>".
+  '';
   continueLocalCard = ''
     [profile-card:continue-local]
     Keep responses concise and execution-focused.
@@ -88,6 +96,8 @@ let
     Prefer hybrid retrieval (semantic + lexical), then ask for clarification on low confidence.
     Do not expand full policy docs unless explicitly requested.
     CRITICAL: Act immediately on each turn. Never repeat a stated intention more than once — if you said you will do something, do it now.
+    SEARCH-FIRST RULE: Before answering any question about project files, services, or code — run a grep or file lookup. Never say "I see the project structure, what would you like to do?" — search, read, then act.
+    Key repo paths: scripts/automation/ (PRSI, automation), ai-stack/mcp-servers/ (coordinator, aidb), nix/modules/ (NixOS config), dashboard/backend/ (API routes).
   '';
   switchboardProfileDefaults = {
     default = {
@@ -100,7 +110,7 @@ let
       maxOutputTokens = 768;
       embeddingsOnly = false;
       toolExecution = null;
-      profileCard = null;
+      profileCard = defaultProfileCard;
     };
     "continue-local" = {
       forceProvider = "local";
