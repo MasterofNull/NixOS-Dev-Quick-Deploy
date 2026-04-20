@@ -160,6 +160,9 @@ _task_semaphore: Optional[asyncio.Semaphore] = None
 _task_processes: Dict[str, asyncio.subprocess.Process] = {}
 _task_cancel_reasons: Dict[str, str] = {}
 _watchdog_task: Optional[asyncio.Task] = None
+# Cached result of `aider --version` probe done once at startup.
+# Avoids spawning a 4-second subprocess on every /health request.
+_aider_available: bool = False
 
 _ANALYSIS_ONLY_HINTS = (
     "analysis only",
@@ -554,7 +557,7 @@ class TaskSummaryResponse(BaseModel):
 
 @app.on_event("startup")
 async def _startup() -> None:
-    global _task_semaphore, _watchdog_task
+    global _task_semaphore, _watchdog_task, _aider_available
     _task_semaphore = asyncio.Semaphore(AIDER_MAX_CONCURRENCY)
     logger.info("aider_wrapper_starting", version="3.1.0", workspace=WORKSPACE,
                 max_concurrency=AIDER_MAX_CONCURRENCY)
@@ -564,8 +567,9 @@ async def _startup() -> None:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
         if proc.returncode == 0:
+            _aider_available = True
             logger.info("aider_found", version=stdout.decode("utf-8", errors="replace").strip())
         else:
             logger.error("aider_not_found", message="Aider binary not available")
@@ -673,26 +677,12 @@ async def _task_watchdog_loop() -> None:
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
-    aider_available = False
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            AIDER_BIN, "--version",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            await asyncio.wait_for(proc.communicate(), timeout=5.0)
-            aider_available = proc.returncode == 0
-        except asyncio.TimeoutError:
-            proc.kill()
-    except Exception:
-        pass
-
+    """Health check endpoint. Uses the startup-cached aider availability to avoid
+    spawning a slow subprocess on every poll."""
     return {
-        "status": "healthy" if aider_available else "degraded",
+        "status": "healthy" if _aider_available else "degraded",
         "version": "3.1.0",
-        "aider_available": aider_available,
+        "aider_available": _aider_available,
         "workspace": WORKSPACE,
         "llama_cpp_url": LLAMA_CPP_URL,
     }

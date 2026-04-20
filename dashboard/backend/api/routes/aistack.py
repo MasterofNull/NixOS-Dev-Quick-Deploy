@@ -2197,8 +2197,10 @@ async def get_ai_metrics() -> Dict[str, Any]:
         or service_endpoints.EMBEDDING_DIMENSIONS
     )
     model_inventory = _list_model_inventory()
-    llama_memory_bytes = _systemd_memory_current_bytes("llama-cpp.service")
-    embedding_memory_bytes = _systemd_memory_current_bytes("llama-cpp-embed.service")
+    llama_memory_bytes, embedding_memory_bytes = await asyncio.gather(
+        asyncio.to_thread(_systemd_memory_current_bytes, "llama-cpp.service"),
+        asyncio.to_thread(_systemd_memory_current_bytes, "llama-cpp-embed.service"),
+    )
 
     switchboard_status = _normalize_status(switchboard_health.get("status"), ("ok", "healthy"))
     aider_wrapper_status = _normalize_status(aider_wrapper_health.get("status"), ("ok", "healthy"))
