@@ -25,14 +25,27 @@
       "id": "repo-baseline",
       "title": "Repo Baseline",
       "summary": "Minimum operating contract for any non-trivial task in this repo.",
-      "tags": ["baseline", "onboarding", "repo", "workflow"],
-      "objective_patterns": ["resume", "onboard", "start", "context", "repo", "baseline"],
+      "tags": [
+        "baseline",
+        "onboarding",
+        "repo",
+        "workflow"
+      ],
+      "objective_patterns": [
+        "resume",
+        "onboard",
+        "start",
+        "context",
+        "repo",
+        "baseline"
+      ],
       "use_when": [
         "starting or resuming a task",
         "you need the repo contract before implementation",
         "you want the minimum safe rules without full docs"
       ],
       "rules": [
+        "Search-first: run grep/find before making claims about project structure. Entry points: scripts/ai/ (aq-* tools), ai-stack/ (MCP servers), nix/modules/ (NixOS), dashboard/ (backend+frontend). Never describe what you will do \u2014 do it.",
         "Prefer declarative Nix/module changes before runtime or script fallbacks.",
         "Collect small, high-signal evidence before editing or rebuilding.",
         "Every change needs validation evidence and a rollback note.",
@@ -68,14 +81,27 @@
       "id": "task-execution",
       "title": "Task Execution",
       "summary": "Compact execution loop for making changes without losing evidence or wasting context.",
-      "tags": ["execution", "validation", "workflow", "planning"],
-      "objective_patterns": ["implement", "fix", "change", "patch", "plan", "execute"],
+      "tags": [
+        "execution",
+        "validation",
+        "workflow",
+        "planning"
+      ],
+      "objective_patterns": [
+        "implement",
+        "fix",
+        "change",
+        "patch",
+        "plan",
+        "execute"
+      ],
       "use_when": [
         "moving from discovery into edits",
         "splitting a task into verifiable slices",
         "you need a fast evidence contract"
       ],
       "rules": [
+        "Search-first: locate target files with grep before editing. Use: grep -rn '<keyword>' <dir> --include='*.py' --include='*.nix' -l. Never say 'I see the structure' \u2014 search, read results, then execute.",
         "Define objective, constraints, out-of-scope, and acceptance checks first.",
         "Group work into one logical change per validation cycle.",
         "Before edits, identify the smallest command that can falsify the current assumption.",
@@ -109,14 +135,31 @@
       "id": "runtime-incident",
       "title": "Runtime Incident",
       "summary": "Low-token diagnosis loop for service, linkage, confinement, and runtime-probe failures.",
-      "tags": ["runtime", "incident", "service", "diagnosis", "apparmor"],
-      "objective_patterns": ["service", "runtime", "apparmor", "probe", "driver", "vulkan", "gpu", "health", "systemd"],
+      "tags": [
+        "runtime",
+        "incident",
+        "service",
+        "diagnosis",
+        "apparmor"
+      ],
+      "objective_patterns": [
+        "service",
+        "runtime",
+        "apparmor",
+        "probe",
+        "driver",
+        "vulkan",
+        "gpu",
+        "health",
+        "systemd"
+      ],
       "use_when": [
         "a systemd service is unhealthy or slow",
         "package linkage and runtime behavior disagree",
         "confinement or AppArmor may be involved"
       ],
       "rules": [
+        "Search-first: check running services and logs before diagnosing. Use: aq-qa 0 (phase-0 health), journalctl -u ai-<service> -n 50, aq-runtime-diagnose. Read error output before proposing fixes.",
         "Run the phase runner before opening full logs.",
         "Classify the failure layer before patching or rebuilding.",
         "Compare original binary path vs copied alias path early when confinement is plausible.",
@@ -154,14 +197,29 @@
       "id": "nix-module-change",
       "title": "Nix Module Change",
       "summary": "Compact guidance for changes that should land declaratively and survive rebuilds safely.",
-      "tags": ["nix", "nixos", "module", "declarative", "rebuild"],
-      "objective_patterns": ["nix", "module", "option", "rebuild", "switch", "flake", "nixos"],
+      "tags": [
+        "nix",
+        "nixos",
+        "module",
+        "declarative",
+        "rebuild"
+      ],
+      "objective_patterns": [
+        "nix",
+        "module",
+        "option",
+        "rebuild",
+        "switch",
+        "flake",
+        "nixos"
+      ],
       "use_when": [
         "changing service wiring, options, ports, or packages declaratively",
         "touching Nix modules or flake outputs",
         "you need rollback-safe deployment behavior"
       ],
       "rules": [
+        "Search-first: read the target .nix file and options.nix before editing. grep -rn '<option>' nix/modules/ --include='*.nix'. Port/URL changes: always trace to nix/modules/core/options.nix first.",
         "Prefer typed options and env injection over hardcoded literals.",
         "Use one owner per option; avoid conflicting defaults.",
         "Make hardware-aware or role-aware choices explicit in module logic.",
@@ -193,14 +251,32 @@
       "id": "system-fix",
       "title": "System-Level Fix",
       "summary": "Guidance for NixOS/system-level debugging, evaluation, and rollback-safe fixes.",
-      "tags": ["system", "nixos", "deployment", "service", "rollback", "evaluation"],
-      "objective_patterns": ["system", "nixos", "deployment", "switch", "evaluation", "boot", "rollback", "host", "service conflict"],
+      "tags": [
+        "system",
+        "nixos",
+        "deployment",
+        "service",
+        "rollback",
+        "evaluation"
+      ],
+      "objective_patterns": [
+        "system",
+        "nixos",
+        "deployment",
+        "switch",
+        "evaluation",
+        "boot",
+        "rollback",
+        "host",
+        "service conflict"
+      ],
       "use_when": [
         "fixing host-level NixOS or service wiring issues",
         "working on rebuild, switch, boot, or rollback safety",
         "changing system-level behavior rather than app-only behavior"
       ],
       "rules": [
+        "Search-first: reproduce or read the error before fixing. grep -rn '<error-token>' . --include='*.py' --include='*.nix' -l. Read the failing file, understand the call site, then apply the fix.",
         "Classify whether the failure is evaluation, build, activation, or runtime before editing broadly.",
         "Prefer package-level or toplevel build validation before live switching.",
         "Keep rollback commands ready before any activation step.",
@@ -236,14 +312,29 @@
       "id": "feature-development",
       "title": "Feature Development",
       "summary": "Progressive-disclosure guidance for new feature implementation on a mature codebase.",
-      "tags": ["feature", "development", "brownfield", "implementation", "planning"],
-      "objective_patterns": ["feature", "implement", "develop", "build", "add support", "new capability", "brownfield"],
+      "tags": [
+        "feature",
+        "development",
+        "brownfield",
+        "implementation",
+        "planning"
+      ],
+      "objective_patterns": [
+        "feature",
+        "implement",
+        "develop",
+        "build",
+        "add support",
+        "new capability",
+        "brownfield"
+      ],
       "use_when": [
         "building a new capability instead of only fixing a regression",
         "working in existing code that needs scoped planning",
         "you need a minimal planning surface before implementation"
       ],
       "rules": [
+        "Search-first: understand existing patterns before adding new code. grep -rn '<relevant-class-or-fn>' <module-dir> --include='*.py'. Read 1-2 existing similar implementations before writing new code.",
         "Start with a primer or brownfield plan before loading broad architecture docs.",
         "Slice implementation into one logical change per validation cycle.",
         "Prefer the smallest repo-grounded context that explains current behavior.",
@@ -276,14 +367,30 @@
       "id": "prsi-operations",
       "title": "PRSI Operations",
       "summary": "Bounded context for pessimistic recursive self-improvement loops, gates, and artifacts.",
-      "tags": ["prsi", "recursive", "optimizer", "policy", "artifacts", "budget"],
-      "objective_patterns": ["prsi", "recursive self improvement", "optimizer", "improvement loop", "budget-aware", "quarantine", "approval rubric"],
+      "tags": [
+        "prsi",
+        "recursive",
+        "optimizer",
+        "policy",
+        "artifacts",
+        "budget"
+      ],
+      "objective_patterns": [
+        "prsi",
+        "recursive self improvement",
+        "optimizer",
+        "improvement loop",
+        "budget-aware",
+        "quarantine",
+        "approval rubric"
+      ],
       "use_when": [
         "working on PRSI orchestration, gates, or artifacts",
         "changing the self-improvement control plane",
         "validating PRSI policy, budget, or quarantine logic"
       ],
       "rules": [
+        "Search-first: read the live queue before acting. cat /var/lib/nixos-ai-stack/prsi/action-queue.json | python3 -m json.tool. Then read scripts/automation/prsi-orchestrator.py for schema. Never guess queue contents.",
         "Keep PRSI changes pessimistic: gated, bounded, and artifact-backed.",
         "Prefer policy/config/schema changes over hidden behavior in code.",
         "Validate budget, approval, and quarantine behavior before widening automation.",
@@ -320,8 +427,22 @@
       "id": "harness-first",
       "title": "Harness-First Workflow",
       "summary": "Compact context for tasks that should start with planner/hints/workflow surfaces instead of direct ad hoc execution.",
-      "tags": ["harness", "workflow", "hints", "planner", "delegation"],
-      "objective_patterns": ["harness", "workflow", "planner", "hints", "delegate", "orchestrate", "capability discovery"],
+      "tags": [
+        "harness",
+        "workflow",
+        "hints",
+        "planner",
+        "delegation"
+      ],
+      "objective_patterns": [
+        "harness",
+        "workflow",
+        "planner",
+        "hints",
+        "delegate",
+        "orchestrate",
+        "capability discovery"
+      ],
       "use_when": [
         "the task is complex enough to benefit from hints and workflow selection",
         "you want the minimal harness-first contract",
@@ -360,8 +481,22 @@
       "id": "capability-gap",
       "title": "Capability Gap",
       "summary": "Guidance for missing tools, workflows, skills, and command-not-found failures.",
-      "tags": ["capability", "tooling", "missing-tool", "workflow", "skill", "bootstrap"],
-      "objective_patterns": ["missing tool", "command not found", "not available", "missing workflow", "missing skill", "tool gap"],
+      "tags": [
+        "capability",
+        "tooling",
+        "missing-tool",
+        "workflow",
+        "skill",
+        "bootstrap"
+      ],
+      "objective_patterns": [
+        "missing tool",
+        "command not found",
+        "not available",
+        "missing workflow",
+        "missing skill",
+        "tool gap"
+      ],
       "use_when": [
         "a requested tool is not installed or not on PATH",
         "a workflow or skill reference is missing",
@@ -396,8 +531,21 @@
       "id": "token-discipline",
       "title": "Token Discipline",
       "summary": "Rules for keeping context cost low without starving the task of needed signal.",
-      "tags": ["token", "context", "efficiency", "progressive-disclosure"],
-      "objective_patterns": ["token", "context", "onboarding", "brief", "primer", "progressive", "efficiency"],
+      "tags": [
+        "token",
+        "context",
+        "efficiency",
+        "progressive-disclosure"
+      ],
+      "objective_patterns": [
+        "token",
+        "context",
+        "onboarding",
+        "brief",
+        "primer",
+        "progressive",
+        "efficiency"
+      ],
       "use_when": [
         "you are tuning onboarding or agent behavior",
         "the task risks context bloat",
@@ -444,8 +592,24 @@
       "id": "context-offload",
       "title": "Context Offload",
       "summary": "Harness-native pattern for long-running work that keeps remote prompts lean by storing, recalling, and compacting context locally.",
-      "tags": ["context", "memory", "offload", "compaction", "history", "harness"],
-      "objective_patterns": ["offload", "memory", "history", "compact", "compaction", "long-running", "context window", "prompt cache"],
+      "tags": [
+        "context",
+        "memory",
+        "offload",
+        "compaction",
+        "history",
+        "harness"
+      ],
+      "objective_patterns": [
+        "offload",
+        "memory",
+        "history",
+        "compact",
+        "compaction",
+        "long-running",
+        "context window",
+        "prompt cache"
+      ],
       "use_when": [
         "the task will span many turns or phases",
         "remote context windows or token spend are becoming the bottleneck",

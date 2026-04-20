@@ -31,6 +31,23 @@ Canonical full policy: `docs/AGENTS.md`
 - Always run as `delegator + reviewer`: split work into small tasks, assign owner, and review with evidence gate.
 - Token-efficiency default: orchestrator should keep direct execution minimal and delegate eligible slices to sub-agents.
 
+### Search-First Rule (Non-Negotiable — All Tasks)
+**Before answering any question about project files, services, or code structure — search the codebase first.**
+- Use `grep -r "<keyword>" <path> --include="*.py" -l` to locate files.
+- Use `find <dir> -name "*<pattern>*"` to find files by name.
+- **Never respond with "I see the project structure, what would you like to do?" — that is a failure mode.** Execute the search, read the results, then act.
+- Key entry points for common task types:
+  - PRSI / self-improvement: `scripts/automation/prsi-orchestrator.py`, `/var/lib/nixos-ai-stack/prsi/action-queue.json`
+  - AI stack / MCP: `ai-stack/mcp-servers/hybrid-coordinator/server.py`, `nix/modules/services/`
+  - Dashboard: `dashboard/backend/api/routes/`, `dashboard/public/dashboard.html`
+  - NixOS config: `nix/modules/`, `nix/hosts/hyperd/`, `nix/modules/core/options.nix` (port SSOT)
+
+**When delegating to sub-agents (qwen/codex), always use `aq-delegate`:**
+```bash
+aq-delegate --auto-approve qwen "<task>"   # injects project context + search-first mandate
+aq-delegate codex "<task>"                 # bare qwen/codex call is a known failure mode
+```
+
 ### Harness-First Workflow (Mandatory — All Tasks)
 The locally hosted AI harness is the **primary interface** for all agent operations. Do not skip it.
 
