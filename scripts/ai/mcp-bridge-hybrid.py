@@ -377,6 +377,112 @@ TOOLS = [
         },
     },
     {
+        "name": "augment_query",
+        "description": (
+            "Augment a query with additional context from the AI harness (codebase patterns, "
+            "prior solutions, semantic context). Use before issuing a hybrid_search to "
+            "improve retrieval quality."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The query to augment"},
+                "context": {"type": "object", "description": "Optional extra context key/values"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "qa_check",
+        "description": (
+            "Run a QA health check against the AI stack. Returns service status, "
+            "reachability of AIDB/Qdrant/Redis/hybrid-coordinator, and any failing checks."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "phase": {"type": "integer", "description": "QA phase to run (0=all services, 1=data stores)", "default": 0},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "hints_feedback",
+        "description": (
+            "Submit feedback on a hint (accepted/rejected). Helps the harness learn which "
+            "hints are useful. Call after acting on (or ignoring) a hint."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "hint_id":  {"type": "string", "description": "The hint ID returned by get_hints"},
+                "accepted": {"type": "boolean", "description": "True if the hint was acted on"},
+                "comment":  {"type": "string", "description": "Optional free-text feedback"},
+            },
+            "required": ["hint_id", "accepted"],
+        },
+    },
+    {
+        "name": "coordinator_status",
+        "description": (
+            "Get the AI coordinator status: active lessons, routing decisions, "
+            "capability coverage, and performance metrics."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "coordinator_lessons",
+        "description": (
+            "List lessons learned by the AI coordinator — patterns extracted from "
+            "past successes/failures that guide future routing and tool selection."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max lessons to return", "default": 10},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "web_fetch",
+        "description": (
+            "Fetch a URL via the AI harness research layer. Returns page content "
+            "suitable for in-context use. Use for documentation lookups, issue trackers, "
+            "or any URL-based research the local agent needs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url":       {"type": "string", "description": "URL to fetch"},
+                "max_chars": {"type": "integer", "description": "Max chars to return", "default": 4000},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "workflow_orchestrate",
+        "description": (
+            "Start a full agentic workflow orchestration session on the harness. "
+            "The harness plans, executes, and validates a multi-step task autonomously. "
+            "Returns a session_id for polling status."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query":          {"type": "string", "description": "Task description"},
+                "safety_mode":    {"type": "string", "enum": ["plan-readonly", "execute-mutating"], "default": "plan-readonly"},
+                "token_limit":    {"type": "integer", "default": 8000},
+                "tool_call_limit":{"type": "integer", "default": 40},
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "list_sops",
         "description": (
             "List available SOP (Standard Operating Procedure) templates. "
@@ -596,6 +702,54 @@ def _call_tool(name: str, args: dict) -> str:
             "query": args.get("query", ""),
             "limit": args.get("limit", 5),
         }, AIDB_KEY)
+        return _format_result(r)
+
+    if name == "augment_query":
+        r = _post(f"{HYBRID_URL}/augment_query", {
+            "query":   args.get("query", ""),
+            "context": args.get("context", {}),
+        }, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "qa_check":
+        phase = int(args.get("phase", 0))
+        r = _post(f"{HYBRID_URL}/qa/check", {"phase": phase}, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "hints_feedback":
+        r = _post(f"{HYBRID_URL}/hints/feedback", {
+            "hint_id":  args.get("hint_id", ""),
+            "accepted": bool(args.get("accepted", False)),
+            "comment":  args.get("comment", ""),
+        }, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "coordinator_status":
+        r = _get(f"{HYBRID_URL}/control/ai-coordinator/status", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "coordinator_lessons":
+        limit = int(args.get("limit", 10))
+        r = _get(f"{HYBRID_URL}/control/ai-coordinator/lessons?limit={limit}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "web_fetch":
+        r = _post(f"{HYBRID_URL}/research/web/fetch", {
+            "url":       args.get("url", ""),
+            "max_chars": int(args.get("max_chars", 4000)),
+        }, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "workflow_orchestrate":
+        query = args.get("query", "")
+        intent_contract = _default_intent_contract(query)
+        r = _post(f"{HYBRID_URL}/workflow/orchestrate", {
+            "query":           query,
+            "safety_mode":     args.get("safety_mode", "plan-readonly"),
+            "token_limit":     int(args.get("token_limit", 8000)),
+            "tool_call_limit": int(args.get("tool_call_limit", 40)),
+            "intent_contract": intent_contract,
+        }, HYBRID_KEY)
         return _format_result(r)
 
     if name == "list_sops":

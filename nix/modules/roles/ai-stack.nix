@@ -245,6 +245,107 @@ let
       (pkgs.writeShellScriptBin "aq-prompt-eval" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-prompt-eval" "$@"
       '')
+      # --- Context & onboarding ---
+      (pkgs.writeShellScriptBin "aq-context-bootstrap" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-bootstrap" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-context-card" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-card" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-context-manage" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-manage" "$@"
+      '')
+      # --- Runtime diagnosis & remediation ---
+      (pkgs.writeShellScriptBin "aq-runtime-diagnose" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-runtime-diagnose" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-runtime-plan" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-runtime-plan" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-runtime-act" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-runtime-act" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-runtime-remediate" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-runtime-remediate" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-llama-debug" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-llama-debug" "$@"
+      '')
+      # --- Capability management ---
+      (pkgs.writeShellScriptBin "aq-capability-gap" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-gap" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-plan" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-plan" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-remediate" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-remediate" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-promote" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-promote" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-stub" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-stub" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-catalog-append" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-catalog-append" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-patch-prep" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-patch-prep" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-capability-patch-apply" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-patch-apply" "$@"
+      '')
+      # --- Knowledge & indexing ---
+      (pkgs.writeShellScriptBin "aq-index" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-index" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-gap-import" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-import" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-gap-auto-remediate" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate" "$@"
+      '')
+      # --- Cache & RAG ---
+      (pkgs.writeShellScriptBin "aq-cache-warm" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-cache-warm" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-cache-prewarm" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-cache-prewarm" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-rag-prewarm" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-rag-prewarm" "$@"
+      '')
+      # --- Autonomous & self-improvement ---
+      (pkgs.writeShellScriptBin "aq-autonomous-improve" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-autonomous-improve" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-meta-optimize" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-meta-optimize" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-system-act" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-system-act" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-autoresearch" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-autoresearch" "$@"
+      '')
+      # --- Workflow & collaboration ---
+      (pkgs.writeShellScriptBin "aq-workflow" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-workflow" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-collaborate" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-collaborate" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-federated-learning" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-federated-learning" "$@"
+      '')
+      # --- Monitoring & feedback ---
+      (pkgs.writeShellScriptBin "aq-llm-monitor" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-llm-monitor" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-rate" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-rate" "$@"
+      '')
     ];
   };
 
@@ -1358,19 +1459,67 @@ in {
           ai_stack_tools() {
             cat <<'TOOLS'
           Available AI Stack Tools:
-            aqd              - Main workflow CLI wrapper (aqd workflows list)
+            --- Session & onboarding ---
+            aqd              - Main workflow CLI (aqd workflows list)
             aq-prime         - Progressive disclosure agent onboarding
-            aq-hints         - Ranked AI workflow hints
-            aq-report        - AI stack health and metrics
-            aq-qa            - AI stack QA workflow
-            aq-memory        - Agent memory recall and storage
-            aq-gaps          - Knowledge gap analysis
-            aq-patterns      - Pattern usage and discovery
-            aq-optimizer     - Self-optimization loop
-            aq-prompt-eval   - Prompt quality evaluation
-            project-init     - Initialize new AI-enabled projects
+            aq-context-bootstrap - Recommend minimal context for a task
+            aq-context-card  - Progressive-disclosure context cards
+            aq-context-manage - Context lifecycle management
             workflow-primer  - Read-only session priming
             workflow-brownfield - Existing project improvement
+            project-init     - Initialize new AI-enabled projects
+
+            --- Hints & search ---
+            aq-hints         - Ranked AI workflow hints
+            aq-index         - Vector indexing CLI
+            aq-patterns      - Pattern discovery and analysis
+            aq-autoresearch  - Auto-research optimization experiments
+
+            --- Capability management ---
+            aq-capability-gap       - Classify missing tools/workflows/skills
+            aq-capability-plan      - Select next actions from gap analysis
+            aq-capability-remediate - Execute capability gap actions
+            aq-capability-promote   - Surface promotion guidance for repeated gaps
+            aq-capability-stub      - Generate starter catalog entry for unknown capability
+            aq-capability-catalog-append - Append validated capability catalog entries
+            aq-capability-patch-prep    - Prepare bounded patch artifacts
+            aq-capability-patch-apply   - Apply bounded capability patches
+
+            --- Runtime diagnosis ---
+            aq-runtime-diagnose  - Generic service/runtime diagnosis
+            aq-runtime-plan      - Multi-preset runtime incident planner
+            aq-runtime-act       - Plan + select recommended runtime action
+            aq-runtime-remediate - Execute next actions from runtime plan
+            aq-llama-debug       - llama.cpp runtime diagnosis wrapper
+
+            --- Knowledge & gaps ---
+            aq-gaps          - Knowledge gap analysis
+            aq-gap-import    - Auto-import knowledge for recurring gaps
+            aq-gap-auto-remediate - Auto-remediate top knowledge gaps
+
+            --- Cache & RAG ---
+            aq-cache-warm    - Proactive cache warming
+            aq-cache-prewarm - Bounded report-driven RAG prewarm
+            aq-rag-prewarm   - Bounded local RAG prewarm
+
+            --- Autonomous & self-improvement ---
+            aq-optimizer         - Self-optimization loop
+            aq-autonomous-improve - Autonomous improvement CLI
+            aq-meta-optimize     - Meta-optimization tooling
+            aq-system-act        - Unified bounded entrypoint (gaps+runtime)
+
+            --- Workflow & collaboration ---
+            aq-workflow      - YAML workflow management CLI
+            aq-collaborate   - Multi-agent collaboration
+            aq-federated-learning - Federated learning tooling
+
+            --- Reporting & feedback ---
+            aq-report        - AI stack health and metrics digest
+            aq-qa            - AI stack QA workflow
+            aq-prompt-eval   - Prompt quality evaluation
+            aq-memory        - Agent memory recall and storage
+            aq-rate          - Rate an AI response from the terminal
+            aq-llm-monitor   - LLM monitoring
             harness-rpc      - Node.js harness RPC bridge
 
           HTTP Endpoints:
