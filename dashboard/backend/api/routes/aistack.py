@@ -91,13 +91,17 @@ _CRITICAL_UNITS: frozenset = frozenset({
 
 # Global aiohttp session (reused across requests)
 _http_session: Optional[aiohttp.ClientSession] = None
+_http_session_lock: Optional[asyncio.Lock] = None
 
 
 async def get_http_session() -> aiohttp.ClientSession:
-    """Get or create the global HTTP session"""
-    global _http_session
-    if _http_session is None or _http_session.closed:
-        _http_session = aiohttp.ClientSession(timeout=REQUEST_TIMEOUT)
+    """Get or create the global HTTP session (lock-protected to avoid duplicate creation)."""
+    global _http_session, _http_session_lock
+    if _http_session_lock is None:
+        _http_session_lock = asyncio.Lock()
+    async with _http_session_lock:
+        if _http_session is None or _http_session.closed:
+            _http_session = aiohttp.ClientSession(timeout=REQUEST_TIMEOUT)
     return _http_session
 
 
@@ -718,14 +722,13 @@ async def _http_health_probe(url: str) -> tuple[bool, Optional[str]]:
     with any 2xx status code.
     """
     try:
-        # Use a dedicated short-timeout session so we never block on the
-        # shared REQUEST_TIMEOUT session.
-        timeout = _HEALTH_PROBE_TIMEOUT
-        async with aiohttp.ClientSession(timeout=timeout) as sess:
-            async with sess.get(url) as resp:
-                if 200 <= resp.status < 300:
-                    return True, None
-                return False, f"http_{resp.status}"
+        # Reuse the global session (avoids creating a new TCP connector per probe)
+        # but override the per-request timeout to the lightweight probe budget.
+        sess = await get_http_session()
+        async with sess.get(url, timeout=_HEALTH_PROBE_TIMEOUT) as resp:
+            if 200 <= resp.status < 300:
+                return True, None
+            return False, f"http_{resp.status}"
     except asyncio.TimeoutError:
         return False, "timeout"
     except aiohttp.ClientConnectorError as exc:
@@ -2811,17 +2814,29 @@ async def get_security_audit() -> Dict[str, Any]:
     return payload
 
 
+# ---------------------------------------------------------------------------
+# Shared helper for orchestration GET requests (avoids per-request session)
+# ---------------------------------------------------------------------------
+
+async def _hybrid_get(path: str) -> Any:
+    """GET from hybrid-coordinator using the global session.
+
+    Raises ``aiohttp.ClientResponseError`` on non-2xx (caller converts to HTTPException).
+    """
+    session = await get_http_session()
+    url = f"{SERVICES['hybrid']}{path}"
+    async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+        resp.raise_for_status()
+        return await resp.json()
+
+
 # Orchestration Visibility Endpoints (Operator Dashboard)
 @router.get("/orchestration/sessions")
 async def get_orchestration_sessions() -> Dict[str, Any]:
     """Get list of recent workflow orchestration sessions.
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/workflow/sessions"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        return await _hybrid_get("/workflow/sessions")
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch orchestration sessions: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2841,13 +2856,13 @@ async def get_orchestration_team(session_id: str) -> Dict[str, Any]:
     - Historical bias values (review_score, selection_score, runtime_score)
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/team/detailed"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                if resp.status == 404:
-                    raise HTTPException(status_code=404, detail="Session not found")
-                resp.raise_for_status()
-                return await resp.json()
+        sess = await get_http_session()
+        url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/team/detailed"
+        async with sess.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+            if resp.status == 404:
+                raise HTTPException(status_code=404, detail="Session not found")
+            resp.raise_for_status()
+            return await resp.json()
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch team details: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2868,13 +2883,13 @@ async def get_arbiter_history(session_id: str, limit: int = 10) -> Dict[str, Any
     - current_status: Current arbiter state
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/arbiter/history?limit={limit}"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                if resp.status == 404:
-                    raise HTTPException(status_code=404, detail="Session not found")
-                resp.raise_for_status()
-                return await resp.json()
+        sess = await get_http_session()
+        url = f"{SERVICES['hybrid']}/workflow/run/{session_id}/arbiter/history?limit={limit}"
+        async with sess.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+            if resp.status == 404:
+                raise HTTPException(status_code=404, detail="Session not found")
+            resp.raise_for_status()
+            return await resp.json()
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch arbiter history: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2894,11 +2909,7 @@ async def get_evaluation_trends() -> Dict[str, Any]:
     - Aggregated summary statistics
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/evaluations/trends"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        return await _hybrid_get("/control/ai-coordinator/evaluations/trends")
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch evaluation trends: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2921,11 +2932,7 @@ async def get_model_optimization_readiness() -> Dict[str, Any]:
     - Model distillation and compression
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/readiness"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        return await _hybrid_get("/control/ai-coordinator/model-optimization/readiness")
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch model optimization readiness: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2945,11 +2952,7 @@ async def get_training_data_stats() -> Dict[str, Any]:
     - Available data files
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/training-data/stats"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        return await _hybrid_get("/control/ai-coordinator/model-optimization/training-data/stats")
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch training data stats: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2968,11 +2971,11 @@ async def flush_training_data() -> Dict[str, Any]:
     - Updated stats
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/training-data/flush"
-            async with session.post(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        sess = await get_http_session()
+        url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/training-data/flush"
+        async with sess.post(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+            resp.raise_for_status()
+            return await resp.json()
     except aiohttp.ClientError as e:
         logger.error(f"Failed to flush training data: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -2991,13 +2994,10 @@ async def get_finetuning_jobs(status: Optional[str] = None) -> Dict[str, Any]:
     Returns list of fine-tuning jobs with status and metrics.
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/finetuning/jobs"
-            if status:
-                url += f"?status={status}"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        path = "/control/ai-coordinator/model-optimization/finetuning/jobs"
+        if status:
+            path += f"?status={status}"
+        return await _hybrid_get(path)
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch finetuning jobs: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -3020,16 +3020,16 @@ async def create_finetuning_job(request: CreateFinetuningJobRequest) -> Dict[str
     Creates a job record for tracking. Actual training requires system deployment.
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/finetuning/jobs"
-            async with session.post(
-                url,
-                headers=_hybrid_auth_headers(),
-                json=request.dict(),
-                timeout=REQUEST_TIMEOUT
-            ) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        sess = await get_http_session()
+        url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/finetuning/jobs"
+        async with sess.post(
+            url,
+            headers=_hybrid_auth_headers(),
+            json=request.dict(),
+            timeout=REQUEST_TIMEOUT,
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.json()
     except aiohttp.ClientError as e:
         logger.error(f"Failed to create finetuning job: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -3048,13 +3048,10 @@ async def get_model_performance(model_id: Optional[str] = None) -> Dict[str, Any
     Returns performance metrics, trends, and quality scores.
     """
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{SERVICES['hybrid']}/control/ai-coordinator/model-optimization/performance"
-            if model_id:
-                url += f"?model_id={model_id}"
-            async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        path = "/control/ai-coordinator/model-optimization/performance"
+        if model_id:
+            path += f"?model_id={model_id}"
+        return await _hybrid_get(path)
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch model performance: {e}")
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
@@ -3074,23 +3071,23 @@ def _advanced_phase_readiness_status(readiness: Dict[str, Any], key: str) -> str
 async def get_advanced_runtime_summary() -> Dict[str, Any]:
     """Aggregate advanced Phase 6-10 control-plane state for dashboard visibility."""
     try:
-        async with aiohttp.ClientSession() as session:
-            headers = _hybrid_auth_headers()
+        sess = await get_http_session()
+        headers = _hybrid_auth_headers()
 
-            async def fetch_json(path: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
-                url = f"{SERVICES['hybrid']}{path}"
-                async with session.get(url, headers=headers, timeout=REQUEST_TIMEOUT) as resp:
-                    resp.raise_for_status()
-                    payload = await resp.json()
-                    return payload if isinstance(payload, dict) else dict(fallback)
+        async def fetch_json(path: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
+            url = f"{SERVICES['hybrid']}{path}"
+            async with sess.get(url, headers=headers, timeout=REQUEST_TIMEOUT) as resp:
+                resp.raise_for_status()
+                payload = await resp.json()
+                return payload if isinstance(payload, dict) else dict(fallback)
 
-            readiness_payload, quality_profiles, context_tier_stats, capability_gap_stats, learning_stats = await asyncio.gather(
-                fetch_json("/control/ai-coordinator/advanced-features/readiness", {"readiness": {}}),
-                fetch_json("/control/ai-coordinator/advanced-features/offloading/quality-profiles", {"profiles": []}),
-                fetch_json("/control/ai-coordinator/advanced-features/context/tier-stats", {}),
-                fetch_json("/control/ai-coordinator/advanced-features/capability-gap/stats", {}),
-                fetch_json("/control/ai-coordinator/advanced-features/learning/stats", {}),
-            )
+        readiness_payload, quality_profiles, context_tier_stats, capability_gap_stats, learning_stats = await asyncio.gather(
+            fetch_json("/control/ai-coordinator/advanced-features/readiness", {"readiness": {}}),
+            fetch_json("/control/ai-coordinator/advanced-features/offloading/quality-profiles", {"profiles": []}),
+            fetch_json("/control/ai-coordinator/advanced-features/context/tier-stats", {}),
+            fetch_json("/control/ai-coordinator/advanced-features/capability-gap/stats", {}),
+            fetch_json("/control/ai-coordinator/advanced-features/learning/stats", {}),
+        )
     except aiohttp.ClientError as e:
         logger.error("Failed to fetch advanced runtime summary: %s", e)
         raise HTTPException(status_code=502, detail=f"Hybrid coordinator error: {e}")
