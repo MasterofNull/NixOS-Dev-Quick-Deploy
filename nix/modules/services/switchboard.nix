@@ -387,16 +387,44 @@ let
     if LOCAL_AGENTS_PATH and LOCAL_AGENTS_PATH not in sys.path:
         sys.path.insert(0, LOCAL_AGENTS_PATH)
 
+    HINTS_TIMEOUT_S = float(os.environ.get("SWB_HINTS_TIMEOUT_S", "1.5"))
+
     app = FastAPI(title="AI Switchboard")
     _local_sem = None
     _remote_sem = None
+    # Shared httpx clients — avoids a new TCP connection per chat/completions
+    # request.  Clients are initialised on startup and closed on shutdown.
+    # • _hints_client    — hint injection (hybrid-coordinator /hints)
+    # • _embed_client    — semantic scoring (embedding server /v1/embeddings)
+    # • _local_health_client — local upstream /health probes
+    _hints_client: httpx.AsyncClient | None = None
+    _embed_client: httpx.AsyncClient | None = None
+    _local_health_client: httpx.AsyncClient | None = None
 
     @app.on_event("startup")
     async def _startup():
         import asyncio
-        global _local_sem, _remote_sem
+        global _local_sem, _remote_sem, _hints_client, _embed_client, _local_health_client
         _local_sem = asyncio.Semaphore(LOCAL_CONCURRENCY)
         _remote_sem = asyncio.Semaphore(REMOTE_CONCURRENCY)
+        _hints_client = httpx.AsyncClient(timeout=HINTS_TIMEOUT_S)
+        _embed_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=2.0, read=SEMANTIC_EMBED_TIMEOUT_S, write=2.0, pool=2.0)
+        )
+        _local_health_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)
+        )
+
+    @app.on_event("shutdown")
+    async def _shutdown():
+        global _hints_client, _embed_client, _local_health_client
+        for client in (_hints_client, _embed_client, _local_health_client):
+            if client is not None:
+                try:
+                    await client.aclose()
+                except Exception:
+                    pass
+        _hints_client = _embed_client = _local_health_client = None
 
     @app.get("/health")
     async def health():
@@ -842,7 +870,7 @@ let
         return [query_text] + pieces[:3]
 
     async def _semantic_scores(candidates: list, query_text: str) -> dict[int, float]:
-        if not SEMANTIC_PRUNE_ENABLED or not EMBEDDING_URL or not query_text.strip():
+        if not SEMANTIC_PRUNE_ENABLED or not EMBEDDING_URL or not query_text.strip() or _embed_client is None:
             return {}
         try:
             import math
@@ -850,9 +878,7 @@ let
                 "model": "semantic-rerank",
                 "input": [query_text] + [_extract_content_text(m)[:2000] for m in candidates],
             }
-            timeout = httpx.Timeout(connect=2.0, read=SEMANTIC_EMBED_TIMEOUT_S, write=2.0, pool=2.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload)
+            resp = await _embed_client.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload)
             if resp.status_code != 200:
                 return {}
             data = resp.json()
@@ -1119,7 +1145,7 @@ let
 
     async def _get_hints(query: str):
         """Return a hints string from hybrid-coordinator, or None on any failure."""
-        if not HYBRID_URL or not query.strip():
+        if not HYBRID_URL or not query.strip() or _hints_client is None:
             return None
         try:
             from urllib.parse import urlencode
@@ -1127,8 +1153,7 @@ let
             hdrs = {}
             if HYBRID_API_KEY:
                 hdrs["X-API-Key"] = HYBRID_API_KEY
-            async with httpx.AsyncClient(timeout=2.0) as hclient:
-                resp = await hclient.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
+            resp = await _hints_client.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
             if resp.status_code != 200:
                 return None
             data = resp.json()
@@ -1173,8 +1198,11 @@ let
 
     async def _probe_local_upstream_state() -> dict | None:
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)) as client:
-                resp = await client.get(f"{LLAMA_URL}/health")
+            if _local_health_client is not None:
+                resp = await _local_health_client.get(f"{LLAMA_URL}/health")
+            else:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)) as client:
+                    resp = await client.get(f"{LLAMA_URL}/health")
             if _is_local_loading_response(resp.status_code, resp.content):
                 return _loading_error_payload(
                     {

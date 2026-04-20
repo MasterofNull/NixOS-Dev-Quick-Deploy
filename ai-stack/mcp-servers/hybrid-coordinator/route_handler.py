@@ -165,6 +165,12 @@ class BackendSelectionCache:
 _backend_selection_cache = BackendSelectionCache()
 
 
+@lru_cache(maxsize=4096)
+def _hash_query_for_cache(query: str) -> str:
+    """Cache the SHA-256 hex-digest so repeated identical queries pay only once."""
+    return hashlib.sha256(query.encode()).hexdigest()
+
+
 @lru_cache(maxsize=1000)
 def _cached_backend_key(query_hash: str, score_str: str, prefer_local: bool) -> str:
     """Generate a deterministic cache key for backend selection."""
@@ -176,8 +182,8 @@ def _get_cached_backend_selection(query: str, score: float, prefer_local: bool) 
     global _backend_selection_cache
     _backend_selection_cache.access_count += 1
 
-    query_hash = hashlib.sha256(query.encode()).hexdigest()
-    score_str = f"{int(score*100)}"
+    query_hash = _hash_query_for_cache(query)
+    score_str = f"{int(score*10)}"
     cache_key = _cached_backend_key(query_hash, score_str, prefer_local)
 
     if cache_key in _backend_selection_cache.cache:
@@ -194,8 +200,8 @@ def _cache_backend_selection(query: str, score: float, prefer_local: bool, backe
     if len(_backend_selection_cache.cache) >= _backend_selection_cache.max_size:
         _backend_selection_cache.cache.popitem(last=False)
 
-    query_hash = hashlib.sha256(query.encode()).hexdigest()
-    score_str = f"{int(score*100)}"
+    query_hash = _hash_query_for_cache(query)
+    score_str = f"{int(score*10)}"
     cache_key = _cached_backend_key(query_hash, score_str, prefer_local)
     _backend_selection_cache.cache[cache_key] = backend
 

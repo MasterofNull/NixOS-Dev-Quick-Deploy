@@ -30,6 +30,8 @@ class QueryExpander:
 
     def __init__(self, llama_cpp_url: str = "http://localhost:8080"):
         self.llama_cpp_url = llama_cpp_url
+        # Shared client for LLM expansion — avoids a new TCP connection per call.
+        self._http_client: httpx.AsyncClient = httpx.AsyncClient(timeout=30.0)
 
         # Common technical synonyms
         self.synonym_map = {
@@ -126,35 +128,34 @@ Return ONLY the alternative queries, one per line, without numbering or explanat
 """
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.llama_cpp_url}/v1/completions",
-                    json={
-                        "prompt": prompt,
-                        "max_tokens": 150,
-                        "temperature": 0.7,
-                        "stop": ["\n\n"]
-                    }
-                )
+            response = await self._http_client.post(
+                f"{self.llama_cpp_url}/v1/completions",
+                json={
+                    "prompt": prompt,
+                    "max_tokens": 150,
+                    "temperature": 0.7,
+                    "stop": ["\n\n"]
+                }
+            )
 
-                if response.status_code == 200:
-                    result = response.json()
-                    text = result.get("choices", [{}])[0].get("text", "")
+            if response.status_code != 200:
+                logger.warning(f"LLM expansion failed: {response.status_code}")
+                return [query]
 
-                    # Parse expansions
-                    expansions = [query]  # Original first
-                    for line in text.strip().split('\n'):
-                        line = line.strip()
-                        if line and not line.startswith('#'):
-                            # Remove numbering if present
-                            cleaned = line.lstrip('0123456789.-) ')
-                            if cleaned:
-                                expansions.append(cleaned)
+            result = response.json()
+            text = result.get("choices", [{}])[0].get("text", "")
 
-                    return expansions[:max_expansions]
-                else:
-                    logger.warning(f"LLM expansion failed: {response.status_code}")
-                    return [query]
+            # Parse expansions
+            expansions = [query]  # Original first
+            for line in text.strip().split('\n'):
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    # Remove numbering if present
+                    cleaned = line.lstrip('0123456789.-) ')
+                    if cleaned:
+                        expansions.append(cleaned)
+
+            return expansions[:max_expansions]
 
         except Exception as e:
             logger.error(f"Error in LLM expansion: {e}")

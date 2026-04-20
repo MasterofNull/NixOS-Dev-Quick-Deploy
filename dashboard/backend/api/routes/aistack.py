@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from ..config import service_endpoints
@@ -31,6 +32,11 @@ _POSTGRES_QUERY_OK_GAUGE: float = 0.0
 _AQ_REPORT_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": {}}
 _AI_METRICS_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _QDRANT_POINTS_CACHE: Dict[str, Any] = {"ts": 0.0, "collections": tuple(), "payload": {}}
+# Postgres probe result cache — avoids a fresh asyncpg connection on every
+# metrics cycle.  TTL is 25 s (longer than the 10 s metrics cache so the
+# cached probe result is still valid when the metrics cache next expires).
+_POSTGRES_PROBE_CACHE: Dict[str, Any] = {"ts": 0.0, "result": None}
+_POSTGRES_PROBE_CACHE_TTL_S: float = 25.0
 _MODEL_INVENTORY_WARNINGS: set[tuple[str, str]] = set()
 
 # Service endpoints (declarative + env-overridable)
@@ -299,6 +305,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
+@lru_cache(maxsize=64)
 def _script_path(name: str) -> Path:
     candidates = [
         _repo_root() / "scripts" / name,
@@ -779,8 +786,13 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
 
     The DSN is read from the ``AIDB_DB_URL`` environment variable.  If not
     set, a default is constructed from ``SERVICE_HOST`` / ``POSTGRES_PORT``.
-    A fresh connection is opened and closed per call — no persistent pool.
+    Results are cached for ``_POSTGRES_PROBE_CACHE_TTL_S`` seconds so that
+    repeated metrics polls do not each open a fresh TCP connection.
     """
+    now = time.monotonic()
+    if _POSTGRES_PROBE_CACHE["result"] is not None and (now - _POSTGRES_PROBE_CACHE["ts"]) < _POSTGRES_PROBE_CACHE_TTL_S:
+        return _POSTGRES_PROBE_CACHE["result"]
+
     if not _ASYNCPG_AVAILABLE:
         return {
             "postgres_query_ok": False,
@@ -796,25 +808,25 @@ async def _postgres_select1_probe() -> Dict[str, Any]:
     dsn = _inject_password_into_dsn(dsn, pg_user)
     t0 = time.monotonic()
     conn = None
+    result: Dict[str, Any]
     try:
         conn = await asyncio.wait_for(asyncpg.connect(dsn), timeout=3.0)
         await asyncio.wait_for(conn.fetchval("SELECT 1"), timeout=2.0)
         latency_ms = round((time.monotonic() - t0) * 1000, 2)
-        return {"postgres_query_ok": True, "postgres_latency_ms": latency_ms, "postgres_error": None}
+        result = {"postgres_query_ok": True, "postgres_latency_ms": latency_ms, "postgres_error": None}
     except asyncio.TimeoutError:
-        return {"postgres_query_ok": False, "postgres_latency_ms": None, "postgres_error": "timeout"}
+        result = {"postgres_query_ok": False, "postgres_latency_ms": None, "postgres_error": "timeout"}
     except Exception as exc:  # noqa: BLE001
-        return {
-            "postgres_query_ok": False,
-            "postgres_latency_ms": None,
-            "postgres_error": str(exc),
-        }
+        result = {"postgres_query_ok": False, "postgres_latency_ms": None, "postgres_error": str(exc)}
     finally:
         if conn is not None:
             try:
                 await conn.close()
             except Exception:  # noqa: BLE001
                 pass
+    _POSTGRES_PROBE_CACHE["ts"] = time.monotonic()
+    _POSTGRES_PROBE_CACHE["result"] = result
+    return result
 
 
 async def _redis_runtime_probe() -> Dict[str, Any]:
