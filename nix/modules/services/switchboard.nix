@@ -38,6 +38,7 @@ let
     Keep responses concise and execution-focused.
     Do not request full repository policy text unless user asks.
     Prefer minimal context and recent turns for quick chat stability.
+    CRITICAL: Never repeat the same intention or self-correction twice. If you planned to act, act — do not restate the plan.
   '';
   remoteDefaultCard = ''
     [profile-card:remote-default]
@@ -74,6 +75,7 @@ let
     [profile-card:local-tool-calling]
     Use the local tool-calling lane for bounded built-in tool execution on the local host.
     Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
+    CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
   '';
   embeddingLocalCard = ''
     [profile-card:embedding-local]
@@ -85,6 +87,7 @@ let
     Use compact reasoning and progressive disclosure.
     Prefer hybrid retrieval (semantic + lexical), then ask for clarification on low confidence.
     Do not expand full policy docs unless explicitly requested.
+    CRITICAL: Act immediately on each turn. Never repeat a stated intention more than once — if you said you will do something, do it now.
   '';
   switchboardProfileDefaults = {
     default = {
@@ -323,6 +326,10 @@ let
     DECOMPOSE_ENABLED = os.environ.get("SWB_DECOMPOSE_ENABLED", "1").strip() not in ("0", "false", "no")
     ANSWERABILITY_GATE_ENABLED = os.environ.get("SWB_ANSWERABILITY_GATE_ENABLED", "1").strip() not in ("0", "false", "no")
     ANSWERABILITY_MIN_SCORE = float(os.environ.get("SWB_ANSWERABILITY_MIN_SCORE", "0.28"))
+    LOOP_DETECT_ENABLED = os.environ.get("SWB_LOOP_DETECT_ENABLED", "1").strip() not in ("0", "false", "no")
+    LOOP_DETECT_WINDOW = max(2, int(os.environ.get("SWB_LOOP_DETECT_WINDOW", "3")))
+    LOOP_DETECT_THRESHOLD = float(os.environ.get("SWB_LOOP_DETECT_THRESHOLD", "0.72"))
+    LOOP_DETECT_LOG_PATH = os.environ.get("SWB_LOOP_DETECT_LOG_PATH", "/var/log/nixos-ai-stack/loop-events.jsonl").strip()
     EMBEDDED_ASSIST_MAX_INPUT_TOKENS = max(256, int(os.environ.get("SWB_EMBEDDED_ASSIST_MAX_INPUT_TOKENS", "1800")))
     EMBEDDED_ASSIST_MAX_MESSAGES = max(2, int(os.environ.get("SWB_EMBEDDED_ASSIST_MAX_MESSAGES", "10")))
     CARD_CONTINUE_LOCAL = ${builtins.toJSON continueLocalCard}
@@ -962,6 +969,62 @@ let
         selected = [m for idx, m in enumerate(candidates) if idx in top]
         return (selected if selected else non_system_messages), best_score, f"{mode}-rrf"
 
+    def _text_similarity(a: str, b: str) -> float:
+        """Token-overlap Jaccard ratio — lightweight, no extra deps."""
+        ta = set(_tokenize(a.lower()))
+        tb = set(_tokenize(b.lower()))
+        if not ta or not tb:
+            return 0.0
+        return len(ta & tb) / max(len(ta), len(tb))
+
+    def _detect_loop(messages: list) -> str | None:
+        """
+        Scan the last LOOP_DETECT_WINDOW assistant turns for near-duplicate
+        content (token-overlap >= LOOP_DETECT_THRESHOLD).  Returns a
+        break-loop system message string when a loop is detected, else None.
+        """
+        if not LOOP_DETECT_ENABLED or not isinstance(messages, list):
+            return None
+        assistant_texts = [
+            _extract_content_text(m)
+            for m in messages
+            if isinstance(m, dict) and m.get("role") == "assistant"
+        ]
+        window = assistant_texts[-LOOP_DETECT_WINDOW:]
+        if len(window) < 2:
+            return None
+        pairs = [
+            (window[i], window[j])
+            for i in range(len(window))
+            for j in range(i + 1, len(window))
+        ]
+        avg_sim = sum(_text_similarity(a, b) for a, b in pairs) / len(pairs)
+        if avg_sim >= LOOP_DETECT_THRESHOLD:
+            return (
+                "[loop-guard] Repetitive output detected — your last "
+                f"{len(window)} responses are {avg_sim:.0%} similar. "
+                "STOP planning. Act immediately: issue your tool call or "
+                "provide a direct answer RIGHT NOW. "
+                "Do NOT restate intentions or add self-correction comments."
+            )
+        return None
+
+    def _log_loop_event(profile: str, similarity: float, window_size: int) -> None:
+        """Append a structured loop-event record to the log file (best-effort)."""
+        try:
+            import json as _json
+            record = _json.dumps({
+                "event": "loop_detected",
+                "ts": time.time(),
+                "profile": profile,
+                "similarity": round(similarity, 3),
+                "window": window_size,
+            })
+            with open(LOOP_DETECT_LOG_PATH, "a", encoding="utf-8") as lf:
+                lf.write(record + "\n")
+        except Exception:
+            pass
+
     async def _trim_profile_messages(messages: list, profile: str) -> tuple[list, bool, int, int, str, float, bool]:
         if not isinstance(messages, list):
             return messages, False, 0, 0, "none", 1.0, False
@@ -1201,6 +1264,17 @@ let
                 msgs = payload.get("messages")
                 if isinstance(msgs, list):
                     with_card, card_applied = _ensure_profile_card(msgs, profile)
+                    # --- Loop guard: detect repetitive assistant turns and inject a break ---
+                    loop_msg = _detect_loop(with_card)
+                    if loop_msg:
+                        already_injected = any(
+                            isinstance(m, dict) and "[loop-guard]" in str(m.get("content", ""))
+                            for m in with_card
+                        )
+                        if not already_injected:
+                            with_card = [{"role": "system", "content": loop_msg}] + list(with_card)
+                            _log_loop_event(profile, LOOP_DETECT_THRESHOLD, LOOP_DETECT_WINDOW)
+                    # --- end loop guard ---
                     trimmed, did_trim, before, after, policy, relevance, gate_applied = await _trim_profile_messages(with_card, profile)
                     payload["messages"] = trimmed
                     input_trimmed = did_trim
