@@ -263,45 +263,82 @@ curl 'http://localhost:8002/documents?search=mcp-server&category=tools&project=N
 **See Full Inventory:** `docs/SKILLS-AND-MCP-INVENTORY.md`
 **See Security Tools:** `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md`
 
-### 🤖 Local AI Agent Integration
+### 🤖 Local AI Harness Integration
 
-**Offload Parallel Tasks to Local Agents:**
+The locally hosted AI harness (switchboard :8085, hybrid-coordinator :8003, AIDB :8002)
+is the **primary interface** for all agent operations. Do not skip it.
 
-When you have multiple independent tasks, delegate to local AI models:
-
+**Session bootstrap — run first on every session:**
 ```bash
-# Check available local models
-curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:8080/v1/models  # vLLM
-
-# Example: Offload research task to local agent
-# Use the ai-service-management skill or direct API calls
+aq-prime                                       # progressive disclosure onboarding
+aq-session-zero                                # verify harness health + load endpoints
+aq-context-bootstrap --task "<objective>"      # minimal context + workflow entrypoint
+aq-hints "<task summary>"                      # ranked workflow hints
 ```
 
-**When to Use Local Agents:**
-- Parallel research tasks (multiple GitHub searches)
-- Code analysis on multiple files
-- Documentation generation
-- Data extraction/transformation
-- Testing and validation
+**Capability & diagnosis — run when something is missing or broken:**
+```bash
+aq-capability-gap --query "<task>"    # classify missing tools/skills
+aq-runtime-diagnose                   # service/package/runtime diagnosis loop
+aq-system-act --query "<task>"        # unified: capability gap + runtime in one call
+aq-qa 0                               # 29-check phase-0 service health
+```
 
-**Benefits:**
-- Reduces your token consumption
-- Speeds up execution (parallel processing)
-- Cost optimization (use free local models)
+**Full CLI catalogue (all in system PATH after nixos-rebuild):**
 
-**Integration Points:**
-- AIDB has query API for knowledge retrieval
-- Local models accessible via OpenAI-compatible API
-- Skills can be invoked by any agent
+| Category | Commands |
+|----------|----------|
+| Onboarding | `aq-prime`, `aq-context-bootstrap`, `aq-context-card`, `aq-context-manage` |
+| Hints & search | `aq-hints`, `aq-index`, `aq-patterns`, `aq-autoresearch` |
+| Capability mgmt | `aq-capability-gap`, `aq-capability-plan`, `aq-capability-remediate`, `aq-capability-promote`, `aq-capability-stub`, `aq-capability-catalog-append`, `aq-capability-patch-prep`, `aq-capability-patch-apply` |
+| Runtime diagnosis | `aq-runtime-diagnose`, `aq-runtime-plan`, `aq-runtime-act`, `aq-runtime-remediate`, `aq-llama-debug` |
+| Unified entry | `aq-system-act --query "<task>"` |
+| Knowledge | `aq-gaps`, `aq-gap-import`, `aq-gap-auto-remediate`, `aq-index` |
+| Cache / RAG | `aq-cache-warm`, `aq-cache-prewarm`, `aq-rag-prewarm` |
+| Self-improvement | `aq-autonomous-improve`, `aq-optimizer`, `aq-meta-optimize` |
+| Workflow | `aq-workflow`, `aq-collaborate`, `aq-federated-learning`, `aqd workflows list` |
+| Reporting | `aq-report`, `aq-qa`, `aq-prompt-eval`, `aq-rate`, `aq-llm-monitor` |
+| Memory | `aq-memory search/add/list/agent-diary` |
+
+**MCP bridge tools** (available to Claude Code via `hybrid-coordinator-bridge`):
+
+| Tool | Purpose |
+|------|---------|
+| `hybrid_search` | Semantic + lexical search |
+| `get_hints` | Ranked workflow hints |
+| `augment_query` | Pre-search context augmentation |
+| `qa_check` | AI stack QA health check |
+| `hints_feedback` | Submit hint accepted/rejected signal |
+| `coordinator_status` | AI coordinator status + lessons |
+| `coordinator_lessons` | Lessons learned by coordinator |
+| `web_fetch` | Fetch URL via harness research layer |
+| `workflow_orchestrate` | Start full agentic orchestration |
+| `store_memory` / `recall_memory` | Persistent agent memory |
+| `query_aidb` | AIDB knowledge query |
+| `workflow_plan` | Create execution plan |
+| `workflow_run_start` | Start persisted run with intent contract |
+| `primer_workflow` | Read-only session priming |
+| `brownfield_workflow` | Existing-project improvement |
+| `tooling_manifest` | Discover tools for a task type |
+| `list_sops` / `execute_sop` | SOP workflow templates |
+
+**Switchboard profiles** — select with `x-ai-profile:` header:
+`continue-local` · `embedded-assist` · `local-tool-calling` · `remote-coding` ·
+`remote-reasoning` · `remote-free` · `remote-tool-calling` · `default`
+→ Full decision matrix: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
+
+**Local inference endpoint:** `http://localhost:8085/v1` (OpenAI-compatible, routes to llama.cpp :8080)
+**Embedding endpoint:** `http://localhost:8085/v1/embeddings` (profile: `embedding-local`)
 
 ### 📚 Essential Documentation Files
 
 **Read These First:**
-1. `AGENTS.md` (this file) - Agent onboarding and standards
-2. `docs/SKILLS-AND-MCP-INVENTORY.md` - Complete tool inventory
-3. `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` - Agent-agnostic architecture
-4. `docs/AVAILABLE_TOOLS.md` - Tool reference guide
+1. `AGENTS.md` (root compact) - Baseline policy + harness CLI reference
+2. `docs/agent-guides/01-QUICK-START.md` - Step-by-step session bootstrap
+3. `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` - Switchboard profile selection matrix
+4. `docs/SKILLS-AND-MCP-INVENTORY.md` - Complete tool inventory
+5. `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` - Agent-agnostic architecture
+6. `docs/AVAILABLE_TOOLS.md` - Tool reference guide
 5. `README.md` - Project overview
 
 **Query AIDB for Any Topic:**
