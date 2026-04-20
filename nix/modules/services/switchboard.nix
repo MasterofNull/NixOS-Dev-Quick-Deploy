@@ -47,6 +47,22 @@ let
     Do not request full repository policy text unless user asks.
     Prefer minimal context and recent turns for quick chat stability.
     CRITICAL: Never repeat the same intention or self-correction twice. If you planned to act, act — do not restate the plan.
+    SEARCH-FIRST: Before answering about any file, service, or code — grep/find first. Never say "what would you like to do?" — search, read, act.
+    PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json | python3 scripts/automation/prsi-orchestrator.py list
+    Health: aq-qa 0 | aq-report | journalctl -u ai-*.service -n 20
+    Harness: aq-hints "<task>" | aq-context-bootstrap --task "<task>" | aq-system-act --query "<task>"
+    Key dirs: scripts/ai/ (aq-*), scripts/automation/ (prsi-orchestrator.py), ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
+  '';
+  localAgentCard = ''
+    [profile-card:local-agent]
+    You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. MANDATORY: Search the codebase BEFORE answering. Use grep/find to locate files. Never say "what would you like to do?" — search, read, act.
+    PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
+    PRSI cmds: python3 scripts/automation/prsi-orchestrator.py [sync --since=1d | list | list --risk high | verify --id <id> --by <name> | approve --id <id> --by <name> | execute --limit 1]
+    Harness CLIs: aq-qa 0 (health) | aq-report (digest) | aq-hints "<task>" | aq-system-act --query "<task>" | aq-context-bootstrap --task "<task>" | aq-runtime-diagnose
+    Health cmds: systemctl status ai-*.service | journalctl -u ai-*.service -n 30 | curl -sf http://127.0.0.1:8003/health
+    Key dirs: scripts/ai/ (aq-*), scripts/automation/ (prsi-orchestrator.py), ai-stack/mcp-servers/ (coordinator:8003 aidb:8002 ralph:8004), nix/modules/ (NixOS), dashboard/ (API+frontend), config/ (runtime-prsi-policy.json)
+    Ports: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006 grafana:3000 prom:9090 owui:3001
+    Commit: git add <files> && git commit -m "type(scope): msg\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
   '';
   remoteDefaultCard = ''
     [profile-card:remote-default]
@@ -123,6 +139,18 @@ let
       embeddingsOnly = false;
       toolExecution = null;
       profileCard = continueLocalCard;
+    };
+    "local-agent" = {
+      forceProvider = "local";
+      injectHints = true;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = 3500;
+      maxMessages = 16;
+      maxOutputTokens = 1024;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = localAgentCard;
     };
     "remote-default" = {
       forceProvider = "remote";
@@ -350,6 +378,7 @@ let
     CARD_REMOTE_REASONING = ${builtins.toJSON remoteReasoningCard}
     CARD_REMOTE_TOOL_CALLING = ${builtins.toJSON remoteToolCallingCard}
     CARD_LOCAL_TOOL_CALLING = ${builtins.toJSON localToolCallingCard}
+    CARD_LOCAL_AGENT = ${builtins.toJSON localAgentCard}
     CARD_EMBEDDING_LOCAL = ${builtins.toJSON embeddingLocalCard}
     _LOCAL_TOOL_REGISTRY = None
     REMOTE_MODEL_ALIASES_ENABLED = os.environ.get("SWB_REMOTE_MODEL_ALIASES_ENABLED", "1").strip() not in ("0", "false", "no")

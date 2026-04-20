@@ -6,19 +6,20 @@ or by targeting the right endpoint in your client config.
 
 ## Profile Matrix
 
-| Profile | Provider | Max Input | Max Output | Max Msgs | Use When |
-|---------|----------|-----------|------------|----------|----------|
-| `default` | auto | unlimited | 768 tok | unlimited | General-purpose; hints injected |
-| `continue-local` | local | 1200 tok | 768 tok | 8 | Continue.dev inline chat; quick edits |
-| `embedded-assist` | local | 1800 tok | 512 tok | 10 | Embedded agent assist; low-token queries |
-| `local-tool-calling` | local | 2400 tok | 768 tok | 12 | Built-in tool execution on local host |
-| `embedding-local` | local (embed) | 512 tok | 256 tok | 8 | Embeddings only — `/v1/embeddings` |
-| `remote-default` | remote | 3500 tok | 1024 tok | 16 | General remote tasks; remote fallback |
-| `remote-free` | remote | 3500 tok | 1200 tok | 16 | Low-cost probing; discovery queries |
-| `remote-coding` | remote (coder) | 5000 tok | 1800 tok | 20 | Implementation, refactoring, code review |
-| `remote-reasoning` | remote (large) | 6000 tok | 1800 tok | 20 | Architecture, policy, tradeoff analysis |
-| `remote-tool-calling` | remote (coder) | 3500 tok | 900 tok | 16 | Strict tool-schema execution via remote |
-| `remote-gemini` | remote (free) | 3500 tok | 1400 tok | 16 | Discovery, planning, synthesis front-door |
+| Profile | Provider | Max Input | Max Output | Max Msgs | Hints | Use When |
+|---------|----------|-----------|------------|----------|-------|----------|
+| `default` | auto | unlimited | 768 tok | unlimited | yes | General-purpose; hints injected |
+| `continue-local` | local | 1200 tok | 768 tok | 8 | no | Continue.dev inline chat; quick edits |
+| `local-agent` | local | 3500 tok | 1024 tok | 16 | **yes** | Agent tasks: PRSI, harness ops, fixes |
+| `embedded-assist` | local | 1800 tok | 512 tok | 10 | no | Embedded agent assist; low-token queries |
+| `local-tool-calling` | local | 2400 tok | 768 tok | 12 | no | Built-in tool execution on local host |
+| `embedding-local` | local (embed) | 512 tok | 256 tok | 8 | no | Embeddings only — `/v1/embeddings` |
+| `remote-default` | remote | 3500 tok | 1024 tok | 16 | no | General remote tasks; remote fallback |
+| `remote-free` | remote | 3500 tok | 1200 tok | 16 | no | Low-cost probing; discovery queries |
+| `remote-coding` | remote (coder) | 5000 tok | 1800 tok | 20 | no | Implementation, refactoring, code review |
+| `remote-reasoning` | remote (large) | 6000 tok | 1800 tok | 20 | no | Architecture, policy, tradeoff analysis |
+| `remote-tool-calling` | remote (coder) | 3500 tok | 900 tok | 16 | no | Strict tool-schema execution via remote |
+| `remote-gemini` | remote (free) | 3500 tok | 1400 tok | 16 | no | Discovery, planning, synthesis front-door |
 
 ## Decision Tree
 
@@ -32,6 +33,7 @@ Need tool execution?
 
 Local inference (CPU only, fast, private)?
   ├─ Continue.dev / IDE chat → continue-local
+  ├─ Agent tasks (PRSI, harness, fixes) → local-agent  ← HINTS INJECTED
   ├─ Short bounded Q&A       → embedded-assist
   └─ Everything else         → default (hints injected)
 
@@ -67,6 +69,36 @@ startup.
 qwen --provider openai --base-url http://localhost:8085/v1 \
   -H "x-ai-profile: local-tool-calling" "..."
 ```
+
+## local-agent Profile (Agent Tasks on Local Model)
+
+Use `local-agent` when you want the local model to perform real agent work — PRSI triage,
+harness diagnostics, system fixes, or multi-step operations — rather than quick IDE chat.
+
+**What it provides that `continue-local` does not:**
+- `injectHints = true` — ranked workflow hints from hybrid-coordinator are prepended to every turn
+- 3× higher token budget (3500 input, 16 messages) — room for context + multi-turn reasoning
+- Rich profile card with PRSI queue path, orchestrator commands, all service ports, harness CLIs
+
+**Select in Continue.dev:** switch to the **"Local Agent (Harness-Aware)"** model in the IDE model
+picker before sending any harness/PRSI/diagnostic request.
+
+**HTTP header:**
+```
+x-ai-profile: local-agent
+```
+
+**Key card content injected:**
+```
+PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
+PRSI cmds: python3 scripts/automation/prsi-orchestrator.py [sync|list|verify|approve|execute]
+Health: aq-qa 0 | aq-report | journalctl -u ai-*.service -n 30
+Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
+```
+
+> Note: until the next `nixos-rebuild switch`, `local-agent` falls back to the `default`
+> profile (which also has `injectHints = true` and the PRSI queue path). Functional
+> from the first Continue.dev reload — no rebuild required for basic operation.
 
 ## Budget & Fallback
 
