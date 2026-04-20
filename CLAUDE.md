@@ -103,6 +103,18 @@ repo/
 | Documentation | qwen | Review + edit |
 | Security audit | claude (sub) | Analyze + approve |
 
+**MANDATORY: Always use `aq-delegate` when calling sub-agents.**
+Direct `qwen -y "task"` without context injection is a known failure mode — the agent responds generically instead of searching and executing. The wrapper injects project file paths, a search-first mandate, and PRSI/dashboard/Nix context based on keyword detection.
+
+```bash
+# CORRECT — always use aq-delegate
+aq-delegate --auto-approve qwen "find the PRSI queue and fix issues"
+aq-delegate codex "implement the dashboard health endpoint"
+
+# WRONG — bare invocation, no project context
+qwen -y "find the PRSI queue and fix issues"   # ← sub-agent goes blind
+```
+
 **Sub-agent guardrails:**
 - No re-scoping beyond assigned slice
 - No cross-agent routing

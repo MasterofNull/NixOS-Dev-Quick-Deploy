@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# aq-delegate — inject project context before delegating tasks to sub-agents.
+#
+# Prevents the failure mode where sub-agents (qwen/codex) respond with
+# "I see the project structure, what would you like to do?" instead of
+# actually searching and executing the task.
+#
+# Usage:
+#   aq-delegate qwen "find the PRSI queue and fix issues"
+#   aq-delegate codex "implement the switchboard health endpoint"
+#   aq-delegate --dry-run qwen "check service health"
+#   aq-delegate --auto-approve qwen "fix the dashboard route"
+#
+# Flags:
+#   --dry-run         Print enriched prompt without calling agent
+#   --auto-approve    Pass -y flag to qwen (auto-approve all actions)
+#   --no-context      Skip project context injection (bare task)
+#   --format=<fmt>    Prompt format: prefixed (default), system, piped
+#
+# Exit codes:
+#   0  Agent invocation succeeded (or dry-run)
+#   1  Usage error
+#   2  Agent not found in PATH
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+DRY_RUN=0
+AUTO_APPROVE=0
+NO_CONTEXT=0
+FORMAT="prefixed"
+AGENT=""
+TASK=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)   DRY_RUN=1 ; shift ;;
+    --auto-approve) AUTO_APPROVE=1 ; shift ;;
+    --no-context) NO_CONTEXT=1 ; shift ;;
+    --format=*)  FORMAT="${1#--format=}" ; shift ;;
+    -*)
+      printf 'aq-delegate: unknown flag %s\n' "$1" >&2
+      exit 1
+      ;;
+    *)
+      if [[ -z "$AGENT" ]]; then
+        AGENT="$1"
+      elif [[ -z "$TASK" ]]; then
+        TASK="$1"
+      else
+        printf 'aq-delegate: unexpected argument: %s\n' "$1" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$AGENT" || -z "$TASK" ]]; then
+  cat >&2 <<'EOF'
+Usage: aq-delegate <agent> "<task>" [flags]
+  agent: qwen | codex | gemini | pi
+  flags: --dry-run  --auto-approve  --no-context  --format=prefixed|system|piped
+
+Example:
+  aq-delegate qwen "find the PRSI queue and fix issues"
+  aq-delegate --auto-approve codex "implement dashboard health endpoint"
+EOF
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Validate agent binary
+# ---------------------------------------------------------------------------
+AGENT_BIN=""
+for candidate in "$HOME/.npm-global/bin/${AGENT}" "${AGENT}"; do
+  if command -v "$candidate" &>/dev/null; then
+    AGENT_BIN="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$AGENT_BIN" && "$DRY_RUN" -eq 0 ]]; then
+  printf 'aq-delegate: agent "%s" not found in PATH\n' "$AGENT" >&2
+  printf '  Tried: ~/.npm-global/bin/%s and PATH\n' "$AGENT" >&2
+  exit 2
+fi
+
+# ---------------------------------------------------------------------------
+# Skip context injection if requested
+# ---------------------------------------------------------------------------
+if [[ "$NO_CONTEXT" -eq 1 ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '%s\n' "$TASK"
+    exit 0
+  fi
+  _invoke_agent "$AGENT_BIN" "$AGENT" "$TASK" "$AUTO_APPROVE"
+  exit $?
+fi
+
+# ---------------------------------------------------------------------------
+# Build project context prefix
+# ---------------------------------------------------------------------------
+TASK_LOWER="${TASK,,}"
+
+# Always-included: repo root + mandatory search rule
+CONTEXT_BLOCKS=()
+CONTEXT_BLOCKS+=("REPO_ROOT: ${REPO_ROOT}")
+CONTEXT_BLOCKS+=("MANDATORY RULE: Search the codebase BEFORE responding. Use grep/find to locate files. Do NOT describe what you will do — execute the search, read the results, then act. Never respond with 'I see the project structure, what would you like to do?' — that is a failure.")
+
+# Project structure overview (always brief)
+CONTEXT_BLOCKS+=("KEY DIRECTORIES:
+  scripts/ai/         — harness CLI tools (aq-*)
+  scripts/automation/ — automation scripts (prsi-orchestrator.py, run-*)
+  ai-stack/           — MCP servers, hybrid-coordinator, local-agents
+  nix/modules/        — NixOS module definitions
+  nix/hosts/          — host-specific Nix configs
+  dashboard/          — command center dashboard (backend/ + public/)
+  config/             — runtime config, PRSI policy, context cards
+  data/               — artifacts, canary data, PRSI state artifacts")
+
+# PRSI context
+if echo "$TASK_LOWER" | grep -qE 'prsi|self.?improv|queue|action.queue|loop|pessimistic|recursive'; then
+  CONTEXT_BLOCKS+=("PRSI CONTEXT:
+  Orchestrator:     scripts/automation/prsi-orchestrator.py
+  Runtime queue:    /var/lib/nixos-ai-stack/prsi/action-queue.json
+  Runtime state:    /var/lib/nixos-ai-stack/prsi/runtime-state.json
+  Actions log:      /var/log/nixos-ai-stack/prsi-actions.jsonl
+  Policy file:      ${REPO_ROOT}/config/runtime-prsi-policy.json
+  Discovery latest: ${REPO_ROOT}/data/prsi-artifacts/prsi-discovery-latest.json
+  Run orchestrator: python3 scripts/automation/prsi-orchestrator.py --list
+  Read queue:       cat /var/lib/nixos-ai-stack/prsi/action-queue.json | python3 -m json.tool
+  SEARCH FIRST: grep -r 'prsi' scripts/ --include='*.py' -l")
+fi
+
+# Dashboard context
+if echo "$TASK_LOWER" | grep -qE 'dashboard|command.center|frontend|backend|api|route|aistack'; then
+  CONTEXT_BLOCKS+=("DASHBOARD CONTEXT:
+  Backend:    dashboard/backend/api/routes/
+  Frontend:   dashboard/public/ (served from dashboard.html, 5064 lines)
+  Main entry: dashboard/backend/main.py
+  AI metrics: dashboard/backend/api/routes/aistack.py
+  SEARCH FIRST: grep -rn 'def.*route\|@app\.' dashboard/backend/ --include='*.py'")
+fi
+
+# AI stack / MCP context
+if echo "$TASK_LOWER" | grep -qE 'hybrid.coordinator|mcp|switchboard|coordinator|server\.py|route_handler|hints|query|health'; then
+  CONTEXT_BLOCKS+=("AI STACK CONTEXT:
+  Hybrid coordinator: ai-stack/mcp-servers/hybrid-coordinator/server.py (~779 lines)
+  Route handler:      ai-stack/mcp-servers/hybrid-coordinator/route_handler.py
+  Switchboard:        nix/modules/services/switchboard.nix
+  MCP servers:        nix/modules/services/mcp-servers.nix
+  Service ports:      redis=6379 pg=5432 qdrant=6333 llama=8080 embed=8081
+                      aidb=8002 hybrid=8003 ralph=8004 switchboard=8085
+                      openwebui=3001 grafana=3000 prometheus=9090
+  SEARCH FIRST: grep -n 'def.*endpoint\|@app\.\|async def' ai-stack/mcp-servers/hybrid-coordinator/server.py | head -40")
+fi
+
+# NixOS / Nix context
+if echo "$TASK_LOWER" | grep -qE 'nix|nixos|module|systemd|service|option|flake|rebuild|deploy'; then
+  CONTEXT_BLOCKS+=("NIX CONTEXT:
+  Options (SSOT): nix/modules/core/options.nix (ports, service URLs)
+  AI stack module: nix/modules/roles/ai-stack.nix
+  Host config:    nix/hosts/hyperd/
+  Pre-deploy gate: scripts/governance/tier0-validation-gate.sh --pre-deploy
+  NEVER hardcode port numbers — always reference options.nix
+  SEARCH FIRST: grep -rn 'services\.\|options\.' nix/modules/ --include='*.nix' | grep '<keyword>'")
+fi
+
+# Health / service checks
+if echo "$TASK_LOWER" | grep -qE 'health|check|service|running|status|fix|repair|error|fail'; then
+  CONTEXT_BLOCKS+=("HEALTH CHECK CONTEXT:
+  Quick phase-0 check: aq-qa 0
+  Full health digest:  aq-report
+  Service diagnose:    aq-runtime-diagnose
+  MCP health script:   scripts/check-mcp-health.sh
+  Harness hints:       aq-hints \"<task>\"")
+fi
+
+# Memory / prior context
+if echo "$TASK_LOWER" | grep -qE 'memory|prior|previous|recall|context|session|history'; then
+  CONTEXT_BLOCKS+=("MEMORY CONTEXT:
+  Search memory:  aq-memory search \"<query>\" --project ai-stack --limit 5
+  Import to AIDB: scripts/import-agent-instructions.sh
+  Session primer: aqd workflows primer --target . --objective \"<task>\"")
+fi
+
+# ---------------------------------------------------------------------------
+# Assemble the enriched prompt
+# ---------------------------------------------------------------------------
+CONTEXT_SEPARATOR="
+---"
+
+CONTEXT_BLOCK=""
+for block in "${CONTEXT_BLOCKS[@]}"; do
+  CONTEXT_BLOCK="${CONTEXT_BLOCK}${CONTEXT_SEPARATOR}
+${block}"
+done
+
+case "$FORMAT" in
+  prefixed)
+    # Prepend context block before the task — clearest for CLI agents
+    ENRICHED_TASK="[AGENT TASK CONTEXT]${CONTEXT_BLOCK}
+---
+
+TASK: ${TASK}"
+    ;;
+  system)
+    # System + user split — for agents that support separate system prompts
+    ENRICHED_TASK="SYSTEM: You are a NixOS AI harness agent. Read file contents and search the codebase before answering. Never say 'I see the structure, what would you like to do?'${CONTEXT_BLOCK}
+
+USER: ${TASK}"
+    ;;
+  piped)
+    # Compact one-liner for pipe usage
+    ENRICHED_TASK="${TASK} [context: repo=${REPO_ROOT}, search-first=mandatory, key-dirs=scripts/automation|ai-stack|nix/modules|dashboard]"
+    ;;
+  *)
+    printf 'aq-delegate: unknown format "%s"\n' "$FORMAT" >&2
+    exit 1
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Dry-run: just print the enriched prompt
+# ---------------------------------------------------------------------------
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  printf '%s\n' "$ENRICHED_TASK"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Invoke agent
+# ---------------------------------------------------------------------------
+_invoke() {
+  local bin="$1" agent="$2" task="$3" auto_approve="$4"
+  case "$agent" in
+    qwen)
+      if [[ "$auto_approve" -eq 1 ]]; then
+        "$bin" -y "$task"
+      else
+        "$bin" "$task"
+      fi
+      ;;
+    codex)
+      if [[ "$auto_approve" -eq 1 ]]; then
+        "$bin" --approval-mode full-auto "$task"
+      else
+        "$bin" "$task"
+      fi
+      ;;
+    gemini)
+      "$bin" "$task"
+      ;;
+    pi)
+      if [[ "$auto_approve" -eq 1 ]]; then
+        "$bin" --yes "$task"
+      else
+        "$bin" "$task"
+      fi
+      ;;
+    *)
+      # Generic fallback: pass task as positional arg
+      "$bin" "$task"
+      ;;
+  esac
+}
+
+_invoke "$AGENT_BIN" "$AGENT" "$ENRICHED_TASK" "$AUTO_APPROVE"

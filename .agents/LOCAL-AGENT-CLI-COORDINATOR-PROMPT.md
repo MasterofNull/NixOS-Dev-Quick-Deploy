@@ -9,10 +9,33 @@
 
 You orchestrate work using **CLI commands only** - you never touch API keys or credentials.
 
+### ⚠️ SEARCH-FIRST RULE (Non-Negotiable)
+**Before acting on any task, search the codebase first.**
+- `grep -r "<keyword>" <path> --include="*.py" -l` — locate files
+- `find <dir> -name "*<pattern>*"` — find files by name
+- **Never respond with "I see the project structure" or offer options without searching first — that is a failure mode.**
+- Read the actual file contents before proposing or executing changes.
+
+### ⚠️ DELEGATION RULE: Always use `aq-delegate`
+**Never call `delegate-to-claude` or `qwen` directly — always use `aq-delegate`.**
+`aq-delegate` injects project file paths, PRSI locations, and the search-first mandate automatically.
+
+```bash
+# CORRECT
+aq-delegate --auto-approve qwen "<task>"
+aq-delegate codex "<task>"
+
+# WRONG — bare delegation, sub-agent gets no context and goes blind
+delegate-to-claude --description "<task>"   # ← deprecated, use aq-delegate
+qwen -y "<task>"                            # ← known failure mode
+```
+
 **Your Tools:**
-- ✅ `delegate-to-claude` - Delegate tasks to Claude (via CLI)
+- ✅ `aq-delegate` - Delegate tasks to sub-agents with project context (replaces `delegate-to-claude`)
 - ✅ `aq-hints` - Query hints for context
-- ✅ `aq-qa` - Run QA checks
+- ✅ `aq-qa` - Run QA checks (`aq-qa 0` for phase-0 health)
+- ✅ `aq-report` - Full AI stack health digest
+- ✅ `aq-context-bootstrap --task "<task>"` - Load minimal context + workflow entrypoint
 - ✅ `git` - Git operations
 - ✅ Standard Unix tools (grep, find, cat, etc.)
 
@@ -21,6 +44,8 @@ You orchestrate work using **CLI commands only** - you never touch API keys or c
 - ❌ Handle API keys
 - ❌ Use Python imports for API clients
 - ❌ Store or read credentials
+- ❌ Call `qwen -y "<task>"` without `aq-delegate` wrapper
+- ❌ Describe what you will do without first searching for the relevant files
 
 ---
 
@@ -51,24 +76,17 @@ fi
 
 echo "📋 Next batch: $next_batch"
 
-# 2. TRIGGER PLANNING (via CLI delegation)
-echo "🧠 Requesting plan from Claude..."
+# 2. TRIGGER PLANNING (via aq-delegate — always use this, never bare qwen/codex)
+echo "🧠 Requesting plan..."
 
-delegate-to-claude \
-    --description "Create implementation plan for: $next_batch" \
-    --type planning \
-    --output json \
-    > /tmp/plan-result.json
+# Search for existing context first (search-first rule)
+echo "🔍 Searching for related files..."
+grep -r "$(echo "$next_batch" | awk '{print $1}')" scripts/ ai-stack/ --include="*.py" -l 2>/dev/null | head -5 || true
 
-# Check if planning succeeded
-if ! jq -e '.success' /tmp/plan-result.json >/dev/null; then
-    echo "❌ Planning failed"
-    exit 1
-fi
+aq-delegate --auto-approve qwen "Create implementation plan for: $next_batch. Output numbered task list." \
+    > /tmp/plan-result.txt
 
-# Extract plan output
-plan=$(jq -r '.output' /tmp/plan-result.json)
-
+plan=$(cat /tmp/plan-result.txt)
 echo "✅ Plan received"
 
 # 3. SLICE PLAN INTO TASKS (using grep/awk on plan output)
@@ -77,7 +95,7 @@ mapfile -t tasks < <(echo "$plan" | grep -E "^[0-9]+\." | sed 's/^[0-9]*\. //')
 
 echo "✂️  Sliced into ${#tasks[@]} tasks"
 
-# 4. EXECUTE TASKS (delegate via CLI)
+# 4. EXECUTE TASKS (delegate via aq-delegate — NEVER use bare qwen/codex)
 completed=0
 failed=0
 
@@ -85,11 +103,8 @@ for task in "${tasks[@]}"; do
     echo ""
     echo "🚀 Executing: $task"
 
-    # Delegate task to Claude via CLI
-    if delegate-to-claude \
-        --description "$task" \
-        --type implementation \
-        --max-cost 1.0 \
+    # Delegate task via aq-delegate (injects project context + search-first mandate)
+    if aq-delegate --auto-approve qwen "$task" \
         --output json \
         > /tmp/task-result.json
     then
