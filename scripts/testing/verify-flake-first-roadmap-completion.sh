@@ -602,7 +602,7 @@ check_pattern "scripts/governance/tier0-validation-gate.sh" 'origin/main\.\.\.HE
 check_pattern "nix/pkgs/continue-cli.nix" 'stdenvNoCC\.mkDerivation' 'Continue CLI is packaged as a declarative wrapped runtime derivation'
 check_pattern "nix/pkgs/continue-cli.nix" 'makeWrapper .*node.*/bin/node' 'Continue CLI wrapper executes the bundled CLI with Node'
 check_absent_pattern "nix/pkgs/continue-cli.nix" 'npmDepsHash = null' 'Continue CLI derivation no longer uses a broken null npmDepsHash'
-check_pattern "nix/home/base.nix" '"__configVersion": "24\.0"' 'Continue config version tracks the current generated schema'
+check_pattern "nix/home/base.nix" '"__configVersion": "25\.0"' 'Continue config version tracks the current generated schema'
 check_pattern "nix/home/base.nix" 'continueContextLength' 'Continue config derives its context window from the declarative local model profile instead of a stale literal'
 check_pattern "nix/home/base.nix" '"name": "aq-hints"' 'Continue config restores the aq-hints HTTP context provider'
 check_pattern "scripts/ai/aq-qa" '0\.5\.2.*switchboard ingress with continue-local lane' 'aq-qa phase 0 documents switchboard ingress as the Continue config target'
