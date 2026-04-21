@@ -1685,7 +1685,7 @@ def _is_synthetic_gap(query_text: str) -> bool:
         return True
     # Ignore local probe/test prompts and command-like diagnostics that should
     # not become knowledge-import recommendations.
-    if text in {"test", "nix", "ping", "health"}:
+    if text in {"test", "nix", "ping", "health", "what is 2 plus 2?", "what is 2+2?", "2+2", "what is 2 plus 2"}:
         return True
     synthetic_prefixes = (
         "analysis only task ",
