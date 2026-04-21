@@ -680,7 +680,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_ACTIVE
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/model/status' 'Model status endpoint registered'
 check_pattern "nix/modules/services/monitoring.nix" 'model_reloads_total' 'Dashboard tracks model reloads'
 check_pattern "config/parity-scorecard.json" '"id": "model_management"' 'Parity scorecard tracks model management'
-check_pattern "scripts/testing/test-switchboard-continue-context-window.sh" 'X-AI-Profile: continue-local' 'Continue-local oversized-input regression smoke exists'
+check_pattern "scripts/testing/test-switchboard-continue-context-window.sh" 'maxInputTokens' 'Continue-local oversized-input trimming config is validated'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '"orchestration": orchestration' 'Delegated runtime responses include normalized orchestration metadata'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/delegation_feedback.py" '"handoff_requested": bool' 'Delegation feedback records coordinator handoff requests'
 check_pattern "scripts/ai/aq-report" 'handoff_by_requester_role' 'aq-report summarizes coordinator handoff frequency by requester role'
