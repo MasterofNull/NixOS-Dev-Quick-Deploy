@@ -45,17 +45,13 @@ let
     Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
     Harness: aq-qa 0 | aq-report | aq-hints "<task>" | aq-context-bootstrap --task "<task>"
   '';
+  # Compact card: ~50 tokens (~8 s prompt on Qwen3.6-35B w/ 12 GPU layers).
+  # Previous 874-char / ~218-token card added ~37 s of prompt-processing latency,
+  # causing smoke tests to time out on this hardware. Trim to essentials only.
   continueLocalCard = ''
     [profile-card:continue-local]
-    Keep responses concise and execution-focused.
-    Do not request full repository policy text unless user asks.
-    Prefer minimal context and recent turns for quick chat stability.
-    CRITICAL: Never repeat the same intention or self-correction twice. If you planned to act, act — do not restate the plan.
-    SEARCH-FIRST: Before answering about any file, service, or code — grep/find first. Never say "what would you like to do?" — search, read, act.
-    PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json | python3 scripts/automation/prsi-orchestrator.py list
-    Health: aq-qa 0 | aq-report | journalctl -u ai-*.service -n 20
-    Harness: aq-hints "<task>" | aq-context-bootstrap --task "<task>" | aq-system-act --query "<task>"
-    Key dirs: scripts/ai/ (aq-*), scripts/automation/ (prsi-orchestrator.py), ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
+    Concise. grep/find first — never browse blindly. Act, don't restate.
+    PRSI: /var/lib/nixos-ai-stack/prsi/action-queue.json | aq-hints "<q>" | aq-qa 0
   '';
   localAgentCard = ''
     [profile-card:local-agent]
