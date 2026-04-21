@@ -6283,6 +6283,84 @@ async def run_http_mode(port: int) -> None:
                     audit_metadata["backend"] = "local" if prefer_local else "remote"
             return web.json_response({"error": "route_search_failed", "detail": str(exc)}, status=500)
 
+    async def handle_orchestrate(request):
+        """Phase 0 Slice 0.2 — unified front-door routing endpoint.
+
+        POST /v1/orchestrate
+        {
+            "prompt":  "<query>",          # required
+            "route":   "Explore",          # optional route alias (case-insensitive)
+            "context": {},                 # optional, forwarded to /query
+            "options": {}                  # optional, forwarded to /query
+        }
+
+        Resolves the route alias to a harness profile, injects it into the
+        query context, and proxies to the existing /query handler.
+        Adds X-AI-Route-Alias and X-AI-Profile-Resolved response headers.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON body"}, status=400)
+
+        prompt = (data.get("prompt") or data.get("query") or "").strip()
+        if not prompt:
+            return web.json_response({"error": "'prompt' is required"}, status=400)
+
+        # Resolve route alias → harness profile
+        raw_route = str(data.get("route") or "default").strip()
+        try:
+            from route_aliases import resolve_route_alias as _resolve_alias
+            resolved_profile = _resolve_alias(raw_route)
+        except Exception:
+            resolved_profile = "default"
+
+        # Build forwarding payload for handle_query
+        context = data.get("context") if isinstance(data.get("context"), dict) else {}
+        context["routed_profile"] = resolved_profile
+        context["route_alias"] = raw_route
+
+        options = data.get("options") if isinstance(data.get("options"), dict) else {}
+        forwarded_payload = {
+            "prompt": prompt,
+            "context": context,
+            "generate_response": bool(options.get("generate_response", False)),
+            "prefer_local": bool(options.get("prefer_local", True)),
+            "mode": options.get("mode", "hybrid"),
+        }
+        if "limit" in options:
+            forwarded_payload["limit"] = options["limit"]
+
+        # Wrap as a minimal shim so handle_query can consume it
+        import json as _json_inner
+
+        class _ShimRequest:
+            def __init__(self, body: bytes, real_req):
+                self._body = body
+                self.headers = real_req.headers
+                self.match_info = real_req.match_info
+                self._audit: dict = {}
+
+            async def json(self):
+                return _json_inner.loads(self._body)
+
+            def __setitem__(self, key, val):
+                self._audit[key] = val
+
+            def __getitem__(self, key):
+                return self._audit[key]
+
+        shim = _ShimRequest(_json_inner.dumps(forwarded_payload).encode(), request)
+        resp = await handle_query(shim)
+
+        # Inject routing telemetry headers on success
+        try:
+            resp.headers["X-AI-Route-Alias"] = raw_route
+            resp.headers["X-AI-Profile-Resolved"] = resolved_profile
+        except Exception:
+            pass
+        return resp
+
     async def handle_tree_search(request):
         try:
             data = await request.json()
@@ -11376,6 +11454,7 @@ asyncio.run(run())
     http_app.router.add_get("/stats", handle_stats)
     http_app.router.add_post("/augment_query", handle_augment_query)
     http_app.router.add_post("/query", handle_query)
+    http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2
     http_app.router.add_post("/search/tree", handle_tree_search)
     http_app.router.add_post("/memory/store", handle_memory_store)
     http_app.router.add_post("/memory/recall", handle_memory_recall)
