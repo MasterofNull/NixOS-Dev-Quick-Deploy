@@ -15,6 +15,11 @@ ROUTE_HANDLER_PATH = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / 
 COORDINATOR_DIR = ROUTE_HANDLER_PATH.parent
 MCP_SERVERS_DIR = COORDINATOR_DIR.parent
 
+_TESTING_DIR = Path(__file__).parent
+if str(_TESTING_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTING_DIR))
+import _mock_config as _mc  # noqa: E402
+
 
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
@@ -32,7 +37,7 @@ def load_route_handler():
         "config",
         types.SimpleNamespace(
             Config=types.SimpleNamespace(
-                LLAMA_CPP_URL="http://127.0.0.1:8080",
+                LLAMA_CPP_URL=_mc.LLAMA_URL,
                 AI_AUTONOMY_MAX_RETRIEVAL_RESULTS=8,
                 AI_ROUTE_KEYWORD_POOL_DEFAULT=60,
                 AI_ROUTE_KEYWORD_POOL_COMPACT=24,

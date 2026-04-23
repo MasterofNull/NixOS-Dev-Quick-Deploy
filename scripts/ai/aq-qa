@@ -416,6 +416,34 @@ run_phase_0() {
   # 0.6 Flagship agent CLI surface basics
   _check "0.6.1" "flagship agent CLI help smokes" _flagship_cli_surface_smoke
   _check "0.6.2" "gemini CLI live-state health check" _gemini_cli_health_check
+
+  # 0.7 Front-door routing (Phase 0 Slice 0.2)
+  local _hk_07
+  _hk_07=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+  local orch_out
+  orch_out=$(curl -sf --max-time 10 \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${_hk_07}" \
+    -d '{"prompt":"what is nixos","route":"Explore"}' \
+    "${HYBRID_URL}/v1/orchestrate" 2>/dev/null || echo "err")
+  if [[ "$orch_out" != "err" ]] && \
+     python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' not in d else 1)" "$orch_out" 2>/dev/null; then
+    _pass "0.7.1" "/v1/orchestrate front-door smoke (route=Explore)"
+  else
+    _fail "0.7.1" "/v1/orchestrate front-door smoke" "out: ${orch_out:0:80}"
+  fi
+  local query_out
+  query_out=$(curl -sf --max-time 10 \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${_hk_07}" \
+    -d '{"query":"what is nixos","mode":"retrieval","prefer_local":true,"limit":1}' \
+    "${HYBRID_URL}/query" 2>/dev/null || echo "err")
+  if [[ "$query_out" != "err" ]] && \
+     python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d else 1)" "$query_out" 2>/dev/null; then
+    _pass "0.7.2" "hybrid /query retrieval smoke"
+  else
+    _fail "0.7.2" "hybrid /query retrieval smoke" "out: ${query_out:0:80}"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -635,11 +663,246 @@ PY
 }
 
 # ---------------------------------------------------------------------------
-# Stub phases (not yet automated)
+# Phase 4 — Context Engineering
 # ---------------------------------------------------------------------------
-run_phase_stub() {
-  local phase="$1"
-  _skip "P${phase}" "Phase ${phase} automated runner" "see docs/archive/root-docs/AI-STACK-QA-PLAN.md §Phase ${phase} — run manually"
+run_phase_4() {
+  # 4.1 aq-hints CLI
+  _check_output "4.1.1" "aq-hints responds to query" "." \
+    bash -c "\"${SCRIPT_DIR}/aq-hints\" --query 'nixos module help' 2>/dev/null | head -5"
+
+  # 4.2 Hybrid coordinator /hints endpoint
+  local _hk4
+  _hk4=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+  _check_output "4.2.1" "hybrid /hints returns hints for test query" "." \
+    bash -c "curl -sf -H 'X-API-Key: ${_hk4}' '${HYBRID_URL}/hints?q=test' 2>/dev/null"
+
+  # 4.3 Switchboard continue-local context trimming configured
+  local max_input
+  max_input=$(curl -sf --max-time 5 "${SWITCHBOARD_URL}/health" 2>/dev/null | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('profiles',{}).get('continue-local',{}).get('maxInputTokens',''))" 2>/dev/null || true)
+  if [[ -n "$max_input" && "$max_input" =~ ^[0-9]+$ && "$max_input" -lt 8192 ]]; then
+    _pass "4.3.1" "switchboard continue-local maxInputTokens=${max_input} (trimming active)"
+  else
+    _fail "4.3.1" "switchboard continue-local maxInputTokens configured" "got='$max_input'"
+  fi
+
+  # 4.4 Core agent policy files present
+  _check "4.4.1" "CLAUDE.md present and non-empty" test -s "${REPO_ROOT}/CLAUDE.md"
+  _check "4.4.2" "AGENTS.md present and non-empty" test -s "${REPO_ROOT}/AGENTS.md"
+}
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Security Hardening
+# ---------------------------------------------------------------------------
+run_phase_5() {
+  # 5.1 AppArmor enforcement mode
+  local aa_profile="/etc/apparmor.d/ai-llama-cpp"
+  if [[ -f "$aa_profile" ]]; then
+    local aa_mode
+    aa_mode=$(grep -o '(enforce)\|(complain)' /sys/kernel/security/apparmor/profiles 2>/dev/null | grep -c 'enforce' || echo 0)
+    if [[ "$aa_mode" -ge 1 ]]; then
+      _pass "5.1.1" "AppArmor has enforce-mode profiles active"
+    else
+      _skip "5.1.1" "AppArmor enforce mode" "no enforce-mode profiles (may need --sudo)"
+    fi
+  else
+    _skip "5.1.1" "AppArmor ai-llama-cpp profile" "profile file absent"
+  fi
+
+  # 5.2 SSRF protection module
+  _check "5.2.1" "ssrf_protection.py present" \
+    test -f "${REPO_ROOT}/ai-stack/mcp-servers/shared/ssrf_protection.py"
+  _check "5.2.2" "ssrf_protection importable" \
+    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/shared'); import ssrf_protection"
+
+  # 5.3 Prompt injection scanner
+  _check "5.3.1" "prompt_injection.py present" \
+    test -f "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/prompt_injection.py"
+  _check "5.3.2" "prompt_injection importable" \
+    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); import prompt_injection"
+
+  # 5.5 Network isolation
+  if nft list table ip ai_localhost_isolation >/dev/null 2>&1; then
+    _pass "5.5.1" "nftables AI localhost isolation table active"
+  else
+    _skip "5.5.1" "nftables AI localhost isolation" "table not loaded (may need sudo)"
+  fi
+
+  # 5.6 Bubblewrap sandbox
+  if command -v bwrap >/dev/null 2>&1; then
+    _pass "5.6.1" "bwrap (bubblewrap) available for aider sandbox"
+  else
+    _fail "5.6.1" "bwrap (bubblewrap) available" "not in PATH"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Phase 6 — Monitoring & Observability
+# ---------------------------------------------------------------------------
+run_phase_6() {
+  # 6.1 Prometheus
+  _check_output "6.1.1" "Prometheus /metrics responds" "^# HELP" \
+    bash -c "curl -sf --max-time 5 '${PROMETHEUS_URL}/metrics' 2>/dev/null | head -5"
+  _check_output "6.1.2" "AI metrics exported" "^ai_\|^llama_" \
+    bash -c "curl -sf --max-time 5 '${PROMETHEUS_URL}/metrics' 2>/dev/null"
+
+  # 6.3 Tool audit log
+  local audit_log="/var/log/nixos-ai-stack/tool-audit.jsonl"
+  if [[ -f "$audit_log" ]]; then
+    local lc
+    lc=$(wc -l < "$audit_log" 2>/dev/null | tr -d ' ' || echo 0)
+    if [[ "$lc" -gt 0 ]]; then
+      _pass "6.3.1" "tool-audit.jsonl has ${lc} entries"
+    else
+      _fail "6.3.1" "tool-audit.jsonl has entries" "file empty"
+    fi
+  else
+    _skip "6.3.1" "tool-audit.jsonl" "not found (no tool calls yet?)"
+  fi
+
+  # 6.4 aq-report runs without error
+  _check "6.4.1" "aq-report produces JSON output" \
+    bash -c "cd '${REPO_ROOT}' && python3 '${SCRIPT_DIR}/aq-report' --format json >/dev/null 2>&1"
+
+  # 6.5 MCP integrity check script
+  _check "6.5.1" "check-mcp-integrity.sh present and executable" \
+    test -x "${REPO_ROOT}/scripts/check-mcp-integrity.sh"
+}
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Recursive Self-Improvement
+# ---------------------------------------------------------------------------
+run_phase_7() {
+  # 7.1 aq-prompt-eval
+  _check "7.1.1" "aq-prompt-eval script executable" \
+    test -x "${SCRIPT_DIR}/aq-prompt-eval"
+
+  # 7.2 Prompt registry
+  local registry="${REPO_ROOT}/ai-stack/prompts/registry.yaml"
+  _check "7.2.1" "prompt registry.yaml present" test -f "$registry"
+  local prompt_count
+  prompt_count=$(python3 -c "
+import re, sys
+txt = open('${registry}').read() if __import__('os').path.exists('${registry}') else ''
+print(len(re.findall(r'^  [a-z_]+:', txt, re.MULTILINE)))
+" 2>/dev/null || echo 0)
+  if [[ "$prompt_count" -ge 3 ]]; then
+    _pass "7.2.2" "prompt registry has ${prompt_count} entries (≥3)"
+  else
+    _fail "7.2.2" "prompt registry has ≥3 entries" "found: ${prompt_count}"
+  fi
+
+  # 7.3 Query gaps table accessible
+  local pg_pass
+  pg_pass=$(cat /run/secrets/postgres_password 2>/dev/null | tr -d '\n' || true)
+  local gap_count
+  gap_count=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -t \
+    -c "SELECT COUNT(*) FROM query_gaps;" 2>/dev/null | tr -d ' \n' || echo "err")
+  if [[ "$gap_count" =~ ^[0-9]+$ ]]; then
+    _pass "7.3.1" "query_gaps table accessible (${gap_count} rows)"
+  else
+    _fail "7.3.1" "query_gaps table accessible" "got: $gap_count"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Phase 8 — End-to-End Workflow Tests
+# ---------------------------------------------------------------------------
+run_phase_8() {
+  local _hk8
+  _hk8=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+
+  # 8.1 hints for NixOS queries
+  _check_output "8.1.1" "/hints returns results for 'nixos' query" "." \
+    bash -c "curl -sf -H 'X-API-Key: ${_hk8}' '${HYBRID_URL}/hints?q=nixos+module' 2>/dev/null"
+
+  # 8.2 aider-wrapper available
+  if command -v aider-wrapper >/dev/null 2>&1 || \
+     test -f "${REPO_ROOT}/scripts/aider-wrapper.sh"; then
+    _pass "8.2.1" "aider-wrapper available"
+  else
+    _skip "8.2.1" "aider-wrapper" "not found (deploy pending?)"
+  fi
+
+  # 8.3 /query smoke (retrieval mode, no LLM)
+  local q_out
+  q_out=$(curl -sf --max-time 15 \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${_hk8}" \
+    -d '{"query":"what is nixos","mode":"retrieval","prefer_local":true,"limit":1}' \
+    "${HYBRID_URL}/query" 2>/dev/null || echo "err")
+  if [[ "$q_out" != "err" ]] && \
+     python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d else 1)" "$q_out" 2>/dev/null; then
+    _pass "8.3.1" "hybrid /query retrieval E2E smoke"
+  else
+    _fail "8.3.1" "hybrid /query retrieval E2E smoke" "out: ${q_out:0:80}"
+  fi
+
+  # 8.4 Weekly report timer
+  if _output_contains "ai-weekly-report" systemctl list-timers ai-weekly-report.timer --no-legend 2>/dev/null; then
+    _pass "8.4.1" "ai-weekly-report.timer scheduled"
+  else
+    _skip "8.4.1" "ai-weekly-report.timer" "not active (deploy pending?)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Phase 9 — Optimisation Targets
+# ---------------------------------------------------------------------------
+run_phase_9() {
+  # 9.1 llama-cpp health
+  _http_health "9.1.1" "llama-cpp /health" "${LLAMA_URL}/health"
+
+  # 9.2 Redis semantic cache store
+  local key_count
+  key_count=$(redis-cli DBSIZE 2>/dev/null || echo "err")
+  if [[ "$key_count" =~ ^[0-9]+$ ]]; then
+    _pass "9.2.1" "Redis accessible for semantic cache (${key_count} keys)"
+  else
+    _fail "9.2.1" "Redis semantic cache store" "DBSIZE failed: $key_count"
+  fi
+
+  # 9.3 Embeddings service health
+  _http_health "9.3.1" "embeddings /health" "${EMBEDDINGS_URL}/health"
+}
+
+# ---------------------------------------------------------------------------
+# Phase 10 — Regression & Continuous Validation
+# ---------------------------------------------------------------------------
+run_phase_10() {
+  # 10.1 Pre-commit hooks
+  local hooks_path
+  hooks_path=$(git -C "${REPO_ROOT}" config core.hookspath 2>/dev/null || true)
+  if [[ "$hooks_path" == ".githooks" && -d "${REPO_ROOT}/.githooks" ]]; then
+    _pass "10.1.1" "git hooks configured (.githooks/)"
+  else
+    _fail "10.1.1" "git hooks configured" "core.hookspath='${hooks_path}'"
+  fi
+
+  # 10.1.2 Roadmap verifier self-consistency
+  if python3 "${REPO_ROOT}/scripts/testing/verify-self-consistency.py" >/dev/null 2>&1; then
+    _pass "10.1.2" "roadmap verifier patterns all match target files"
+  else
+    local sc_out
+    sc_out=$(python3 "${REPO_ROOT}/scripts/testing/verify-self-consistency.py" 2>&1 | head -5)
+    _fail "10.1.2" "roadmap verifier self-consistency" "${sc_out}"
+  fi
+
+  # 10.1.3 Verify-flake script present and executable
+  _check "10.1.3" "verify-flake-first-roadmap-completion.sh executable" \
+    test -x "${REPO_ROOT}/scripts/testing/verify-flake-first-roadmap-completion.sh"
+
+  # 10.2 No failed AI units (regression)
+  local failed_count
+  failed_count=$(systemctl list-units 'ai-*' 'llama-*' --state=failed --no-legend 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$failed_count" -eq 0 ]]; then
+    _pass "10.2.1" "zero AI units in failed state"
+  else
+    _fail "10.2.1" "zero AI units in failed state" "${failed_count} failed"
+  fi
+
+  # 10.2.2 aq-qa itself is executable
+  _check "10.2.2" "aq-qa runner is executable" test -x "${SCRIPT_DIR}/aq-qa"
 }
 
 # ---------------------------------------------------------------------------
@@ -685,7 +948,18 @@ PYEOF
 case "$PHASE" in
   help|"")
     printf 'Usage: aq-qa <phase> [--json] [--sudo]\n'
-    printf '  phase: 0, 1, 2, 3, all, or help\n'
+    printf '  phase: 0-10, all, or help\n'
+    printf '    0  pre-flight smoke (services, ports, inference, editor, front-door)\n'
+    printf '    1  infrastructure (redis, postgres, qdrant, aidb, hybrid-coordinator)\n'
+    printf '    2  runtime/package/confinement diagnostics (llama preset)\n'
+    printf '    3  AppArmor/confinement diagnostics\n'
+    printf '    4  context engineering (aq-hints, switchboard trimming, policy files)\n'
+    printf '    5  security hardening (SSRF, prompt injection, network isolation)\n'
+    printf '    6  monitoring (Prometheus, tool audit log, aq-report, MCP integrity)\n'
+    printf '    7  self-improvement (aq-prompt-eval, registry, query gaps)\n'
+    printf '    8  E2E workflows (hints, /query, weekly report timer)\n'
+    printf '    9  optimisation targets (llama health, Redis cache, embeddings)\n'
+    printf '   10  regression (git hooks, verifier self-check, no failed units)\n'
     printf '  --json   Machine-readable JSON output\n'
     printf '  --sudo   Enable checks requiring sudo (AppArmor)\n'
     exit 0
@@ -694,14 +968,26 @@ case "$PHASE" in
   1) run_phase_1 ;;
   2) run_phase_2 ;;
   3) run_phase_3 ;;
-  4|5|6|7|8|9|10) run_phase_stub "$PHASE" ;;
+  4) run_phase_4 ;;
+  5) run_phase_5 ;;
+  6) run_phase_6 ;;
+  7) run_phase_7 ;;
+  8) run_phase_8 ;;
+  9) run_phase_9 ;;
+  10) run_phase_10 ;;
   all)
     PHASE="all"
     run_phase_0
     run_phase_1
     run_phase_2
     run_phase_3
-    for p in 4 5 6 7 8 9 10; do run_phase_stub "$p"; done
+    run_phase_4
+    run_phase_5
+    run_phase_6
+    run_phase_7
+    run_phase_8
+    run_phase_9
+    run_phase_10
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2

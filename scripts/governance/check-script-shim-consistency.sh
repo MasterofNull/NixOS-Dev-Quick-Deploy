@@ -15,6 +15,8 @@ while IFS= read -r path; do
   stem="${base%.*}"
 
   [[ "${stem}" == *"_"* ]] || continue
+  # Skip private module convention: _foo.py / _foo.sh files are internal helpers, not shims
+  [[ "${stem}" == _* ]] && continue
 
   kebab_stem="${stem//_/-}"
   kebab_path="${dir}/${kebab_stem}.${ext}"
