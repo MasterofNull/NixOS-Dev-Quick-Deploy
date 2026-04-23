@@ -3233,6 +3233,101 @@
                 </div>
             </div>
 
+            <!-- QA Phase Matrix -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">QA Phase 0 Status</h2>
+                        </div>
+                        <span class="card-badge">aq-qa</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="display:flex;align-items:baseline;gap:1rem;margin-bottom:0.5rem;">
+                            <span id="qaStatusSummary" style="font-size:1rem;font-weight:600;color:var(--text-primary)">--</span>
+                            <span id="qaStatusCached" style="font-size:0.7rem;color:var(--text-muted)"></span>
+                        </div>
+                        <div id="qaPhaseGrid" style="display:flex;flex-wrap:wrap;gap:0.4rem;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Switchboard Profiles -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Switchboard Profiles</h2>
+                        </div>
+                        <span class="card-badge">routing</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="switchboardProfilesGrid" style="display:flex;flex-wrap:wrap;gap:0.5rem;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Classifier Routing Stats -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Task Classifier Routing</h2>
+                        </div>
+                        <span class="card-badge">audit</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Local Routed</div>
+                                <div class="metric-value" id="taskClassLocalPct" style="color:var(--accent-green)">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Remote Routed</div>
+                                <div class="metric-value" id="taskClassRemotePct" style="color:var(--accent-cyan)">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Total Classified</div>
+                                <div class="metric-value" id="taskClassTotal">--</div>
+                            </div>
+                        </div>
+                        <div id="taskClassByType" style="margin-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.75rem;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Verifier Self-Consistency -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Verifier Self-Consistency</h2>
+                        </div>
+                        <span class="card-badge">governance</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Status</div>
+                                <div class="metric-value" id="verifySelfStatus">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Stale Patterns</div>
+                                <div class="metric-value" id="verifySelfStale">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Total Checks</div>
+                                <div class="metric-value" id="verifySelfTotal">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Continuous Improvement -->
             <div class="dashboard-section">
                 <div class="card">
@@ -5875,7 +5970,11 @@
                     'aidbDetailed',
                     'harnessOverview',
                     'keywordSignals',
-                    'firewallOps'
+                    'firewallOps',
+                    'qaStatus',
+                    'switchboardProfiles',
+                    'taskClassStats',
+                    'verifySelf'
                 ];
                 const settled = await Promise.allSettled([
                     fetchSystemMetrics(),
@@ -5893,7 +5992,11 @@
                     fetchAidbDetailedHealth(),
                     fetchHarnessOverview(),
                     fetchKeywordSignals(),
-                    fetchFirewallOps()
+                    fetchFirewallOps(),
+                    fetchQaStatus(),
+                    fetchSwitchboardProfiles(),
+                    fetchTaskClassificationStats(),
+                    fetchVerifySelf()
                 ]);
                 const payloads = {};
                 const failedSources = [];
@@ -5926,6 +6029,15 @@
                 const harnessOverview = payloads.harnessOverview;
                 const keywordSignals = payloads.keywordSignals;
                 const firewallOps = payloads.firewallOps;
+                const qaStatus = payloads.qaStatus;
+                const switchboardProfiles = payloads.switchboardProfiles;
+                const taskClassStats = payloads.taskClassStats;
+                const verifySelf = payloads.verifySelf;
+
+                renderQaStatus(qaStatus);
+                renderSwitchboardProfiles(switchboardProfiles);
+                renderTaskClassificationStats(taskClassStats);
+                renderVerifySelf(verifySelf);
 
                 const system = normalizeSystemData(systemMetrics);
                 const llm = buildLLMData(aiMetrics, containers);
@@ -6189,6 +6301,102 @@
                 audit,
                 rules
             };
+        }
+
+        async function fetchQaStatus() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/aq-qa/run/0`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (_) { return null; }
+        }
+
+        async function fetchSwitchboardProfiles() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/switchboard/profiles`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (_) { return null; }
+        }
+
+        async function fetchTaskClassificationStats() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/task-classification/stats`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (_) { return null; }
+        }
+
+        async function fetchVerifySelf() {
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/verify-self/results`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (_) { return null; }
+        }
+
+        function renderQaStatus(data) {
+            if (!data) {
+                document.getElementById('qaStatusSummary').textContent = 'unavailable';
+                document.getElementById('qaPhaseGrid').innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem">no data</span>';
+                return;
+            }
+            const ok = data.success;
+            document.getElementById('qaStatusSummary').textContent =
+                `${data.passed ?? '--'} pass / ${data.failed ?? '--'} fail / ${data.skipped ?? '--'} skip`;
+            document.getElementById('qaStatusSummary').style.color = ok ? 'var(--accent-green)' : 'var(--accent-red)';
+            document.getElementById('qaStatusCached').textContent = data.cached ? '(cached)' : '';
+        }
+
+        function renderSwitchboardProfiles(data) {
+            const el = document.getElementById('switchboardProfilesGrid');
+            if (!data || !data.profiles) { el.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem">unavailable</span>'; return; }
+            const profiles = data.profiles;
+            const names = Object.keys(profiles);
+            if (names.length === 0) { el.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem">no profiles</span>'; return; }
+            el.innerHTML = names.map(name => {
+                const p = profiles[name];
+                const cardBadge = p.hasProfileCard ? `<span style="color:var(--accent-green);font-size:0.7rem">card</span>` : `<span style="color:var(--text-muted);font-size:0.7rem">no card</span>`;
+                const provider = p.forceProvider ? `<span style="color:var(--accent-cyan);font-size:0.7rem">${p.forceProvider}</span>` : '';
+                return `<div style="border:1px solid var(--border-color);border-radius:4px;padding:0.5rem;min-width:140px;">
+                    <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:0.25rem;">${name}</div>
+                    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                        ${cardBadge}
+                        ${provider}
+                    </div>
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem;">maxIn: ${p.maxInputTokens ?? '--'}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderTaskClassificationStats(data) {
+            if (!data) {
+                document.getElementById('taskClassLocalPct').textContent = '--';
+                document.getElementById('taskClassRemotePct').textContent = '--';
+                document.getElementById('taskClassTotal').textContent = '--';
+                document.getElementById('taskClassByType').innerHTML = '';
+                return;
+            }
+            document.getElementById('taskClassLocalPct').textContent =
+                data.local_pct !== null ? `${data.local_pct.toFixed(1)}%` : '--';
+            document.getElementById('taskClassRemotePct').textContent =
+                data.remote_pct !== null ? `${data.remote_pct.toFixed(1)}%` : '--';
+            document.getElementById('taskClassTotal').textContent = data.total_classified ?? '--';
+            const byType = data.by_task_type || {};
+            const typeNames = Object.keys(byType);
+            document.getElementById('taskClassByType').innerHTML = typeNames.length === 0 ? '' :
+                typeNames.map(t => `<span style="font-size:0.7rem;color:var(--text-muted);">${t}: <b style="color:var(--text-primary)">${byType[t]}</b></span>`).join(' &nbsp;');
+        }
+
+        function renderVerifySelf(data) {
+            const el = document.getElementById('verifySelfStatus');
+            const staleEl = document.getElementById('verifySelfStale');
+            const totalEl = document.getElementById('verifySelfTotal');
+            if (!data) { el.textContent = 'unavailable'; el.style.color = 'var(--text-muted)'; return; }
+            el.textContent = data.consistent ? 'CONSISTENT' : 'STALE PATTERNS';
+            el.style.color = data.consistent ? 'var(--accent-green)' : 'var(--accent-red)';
+            staleEl.textContent = data.stale_count !== undefined ? data.stale_count : '--';
+            totalEl.textContent = data.total_checks !== undefined ? data.total_checks : '--';
         }
 
         function normalizeSystemData(metrics) {
