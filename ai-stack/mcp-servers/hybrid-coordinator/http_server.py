@@ -6350,6 +6350,9 @@ async def run_http_mode(port: int) -> None:
             def __getitem__(self, key):
                 return self._audit[key]
 
+            def get(self, key, default=None):
+                return self._audit.get(key, default)
+
         shim = _ShimRequest(_json_inner.dumps(forwarded_payload).encode(), request)
         resp = await handle_query(shim)
 
