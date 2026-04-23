@@ -3156,3 +3156,241 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
             "learning_stats": learning_stats,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# QA Phase Runner — runs aq-qa <phase> --json and returns structured results.
+# Results are cached for AQ_QA_CACHE_TTL_SECONDS to avoid overloading the
+# inference stack on every dashboard refresh.
+# ---------------------------------------------------------------------------
+_AQ_QA_CACHE: Dict[str, Any] = {}
+_AQ_QA_CACHE_TTL_S: float = float(os.getenv("DASHBOARD_AQ_QA_CACHE_TTL_SECONDS", "300"))
+
+_VALID_QA_PHASES = frozenset({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"})
+
+
+@router.get("/aq-qa/run/{phase}")
+async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
+    """
+    Run aq-qa <phase> --json and return structured pass/fail results.
+    Results are cached for 5 minutes to protect the inference stack.
+    Append ?force=1 to bypass the cache.
+    """
+    phase = phase.strip().lstrip("0") or "0"
+    if phase not in _VALID_QA_PHASES:
+        raise HTTPException(status_code=400, detail=f"Invalid phase '{phase}'. Must be 0-10.")
+
+    now = time.time()
+    cached = _AQ_QA_CACHE.get(phase)
+    if cached and (now - cached.get("cached_at", 0)) < _AQ_QA_CACHE_TTL_S:
+        return {**cached["payload"], "cached": True, "cached_at": cached["cached_at"]}
+
+    repo_root = Path(__file__).resolve().parents[5]
+    aq_qa_script = repo_root / "scripts" / "ai" / "aq-qa"
+    if not aq_qa_script.exists():
+        raise HTTPException(status_code=503, detail="aq-qa script not found")
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+
+    phase_timeouts = {
+        "0": 120, "1": 150, "2": 200, "3": 200,
+        "4": 90,  "5": 90,  "6": 90,  "7": 90,
+        "8": 120, "9": 90, "10": 90,
+    }
+    timeout_s = phase_timeouts.get(phase, 120)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", str(aq_qa_script), phase, "--json",
+            cwd=str(repo_root),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"aq-qa phase {phase} timed out after {timeout_s}s")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"aq-qa execution failed: {exc}")
+
+    stdout_text = stdout_b.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
+
+    # aq-qa --json writes a JSON object to stdout
+    qa_result: Dict[str, Any] = {}
+    for line in reversed(stdout_text.splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                qa_result = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                continue
+
+    payload: Dict[str, Any] = {
+        "phase": phase,
+        "exit_code": proc.returncode,
+        "success": proc.returncode == 0,
+        "qa_result": qa_result,
+        "passed": int(qa_result.get("passed", 0)),
+        "failed": int(qa_result.get("failed", 0)),
+        "skipped": int(qa_result.get("skipped", 0)),
+        "duration_s": int(qa_result.get("duration_s", 0)),
+        "tests": qa_result.get("tests", []),
+        "stderr": stderr_text[:500] if stderr_text else None,
+        "cached": False,
+        "cached_at": now,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    _AQ_QA_CACHE[phase] = {"payload": payload, "cached_at": now}
+    return payload
+
+
+@router.get("/switchboard/profiles")
+async def get_switchboard_profiles() -> Dict[str, Any]:
+    """
+    Fetch switchboard /health and return profile configuration including
+    maxInputTokens, maxMessages, profileCard presence, and per-profile routing metadata.
+    """
+    swb_url = SERVICES.get("switchboard", "")
+    if not swb_url:
+        raise HTTPException(status_code=503, detail="Switchboard URL not configured")
+
+    try:
+        sess = await get_http_session()
+        async with sess.get(f"{swb_url}/health", timeout=REQUEST_TIMEOUT) as resp:
+            resp.raise_for_status()
+            health = await resp.json()
+    except aiohttp.ClientError as exc:
+        raise HTTPException(status_code=502, detail=f"Switchboard unreachable: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    raw_profiles: Dict[str, Any] = health.get("profiles") or {}
+    profiles_out: Dict[str, Any] = {}
+    for name, cfg in raw_profiles.items():
+        if not isinstance(cfg, dict):
+            continue
+        profiles_out[name] = {
+            "maxInputTokens": cfg.get("maxInputTokens"),
+            "maxMessages": cfg.get("maxMessages"),
+            "maxOutputTokens": cfg.get("maxOutputTokens"),
+            "advertisedContextWindow": cfg.get("advertisedContextWindow"),
+            "hasProfileCard": bool(cfg.get("profileCard")),
+            "profileCardLength": len(cfg.get("profileCard") or ""),
+            "forceProvider": cfg.get("forceProvider"),
+            "forceModel": cfg.get("forceModel"),
+        }
+
+    return {
+        "status": health.get("status", "unknown"),
+        "version": health.get("version"),
+        "profiles": profiles_out,
+        "profile_count": len(profiles_out),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/task-classification/stats")
+async def get_task_classification_stats() -> Dict[str, Any]:
+    """
+    Return task complexity routing statistics from the hybrid coordinator.
+    Reads tool_audit.jsonl to aggregate local vs remote routing decisions.
+    """
+    repo_root = Path(__file__).resolve().parents[5]
+    audit_log = Path(os.getenv("TOOL_AUDIT_LOG", "/var/log/nixos-ai-stack/tool-audit.jsonl"))
+
+    local_count = 0
+    remote_count = 0
+    by_task_type: Dict[str, int] = {}
+    recent_decisions: list = []
+
+    if audit_log.exists():
+        try:
+            lines = audit_log.read_text(errors="replace").splitlines()
+            for raw in lines[-500:]:  # last 500 entries
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                meta = entry.get("metadata") or {}
+                task_type = meta.get("task_type") or meta.get("classifier_task_type")
+                routed_local = meta.get("routed_local") or meta.get("local_suitable")
+                if task_type:
+                    by_task_type[task_type] = by_task_type.get(task_type, 0) + 1
+                if routed_local is True:
+                    local_count += 1
+                elif routed_local is False:
+                    remote_count += 1
+        except OSError:
+            pass
+
+    total = local_count + remote_count
+    return {
+        "total_classified": total,
+        "local_count": local_count,
+        "remote_count": remote_count,
+        "local_pct": round(100 * local_count / total, 1) if total else None,
+        "remote_pct": round(100 * remote_count / total, 1) if total else None,
+        "by_task_type": by_task_type,
+        "audit_log": str(audit_log),
+        "audit_log_exists": audit_log.exists(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/verify-self/results")
+async def get_verify_self_results() -> Dict[str, Any]:
+    """
+    Run verify-self-consistency.py and return results showing whether all
+    roadmap verifier check_pattern calls match their target files.
+    Cached for 10 minutes since this is a static analysis scan.
+    """
+    repo_root = Path(__file__).resolve().parents[5]
+    script = repo_root / "scripts" / "testing" / "verify-self-consistency.py"
+    if not script.exists():
+        raise HTTPException(status_code=503, detail="verify-self-consistency.py not found")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable or "python3", str(script),
+            cwd=str(repo_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=60)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="verify-self timed out after 60s")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    stdout_text = stdout_b.decode("utf-8", errors="replace").strip()
+    ok = proc.returncode == 0
+
+    # Parse "all N verifier check_pattern references confirmed" or "[FAIL] N stale..."
+    total_checks = 0
+    stale_count = 0
+    for line in stdout_text.splitlines():
+        if "all " in line and "references confirmed" in line:
+            parts = line.split()
+            try:
+                total_checks = int(parts[parts.index("all") + 1])
+            except (ValueError, IndexError):
+                pass
+        if "[FAIL]" in line and "stale" in line:
+            parts = line.split()
+            try:
+                stale_count = int(parts[1])
+            except (ValueError, IndexError):
+                pass
+
+    return {
+        "consistent": ok,
+        "total_checks": total_checks,
+        "stale_count": stale_count,
+        "output": stdout_text[:1000],
+        "exit_code": proc.returncode,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
