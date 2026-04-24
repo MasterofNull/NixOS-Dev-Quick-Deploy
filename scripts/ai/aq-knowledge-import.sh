@@ -104,6 +104,59 @@ else
   exit 1
 fi
 
+# ── Vectorize into Qdrant best-practices for hybrid-coordinator retrieval ─────
+EMBED_URL="${LLAMA_EMBED_URL:-http://127.0.0.1:8081}"
+QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
+python3 - "$TITLE" "$CONTENT" "$TOPIC" "$EMBED_URL" "$QDRANT_URL" <<'PYEOF'
+import json, sys, urllib.request, urllib.error, hashlib, time
+
+title, content, topic, embed_url, qdrant_url = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+
+# Truncate to 1200 chars to stay within embed server token limit (~512 tokens)
+chunk = content[:1200]
+
+# Generate embedding
+try:
+    req = urllib.request.Request(
+        f"{embed_url.rstrip('/')}/v1/embeddings",
+        data=json.dumps({"input": chunk, "model": "any"}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        emb_data = json.loads(resp.read())
+    vector = emb_data["data"][0]["embedding"]
+except Exception as e:
+    print(f"SKIP  Qdrant upsert skipped (embed failed: {e})", file=sys.stderr)
+    sys.exit(0)
+
+# Stable point ID from topic hash
+point_id = int(hashlib.md5(topic.encode()).hexdigest()[:8], 16)
+payload = {
+    "category": "nixos-knowledge",
+    "title": title,
+    "description": content[:4000],
+    "examples": [],
+    "anti_patterns": [],
+    "references": [],
+    "endorsement_count": 1,
+    "last_validated": int(time.time()),
+}
+body = json.dumps({"points": [{"id": point_id, "vector": vector, "payload": payload}]})
+try:
+    req = urllib.request.Request(
+        f"{qdrant_url.rstrip('/')}/collections/best-practices/points?wait=true",
+        data=body.encode(),
+        headers={"Content-Type": "application/json"},
+        method="PUT",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        result = json.loads(resp.read())
+    print(f"PASS  Vectorized into Qdrant best-practices (id={point_id})")
+except Exception as e:
+    print(f"WARN  Qdrant upsert failed (non-fatal): {e}", file=sys.stderr)
+PYEOF
+
 # ── Optionally clear matching gaps ────────────────────────────────────────────
 if [[ "$CLEAR_GAPS" == "true" ]]; then
   KEYWORD="${TOPIC:0:40}"

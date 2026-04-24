@@ -42,11 +42,13 @@ prompts:
       query_gaps table and surfaced in the weekly aq-report digest.
     template: |
       Query: {{ query }}
-      Retrieval score: {{ score }}
+      Retrieval score: {{ score }} (threshold: 0.35 — scores below this indicate a knowledge gap)
       Collection: {{ collection }}
 
-      The retrieval confidence is low. Is this query unanswerable from the
-      current knowledge base? Reply YES or NO followed by a one-line reason.
+      Based ONLY on the retrieval score above (do not use your own training knowledge),
+      does this score indicate a gap in the knowledge base for this query?
+      Scores below 0.35 should be flagged YES. Scores 0.35 or above should be NO.
+      Reply YES or NO followed by a one-line reason.
     tags: [gap_detection, retrieval, monitoring]
     mean_score: 0.333
     last_evaluated: 2026-04-01
