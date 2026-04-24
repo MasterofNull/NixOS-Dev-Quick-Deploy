@@ -51,6 +51,9 @@ AUDIT_FALLBACK_PATH = Path(
     os.getenv("TOOL_AUDIT_LOG_PATH_FALLBACK",
               "/var/log/ai-audit-sidecar/tool-audit.jsonl")
 )
+AQ_REPORT_LATEST_JSON = Path(
+    os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+)
 # Phase 19.3.4 — hint adoption log (written by aider-wrapper alongside tool-audit.jsonl)
 HINT_AUDIT_PATH = Path(
     os.getenv("HINT_AUDIT_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "hint-audit.jsonl"))
@@ -159,6 +162,17 @@ def _tool_audit_path() -> Optional[Path]:
     if _exists(AUDIT_FALLBACK_PATH):
         return AUDIT_FALLBACK_PATH
     return None
+
+
+def _tool_audit_paths() -> List[Path]:
+    paths: List[Path] = []
+    for candidate in (TOOL_AUDIT_PATH, AUDIT_FALLBACK_PATH):
+        try:
+            if candidate.exists() and candidate not in paths:
+                paths.append(candidate)
+        except PermissionError:
+            continue
+    return paths
 
 
 def continue_editor_health() -> Dict[str, Any]:
@@ -552,31 +566,58 @@ def _delegation_feedback_path() -> Optional[Path]:
 
 
 def read_tool_audit(since: datetime) -> List[dict]:
-    """Read tool_audit.jsonl entries newer than `since`."""
-    path = _tool_audit_path()
-    if not path:
+    """Read tool_audit.jsonl entries newer than `since`.
+
+    Merge the primary and sidecar log when both exist so aq-report reflects the
+    freshest audit stream instead of whichever compatibility path happens to
+    exist first.
+    """
+    paths = _tool_audit_paths()
+    if not paths:
         return []
-    entries = []
-    try:
-        with path.open(encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts_raw = entry.get("timestamp", "")
-                try:
-                    ts = datetime.fromisoformat(ts_raw.rstrip("Z")).replace(tzinfo=timezone.utc)
-                    if ts >= since:
-                        entries.append(entry)
-                except (ValueError, AttributeError):
-                    continue
-    except OSError:
-        pass
+    entries: List[dict] = []
+    seen: set[str] = set()
+    for path in paths:
+        try:
+            with path.open(encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts_raw = entry.get("timestamp", "")
+                    try:
+                        ts = datetime.fromisoformat(ts_raw.rstrip("Z")).replace(tzinfo=timezone.utc)
+                    except (ValueError, AttributeError):
+                        continue
+                    if ts < since:
+                        continue
+                    try:
+                        dedupe_key = json.dumps(entry, sort_keys=True, default=str)
+                    except TypeError:
+                        dedupe_key = f"{ts_raw}:{entry.get('service')}:{entry.get('tool_name')}:{entry.get('parameters_hash')}"
+                    if dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+                    entries.append(entry)
+        except OSError:
+            continue
+    entries.sort(key=lambda item: _entry_ts_utc(item) or datetime.min.replace(tzinfo=timezone.utc))
     return entries
+
+
+def _persist_latest_report_json(payload: str) -> None:
+    """Best-effort cache for dashboard/runtime consumers of aq-report JSON."""
+    try:
+        AQ_REPORT_LATEST_JSON.parent.mkdir(parents=True, exist_ok=True)
+        tmp = AQ_REPORT_LATEST_JSON.with_suffix(".tmp")
+        tmp.write_text(payload + "\n", encoding="utf-8")
+        tmp.replace(AQ_REPORT_LATEST_JSON)
+    except OSError:
+        return
 
 
 def read_delegation_feedback(since: datetime) -> Dict[str, Any]:
@@ -6229,10 +6270,12 @@ def main() -> None:
         gap_remediation,
         llama_benchmark_summary,
     )
+    json_output = format_json(*fmt_args[:-1], structured_actions=structured_actions)
+    _persist_latest_report_json(json_output)
     if args.fmt == "md":
         output = format_md(*fmt_args)
     elif args.fmt == "json":
-        output = format_json(*fmt_args[:-1], structured_actions=structured_actions)
+        output = json_output
     else:
         output = format_text(*fmt_args)
 
