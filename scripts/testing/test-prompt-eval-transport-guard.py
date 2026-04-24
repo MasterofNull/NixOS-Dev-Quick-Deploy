@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Regression for aq-prompt-eval transport-guard behavior.
+
 """Regression for aq-prompt-eval transport-guard behavior."""
 
 from __future__ import annotations

@@ -6339,6 +6339,10 @@ async def run_http_mode(port: int) -> None:
                 self._body = body
                 self.headers = real_req.headers
                 self.match_info = real_req.match_info
+                self.method = "POST"
+                self.path = "/query"
+                self.rel_url = real_req.rel_url
+                self.app = getattr(real_req, "app", None)
                 self._audit: dict = {}
 
             async def json(self):

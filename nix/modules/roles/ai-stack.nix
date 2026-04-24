@@ -1639,8 +1639,8 @@ in {
     (lib.mkIf roleEnabled {
       systemd.services.ai-prompt-eval = {
         description = "AI stack prompt registry evaluation and leaderboard update";
-        after = ["network-online.target" "ai-stack.target"];
-        wants = ["network-online.target"];
+        after = ["network-online.target" "ai-stack.target" "llama-cpp.service" "ai-switchboard.service" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target" "llama-cpp.service" "ai-switchboard.service" "ai-hybrid-coordinator.service"];
         path = [promptEvalPython];
         serviceConfig = {
           Type = "oneshot";

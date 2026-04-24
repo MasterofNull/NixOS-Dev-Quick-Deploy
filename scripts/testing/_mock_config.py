@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# Shared mock config helper for route-handler unit tests.
+
 """
 Shared mock config helper for route-handler unit tests.
 
