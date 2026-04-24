@@ -45,6 +45,9 @@ LLAMA_URL = os.getenv(
     "LLAMA_URL",
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('LLAMA_CPP_PORT', '8080')}",
 ).rstrip("/")
+LLAMA_READY_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_READY_TIMEOUT_S", "180"))
+LLM_CALL_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "90"))
+LLM_CALL_MAX_TOKENS = int(os.getenv("AQ_PROMPT_EVAL_MAX_TOKENS", "96"))
 
 REGISTRY_PATH = Path(
     os.getenv(
@@ -293,8 +296,8 @@ def llm_call(prompt: str, model: str, timeout: float = 30.0) -> Tuple[str, float
     payload = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1,
-        "max_tokens": 256,
+        "temperature": 0,
+        "max_tokens": LLM_CALL_MAX_TOKENS,
     }).encode("utf-8")
 
     url = f"{LLAMA_URL}/v1/chat/completions"
@@ -308,8 +311,38 @@ def llm_call(prompt: str, model: str, timeout: float = 30.0) -> Tuple[str, float
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         data = json.loads(resp.read())
     latency_ms = (time.monotonic() - t0) * 1000
-    text = data["choices"][0]["message"]["content"]
+    message = data["choices"][0]["message"]
+    text = message.get("content") or message.get("reasoning_content", "")
     return text, latency_ms
+
+
+def wait_for_llama_ready(base_url: str, timeout_s: float, poll_interval_s: float = 5.0) -> bool:
+    """Poll /v1/models until llama.cpp is ready or the timeout is reached."""
+    import time
+
+    deadline = time.monotonic() + timeout_s
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            req = urllib.request.Request(
+                f"{base_url}/v1/models",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=5):
+                return True
+        except Exception as exc:
+            last_error = exc
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(poll_interval_s, remaining))
+
+    if last_error is not None:
+        print(
+            f"ERROR: llama.cpp did not become ready at {base_url} within {timeout_s:.0f}s: {last_error}",
+            file=sys.stderr,
+        )
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -400,16 +433,8 @@ def run_eval(
         print("No prompts found in registry.", file=sys.stderr)
         return 1
 
-    # Check llama.cpp reachability before looping
-    try:
-        req = urllib.request.Request(
-            f"{LLAMA_URL}/v1/models",
-            headers={"Accept": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=5):
-            pass
-    except Exception as exc:
-        print(f"ERROR: llama.cpp unreachable at {LLAMA_URL}: {exc}", file=sys.stderr)
+    # Wait for llama.cpp readiness so timer-triggered runs do not poison the registry during warmup.
+    if not wait_for_llama_ready(LLAMA_URL, timeout_s=LLAMA_READY_TIMEOUT):
         print("  → Start ai-llama-cpp.service or set LLAMA_URL to a running instance.", file=sys.stderr)
         return 1
 
@@ -438,6 +463,7 @@ def run_eval(
                 print("  [code_generation] — using meta-quality probe")
 
         case_results: List[bool] = []
+        transport_error = False
         for tc in tests:
             rendered = render_template(template, tc.variables)
 
@@ -451,10 +477,10 @@ def run_eval(
                 probe = rendered
 
             try:
-                response, latency = llm_call(probe, model=model)
+                response, latency = llm_call(probe, model=model, timeout=LLM_CALL_TIMEOUT)
             except Exception as exc:
                 print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
-                case_results.append(False)
+                transport_error = True
                 exit_code = 1
                 continue
 
@@ -471,20 +497,20 @@ def run_eval(
                     print(f"         response: {excerpt}…")
 
         n = len(case_results)
-        if n == 0:
-            mean_score = 0.0
-        else:
-            mean_score = sum(case_results) / n
+        mean_score = None if transport_error or n == 0 else sum(case_results) / n
 
         results_summary.append({
             "id": pid,
             "mean_score": mean_score,
             "passed": sum(case_results),
-            "total": n,
+            "total": len(tests),
+            "transport_error": transport_error,
         })
 
-        if not dry_run:
+        if not dry_run and mean_score is not None:
             registry_text = update_registry_entry(registry_text, pid, mean_score, today)
+        elif transport_error:
+            print(f"  SKIP  {pid:<40} registry update skipped due to runtime/transport errors")
 
     # Write back if not dry-run
     if not dry_run and (not target_id or any(r["id"] == target_id for r in results_summary)):
@@ -496,11 +522,15 @@ def run_eval(
     print(f"  {'Prompt':<38} {'Score':>7}  {'Pass/Total'}")
     print(f"  {'─'*38} {'─'*7}  {'─'*10}")
     for r in results_summary:
+        if r["mean_score"] is None:
+            print(f"  {r['id']:<38} {'ERROR':>7}  {r['passed']}/{r['total']}  transport/runtime failure")
+            continue
         bar = "█" * round(r["mean_score"] * 10) + "░" * (10 - round(r["mean_score"] * 10))
         print(f"  {r['id']:<38} {r['mean_score']:>6.1%}  {r['passed']}/{r['total']}  {bar}")
 
-    overall = sum(r["mean_score"] for r in results_summary) / max(len(results_summary), 1)
-    print(f"\n  Overall: {overall:.1%} across {len(results_summary)} prompts evaluated")
+    completed_scores = [r["mean_score"] for r in results_summary if r["mean_score"] is not None]
+    overall = sum(completed_scores) / max(len(completed_scores), 1)
+    print(f"\n  Overall: {overall:.1%} across {len(completed_scores)} completed prompts evaluated")
     if dry_run:
         print("  [dry-run] registry.yaml NOT updated")
 
