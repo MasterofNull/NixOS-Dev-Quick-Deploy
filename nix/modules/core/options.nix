@@ -1692,6 +1692,17 @@
             default = 3;
             description = "Maximum branches evaluated per tree-search depth level.";
           };
+
+          searchScoreThreshold = lib.mkOption {
+            type = lib.types.float;
+            default = 0.55;
+            description = ''
+              Minimum cosine similarity score for vector retrieval results (0.0–1.0).
+              Lower values surface more results from general knowledge collections
+              (best-practices, knowledge, skills-patterns). 0.7 is precise for
+              code-context; 0.55 works better with bge-m3 on explanation queries.
+            '';
+          };
         };
 
         eval = {

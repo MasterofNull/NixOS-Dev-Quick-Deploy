@@ -412,6 +412,7 @@ def _select_route_collections(
         add("error-solutions")
     if task_shape in {"lookup", "reasoning", "synthesize"} or wants_patterns:
         add("best-practices")
+        add("knowledge")
     if wants_patterns or task_shape in {"reasoning", "synthesize"} or (generate_response and token_count >= 10):
         add("skills-patterns")
     if wants_history:
@@ -419,13 +420,13 @@ def _select_route_collections(
 
     if not selected:
         if task_shape == "lookup":
-            for name in ("best-practices", "skills-patterns"):
+            for name in ("best-practices", "knowledge", "skills-patterns"):
                 add(name)
         elif task_shape == "code":
             for name in ("codebase-context", "error-solutions", "skills-patterns"):
                 add(name)
         elif task_shape == "reasoning":
-            for name in ("best-practices", "skills-patterns", "codebase-context"):
+            for name in ("best-practices", "knowledge", "skills-patterns", "codebase-context"):
                 add(name)
         if not selected:
             selected = ordered[:3]
@@ -847,7 +848,7 @@ async def route_search(
     context: Optional[Dict[str, Any]] = None,
     limit: int = 5,
     keyword_limit: int = 5,
-    score_threshold: float = 0.7,
+    score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
     generate_response: bool = False,
 ) -> Dict[str, Any]:
     """Route query to SQL, semantic, keyword, tree, or hybrid search."""

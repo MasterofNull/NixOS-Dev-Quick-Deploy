@@ -182,6 +182,11 @@ class Config:
     AI_AUTONOMY_MAX_EXTERNAL_CALLS = int(os.getenv("AI_AUTONOMY_MAX_EXTERNAL_CALLS", "4"))
     AI_AUTONOMY_MAX_RETRIES = int(os.getenv("AI_AUTONOMY_MAX_RETRIES", "1"))
     AI_AUTONOMY_MAX_RETRIEVAL_RESULTS = int(os.getenv("AI_AUTONOMY_MAX_RETRIEVAL_RESULTS", "8"))
+    # Semantic score threshold for vector retrieval (0.0–1.0).
+    # Lower values include more results from general knowledge collections
+    # (best-practices, skills-patterns). 0.7 is precise for code-context;
+    # 0.55 works better with bge-m3 on general explanation queries.
+    AI_SEARCH_SCORE_THRESHOLD = float(os.getenv("AI_SEARCH_SCORE_THRESHOLD", "0.55"))
     AI_ROUTE_KEYWORD_POOL_DEFAULT = int(os.getenv("AI_ROUTE_KEYWORD_POOL_DEFAULT", "24"))
     AI_ROUTE_KEYWORD_POOL_COMPACT = int(os.getenv("AI_ROUTE_KEYWORD_POOL_COMPACT", "24"))
     AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION = int(
