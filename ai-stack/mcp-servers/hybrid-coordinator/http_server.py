@@ -9301,6 +9301,10 @@ async def run_http_mode(port: int) -> None:
             routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
             selected_profile = routing_decision["recommended_profile"]
             selected_runtime_id = _ai_coordinator_default_runtime_id_for_profile(selected_profile)
+            # Phase 8.11 — Propagate thinking mode recommendation unless caller overrides
+            if "thinking_mode" not in data:
+                data = dict(data)
+                data["thinking_mode"] = routing_decision.get("thinking_mode", "off")
 
             async with _runtime_registry_lock:
                 registry = await _load_runtime_registry()
@@ -9622,6 +9626,28 @@ asyncio.run(run())
                     temperature=float(data.get("temperature", 0.3)),
                     timeout_sec=timeout_s,
                 )
+                # Phase 8.8 — Auto-consolidate successful delegate outcomes into memory.
+                if (
+                    local_response.status == 200
+                    and _store_memory is not None
+                    and bool(data.get("auto_memorize", True))
+                ):
+                    try:
+                        resp_body = json.loads(local_response.body)
+                        result_content = (
+                            (resp_body.get("choices") or [{}])[0]
+                            .get("message", {})
+                            .get("content", "")
+                        )
+                        if result_content and len(result_content.strip()) > 20:
+                            await _store_memory(
+                                content=f"Delegate task [{agent_role}]: {user_task[:200]}\nOutcome: {result_content[:400]}",
+                                memory_type="procedural",
+                                tags=["delegate", agent_role, routing_decision.get("task_archetype", "general")],
+                                source="delegate_auto_consolidation",
+                            )
+                    except Exception as _mem_exc:
+                        logger.debug("delegate_memory_consolidation_skipped error=%s", _mem_exc)
                 return local_response
 
             if "model" not in payload and _remote_profile_uses_agent_pool(selected_profile):
