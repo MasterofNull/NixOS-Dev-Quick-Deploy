@@ -661,7 +661,7 @@ class SearchRouter:
         collections: Optional[List[str]] = None,
         limit: int = 5,
         keyword_limit: int = 5,
-        score_threshold: float = 0.7,
+        score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
         keyword_pool: int = 60,
     ) -> Dict[str, Any]:
         """Hybrid search combining vector similarity and keyword matching."""
@@ -801,7 +801,7 @@ class SearchRouter:
         collections: Optional[List[str]] = None,
         limit: int = 5,
         keyword_limit: int = 5,
-        score_threshold: float = 0.7,
+        score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
     ) -> Dict[str, Any]:
         """Branch-and-aggregate retrieval over query expansions."""
         collections = collections or list(self._collections.keys())

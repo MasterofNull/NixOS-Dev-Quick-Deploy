@@ -54,7 +54,13 @@
             # is active. Required for the switchboard local-tool-calling profile.
             "--jinja"
           ];
-          embeddingServer.activeModel = "bge-m3";
+          embeddingServer = {
+            activeModel = "bge-m3";
+            # Renoir iGPU shares VRAM with system RAM. --n-gpu-layers 99 in
+            # ai-stack.nix causes GPU OOM for inputs > ~400 tokens. Override
+            # to 12 layers (same as chat model) for reliable KV-cache headroom.
+            extraArgs = [ "--n-gpu-layers" "12" ];
+          };
         };
   };
 }

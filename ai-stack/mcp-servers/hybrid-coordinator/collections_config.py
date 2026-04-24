@@ -102,6 +102,18 @@ COLLECTIONS: Dict[str, Any] = {
             "last_validated": "integer",
         },
     },
+    "knowledge": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "project": "string",
+            "title": "string",
+            "content": "text",
+            "relative_path": "string",
+            "source_trust_level": "string",
+            "imported_at": "string",
+        },
+    },
     "learning-feedback": {
         "vector_size": Config.EMBEDDING_DIM,
         "distance": Distance.COSINE,
