@@ -268,10 +268,10 @@ PY
 }
 
 _continue_local_smoke() {
-  # Qwen3.6-35B with partial GPU offload (12/41 layers) takes ~30-35s for a short
-  # completion through the switchboard (profile-card injection adds ~125 prompt tokens).
-  # Use 90s to give the model enough headroom on this hardware.
-  curl -sf --max-time 90 \
+  # Qwen3.6-35B with partial GPU offload (12/41 layers) on CPU takes ~90-120s for a
+  # short completion through the switchboard (profile-card + jinja template overhead).
+  # Use 150s to give the model enough headroom on this hardware.
+  curl -sf --max-time 150 \
     -H 'Content-Type: application/json' \
     -H 'X-AI-Profile: continue-local' \
     -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"n_predict":8,"temperature":0}' \
