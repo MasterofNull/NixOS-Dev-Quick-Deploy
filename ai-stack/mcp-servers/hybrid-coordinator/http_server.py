@@ -3543,14 +3543,39 @@ def _is_continuation_query(query: str) -> bool:
     return has_previous_ref and has_resume_target
 
 
+def _should_prioritize_memory_recall(query: str) -> bool:
+    if _is_continuation_query(query):
+        return True
+    query_lower = str(query or "").lower()
+    long_horizon_markers = (
+        "current work",
+        "remaining work",
+        "left off",
+        "last run",
+        "previous run",
+        "earlier attempt",
+        "ongoing task",
+        "ongoing issue",
+    )
+    if any(marker in query_lower for marker in long_horizon_markers):
+        return True
+    has_history_ref = any(token in query_lower for token in ("previous", "prior", "last", "earlier", "current", "ongoing", "remaining"))
+    has_repo_target = any(
+        token in query_lower
+        for token in ("patch", "deploy", "debug", "failure", "issue", "incident", "repo", "service", "system", "task", "work")
+    )
+    return has_history_ref and has_repo_target
+
+
 def _build_workflow_plan(
     query: str,
     tools: Optional[List[Dict[str, str]]] = None,
     tool_security: Optional[Dict[str, Any]] = None,
     include_debug_metadata: bool = False,
 ) -> Dict[str, Any]:
+    memory_recall_priority = _should_prioritize_memory_recall(query)
     if tools is None or tool_security is None:
-        tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
+        tools, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query, memory_recall_priority=memory_recall_priority))
     prompt_coaching: Dict[str, Any] = {}
     try:
         from hints_engine import HintsEngine  # type: ignore[import]
@@ -3558,8 +3583,7 @@ def _build_workflow_plan(
     except Exception:
         prompt_coaching = {}
     tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
-    continuation_query = _is_continuation_query(query)
-    reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, continuation_query)
+    reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, memory_recall_priority)
     aq_report_summary = _load_aq_report_status_summary()
 
     def pick_tool_names(names: set[str]) -> List[str]:
@@ -3574,7 +3598,7 @@ def _build_workflow_plan(
                 "goal": "Collect high-signal context first.",
                 "tools": pick_tool_names(
                     {"hints", "discovery", "route_search", "tree_search"}
-                    | ({"memory_recall"} if continuation_query else set())
+                    | ({"memory_recall"} if memory_recall_priority else set())
                 ),
                 "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("discover", "react"),
                 "exit_criteria": "Top risks identified.",
@@ -3583,7 +3607,7 @@ def _build_workflow_plan(
                 "id": "plan",
                 "goal": "Turn findings into verified steps.",
                 "tools": pick_tool_names(
-                    {"hints", "discovery"} | ({"memory_recall"} if continuation_query else set())
+                    {"hints", "discovery"} | ({"memory_recall"} if memory_recall_priority else set())
                 ),
                 "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("plan", "react"),
                 "exit_criteria": "Ordered task list exists.",
@@ -3643,7 +3667,7 @@ def _build_workflow_plan(
                 else _compact_tool_security(tool_security or {})
             ),
             "created_epoch_s": int(time.time()),
-            "memory_recall_priority": continuation_query,
+            "memory_recall_priority": memory_recall_priority,
             "reasoning_pattern": reasoning_pattern,
             "optimization_watch": aq_report_summary.get("optimization_watch", {"available": False}),
         },
@@ -5930,6 +5954,7 @@ async def run_http_mode(port: int) -> None:
                 return web.json_response({"error": "query required"}, status=400)
             generate_response = bool(data.get("generate_response", False))
             semantic_tooling_autorun = os.getenv("AI_SEMANTIC_TOOLING_AUTORUN", "true").lower() == "true"
+            memory_recall_priority = _should_prioritize_memory_recall(query)
             request_context = data.get("context")
             if not isinstance(request_context, dict):
                 request_context = {}
@@ -5950,6 +5975,8 @@ async def run_http_mode(port: int) -> None:
                 "requester_role": orchestration["requester_role"],
                 "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
                 "generate_response": generate_response,
+                "memory_recall_priority": memory_recall_priority,
+                "memory_recall_attempted": False,
                 "backend": "unknown",
             }
             tooling_layer = {
@@ -5976,7 +6003,7 @@ async def run_http_mode(port: int) -> None:
             except Exception as exc:
                 logger.debug("prompt_coaching_skipped error=%s", exc)
             if semantic_tooling_autorun:
-                planned, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query))
+                planned, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query, memory_recall_priority=memory_recall_priority))
                 tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
                 tooling_layer["tool_security"] = tool_security
                 request["audit_metadata"]["tool_security_blocked"] = len(tool_security.get("blocked", []))
@@ -6063,12 +6090,12 @@ async def run_http_mode(port: int) -> None:
 
                 if (
                     _recall_memory is not None
-                    and _is_continuation_query(query)
-                    and any(p.get("name") == "memory_recall" for p in planned)
+                    and memory_recall_priority
                 ):
                     try:
                         _memory_start = time.perf_counter()
                         request_context["memory_recall_attempted"] = True
+                        request["audit_metadata"]["memory_recall_attempted"] = True
                         memory_result = await _recall_memory(
                             query=query,
                             memory_types=None,
@@ -6086,6 +6113,7 @@ async def run_http_mode(port: int) -> None:
                             tooling_layer["memory_recall"] = memory_summaries[:2]
                         else:
                             request_context["memory_recall_miss"] = True
+                            request["audit_metadata"]["memory_recall_miss"] = True
                             tooling_layer["memory_recall"] = ["no stored prior context matched this continuation query"]
                         tooling_layer["executed"].append("memory_recall")
                         _audit_internal_tool_execution(
@@ -9366,7 +9394,7 @@ async def run_http_mode(port: int) -> None:
             if "temperature" in data:
                 payload["temperature"] = float(data.get("temperature"))
 
-            timeout_s = float(data.get("timeout_s") or 60.0)
+            timeout_s = float(data.get("timeout_s") or 180.0)
             finalization_applied = False
             finalization_status_code = None
             pool_agent: Optional[RemoteAgent] = None
