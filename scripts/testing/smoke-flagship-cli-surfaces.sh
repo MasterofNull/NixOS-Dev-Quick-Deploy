@@ -13,7 +13,7 @@ fi
 # Extend PATH with common install locations for npm-global CLIs
 export PATH="${HOME}/.npm-global/bin:${HOME}/.local/bin:${HOME}/.nix-profile/bin:${PATH}"
 
-help_timeout="${AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS:-8}"
+help_timeout="${AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS:-15}"
 commands=(cn codex qwen gemini claude pi)
 gemini_health_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/health/gemini-cli-health.sh"
 
