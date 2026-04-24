@@ -23,6 +23,7 @@ Environment variables (all optional — uses sensible defaults):
 """
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -1795,11 +1796,49 @@ def _normalize_gap_text(query_text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (query_text or "").strip().lower()).strip()
 
 
+def _gap_query_fingerprint(query_text: str) -> str:
+    normalized = _normalize_gap_text(query_text)
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _is_curated_stale_gap(query_text: str) -> bool:
     normalized = _normalize_gap_text(query_text)
     if not normalized:
         return True
     return any(pattern in normalized for pattern in _CURATED_STALE_GAP_PATTERNS)
+
+
+def _resolved_gap_fingerprints(entries: List[dict]) -> set[str]:
+    resolved: set[str] = set()
+    for entry in entries:
+        if str(entry.get("tool_name", "")).strip().lower() not in {"harness_eval", "run_harness_eval"}:
+            continue
+        if str(entry.get("service", "")).strip().lower() != "hybrid-coordinator-http":
+            continue
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        if not metadata or not bool(metadata.get("harness_passed")):
+            continue
+        fingerprint = str(metadata.get("harness_query_fingerprint", "") or "").strip().lower()
+        if fingerprint:
+            resolved.add(fingerprint)
+    return resolved
+
+
+def filter_resolved_query_gaps(gaps: List[dict], audit_entries: List[dict]) -> List[dict]:
+    resolved = _resolved_gap_fingerprints(audit_entries)
+    if not resolved:
+        return gaps
+    filtered: List[dict] = []
+    for gap in gaps:
+        if not isinstance(gap, dict):
+            continue
+        fingerprint = _gap_query_fingerprint(str(gap.get("query_text", "") or ""))
+        if fingerprint and fingerprint in resolved:
+            continue
+        filtered.append(gap)
+    return filtered
 
 
 def _count_aidb_docs_for_topic(topic: str) -> int:
@@ -6107,6 +6146,7 @@ def main() -> None:
     delegation_feedback = aggregate_delegation_feedback(delegation_feedback_raw)
     eval_rows = read_eval_scores(since_dt)
     gaps = read_query_gaps(since_dt, limit=10)
+    gaps = filter_resolved_query_gaps(gaps, audit_entries)
     gaps = [
         g for g in gaps
         if not _is_synthetic_gap(str(g.get("query_text", "")))
