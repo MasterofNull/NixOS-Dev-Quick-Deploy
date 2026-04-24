@@ -3103,6 +3103,39 @@ declare -A MODEL_CATALOG_EMBED=(
   ["all-minilm"]="sentence-transformers/all-MiniLM-L6-v2|all-MiniLM-L6-v2|~0.1 GB|384-dim / 512 ctx|all-MiniLM-L6-v2 [LEGACY] — Ultra-minimal, embedded only, 512 token limit"
 )
 
+extract_attr_from_facts() {
+  local facts_file="$1"
+  local scope="$2"
+  local attr="$3"
+
+  python3 - "$facts_file" "$scope" "$attr" <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+facts_path, scope, attr = sys.argv[1:4]
+content = Path(facts_path).read_text(encoding="utf-8")
+
+flat_match = re.search(rf'{re.escape(scope)}\.{re.escape(attr)}\s*=\s*"([^"]+)"', content)
+if flat_match:
+    print(flat_match.group(1))
+    raise SystemExit(0)
+
+nested_match = re.search(
+    rf'{re.escape(scope)}\s*=\s*\{{.*?{re.escape(attr)}\s*=\s*"([^"]+)"',
+    content,
+    re.DOTALL,
+)
+if nested_match:
+    print(nested_match.group(1))
+PYEOF
+}
+
+embed_model_store_path() {
+  local embed_file="$1"
+  printf '/var/lib/llama-cpp/models/embed-%s\n' "$embed_file"
+}
+
 prompt_model_selection() {
   section "Phase 1: Model Selection"
   log "Selecting AI models for this deployment..."
@@ -3117,8 +3150,8 @@ prompt_model_selection() {
   # Try activeModel first (Phase 20.2 catalog-style config)
   local active_chat_model=""
   local active_embed_model=""
-  active_chat_model="$(grep -oP '(?<=llamaCpp\.activeModel\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
-  active_embed_model="$(grep -oP '(?<=embeddingServer\.activeModel\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+  active_chat_model="$(extract_attr_from_facts "$facts_file" "llamaCpp" "activeModel" 2>/dev/null || true)"
+  active_embed_model="$(extract_attr_from_facts "$facts_file" "embeddingServer" "activeModel" 2>/dev/null || true)"
 
   if [[ -n "$active_chat_model" ]]; then
     current_chat_key="$active_chat_model"
@@ -3130,7 +3163,7 @@ prompt_model_selection() {
   # Fallback: detect from huggingFaceRepo
   if [[ -z "$current_chat_key" ]]; then
     local current_chat_repo
-    current_chat_repo="$(grep -oP '(?<=llamaCpp\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+    current_chat_repo="$(extract_attr_from_facts "$facts_file" "llamaCpp" "huggingFaceRepo" 2>/dev/null || true)"
     if [[ -n "$current_chat_repo" ]]; then
       for key in "${!MODEL_CATALOG_CHAT[@]}"; do
         local repo="${MODEL_CATALOG_CHAT[$key]%%|*}"
@@ -3143,7 +3176,7 @@ prompt_model_selection() {
   fi
   if [[ -z "$current_embed_key" ]]; then
     local current_embed_repo
-    current_embed_repo="$(grep -oP '(?<=embeddingServer\.huggingFaceRepo\s{0,30}=\s{0,5}")[^"]+' "$facts_file" 2>/dev/null || true)"
+    current_embed_repo="$(extract_attr_from_facts "$facts_file" "embeddingServer" "huggingFaceRepo" 2>/dev/null || true)"
     if [[ -n "$current_embed_repo" ]]; then
       for key in "${!MODEL_CATALOG_EMBED[@]}"; do
         local repo="${MODEL_CATALOG_EMBED[$key]%%|*}"
@@ -3354,8 +3387,10 @@ prompt_model_selection() {
     fi
     if [[ -n "$embed_info" ]]; then
       local embed_file="${embed_info#*|}"; embed_file="${embed_file%%|*}"
-      if [[ -f "/var/lib/llama-cpp/models/$embed_file" ]]; then
-        log "  Embedding model already on disk at $embed_file — skipping download"
+      local embed_dest=""
+      embed_dest="$(embed_model_store_path "$embed_file")"
+      if [[ -f "$embed_dest" ]]; then
+        log "  Embedding model already on disk at $(basename "$embed_dest") — skipping download"
       else
         download_embed=true
         log "  Embedding model file missing — will download"
@@ -3422,25 +3457,8 @@ prompt_model_selection() {
     local tmp_facts
     tmp_facts="$(mktemp)"
 
-    # Build the aiStack block
-    local aiblock=""
-    aiblock+=$'    # ── AI Stack model configuration (Phase 20.2) ──────────────────────\n'
-    aiblock+=$'    # Switch models by changing activeModel to any key from the catalog.\n'
-    aiblock+=$'    aiStack = {\n'
-    aiblock+=$'      llamaCpp = {\n'
-    if [[ -n "$new_chat_key" && "$new_chat_key" != "none" ]]; then
-      aiblock+="        activeModel = \"${new_chat_key}\";\n"
-      aiblock+="        trackLatest = true;\n"
-    fi
-    aiblock+="      };\n"
-    aiblock+="      embeddingServer = {\n"
-    if [[ -n "$new_embed_key" && "$new_embed_key" != "none" ]]; then
-      aiblock+="        activeModel = \"${new_embed_key}\";\n"
-    fi
-    aiblock+="      };\n"
-    aiblock+="    };\n"
-
-    # Use Python to safely update facts.nix
+    # Use Python to safely update facts.nix while preserving host-specific
+    # overrides such as llamaCpp.extraArgs.
     python3 - "$facts_file" "$tmp_facts" "$new_chat_key" "$new_embed_key" <<'PYEOF'
 import sys, re
 
@@ -3452,40 +3470,76 @@ embed_key = sys.argv[4]
 with open(facts_path) as f:
     content = f.read()
 
-# Build replacement aiStack block
-aiblock = '    # ── AI Stack model configuration (Phase 20.2) ──────────────────────\n'
-aiblock += '    # Switch models by changing activeModel to any key from the catalog.\n'
-aiblock += '    # Available chat models: gemma4-e4b, qwen3-8b, qwen3.6-14b, qwen3.6-35b, phi4-mini\n'
-aiblock += '    # Available embedding models: bge-m3, jina-v3, nomic-embed\n'
-aiblock += '    aiStack = {\n'
-aiblock += '      llamaCpp = {\n'
-if chat_key and chat_key != "none":
-    aiblock += f'        activeModel = "{chat_key}";\n'
-    aiblock += '        trackLatest = true;\n'
-aiblock += '      };\n'
-aiblock += '      embeddingServer = {\n'
-if embed_key and embed_key != "none":
-    aiblock += f'        activeModel = "{embed_key}";\n'
-aiblock += '      };\n'
-aiblock += '    };\n'
+def update_flat_attr(block: str, scope: str, attr: str, value: str) -> str:
+    pattern = re.compile(rf'({re.escape(scope)}\.{re.escape(attr)}\s*=\s*")[^"]*(";)')
+    if pattern.search(block):
+        return pattern.sub(rf'\1{value}\2', block, count=1)
+    return block
 
-# Replace existing aiStack block or insert before closing braces
-if 'aiStack = {' in content:
-    # Replace from 'aiStack' to its closing '};'
-    pattern = r'(\s+)aiStack = \{[^}]*embeddingServer = \{[^}]*\}[^}]*\};'
-    content = re.sub(pattern, lambda m: m.group(1) + aiblock.rstrip(), content, count=1, flags=re.DOTALL)
+def update_nested_attr(block: str, scope: str, attr: str, value: str) -> str:
+    pattern = re.compile(
+        rf'({re.escape(scope)}\s*=\s*\{{.*?{re.escape(attr)}\s*=\s*")[^"]*(")',
+        re.DOTALL,
+    )
+    if pattern.search(block):
+        return pattern.sub(rf'\1{value}\2', block, count=1)
+    return block
+
+def extract_block(text: str, marker: str) -> tuple[int, int] | tuple[None, None]:
+    start = text.find(marker)
+    if start == -1:
+        return None, None
+    depth = 0
+    started = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if ch == "{":
+            depth += 1
+            started = True
+        elif ch == "}":
+            depth -= 1
+            if started and depth == 0:
+                semi = text.find(";", idx)
+                if semi != -1:
+                    return start, semi + 1
+                break
+    return None, None
+
+start, end = extract_block(content, "aiStack = {")
+if start is not None and end is not None:
+    ai_block = content[start:end]
+    if chat_key and chat_key != "none":
+        updated_block = update_flat_attr(ai_block, "llamaCpp", "activeModel", chat_key)
+        if updated_block == ai_block:
+            updated_block = update_nested_attr(ai_block, "llamaCpp", "activeModel", chat_key)
+        ai_block = updated_block
+    if embed_key and embed_key != "none":
+        updated_block = update_flat_attr(ai_block, "embeddingServer", "activeModel", embed_key)
+        if updated_block == ai_block:
+            updated_block = update_nested_attr(ai_block, "embeddingServer", "activeModel", embed_key)
+        ai_block = updated_block
+    content = content[:start] + ai_block + content[end:]
 else:
-    # Insert aiStack block before the closing of mySystem = { ... };
-    # Pattern: find "  };\n}" at end (mySystem closing brace + file closing brace)
-    import re as re_mod
-    # Match the final mySystem closing: whitespace + }; + newline + }
+    aiblock = '    # ── AI Stack model configuration (Phase 20.2) ──────────────────────\n'
+    aiblock += '    # Switch models by changing activeModel to any key from the catalog.\n'
+    aiblock += '    aiStack = {\n'
+    aiblock += '      llamaCpp = {\n'
+    if chat_key and chat_key != "none":
+        aiblock += f'        activeModel = "{chat_key}";\n'
+        aiblock += '        trackLatest = true;\n'
+    aiblock += '      };\n'
+    aiblock += '      embeddingServer = {\n'
+    if embed_key and embed_key != "none":
+        aiblock += f'        activeModel = "{embed_key}";\n'
+    aiblock += '      };\n'
+    aiblock += '    };\n'
+
     end_pattern = r'(\s*\};\s*\n\}\s*)$'
-    match = re_mod.search(end_pattern, content)
+    match = re.search(end_pattern, content)
     if match:
         insert_pos = match.start()
         content = content[:insert_pos] + '\n' + aiblock + content[insert_pos:]
     else:
-        # Fallback: append before final }
         content = content.rstrip()
         if content.endswith('}'):
             content = content[:-1] + aiblock + '}\n'
@@ -3616,7 +3670,8 @@ PYEOF
       local embed_info="${MODEL_CATALOG_EMBED[$new_embed_key]}"
       local embed_repo="${embed_info%%|*}"; embed_info="${embed_info#*|}"
       local embed_file="${embed_info%%|*}"
-      local embed_dest="/var/lib/llama-cpp/models/$embed_file"
+      local embed_dest=""
+      embed_dest="$(embed_model_store_path "$embed_file")"
 
       if ! run_privileged test -f "$embed_dest"; then
         # Check HuggingFace cache first
