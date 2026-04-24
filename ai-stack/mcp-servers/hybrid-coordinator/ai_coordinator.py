@@ -582,6 +582,19 @@ def route_by_complexity(
     if signal_parts:
         rationale += f", signals=[{'; '.join(signal_parts[:3])}]"
 
+    # Phase 8.11 — Thinking mode recommendation based on complexity.
+    # Qwen3 /no_think skips CoT overhead for simple/medium tasks (~3-5x faster).
+    # Architecture and complex implementation benefit from CoT reasoning.
+    if complexity in {"architecture"} or task_archetype in {"architecture-review"}:
+        thinking_mode = "on"
+        thinking_budget = 4096
+    elif complexity == "complex" or task_archetype in {"implementation", "tool-calling"}:
+        thinking_mode = "on"
+        thinking_budget = 1024
+    else:
+        thinking_mode = "off"
+        thinking_budget = 0
+
     decision = {
         "recommended_profile": recommended,
         "model_class": model_class,
@@ -592,6 +605,8 @@ def route_by_complexity(
         "rationale": rationale,
         "auto_routed": True,
         "prefer_local": prefer_local,
+        "thinking_mode": thinking_mode,
+        "thinking_budget_tokens": thinking_budget,
     }
 
     # Record for telemetry
