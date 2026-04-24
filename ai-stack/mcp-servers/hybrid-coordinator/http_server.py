@@ -5087,6 +5087,8 @@ async def run_http_mode(port: int) -> None:
                 "/hints",
                 "/workflow/",
                 "/query",
+                "/v1/orchestrate",
+                "/v1/",
                 "/review/",
                 "/discovery/",
                 "/control/ai-coordinator/",
@@ -10223,13 +10225,17 @@ asyncio.run(run())
                 "context": data.get("context") if isinstance(data.get("context"), dict) else {},
                 "type": data.get("type", "unknown"),
                 "allow_escalation": bool(data.get("allow_escalation", True)),
+                "allow_advisor": bool(data.get("allow_advisor", True)),
+                "max_advisor_uses": int(data.get("max_advisor_uses", 3)),
             }
 
             if not task["description"]:
                 return web.json_response({"error": "task required"}, status=400)
 
             router = get_router()
-            result = await router.execute_with_routing(task)
+            # Use execute_with_advisor so decision-point detection triggers proactive
+            # advisor consultation before execution (advisor strategy integration).
+            result = await router.execute_with_advisor(task)
 
             return web.json_response(result)
         except ImportError:
