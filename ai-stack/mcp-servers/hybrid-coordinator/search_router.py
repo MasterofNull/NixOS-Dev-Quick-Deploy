@@ -187,6 +187,47 @@ def _query_is_technical(tokens: List[str]) -> bool:
     return any(token in _TECHNICAL_QUERY_TOKENS for token in tokens)
 
 
+def query_targets_runtime_diagnostics(query: str, tokens: Optional[List[str]] = None) -> bool:
+    """Return True when the query is diagnosing live routing/retrieval behavior."""
+    token_list = tokens if isinstance(tokens, list) else normalize_tokens(query)
+    token_set = set(token_list)
+    if not token_set:
+        return False
+    if _query_targets_route_stack(token_list, query):
+        return True
+
+    runtime_focus = {
+        "route", "routing", "router", "retrieval", "search", "cache", "latency",
+        "runtime", "local", "service", "server", "health", "status",
+    }
+    diagnostics_terms = {
+        "health", "healthy", "status", "verify", "check", "checking", "diagnose",
+        "diagnostic", "degraded", "failure", "fail", "failing", "broken",
+    }
+    if not token_set.intersection(runtime_focus):
+        return False
+
+    if {"routing", "retrieval"}.issubset(token_set):
+        return True
+    if token_set.intersection(diagnostics_terms) and token_set.intersection(
+        {"routing", "route", "retrieval", "search", "cache", "runtime", "service", "server", "local"}
+    ):
+        return True
+
+    normalized_query = str(query or "").lower()
+    return any(
+        phrase in normalized_query
+        for phrase in (
+            "routing health",
+            "retrieval health",
+            "runtime health",
+            "service health",
+            "routing status",
+            "retrieval status",
+        )
+    )
+
+
 def _path_category_counts(payload: Dict[str, Any]) -> Tuple[int, int]:
     code_paths = 0
     doc_paths = 0
@@ -250,7 +291,7 @@ def _is_direct_code_context(payload: Dict[str, Any]) -> bool:
 
 
 def _expanded_query_for_search(query: str, tokens: List[str]) -> str:
-    if not _query_targets_route_stack(tokens, query):
+    if not query_targets_runtime_diagnostics(query, tokens):
         return query
     suffix = " ".join(_ROUTE_STACK_QUERY_HINTS)
     return f"{query} {suffix}".strip()
@@ -264,7 +305,7 @@ def _route_stack_search_params(
     keyword_pool: int,
     score_threshold: float,
 ) -> Tuple[int, int, float]:
-    if not _query_targets_route_stack(tokens, query):
+    if not query_targets_runtime_diagnostics(query, tokens):
         return limit, keyword_pool, score_threshold
     return max(limit * 4, 12), max(keyword_pool * 3, 180), min(score_threshold, 0.45)
 
