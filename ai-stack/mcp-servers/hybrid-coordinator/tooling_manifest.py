@@ -42,7 +42,7 @@ def _normalize_runtime(value: str) -> str:
     return "python"
 
 
-def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
+def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> List[Dict[str, str]]:
     """Heuristic tool assignment for structured execution plans and manifests."""
     q = (query or "").lower()
     tools: List[Dict[str, str]] = []
@@ -58,6 +58,10 @@ def workflow_tool_catalog(query: str) -> List[Dict[str, str]]:
     add("discovery", "/discovery/capabilities", "Progressive disclosure of available stack capabilities.")
 
     if any(k in q for k in ("find", "search", "retrieve", "context", "rag", "semantic", "lexical")):
+        add("route_search", "/query", "Hybrid retrieval path for context and grounded answers.")
+        add("memory_recall", "/memory/recall", "Recall prior procedural or semantic memory for similar tasks.")
+
+    if memory_recall_priority:
         add("route_search", "/query", "Hybrid retrieval path for context and grounded answers.")
         add("memory_recall", "/memory/recall", "Recall prior procedural or semantic memory for similar tasks.")
 
