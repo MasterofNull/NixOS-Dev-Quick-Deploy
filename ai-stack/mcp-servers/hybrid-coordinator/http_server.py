@@ -9458,14 +9458,19 @@ SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
 AGENT_TASK = os.environ["AGENT_TASK"]
 SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
 STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
-MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
+MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
 TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
+# Qwen3 thinking mode: disable for delegate tasks to skip CoT overhead.
+# Prepend /no_think unless the caller explicitly requests thinking mode.
+NO_THINK_PREFIX = os.environ.get("AGENT_THINKING_MODE", "off") != "on"
+# Stop at model EOS tokens to prevent runaway generation.
+STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
 
 def _profile_for_role(role):
     normalized = str(role or "").strip().lower()
     if normalized == "coder":
         return "local-tool-calling"
-    return "continue-local"
+    return "local-agent"
 
 def _write_state(state):
     if STATE_FILE:
@@ -9478,23 +9483,32 @@ async def run():
              "status": "running", "started_at": time.time(), "tool_calls": 0}
     _write_state(state)
     try:
+        task_content = AGENT_TASK
+        if NO_THINK_PREFIX and not task_content.startswith("/no_think"):
+            task_content = "/no_think " + task_content
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": AGENT_TASK},
+            {"role": "user", "content": task_content},
         ]
-        async with httpx.AsyncClient(timeout=float(os.environ.get("AGENT_TIMEOUT", "120"))) as client:
+        async with httpx.AsyncClient(timeout=float(os.environ.get("AGENT_TIMEOUT", "180"))) as client:
             resp = await client.post(
                 f"{SWITCHBOARD_URL}/v1/chat/completions",
                 json={"messages": messages, "temperature": TEMPERATURE,
-                      "max_tokens": MAX_TOKENS, "stream": False},
+                      "max_tokens": MAX_TOKENS, "stream": False,
+                      "stop": STOP_SEQUENCES},
                 headers={"X-AI-Profile": _profile_for_role(os.environ["AGENT_ROLE"]),
                          "X-AI-Route": "local"},
             )
             resp.raise_for_status()
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+            msg = data["choices"][0]["message"]
+            # Prefer non-thinking content; fall back to reasoning_content if content empty
+            content = (msg.get("content") or "").strip()
+            if not content:
+                content = (msg.get("reasoning_content") or "").strip()
             state.update({"status": "completed", "result": content,
-                          "completed_at": time.time()})
+                          "completed_at": time.time(),
+                          "finish_reason": data["choices"][0].get("finish_reason", "stop")})
             _write_state(state)
             print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
     except Exception as e:
@@ -9514,6 +9528,9 @@ asyncio.run(run())
                     "AGENT_MAX_TOKENS": str(max_tokens),
                     "AGENT_TEMPERATURE": str(temperature),
                     "AGENT_TIMEOUT": str(timeout_sec),
+                    # Enable thinking mode only when caller requests it; default off
+                    # to skip Qwen3 CoT overhead for delegation tasks.
+                    "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")),
                     "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
                     "PYTHONUNBUFFERED": "1",
                 })
