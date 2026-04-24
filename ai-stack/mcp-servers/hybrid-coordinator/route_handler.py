@@ -44,7 +44,11 @@ from metrics import (
     LLM_BACKEND_SELECTIONS,
     LLM_BACKEND_LATENCY,
 )
-from search_router import looks_like_sql as _looks_like_sql, normalize_tokens as _normalize_tokens
+from search_router import (
+    looks_like_sql as _looks_like_sql,
+    normalize_tokens as _normalize_tokens,
+    query_targets_runtime_diagnostics,
+)
 from query_expansion import QueryExpander
 from prompt_injection import PromptInjectionScanner, sanitize_query
 import task_classifier
@@ -366,7 +370,8 @@ def _select_route_collections(
 
     q = str(query or "").strip().lower()
     ctx = context if isinstance(context, dict) else {}
-    token_count = len(_normalize_tokens(query))
+    normalized_tokens = _normalize_tokens(query)
+    token_count = len(normalized_tokens)
     has_memory = bool(ctx.get("memory_recall"))
     has_discovery = bool(ctx.get("tool_discovery"))
     continuation = _looks_like_continuation_query(query, ctx) or any(
@@ -389,10 +394,11 @@ def _select_route_collections(
             "switchboard routing cache",
         )
     )
+    runtime_diagnostics_query = query_targets_runtime_diagnostics(query, normalized_tokens)
     wants_code = any(
         term in q
         for term in ("file", "module", "service", "nixos", "patch", "config", "flake", "option", "systemd", "repo", "code")
-    ) or route_stack_query
+    ) or runtime_diagnostics_query
     wants_patterns = has_discovery or any(
         term in q
         for term in ("pattern", "workflow", "best practice", "guide", "how", "approach", "strategy")
@@ -406,6 +412,9 @@ def _select_route_collections(
         if name in ordered and name not in selected:
             selected.append(name)
 
+    if runtime_diagnostics_query:
+        add("codebase-context")
+        add("error-solutions")
     if wants_code or task_shape == "code" or generate_response or route == "tree" or continuation:
         add("codebase-context")
     if wants_error or task_shape == "code" or route in {"tree", "hybrid"}:
@@ -485,9 +494,20 @@ def _select_route_collections(
         max_collections = min(max_collections, 2)
         selected = [name for name in selected if name != "codebase-context"]
         selected.insert(0, "codebase-context")
+    elif runtime_diagnostics_query and not generate_response and not continuation:
+        profile = "runtime-diagnostics-direct"
+        max_collections = min(max_collections, 2)
+        preferred = ["codebase-context", "error-solutions"]
+        selected = [name for name in preferred if name in selected]
 
     # Batch 2.2: Reduce fan-out for very simple queries (≤3 tokens)
-    if token_count <= 3 and not continuation and not generate_response and not route_stack_query:
+    if (
+        token_count <= 3
+        and not continuation
+        and not generate_response
+        and not runtime_diagnostics_query
+        and not route_stack_query
+    ):
         max_collections = 1
         profile = "simple-query-optimized"
         global _collection_metrics
