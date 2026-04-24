@@ -1698,11 +1698,8 @@ class MonitoringServer:
                     detail=_error_detail("invalid_document", exc),
                 )
             """Import a single document into the database."""
-            # Phase 15.2.2 — Source trust level validation
             source_trust_level = doc.get("source_trust_level", "imported")
-            if source_trust_level not in {"trusted", "imported", "generated"}:
-                raise ValueError("source_trust_level must be 'trusted', 'imported', or 'generated'")
-            
+
             def _insert():
                 stmt = insert(IMPORTED_DOCUMENTS).values(
                     project=doc.get("project", "default"),
@@ -3394,6 +3391,9 @@ class MCPServer:
         content = doc.get("content") or ""
         if not content:
             raise ValueError("content is required")
+        source_trust_level = doc.get("source_trust_level", "imported")
+        if source_trust_level not in {"trusted", "imported", "generated"}:
+            raise ValueError("source_trust_level must be 'trusted', 'imported', or 'generated'")
         # Phase 15.2.1 — Content size limit: 50KB per document
         if len(content) > 51_200:  # 50KB = 51200 bytes
             raise ValueError("content exceeds 50KB limit")
