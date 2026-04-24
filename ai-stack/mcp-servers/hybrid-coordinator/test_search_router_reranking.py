@@ -590,10 +590,33 @@ def test_expanded_query_for_search_leaves_non_route_queries_unchanged():
     assert expanded == query
 
 
+def test_runtime_diagnostics_query_detection_covers_health_checks():
+    query = "verify local retrieval and routing health"
+
+    assert search_router.query_targets_runtime_diagnostics(
+        query,
+        search_router.normalize_tokens(query),
+    ) is True
+
+
 def test_route_stack_search_params_expand_candidate_pool():
     semantic_limit, keyword_pool, score_threshold = search_router._route_stack_search_params(
         "what reduces repeated query latency in the local route stack",
         search_router.normalize_tokens("what reduces repeated query latency in the local route stack"),
+        limit=5,
+        keyword_pool=60,
+        score_threshold=0.7,
+    )
+
+    assert semantic_limit == 20
+    assert keyword_pool == 180
+    assert score_threshold == 0.45
+
+
+def test_runtime_diagnostics_search_params_expand_candidate_pool():
+    semantic_limit, keyword_pool, score_threshold = search_router._route_stack_search_params(
+        "verify local retrieval and routing health",
+        search_router.normalize_tokens("verify local retrieval and routing health"),
         limit=5,
         keyword_pool=60,
         score_threshold=0.7,
