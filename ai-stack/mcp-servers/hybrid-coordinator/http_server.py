@@ -9601,7 +9601,7 @@ asyncio.run(run())
                     role=agent_role,
                     task_text=user_task,
                     system_prompt=system_prompt or f"You are a {agent_role} agent. Execute the task using available tools.",
-                    max_tokens=int(data.get("max_tokens", 4096)),
+                    max_tokens=int(data.get("max_tokens", 768)),
                     temperature=float(data.get("temperature", 0.3)),
                     timeout_sec=timeout_s,
                 )
