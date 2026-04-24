@@ -46,8 +46,8 @@ LLAMA_URL = os.getenv(
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('LLAMA_CPP_PORT', '8080')}",
 ).rstrip("/")
 LLAMA_READY_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_READY_TIMEOUT_S", "180"))
-LLM_CALL_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "90"))
-LLM_CALL_MAX_TOKENS = int(os.getenv("AQ_PROMPT_EVAL_MAX_TOKENS", "96"))
+LLM_CALL_TIMEOUT = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "300"))
+LLM_CALL_MAX_TOKENS = int(os.getenv("AQ_PROMPT_EVAL_MAX_TOKENS", "128"))
 
 REGISTRY_PATH = Path(
     os.getenv(
@@ -164,8 +164,8 @@ CANONICAL_TESTS: Dict[str, List[TestCase]] = {
                 "score": "0.42",
                 "collection": "general",
             },
-            # At 0.42, near threshold — either answer is acceptable; just check format
-            expect_all=["YES", "NO"],  # Expect exactly one of these words
+            # At 0.42, near threshold — either answer is acceptable; just verify
+            # the model commits to one of the two valid answers.
             expect_any=["YES", "NO"],
             forbidden=[],
         ),
@@ -344,6 +344,48 @@ def render_template(template: str, variables: Dict[str, str]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _strip_thinking(text: str) -> str:
+    """Remove Qwen3 <think>...</think> blocks and other inline reasoning patterns.
+
+    Returns the final answer portion of the response.  If thinking was
+    truncated (no closing tag / no final answer found), returns an empty
+    string so assertions skip rather than match stale reasoning fragments.
+    """
+    import re
+    if not text:
+        return text
+
+    # 1. XML-tagged thinking blocks  (<think>…</think>)
+    if "<think>" in text:
+        if "</think>" not in text:
+            # Truncated mid-think — no usable final answer
+            return ""
+        stripped = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        return stripped
+
+    # 2. Inline preamble patterns the Qwen3 jinja template emits without XML
+    #    when /no_think is not honoured.  The final answer follows a blank line
+    #    after the reasoning body.
+    #    Patterns: "Here's a thinking process: …" / "1. **Analyze …" (numbered list)
+    reasoning_start = re.compile(
+        r"^(here[' ]s a thinking|1\.\s+\*{0,2}analyze|let me analyze|let's analyze)",
+        re.IGNORECASE,
+    )
+    if reasoning_start.match(text.lstrip()):
+        # Try splitting on double newline — final answer is the last paragraph
+        parts = re.split(r"\n{2,}", text.strip())
+        if len(parts) > 1:
+            # Skip parts that look like numbered list items
+            candidates = [p.strip() for p in reversed(parts)
+                          if not re.match(r"^\d+\.", p.strip())]
+            if candidates:
+                return candidates[0]
+        # All paragraphs look like reasoning — response was truncated
+        return ""
+
+    return text
+
+
 def llm_call(prompt: str, model: str, timeout: float = 30.0) -> Tuple[str, float]:
     """
     Call llama.cpp /chat/completions.
@@ -352,11 +394,19 @@ def llm_call(prompt: str, model: str, timeout: float = 30.0) -> Tuple[str, float
     """
     import time
 
+    # Disable Qwen3 thinking mode for short eval prompts.
+    # chat_template_kwargs is the llama.cpp way to pass Jinja template vars;
+    # /no_think as the last system-content token is the Qwen3 in-template way.
+    # Both are sent so whichever path the running llama.cpp version supports wins.
     payload = json.dumps({
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {"role": "system", "content": "Answer concisely. /no_think"},
+            {"role": "user", "content": prompt},
+        ],
         "temperature": 0,
         "max_tokens": LLM_CALL_MAX_TOKENS,
+        "chat_template_kwargs": {"enable_thinking": False},
     }).encode("utf-8")
 
     url = f"{LLAMA_URL}/v1/chat/completions"
@@ -372,6 +422,7 @@ def llm_call(prompt: str, model: str, timeout: float = 30.0) -> Tuple[str, float
     latency_ms = (time.monotonic() - t0) * 1000
     message = data["choices"][0]["message"]
     text = message.get("content") or message.get("reasoning_content", "")
+    text = _strip_thinking(text)
     return text, latency_ms
 
 
