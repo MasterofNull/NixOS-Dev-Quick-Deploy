@@ -87,6 +87,26 @@ def main() -> int:
             "expected runtime diagnostics profile from sidecar metadata",
         )
 
+        unresolved_gaps = [
+            {"query_text": "verify local retrieval and routing health", "score": 0.25, "collection": "best-practices", "occurrences": 2},
+            {"query_text": "test harness connectivity", "score": 0.0, "collection": "unknown", "occurrences": 1},
+        ]
+        resolved_entry = {
+            "timestamp": fresh.isoformat().replace("+00:00", "Z"),
+            "tool_name": "run_harness_eval",
+            "service": "hybrid-coordinator-http",
+            "metadata": {
+                "harness_passed": True,
+                "harness_query_fingerprint": aq_report._gap_query_fingerprint("verify local retrieval and routing health"),
+            },
+        }
+        filtered_gaps = aq_report.filter_resolved_query_gaps(unresolved_gaps, [resolved_entry])
+        assert_true(len(filtered_gaps) == 1, "expected resolved harness-eval gap to be filtered")
+        assert_true(
+            filtered_gaps[0]["query_text"] == "test harness connectivity",
+            "expected only unresolved gap to remain",
+        )
+
         latest_report = tmp / "latest-aq-report.json"
         aq_report.AQ_REPORT_LATEST_JSON = latest_report
         aq_report._persist_latest_report_json('{"generated_at":"2026-04-24T18:30:00Z"}')

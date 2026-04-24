@@ -17,6 +17,7 @@ Usage:
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -1648,6 +1649,13 @@ def _audit_http_request(request: web.Request, status: int, latency_ms: float) ->
         latency_ms=latency_ms,
         metadata=metadata,
     )
+
+
+def _gap_query_fingerprint(query: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(query or "").strip().lower()).strip()
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def _audit_internal_tool_execution(
@@ -6461,6 +6469,7 @@ async def run_http_mode(port: int) -> None:
                 "harness_passed": bool(result.get("passed")) if isinstance(result, dict) else False,
                 "harness_overall_score": metrics.get("overall_score") if isinstance(metrics, dict) else None,
                 "harness_failure_category": result.get("failure_category") if isinstance(result, dict) else None,
+                "harness_query_fingerprint": _gap_query_fingerprint(query),
             }
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
