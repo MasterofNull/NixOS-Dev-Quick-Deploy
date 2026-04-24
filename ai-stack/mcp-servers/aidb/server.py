@@ -1739,6 +1739,18 @@ class MonitoringServer:
                     "source_trust_level": source_trust_level,
                 },
             )
+            # Fire-and-forget background vectorization into Qdrant knowledge collection.
+            # Allows the hybrid-coordinator to retrieve imported documents via semantic search.
+            asyncio.create_task(
+                self.mcp_server._vectorize_doc_to_qdrant(
+                    title=doc.get("title", ""),
+                    content=doc.get("content", ""),
+                    project=doc.get("project", "default"),
+                    relative_path=doc.get("relative_path", ""),
+                    source_trust_level=source_trust_level,
+                ),
+                name="vectorize_doc",
+            )
             return {"status": "ok", "message": "Document imported successfully"}
 
         @self.app.post("/vector/embed")
@@ -2796,6 +2808,65 @@ class MCPServer:
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
                 raise
+
+    async def _vectorize_doc_to_qdrant(
+        self,
+        *,
+        title: str,
+        content: str,
+        project: str,
+        relative_path: str,
+        source_trust_level: str,
+    ) -> None:
+        """Embed a document and upsert it into the Qdrant 'knowledge' collection.
+
+        Called as a fire-and-forget background task after POST /documents so that
+        the hybrid-coordinator can retrieve imported documents via semantic search.
+        Failures are logged but never surface to the caller.
+        """
+        import hashlib as _hashlib
+        import os as _os
+        import time as _time
+
+        qdrant_url = _os.environ.get("QDRANT_URL", "").rstrip("/")
+        if not qdrant_url:
+            LOGGER.debug("_vectorize_doc_to_qdrant: QDRANT_URL not set, skipping")
+            return
+
+        try:
+            # Truncate to embed service token limit (~512 tokens ≈ 1200 chars).
+            chunk = (title + "\n\n" + content)[:1200]
+            embeddings = await self.embed_texts([chunk])
+            vector = embeddings[0]
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("vectorize_doc_embed_failed title=%s error=%s", title, exc)
+            return
+
+        point_id = int(_hashlib.md5(relative_path.encode()).hexdigest()[:8], 16)
+        payload = {
+            "project": project,
+            "title": title,
+            "content": content[:4000],
+            "relative_path": relative_path,
+            "source_trust_level": source_trust_level,
+            "imported_at": str(_time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())),
+        }
+        body = {"points": [{"id": point_id, "vector": vector, "payload": payload}]}
+        try:
+            resp = await self._external_http.put(
+                f"{qdrant_url}/collections/knowledge/points?wait=false",
+                json=body,
+                timeout=10.0,
+            )
+            if resp.status_code >= 300:
+                LOGGER.warning(
+                    "vectorize_doc_qdrant_upsert_failed title=%s status=%s",
+                    title, resp.status_code,
+                )
+            else:
+                LOGGER.info("vectorize_doc_qdrant_ok title=%s point_id=%s", title, point_id)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("vectorize_doc_qdrant_error title=%s error=%s", title, exc)
 
     def _get_document_content(self, document_id: int) -> str:
         with self._engine.connect() as conn:
