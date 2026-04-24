@@ -6169,7 +6169,11 @@ async def run_http_mode(port: int) -> None:
                 logger.info(f"Cache hit for query: {query[:60]}...")
             else:
                 # Cache miss - proceed with route_search
-                result = await _route_search(
+                _llm_timeout_s = float(
+                    data.get("llm_timeout_s")
+                    or os.getenv("AI_QUERY_LLM_TIMEOUT_S", "120")
+                )
+                _route_coro = _route_search(
                     query=query,
                     mode=data.get("mode", "auto"),
                     prefer_local=prefer_local,
@@ -6179,6 +6183,30 @@ async def run_http_mode(port: int) -> None:
                     score_threshold=float(data.get("score_threshold", 0.7)),
                     generate_response=generate_response,
                 )
+                try:
+                    result = await asyncio.wait_for(_route_coro, timeout=_llm_timeout_s)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "route_search_llm_timeout: query truncated after %.0fs (generate_response=%s)",
+                        _llm_timeout_s,
+                        generate_response,
+                    )
+                    if generate_response:
+                        # Fallback: return vector results without LLM generation
+                        result = await _route_search(
+                            query=query,
+                            mode=data.get("mode", "auto"),
+                            prefer_local=prefer_local,
+                            context=request_context,
+                            limit=int(data.get("limit", 5)),
+                            keyword_limit=int(data.get("keyword_limit", 5)),
+                            score_threshold=float(data.get("score_threshold", 0.7)),
+                            generate_response=False,
+                        )
+                    else:
+                        result = {"results": [], "error": "route_search_timeout"}
+                    result["truncated"] = True
+                    result["truncation_reason"] = "llm_timeout"
 
                 # Cache the response if it has quality metrics
                 if cache_enabled and result.get("response"):

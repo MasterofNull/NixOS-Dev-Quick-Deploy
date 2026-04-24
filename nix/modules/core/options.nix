@@ -1763,6 +1763,12 @@
             description = "Default per-run tool-call budget when not explicitly provided by client.";
           };
 
+          queryLlmTimeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 120;
+            description = "Hard cap (seconds) on LLM generation within /query. On timeout, returns vector results without generation (truncated=true). Prevents route_search P95 from being driven by slow inference.";
+          };
+
           safetyPolicy = lib.mkOption {
             type = lib.types.attrs;
             default = {
