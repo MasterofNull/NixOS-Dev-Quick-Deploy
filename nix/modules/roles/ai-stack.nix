@@ -1653,7 +1653,14 @@ in {
           ProtectSystem = "strict";
           ProtectHome = "read-only";
           PrivateTmp = true;
-          MemoryMax = "256M";
+          # Allow up to 1h total; Qwen 35B on CPU can take 3-5 min per test case.
+          TimeoutStartSec = "3600";
+          MemoryMax = "512M";
+          # Each LLM call allowed 5 min; 64-token cap keeps prompts short.
+          Environment = [
+            "AQ_PROMPT_EVAL_TIMEOUT_S=300"
+            "AQ_PROMPT_EVAL_MAX_TOKENS=64"
+          ];
           ReadWritePaths = [
             "${cfg.mcpServers.repoPath}/ai-stack/prompts"
           ];
