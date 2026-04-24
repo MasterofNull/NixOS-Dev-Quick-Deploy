@@ -59,6 +59,7 @@ run python3 "${ROOT}/scripts/testing/test-tool-security-auditor.py"
 run "${ROOT}/scripts/testing/validate-ai-slo-runtime.sh"
 run "${ROOT}/scripts/testing/smoke-cross-client-compat.sh"
 run "${ROOT}/scripts/testing/smoke-focused-parity.sh"
+run "${ROOT}/scripts/testing/check-ai-coordinator-delegate-smoke.sh"
 
 echo ""
 echo "Advanced parity suite completed."

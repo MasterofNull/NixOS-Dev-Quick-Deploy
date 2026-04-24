@@ -1139,6 +1139,8 @@ in {
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
+                # Phase 8.1 — hard cap on LLM generation within /query to bound route_search P95
+                "AI_QUERY_LLM_TIMEOUT_S=${toString ai.aiHarness.runtime.queryLlmTimeoutSeconds}"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"
