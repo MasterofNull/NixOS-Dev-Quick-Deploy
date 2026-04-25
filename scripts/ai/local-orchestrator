@@ -8,6 +8,7 @@
 # Usage:
 #   local-orchestrator                    # Interactive mode
 #   local-orchestrator "prompt"           # Single prompt
+#   local-orchestrator --route Reasoning "prompt"  # Single prompt via front-door alias
 #   local-orchestrator --status           # Show status
 #   local-orchestrator --plan "objective" # Create plan
 #
@@ -39,6 +40,7 @@ export AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE="${AI_LOCAL_FRONTDOOR_CONTINUATIO
 MODE="interactive"
 PROMPT=""
 OBJECTIVE=""
+ROUTE_ALIAS="${AI_LOCAL_FRONTDOOR_DEFAULT_ROUTE:-default}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -51,12 +53,17 @@ while [[ $# -gt 0 ]]; do
             OBJECTIVE="${2:-}"
             shift 2 || true
             ;;
+        --route|-r)
+            ROUTE_ALIAS="${2:-default}"
+            shift 2 || true
+            ;;
         --help|-h)
             echo "Local Orchestrator CLI"
             echo ""
             echo "Usage:"
             echo "  local-orchestrator                     Interactive mode"
             echo "  local-orchestrator \"prompt\"           Single prompt"
+            echo "  local-orchestrator --route Reasoning \"prompt\"  Single prompt via front-door alias"
             echo "  local-orchestrator --status            Show status"
             echo "  local-orchestrator --plan \"objective\" Create plan"
             echo ""
@@ -74,6 +81,42 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+load_hybrid_api_key() {
+    local api_key="${HYBRID_API_KEY:-}"
+    local candidate
+
+    if [[ -n "$api_key" ]]; then
+        printf '%s' "$api_key"
+        return 0
+    fi
+
+    for candidate in \
+        "${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}" \
+        /run/secrets/hybrid_coordinator_api_key \
+        /run/secrets/hybrid_api_key
+    do
+        if [[ -r "$candidate" ]]; then
+            tr -d '[:space:]' < "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+frontdoor_profile_for_alias() {
+    case "${1:-default}" in
+        default) printf '%s' "${AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE}" ;;
+        Explore) printf '%s' "${AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE}" ;;
+        Plan) printf '%s' "${AI_LOCAL_FRONTDOOR_PLAN_PROFILE}" ;;
+        Implementation) printf '%s' "${AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE}" ;;
+        Reasoning) printf '%s' "${AI_LOCAL_FRONTDOOR_REASONING_PROFILE}" ;;
+        ToolCalling) printf '%s' "${AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE}" ;;
+        Continuation) printf '%s' "${AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE}" ;;
+        *) printf '%s' "${AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE}" ;;
+    esac
+}
 
 # Check services
 check_services() {
@@ -103,6 +146,24 @@ check_services() {
     return 0
 }
 
+run_legacy_single_prompt() {
+    python3 -c "
+import asyncio
+import sys
+sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from local_orchestrator import get_orchestrator
+
+async def main():
+    orch = get_orchestrator()
+    response = await orch.process('''$PROMPT''')
+    print(response.content)
+    print()
+    print(f'[{response.backend_used}, {response.execution_time:.2f}s, \${response.cost_usd:.4f}]')
+
+asyncio.run(main())
+"
+}
+
 # Status mode
 if [[ "$MODE" == "status" ]]; then
     echo "Local Orchestrator Status"
@@ -128,6 +189,12 @@ if [[ "$MODE" == "status" ]]; then
     else
         echo "  AIDB: UNREACHABLE"
     fi
+
+    echo ""
+    echo "Front-door routing:"
+    echo "  enabled: ${AI_LOCAL_FRONTDOOR_ROUTING_ENABLE}"
+    echo "  default route alias: ${ROUTE_ALIAS}"
+    echo "  resolved profile: $(frontdoor_profile_for_alias "${ROUTE_ALIAS}")"
 
     exit 0
 fi
@@ -160,22 +227,48 @@ fi
 # Single prompt mode
 if [[ "$MODE" == "single" ]]; then
     check_services || true
+    if [[ "${AI_LOCAL_FRONTDOOR_ROUTING_ENABLE}" == "true" ]]; then
+        api_key="$(load_hybrid_api_key || true)"
+        curl_args=(-sS --max-time "${AI_LOCAL_FRONTDOOR_MAX_TIME:-120}" -H "Content-Type: application/json")
+        if [[ -n "${api_key}" ]]; then
+            curl_args+=(-H "X-API-Key: ${api_key}")
+        fi
 
-    python3 -c "
-import asyncio
-import sys
-sys.path.insert(0, '${REPO_ROOT}/ai-stack')
-from local_orchestrator import get_orchestrator
+        payload="$(python3 - <<'PY' "$PROMPT" "$ROUTE_ALIAS"
+import json, sys
+prompt = sys.argv[1]
+route = sys.argv[2]
+print(json.dumps({
+    "prompt": prompt,
+    "route": route,
+    "context": {
+        "entrypoint": "local-orchestrator",
+    },
+    "options": {
+        "generate_response": True,
+        "prefer_local": True,
+        "mode": "hybrid",
+    },
+}))
+PY
+)"
+        if response="$(curl "${curl_args[@]}" "${HYBRID_URL}/v1/orchestrate" -d "${payload}")"; then
+            python3 - <<'PY' "$response"
+import json, sys
+data = json.loads(sys.argv[1])
+print((data.get("response") or "").strip())
+print()
+route = data.get("route") or "unknown"
+backend = data.get("backend") or "unknown"
+latency = float(data.get("latency_ms") or 0.0) / 1000.0
+print(f"[{backend}, {route}, {latency:.2f}s]")
+PY
+            exit 0
+        fi
+        echo "WARNING: front-door request failed; falling back to legacy local orchestrator path" >&2
+    fi
 
-async def main():
-    orch = get_orchestrator()
-    response = await orch.process('''$PROMPT''')
-    print(response.content)
-    print()
-    print(f'[{response.backend_used}, {response.execution_time:.2f}s, \${response.cost_usd:.4f}]')
-
-asyncio.run(main())
-"
+    run_legacy_single_prompt
     exit 0
 fi
 
