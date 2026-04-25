@@ -71,16 +71,19 @@ delegate completions within the 90-180s budget.
 
 ## Remaining Structural Improvements (Prioritized)
 
-### P1: Async Task Queue for Delegate (Phase 8.6)
+### P1: Async Task Queue for Delegate (Phase 8.6) — FIXED
 
 **Pattern**: Google ADK, LangGraph, and AutoGEN use async work queues (Redis Streams,
 asyncio Queue) for agent dispatch. The current `_spawn_local_agent` blocks the HTTP
 handler for the full inference duration.
 
 **Impact**: Single slow delegate call blocks the aiohttp event loop worker.
-**Fix**: Move delegate subprocess management to a background task pool with
-`asyncio.create_task()` + result polling via SSE or webhook callback.
-**Effort**: Medium — 2-3 hours
+**Fix**: `async_mode=true` in request body triggers `asyncio.create_task()` dispatch.
+Returns `{"task_id": "...", "status": "pending", "poll_url": "..."}` (HTTP 202)
+immediately. Caller polls `GET /control/ai-coordinator/delegate/status/{task_id}`.
+Module-level `_DELEGATE_TASK_REGISTRY` holds state (TTL 600s, lazy cleanup).
+Synchronous mode (default) unchanged for backwards compat.
+Memory auto-consolidation (8.8) runs in the async background task on success.
 
 ### P2: OpenAI-Compatible Tool Calling in Delegate (Phase 8.7)
 
