@@ -211,6 +211,11 @@ _HARNESS_STATS: Dict[str, Any] = {}
 _CIRCUIT_BREAKERS: Optional[Any] = None
 _SERVICE_NAME: str = "hybrid-coordinator"
 _AGENT_POOL_MANAGER = AgentPoolManager()
+# Phase 8.6 — Async delegate task registry.
+# Stores in-flight and completed delegate task state keyed by task_id.
+# Entries expire after _DELEGATE_TASK_TTL_S seconds (lazy cleanup on read).
+_DELEGATE_TASK_REGISTRY: Dict[str, Dict[str, Any]] = {}
+_DELEGATE_TASK_TTL_S: float = 600.0
 _DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.ACCEPTABLE)
 _DELEGATED_RESULT_REFINER = ResultRefiner()
 _DELEGATED_RESULT_CACHE = ResultCache()
@@ -9620,7 +9625,7 @@ asyncio.run(run())
                     elif isinstance(msg, dict) and msg.get("role") == "user":
                         user_task = msg.get("content", task)
 
-                local_response = await _spawn_local_agent(
+                _spawn_kwargs = dict(
                     role=agent_role,
                     task_text=user_task,
                     system_prompt=system_prompt or f"You are a {agent_role} agent. Execute the task using available tools.",
@@ -9628,6 +9633,64 @@ asyncio.run(run())
                     temperature=float(data.get("temperature", 0.3)),
                     timeout_sec=timeout_s,
                 )
+
+                # Phase 8.6 — Async dispatch: return task_id immediately, caller polls.
+                # Enabled via async_mode=true in request body. Default: synchronous.
+                if bool(data.get("async_mode", False)):
+                    import uuid as _uuid
+                    _task_id = str(_uuid.uuid4())
+                    _DELEGATE_TASK_REGISTRY[_task_id] = {
+                        "status": "pending",
+                        "task_id": _task_id,
+                        "role": agent_role,
+                        "created_at": time.time(),
+                    }
+
+                    async def _run_async_delegate(tid: str, kwargs: dict, _role: str, _utask: str, _rout: dict) -> None:
+                        _DELEGATE_TASK_REGISTRY[tid]["status"] = "running"
+                        try:
+                            _resp = await _spawn_local_agent(**kwargs)
+                            _body: Dict[str, Any] = {}
+                            try:
+                                _body = json.loads(_resp.body)
+                            except Exception:
+                                pass
+                            _DELEGATE_TASK_REGISTRY[tid].update({
+                                "status": "done" if _resp.status == 200 else "failed",
+                                "http_status": _resp.status,
+                                "result": _body,
+                                "completed_at": time.time(),
+                            })
+                            # Phase 8.8 memory consolidation for async path
+                            if _resp.status == 200 and _store_memory is not None:
+                                try:
+                                    _rc = (_body.get("choices") or [{}])[0].get("message", {}).get("content", "")
+                                    if _rc and len(_rc.strip()) > 20:
+                                        await _store_memory(
+                                            content=f"Delegate task [{_role}]: {_utask[:200]}\nOutcome: {_rc[:400]}",
+                                            memory_type="procedural",
+                                            tags=["delegate", _role, _rout.get("task_archetype", "general")],
+                                            source="delegate_auto_consolidation",
+                                        )
+                                except Exception as _me:
+                                    logger.debug("delegate_memory_consolidation_skipped error=%s", _me)
+                        except Exception as _ex:
+                            _DELEGATE_TASK_REGISTRY[tid].update({
+                                "status": "failed",
+                                "error": str(_ex),
+                                "completed_at": time.time(),
+                            })
+
+                    asyncio.create_task(
+                        _run_async_delegate(_task_id, _spawn_kwargs, agent_role, user_task, routing_decision)
+                    )
+                    return web.json_response({
+                        "task_id": _task_id,
+                        "status": "pending",
+                        "poll_url": f"/control/ai-coordinator/delegate/status/{_task_id}",
+                    }, status=202)
+
+                local_response = await _spawn_local_agent(**_spawn_kwargs)
                 # Phase 8.8 — Auto-consolidate successful delegate outcomes into memory.
                 if (
                     local_response.status == 200
@@ -11650,6 +11713,26 @@ asyncio.run(run())
     http_app.router.add_get("/control/ai-coordinator/evaluations/trends", handle_ai_coordinator_evaluation_trends)
     http_app.router.add_get("/control/ai-coordinator/skills", handle_ai_coordinator_skills)
     http_app.router.add_post("/control/ai-coordinator/delegate", handle_ai_coordinator_delegate)
+
+    # Phase 8.6 — Async delegate task status polling handler
+    async def handle_ai_coordinator_delegate_status(request: web.Request) -> web.Response:
+        """Poll the status of an async delegate task submitted with async_mode=true."""
+        task_id = request.match_info.get("task_id", "").strip()
+        if not task_id:
+            return web.json_response({"error": "task_id required"}, status=400)
+        entry = _DELEGATE_TASK_REGISTRY.get(task_id)
+        if not entry:
+            return web.json_response({"error": "task_not_found", "task_id": task_id}, status=404)
+        # Lazy TTL cleanup
+        if time.time() - entry.get("created_at", 0) > _DELEGATE_TASK_TTL_S:
+            _DELEGATE_TASK_REGISTRY.pop(task_id, None)
+            return web.json_response({"error": "task_expired", "task_id": task_id}, status=410)
+        return web.json_response(entry)
+
+    http_app.router.add_get(
+        "/control/ai-coordinator/delegate/status/{task_id}",
+        handle_ai_coordinator_delegate_status,
+    )
     # Batch 5.2 — Skill Usage Tracking and Recommendations
     http_app.router.add_get("/control/skills/usage", handle_skill_usage_stats)
     http_app.router.add_get("/control/skills/recommendations", handle_skill_recommendations)
