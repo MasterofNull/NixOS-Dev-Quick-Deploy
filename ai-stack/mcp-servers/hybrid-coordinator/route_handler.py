@@ -273,12 +273,20 @@ def _runtime_context_blocks(context: Optional[Dict[str, Any]]) -> List[str]:
                 f"Capability summary ({capability_count}): {summary[:260]}"
             )
 
+    prior_memory = [
+        str(item).strip()
+        for item in (context.get("prior_memory") or [])
+        if str(item).strip()
+    ]
+    if prior_memory:
+        blocks.append("Prior task memory:\n" + "\n".join(f"- {item}" for item in prior_memory[:3]))
+
     memory_recall = [
         str(item).strip()
         for item in (context.get("memory_recall") or [])
         if str(item).strip()
     ]
-    if memory_recall:
+    if memory_recall and memory_recall != prior_memory:
         blocks.append("Relevant prior memory:\n" + "\n".join(f"- {item}" for item in memory_recall[:3]))
 
     return blocks
@@ -317,7 +325,7 @@ def _looks_like_continuation_query(query: str, context: Optional[Dict[str, Any]]
     query_lower = str(query or "").lower()
     if any(token in query_lower for token in _CONTINUATION_QUERY_MARKERS):
         return True
-    if isinstance(context, dict) and context.get("memory_recall"):
+    if isinstance(context, dict) and (context.get("prior_memory") or context.get("memory_recall")):
         return True
     has_previous_ref = any(token in query_lower for token in ("previous", "prior", "last"))
     has_resume_target = any(
@@ -372,7 +380,7 @@ def _select_route_collections(
     ctx = context if isinstance(context, dict) else {}
     normalized_tokens = _normalize_tokens(query)
     token_count = len(normalized_tokens)
-    has_memory = bool(ctx.get("memory_recall"))
+    has_memory = bool(ctx.get("prior_memory") or ctx.get("memory_recall"))
     has_discovery = bool(ctx.get("tool_discovery"))
     continuation = _looks_like_continuation_query(query, ctx) or any(
         phrase in q

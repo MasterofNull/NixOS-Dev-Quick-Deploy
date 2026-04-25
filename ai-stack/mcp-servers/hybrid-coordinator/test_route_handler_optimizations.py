@@ -547,20 +547,26 @@ class TestRouteHeuristicHelpers:
             {
                 "tool_hints": ["Use aq-hints", "", "Inspect switchboard"],
                 "tool_discovery": {"summary": "3 matching skills", "capability_count": 3},
+                "prior_memory": ["Delegation timeout was the last blocker"],
                 "memory_recall": ["Prior deploy failed on switchboard", "Retry path worked"],
             }
         )
 
-        assert len(blocks) == 3
+        assert len(blocks) == 4
         assert "Workflow hints:" in blocks[0]
         assert "Capability summary (3): 3 matching skills" == blocks[1]
-        assert "Relevant prior memory:" in blocks[2]
+        assert "Prior task memory:" in blocks[2]
+        assert "Relevant prior memory:" in blocks[3]
 
     def test_continuation_and_capability_discovery_detection(self):
         assert route_handler._looks_like_continuation_query("continue from the last deploy fix") is True
         assert route_handler._looks_like_continuation_query(
             "show previous patch context",
             {"memory_recall": ["prior attempt"]},
+        ) is True
+        assert route_handler._looks_like_continuation_query(
+            "resume the current task",
+            {"prior_memory": ["last accepted patch"]},
         ) is True
         assert route_handler._looks_like_continuation_query("fresh deployment issue") is False
 
