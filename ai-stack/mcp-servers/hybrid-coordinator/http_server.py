@@ -9474,7 +9474,9 @@ def _profile_for_role(role):
     normalized = str(role or "").strip().lower()
     if normalized == "coder":
         return "local-tool-calling"
-    return "local-agent"
+    # continue-local has ~150-char system prompt vs local-agent ~2000-char.
+    # Lighter profile avoids >300s prefill overhead for simple delegate tasks.
+    return "continue-local"
 
 def _write_state(state):
     if STATE_FILE:
