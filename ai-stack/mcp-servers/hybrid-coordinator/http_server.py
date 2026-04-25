@@ -9466,14 +9466,50 @@ AGENT_ROLE = os.environ["AGENT_ROLE"]
 SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
 AGENT_TASK = os.environ["AGENT_TASK"]
 SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+HYBRID_URL = os.environ.get("HYBRID_URL", "http://127.0.0.1:8003")
 STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
 TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
+AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "180"))
 # Qwen3 thinking mode: disable for delegate tasks to skip CoT overhead.
-# Prepend /no_think unless the caller explicitly requests thinking mode.
 NO_THINK_PREFIX = os.environ.get("AGENT_THINKING_MODE", "off") != "on"
-# Stop at model EOS tokens to prevent runaway generation.
 STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
+# Phase 8.7 — tool calling: opt-in via AGENT_TOOLS_ENABLED=true
+TOOLS_ENABLED = os.environ.get("AGENT_TOOLS_ENABLED", "false").lower() == "true"
+MAX_TOOL_ROUNDS = int(os.environ.get("AGENT_MAX_TOOL_ROUNDS", "3"))
+
+# OpenAI-compatible tool schemas for harness endpoints (loopback auth bypass applies).
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "route_search",
+            "description": "Search the codebase and project documentation for relevant context using semantic and keyword RAG.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query string"},
+                    "limit": {"type": "integer", "description": "Max results to return (1-10)", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_memory",
+            "description": "Recall prior agent context, solutions, or task outcomes from memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Memory recall query"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+]
 
 def _profile_for_role(role):
     normalized = str(role or "").strip().lower()
@@ -9489,6 +9525,46 @@ def _write_state(state):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(state))
 
+async def _dispatch_tool(client, name, args):
+    """Execute a harness tool call and return a plaintext result string."""
+    try:
+        if name == "route_search":
+            query = str(args.get("query", "")).strip()
+            limit = max(1, min(10, int(args.get("limit", 5))))
+            r = await client.post(
+                f"{HYBRID_URL}/query",
+                json={"query": query, "mode": "retrieval_only", "limit": limit, "prefer_local": True},
+                timeout=30.0,
+            )
+            if r.status_code == 200:
+                results = r.json().get("results") or []
+                if results:
+                    return "\\n".join(
+                        f"[{i+1}] {res.get('content','')[:400]}"
+                        for i, res in enumerate(results[:limit])
+                    )
+                return "No results found."
+            return f"route_search error: HTTP {r.status_code}"
+        elif name == "recall_memory":
+            query = str(args.get("query", "")).strip()
+            r = await client.post(
+                f"{HYBRID_URL}/query",
+                json={"query": query, "mode": "memory_only", "limit": 5, "prefer_local": True},
+                timeout=30.0,
+            )
+            if r.status_code == 200:
+                results = r.json().get("results") or []
+                if results:
+                    return "\\n".join(
+                        f"[{i+1}] {res.get('content','')[:400]}"
+                        for i, res in enumerate(results[:5])
+                    )
+                return "No memories found."
+            return f"recall_memory error: HTTP {r.status_code}"
+        return f"unknown_tool: {name}"
+    except Exception as exc:
+        return f"tool_error({name}): {exc}"
+
 async def run():
     state = {"id": AGENT_ID, "role": AGENT_ROLE,
              "status": "running", "started_at": time.time(), "tool_calls": 0}
@@ -9501,27 +9577,68 @@ async def run():
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": task_content},
         ]
-        async with httpx.AsyncClient(timeout=float(os.environ.get("AGENT_TIMEOUT", "180"))) as client:
-            resp = await client.post(
-                f"{SWITCHBOARD_URL}/v1/chat/completions",
-                json={"messages": messages, "temperature": TEMPERATURE,
-                      "max_tokens": MAX_TOKENS, "stream": False,
-                      "stop": STOP_SEQUENCES},
-                headers={"X-AI-Profile": _profile_for_role(os.environ["AGENT_ROLE"]),
-                         "X-AI-Route": "local"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            msg = data["choices"][0]["message"]
-            # Prefer non-thinking content; fall back to reasoning_content if content empty
-            content = (msg.get("content") or "").strip()
-            if not content:
-                content = (msg.get("reasoning_content") or "").strip()
-            state.update({"status": "completed", "result": content,
-                          "completed_at": time.time(),
-                          "finish_reason": data["choices"][0].get("finish_reason", "stop")})
-            _write_state(state)
-            print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
+        inference_base = {
+            "temperature": TEMPERATURE,
+            "max_tokens": MAX_TOKENS,
+            "stream": False,
+            "stop": STOP_SEQUENCES,
+        }
+        if TOOLS_ENABLED:
+            inference_base["tools"] = TOOL_SCHEMAS
+            inference_base["tool_choice"] = "auto"
+        profile = _profile_for_role(AGENT_ROLE)
+        headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
+        content = ""
+        async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
+            max_rounds = MAX_TOOL_ROUNDS if TOOLS_ENABLED else 1
+            for _round in range(max_rounds):
+                resp = await client.post(
+                    f"{SWITCHBOARD_URL}/v1/chat/completions",
+                    json={"messages": messages, **inference_base},
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                msg = data["choices"][0]["message"]
+                tool_calls = msg.get("tool_calls") or []
+                if not tool_calls:
+                    # No (more) tool calls — final answer
+                    content = (msg.get("content") or "").strip()
+                    if not content:
+                        content = (msg.get("reasoning_content") or "").strip()
+                    break
+                # Append assistant turn with tool_calls
+                assistant_turn = {"role": "assistant"}
+                if msg.get("content"):
+                    assistant_turn["content"] = msg["content"]
+                assistant_turn["tool_calls"] = tool_calls
+                messages.append(assistant_turn)
+                # Dispatch each tool call and append results
+                for tc in tool_calls:
+                    tc_id = tc.get("id", f"call_{_round}")
+                    tc_name = (tc.get("function") or {}).get("name", "")
+                    try:
+                        tc_args = json.loads((tc.get("function") or {}).get("arguments", "{}"))
+                    except Exception:
+                        tc_args = {}
+                    tc_result = await _dispatch_tool(client, tc_name, tc_args)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": tc_result,
+                    })
+                    state["tool_calls"] += 1
+                    _write_state(state)
+            else:
+                # Exhausted rounds — use last non-empty content
+                if not content:
+                    last_msg = messages[-1] if messages else {}
+                    content = str(last_msg.get("content") or "")
+        state.update({"status": "completed", "result": content,
+                      "completed_at": time.time(),
+                      "finish_reason": data["choices"][0].get("finish_reason", "stop")})
+        _write_state(state)
+        print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
     except Exception as e:
         state.update({"status": "failed", "error": str(e), "completed_at": time.time()})
         _write_state(state)
@@ -9542,6 +9659,10 @@ asyncio.run(run())
                     # Enable thinking mode only when caller requests it; default off
                     # to skip Qwen3 CoT overhead for delegation tasks.
                     "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")),
+                    # Phase 8.7 — tool calling: pass through caller preference
+                    "AGENT_TOOLS_ENABLED": "true" if bool(data.get("tools_enabled", False)) else "false",
+                    "AGENT_MAX_TOOL_ROUNDS": str(int(data.get("max_tool_rounds", 3))),
+                    "HYBRID_URL": "http://127.0.0.1:8003",
                     "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
                     "PYTHONUNBUFFERED": "1",
                 })

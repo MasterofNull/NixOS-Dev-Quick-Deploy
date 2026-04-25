@@ -85,16 +85,20 @@ Module-level `_DELEGATE_TASK_REGISTRY` holds state (TTL 600s, lazy cleanup).
 Synchronous mode (default) unchanged for backwards compat.
 Memory auto-consolidation (8.8) runs in the async background task on success.
 
-### P2: OpenAI-Compatible Tool Calling in Delegate (Phase 8.7)
+### P2: OpenAI-Compatible Tool Calling in Delegate (Phase 8.7) — FIXED
 
 **Pattern**: llama.cpp supports `tools: [...]` in the OpenAI-compatible API.
 Wiring MCP tool definitions into the delegate agent enables multi-step execution
 with proper function-call tracking.
 
-**Current state**: Agent does single-shot completion with no tool access.
-**Fix**: Pass a curated tool schema (harness CLIs as functions) to the delegate
-inference call. Parse `tool_calls` in the response and dispatch via MCP bridge.
-**Effort**: High — requires function-call schema for each MCP tool
+**Fix**: Agent subprocess now supports an agentic tool-calling loop (max 3 rounds).
+- Enabled via `tools_enabled=true` in request body (default: off, single-shot).
+- Two tool schemas wired: `route_search` (RAG) and `recall_memory` (agent memory),
+  both dispatched to `http://127.0.0.1:8003/query` (loopback auth bypass applies).
+- Loop: call switchboard with `tools+tool_choice=auto` → parse `tool_calls` →
+  dispatch each → append `tool` role messages → repeat until no tool_calls or
+  `max_tool_rounds` (default 3) exhausted.
+- `AGENT_TOOLS_ENABLED`, `AGENT_MAX_TOOL_ROUNDS`, `HYBRID_URL` passed via env.
 
 ### P3: Memory Auto-Consolidation (Phase 8.8)
 
