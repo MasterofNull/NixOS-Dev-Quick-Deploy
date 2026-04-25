@@ -26,8 +26,8 @@
 
 NPM_AI_PACKAGE_MANIFEST=(
   # Fallback packages - only installed if native installer fails
-  "@openai/codex|0.28.0|GPT CodeX CLI (fallback)|codex|gpt-codex-wrapper|OpenAI.gpt-codex|GPT_CODEX_DEBUG"
-  "openai|6.16.0|OpenAI CLI (fallback)|openai|openai-wrapper|OpenAI.chatgpt|OPENAI_DEBUG"
+  "@openai/codex|0.125.0|GPT CodeX CLI (fallback)|codex|gpt-codex-wrapper|OpenAI.gpt-codex|GPT_CODEX_DEBUG"
+  "openai|6.34.0|OpenAI CLI (fallback)|openai|openai-wrapper|OpenAI.chatgpt|OPENAI_DEBUG"
 )
 
 declare -gA NPM_AI_PACKAGE_MANUAL_URLS=(
@@ -43,4 +43,3 @@ declare -gA VSCODE_AI_EXTENSION_FALLBACK_URLS=(
   ["OpenAI.chatgpt"]="https://marketplace.visualstudio.com/items?itemName=OpenAI.chatgpt"
   ["Google.geminicodeassist"]="https://marketplace.visualstudio.com/items?itemName=Google.geminicodeassist"
 )
-
