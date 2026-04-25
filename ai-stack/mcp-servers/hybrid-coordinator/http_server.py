@@ -9606,7 +9606,9 @@ async def run():
         if TOOLS_ENABLED:
             inference_base["tools"] = TOOL_SCHEMAS
             inference_base["tool_choice"] = "auto"
-        profile = _profile_for_role(AGENT_ROLE)
+        # Use local-tool-calling profile when tools are enabled: it enforces
+        # llama.cpp grammar constraints that produce proper tool_calls JSON.
+        profile = "local-tool-calling" if TOOLS_ENABLED else _profile_for_role(AGENT_ROLE)
         headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
         content = ""
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
