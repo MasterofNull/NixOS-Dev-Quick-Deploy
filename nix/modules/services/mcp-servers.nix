@@ -1510,8 +1510,11 @@ in {
 
       systemd.services.ai-post-deploy-converge = {
         description = "AI stack post-deploy declarative convergence";
-        # Timer/manual-trigger driven to avoid blocking ai-stack.target activation
-        # during nixos-rebuild switch.
+        # Timer/manual-trigger driven only — never started by switch-to-configuration.
+        # restartIfChanged = false prevents nixos-rebuild switch from blocking on this
+        # oneshot service when the unit file changes (Persistent timer would fire it
+        # immediately on reload, hanging the activation script indefinitely).
+        restartIfChanged = false;
         path = with pkgs; [
           bash
           coreutils
