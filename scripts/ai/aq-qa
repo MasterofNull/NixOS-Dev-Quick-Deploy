@@ -270,8 +270,9 @@ PY
 _continue_local_smoke() {
   # Qwen3.6-35B with partial GPU offload (12/41 layers) on CPU takes ~90-120s for a
   # short completion through the switchboard (profile-card + jinja template overhead).
-  # 210s observed necessary on loaded sessions (2026-04-24: 150s was consistently timing out).
-  curl -sf --max-time 210 \
+  # Cold-start (post nixos-rebuild model reload): first inference takes 240-300s due to
+  # KV cache miss + full tokenization. Use 300s to cover worst-case cold-start.
+  curl -sf --max-time 300 \
     -H 'Content-Type: application/json' \
     -H 'X-AI-Profile: continue-local' \
     -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"n_predict":8,"temperature":0}' \
