@@ -1,9 +1,23 @@
 # Phase 8 — Delegation Reliability, Memory Integration, Inference Latency
 
-Status: `active`
+Status: `complete — pending nixos-rebuild deployment`
 Created: 2026-04-24
+Updated: 2026-04-24
 Owner: Claude (orchestrator) / Qwen (implementation slices)
 Predecessor: Phase 7 (Phases 0–7 complete, all gates green)
+
+## Deployment Gate (REQUIRED)
+
+All http_server.py fixes are committed but the running service still uses the old Nix
+store path. **Run `sudo nixos-rebuild switch --flake .#nixos`** from a terminal session
+(requires sudo; no Claude-executable workaround).
+
+Commits awaiting deploy:
+- `6c1a997` — Phase 8.1 inference timeout cap + 8.2 memory recall injection
+- `c342722` — Phase 8.6 async delegate task queue
+- `daf4464` — Phase 8.7 OpenAI-compatible tool calling loop
+- `7c3b959` — Phase 8.9/8.10 SSE streaming + parallel retrieval
+- `f219bca`, `c60777d` — delegate NameError fix + local-tool-calling profile
 
 ## Objective
 
@@ -138,11 +152,24 @@ Rationale: smoke gate first (validates the fix already deployed), then observabi
 
 Each slice is independently rollbackable via `git revert`. No NixOS rebuild required for http_server.py changes (service restarts via `systemctl restart hybrid-coordinator`). Nix module changes require `sudo nixos-rebuild switch`.
 
+## Slice Completion Status (2026-04-24)
+
+| Slice | Status | Notes |
+|-------|--------|-------|
+| 8.1 Inference timeout cap | ✅ Committed `6c1a997` | Awaiting nixos-rebuild |
+| 8.2 Memory recall injection | ✅ Committed `6c1a997` | Awaiting nixos-rebuild |
+| 8.3 Remote profiles smoke gate | ✅ DONE | 6 profiles, PASS, wired in parity suite |
+| 8.4 Aider task audit recovery | ✅ RESOLVED | 2 entries in 7d window; plan had stale "0" |
+| 8.5 Delegate smoke gate | ✅ DONE | 504+JSON=expected PASS, wired in parity suite |
+| 8.6 Async delegate task queue | ✅ Committed `c342722` | Awaiting nixos-rebuild |
+| 8.7 Tool calling loop | ✅ Committed `daf4464` | Awaiting nixos-rebuild |
+| 8.9/8.10 SSE streaming | ✅ Committed `7c3b959` | Awaiting nixos-rebuild |
+
 ## Success Criteria (Program-Level)
 
-- [ ] `ai_coordinator_delegate` success rate ≥ 90% in next 7d window
-- [ ] Memory recall share > 5% of route_search calls
-- [ ] route_search >10s outlier rate ≤ 1% (from 3%)
-- [ ] `task_tooling_quality.total` ≥ 1
-- [ ] All new gate scripts pass in `run-advanced-parity-suite.sh`
-- [ ] Phase 7 program gate remains green throughout
+- [ ] `ai_coordinator_delegate` success rate ≥ 90% — unblocked by nixos-rebuild
+- [ ] Memory recall share > 5% of route_search calls — unblocked by nixos-rebuild
+- [ ] route_search >10s outlier rate ≤ 1% (from 3%) — unblocked by nixos-rebuild
+- [x] `task_tooling_quality.total` ≥ 1 — RESOLVED (2 in 7d window)
+- [x] All new gate scripts pass in `run-advanced-parity-suite.sh` — PASS
+- [x] Phase 7 program gate remains green throughout — 39/39 aq-qa checks pass
