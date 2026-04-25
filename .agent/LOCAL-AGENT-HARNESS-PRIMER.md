@@ -128,6 +128,10 @@ scripts/ai/local-orchestrator "your prompt here"
 scripts/ai/local-orchestrator --plan "your objective"
 ```
 
+Front-door routing reference:
+- [docs/architecture/front-door-routing.md](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/architecture/front-door-routing.md:1)
+- Alias examples: `Explore`, `Plan`, `Implementation`, `Reasoning`, `ToolCalling`, `Continuation`
+
 ---
 
 ## How to Use the Harness
