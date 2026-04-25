@@ -58,6 +58,18 @@ let
       continueLocalProfile;
   continueTabMaxTokens = lib.min 96 (lib.max 32 continueChatMaxTokens);
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
+  vscodeLinuxTarget =
+    if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "linux-x64"
+    else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then "linux-arm64"
+    else throw "Unsupported VSCodium extension platform: ${pkgs.stdenv.hostPlatform.system}";
+  openaiCodexHashByTarget = {
+    linux-x64 = "sha256-nXWyNNI+L7g5lc6Fa3DZTWsrA8WLXCmfJLwUstNUvDw=";
+    linux-arm64 = "sha256-fLw9PEn1vtQ4LRzNotjpt8Z9REocouMQSzaSrwBfZ1g=";
+  };
+  continueVsixHashByTarget = {
+    linux-x64 = "sha256-8jvllwe1iCZnF+3UGppEOk2QKdyhVSFDxthfTLIIQYQ=";
+    linux-arm64 = "sha256-LLtJiAyHAHWD39P5x2Czf/6YxLKX4v/idgSNvtBYfvw=";
+  };
   # Continue uses the switchboard OpenAI-compatible proxy directly because the
   # hybrid coordinator's /v1 ingress is protected and returns 401 to editor
   # clients that only provide placeholder local keys.
@@ -78,14 +90,14 @@ let
   # packaged inline from Open VSX so it installs declaratively.
   openaiCodex = pkgs.vscode-utils.buildVscodeExtension {
     pname              = "openai-chatgpt";
-    version            = "0.5.76";
+    version            = "0.5.80";
     vscodeExtPublisher = "openai";
     vscodeExtName      = "chatgpt";
     vscodeExtUniqueId  = "openai.chatgpt";
-    vscodeExtVersion   = "0.5.76";
+    vscodeExtVersion   = "0.5.80";
     src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/openai/chatgpt/0.5.76/file/openai.chatgpt-0.5.76.vsix";
-      sha256 = "0n0byvz2k5hjdnc48wn4fkhrvy8bam671ml19nfhk0b7wypmxmvz";
+      url    = "https://open-vsx.org/api/openai/chatgpt/${vscodeLinuxTarget}/0.5.80/file/openai.chatgpt-0.5.80@${vscodeLinuxTarget}.vsix";
+      sha256 = openaiCodexHashByTarget.${vscodeLinuxTarget};
       # Rename .vsix → .zip so the stdenv unzip hook fires (same trick used
       # by pkgs/applications/editors/vscode/extensions/mktplcExtRefToFetchArgs.nix).
       name   = "openai-chatgpt.zip";
@@ -96,14 +108,14 @@ let
   # packaged inline from Open VSX so it installs declaratively.
   geminiCodeAssist = pkgs.vscode-utils.buildVscodeExtension {
     pname              = "Google-geminicodeassist";
-    version            = "2.72.0";
+    version            = "2.79.0";
     vscodeExtPublisher = "Google";
     vscodeExtName      = "geminicodeassist";
     vscodeExtUniqueId  = "Google.geminicodeassist";
-    vscodeExtVersion   = "2.72.0";
+    vscodeExtVersion   = "2.79.0";
     src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/Google/geminicodeassist/2.72.0/file/Google.geminicodeassist-2.72.0.vsix";
-      sha256 = "0bsqakrbkqfa4vlazvhaw50z5s5ijiqkh8xz225zsl53aiinq03z";
+      url    = "https://open-vsx.org/api/Google/geminicodeassist/2.79.0/file/Google.geminicodeassist-2.79.0.vsix";
+      sha256 = "sha256-/8QmCFtD7f/RNkNuZexvoevpLa9FqrZfxqmPo2Ss4zk=";
       name   = "Google-geminicodeassist.zip";
     };
   };
@@ -112,14 +124,14 @@ let
   # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
   qwenCodeCompanion = pkgs.vscode-utils.buildVscodeExtension {
     pname              = "qwen-code-vscode-ide-companion";
-    version            = "0.10.6";
+    version            = "0.15.2";
     vscodeExtPublisher = "qwenlm";
     vscodeExtName      = "qwen-code-vscode-ide-companion";
     vscodeExtUniqueId  = "qwenlm.qwen-code-vscode-ide-companion";
-    vscodeExtVersion   = "0.10.6";
+    vscodeExtVersion   = "0.15.2";
     src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.10.6/file/qwenlm.qwen-code-vscode-ide-companion-0.10.6.vsix";
-      sha256 = "1x02ari2d8nzyw1sgfy77lfphjc0vc43q5664pcakl8cb59595bb";
+      url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.15.2/file/qwenlm.qwen-code-vscode-ide-companion-0.15.2.vsix";
+      sha256 = "sha256-OMo+KEZ4+M3ncBqHQbTA7YYeVBHlswKzvMbrr9qEl/w=";
       name   = "qwen-code-vscode-ide-companion.zip";
     };
   };
@@ -128,9 +140,9 @@ let
   continueCli = pkgs.callPackage ../pkgs/continue-cli.nix { };
 
   continueMutableVsix = pkgs.fetchurl {
-    url = "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.32/file/Continue.continue-1.3.32@linux-x64.vsix";
-    sha256 = "1nmw9p1jkjcf0gpwzzv836yhlrlf40ymdxyc8iql5hw5h8p433fc";
-    name = "Continue.continue-1.3.32-linux-x64.vsix";
+    url = "https://open-vsx.org/api/Continue/continue/${vscodeLinuxTarget}/1.3.38/file/Continue.continue-1.3.38@${vscodeLinuxTarget}.vsix";
+    sha256 = continueVsixHashByTarget.${vscodeLinuxTarget};
+    name = "Continue.continue-1.3.38-${vscodeLinuxTarget}.vsix";
   };
 
   cyberpunkThemeArchive = pkgs.runCommand "max-ss.cyberpunk-1.2.14.zip" {

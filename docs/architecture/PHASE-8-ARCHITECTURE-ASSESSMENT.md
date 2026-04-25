@@ -49,12 +49,21 @@ to prevent runaway generation past the EOS token.
 **Fix**: Default changed to 768 (matches `continue-local` profile `maxOutputTokens`).
 Callers override via `max_tokens` param.
 
-### Gap 4 — Delegate Profile Mismatch (FIXED: commit 543537e)
+### Gap 4 — Delegate Profile Mismatch (FIXED: commit 543537e, reverted partial in follow-up)
 
 **Issue**: Delegate used `continue-local` (maxInputTokens=1200) instead of
 `local-agent` (maxInputTokens=3500, hint injection enabled, proper agentic prompt).
 
-**Fix**: `_profile_for_role()` now routes coordinator role to `local-agent`.
+**Initial fix**: `_profile_for_role()` routed coordinator role to `local-agent`.
+
+**Regression**: `local-agent` carries a ~2000-char system prompt (ports, routing,
+commit format) vs `continue-local` ~150 chars. For simple delegate tasks like
+"reply with only: DELEGATE_OK", the heavier profile caused >300s prefill, negating
+the timeout fix entirely.
+
+**Final fix**: Reverted coordinator role back to `continue-local`. Coder role keeps
+`local-tool-calling` (function-calling grammar needed). Lightweight profile keeps
+delegate completions within the 90-180s budget.
 
 ### Gap 5 — Delegate Timeout 60s (FIXED: commit a36e715)
 
