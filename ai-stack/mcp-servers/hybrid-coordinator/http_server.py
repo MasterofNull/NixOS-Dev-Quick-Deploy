@@ -9467,8 +9467,10 @@ async def run_http_mode(port: int) -> None:
             async def _spawn_local_agent(
                 role: str, task_text: str, system_prompt: str,
                 max_tokens: int, temperature: float, timeout_sec: float,
+                sse_request: Optional[web.Request] = None,
             ) -> web.Response:
-                """Spawn a local agent subprocess and wait for result."""
+                """Spawn a local agent subprocess and wait for result.
+                When sse_request is provided, streams token chunks as SSE (Phase 8.9)."""
                 import uuid as _uuid
                 agent_id = str(_uuid.uuid4())[:8]
                 state_dir = Path(os.environ.get("AGENT_STATE_DIR", "/tmp/agent-spawner"))
@@ -9723,6 +9725,10 @@ asyncio.run(run())
                     "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
                     "PYTHONUNBUFFERED": "1",
                 })
+                # Phase 8.9 — streaming mode overrides: force stream, disable tools
+                if sse_request is not None:
+                    env["AGENT_STREAMING"] = "true"
+                    env["AGENT_TOOLS_ENABLED"] = "false"
 
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable, "-c", agent_code,
@@ -9731,6 +9737,52 @@ asyncio.run(run())
                     stderr=asyncio.subprocess.PIPE,
                     start_new_session=True,
                 )
+
+                # Phase 8.9 — SSE streaming path: read stdout chunks, write SSE events
+                if sse_request is not None:
+                    sse_resp = web.StreamResponse(headers={
+                        "Content-Type": "text/event-stream",
+                        "Cache-Control": "no-cache",
+                        "X-Accel-Buffering": "no",
+                        "X-Agent-Id": agent_id,
+                    })
+                    await sse_resp.prepare(sse_request)
+                    deadline = time.perf_counter() + timeout_sec
+                    try:
+                        while time.perf_counter() < deadline:
+                            try:
+                                raw = await asyncio.wait_for(proc.stdout.readline(), timeout=8.0)
+                            except asyncio.TimeoutError:
+                                await sse_resp.write(b": keepalive\n\n")
+                                continue
+                            if not raw:
+                                break
+                            line_str = raw.decode(errors="replace").strip()
+                            if not line_str:
+                                continue
+                            try:
+                                chunk = json.loads(line_str)
+                            except Exception:
+                                continue
+                            if chunk.get("done"):
+                                final = json.dumps({"choices": [{"delta": {"content": ""}, "finish_reason": "stop"}]})
+                                await sse_resp.write(b"data: " + final.encode() + b"\n\n")
+                                await sse_resp.write(b"data: [DONE]\n\n")
+                                break
+                            if "t" in chunk:
+                                piece = chunk["t"]
+                                event = json.dumps({"choices": [{"delta": {"content": piece}, "finish_reason": None}]})
+                                await sse_resp.write(b"data: " + event.encode() + b"\n\n")
+                    except Exception as _sse_exc:
+                        logger.warning("sse_delegate_error agent_id=%s error=%s", agent_id, _sse_exc)
+                    finally:
+                        try:
+                            proc.kill()
+                        except ProcessLookupError:
+                            pass
+                    await sse_resp.write_eof()
+                    return sse_resp
+
                 try:
                     stdout, stderr = await asyncio.wait_for(
                         proc.communicate(), timeout=timeout_sec,
@@ -9785,87 +9837,6 @@ asyncio.run(run())
                     },
                 })
 
-            async def _spawn_local_agent_sse(
-                sse_request: web.Request, role: str, task_text: str, system_prompt: str,
-                max_tokens: int, temperature: float, timeout_sec: float,
-            ) -> web.StreamResponse:
-                """Phase 8.9 — Spawn a streaming delegate subprocess and pipe token chunks
-                as SSE events to the HTTP caller. Reduces perceived latency from ~90-180s
-                full-wait to first-token time (~10-30s)."""
-                import uuid as _uuid
-                agent_id = str(_uuid.uuid4())[:8]
-                state_dir = Path(os.environ.get("AGENT_STATE_DIR", "/tmp/agent-spawner"))
-                state_dir.mkdir(parents=True, exist_ok=True)
-                agent_state_file = state_dir / f"agent-{agent_id}.json"
-
-                sse_env = os.environ.copy()
-                sse_env.update({
-                    "AGENT_ID": agent_id,
-                    "AGENT_ROLE": role,
-                    "AGENT_TASK": task_text,
-                    "AGENT_SYSTEM_PROMPT": system_prompt,
-                    "AGENT_STATE_FILE": str(agent_state_file),
-                    "AGENT_MAX_TOKENS": str(max_tokens),
-                    "AGENT_TEMPERATURE": str(temperature),
-                    "AGENT_TIMEOUT": str(timeout_sec),
-                    "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")),
-                    "AGENT_TOOLS_ENABLED": "false",  # tools disabled in streaming mode
-                    "AGENT_STREAMING": "true",
-                    "HYBRID_URL": "http://127.0.0.1:8003",
-                    "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
-                    "PYTHONUNBUFFERED": "1",
-                })
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable, "-c", agent_code,
-                    env=sse_env,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    start_new_session=True,
-                )
-                sse_resp = web.StreamResponse(headers={
-                    "Content-Type": "text/event-stream",
-                    "Cache-Control": "no-cache",
-                    "X-Accel-Buffering": "no",
-                    "X-Agent-Id": agent_id,
-                })
-                await sse_resp.prepare(sse_request)
-                deadline = time.perf_counter() + timeout_sec
-                try:
-                    while time.perf_counter() < deadline:
-                        try:
-                            raw = await asyncio.wait_for(proc.stdout.readline(), timeout=8.0)
-                        except asyncio.TimeoutError:
-                            await sse_resp.write(b": keepalive\n\n")
-                            continue
-                        if not raw:
-                            break
-                        line_str = raw.decode(errors="replace").strip()
-                        if not line_str:
-                            continue
-                        try:
-                            chunk = json.loads(line_str)
-                        except Exception:
-                            continue
-                        if chunk.get("done"):
-                            # Final marker — emit stop event
-                            final = json.dumps({"choices": [{"delta": {"content": ""}, "finish_reason": "stop"}]})
-                            await sse_resp.write(b"data: " + final.encode() + b"\n\n")
-                            await sse_resp.write(b"data: [DONE]\n\n")
-                            break
-                        if "t" in chunk:
-                            piece = chunk["t"]
-                            event = json.dumps({"choices": [{"delta": {"content": piece}, "finish_reason": None}]})
-                            await sse_resp.write(b"data: " + event.encode() + b"\n\n")
-                except Exception as _sse_exc:
-                    logger.warning("sse_delegate_error agent_id=%s error=%s", agent_id, _sse_exc)
-                finally:
-                    try:
-                        proc.kill()
-                    except ProcessLookupError:
-                        pass
-                await sse_resp.write_eof()
-                return sse_resp
-
             # If local runtime, spawn subprocess agent instead of HTTP proxy
             if _is_local_runtime(selected_runtime_id):
                 # Determine agent role from profile
@@ -9896,10 +9867,7 @@ asyncio.run(run())
                 # Phase 8.9 — Streaming dispatch: SSE token stream to caller.
                 # Enabled via streaming_mode=true. Incompatible with async_mode and tools.
                 if bool(data.get("streaming_mode", False)) and not bool(data.get("async_mode", False)):
-                    return await _spawn_local_agent_sse(
-                        sse_request=request,
-                        **_spawn_kwargs,
-                    )
+                    return await _spawn_local_agent(**_spawn_kwargs, sse_request=request)
 
                 # Phase 8.6 — Async dispatch: return task_id immediately, caller polls.
                 # Enabled via async_mode=true in request body. Default: synchronous.
