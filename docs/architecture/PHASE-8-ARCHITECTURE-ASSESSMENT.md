@@ -112,25 +112,32 @@ manually stored. The `_store_memory` function exists but isn't called on delegat
 structured summary of the task and result.
 **Effort**: Low — 30 min
 
-### P4: Streaming Inference for Delegate (Phase 8.9)
+### P4: Streaming Inference for Delegate (Phase 8.9) — FIXED
 
 **Pattern**: Stream inference results to the caller to reduce perceived latency.
 The caller can display partial results while generation continues.
 
-**Current state**: Delegate uses `stream: False`, full round-trip blocks.
-**Fix**: Enable `stream: True` in agent subprocess, pipe SSE to caller via
-`web.StreamResponse`.
-**Effort**: Medium — 2 hours
+**Fix**: `streaming_mode=true` in request body enables SSE streaming path:
+- Subprocess uses `stream: True`, emits each token chunk as `{"t": "...", "done": false}`
+  newline-delimited JSON to stdout.
+- New `_spawn_local_agent_sse()` reads proc.stdout line by line and writes each chunk
+  as an SSE `data: {...}\n\n` event via `web.StreamResponse`.
+- Sends keepalive `: keepalive` pings every 8s while waiting for tokens.
+- Final `{"done": true}` from subprocess triggers `data: [DONE]` SSE terminator.
+- Incompatible with `tools_enabled` (tool rounds require sync round-trips).
+- `async_mode` and `streaming_mode` are mutually exclusive.
 
-### P5: Parallel Retrieval + Inference Pipeline (Phase 8.10)
+### P5: Parallel Retrieval + Inference Pipeline (Phase 8.10) — FIXED
 
 **Pattern**: While waiting for LLM inference, pre-fetch and pre-process retrieval
 results. Return the best available combination within a deadline.
 
-**Current state**: `/query` is sequential — retrieval then generation.
-**Fix**: `asyncio.gather()` for parallel qdrant retrieval + cache check, then feed
-results to inference only if both succeed within budget.
-**Effort**: Medium — 2 hours
+**Fix**: In `handle_query`, retrieval is started as an `asyncio.Task` before the
+synchronous cache check runs. On cache hit the task is cancelled (no wasted work
+for callers). On cache miss the task is already in-flight, overlapping cache lookup
+latency with the start of vector embedding + Qdrant search.
+Route kwargs extracted to `_route_kwargs` dict to avoid duplication in timeout
+fallback path.
 
 ### P6: Thinking Budget Routing (Phase 8.11)
 

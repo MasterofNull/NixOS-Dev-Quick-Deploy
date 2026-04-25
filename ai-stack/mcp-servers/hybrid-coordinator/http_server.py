@@ -6158,12 +6158,39 @@ async def run_http_mode(port: int) -> None:
 
             # Quality cache check (if enabled and appropriate)
             cache_enabled = bool(data.get("enable_cache", True))
+            _llm_timeout_s = float(
+                data.get("llm_timeout_s")
+                or os.getenv("AI_QUERY_LLM_TIMEOUT_S", "120")
+            )
+            _route_kwargs: Dict[str, Any] = dict(
+                query=query,
+                mode=data.get("mode", "auto"),
+                prefer_local=prefer_local,
+                context=request_context,
+                limit=int(data.get("limit", 5)),
+                keyword_limit=int(data.get("keyword_limit", 5)),
+                score_threshold=float(data.get("score_threshold", 0.7)),
+                generate_response=generate_response,
+            )
+
+            # Phase 8.10 — Parallel retrieval + cache check.
+            # Start retrieval as a background task immediately so Qdrant embedding
+            # and vector search begin while the (synchronous) cache lookup runs.
+            # On cache hit the retrieval task is cancelled; on miss the result is
+            # already in-flight, reducing effective latency for cache-miss requests.
+            _retrieval_task: Optional[asyncio.Task] = None
             cached_result = None
             if cache_enabled and _should_use_cache(query):
+                # Kick off retrieval in background before blocking on cache lookup
+                _retrieval_task = asyncio.create_task(
+                    asyncio.wait_for(_route_search(**_route_kwargs), timeout=_llm_timeout_s)
+                )
                 cached_result = _get_cached_response(query, context=request_context)
 
             if cached_result:
-                # Cache hit - use cached response
+                # Cache hit — cancel pre-fetched retrieval task, return cached response
+                if _retrieval_task is not None and not _retrieval_task.done():
+                    _retrieval_task.cancel()
                 cached_response, cache_metadata = cached_result
                 result = {
                     "response": cached_response,
@@ -6173,23 +6200,13 @@ async def run_http_mode(port: int) -> None:
                 }
                 logger.info(f"Cache hit for query: {query[:60]}...")
             else:
-                # Cache miss - proceed with route_search
-                _llm_timeout_s = float(
-                    data.get("llm_timeout_s")
-                    or os.getenv("AI_QUERY_LLM_TIMEOUT_S", "120")
-                )
-                _route_coro = _route_search(
-                    query=query,
-                    mode=data.get("mode", "auto"),
-                    prefer_local=prefer_local,
-                    context=request_context,
-                    limit=int(data.get("limit", 5)),
-                    keyword_limit=int(data.get("keyword_limit", 5)),
-                    score_threshold=float(data.get("score_threshold", 0.7)),
-                    generate_response=generate_response,
-                )
+                # Cache miss — await pre-fetched task if already started, else start now
+                if _retrieval_task is None:
+                    _retrieval_task = asyncio.create_task(
+                        asyncio.wait_for(_route_search(**_route_kwargs), timeout=_llm_timeout_s)
+                    )
                 try:
-                    result = await asyncio.wait_for(_route_coro, timeout=_llm_timeout_s)
+                    result = await _retrieval_task
                 except asyncio.TimeoutError:
                     logger.warning(
                         "route_search_llm_timeout: query truncated after %.0fs (generate_response=%s)",
@@ -9477,6 +9494,9 @@ STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
 # Phase 8.7 — tool calling: opt-in via AGENT_TOOLS_ENABLED=true
 TOOLS_ENABLED = os.environ.get("AGENT_TOOLS_ENABLED", "false").lower() == "true"
 MAX_TOOL_ROUNDS = int(os.environ.get("AGENT_MAX_TOOL_ROUNDS", "3"))
+# Phase 8.9 — streaming mode: emit token chunks to stdout as SSE lines.
+# Incompatible with TOOLS_ENABLED (tool rounds must be synchronous).
+STREAMING_MODE = os.environ.get("AGENT_STREAMING", "false").lower() == "true" and not TOOLS_ENABLED
 
 # OpenAI-compatible tool schemas for harness endpoints (loopback auth bypass applies).
 TOOL_SCHEMAS = [
@@ -9590,6 +9610,41 @@ async def run():
         headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
         content = ""
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
+            if STREAMING_MODE:
+                # Phase 8.9 — streaming path: request stream=True, emit each token chunk
+                # as a newline-delimited JSON line so the parent process can relay SSE.
+                content_parts = []
+                async with client.stream(
+                    "POST",
+                    f"{SWITCHBOARD_URL}/v1/chat/completions",
+                    json={"messages": messages, "temperature": TEMPERATURE,
+                          "max_tokens": MAX_TOKENS, "stream": True, "stop": STOP_SEQUENCES},
+                    headers=headers,
+                ) as sresp:
+                    sresp.raise_for_status()
+                    async for raw_line in sresp.aiter_lines():
+                        raw_line = raw_line.strip()
+                        if not raw_line or raw_line == ":":
+                            continue
+                        line = raw_line[6:] if raw_line.startswith("data: ") else raw_line
+                        if line == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(line)
+                            piece = (chunk.get("choices") or [{}])[0].get("delta", {}).get("content") or ""
+                            if piece:
+                                content_parts.append(piece)
+                                sys.stdout.write(json.dumps({"t": piece, "done": False}) + "\\n")
+                                sys.stdout.flush()
+                        except Exception:
+                            pass
+                content = "".join(content_parts)
+                state.update({"status": "completed", "result": content,
+                              "completed_at": time.time(), "finish_reason": "stop"})
+                _write_state(state)
+                sys.stdout.write(json.dumps({"done": True, "ok": True, "content": content, "agent_id": AGENT_ID}) + "\\n")
+                sys.stdout.flush()
+                return
             max_rounds = MAX_TOOL_ROUNDS if TOOLS_ENABLED else 1
             for _round in range(max_rounds):
                 resp = await client.post(
@@ -9728,6 +9783,87 @@ asyncio.run(run())
                     },
                 })
 
+            async def _spawn_local_agent_sse(
+                sse_request: web.Request, role: str, task_text: str, system_prompt: str,
+                max_tokens: int, temperature: float, timeout_sec: float,
+            ) -> web.StreamResponse:
+                """Phase 8.9 — Spawn a streaming delegate subprocess and pipe token chunks
+                as SSE events to the HTTP caller. Reduces perceived latency from ~90-180s
+                full-wait to first-token time (~10-30s)."""
+                import uuid as _uuid
+                agent_id = str(_uuid.uuid4())[:8]
+                state_dir = Path(os.environ.get("AGENT_STATE_DIR", "/tmp/agent-spawner"))
+                state_dir.mkdir(parents=True, exist_ok=True)
+                agent_state_file = state_dir / f"agent-{agent_id}.json"
+
+                sse_env = os.environ.copy()
+                sse_env.update({
+                    "AGENT_ID": agent_id,
+                    "AGENT_ROLE": role,
+                    "AGENT_TASK": task_text,
+                    "AGENT_SYSTEM_PROMPT": system_prompt,
+                    "AGENT_STATE_FILE": str(agent_state_file),
+                    "AGENT_MAX_TOKENS": str(max_tokens),
+                    "AGENT_TEMPERATURE": str(temperature),
+                    "AGENT_TIMEOUT": str(timeout_sec),
+                    "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")),
+                    "AGENT_TOOLS_ENABLED": "false",  # tools disabled in streaming mode
+                    "AGENT_STREAMING": "true",
+                    "HYBRID_URL": "http://127.0.0.1:8003",
+                    "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
+                    "PYTHONUNBUFFERED": "1",
+                })
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable, "-c", agent_code,
+                    env=sse_env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True,
+                )
+                sse_resp = web.StreamResponse(headers={
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "X-Agent-Id": agent_id,
+                })
+                await sse_resp.prepare(sse_request)
+                deadline = time.perf_counter() + timeout_sec
+                try:
+                    while time.perf_counter() < deadline:
+                        try:
+                            raw = await asyncio.wait_for(proc.stdout.readline(), timeout=8.0)
+                        except asyncio.TimeoutError:
+                            await sse_resp.write(b": keepalive\n\n")
+                            continue
+                        if not raw:
+                            break
+                        line_str = raw.decode(errors="replace").strip()
+                        if not line_str:
+                            continue
+                        try:
+                            chunk = json.loads(line_str)
+                        except Exception:
+                            continue
+                        if chunk.get("done"):
+                            # Final marker — emit stop event
+                            final = json.dumps({"choices": [{"delta": {"content": ""}, "finish_reason": "stop"}]})
+                            await sse_resp.write(b"data: " + final.encode() + b"\n\n")
+                            await sse_resp.write(b"data: [DONE]\n\n")
+                            break
+                        if "t" in chunk:
+                            piece = chunk["t"]
+                            event = json.dumps({"choices": [{"delta": {"content": piece}, "finish_reason": None}]})
+                            await sse_resp.write(b"data: " + event.encode() + b"\n\n")
+                except Exception as _sse_exc:
+                    logger.warning("sse_delegate_error agent_id=%s error=%s", agent_id, _sse_exc)
+                finally:
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+                await sse_resp.write_eof()
+                return sse_resp
+
             # If local runtime, spawn subprocess agent instead of HTTP proxy
             if _is_local_runtime(selected_runtime_id):
                 # Determine agent role from profile
@@ -9754,6 +9890,14 @@ asyncio.run(run())
                     temperature=float(data.get("temperature", 0.3)),
                     timeout_sec=timeout_s,
                 )
+
+                # Phase 8.9 — Streaming dispatch: SSE token stream to caller.
+                # Enabled via streaming_mode=true. Incompatible with async_mode and tools.
+                if bool(data.get("streaming_mode", False)) and not bool(data.get("async_mode", False)):
+                    return await _spawn_local_agent_sse(
+                        sse_request=request,
+                        **_spawn_kwargs,
+                    )
 
                 # Phase 8.6 — Async dispatch: return task_id immediately, caller polls.
                 # Enabled via async_mode=true in request body. Default: synchronous.
