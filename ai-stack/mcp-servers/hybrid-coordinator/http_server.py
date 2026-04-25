@@ -6101,11 +6101,14 @@ async def run_http_mode(port: int) -> None:
                         _memory_start = time.perf_counter()
                         request_context["memory_recall_attempted"] = True
                         request["audit_metadata"]["memory_recall_attempted"] = True
-                        memory_result = await _recall_memory(
-                            query=query,
-                            memory_types=None,
-                            limit=3,
-                            retrieval_mode="hybrid",
+                        memory_result = await asyncio.wait_for(
+                            _recall_memory(
+                                query=query,
+                                memory_types=None,
+                                limit=3,
+                                retrieval_mode="hybrid",
+                            ),
+                            timeout=2.0,
                         )
                         memory_rows = memory_result.get("results", []) if isinstance(memory_result, dict) else []
                         memory_summaries = [
@@ -6114,6 +6117,7 @@ async def run_http_mode(port: int) -> None:
                             if isinstance(row, dict) and str(row.get("summary") or row.get("content") or "").strip()
                         ]
                         if memory_summaries:
+                            request_context["prior_memory"] = memory_summaries[:3]
                             request_context["memory_recall"] = memory_summaries[:3]
                             tooling_layer["memory_recall"] = memory_summaries[:2]
                         else:
@@ -6258,6 +6262,8 @@ async def run_http_mode(port: int) -> None:
                 metadata["memory_recall_miss"] = bool(request_context.get("memory_recall_miss"))
             if request_context.get("memory_recall"):
                 result["memory_recall"] = request_context.get("memory_recall")
+            if request_context.get("prior_memory"):
+                result["prior_memory"] = request_context.get("prior_memory")
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
