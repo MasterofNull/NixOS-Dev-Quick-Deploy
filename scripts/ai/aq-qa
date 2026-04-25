@@ -269,15 +269,24 @@ PY
 
 _continue_local_smoke() {
   local max_time="${AQ_QA_CONTINUE_LOCAL_MAX_TIME:-45}"
-  # Keep this bounded below the outer Tier 0 gate timeout. The continue-local
-  # smoke only needs to prove a valid switchboard completion path, not wait out
-  # worst-case cold-starts that would cause the full pre-commit gate to fail.
-  curl -sf --max-time "${max_time}" \
-    -H 'Content-Type: application/json' \
-    -H 'X-AI-Profile: continue-local' \
-    -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"n_predict":8,"temperature":0}' \
-    "${SWITCHBOARD_URL}/v1/chat/completions" | \
-    python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); reasoning=(msg.get("reasoning_content") or "").strip(); usage=data.get("usage") or {}; completion_tokens=int(usage.get("completion_tokens") or 0); observed=content or reasoning; print(observed or completion_tokens); raise SystemExit(0 if observed or completion_tokens > 0 else 1)'
+  local attempts="${AQ_QA_CONTINUE_LOCAL_ATTEMPTS:-2}"
+  local attempt
+  # Keep this bounded below the outer Tier 0 gate timeout. Allow one retry to
+  # tolerate occasional local-model warmup variance without turning the whole
+  # pre-commit gate flaky.
+  for ((attempt=1; attempt<=attempts; attempt++)); do
+    if curl -sf --max-time "${max_time}" \
+      -H 'Content-Type: application/json' \
+      -H 'X-AI-Profile: continue-local' \
+      -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"n_predict":8,"temperature":0}' \
+      "${SWITCHBOARD_URL}/v1/chat/completions" | \
+      python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); reasoning=(msg.get("reasoning_content") or "").strip(); usage=data.get("usage") or {}; completion_tokens=int(usage.get("completion_tokens") or 0); observed=content or reasoning; print(observed or completion_tokens); raise SystemExit(0 if observed or completion_tokens > 0 else 1)'
+    then
+      return 0
+    fi
+    (( attempt < attempts )) && sleep 1
+  done
+  return 1
 }
 
 _continue_local_large_context_smoke() {

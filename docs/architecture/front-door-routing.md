@@ -12,6 +12,13 @@ Current front door surfaces:
 - `scripts/ai/local-orchestrator`
 - Continue/editor traffic routed through switchboard with the `continue-local` lane
 
+Example CLI usage:
+
+```bash
+scripts/ai/local-orchestrator --route Explore "summarize the current harness posture"
+scripts/ai/local-orchestrator --route Reasoning "compare two workflow integration options"
+```
+
 ## Route Alias Contract
 
 Alias mappings are defined in [config/route-aliases.json](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/route-aliases.json:1) and resolved by [route_aliases.py](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/hybrid-coordinator/route_aliases.py:1).
