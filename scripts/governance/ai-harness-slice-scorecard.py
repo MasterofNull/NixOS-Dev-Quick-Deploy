@@ -176,6 +176,27 @@ def _runtime_probe_errors(slice_id: str, probe: Dict[str, Any]) -> List[str]:
     return errors
 
 
+def _runtime_policy(data: Dict[str, Any]) -> Dict[str, Any]:
+    policy = data.get("runtime_verification_policy")
+    if isinstance(policy, dict):
+        return policy
+    return {}
+
+
+def _required_probe_minimum(policy: Dict[str, Any], maturity_target: str) -> int:
+    minimums = policy.get("minimum_required_probes_by_target")
+    if not isinstance(minimums, dict):
+        return 0
+    raw_value = minimums.get(maturity_target)
+    if raw_value is None:
+        return 0
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return 0
+    return max(value, 0)
+
+
 def _build_runtime_probe_url(probe: Dict[str, Any]) -> str:
     direct_url = str(probe.get("url", "")).strip()
     if direct_url:
@@ -300,14 +321,21 @@ def _run_command_probe(probe: Dict[str, Any], timeout_seconds: float) -> Dict[st
     }
 
 
-def run_runtime_probes(data: Dict[str, Any], timeout_seconds: float) -> Tuple[Dict[str, Any], List[str]]:
+def run_runtime_probes(
+    data: Dict[str, Any],
+    timeout_seconds: float,
+    runtime_policy: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], List[str]]:
     results: Dict[str, Any] = {}
     errors: List[str] = []
+    policy = runtime_policy or {}
     for slice_data in as_list(data.get("slices")):
         slice_id = str(slice_data.get("id", "")).strip()
         runtime_verification = slice_data.get("runtime_verification") or {}
         probes = as_list(runtime_verification.get("probes"))
-        if not probes:
+        target = str(slice_data.get("maturity_target", "")).strip()
+        minimum_required = _required_probe_minimum(policy, target)
+        if not probes and minimum_required <= 0:
             continue
 
         slice_results: List[Dict[str, Any]] = []
@@ -336,12 +364,23 @@ def run_runtime_probes(data: Dict[str, Any], timeout_seconds: float) -> Tuple[Di
                 errors.append(f"{slice_id}: runtime probe {probe_summary['id']} failed: {probe_result['detail']}")
             slice_results.append(probe_summary)
 
+        coverage_failure = ""
+        if len(slice_results) < minimum_required:
+            coverage_failure = (
+                f"runtime coverage below target minimum "
+                f"({len(slice_results)}/{minimum_required} probes for {target})"
+            )
+            errors.append(f"{slice_id}: {coverage_failure}")
+
         results[slice_id] = {
-            "enabled": True,
+            "enabled": bool(probes),
             "probes": slice_results,
             "total": len(slice_results),
             "passed": sum(1 for item in slice_results if item["passed"]),
             "required_failures": required_failures,
+            "coverage_requirement": minimum_required,
+            "coverage_passed": not coverage_failure,
+            "coverage_failure": coverage_failure,
         }
     return results, errors
 
@@ -357,6 +396,27 @@ def validate_registry(data: Dict[str, Any]) -> List[str]:
     for key in ("version", "description", "score_dimensions", "maturity_levels", "slices"):
         if key not in data:
             errors.append(f"missing top-level key: {key}")
+
+    runtime_policy = data.get("runtime_verification_policy")
+    if runtime_policy is not None and not isinstance(runtime_policy, dict):
+        errors.append("runtime_verification_policy must be an object")
+    elif isinstance(runtime_policy, dict):
+        minimums = runtime_policy.get("minimum_required_probes_by_target")
+        if minimums is not None and not isinstance(minimums, dict):
+            errors.append("runtime_verification_policy.minimum_required_probes_by_target must be an object")
+        elif isinstance(minimums, dict):
+            for maturity_target, value in minimums.items():
+                if maturity_target not in VALID_MATURITY:
+                    errors.append(
+                        "runtime_verification_policy.minimum_required_probes_by_target "
+                        f"contains invalid maturity target {maturity_target!r}"
+                    )
+                    continue
+                if not isinstance(value, int) or value < 0:
+                    errors.append(
+                        "runtime_verification_policy.minimum_required_probes_by_target "
+                        f"{maturity_target!r} must be a non-negative integer"
+                    )
 
     slices = as_list(data.get("slices"))
     if not slices:
@@ -503,6 +563,9 @@ def dimension_status(
             blockers.append(f"missing path {path_key}:{rel_path}")
 
     if runtime_slice_result:
+        coverage_failure = str(runtime_slice_result.get("coverage_failure", "")).strip()
+        if dimension == "governance" and coverage_failure:
+            blockers.append(coverage_failure)
         for probe in as_list(runtime_slice_result.get("probes")):
             if str(probe.get("dimension", "")).strip() != dimension:
                 continue
@@ -591,10 +654,17 @@ def build_scorecard(data: Dict[str, Any], runtime_results: Optional[Dict[str, An
                 1 for item in scorecard["slices"]
                 if (item.get("runtime_verification") or {}).get("enabled")
             ),
+            "slices_meeting_coverage_requirement": sum(
+                1 for item in scorecard["slices"]
+                if (item.get("runtime_verification") or {}).get("coverage_passed", True)
+            ),
             "fully_passing_slices": sum(
                 1 for item in scorecard["slices"]
                 if not (item.get("runtime_verification") or {}).get("enabled")
-                or (item.get("runtime_verification") or {}).get("required_failures", 0) == 0
+                or (
+                    (item.get("runtime_verification") or {}).get("required_failures", 0) == 0
+                    and (item.get("runtime_verification") or {}).get("coverage_passed", True)
+                )
             ),
             "required_probe_failures": sum(
                 int((item.get("runtime_verification") or {}).get("required_failures", 0))
@@ -627,6 +697,8 @@ def render_text(scorecard: Dict[str, Any], errors: List[str], runtime_errors: Li
         runtime_fragment = ""
         if runtime.get("enabled"):
             runtime_fragment = f" | runtime={runtime.get('passed', 0)}/{runtime.get('total', 0)}"
+        elif runtime.get("coverage_requirement", 0):
+            runtime_fragment = f" | runtime=0/{runtime.get('coverage_requirement', 0)} required"
         lines.append(
             f"- {item['id']}: {item['score']}/{item['max_score']} "
             f"({item['percent']}%) | achieved={item['achieved_maturity']} "
@@ -649,6 +721,7 @@ def render_text(scorecard: Dict[str, Any], errors: List[str], runtime_errors: Li
         lines.append("Runtime Verification:")
         lines.append(
             f"- slices_with_probes: {runtime_summary.get('slices_with_probes', 0)} "
+            f"| slices_meeting_coverage_requirement: {runtime_summary.get('slices_meeting_coverage_requirement', 0)} "
             f"| fully_passing_slices: {runtime_summary.get('fully_passing_slices', 0)} "
             f"| required_probe_failures: {runtime_summary.get('required_probe_failures', 0)}"
         )
@@ -678,7 +751,11 @@ def main() -> int:
     runtime_results: Dict[str, Any] = {}
     runtime_errors: List[str] = []
     if args.runtime_verify:
-        runtime_results, runtime_errors = run_runtime_probes(registry, args.runtime_timeout_seconds)
+        runtime_results, runtime_errors = run_runtime_probes(
+            registry,
+            args.runtime_timeout_seconds,
+            runtime_policy=_runtime_policy(registry),
+        )
     scorecard = build_scorecard(registry, runtime_results=runtime_results)
 
     if args.format == "json":

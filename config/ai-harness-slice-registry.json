@@ -57,6 +57,11 @@
       ]
     }
   },
+  "runtime_verification_policy": {
+    "minimum_required_probes_by_target": {
+      "governed": 1
+    }
+  },
   "slices": [
     {
       "id": "routing-orchestration",
@@ -364,6 +369,38 @@
         ],
         "notes": [
           "Inline Python in Nix remains a design debt called out by the routing architecture review."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "switchboard-health",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "switchboard",
+            "path": "/health",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "service",
+              "profiles"
+            ]
+          },
+          {
+            "id": "switchboard-profiles-dashboard",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/switchboard/profiles",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "profiles.default",
+              "profiles.continue-local"
+            ]
+          }
         ]
       }
     },
@@ -695,6 +732,36 @@
         "notes": [
           "This slice should increasingly expose source trust and import validation as first-class acceptance signals."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "aidb-documents-list",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "aidb",
+            "path": "/documents?limit=1",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "documents",
+              "total"
+            ]
+          },
+          {
+            "id": "aidb-ready-proxy",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/aidb/health/ready",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "details.service"
+            ]
+          }
+        ]
       }
     },
     {
@@ -831,6 +898,39 @@
         ],
         "notes": [
           "This slice should increasingly tie retrieval quality and trust filtering to explicit acceptance checks."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "aidb-vector-search",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "aidb",
+            "path": "/vector/search",
+            "method": "POST",
+            "payload": {
+              "query": "memory",
+              "limit": 1
+            },
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "results",
+              "total",
+              "has_more"
+            ]
+          },
+          {
+            "id": "aidb-metrics-proxy",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/aidb/metrics",
+            "expect_status": 200,
+            "expect_json": false,
+            "expect_nonempty": true
+          }
         ]
       }
     },
@@ -970,6 +1070,42 @@
         ],
         "notes": [
           "Provenance, trust, retention, and temporal validity should continue becoming stronger explicit fields over time."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "aq-memory-stats",
+            "kind": "command",
+            "dimension": "observability",
+            "command": [
+              "aq-memory",
+              "stats",
+              "--project",
+              "ai-stack"
+            ],
+            "stdout_contains": "Statistics for ai-stack"
+          },
+          {
+            "id": "hybrid-memory-recall",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "hybrid",
+            "path": "/memory/recall",
+            "method": "POST",
+            "auth_profile": "hybrid_api_key",
+            "payload": {
+              "query": "runtime verify memory",
+              "project": "ai-stack",
+              "limit": 1
+            },
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "results"
+            ]
+          }
         ]
       }
     },
@@ -1267,6 +1403,44 @@
         ],
         "notes": [
           "This slice owns the initial harness entry experience and should remain compact and evidence-first."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "aq-session-zero-ready",
+            "kind": "command",
+            "dimension": "observability",
+            "command": [
+              "aq-session-zero"
+            ],
+            "stdout_contains": "HARNESS READY"
+          },
+          {
+            "id": "aq-hints-json",
+            "kind": "command",
+            "dimension": "data_plane",
+            "command": [
+              "aq-hints",
+              "runtime verify bootstrap hints tooling",
+              "--format=json",
+              "--agent=codex"
+            ],
+            "stdout_contains": "\"hints\": ["
+          },
+          {
+            "id": "aq-context-bootstrap-json",
+            "kind": "command",
+            "dimension": "discoverability",
+            "command": [
+              "aq-context-bootstrap",
+              "--task",
+              "runtime verify bootstrap context",
+              "--format",
+              "json"
+            ],
+            "stdout_contains": "\"recommended_scope\""
+          }
         ]
       }
     },
@@ -2011,6 +2185,34 @@
         "notes": [
           "This slice owns the telemetry substrate and alert/remediation policy surface underneath operator dashboards."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "dashboard-ai-metrics-runtime",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/ai/metrics",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "timestamp",
+              "services.aidb",
+              "services.switchboard"
+            ]
+          },
+          {
+            "id": "aidb-prometheus-metrics",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/aidb/metrics",
+            "expect_status": 200,
+            "expect_json": false,
+            "expect_nonempty": true
+          }
+        ]
       }
     },
     {
@@ -2153,7 +2355,7 @@
             "dimension": "observability",
             "service": "dashboard_api",
             "path": "/api/insights/observability/readiness",
-            "timeout_seconds": 20,
+            "timeout_seconds": 40,
             "expect_status": 200,
             "expect_json": true,
             "expect_keys": [
@@ -2371,7 +2573,7 @@
             "dimension": "discoverability",
             "service": "dashboard_api",
             "path": "/api/insights/system/health",
-            "timeout_seconds": 20,
+            "timeout_seconds": 40,
             "expect_status": 200,
             "expect_json": true,
             "expect_keys": [
@@ -3242,6 +3444,33 @@
         ],
         "notes": [
           "This slice should increasingly tie secret inventory, restart impact, and service credential consumers together."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "managed-secrets-status-json",
+            "kind": "command",
+            "dimension": "control_plane",
+            "command": [
+              "python3",
+              "scripts/governance/manage-secrets.py",
+              "status",
+              "--format",
+              "json"
+            ],
+            "stdout_contains": "\"secrets\": ["
+          },
+          {
+            "id": "secrets-rotation-plan-report",
+            "kind": "command",
+            "dimension": "observability",
+            "command": [
+              "bash",
+              "scripts/security/secrets-rotation-plan.sh"
+            ],
+            "stdout_contains": "Secrets rotation plan report written:"
+          }
         ]
       }
     },

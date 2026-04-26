@@ -227,6 +227,12 @@ python3 scripts/governance/ai-harness-slice-scorecard.py --runtime-verify
 
 When enabled, the scorecard executes declared `runtime_verification.probes` for slices that opt in. Probe failures are folded back into the owning dimension, so a slice can remain structurally complete while still failing runtime verification.
 
+The registry now also supports a top-level `runtime_verification_policy`. The first enforced rule is a target-maturity coverage threshold:
+
+- target `governed` slices must declare at least `1` runtime probe when `--runtime-verify` is used.
+
+This is intentionally narrow for the first tightening pass. It prevents a slice from being called governed while remaining runtime-unproven, without forcing immediate probe coverage across every lower maturity tier.
+
 The first probe batch is intentionally limited to fast, non-destructive checks:
 
 - dashboard read-only health, metrics, insights, config, and service-list routes,
@@ -236,12 +242,19 @@ The first probe batch is intentionally limited to fast, non-destructive checks:
 The current runtime-backed coverage is focused on the highest-signal slices first:
 
 - `routing-orchestration`
+- `switchboard-frontdoor`
 - `workflow-engine`
+- `aq-bootstrap-hints-tooling`
+- `aidb-ingestion-import-data`
+- `aidb-retrieval-search-data`
+- `memory-context-governance-data`
 - `service-health-monitoring`
+- `telemetry-alerting-observability`
 - `readiness-insights-observability`
 - `dashboard-insights-readiness-surfaces`
 - `operator-runtime-control-surfaces`
 - `mcp-server-platform`
+- `secrets-credential-governance`
 - `security-scan-compliance-automation`
 - `policy-validation-governance`
 - `operator-security-audit-controls`
