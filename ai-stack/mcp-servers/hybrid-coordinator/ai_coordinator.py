@@ -1029,6 +1029,37 @@ def build_reasoning_finalization_messages(
     ]
 
 
+def build_empty_content_retry_messages(
+    task: str,
+    profile: str = "remote-free",
+) -> List[Dict[str, str]]:
+    """Simplified retry messages after an empty-content response.
+    Strips tool-call schemas; asks for plain text deliverable only."""
+    return [
+        {
+            "role": "system",
+            "content": _delegation_system_prompt(profile)
+            + "\nReturn ONLY plain text. Do not emit JSON schemas, tool definitions, or function calls.",
+        },
+        {
+            "role": "user",
+            "content": "\n".join(
+                [
+                    f"Task: {str(task or '').strip()[:400]}",
+                    "The previous attempt returned an empty response.",
+                    "Respond with a direct text answer only.",
+                    "Required output sections:",
+                    "- result",
+                    "- evidence",
+                    "- risks",
+                    "- rollback_or_next_step",
+                    "Keep the response brief and concrete.",
+                ]
+            ),
+        },
+    ]
+
+
 def build_messages(
     task: str,
     system_prompt: str = "",
