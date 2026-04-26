@@ -2838,43 +2838,172 @@
       }
     },
     {
-      "id": "security-governance",
-      "name": "Security and Governance",
+      "id": "secrets-credential-governance",
+      "name": "Secrets and Credential Governance",
       "domain": "security",
-      "summary": "Repo-wide policy, secret handling, structure linting, validation gates, and governance enforcement for the harness.",
+      "summary": "Declarative secret wiring, runtime credential handling, rotation planning, and zero-secrets-in-repo enforcement.",
       "maturity_target": "governed",
       "owner_surface": {
         "primary_paths": [
+          "nix/modules/core",
           "scripts/governance",
           "scripts/security",
-          "config/security",
-          "docs/security"
+          "docs/operations/procedures"
         ],
         "entrypoints": [
-          "scripts/governance/tier0-validation-gate.sh",
-          "scripts/governance/repo-structure-lint.sh"
+          "nix/modules/core/secrets.nix",
+          "scripts/governance/manage-secrets.py",
+          "scripts/governance/manage-secrets.sh",
+          "scripts/security/secrets-rotation-plan.sh"
         ]
       },
       "contract": {
         "inputs": [
-          "repo changes",
-          "policy files",
-          "service configuration"
+          "secret inventory",
+          "host secret bundles",
+          "service credential requirements"
         ],
         "outputs": [
-          "validation results",
-          "policy enforcement",
-          "security readiness signals"
+          "runtime secret file wiring",
+          "rotation readiness reports",
+          "credential management guidance"
         ],
         "invariants": [
-          "secrets must not be hardcoded",
-          "repo structure policy must be enforced",
-          "validation must happen before commit and deploy"
+          "secrets must not be hardcoded or committed in plaintext",
+          "services should consume credentials from secret files or secret-backed env wiring"
         ],
         "failure_modes": [
-          "policy drift",
-          "missing rollback discipline",
-          "security checks that are documented but not enforced"
+          "secret drift between declared inventory and runtime consumers",
+          "rotation plans omit affected services or restart groups"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "nix/modules/core/secrets.nix"
+        ],
+        "policy_paths": [
+          "AGENTS.md",
+          "docs/operations/procedures/CREDENTIAL-MANAGEMENT-PROCEDURES.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "sops",
+          "age",
+          "host deploy options"
+        ],
+        "downstream_consumers": [
+          "all credentialed services"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "nix/modules/core/secrets.nix",
+          "scripts/governance/manage-secrets.py",
+          "scripts/governance/manage-secrets.sh",
+          "scripts/security/secrets-rotation-plan.sh"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/security/secrets-rotation-plan.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "rotation readiness",
+          "managed secret coverage"
+        ],
+        "log_sources": [
+          "manage-secrets status output",
+          "latest-secrets-rotation-plan.json"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-secrets-rotation-plan.py",
+          "scripts/testing/test-nixos-writable-state-policy.py"
+        ],
+        "acceptance_signals": [
+          "managed secret inventory stays declarative and rotation-ready"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/procedures/CREDENTIAL-MANAGEMENT-PROCEDURES.md",
+          "docs/security/security-hardening-guide.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/governance/manage-secrets.sh",
+          "scripts/security/secrets-rotation-plan.sh"
+        ],
+        "dashboard_routes": [
+          "/api/insights/security/compliance"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "/run/secrets/*"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly tie secret inventory, restart impact, and service credential consumers together."
+        ]
+      }
+    },
+    {
+      "id": "security-scan-compliance-automation",
+      "name": "Security Scan and Compliance Automation",
+      "domain": "security",
+      "summary": "Security scanning, vulnerability reporting, compliance checking, and penetration-style automation surfaces.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/security",
+          "dashboard/backend/api/routes",
+          "docs/security",
+          "docs/operations"
+        ],
+        "entrypoints": [
+          "scripts/security/security-audit.sh",
+          "scripts/security/security-scan.sh",
+          "scripts/security/run-security-penetration-suite.sh",
+          "scripts/security/dashboard-security-scan.sh",
+          "dashboard/backend/api/routes/security.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "repo state",
+          "dependency inventories",
+          "deployment or dashboard targets"
+        ],
+        "outputs": [
+          "security audit reports",
+          "scan findings",
+          "compliance summaries",
+          "security recommendations"
+        ],
+        "invariants": [
+          "security findings should be reproducible from repo-native scripts and stored artifacts",
+          "compliance surfaces should reflect current report outputs rather than static claims"
+        ],
+        "failure_modes": [
+          "scanner outputs become stale or unavailable",
+          "compliance routes exist but are not backed by current reports"
         ],
         "rollback_commands": [
           "git revert <commit>"
@@ -2883,11 +3012,156 @@
       "control_plane": {
         "config_paths": [
           "config/security",
-          "config/repo-structure-allowlist.txt"
+          "config/security/npm-threat-intel.json"
+        ],
+        "policy_paths": [
+          "docs/security/security-hardening-guide.md",
+          "docs/operations/security-audit-compliance-integration.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "pip-audit",
+          "npm audit",
+          "dashboard security scan inputs"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "security review workflows"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/security/security-audit.sh",
+          "scripts/security/security-scan.sh",
+          "scripts/security/dashboard-security-scan.sh",
+          "scripts/security/run-security-penetration-suite.sh",
+          "dashboard/backend/api/routes/security.py"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/security"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/testing/smoke-security-audit-compliance.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/security.py",
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "security scan status",
+          "vulnerability counts",
+          "compliance report availability"
+        ],
+        "log_sources": [
+          "latest-security-audit.json",
+          "dashboard security scan output"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-dashboard-security-scan-automation.py",
+          "scripts/testing/test-security-audit-compliance-flow.py",
+          "scripts/testing/test-insights-security-compliance.py",
+          "scripts/testing/smoke-security-audit-compliance.sh"
+        ],
+        "acceptance_signals": [
+          "security scans and compliance summaries remain executable and dashboard-visible"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/security/security-hardening-guide.md",
+          "docs/operations/security-audit-compliance-integration.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/security/security-audit.sh",
+          "scripts/security/security-scan.sh",
+          "scripts/security/run-security-penetration-suite.sh"
+        ],
+        "dashboard_routes": [
+          "/api/security",
+          "/api/insights/security/compliance"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "generated security reports"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly connect severity thresholds and remediation expectations to explicit acceptance policy."
+        ]
+      }
+    },
+    {
+      "id": "policy-validation-governance",
+      "name": "Policy Validation and Governance",
+      "domain": "security",
+      "summary": "Repo policy enforcement, Tier 0 gates, structure linting, tool/policy evaluation, and unattended-sudo governance.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/governance",
+          "config",
+          "docs/operations"
+        ],
+        "entrypoints": [
+          "scripts/governance/tier0-validation-gate.sh",
+          "scripts/governance/repo-structure-lint.sh",
+          "scripts/governance/evaluate-agent-policy.py",
+          "scripts/governance/check-unattended-sudo-readiness.sh"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "repo changes",
+          "policy files",
+          "service and workflow configuration"
+        ],
+        "outputs": [
+          "validation results",
+          "policy decisions",
+          "governance pass/fail signals"
+        ],
+        "invariants": [
+          "repo structure policy must be enforced",
+          "validation must happen before commit and deploy",
+          "declared automation policy should remain machine-evaluable"
+        ],
+        "failure_modes": [
+          "policy drift",
+          "documented governance checks are not enforced",
+          "automation safety assumptions stop matching runtime reality"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/repo-structure-allowlist.txt",
+          "config/agent-routing-policy.json",
+          "config/harness-first-policy.json",
+          "config/runtime-safety-policy.json",
+          "config/runtime-tool-security-policy.json"
         ],
         "policy_paths": [
           "AGENTS.md",
-          "docs/security"
+          "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md",
+          "docs/operations/procedures/AUTONOMOUS-SUDOERS-SETUP.md"
         ],
         "service_units": [],
         "upstream_dependencies": [
@@ -2900,8 +3174,11 @@
       },
       "data_plane": {
         "runtime_paths": [
-          "scripts/governance",
-          "scripts/security"
+          "scripts/governance/tier0-validation-gate.sh",
+          "scripts/governance/repo-structure-lint.sh",
+          "scripts/governance/evaluate-agent-policy.py",
+          "scripts/governance/check-unattended-sudo-readiness.sh",
+          "scripts/governance/remediate-unattended-sudo-readiness.sh"
         ],
         "storage_paths": [
           "config/root-file-allowlist.txt"
@@ -2919,10 +3196,12 @@
         "alerts": [],
         "metrics_signals": [
           "Tier 0 pass/fail",
-          "repo-structure lint pass/fail"
+          "repo-structure lint pass/fail",
+          "sudo readiness status"
         ],
         "log_sources": [
-          "validation gate output"
+          "validation gate output",
+          "sudo readiness check output"
         ]
       },
       "quality_gate": {
@@ -2931,7 +3210,9 @@
           "scripts/governance/repo-structure-lint.sh --staged"
         ],
         "test_paths": [
-          "scripts/governance"
+          "scripts/testing/validate-tool-execution-policy.sh",
+          "scripts/testing/validate-tool-management-policy.sh",
+          "scripts/testing/test-workflow-orchestration-policy.py"
         ],
         "acceptance_signals": [
           "Tier 0 passes",
@@ -2940,12 +3221,13 @@
       },
       "discoverability": {
         "docs": [
-          "docs/security",
-          "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md"
+          "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md",
+          "docs/operations/procedures/AUTONOMOUS-SUDOERS-SETUP.md"
         ],
         "cli_entrypoints": [
           "scripts/governance/tier0-validation-gate.sh",
-          "scripts/governance/repo-structure-lint.sh"
+          "scripts/governance/repo-structure-lint.sh",
+          "scripts/governance/check-unattended-sudo-readiness.sh"
         ],
         "dashboard_routes": [
           "/api/insights/security/compliance"
@@ -2953,15 +3235,148 @@
       },
       "governance": {
         "risk_level": "high",
-        "secret_surfaces": [
-          "/run/secrets/*"
-        ],
+        "secret_surfaces": [],
         "review_commands": [
           "scripts/governance/tier0-validation-gate.sh --pre-commit",
           "scripts/governance/repo-structure-lint.sh --staged"
         ],
         "notes": [
-          "This is the meta-slice that should eventually consume scorecard output as one of its own readiness signals."
+          "This is the meta-governance slice that should eventually consume scorecard output as one of its own readiness signals."
+        ]
+      }
+    },
+    {
+      "id": "operator-security-audit-controls",
+      "name": "Operator Security and Audit Controls",
+      "domain": "security",
+      "summary": "Dashboard operator-facing audit, firewall, and runtime security control surfaces.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "dashboard/backend/api/routes",
+          "dashboard/backend/api/services",
+          "docs/operations"
+        ],
+        "entrypoints": [
+          "dashboard/backend/api/routes/audit.py",
+          "dashboard/backend/api/routes/firewall.py",
+          "dashboard/backend/api/services/runtime_controls.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "operator audit queries",
+          "firewall control requests",
+          "runtime audit events"
+        ],
+        "outputs": [
+          "audit summaries",
+          "audit integrity status",
+          "firewall status and mutation results"
+        ],
+        "invariants": [
+          "operator security controls should remain auditable",
+          "firewall mutations should be time-bounded and validated before execution"
+        ],
+        "failure_modes": [
+          "operator actions are no longer traceable",
+          "firewall controls allow unsafe or indefinite mutation"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart command-center-dashboard-api.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/runtime-safety-policy.json"
+        ],
+        "policy_paths": [
+          "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md",
+          "docs/security/security-hardening-guide.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "systemd",
+          "nftables",
+          "CrowdSec"
+        ],
+        "downstream_consumers": [
+          "operators"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "dashboard/backend/api/routes/audit.py",
+          "dashboard/backend/api/routes/firewall.py",
+          "dashboard/backend/api/services/runtime_controls.py"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/audit",
+          "/api/firewall"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/testing/smoke-security-audit-producer.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/audit.py",
+          "dashboard/backend/api/routes/firewall.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "operator audit event volume",
+          "audit chain integrity",
+          "firewall control success/failure"
+        ],
+        "log_sources": [
+          "journalctl -u command-center-dashboard-api.service",
+          "operator audit log",
+          "firewall audit log"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-audit-defaults.py",
+          "scripts/testing/test-http-query-audit-metadata.py",
+          "scripts/testing/test-dashboard-security-headers.py",
+          "scripts/testing/smoke-security-audit-producer.sh"
+        ],
+        "acceptance_signals": [
+          "audit routes preserve operator evidence and firewall controls remain bounded"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/security/security-hardening-guide.md",
+          "docs/operations/security-audit-compliance-integration.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/security/firewall-audit.sh"
+        ],
+        "dashboard_routes": [
+          "/api/audit",
+          "/api/firewall"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "operator audit log"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly couple dashboard mutation rights to runtime audit and safety policy evidence."
         ]
       }
     }
