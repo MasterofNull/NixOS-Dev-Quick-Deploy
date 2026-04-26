@@ -1836,42 +1836,38 @@
       }
     },
     {
-      "id": "agent-guidance-communications",
-      "name": "Agent Guidance and Communications",
+      "id": "prompt-registry-evaluation-guidance",
+      "name": "Prompt Registry and Evaluation Guidance",
       "domain": "communications",
-      "summary": "Prompts, hints, context cards, agent instruction sync, and workflow guidance surfaces.",
+      "summary": "Prompt template registry, prompt evaluation tooling, and scored prompt guidance surfaces.",
       "maturity_target": "observable",
       "owner_surface": {
         "primary_paths": [
           "ai-stack/prompts/registry.yaml",
-          "config/agent-context-cards.json",
-          "scripts/data/sync-agent-instructions",
-          "docs/AGENTS.md"
+          "scripts/ai/aq-prompt-eval"
         ],
         "entrypoints": [
-          "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py",
-          "scripts/ai/aq-hints"
+          "ai-stack/prompts/registry.yaml",
+          "scripts/ai/aq-prompt-eval"
         ]
       },
       "contract": {
         "inputs": [
-          "task summaries",
-          "workflow context",
-          "policy docs"
+          "prompt templates",
+          "prompt evaluation fixtures",
+          "scoring metadata"
         ],
         "outputs": [
-          "hints",
-          "context cards",
-          "synced agent instructions"
+          "scored prompt registry entries",
+          "prompt evaluation results"
         ],
         "invariants": [
-          "guidance should remain compact, actionable, and repo-grounded",
-          "policy sync should not fork across agent surfaces"
+          "prompt templates should remain structured and repo-grounded",
+          "prompt score updates should be traceable to explicit evaluation runs"
         ],
         "failure_modes": [
-          "prompt drift",
-          "instruction duplication",
-          "guidance not reachable through normal harness paths"
+          "prompt drift without evaluation evidence",
+          "registry entries become stale or unscored"
         ],
         "rollback_commands": [
           "git revert <commit>"
@@ -1879,8 +1875,132 @@
       },
       "control_plane": {
         "config_paths": [
-          "config/agent-context-cards.json",
           "ai-stack/prompts/registry.yaml"
+        ],
+        "policy_paths": [
+          "docs/AGENTS.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "prompt registry",
+          "evaluation tooling"
+        ],
+        "downstream_consumers": [
+          "hints engine",
+          "aq-reporting-knowledge-tooling",
+          "agents"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/ai/aq-prompt-eval"
+        ],
+        "storage_paths": [
+          "ai-stack/prompts/registry.yaml"
+        ],
+        "api_endpoints": [],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "python3 scripts/ai/aq-prompt-eval --help"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "prompt mean_score values",
+          "prompt evaluation outputs"
+        ],
+        "log_sources": [
+          "aq-prompt-eval stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/prompts/registry.yaml",
+          "scripts/testing"
+        ],
+        "acceptance_signals": [
+          "prompt registry remains structured",
+          "prompt evaluation tool remains runnable"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/AGENTS.md"
+        ],
+        "cli_entrypoints": [
+          "aq-prompt-eval"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "Prompt changes should increasingly require prompt evaluation evidence, not only structural validation."
+        ]
+      }
+    },
+    {
+      "id": "hints-context-guidance",
+      "name": "Hints and Context Guidance",
+      "domain": "communications",
+      "summary": "Hint generation, context cards, and task-scoped guidance delivery for agents and operators.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py",
+          "config/agent-context-cards.json",
+          "scripts/ai/aq-hints",
+          "scripts/ai/aq-context-card",
+          "scripts/ai/aq-context-bootstrap"
+        ],
+        "entrypoints": [
+          "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py",
+          "scripts/ai/aq-hints",
+          "scripts/ai/aq-context-card",
+          "scripts/ai/aq-context-bootstrap"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "task summaries",
+          "agent identity",
+          "context-card selection",
+          "workflow and runtime signals"
+        ],
+        "outputs": [
+          "ranked hints",
+          "context cards",
+          "bootstrap guidance payloads"
+        ],
+        "invariants": [
+          "guidance should remain compact, actionable, and repo-grounded",
+          "hint and context outputs should drive users toward canonical harness surfaces"
+        ],
+        "failure_modes": [
+          "hint ranking drift",
+          "context cards diverge from workflow behavior",
+          "guidance becomes unreachable from normal harness paths"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/agent-context-cards.json"
         ],
         "policy_paths": [
           "AGENTS.md",
@@ -1889,10 +2009,12 @@
         "service_units": [],
         "upstream_dependencies": [
           "hints engine",
-          "AIDB knowledge sync"
+          "workflow blueprints",
+          "runtime signals"
         ],
         "downstream_consumers": [
           "aq-hints",
+          "aq-context-card",
           "Continue.dev",
           "agents"
         ]
@@ -1900,10 +2022,13 @@
       "data_plane": {
         "runtime_paths": [
           "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py",
-          "scripts/data"
+          "scripts/ai/aq-hints",
+          "scripts/ai/aq-context-card",
+          "scripts/ai/aq-context-bootstrap",
+          "scripts/ai/aq-context-manage"
         ],
         "storage_paths": [
-          "ai-stack/prompts/registry.yaml"
+          "config/agent-context-cards.json"
         ],
         "api_endpoints": [
           "/hints"
@@ -1923,10 +2048,11 @@
         "alerts": [],
         "metrics_signals": [
           "hint usage and feedback",
-          "prompt eval results"
+          "context bootstrap responses"
         ],
         "log_sources": [
-          "hint API responses"
+          "hint API responses",
+          "aq-hints stdout/stderr"
         ]
       },
       "quality_gate": {
@@ -1934,20 +2060,24 @@
           "scripts/governance/tier0-validation-gate.sh --pre-commit"
         ],
         "test_paths": [
-          "scripts/testing"
+          "scripts/testing",
+          "ai-stack/mcp-servers/hybrid-coordinator/test_harness_eval_scorecard.py"
         ],
         "acceptance_signals": [
           "hints remain reachable",
-          "instruction sync paths stay documented"
+          "context-card and bootstrap paths stay documented"
         ]
       },
       "discoverability": {
         "docs": [
-          "docs/AGENTS.md"
+          "docs/AGENTS.md",
+          "docs/operations/AI-AGENT-SURFACE-MATRIX.md"
         ],
         "cli_entrypoints": [
           "aq-hints",
-          "aq-context-card"
+          "aq-context-card",
+          "aq-context-bootstrap",
+          "aq-context-manage"
         ],
         "dashboard_routes": [
           "/api/insights"
@@ -1960,7 +2090,143 @@
           "scripts/governance/tier0-validation-gate.sh --pre-commit"
         ],
         "notes": [
-          "Prompt and context-card changes should eventually be tied to prompt evaluation evidence."
+          "This slice should stay aligned with workflow and runtime truth rather than accumulating static guidance drift."
+        ]
+      }
+    },
+    {
+      "id": "agent-instruction-sync-distribution",
+      "name": "Agent Instruction Sync and Distribution",
+      "domain": "communications",
+      "summary": "Policy distribution, generated agent instruction files, and AIDB import surfaces for agent-facing docs.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "AGENTS.md",
+          "docs/AGENTS.md",
+          "scripts/data/sync-agent-instructions",
+          "scripts/data/import-agent-instructions.sh"
+        ],
+        "entrypoints": [
+          "scripts/data/sync-agent-instructions",
+          "scripts/data/import-agent-instructions.sh"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "agent memory",
+          "instruction import targets"
+        ],
+        "outputs": [
+          "synced agent instructions",
+          "generated agent-facing files",
+          "AIDB-imported instruction documents"
+        ],
+        "invariants": [
+          "policy sync should not fork across agent instruction surfaces",
+          "instruction distribution should preserve source-of-truth ownership"
+        ],
+        "failure_modes": [
+          "instruction duplication",
+          "sync script drift from source policy files",
+          "AIDB import paths remain undocumented or stale"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "AGENTS.md",
+          "docs/AGENTS.md"
+        ],
+        "policy_paths": [
+          "CLAUDE.md",
+          "docs/AGENTS.md"
+        ],
+        "service_units": [
+          "ai-import-agent-instructions.service"
+        ],
+        "upstream_dependencies": [
+          "CLAUDE.md",
+          "AIDB knowledge sync"
+        ],
+        "downstream_consumers": [
+          "Codex CLI",
+          "Qwen CLI",
+          "AIDB retrieval",
+          "agent tooling"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/data/sync-agent-instructions",
+          "scripts/data/import-agent-instructions.sh"
+        ],
+        "storage_paths": [
+          "AGENTS.md",
+          "docs/AGENTS.md",
+          "ai-stack/agent-memory/MEMORY.md"
+        ],
+        "api_endpoints": [
+          "/documents"
+        ],
+        "mcp_tools": [
+          "query_aidb"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "python3 scripts/data/sync-agent-instructions --dry-run"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "instruction sync output",
+          "AIDB instruction import status"
+        ],
+        "log_sources": [
+          "sync-agent-instructions stdout/stderr",
+          "import-agent-instructions.sh stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing",
+          "scripts/data/sync-agent-instructions"
+        ],
+        "acceptance_signals": [
+          "instruction sync tool remains runnable",
+          "instruction sync paths stay documented"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/AGENTS.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/data/sync-agent-instructions",
+          "scripts/data/import-agent-instructions.sh"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly align instruction sync with AIDB import status and explicit retrieval validation."
         ]
       }
     },
