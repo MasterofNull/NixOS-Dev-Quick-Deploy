@@ -7,6 +7,7 @@ HIGH_CVSS_THRESHOLD="${AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD:-7.0}"
 NOTIFY_USER="${AI_SECURITY_AUDIT_NOTIFY_USER:-}"
 DASHBOARD_SCAN_SCRIPT="${REPO_ROOT}/scripts/security/dashboard-security-scan.sh"
 SECRETS_ROTATION_PLAN_SCRIPT="${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh"
+LOCK_VERIFY_SCRIPT="${REPO_ROOT}/scripts/security/verify-python-lock-runtime.py"
 
 usage() {
   cat <<'EOF'
@@ -84,6 +85,7 @@ npm_results_dir="${tmp_root}/npm"
 mkdir -p "${pip_results_dir}" "${npm_results_dir}"
 
 mapfile -t lockfiles < <(find "${REPO_ROOT}/ai-stack/mcp-servers" -type f -name 'requirements.lock' | sort)
+mapfile -t requirements_files < <(find "${REPO_ROOT}/ai-stack/mcp-servers" -type f -name 'requirements.txt' | sort)
 mapfile -t package_files < <(find "${REPO_ROOT}" -type f -name 'package.json' \
   -not -path '*/node_modules/*' \
   -not -path '*/archive/*' \
@@ -110,6 +112,44 @@ if [[ "${pip_audit_available}" == true ]]; then
   done
 else
   jq -n --arg error "pip-audit not installed" '{dependencies: [], error: $error}' > "${pip_results_dir}/scanner-unavailable.json"
+fi
+
+lock_results_dir="${tmp_root}/lock-integrity"
+mkdir -p "${lock_results_dir}"
+lock_integrity_issues=0
+lock_integrity_scanned=0
+
+if [[ -f "${LOCK_VERIFY_SCRIPT}" ]]; then
+  for requirements_file in "${requirements_files[@]}"; do
+    service_dir="$(dirname "${requirements_file}")"
+    lockfile="${service_dir}/requirements.lock"
+    service_name="$(basename "${service_dir}")"
+    out_json="${lock_results_dir}/${service_name}.json"
+    set +e
+    python3 "${LOCK_VERIFY_SCRIPT}" \
+      --service "${service_name}" \
+      --requirements "${requirements_file}" \
+      --lock "${lockfile}" \
+      > "${out_json}" 2>"${out_json}.stderr"
+    rc=$?
+    set -e
+    if [[ ${rc} -ne 0 ]]; then
+      if [[ -s "${out_json}.stderr" ]]; then
+        cat "${out_json}.stderr" > "${out_json}"
+      else
+        jq -n \
+          --arg service "${service_name}" \
+          --arg requirements "${requirements_file}" \
+          --arg lockfile "${lockfile}" \
+          '{event: "dependency_hash_mismatch", service: $service, requirements: $requirements, lockfile: $lockfile, error: "lock verification failed"}' \
+          > "${out_json}"
+      fi
+      lock_integrity_issues=$((lock_integrity_issues + 1))
+    fi
+    lock_integrity_scanned=$((lock_integrity_scanned + 1))
+  done
+else
+  jq -n --arg error "verify-python-lock-runtime.py not found" '{event: "scanner_unavailable", error: $error}' > "${lock_results_dir}/scanner-unavailable.json"
 fi
 
 npm_total_high=0
@@ -141,6 +181,21 @@ if [[ "${npm_available}" == true ]]; then
 else
   jq -n --arg error "npm not installed" '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $error}' > "${npm_results_dir}/scanner-unavailable.json"
 fi
+
+persist_results_dir() {
+  local src_dir="$1"
+  local dest_dir="$2"
+  rm -rf "${dest_dir}"
+  mkdir -p "${dest_dir}"
+  find "${src_dir}" -maxdepth 1 -type f -name '*.json' -exec cp {} "${dest_dir}/" \;
+}
+
+persisted_pip_dir="${OUTPUT_DIR}/pip-audit"
+persisted_lock_dir="${OUTPUT_DIR}/lock-integrity"
+persisted_npm_dir="${OUTPUT_DIR}/npm-audit"
+persist_results_dir "${pip_results_dir}" "${persisted_pip_dir}"
+persist_results_dir "${lock_results_dir}" "${persisted_lock_dir}"
+persist_results_dir "${npm_results_dir}" "${persisted_npm_dir}"
 
 dashboard_scan_report="${OUTPUT_DIR}/latest-dashboard-security-scan.json"
 dashboard_scan_status="unavailable"
@@ -185,7 +240,7 @@ fi
 
 high_or_critical=$((npm_total_high + npm_total_critical))
 overall_status="ok"
-if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
+if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || ${lock_integrity_issues} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
   overall_status="findings"
 fi
 
@@ -196,6 +251,8 @@ jq -n \
   --arg status "${overall_status}" \
   --argjson pip_total_vulns "${pip_total_vulns}" \
   --argjson pip_files_scanned "${pip_files_scanned}" \
+  --argjson lock_integrity_scanned "${lock_integrity_scanned}" \
+  --argjson lock_integrity_issues "${lock_integrity_issues}" \
   --argjson npm_total_high "${npm_total_high}" \
   --argjson npm_total_critical "${npm_total_critical}" \
   --argjson npm_files_scanned "${npm_files_scanned}" \
@@ -205,8 +262,9 @@ jq -n \
   --arg dashboard_scan_report "${dashboard_scan_report}" \
   --arg secrets_rotation_status "${secrets_rotation_status}" \
   --arg secrets_rotation_report "${secrets_rotation_report}" \
-  --argjson pip_reports "$(find "${pip_results_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
-  --argjson npm_reports "$(find "${npm_results_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
+  --argjson pip_reports "$(find "${persisted_pip_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
+  --argjson lock_integrity_reports "$(find "${persisted_lock_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
+  --argjson npm_reports "$(find "${persisted_npm_dir}" -type f -name '*.json' | sort | jq -R . | jq -s .)" \
   '{
     generated_at: $generated_at,
     repo_root: $repo_root,
@@ -217,6 +275,10 @@ jq -n \
         scanner_available: $pip_audit_available,
         files_scanned: $pip_files_scanned,
         vulnerabilities_total: $pip_total_vulns
+      },
+      lock_integrity: {
+        files_scanned: $lock_integrity_scanned,
+        issues_total: $lock_integrity_issues
       },
       npm: {
         scanner_available: $npm_available,
@@ -235,6 +297,7 @@ jq -n \
     },
     reports: {
       pip: $pip_reports,
+      lock_integrity: $lock_integrity_reports,
       npm: $npm_reports,
       dashboard_operator: $dashboard_scan_report,
       secrets_rotation: $secrets_rotation_report
