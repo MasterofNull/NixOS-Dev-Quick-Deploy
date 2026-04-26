@@ -37,6 +37,10 @@
           # editor/switchboard layer must tolerate its longer startup lifecycle
           # rather than silently downgrading the test model.
           llamaCpp.activeModel = "qwen3.6-35b";
+          # useSymlink: llama-server loads from a stable symlink path.
+          # After this rebuild, future model swaps need NO rebuild:
+          #   sudo aq-model-switch <key>
+          llamaCpp.useSymlink = true;
           llamaCpp.extraArgs = [
             "--timeout" "120"
             "--parallel" "1"
@@ -56,6 +60,9 @@
           ];
           embeddingServer = {
             activeModel = "bge-m3";
+            # useSymlink: embedding model also uses stable symlink path.
+            # Swap with: sudo aq-model-switch --embed <key>
+            useSymlink = true;
             # Renoir iGPU shares VRAM with system RAM. --n-gpu-layers 99 in
             # ai-stack.nix causes GPU OOM for inputs > ~400 tokens. Override
             # to 12 layers (same as chat model) for reliable KV-cache headroom.

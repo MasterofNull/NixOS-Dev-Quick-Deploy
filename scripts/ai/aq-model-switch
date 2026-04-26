@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""
+aq-model-switch — Runtime model swap without nixos-rebuild.
+
+Requires: llamaCpp.useSymlink = true (or embeddingServer.useSymlink = true)
+          in nix/hosts/<host>/facts.nix — one-time rebuild to enable.
+
+Usage:
+  sudo aq-model-switch <key>           Switch chat model to <key>
+  sudo aq-model-switch --embed <key>   Switch embedding model to <key>
+  aq-model-switch --list               List available models + current active
+  aq-model-switch --dry-run <key>      Show what would happen, no changes
+
+Keys are catalog keys from config/model-catalog.yaml.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CATALOG_PATH = REPO_ROOT / "config" / "model-catalog.yaml"
+MODEL_DIR = Path("/var/lib/llama-cpp/models")
+CHAT_SYMLINK = MODEL_DIR / "active.gguf"
+EMBED_SYMLINK = MODEL_DIR / "active-embed.gguf"
+CHAT_SERVICE = "llama-cpp"
+EMBED_SERVICE = "llama-cpp-embed"
+CHAT_HEALTH_URL = "http://127.0.0.1:8080/health"
+EMBED_HEALTH_URL = "http://127.0.0.1:8081/health"
+HEALTH_TIMEOUT_S = 300  # 35B model can take ~120s to load
+
+
+def _load_catalog() -> Dict[str, Dict[str, Any]]:
+    if not CATALOG_PATH.exists():
+        sys.exit(f"ERROR: {CATALOG_PATH} not found. Run from repo root or check repo layout.")
+    try:
+        import yaml
+    except ImportError:
+        sys.exit("ERROR: pyyaml required (installed via ai-stack.nix, check Python environment).")
+    raw = yaml.safe_load(CATALOG_PATH.read_text())
+    catalog: Dict[str, Dict[str, Any]] = {}
+    for section in ("chat_models", "embedding_models"):
+        for key, entry in (raw.get(section) or {}).items():
+            entry["_section"] = section
+            catalog[key] = entry
+    return catalog
+
+
+def _current_symlink_key(symlink: Path, catalog: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    if not symlink.is_symlink():
+        return None
+    target = symlink.resolve()
+    for key, e in catalog.items():
+        fname = e.get("file", "")
+        if fname and target.name in (fname, f"embed-{fname}"):
+            return key
+    return f"unknown ({target.name})"
+
+
+def _health_wait(url: str, service: str, timeout: int = HEALTH_TIMEOUT_S) -> bool:
+    print(f"Waiting for {service} to become healthy ({timeout}s timeout)...", flush=True)
+    deadline = time.time() + timeout
+    interval = 3
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                data = json.loads(r.read())
+            status = data.get("status", "")
+            if status in ("ok", "no slot available"):
+                print(f"  {service}: ready (status={status})")
+                return True
+            if status == "loading model":
+                elapsed = int(timeout - (deadline - time.time()))
+                print(f"  {service}: loading model... ({elapsed}s)", flush=True)
+        except Exception:
+            pass
+        time.sleep(interval)
+    print(f"  WARNING: {service} did not become healthy within {timeout}s")
+    return False
+
+
+def _run(cmd: list, dry_run: bool = False) -> int:
+    print(f"  $ {' '.join(cmd)}")
+    if dry_run:
+        return 0
+    result = subprocess.run(cmd)
+    return result.returncode
+
+
+def _check_root(dry_run: bool) -> None:
+    if not dry_run and os.geteuid() != 0:
+        sys.exit("ERROR: aq-model-switch must run as root (sudo aq-model-switch ...).")
+
+
+def _verify_symlink_mode(symlink: Path, service: str) -> None:
+    """Warn if the service isn't configured for symlink mode."""
+    if not symlink.is_symlink() and not symlink.exists():
+        print(
+            f"WARNING: {symlink} does not exist as a symlink.\n"
+            f"  Ensure {service}.useSymlink = true in facts.nix and run nixos-rebuild once.\n"
+            f"  First switch will create the symlink."
+        )
+
+
+def switch_model(key: str, embed: bool, dry_run: bool) -> None:
+    _check_root(dry_run)
+    catalog = _load_catalog()
+
+    if key not in catalog:
+        available = ", ".join(sorted(catalog.keys()))
+        sys.exit(f"ERROR: '{key}' not in catalog. Available: {available}")
+
+    entry = catalog[key]
+    section = entry.get("_section", "")
+    model_type = entry.get("type", "chat")
+
+    if embed and model_type != "embedding":
+        print(f"WARNING: '{key}' is type '{model_type}', not an embedding model.")
+    if not embed and model_type == "embedding":
+        sys.exit(f"ERROR: '{key}' is an embedding model. Use --embed flag.")
+
+    if embed:
+        symlink = EMBED_SYMLINK
+        service = EMBED_SERVICE
+        health_url = EMBED_HEALTH_URL
+        target = MODEL_DIR / f"embed-{entry['file']}"
+    else:
+        symlink = CHAT_SYMLINK
+        service = CHAT_SERVICE
+        health_url = CHAT_HEALTH_URL
+        target = MODEL_DIR / entry["file"]
+
+    _verify_symlink_mode(symlink, service)
+
+    if not dry_run and not target.exists():
+        sys.exit(
+            f"ERROR: Model file not found: {target}\n"
+            f"  Download it first: sudo systemctl start {service}-model-fetch\n"
+            f"  Or manually: huggingface-cli download {entry.get('file', '')}"
+        )
+
+    current = _current_symlink_key(symlink, catalog)
+    if current == key and not dry_run:
+        print(f"Already active: {key} ({entry.get('name', key)}). No change needed.")
+        return
+
+    print(f"\nSwitching {'embed' if embed else 'chat'} model: {current or 'unknown'} -> {key}")
+    print(f"  Name   : {entry.get('name', key)}")
+    print(f"  File   : {target}")
+    print(f"  RAM    : {entry.get('ram_q4', '?')}")
+    print(f"  Context: {entry.get('context', 0) // 1024}K tokens")
+    print()
+
+    # 1. Stop service
+    rc = _run(["systemctl", "stop", service], dry_run)
+    if rc != 0 and not dry_run:
+        sys.exit(f"ERROR: Failed to stop {service} (exit {rc}).")
+
+    # 2. Atomically update symlink (ln -sf is atomic on Linux via rename)
+    print(f"  $ ln -sf {target} {symlink}")
+    if not dry_run:
+        tmp = symlink.parent / f".active-swap-{os.getpid()}.gguf"
+        tmp.symlink_to(target)
+        tmp.rename(symlink)
+        try:
+            os.lchown(symlink, _uid("llama"), _gid("llama"))
+        except Exception:
+            pass  # non-fatal: service still reads via llama user's StateDirectory
+
+    # 3. Write active-model metadata for aq-model and aq-report
+    meta_file = symlink.parent / (symlink.name + ".active-key")
+    print(f"  $ echo {key!r} > {meta_file}")
+    if not dry_run:
+        meta_file.write_text(key + "\n")
+        try:
+            os.chown(meta_file, _uid("llama"), _gid("llama"))
+        except Exception:
+            pass
+
+    # 4. Start service
+    rc = _run(["systemctl", "start", service], dry_run)
+    if rc != 0 and not dry_run:
+        sys.exit(f"ERROR: Failed to start {service} (exit {rc}).")
+
+    # 5. Health gate
+    if not dry_run:
+        ok = _health_wait(health_url, service)
+        if ok:
+            print(f"\nModel switch complete: {key} ({entry.get('name', key)}) is now active.")
+        else:
+            print(f"\nWARNING: {service} started but health check timed out.")
+            print(f"  Check: journalctl -u {service} -n 50")
+    else:
+        print(f"\nDry run complete. No changes made.")
+        print(f"  Would switch to: {key} ({entry.get('name', key)})")
+
+
+def _uid(name: str) -> int:
+    import pwd
+    try:
+        return pwd.getpwnam(name).pw_uid
+    except KeyError:
+        return -1
+
+
+def _gid(name: str) -> int:
+    import grp
+    try:
+        return grp.getgrnam(name).gr_gid
+    except KeyError:
+        return -1
+
+
+def list_models() -> None:
+    catalog = _load_catalog()
+    chat_active = _current_symlink_key(CHAT_SYMLINK, catalog)
+    embed_active = _current_symlink_key(EMBED_SYMLINK, catalog)
+
+    # Also check metadata files for key tracking
+    for symlink, label in [(CHAT_SYMLINK, "chat"), (EMBED_SYMLINK, "embed")]:
+        meta = symlink.parent / (symlink.name + ".active-key")
+        if meta.exists():
+            key = meta.read_text().strip()
+            if label == "chat":
+                chat_active = key
+            else:
+                embed_active = key
+
+    print("Available models (from config/model-catalog.yaml)")
+    print("=" * 100)
+
+    for section, label in [("chat_models", "CHAT"), ("embedding_models", "EMBED")]:
+        raw_catalog = _reload_raw()
+        entries = (raw_catalog.get(section) or {})
+        if not entries:
+            continue
+        active = chat_active if section == "chat_models" else embed_active
+        symlink = CHAT_SYMLINK if section == "chat_models" else EMBED_SYMLINK
+        symlink_mode = symlink.is_symlink() or not symlink.exists()
+
+        print(f"\n[{label}] {'symlink mode: ON' if symlink_mode else 'symlink mode: OFF (needs facts.nix + rebuild)'}")
+        print(f"  {'KEY':<20} {'NAME':<35} {'RAM':<10} {'CTX':<8} {'THINK':<6} STATUS")
+        print(f"  {'-'*90}")
+        for key, e in sorted(entries.items()):
+            ctx = f"{e.get('context', 0) // 1024}K"
+            think = "yes" if e.get("think_mode") else "no"
+            status = " [ACTIVE]" if key == active else ""
+            file_path = MODEL_DIR / (f"embed-{e['file']}" if section == "embedding_models" else e["file"])
+            present = " (downloaded)" if file_path.exists() else " (not downloaded)"
+            print(f"  {key:<20} {e.get('name','?'):<35} {e.get('ram_q4','?'):<10} {ctx:<8} {think:<6}{status}{present}")
+
+    print()
+    print(f"Active chat  : {chat_active or 'unknown'}")
+    print(f"Active embed : {embed_active or 'unknown'}")
+    print()
+    if CHAT_SYMLINK.is_symlink():
+        print(f"Chat symlink : {CHAT_SYMLINK} -> {CHAT_SYMLINK.resolve()}")
+    else:
+        print(f"Chat symlink : not configured (set llamaCpp.useSymlink = true in facts.nix)")
+    if EMBED_SYMLINK.is_symlink():
+        print(f"Embed symlink: {EMBED_SYMLINK} -> {EMBED_SYMLINK.resolve()}")
+    else:
+        print(f"Embed symlink: not configured (set embeddingServer.useSymlink = true in facts.nix)")
+    print()
+    print("To switch: sudo aq-model-switch <key>")
+    print("           sudo aq-model-switch --embed <key>")
+
+
+def _reload_raw() -> Dict[str, Any]:
+    try:
+        import yaml
+        return yaml.safe_load(CATALOG_PATH.read_text()) or {}
+    except Exception:
+        return {}
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument("key", nargs="?", help="Model catalog key to switch to")
+    p.add_argument("--embed", action="store_true", help="Switch embedding model (default: chat)")
+    p.add_argument("--list", action="store_true", help="List available models and current active")
+    p.add_argument("--dry-run", action="store_true", help="Show what would happen, make no changes")
+    args = p.parse_args()
+
+    if args.list or (not args.key and not args.dry_run):
+        list_models()
+        return
+
+    if not args.key:
+        p.error("Specify a model key, or --list to see available models.")
+
+    switch_model(args.key, embed=args.embed, dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    main()

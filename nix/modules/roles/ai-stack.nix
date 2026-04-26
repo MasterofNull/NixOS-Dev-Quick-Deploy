@@ -703,6 +703,58 @@ in {
     # User overrides in ai.*.modelCatalog take precedence; the defaultModelCatalog
     # serves as a fallback without needing explicit population here.
 
+    # ── Symlink model path — enables runtime model swapping without rebuild ──
+    # When llamaCpp.useSymlink = true, the llama-server always loads from the
+    # stable symlink path. The activation script seeds the symlink on first apply.
+    # Subsequent swaps are performed by aq-model-switch (no rebuild required).
+    (lib.mkIf (roleEnabled && llama.useSymlink) {
+      mySystem.aiStack.llamaCpp.model = lib.mkForce "${dataDir}/models/active.gguf";
+      system.activationScripts.llamaCppActiveSymlink = let
+        catalog = llama.modelCatalog // defaultModelCatalog;
+        key = llama.activeModel;
+        entry = catalog.${key} or null;
+        targetFile = if entry != null then "${dataDir}/models/${entry.file}" else "";
+      in lib.mkIf (entry != null) {
+        text = ''
+          symlink="${dataDir}/models/active.gguf"
+          target="${targetFile}"
+          # Only seed symlink if it does not already point somewhere (first apply).
+          if [ ! -e "$symlink" ] && [ -f "$target" ]; then
+            ln -sf "$target" "$symlink"
+            chown -h llama:llama "$symlink" 2>/dev/null || true
+            echo "llamaCppActiveSymlink: seeded $symlink -> $target"
+          elif [ ! -e "$symlink" ] && [ ! -f "$target" ]; then
+            echo "llamaCppActiveSymlink: target not yet downloaded ($target); symlink deferred"
+          fi
+        '';
+        deps = [];
+      };
+    })
+
+    # ── Symlink embed model path — runtime embedding model swapping ──────────
+    (lib.mkIf (roleEnabled && ai.embeddingServer.enable && ai.embeddingServer.useSymlink) {
+      mySystem.aiStack.embeddingServer.model = lib.mkForce "${dataDir}/models/active-embed.gguf";
+      system.activationScripts.llamaCppEmbedActiveSymlink = let
+        catalog = ai.embeddingServer.modelCatalog // defaultModelCatalog;
+        key = ai.embeddingServer.activeModel;
+        entry = catalog.${key} or null;
+        targetFile = if entry != null then "${dataDir}/models/embed-${entry.file}" else "";
+      in lib.mkIf (entry != null) {
+        text = ''
+          symlink="${dataDir}/models/active-embed.gguf"
+          target="${targetFile}"
+          if [ ! -e "$symlink" ] && [ -f "$target" ]; then
+            ln -sf "$target" "$symlink"
+            chown -h llama:llama "$symlink" 2>/dev/null || true
+            echo "llamaCppEmbedActiveSymlink: seeded $symlink -> $target"
+          elif [ ! -e "$symlink" ] && [ ! -f "$target" ]; then
+            echo "llamaCppEmbedActiveSymlink: target not yet downloaded ($target); symlink deferred"
+          fi
+        '';
+        deps = [];
+      };
+    })
+
     (lib.mkIf roleEnabled {
       assertions = [
         {
