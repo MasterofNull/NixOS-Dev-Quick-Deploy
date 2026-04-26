@@ -198,6 +198,104 @@
         "notes": { "$ref": "#/$defs/stringList" }
       }
     },
+    "runtimeProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "dimension"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "http",
+            "command"
+          ]
+        },
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "contract",
+            "owner_surface",
+            "control_plane",
+            "data_plane",
+            "observability",
+            "quality_gate",
+            "discoverability",
+            "governance"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "service": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auth_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expect_status": {
+          "type": "integer"
+        },
+        "expect_json": {
+          "type": "boolean"
+        },
+        "expect_nonempty": {
+          "type": "boolean"
+        },
+        "expect_keys": {
+          "$ref": "#/$defs/stringList"
+        },
+        "timeout_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "payload": {
+          "type": "object"
+        },
+        "command": {
+          "$ref": "#/$defs/stringList"
+        },
+        "expect_exit_code": {
+          "type": "integer"
+        },
+        "stdout_contains": {
+          "type": "string"
+        }
+      }
+    },
+    "runtimeVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/runtimeProbe"
+          }
+        }
+      }
+    },
     "slice": {
       "type": "object",
       "additionalProperties": false,
@@ -266,7 +364,8 @@
         "observability": { "$ref": "#/$defs/observability" },
         "quality_gate": { "$ref": "#/$defs/qualityGate" },
         "discoverability": { "$ref": "#/$defs/discoverability" },
-        "governance": { "$ref": "#/$defs/governance" }
+        "governance": { "$ref": "#/$defs/governance" },
+        "runtime_verification": { "$ref": "#/$defs/runtimeVerification" }
       }
     }
   }

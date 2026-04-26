@@ -210,6 +210,40 @@
         "notes": [
           "This slice is the highest-leverage coordination layer and should default to governed maturity."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "hybrid-health",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "hybrid",
+            "path": "/health",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "service"
+            ]
+          },
+          {
+            "id": "llm-route-post",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "hybrid",
+            "path": "/control/llm/route",
+            "method": "POST",
+            "payload": {
+              "task": "runtime verify routing path"
+            },
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "tier",
+              "model"
+            ]
+          }
+        ]
       }
     },
     {
@@ -1024,6 +1058,36 @@
         "notes": [
           "Workflows are a core control-plane surface and should be treated as governed configuration."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "workflow-plan-get",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "hybrid",
+            "path": "/workflow/plan?q=runtime+verify+workflow+plan",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "objective",
+              "phases"
+            ]
+          },
+          {
+            "id": "workflow-statistics",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/workflows/statistics",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "total_workflows",
+              "total_executions"
+            ]
+          }
+        ]
       }
     },
     {
@@ -1709,6 +1773,49 @@
         "notes": [
           "This slice owns the probe and service-status truth used by both operators and runtime tooling."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "health-services-all",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/health/services/all",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "services",
+              "timestamp"
+            ]
+          },
+          {
+            "id": "health-aggregate",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/health/aggregate",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "overall_status",
+              "services"
+            ]
+          },
+          {
+            "id": "ai-metrics",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/ai/metrics",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "timestamp",
+              "services"
+            ]
+          }
+        ]
       }
     },
     {
@@ -2139,6 +2246,48 @@
         "notes": [
           "This slice should eventually expose slice scorecard output directly."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "dashboard-health",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/health",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status"
+            ]
+          },
+          {
+            "id": "dashboard-metrics-health-score",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/metrics/health-score",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "score",
+              "status"
+            ]
+          },
+          {
+            "id": "dashboard-insights-system-health",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/insights/system/health",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "timestamp"
+            ]
+          }
+        ]
       }
     },
     {
@@ -2301,6 +2450,46 @@
         ],
         "notes": [
           "This slice should increasingly bind mutating routes to explicit approval and audit evidence."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "runtime-config-snapshot",
+            "kind": "http",
+            "dimension": "control_plane",
+            "service": "dashboard_api",
+            "path": "/api/config",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "control_plane_inventory",
+              "harness_runtime"
+            ]
+          },
+          {
+            "id": "services-list",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/services",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_nonempty": true
+          },
+          {
+            "id": "testing-suites",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/testing/suites",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "suites",
+              "count"
+            ]
+          }
         ]
       }
     },
