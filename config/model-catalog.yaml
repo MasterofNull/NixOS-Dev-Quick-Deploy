@@ -1,0 +1,180 @@
+# Model Catalog — runtime-editable, no nixos-rebuild needed to add models.
+#
+# To add a new model:
+#   1. Add an entry here with the required fields
+#   2. Download the GGUF to /var/lib/llama-cpp/models/<file>
+#   3. In nix/hosts/<host>/facts.nix set llamaCpp.activeModel = "<key>"
+#      (or llamaCpp.model = "/path/to/file" to bypass catalog entirely)
+#   4. sudo nixos-rebuild switch --flake .#nixos   ← only needed for model path
+#
+# For embedding models: set embeddingServer.activeModel = "<key>" in facts.nix
+#
+# Fields:
+#   name            Human-readable name
+#   file            GGUF filename (placed in /var/lib/llama-cpp/models/)
+#   type            chat | embedding
+#   params          Parameter description (display only)
+#   context         Max context window in tokens
+#   ram_q4          Approximate RAM for Q4 quant (display only)
+#   model_family    Architecture family: qwen3 | gemma | phi | smollm | llama | mistral | other
+#   think_mode      true if model supports <think> CoT block (Qwen3, DeepSeek-R1 style)
+#   no_think_prefix "/no_think" prefix to disable thinking (Qwen3 specific; blank if n/a)
+#   tool_calling    true if model has built-in tool/function calling support
+#   stop_sequences  Model-specific stop tokens (list); empty = use llama.cpp defaults
+#   chat_template   jinja | chatml | alpaca | auto (auto = llama.cpp detects from GGUF)
+#   recommended_gpu_layers  Suggested --n-gpu-layers for this hardware (Renoir iGPU)
+#   notes           Operator notes
+
+chat_models:
+
+  qwen3.6-35b:
+    name: "Qwen3.6 35B A3B Instruct (MoE)"
+    file: "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+    type: chat
+    params: "35B (3B active MoE)"
+    context: 262144
+    ram_q4: "~22.1 GB"
+    model_family: qwen3
+    think_mode: true
+    no_think_prefix: "/no_think"
+    tool_calling: true
+    stop_sequences:
+      - "<|im_end|>"
+      - "<|endoftext|>"
+    chat_template: jinja
+    recommended_gpu_layers: 12
+    notes: "Current default. Best quality; ~90-120s/response on CPU-only inference."
+
+  qwen3-8b:
+    name: "Qwen3 8B Instruct"
+    file: "Qwen3-8B-Instruct-Q4_K_M.gguf"
+    type: chat
+    params: "8B"
+    context: 40960
+    ram_q4: "~5 GB"
+    model_family: qwen3
+    think_mode: true
+    no_think_prefix: "/no_think"
+    tool_calling: true
+    stop_sequences:
+      - "<|im_end|>"
+      - "<|endoftext|>"
+    chat_template: jinja
+    recommended_gpu_layers: 20
+    notes: "Balanced quality/speed. Good for interactive use."
+
+  qwen3-4b:
+    name: "Qwen3 4B Instruct 2507"
+    file: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+    type: chat
+    params: "4B"
+    context: 262144
+    ram_q4: "~2.5 GB"
+    model_family: qwen3
+    think_mode: true
+    no_think_prefix: "/no_think"
+    tool_calling: true
+    stop_sequences:
+      - "<|im_end|>"
+      - "<|endoftext|>"
+    chat_template: jinja
+    recommended_gpu_layers: 30
+    notes: "Fast iteration, good for smoke tests."
+
+  gemma4-e4b:
+    name: "Gemma 4 E4B Instruct"
+    file: "google_gemma-4-E4B-it-Q4_K_M.gguf"
+    type: chat
+    params: "4.5B active / 8B total"
+    context: 131072
+    ram_q4: "~5.2 GB"
+    model_family: gemma
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: true
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 0
+    notes: "Google Gemma4 MoE. Fast, good quality, no thinking overhead."
+
+  gemma4-e2b:
+    name: "Gemma 4 E2B Instruct"
+    file: "google_gemma-4-E2B-it-Q4_K_M.gguf"
+    type: chat
+    params: "2.3B active / 5.1B total"
+    context: 131072
+    ram_q4: "~2.5 GB"
+    model_family: gemma
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: true
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 0
+    notes: "Smallest Gemma4. Fastest inference."
+
+  phi4-mini:
+    name: "Phi-4 Mini Instruct"
+    file: "phi-4-mini-instruct-Q4_K_M.gguf"
+    type: chat
+    params: "3.8B"
+    context: 131072
+    ram_q4: "~2.5 GB"
+    model_family: phi
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: true
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 30
+    notes: "Microsoft Phi-4 Mini. Fast reasoning."
+
+  smollm2-360m:
+    name: "SmolLM2 360M Instruct"
+    file: "SmolLM2-360M-Instruct-Q4_K_M.gguf"
+    type: chat
+    params: "360M"
+    context: 8192
+    ram_q4: "~0.3 GB"
+    model_family: smollm
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: false
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 99
+    notes: "Ultra-fast. Smoke tests only. Not suitable for complex tasks."
+
+embedding_models:
+
+  bge-m3:
+    name: "BGE-M3 Embedding"
+    file: "bge-m3-Q8_0.gguf"
+    type: embedding
+    params: "568M"
+    context: 8192
+    ram_q4: "~0.6 GB"
+    model_family: bge
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: false
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 12
+    notes: "Current default embedding. Multi-lingual, high retrieval quality."
+
+  nomic-embed-v1.5:
+    name: "Nomic Embed Text v1.5"
+    file: "nomic-embed-text-v1.5.Q8_0.gguf"
+    type: embedding
+    params: "137M"
+    context: 8192
+    ram_q4: "~0.2 GB"
+    model_family: nomic
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: false
+    stop_sequences: []
+    chat_template: auto
+    recommended_gpu_layers: 99
+    notes: "Fast, compact embedding. Lower quality than BGE-M3 on multilingual."
