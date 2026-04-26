@@ -147,21 +147,45 @@ check_services() {
 }
 
 run_legacy_single_prompt() {
-    python3 -c "
+    python3 - "$REPO_ROOT" "$PROMPT" <<'PY'
 import asyncio
+import importlib.util
 import sys
-sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+prompt = sys.argv[2]
+sys.path.insert(0, str(repo_root / "ai-stack"))
+auto_package_dir = repo_root / "ai-stack" / "autonomous-orchestrator"
+auto_spec = importlib.util.spec_from_file_location(
+    "autonomous_orchestrator",
+    auto_package_dir / "__init__.py",
+    submodule_search_locations=[str(auto_package_dir)],
+)
+auto_module = importlib.util.module_from_spec(auto_spec)
+sys.modules["autonomous_orchestrator"] = auto_module
+auto_spec.loader.exec_module(auto_module)
+package_dir = repo_root / "ai-stack" / "local-orchestrator"
+spec = importlib.util.spec_from_file_location(
+    "local_orchestrator",
+    package_dir / "__init__.py",
+    submodule_search_locations=[str(package_dir)],
+)
+module = importlib.util.module_from_spec(spec)
+sys.modules["local_orchestrator"] = module
+spec.loader.exec_module(module)
+
 from local_orchestrator import get_orchestrator
 
 async def main():
     orch = get_orchestrator()
-    response = await orch.process('''$PROMPT''')
+    response = await orch.process(prompt)
     print(response.content)
     print()
-    print(f'[{response.backend_used}, {response.execution_time:.2f}s, \${response.cost_usd:.4f}]')
+    print(f"[{response.backend_used}, {response.execution_time:.2f}s, ${response.cost_usd:.4f}]")
 
 asyncio.run(main())
-"
+PY
 }
 
 # Status mode
@@ -208,19 +232,43 @@ if [[ "$MODE" == "plan" ]]; then
 
     check_services || true
 
-    python3 -c "
+    python3 - "$REPO_ROOT" "$OBJECTIVE" <<'PY'
 import asyncio
+import importlib.util
 import sys
-sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+objective = sys.argv[2]
+sys.path.insert(0, str(repo_root / "ai-stack"))
+auto_package_dir = repo_root / "ai-stack" / "autonomous-orchestrator"
+auto_spec = importlib.util.spec_from_file_location(
+    "autonomous_orchestrator",
+    auto_package_dir / "__init__.py",
+    submodule_search_locations=[str(auto_package_dir)],
+)
+auto_module = importlib.util.module_from_spec(auto_spec)
+sys.modules["autonomous_orchestrator"] = auto_module
+auto_spec.loader.exec_module(auto_module)
+package_dir = repo_root / "ai-stack" / "local-orchestrator"
+spec = importlib.util.spec_from_file_location(
+    "local_orchestrator",
+    package_dir / "__init__.py",
+    submodule_search_locations=[str(package_dir)],
+)
+module = importlib.util.module_from_spec(spec)
+sys.modules["local_orchestrator"] = module
+spec.loader.exec_module(module)
+
 from local_orchestrator import get_orchestrator
 
 async def main():
     orch = get_orchestrator()
-    response = await orch.plan_task('$OBJECTIVE')
+    response = await orch.plan_task(objective)
     print(response.content)
 
 asyncio.run(main())
-"
+PY
     exit 0
 fi
 
@@ -275,10 +323,34 @@ fi
 # Interactive mode
 check_services || true
 
-exec python3 -c "
+exec python3 - "$REPO_ROOT" <<'PY'
 import asyncio
+import importlib.util
 import sys
-sys.path.insert(0, '${REPO_ROOT}/ai-stack')
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+sys.path.insert(0, str(repo_root / "ai-stack"))
+auto_package_dir = repo_root / "ai-stack" / "autonomous-orchestrator"
+auto_spec = importlib.util.spec_from_file_location(
+    "autonomous_orchestrator",
+    auto_package_dir / "__init__.py",
+    submodule_search_locations=[str(auto_package_dir)],
+)
+auto_module = importlib.util.module_from_spec(auto_spec)
+sys.modules["autonomous_orchestrator"] = auto_module
+auto_spec.loader.exec_module(auto_module)
+package_dir = repo_root / "ai-stack" / "local-orchestrator"
+spec = importlib.util.spec_from_file_location(
+    "local_orchestrator",
+    package_dir / "__init__.py",
+    submodule_search_locations=[str(package_dir)],
+)
+module = importlib.util.module_from_spec(spec)
+sys.modules["local_orchestrator"] = module
+spec.loader.exec_module(module)
+
 from local_orchestrator.orchestrator import main
+
 asyncio.run(main())
-"
+PY
