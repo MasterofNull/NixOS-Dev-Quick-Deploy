@@ -6,6 +6,7 @@
     "hybrid_query_p95_latency_ms": 5000,
     "error_rate_percent_max": 5.0,
     "model_loading_queue_depth_max": 4,
-    "retrieval_confidence_min": 0.2
+    "retrieval_confidence_min": 0.2,
+    "cache_hit_rate_min": 85.0
   }
 }
