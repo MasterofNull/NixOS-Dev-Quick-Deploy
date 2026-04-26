@@ -1995,38 +1995,46 @@
       }
     },
     {
-      "id": "dashboard-operator-surfaces",
-      "name": "Dashboard and Operator Surfaces",
+      "id": "dashboard-insights-readiness-surfaces",
+      "name": "Dashboard Insights and Readiness Surfaces",
       "domain": "communications",
-      "summary": "Dashboard backend and frontend surfaces that make harness state visible and actionable for operators.",
+      "summary": "Read-only operator surfaces for insights, metrics, AI stack health, and readiness reporting.",
       "maturity_target": "validated",
       "owner_surface": {
         "primary_paths": [
           "dashboard/backend/api/routes",
           "dashboard/backend/api/services",
-          "dashboard.html"
+          "docs/operations"
         ],
         "entrypoints": [
           "dashboard/backend/api/routes/insights.py",
-          "dashboard/backend/api/routes/metrics.py"
+          "dashboard/backend/api/routes/metrics.py",
+          "dashboard/backend/api/routes/health.py",
+          "dashboard/backend/api/routes/aistack.py",
+          "dashboard/backend/api/services/ai_insights.py",
+          "dashboard/backend/api/services/metrics_collector.py",
+          "dashboard/backend/api/services/ai_service_health.py"
         ]
       },
       "contract": {
         "inputs": [
           "AI stack metrics",
           "readiness summaries",
-          "service health state"
+          "service health state",
+          "phase acceptance reports"
         ],
         "outputs": [
-          "operator dashboards",
-          "JSON insights endpoints"
+          "operator insight digests",
+          "JSON readiness endpoints",
+          "dashboard metrics and health summaries"
         ],
         "invariants": [
-          "operator-facing routes should expose real system state, not only static claims"
+          "operator-facing read-only routes should expose real system state, not only static claims",
+          "readiness summaries should remain grounded in repo-native evidence and runtime probes"
         ],
         "failure_modes": [
-          "backend features hidden from the operator",
-          "frontend/backend drift"
+          "stale insights presented as current truth",
+          "operator readiness endpoints drift from backend evidence sources"
         ],
         "rollback_commands": [
           "git revert <commit>",
@@ -2035,45 +2043,58 @@
       },
       "control_plane": {
         "config_paths": [
-          "dashboard/backend/api/config"
+          "dashboard/backend/api/config",
+          "config/service-endpoints.sh"
         ],
         "policy_paths": [
-          "docs/operations/orchestration-visibility-guide.md"
+          "docs/operations/orchestration-visibility-guide.md",
+          "docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md"
         ],
         "service_units": [
-          "command-center-dashboard-api.service",
-          "command-center-dashboard-frontend.service"
+          "command-center-dashboard-api.service"
         ],
         "upstream_dependencies": [
           "AI stack services",
-          "dashboard service endpoints"
+          "dashboard service endpoints",
+          "aq-report cache inputs"
         ],
         "downstream_consumers": [
-          "operators"
+          "operators",
+          "dashboard UI clients"
         ]
       },
       "data_plane": {
         "runtime_paths": [
-          "dashboard/backend/api/routes",
-          "dashboard/backend/api/services"
+          "dashboard/backend/api/routes/insights.py",
+          "dashboard/backend/api/routes/metrics.py",
+          "dashboard/backend/api/routes/health.py",
+          "dashboard/backend/api/routes/aistack.py",
+          "dashboard/backend/api/services/ai_insights.py",
+          "dashboard/backend/api/services/metrics_collector.py",
+          "dashboard/backend/api/services/ai_service_health.py"
         ],
         "storage_paths": [],
         "api_endpoints": [
           "/api/insights",
-          "/api/metrics"
+          "/api/metrics",
+          "/api/health",
+          "/api/aistack"
         ],
         "mcp_tools": []
       },
       "observability": {
         "health_checks": [
-          "scripts/health/system-health-check.sh"
+          "scripts/health/system-health-check.sh",
+          "aq-qa 0"
         ],
         "dashboards": [
-          "dashboard.html"
+          "dashboard/backend/api/routes/insights.py"
         ],
         "alerts": [],
         "metrics_signals": [
-          "dashboard API health"
+          "dashboard API health",
+          "AI metrics freshness",
+          "readiness report availability"
         ],
         "log_sources": [
           "journalctl -u command-center-dashboard-api.service"
@@ -2084,22 +2105,29 @@
           "scripts/governance/tier0-validation-gate.sh --pre-commit"
         ],
         "test_paths": [
-          "scripts/testing/test-dashboard-insights-report-cache.py"
+          "scripts/testing/test-dashboard-insights-report-cache.py",
+          "scripts/testing/test-ai-insights-dashboard.py",
+          "scripts/testing/test-ai-insights-ai-metrics.py",
+          "scripts/testing/test-ai-service-health-monitoring.py"
         ],
         "acceptance_signals": [
-          "dashboard insights routes return current repo-native readiness data"
+          "dashboard insights and health routes return current repo-native readiness data"
         ]
       },
       "discoverability": {
         "docs": [
-          "docs/operations/orchestration-visibility-guide.md"
+          "docs/operations/orchestration-visibility-guide.md",
+          "docs/operations/reference/DASHBOARD-READY.md"
         ],
         "cli_entrypoints": [
-          "aq-report"
+          "aq-report",
+          "scripts/ai/ai-stack-health.sh"
         ],
         "dashboard_routes": [
           "/api/insights",
-          "/api/metrics"
+          "/api/metrics",
+          "/api/health",
+          "/api/aistack"
         ]
       },
       "governance": {
@@ -2110,6 +2138,307 @@
         ],
         "notes": [
           "This slice should eventually expose slice scorecard output directly."
+        ]
+      }
+    },
+    {
+      "id": "operator-runtime-control-surfaces",
+      "name": "Operator Runtime Control Surfaces",
+      "domain": "communications",
+      "summary": "Mutating operator surfaces for service control, deployment execution, configuration inventory, and runtime actions.",
+      "maturity_target": "validated",
+      "owner_surface": {
+        "primary_paths": [
+          "dashboard/backend/api/routes",
+          "dashboard/backend/api/services",
+          "docs/operations"
+        ],
+        "entrypoints": [
+          "dashboard/backend/api/routes/services.py",
+          "dashboard/backend/api/routes/deployments.py",
+          "dashboard/backend/api/routes/containers.py",
+          "dashboard/backend/api/routes/actions.py",
+          "dashboard/backend/api/routes/config.py",
+          "dashboard/backend/api/routes/testing.py",
+          "dashboard/backend/api/services/service_manager.py",
+          "dashboard/backend/api/services/container_manager.py",
+          "dashboard/backend/api/services/runtime_controls.py",
+          "dashboard/backend/api/services/context_store.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "operator start/stop/restart requests",
+          "deployment execution and approval requests",
+          "runtime testing requests",
+          "dashboard control-plane inventory queries"
+        ],
+        "outputs": [
+          "service actions",
+          "deployment execution state",
+          "runtime action responses",
+          "configuration snapshots"
+        ],
+        "invariants": [
+          "mutating operator routes should require explicit, auditable intent",
+          "runtime controls should reflect the declared service and deployment topology"
+        ],
+        "failure_modes": [
+          "unsafe runtime mutation path",
+          "dashboard control plane diverges from declared config and live runtime"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart command-center-dashboard-api.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "dashboard/backend/api/config",
+          "config/workflow-blueprints.json",
+          "config/harness-first-policy.json",
+          "config/ai-stack-agent-discovery.json"
+        ],
+        "policy_paths": [
+          "docs/operations/OPERATOR-RUNBOOK.md",
+          "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md",
+          "docs/operations/procedures/CONFIG-VALIDATION-PROCEDURES.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "systemd",
+          "container runtime",
+          "AI stack services",
+          "deployment auto-deployer"
+        ],
+        "downstream_consumers": [
+          "operators"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "dashboard/backend/api/routes/services.py",
+          "dashboard/backend/api/routes/deployments.py",
+          "dashboard/backend/api/routes/containers.py",
+          "dashboard/backend/api/routes/actions.py",
+          "dashboard/backend/api/routes/config.py",
+          "dashboard/backend/api/routes/testing.py",
+          "dashboard/backend/api/services/service_manager.py",
+          "dashboard/backend/api/services/container_manager.py",
+          "dashboard/backend/api/services/runtime_controls.py",
+          "dashboard/backend/api/services/context_store.py"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/services",
+          "/api/deployments",
+          "/api/containers",
+          "/api/actions",
+          "/api/config",
+          "/api/testing"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/deployments.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "operator action audit log activity",
+          "deployment execution health",
+          "runtime control success/failure counts"
+        ],
+        "log_sources": [
+          "journalctl -u command-center-dashboard-api.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-dashboard-runtime-controls.py",
+          "scripts/testing/test-dashboard-deployment-execution.py",
+          "scripts/testing/test-dashboard-config-control-plane.py",
+          "scripts/testing/test-context-store-service-state.py"
+        ],
+        "acceptance_signals": [
+          "operator control routes stay auditable and runtime-safe"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/OPERATOR-RUNBOOK.md",
+          "docs/operations/reference/QUICK-REFERENCE.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/deploy/start-unified-dashboard.sh",
+          "scripts/deploy/serve-dashboard-api.sh"
+        ],
+        "dashboard_routes": [
+          "/api/services",
+          "/api/deployments",
+          "/api/containers",
+          "/api/actions",
+          "/api/config",
+          "/api/testing"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "operator audit log",
+          "runtime config snapshots"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly bind mutating routes to explicit approval and audit evidence."
+        ]
+      }
+    },
+    {
+      "id": "workflow-collaboration-operator-surfaces",
+      "name": "Workflow and Collaboration Operator Surfaces",
+      "domain": "communications",
+      "summary": "Operator-facing workflow automation, multi-agent collaboration, and session-oriented dashboard surfaces.",
+      "maturity_target": "validated",
+      "owner_surface": {
+        "primary_paths": [
+          "dashboard/backend/api/routes",
+          "docs/workflows",
+          "docs/operations"
+        ],
+        "entrypoints": [
+          "dashboard/backend/api/routes/workflows.py",
+          "dashboard/backend/api/routes/collaboration.py",
+          "dashboard/backend/api/routes/websockets.py",
+          "dashboard/backend/api/services/context_store.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "workflow generation requests",
+          "workflow execution requests",
+          "team formation requests",
+          "collaboration context updates"
+        ],
+        "outputs": [
+          "workflow execution sessions",
+          "collaboration plans and consensus state",
+          "operator-accessible workflow history"
+        ],
+        "invariants": [
+          "workflow surfaces should expose session state that matches actual execution records",
+          "collaboration routes should preserve team and plan context across operator-visible flows"
+        ],
+        "failure_modes": [
+          "workflow UI surfaces drift from workflow execution truth",
+          "collaboration state becomes unavailable or inconsistent across sessions"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart command-center-dashboard-api.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/workflow-blueprints.json",
+          "config/workflow-automation.yaml"
+        ],
+        "policy_paths": [
+          "docs/operations/workflow-automation-guide.md",
+          "docs/operations/collaboration-guide.md",
+          "docs/workflows/USER-GUIDE.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "workflow library",
+          "context store",
+          "collaboration agent libraries"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "workflow automation users"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "dashboard/backend/api/routes/workflows.py",
+          "dashboard/backend/api/routes/collaboration.py",
+          "dashboard/backend/api/routes/websockets.py",
+          "dashboard/backend/api/services/context_store.py"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/workflows",
+          "/api/collaboration"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/testing/smoke-phase-4-integrated-workflows.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/workflows.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "workflow execution status",
+          "collaboration session activity"
+        ],
+        "log_sources": [
+          "journalctl -u command-center-dashboard-api.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-workflow-automation.py",
+          "scripts/testing/test-harness-workflow-controls.py",
+          "scripts/testing/test-multi-agent-collaboration.py",
+          "scripts/testing/test-dashboard-orchestration-sessions.py"
+        ],
+        "acceptance_signals": [
+          "workflow and collaboration routes stay consistent with persisted execution and session state"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/workflow-automation-guide.md",
+          "docs/operations/collaboration-guide.md",
+          "docs/workflows/USER-GUIDE.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/ai/aq-workflow"
+        ],
+        "dashboard_routes": [
+          "/api/workflows",
+          "/api/collaboration"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [
+          "shared team context"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly tie collaboration/session claims to explicit persisted run evidence."
         ]
       }
     },
