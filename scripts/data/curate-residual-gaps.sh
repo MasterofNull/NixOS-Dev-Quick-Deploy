@@ -141,6 +141,7 @@ post_doc "NixOS module merge patterns quick reference" \
   "knowledge/nixos-module-merge-patterns-quick-reference.md" \
   "Use lib.mkIf to gate config by condition, lib.mkDefault to provide a low-priority default, and lib.mkForce only when a higher-priority override is required. Keep one authoritative owner for each option where possible, prefer narrow conditional blocks over broad overrides, and inspect merged behavior through nix eval or nixos-option when module interactions are unclear. For service tuning such as rate limits, express the intended default once and reserve mkForce for conflict resolution, not ordinary composition."
 delete_gap "Summarize NixOS service option patterns and explain mkIf mkDefault mkForce tradeoffs"
+delete_gap "Summarize NixOS service option patterns and explain mkIf mkDefault mkForce"
 delete_gap "nixos mkIf mkForce rate limiter options"
 
 post_doc "Home Manager git credential helper conflict quick reference" \
@@ -169,5 +170,21 @@ post_doc "Semantic tool calling and metadata verification quick reference" \
   "knowledge/semantic-tool-calling-metadata-verification-quick-reference.md" \
   "Verify semantic tool calling by checking discovery/workflow plan availability, tool execution success telemetry, and hint adoption outcomes. Ensure tool metadata includes safety annotations and runtime policy validation before first-use execution."
 delete_gap "verify semantic tool calling and tool security metadata"
+
+post_doc "Local AI stack model and cache configuration quick reference" \
+  "knowledge/local-ai-stack-model-cache-config-quick-reference.md" \
+  "The active local inference model is configured via ai.aiStack.llamaCpp.activeModel in nix/hosts/<host>/facts.nix. The embedding model is ai.aiStack.embeddingServer.activeModel. Both use stable symlinks under the model directory — swap models with aq-model-switch without a full rebuild. Cache reuse is managed by the hybrid coordinator's semantic cache: identical or near-identical queries return cached results at <1ms instead of triggering LLM inference. Cache hit rate is visible in aq-report section 3 and /health. To check the active models: curl http://127.0.0.1:8080/v1/models and curl http://127.0.0.1:8081/v1/models."
+delete_gap "what is the active local embedding model"
+delete_gap "What models are currently configured locally"
+delete_gap "explain cache reuse briefly"
+delete_gap "explain how local routing and cache reuse reduce"
+delete_gap "explain briefly how local routing and cache reuse"
+delete_gap "summarize local cache reuse briefly"
+
+post_doc "AI stack regression debugging workflow quick reference" \
+  "knowledge/ai-stack-regression-debugging-quick-reference.md" \
+  "When a test or service regression appears: (1) run aq-qa 0 to isolate which check fails; (2) check journalctl -u <service> for the first error line; (3) reproduce with a minimal curl or aq-prompt-eval call; (4) fix root cause in the source file, not the test; (5) validate with bash -n (shell) or python3 -m py_compile (Python) before committing; (6) re-run aq-qa 0 to confirm pass. Do not patch around failures with --no-verify or by deleting checks. Keep each fix in a separate atomic commit."
+delete_gap "debug this failing regression safely"
+delete_gap "debug failing regression"
 
 printf 'Residual gap curation complete.\n'
