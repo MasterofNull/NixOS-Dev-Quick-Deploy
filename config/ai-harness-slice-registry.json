@@ -1,0 +1,1384 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical slice registry for the NixOS AI harness. Each slice declares owner paths, runtime surfaces, validation evidence, discoverability surfaces, and governance constraints.",
+  "score_dimensions": [
+    "contract",
+    "owner_surface",
+    "control_plane",
+    "data_plane",
+    "observability",
+    "quality_gate",
+    "discoverability",
+    "governance"
+  ],
+  "maturity_levels": {
+    "defined": {
+      "description": "Contract and ownership are explicit.",
+      "required_dimensions": [
+        "contract",
+        "owner_surface",
+        "control_plane",
+        "data_plane"
+      ]
+    },
+    "validated": {
+      "description": "Defined plus explicit verification surfaces.",
+      "required_dimensions": [
+        "contract",
+        "owner_surface",
+        "control_plane",
+        "data_plane",
+        "quality_gate"
+      ]
+    },
+    "observable": {
+      "description": "Validated plus health and operator-visible signals.",
+      "required_dimensions": [
+        "contract",
+        "owner_surface",
+        "control_plane",
+        "data_plane",
+        "quality_gate",
+        "observability",
+        "discoverability"
+      ]
+    },
+    "governed": {
+      "description": "Observable plus explicit risk, review, and rollback surfaces.",
+      "required_dimensions": [
+        "contract",
+        "owner_surface",
+        "control_plane",
+        "data_plane",
+        "quality_gate",
+        "observability",
+        "discoverability",
+        "governance"
+      ]
+    }
+  },
+  "slices": [
+    {
+      "id": "routing-orchestration",
+      "name": "Routing and Orchestration",
+      "domain": "servers",
+      "summary": "Coordinator routing, model/profile selection, task classification, and orchestration policy.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/mcp-servers/hybrid-coordinator",
+          "config/workflow-blueprints.json",
+          "docs/architecture/ROUTING-ARCHITECTURE-DESIGN.md"
+        ],
+        "entrypoints": [
+          "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
+          "ai-stack/mcp-servers/hybrid-coordinator/llm_router.py",
+          "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "workflow intent_contract payloads",
+          "route queries",
+          "profile and runtime selections"
+        ],
+        "outputs": [
+          "routing decisions",
+          "delegated execution payloads",
+          "workflow run records"
+        ],
+        "invariants": [
+          "profile names must resolve to declared routing surfaces",
+          "intent contracts must be preserved through workflow runs",
+          "routing decisions must expose enough information for validation and escalation"
+        ],
+        "failure_modes": [
+          "routing drift across entrypoints",
+          "profile mismatch or silent fallback",
+          "remote escalation without validation evidence"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart ai-hybrid-coordinator.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/workflow-blueprints.json",
+          "config/agent-context-cards.json"
+        ],
+        "policy_paths": [
+          "nix/modules/services/switchboard.nix",
+          "nix/modules/roles/ai-stack.nix"
+        ],
+        "service_units": [
+          "ai-hybrid-coordinator.service",
+          "ai-switchboard.service"
+        ],
+        "upstream_dependencies": [
+          "switchboard",
+          "llama-cpp",
+          "AIDB"
+        ],
+        "downstream_consumers": [
+          "aq-* CLIs",
+          "dashboard insights",
+          "workflow APIs"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
+          "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py",
+          "ai-stack/mcp-servers/hybrid-coordinator/search_router.py"
+        ],
+        "storage_paths": [
+          "runtime:routing_metrics.db"
+        ],
+        "api_endpoints": [
+          "/workflow/plan",
+          "/workflow/run/start",
+          "/control/llm/route",
+          "/control/llm/execute"
+        ],
+        "mcp_tools": [
+          "workflow_plan",
+          "workflow_run_start",
+          "workflow_orchestrate"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0",
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml"
+        ],
+        "metrics_signals": [
+          "routing_metrics.db",
+          "workflow run telemetry"
+        ],
+        "log_sources": [
+          "journalctl -u ai-hybrid-coordinator.service",
+          "journalctl -u ai-switchboard.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "python -m pytest ai-stack/mcp-servers/hybrid-coordinator/test_llm_router.py",
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/mcp-servers/hybrid-coordinator/test_llm_router.py",
+          "ai-stack/mcp-servers/hybrid-coordinator/test_ai_coordinator_model_awareness.py"
+        ],
+        "acceptance_signals": [
+          "routing contract validated",
+          "workflow run starts with intent_contract",
+          "focused router tests pass"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/architecture/ROUTING-ARCHITECTURE-DESIGN.md",
+          "docs/architecture/front-door-routing.md"
+        ],
+        "cli_entrypoints": [
+          "aq-context-bootstrap",
+          "aq-hints",
+          "harness-rpc.js"
+        ],
+        "dashboard_routes": [
+          "/api/insights/workflows/a2a-readiness",
+          "/api/insights/workflows/compliance"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "HYBRID_API_KEY_FILE",
+          "remote_llm_api_key"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit",
+          "scripts/governance/repo-structure-lint.sh --staged"
+        ],
+        "notes": [
+          "This slice is the highest-leverage coordination layer and should default to governed maturity."
+        ]
+      }
+    },
+    {
+      "id": "switchboard-frontdoor",
+      "name": "Switchboard Front Door",
+      "domain": "servers",
+      "summary": "OpenAI-compatible proxy that mediates profile-based local and remote model access.",
+      "maturity_target": "validated",
+      "owner_surface": {
+        "primary_paths": [
+          "nix/modules/services/switchboard.nix",
+          "docs/agent-guides/46-SWITCHBOARD-PROFILES.md"
+        ],
+        "entrypoints": [
+          "nix/modules/services/switchboard.nix"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "OpenAI-compatible chat/completion requests",
+          "x-ai-profile header"
+        ],
+        "outputs": [
+          "profile-routed local or remote completions",
+          "health responses"
+        ],
+        "invariants": [
+          "declared profiles must remain internally consistent",
+          "default and continue-local behavior must stay stable for editor workflows"
+        ],
+        "failure_modes": [
+          "profile drift",
+          "silent fallback to wrong lane",
+          "untestable embedded Python logic"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart ai-switchboard.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "nix/modules/services/switchboard.nix",
+          "nix/modules/core/options.nix"
+        ],
+        "policy_paths": [
+          "docs/agent-guides/46-SWITCHBOARD-PROFILES.md"
+        ],
+        "service_units": [
+          "ai-switchboard.service"
+        ],
+        "upstream_dependencies": [
+          "llama-cpp",
+          "remote OpenAI-compatible provider"
+        ],
+        "downstream_consumers": [
+          "Continue.dev",
+          "hybrid-coordinator",
+          "local tool-calling clients"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "nix/modules/services/switchboard.nix"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/health"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/aistack.py"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml"
+        ],
+        "metrics_signals": [
+          "switchboard health probes"
+        ],
+        "log_sources": [
+          "journalctl -u ai-switchboard.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-local-orchestrator-frontdoor.sh"
+        ],
+        "acceptance_signals": [
+          "profile cards remain aligned with routing callers"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/agent-guides/46-SWITCHBOARD-PROFILES.md"
+        ],
+        "cli_entrypoints": [
+          "aq-session-zero"
+        ],
+        "dashboard_routes": [
+          "/api/ai/metrics"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "remote_llm_api_key"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "Inline Python in Nix remains a design debt called out by the routing architecture review."
+        ]
+      }
+    },
+    {
+      "id": "mcp-server-platform",
+      "name": "MCP Server Platform",
+      "domain": "mcp",
+      "summary": "Shared MCP server stack, tooling exposure, dispatch, and integration patterns across the harness.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/mcp-servers",
+          "ai-stack/mcp-servers/shared",
+          "nix/modules/services/mcp-servers.nix"
+        ],
+        "entrypoints": [
+          "ai-stack/mcp-servers/hybrid-coordinator/server.py",
+          "ai-stack/mcp-servers/aidb/server.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "MCP tool requests",
+          "tool manifests",
+          "service startup configuration"
+        ],
+        "outputs": [
+          "tool execution results",
+          "audit records",
+          "health endpoints"
+        ],
+        "invariants": [
+          "tool contracts must be explicit",
+          "shared security middleware should be reused across servers"
+        ],
+        "failure_modes": [
+          "split server patterns",
+          "tool exposure without discoverability or audit",
+          "server-specific security drift"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart ai-hybrid-coordinator.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "nix/modules/services/mcp-servers.nix",
+          "config/service-endpoints.sh"
+        ],
+        "policy_paths": [
+          "docs/SKILLS-AND-MCP-INVENTORY.md"
+        ],
+        "service_units": [
+          "ai-hybrid-coordinator.service",
+          "ai-aidb.service",
+          "ai-ralph-wiggum.service"
+        ],
+        "upstream_dependencies": [
+          "Python runtimes",
+          "service endpoint config"
+        ],
+        "downstream_consumers": [
+          "Claude Code",
+          "Continue.dev",
+          "aq-* harness tools"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/mcp-servers/shared",
+          "ai-stack/mcp-servers/hybrid-coordinator/mcp_handlers.py",
+          "ai-stack/mcp-servers/aidb/middleware"
+        ],
+        "storage_paths": [
+          "ai-stack/agent-memory"
+        ],
+        "api_endpoints": [
+          "/mcp"
+        ],
+        "mcp_tools": [
+          "hybrid_search",
+          "get_hints",
+          "workflow_plan",
+          "store_memory"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0",
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/aistack.py"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml"
+        ],
+        "metrics_signals": [
+          "tool audit records",
+          "MCP health checks"
+        ],
+        "log_sources": [
+          "journalctl -u ai-hybrid-coordinator.service",
+          "journalctl -u ai-aidb.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/mcp-servers/hybrid-coordinator/tests",
+          "ai-stack/aidb/tests"
+        ],
+        "acceptance_signals": [
+          "MCP services start cleanly",
+          "tool dispatch tests pass"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/SKILLS-AND-MCP-INVENTORY.md"
+        ],
+        "cli_entrypoints": [
+          "aq-system-act",
+          "aq-context-bootstrap"
+        ],
+        "dashboard_routes": [
+          "/api/ai/metrics"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "HYBRID_API_KEY_FILE",
+          "AIDB API key"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should eventually enforce a more uniform server manifest and middleware contract."
+        ]
+      }
+    },
+    {
+      "id": "aidb-memory-data",
+      "name": "AIDB, Memory, and Data",
+      "domain": "data",
+      "summary": "Knowledge ingestion, vector search, agent memory, and persistence surfaces for harness retrieval.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/aidb",
+          "ai-stack/context_memory",
+          "ai-stack/agent-memory",
+          "scripts/data"
+        ],
+        "entrypoints": [
+          "ai-stack/mcp-servers/aidb/server.py",
+          "scripts/data/sync-agent-instructions"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "documents",
+          "memory records",
+          "knowledge sync sources"
+        ],
+        "outputs": [
+          "search results",
+          "retrieval context",
+          "stored memories"
+        ],
+        "invariants": [
+          "knowledge and memory stores must avoid secret leakage",
+          "stored context should carry enough provenance to be reviewed"
+        ],
+        "failure_modes": [
+          "data poisoning",
+          "schema drift",
+          "knowledge sync without validation"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart ai-aidb.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/service-endpoints.sh"
+        ],
+        "policy_paths": [
+          "docs/memory-system"
+        ],
+        "service_units": [
+          "ai-aidb.service"
+        ],
+        "upstream_dependencies": [
+          "Qdrant",
+          "PostgreSQL",
+          "embedding service"
+        ],
+        "downstream_consumers": [
+          "hybrid-coordinator",
+          "aq-memory",
+          "dashboard insights"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/mcp-servers/aidb",
+          "ai-stack/database/postgres",
+          "ai-stack/data"
+        ],
+        "storage_paths": [
+          "ai-stack/database/postgres/migrations",
+          "ai-stack/agent-memory/MEMORY.md"
+        ],
+        "api_endpoints": [
+          "/documents",
+          "/vector/search"
+        ],
+        "mcp_tools": [
+          "query_aidb",
+          "store_memory",
+          "recall_memory"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml",
+          "config/anomaly-detection.yaml"
+        ],
+        "metrics_signals": [
+          "document ingest success",
+          "vector search health"
+        ],
+        "log_sources": [
+          "journalctl -u ai-aidb.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/aidb/tests"
+        ],
+        "acceptance_signals": [
+          "document ingest and retrieval path remain healthy"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/architecture/memory-system-design.md",
+          "docs/memory-system"
+        ],
+        "cli_entrypoints": [
+          "aq-memory",
+          "aq-rag-prewarm"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "ingested documents",
+          "AIDB API key"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "Provenance, trust, and retention should become stronger explicit fields over time."
+        ]
+      }
+    },
+    {
+      "id": "workflow-engine",
+      "name": "Workflow Engine",
+      "domain": "workflows",
+      "summary": "Blueprint-driven planning, persisted runs, phases, acceptance, and workflow execution support.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/workflows",
+          "config/workflow-blueprints.json",
+          "docs/architecture/workflow-dsl-design.md"
+        ],
+        "entrypoints": [
+          "ai-stack/workflows",
+          "ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "workflow objective",
+          "intent contract",
+          "phase tool assignments"
+        ],
+        "outputs": [
+          "execution plans",
+          "persisted workflow runs",
+          "acceptance state"
+        ],
+        "invariants": [
+          "workflows must declare phases and exit criteria",
+          "runs must preserve intent contracts and reviewer visibility"
+        ],
+        "failure_modes": [
+          "workflow drift from blueprint contract",
+          "execution without rollback or acceptance evidence"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/workflow-blueprints.json"
+        ],
+        "policy_paths": [
+          "docs/workflows"
+        ],
+        "service_units": [
+          "ai-hybrid-coordinator.service"
+        ],
+        "upstream_dependencies": [
+          "hybrid-coordinator"
+        ],
+        "downstream_consumers": [
+          "aq-workflow",
+          "dashboard insights",
+          "workflow API clients"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/workflows",
+          "ai-stack/workflows/schema",
+          "ai-stack/workflows/templates"
+        ],
+        "storage_paths": [
+          ".agents/plans"
+        ],
+        "api_endpoints": [
+          "/workflow/plan",
+          "/workflow/run/start",
+          "/review/acceptance"
+        ],
+        "mcp_tools": [
+          "workflow_plan",
+          "workflow_run_start"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-hints"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "workflow compliance",
+          "acceptance outcomes"
+        ],
+        "log_sources": [
+          "workflow run records"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/workflows/tests"
+        ],
+        "acceptance_signals": [
+          "blueprint structure remains valid",
+          "workflow acceptance routes remain live"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/architecture/workflow-dsl-design.md",
+          "docs/architecture/workflow-executor-integration.md"
+        ],
+        "cli_entrypoints": [
+          "aq-workflow",
+          "aqd workflows"
+        ],
+        "dashboard_routes": [
+          "/api/insights/workflows/compliance",
+          "/api/insights/workflows/phase-4-acceptance"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "Workflows are a core control-plane surface and should be treated as governed configuration."
+        ]
+      }
+    },
+    {
+      "id": "aq-cli-tooling",
+      "name": "AQ CLI Tooling",
+      "domain": "tools",
+      "summary": "Primary local operator and agent command surface for onboarding, hints, runtime diagnosis, workflows, memory, and reports.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/ai",
+          "config/agent-context-cards.json"
+        ],
+        "entrypoints": [
+          "scripts/ai/aq-prime",
+          "scripts/ai/aq-hints",
+          "scripts/ai/aq-context-bootstrap"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "task summaries",
+          "diagnostic presets",
+          "workflow objectives"
+        ],
+        "outputs": [
+          "hints",
+          "context cards",
+          "runtime plans",
+          "reports"
+        ],
+        "invariants": [
+          "agent-facing CLIs should remain discoverable and stable",
+          "workflow and runtime tools should emit actionable evidence"
+        ],
+        "failure_modes": [
+          "CLI drift from backing APIs",
+          "surface sprawl without ownership"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/agent-context-cards.json",
+          "config/workflow-blueprints.json"
+        ],
+        "policy_paths": [
+          "docs/agent-guides/01-QUICK-START.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "hybrid-coordinator"
+        ],
+        "downstream_consumers": [
+          "human operators",
+          "agents"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/ai"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "aq-session-zero"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "aq-report output"
+        ],
+        "log_sources": [
+          "CLI stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing"
+        ],
+        "acceptance_signals": [
+          "session bootstrap works",
+          "hints and context bootstrap remain available"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/agent-guides/01-QUICK-START.md"
+        ],
+        "cli_entrypoints": [
+          "aq-prime",
+          "aq-session-zero",
+          "aq-hints",
+          "aq-context-bootstrap"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/repo-structure-lint.sh --staged"
+        ],
+        "notes": [
+          "This slice should eventually be split into operator, diagnostics, workflow, and knowledge sub-surfaces."
+        ]
+      }
+    },
+    {
+      "id": "monitoring-observability",
+      "name": "Monitoring and Observability",
+      "domain": "monitoring",
+      "summary": "Metrics, alerts, dashboards, readiness views, and runtime health classification.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/monitoring",
+          "ai-stack/observability",
+          "scripts/observability",
+          "config/alert-rules.yaml",
+          "config/anomaly-detection.yaml"
+        ],
+        "entrypoints": [
+          "scripts/health/system-health-check.sh",
+          "dashboard/backend/api/routes/metrics.py",
+          "dashboard/backend/api/routes/insights.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "service metrics",
+          "runtime probes",
+          "alert rules"
+        ],
+        "outputs": [
+          "dashboard metrics",
+          "alerts",
+          "readiness summaries"
+        ],
+        "invariants": [
+          "critical services must have health coverage",
+          "readiness claims should be backed by probeable evidence"
+        ],
+        "failure_modes": [
+          "blind spots",
+          "stale dashboards",
+          "alerts with no remediation path"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/alert-rules.yaml",
+          "config/anomaly-detection.yaml"
+        ],
+        "policy_paths": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "dashboard API",
+          "systemd probes"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "governance scripts"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/monitoring",
+          "ai-stack/observability",
+          "dashboard/backend/api/services/ai_insights.py"
+        ],
+        "storage_paths": [
+          "ai-stack/monitoring/prometheus",
+          "ai-stack/observability/grafana-dashboards"
+        ],
+        "api_endpoints": [
+          "/api/metrics",
+          "/api/insights/observability/readiness"
+        ],
+        "mcp_tools": [
+          "qa_check"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0",
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "ai-stack/monitoring/grafana/dashboards",
+          "ai-stack/observability/grafana-dashboards"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml",
+          "config/anomaly-detection.yaml"
+        ],
+        "metrics_signals": [
+          "dashboard metrics route",
+          "workflow compliance readiness"
+        ],
+        "log_sources": [
+          "journalctl -u command-center-dashboard-api.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-dashboard-insights-report-cache.py"
+        ],
+        "acceptance_signals": [
+          "metrics routes and readiness insights stay available"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "cli_entrypoints": [
+          "aq-report",
+          "aq-qa"
+        ],
+        "dashboard_routes": [
+          "/api/insights/observability/readiness",
+          "/api/metrics"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should become the operator-facing home for slice readiness over time."
+        ]
+      }
+    },
+    {
+      "id": "dashboard-operator-surfaces",
+      "name": "Dashboard and Operator Surfaces",
+      "domain": "communications",
+      "summary": "Dashboard backend and frontend surfaces that make harness state visible and actionable for operators.",
+      "maturity_target": "validated",
+      "owner_surface": {
+        "primary_paths": [
+          "dashboard/backend/api/routes",
+          "dashboard/backend/api/services",
+          "dashboard.html"
+        ],
+        "entrypoints": [
+          "dashboard/backend/api/routes/insights.py",
+          "dashboard/backend/api/routes/metrics.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "AI stack metrics",
+          "readiness summaries",
+          "service health state"
+        ],
+        "outputs": [
+          "operator dashboards",
+          "JSON insights endpoints"
+        ],
+        "invariants": [
+          "operator-facing routes should expose real system state, not only static claims"
+        ],
+        "failure_modes": [
+          "backend features hidden from the operator",
+          "frontend/backend drift"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart command-center-dashboard-api.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "dashboard/backend/api/config"
+        ],
+        "policy_paths": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service",
+          "command-center-dashboard-frontend.service"
+        ],
+        "upstream_dependencies": [
+          "AI stack services",
+          "dashboard service endpoints"
+        ],
+        "downstream_consumers": [
+          "operators"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "dashboard/backend/api/routes",
+          "dashboard/backend/api/services"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/insights",
+          "/api/metrics"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard.html"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "dashboard API health"
+        ],
+        "log_sources": [
+          "journalctl -u command-center-dashboard-api.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/test-dashboard-insights-report-cache.py"
+        ],
+        "acceptance_signals": [
+          "dashboard insights routes return current repo-native readiness data"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "cli_entrypoints": [
+          "aq-report"
+        ],
+        "dashboard_routes": [
+          "/api/insights",
+          "/api/metrics"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should eventually expose slice scorecard output directly."
+        ]
+      }
+    },
+    {
+      "id": "agent-guidance-communications",
+      "name": "Agent Guidance and Communications",
+      "domain": "communications",
+      "summary": "Prompts, hints, context cards, agent instruction sync, and workflow guidance surfaces.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/prompts/registry.yaml",
+          "config/agent-context-cards.json",
+          "scripts/data/sync-agent-instructions",
+          "docs/AGENTS.md"
+        ],
+        "entrypoints": [
+          "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py",
+          "scripts/ai/aq-hints"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "task summaries",
+          "workflow context",
+          "policy docs"
+        ],
+        "outputs": [
+          "hints",
+          "context cards",
+          "synced agent instructions"
+        ],
+        "invariants": [
+          "guidance should remain compact, actionable, and repo-grounded",
+          "policy sync should not fork across agent surfaces"
+        ],
+        "failure_modes": [
+          "prompt drift",
+          "instruction duplication",
+          "guidance not reachable through normal harness paths"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/agent-context-cards.json",
+          "ai-stack/prompts/registry.yaml"
+        ],
+        "policy_paths": [
+          "AGENTS.md",
+          "docs/AGENTS.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "hints engine",
+          "AIDB knowledge sync"
+        ],
+        "downstream_consumers": [
+          "aq-hints",
+          "Continue.dev",
+          "agents"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py",
+          "scripts/data"
+        ],
+        "storage_paths": [
+          "ai-stack/prompts/registry.yaml"
+        ],
+        "api_endpoints": [
+          "/hints"
+        ],
+        "mcp_tools": [
+          "get_hints",
+          "hints_feedback"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-hints \"health\" --format=json --agent=codex"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "hint usage and feedback",
+          "prompt eval results"
+        ],
+        "log_sources": [
+          "hint API responses"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing"
+        ],
+        "acceptance_signals": [
+          "hints remain reachable",
+          "instruction sync paths stay documented"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/AGENTS.md"
+        ],
+        "cli_entrypoints": [
+          "aq-hints",
+          "aq-context-card"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "Prompt and context-card changes should eventually be tied to prompt evaluation evidence."
+        ]
+      }
+    },
+    {
+      "id": "security-governance",
+      "name": "Security and Governance",
+      "domain": "security",
+      "summary": "Repo-wide policy, secret handling, structure linting, validation gates, and governance enforcement for the harness.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/governance",
+          "scripts/security",
+          "config/security",
+          "docs/security"
+        ],
+        "entrypoints": [
+          "scripts/governance/tier0-validation-gate.sh",
+          "scripts/governance/repo-structure-lint.sh"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "repo changes",
+          "policy files",
+          "service configuration"
+        ],
+        "outputs": [
+          "validation results",
+          "policy enforcement",
+          "security readiness signals"
+        ],
+        "invariants": [
+          "secrets must not be hardcoded",
+          "repo structure policy must be enforced",
+          "validation must happen before commit and deploy"
+        ],
+        "failure_modes": [
+          "policy drift",
+          "missing rollback discipline",
+          "security checks that are documented but not enforced"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/security",
+          "config/repo-structure-allowlist.txt"
+        ],
+        "policy_paths": [
+          "AGENTS.md",
+          "docs/security"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "git",
+          "repo structure policy"
+        ],
+        "downstream_consumers": [
+          "all slices"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/governance",
+          "scripts/security"
+        ],
+        "storage_paths": [
+          "config/root-file-allowlist.txt"
+        ],
+        "api_endpoints": [],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "Tier 0 pass/fail",
+          "repo-structure lint pass/fail"
+        ],
+        "log_sources": [
+          "validation gate output"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit",
+          "scripts/governance/repo-structure-lint.sh --staged"
+        ],
+        "test_paths": [
+          "scripts/governance"
+        ],
+        "acceptance_signals": [
+          "Tier 0 passes",
+          "structure policy passes"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/security",
+          "docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md"
+        ],
+        "cli_entrypoints": [
+          "scripts/governance/tier0-validation-gate.sh",
+          "scripts/governance/repo-structure-lint.sh"
+        ],
+        "dashboard_routes": [
+          "/api/insights/security/compliance"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "/run/secrets/*"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit",
+          "scripts/governance/repo-structure-lint.sh --staged"
+        ],
+        "notes": [
+          "This is the meta-slice that should eventually consume scorecard output as one of its own readiness signals."
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/ai-harness-slice-registry.schema.json",
+  "title": "AI Harness Slice Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "description",
+    "score_dimensions",
+    "maturity_levels",
+    "slices"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "score_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "contract",
+          "owner_surface",
+          "control_plane",
+          "data_plane",
+          "observability",
+          "quality_gate",
+          "discoverability",
+          "governance"
+        ]
+      }
+    },
+    "maturity_levels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defined",
+        "validated",
+        "observable",
+        "governed"
+      ],
+      "properties": {
+        "defined": { "$ref": "#/$defs/maturityLevel" },
+        "validated": { "$ref": "#/$defs/maturityLevel" },
+        "observable": { "$ref": "#/$defs/maturityLevel" },
+        "governed": { "$ref": "#/$defs/maturityLevel" }
+      }
+    },
+    "slices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/slice"
+      }
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "maturityLevel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "required_dimensions"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_dimensions": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "pathSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary_paths": { "$ref": "#/$defs/stringList" },
+        "entrypoints": { "$ref": "#/$defs/stringList" },
+        "config_paths": { "$ref": "#/$defs/stringList" },
+        "policy_paths": { "$ref": "#/$defs/stringList" },
+        "runtime_paths": { "$ref": "#/$defs/stringList" },
+        "storage_paths": { "$ref": "#/$defs/stringList" },
+        "test_paths": { "$ref": "#/$defs/stringList" },
+        "docs": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs",
+        "outputs",
+        "invariants",
+        "failure_modes",
+        "rollback_commands"
+      ],
+      "properties": {
+        "inputs": { "$ref": "#/$defs/stringList" },
+        "outputs": { "$ref": "#/$defs/stringList" },
+        "invariants": { "$ref": "#/$defs/stringList" },
+        "failure_modes": { "$ref": "#/$defs/stringList" },
+        "rollback_commands": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "controlPlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config_paths": { "$ref": "#/$defs/stringList" },
+        "policy_paths": { "$ref": "#/$defs/stringList" },
+        "service_units": { "$ref": "#/$defs/stringList" },
+        "upstream_dependencies": { "$ref": "#/$defs/stringList" },
+        "downstream_consumers": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "dataPlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime_paths": { "$ref": "#/$defs/stringList" },
+        "storage_paths": { "$ref": "#/$defs/stringList" },
+        "api_endpoints": { "$ref": "#/$defs/stringList" },
+        "mcp_tools": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "health_checks": { "$ref": "#/$defs/stringList" },
+        "dashboards": { "$ref": "#/$defs/stringList" },
+        "alerts": { "$ref": "#/$defs/stringList" },
+        "metrics_signals": { "$ref": "#/$defs/stringList" },
+        "log_sources": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "qualityGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation_commands",
+        "test_paths",
+        "acceptance_signals"
+      ],
+      "properties": {
+        "validation_commands": { "$ref": "#/$defs/stringList" },
+        "test_paths": { "$ref": "#/$defs/stringList" },
+        "acceptance_signals": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "discoverability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "docs"
+      ],
+      "properties": {
+        "docs": { "$ref": "#/$defs/stringList" },
+        "cli_entrypoints": { "$ref": "#/$defs/stringList" },
+        "dashboard_routes": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk_level",
+        "review_commands",
+        "notes"
+      ],
+      "properties": {
+        "risk_level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "secret_surfaces": { "$ref": "#/$defs/stringList" },
+        "review_commands": { "$ref": "#/$defs/stringList" },
+        "notes": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "slice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "domain",
+        "summary",
+        "maturity_target",
+        "owner_surface",
+        "contract",
+        "control_plane",
+        "data_plane",
+        "observability",
+        "quality_gate",
+        "discoverability",
+        "governance"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domain": {
+          "type": "string",
+          "enum": [
+            "tools",
+            "servers",
+            "mcp",
+            "monitoring",
+            "workflows",
+            "communications",
+            "data",
+            "security"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maturity_target": {
+          "type": "string",
+          "enum": [
+            "defined",
+            "validated",
+            "observable",
+            "governed"
+          ]
+        },
+        "owner_surface": {
+          "allOf": [
+            { "$ref": "#/$defs/pathSurface" }
+          ],
+          "required": [
+            "primary_paths",
+            "entrypoints"
+          ]
+        },
+        "contract": { "$ref": "#/$defs/contract" },
+        "control_plane": { "$ref": "#/$defs/controlPlane" },
+        "data_plane": { "$ref": "#/$defs/dataPlane" },
+        "observability": { "$ref": "#/$defs/observability" },
+        "quality_gate": { "$ref": "#/$defs/qualityGate" },
+        "discoverability": { "$ref": "#/$defs/discoverability" },
+        "governance": { "$ref": "#/$defs/governance" }
+      }
+    }
+  }
+}
