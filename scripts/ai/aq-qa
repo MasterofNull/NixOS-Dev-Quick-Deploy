@@ -462,24 +462,42 @@ run_phase_0() {
 
   # 0.8.1 ai_coordinator_delegate success rate (last 1h) — Phase 9.3 gate
   # SKIP when <3 samples (fresh deploy / no traffic yet); FAIL only on clear regression.
+  # Reads from JSONL audit log (consistent with aq-report; no PostgreSQL dependency).
   local delegate_rate_out
   delegate_rate_out=$(python3 - <<'PYEOF' 2>/dev/null
-import os, psycopg2, json
+import json, os, time
+from pathlib import Path
+
+AUDIT_LOG = Path(os.getenv("TOOL_AUDIT_LOG_PATH", "/var/log/ai-audit-sidecar/tool-audit.jsonl"))
+WINDOW_S = 3600  # 1 hour
+now = time.time()
+
 try:
-    conn = psycopg2.connect(
-        host="127.0.0.1", port=5432, dbname="nixos_ai",
-        user="nixos_ai_app", password=open("/run/secrets/postgres_password").read().strip()
-    )
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT COUNT(*) AS total,
-               SUM(CASE WHEN (metadata->>'backend_ok')::boolean IS TRUE THEN 1 ELSE 0 END) AS ok
-        FROM tool_audit_log
-        WHERE tool_name = 'ai_coordinator_delegate'
-          AND created_at >= NOW() - INTERVAL '1 hour'
-    """)
-    row = cur.fetchone()
-    total, ok = int(row[0] or 0), int(row[1] or 0)
+    total = 0
+    ok = 0
+    if AUDIT_LOG.exists():
+        with open(AUDIT_LOG, "r", encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("tool_name") != "ai_coordinator_delegate":
+                    continue
+                ts_str = entry.get("timestamp", "")
+                try:
+                    from datetime import datetime, timezone
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    continue
+                if now - ts > WINDOW_S:
+                    continue
+                total += 1
+                if entry.get("outcome") == "success":
+                    ok += 1
     print(json.dumps({"total": total, "ok": ok}))
 except Exception as e:
     print(json.dumps({"error": str(e)}))
