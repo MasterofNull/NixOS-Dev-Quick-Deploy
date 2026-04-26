@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+aq-model — Local model catalog viewer and swap helper.
+
+Lists available models from the harness catalog, shows the current active model,
+and generates the one-line change needed in nix/hosts/<host>/facts.nix to swap.
+
+Usage:
+  aq-model                  List all models with RAM/params/status
+  aq-model --active         Show only the currently active model
+  aq-model --switch <key>   Print the nix change to switch to a model
+  aq-model --format=json    Machine-readable output
+
+All model changes require: sudo nixos-rebuild switch --flake .#<host>
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+# ---------------------------------------------------------------------------
+# Model catalog — loaded from config/model-catalog.yaml at runtime.
+# To add a model: add an entry to that YAML and download the GGUF.
+# No code changes needed here.
+# ---------------------------------------------------------------------------
+
+def _load_catalog() -> Dict[str, Dict[str, Any]]:
+    """Load model catalog from config/model-catalog.yaml, returning a flat dict keyed by model key."""
+    catalog_path = Path(__file__).resolve().parents[2] / "config" / "model-catalog.yaml"
+    if catalog_path.exists():
+        try:
+            import yaml  # pyyaml — included in ai-stack.nix
+            raw = yaml.safe_load(catalog_path.read_text())
+            result: Dict[str, Dict[str, Any]] = {}
+            for section in ("chat_models", "embedding_models"):
+                for key, entry in (raw.get(section) or {}).items():
+                    # Normalise: ensure 'type' field exists
+                    if "type" not in entry:
+                        entry["type"] = "embedding" if section == "embedding_models" else "chat"
+                    result[key] = entry
+            return result
+        except Exception as exc:
+            print(f"Warning: could not load model-catalog.yaml ({exc}), using empty catalog", file=sys.stderr)
+    return {}
+
+
+CATALOG: Dict[str, Dict[str, Any]] = _load_catalog()
+
+FACTS_NIX_CANDIDATES = [
+    "nix/hosts/hyperd/facts.nix",
+    "nix/hosts/default/facts.nix",
+]
+
+
+def _current_active() -> Optional[str]:
+    """Detect current active model from llama.cpp /v1/models."""
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://127.0.0.1:8080/v1/models", timeout=3) as resp:
+            data = json.loads(resp.read())
+        models = data.get("models") or data.get("data") or []
+        if models:
+            active_file = (models[0].get("model") or models[0].get("id") or "").strip()
+            # Match against catalog by filename
+            for key, entry in CATALOG.items():
+                if entry.get("file", "") in active_file or active_file in entry.get("file", ""):
+                    return key
+            return f"unknown ({active_file})"
+    except Exception:
+        pass
+    return None
+
+
+def _current_from_facts() -> Optional[str]:
+    """Read activeModel key from facts.nix."""
+    root = Path(__file__).resolve().parents[2]
+    for rel in FACTS_NIX_CANDIDATES:
+        p = root / rel
+        if p.exists():
+            m = re.search(r'llamaCpp\.activeModel\s*=\s*"([^"]+)"', p.read_text())
+            if m:
+                return m.group(1)
+    return None
+
+
+def _format_table(rows: Dict[str, Dict[str, Any]], active_key: Optional[str], active_live: Optional[str]) -> str:
+    lines = []
+    lines.append(f"{'KEY':<20} {'NAME':<35} {'RAM':<10} {'PARAMS':<22} {'CTX':<8} {'THINK':<6} {'TYPE'}")
+    lines.append("-" * 115)
+    for key, e in sorted(rows.items()):
+        marker = ""
+        if key == active_live:
+            marker = " ◄ live"
+        elif key == active_key:
+            marker = " ◄ config"
+        ctx_raw = e.get("context", 0)
+        ctx = f"{ctx_raw // 1024}K" if ctx_raw else "?"
+        ram = e.get("ram_q4", "?")
+        think = "yes" if e.get("think_mode") else "no"
+        etype = e.get("type", "?")
+        name = e.get("name", key)
+        params = e.get("params", "?")
+        lines.append(
+            f"{key:<20} {name:<35} {ram:<10} {params:<22} {ctx:<8} {think:<6} {etype}{marker}"
+        )
+        if e.get("notes"):
+            lines.append(f"{'':20}   {e['notes']}")
+    return "\n".join(lines)
+
+
+def _switch_instructions(key: str, host: str = "hyperd") -> str:
+    if key not in CATALOG:
+        return f"Error: '{key}' not in catalog. Run aq-model to see available keys."
+    e = CATALOG[key]
+    is_embed = e.get("type") == "embedding"
+    opt = "embeddingServer.activeModel" if is_embed else "llamaCpp.activeModel"
+    lines = [
+        f"# To switch to {e['name']}:",
+        f"# 1. Edit nix/hosts/{host}/facts.nix:",
+        f'#      {opt} = "{key}";',
+    ]
+    if not is_embed:
+        lines += [
+            f"#    Adjust extraArgs if needed:",
+            f'#      llamaCpp.extraArgs = [ "--n-gpu-layers" "{e["recommended_gpu_layers"]}" ... ];',
+        ]
+        if e.get("think_mode"):
+            lines.append(f"#    Model supports thinking mode (Qwen3/DeepSeek style).")
+        if not e.get("tool_calling"):
+            lines.append(f"#    WARNING: model does NOT support tool calling.")
+    lines += [
+        f"# 2. sudo nixos-rebuild switch --flake .#nixos",
+        f"# 3. aq-qa 0   # verify 0.4.1 (llama-server /health) passes",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--active", action="store_true", help="Show only the active model")
+    p.add_argument("--switch", metavar="KEY", help="Print swap instructions for KEY")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.add_argument("--host", default="hyperd", help="Host name for nix/hosts/<host>/facts.nix")
+    args = p.parse_args()
+
+    active_live = _current_active()
+    active_config = _current_from_facts()
+
+    if args.switch:
+        print(_switch_instructions(args.switch, args.host))
+        return
+
+    if args.active:
+        if args.format == "json":
+            info = {
+                "live": active_live,
+                "config": active_config,
+                "entry": CATALOG.get(active_live or active_config or "") or {},
+            }
+            print(json.dumps(info, indent=2))
+        else:
+            print(f"Live model  : {active_live or 'unknown (llama.cpp not responding)'}")
+            print(f"Config key  : {active_config or 'not set in facts.nix'}")
+            if active_live and active_live in CATALOG:
+                e = CATALOG[active_live]
+                print(f"Name        : {e['name']}")
+                print(f"RAM (Q4)    : {e['ram_q4']}")
+                print(f"Context     : {e['context']//1024}K tokens")
+                print(f"Think mode  : {'yes' if e.get('think_mode') else 'no'}")
+                print(f"Tool calling: {'yes' if e.get('tool_calling') else 'no'}")
+        return
+
+    if args.format == "json":
+        out = {
+            "active_live": active_live,
+            "active_config": active_config,
+            "catalog": CATALOG,
+        }
+        print(json.dumps(out, indent=2))
+        return
+
+    print("Local Model Catalog")
+    print("=" * 105)
+    print(_format_table(CATALOG, active_config, active_live))
+    print()
+    print(f"Active (live)  : {active_live or 'unknown'}")
+    print(f"Active (config): {active_config or 'not set'}")
+    print()
+    print("To switch models: aq-model --switch <key>")
+    print("Changes require: sudo nixos-rebuild switch --flake .#nixos")
+
+
+if __name__ == "__main__":
+    main()

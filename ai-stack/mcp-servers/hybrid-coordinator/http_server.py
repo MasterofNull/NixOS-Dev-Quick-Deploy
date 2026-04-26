@@ -552,6 +552,63 @@ def _remote_avail_cache_set(profile: str, ok: bool) -> None:
     _REMOTE_AVAIL_CACHE[profile] = {"ok": ok, "ts": time.time()}
 
 
+# ---------------------------------------------------------------------------
+# Model catalog loader — reads config/model-catalog.yaml at runtime.
+# Allows adding new models (GGUF download + YAML entry) with zero code changes.
+# Cached in-process; re-read every 5 minutes so live edits take effect without restart.
+# ---------------------------------------------------------------------------
+_MODEL_CATALOG: Dict[str, Any] = {}
+_MODEL_CATALOG_TS: float = 0.0
+_MODEL_CATALOG_TTL_S = 300.0
+_MODEL_CATALOG_PATH = Path(__file__).resolve().parents[3] / "config" / "model-catalog.yaml"
+
+
+def _load_model_catalog() -> Dict[str, Any]:
+    """Return flat catalog dict keyed by model key, re-reading YAML if stale."""
+    global _MODEL_CATALOG, _MODEL_CATALOG_TS
+    now = time.time()
+    if _MODEL_CATALOG and now - _MODEL_CATALOG_TS < _MODEL_CATALOG_TTL_S:
+        return _MODEL_CATALOG
+    if not _MODEL_CATALOG_PATH.exists():
+        return _MODEL_CATALOG  # keep stale cache if file missing
+    try:
+        import yaml  # pyyaml — in ai-stack.nix dependencies
+        raw = yaml.safe_load(_MODEL_CATALOG_PATH.read_text())
+        catalog: Dict[str, Any] = {}
+        for section in ("chat_models", "embedding_models"):
+            for key, entry in (raw.get(section) or {}).items():
+                catalog[key] = entry
+        _MODEL_CATALOG = catalog
+        _MODEL_CATALOG_TS = now
+    except Exception as exc:
+        logging.getLogger(__name__).warning("model-catalog.yaml load failed: %s", exc)
+    return _MODEL_CATALOG
+
+
+def _active_model_capabilities() -> Dict[str, Any]:
+    """Best-effort: detect the active llama.cpp model and return its catalog entry.
+
+    Returns an empty dict if llama.cpp is not reachable or model is not in catalog.
+    Uses a quick synchronous urllib call (coordinator startup/agent-spawn context).
+    """
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://127.0.0.1:8080/v1/models", timeout=2) as resp:
+            data = json.loads(resp.read())
+        models = data.get("models") or data.get("data") or []
+        if not models:
+            return {}
+        active_file = (models[0].get("model") or models[0].get("id") or "").strip()
+        catalog = _load_model_catalog()
+        for entry in catalog.values():
+            fname = entry.get("file", "")
+            if fname and (fname in active_file or active_file.endswith(fname)):
+                return entry
+    except Exception:
+        pass
+    return {}
+
+
 async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     state: Dict[str, Any] = {
         "remote_configured": bool(Config.SWITCHBOARD_REMOTE_URL),
@@ -9544,9 +9601,18 @@ STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
 TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
 AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "180"))
-# Qwen3 thinking mode: disable for delegate tasks to skip CoT overhead.
-NO_THINK_PREFIX = os.environ.get("AGENT_THINKING_MODE", "off") != "on"
-STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
+# Thinking mode: disable by default to skip CoT overhead for delegation tasks.
+# NO_THINK_PREFIX_STR is the model-specific prefix (e.g. "/no_think" for Qwen3).
+# When empty, no prefix is prepended regardless of thinking mode setting.
+_thinking_on = os.environ.get("AGENT_THINKING_MODE", "off") == "on"
+NO_THINK_PREFIX_STR = os.environ.get("AGENT_NO_THINK_PREFIX", "")
+NO_THINK_PREFIX = (not _thinking_on) and bool(NO_THINK_PREFIX_STR)
+# Stop sequences: loaded from model-catalog via coordinator; fallback to ChatML tokens.
+try:
+    import json as _json
+    STOP_SEQUENCES = _json.loads(os.environ.get("AGENT_STOP_SEQUENCES", "[]")) or ["<|im_end|>", "<|endoftext|>"]
+except Exception:
+    STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
 # Phase 8.7 — tool calling: opt-in via AGENT_TOOLS_ENABLED=true
 TOOLS_ENABLED = os.environ.get("AGENT_TOOLS_ENABLED", "false").lower() == "true"
 MAX_TOOL_ROUNDS = int(os.environ.get("AGENT_MAX_TOOL_ROUNDS", "3"))
@@ -9647,8 +9713,8 @@ async def run():
     _write_state(state)
     try:
         task_content = AGENT_TASK
-        if NO_THINK_PREFIX and not task_content.startswith("/no_think"):
-            task_content = "/no_think " + task_content
+        if NO_THINK_PREFIX and not task_content.startswith(NO_THINK_PREFIX_STR):
+            task_content = NO_THINK_PREFIX_STR + " " + task_content
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": task_content},
@@ -9759,6 +9825,11 @@ async def run():
         sys.exit(1)
 asyncio.run(run())
 '''
+                # Resolve model capabilities from catalog for model-agnostic agent spawning.
+                _model_caps = _active_model_capabilities()
+                _stop_seqs_default = json.dumps(_model_caps.get("stop_sequences") or ["<|im_end|>", "<|endoftext|>"])
+                _no_think_prefix = _model_caps.get("no_think_prefix") or ""
+                _think_supported = bool(_model_caps.get("think_mode", True))
                 env = os.environ.copy()
                 env.update({
                     "AGENT_ID": agent_id,
@@ -9769,9 +9840,11 @@ asyncio.run(run())
                     "AGENT_MAX_TOKENS": str(max_tokens),
                     "AGENT_TEMPERATURE": str(temperature),
                     "AGENT_TIMEOUT": str(timeout_sec),
-                    # Enable thinking mode only when caller requests it; default off
-                    # to skip Qwen3 CoT overhead for delegation tasks.
-                    "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")),
+                    # Enable thinking mode only when caller requests and model supports it.
+                    "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")) if _think_supported else "off",
+                    # Model-agnostic stop sequences and no-think prefix from model-catalog.yaml.
+                    "AGENT_STOP_SEQUENCES": _stop_seqs_default,
+                    "AGENT_NO_THINK_PREFIX": _no_think_prefix,
                     # Phase 8.7 — tool calling: pass through caller preference
                     "AGENT_TOOLS_ENABLED": "true" if bool(data.get("tools_enabled", False)) else "false",
                     "AGENT_MAX_TOOL_ROUNDS": str(int(data.get("max_tool_rounds", 3))),
