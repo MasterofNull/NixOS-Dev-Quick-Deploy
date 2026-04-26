@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 
-HTTP_SERVER_PATH = Path(__file__).with_name("http_server.py")
+DELEGATION_HANDLERS_PATH = Path(__file__).with_name("delegation_handlers.py")
 TARGET_FUNCTIONS = {
     "_message_content_text",
     "_content_has_only_text_blocks",
@@ -62,9 +62,9 @@ class _NoopCompressor(_FakeCompressor):
         )
 
 
-def _load_http_server_helpers() -> Dict[str, Any]:
-    source = HTTP_SERVER_PATH.read_text()
-    tree = ast.parse(source, filename=str(HTTP_SERVER_PATH))
+def _load_delegation_helpers() -> Dict[str, Any]:
+    source = DELEGATION_HANDLERS_PATH.read_text()
+    tree = ast.parse(source, filename=str(DELEGATION_HANDLERS_PATH))
     selected = [
         node for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name in TARGET_FUNCTIONS
@@ -83,12 +83,12 @@ def _load_http_server_helpers() -> Dict[str, Any]:
         "_DELEGATED_PROMPT_COMPRESSOR": _FakeCompressor(),
         "_DELEGATED_CONTEXT_PRUNER": _FakePruner(),
     }
-    exec(compile(module, str(HTTP_SERVER_PATH), "exec"), namespace)
+    exec(compile(module, str(DELEGATION_HANDLERS_PATH), "exec"), namespace)
     return namespace
 
 
 def test_structured_assistant_messages_are_not_rewritten():
-    helpers = _load_http_server_helpers()
+    helpers = _load_delegation_helpers()
     optimize = helpers["_optimize_delegated_messages"]
 
     structured_assistant = {
@@ -113,7 +113,7 @@ def test_structured_assistant_messages_are_not_rewritten():
 
 
 def test_structured_assistant_messages_are_not_pruned_under_budget_pressure():
-    helpers = _load_http_server_helpers()
+    helpers = _load_delegation_helpers()
     helpers["_DELEGATED_PROMPT_COMPRESSOR"] = _NoopCompressor()
     optimize = helpers["_optimize_delegated_messages"]
 
