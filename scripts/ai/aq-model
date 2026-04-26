@@ -115,30 +115,67 @@ def _format_table(rows: Dict[str, Dict[str, Any]], active_key: Optional[str], ac
     return "\n".join(lines)
 
 
+CHAT_SYMLINK = Path("/var/lib/llama-cpp/models/active.gguf")
+EMBED_SYMLINK = Path("/var/lib/llama-cpp/models/active-embed.gguf")
+
+
+def _symlink_mode_enabled(embed: bool = False) -> bool:
+    """Return True if the system is configured for runtime symlink-based model swapping."""
+    symlink = EMBED_SYMLINK if embed else CHAT_SYMLINK
+    # Symlink mode is active if the path exists as a symlink OR doesn't exist yet but
+    # there's a facts.nix entry (we check by seeing if the parent dir exists and no
+    # non-symlink file is at that path).
+    return symlink.is_symlink() or (not symlink.exists() and symlink.parent.exists())
+
+
 def _switch_instructions(key: str, host: str = "hyperd") -> str:
     if key not in CATALOG:
         return f"Error: '{key}' not in catalog. Run aq-model to see available keys."
     e = CATALOG[key]
     is_embed = e.get("type") == "embedding"
-    opt = "embeddingServer.activeModel" if is_embed else "llamaCpp.activeModel"
-    lines = [
-        f"# To switch to {e['name']}:",
-        f"# 1. Edit nix/hosts/{host}/facts.nix:",
-        f'#      {opt} = "{key}";',
-    ]
-    if not is_embed:
+    symlink_mode = _symlink_mode_enabled(embed=is_embed)
+    lines = [f"# Switch to: {e.get('name', key)}"]
+
+    if symlink_mode:
+        embed_flag = " --embed" if is_embed else ""
         lines += [
-            f"#    Adjust extraArgs if needed:",
-            f'#      llamaCpp.extraArgs = [ "--n-gpu-layers" "{e["recommended_gpu_layers"]}" ... ];',
+            f"#",
+            f"# Runtime swap (no rebuild needed — symlink mode is active):",
+            f"#   sudo aq-model-switch{embed_flag} {key}",
+            f"#",
+            f"# This will: stop service → update symlink → start service → health check",
         ]
-        if e.get("think_mode"):
-            lines.append(f"#    Model supports thinking mode (Qwen3/DeepSeek style).")
-        if not e.get("tool_calling"):
-            lines.append(f"#    WARNING: model does NOT support tool calling.")
-    lines += [
-        f"# 2. sudo nixos-rebuild switch --flake .#nixos",
-        f"# 3. aq-qa 0   # verify 0.4.1 (llama-server /health) passes",
-    ]
+        if e.get("recommended_gpu_layers") is not None and not is_embed:
+            lines.append(f"#")
+            lines.append(f"# NOTE: GPU layers are set in facts.nix extraArgs (current: --n-gpu-layers ?).")
+            lines.append(f"#       Recommended for this model: --n-gpu-layers {e['recommended_gpu_layers']}")
+            lines.append(f"#       To change GPU layers, edit facts.nix and rebuild (one-time per model).")
+    else:
+        opt = "embeddingServer.activeModel" if is_embed else "llamaCpp.activeModel"
+        lines += [
+            f"#",
+            f"# Standard swap (requires nixos-rebuild):",
+            f"# 1. Edit nix/hosts/{host}/facts.nix:",
+            f'#      {opt} = "{key}";',
+        ]
+        if not is_embed:
+            lines += [
+                f"#    Adjust extraArgs if needed:",
+                f'#      llamaCpp.extraArgs = [ "--n-gpu-layers" "{e.get("recommended_gpu_layers", 0)}" ... ];',
+            ]
+        lines += [
+            f"# 2. sudo nixos-rebuild switch --flake .#nixos",
+            f"# 3. aq-qa 0   # verify 0.4.1 (llama-server /health) passes",
+            f"#",
+            f"# TIP: Enable symlink mode for rebuild-free swaps:",
+            f'#   Set llamaCpp.useSymlink = true in facts.nix, rebuild once, then use aq-model-switch.',
+        ]
+
+    if e.get("think_mode") and not is_embed:
+        lines.append(f"#")
+        lines.append(f"# Model supports thinking mode (/no_think prefix to disable CoT).")
+    if not e.get("tool_calling") and not is_embed:
+        lines.append(f"# WARNING: model does NOT support tool calling.")
     return "\n".join(lines)
 
 

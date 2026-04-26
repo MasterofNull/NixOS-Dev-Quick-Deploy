@@ -1170,6 +1170,18 @@
             null = use explicit model/huggingFaceRepo values below.
           '';
         };
+
+        useSymlink = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Use a stable symlink /var/lib/llama-cpp/models/active.gguf as the
+            llama-server --model path. Once enabled (one nixos-rebuild), future
+            model swaps require no rebuild: use aq-model-switch <key> to stop
+            the service, atomically update the symlink, and restart.
+            The activation script seeds the symlink from activeModel on first apply.
+          '';
+        };
       };
 
       embeddingServer = {
@@ -1305,6 +1317,17 @@
           description = ''
             Key from embedding modelCatalog to use. Overrides model, repo, file,
             sha256, and pooling from the catalog entry.
+          '';
+        };
+
+        useSymlink = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Use a stable symlink /var/lib/llama-cpp/models/active-embed.gguf as
+            the embedding llama-server --model path. Enables runtime embedding
+            model swapping via aq-model-switch --embed <key> without nixos-rebuild.
+            The activation script seeds the symlink from activeModel on first apply.
           '';
         };
       };
