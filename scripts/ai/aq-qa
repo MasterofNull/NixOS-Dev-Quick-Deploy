@@ -550,7 +550,7 @@ run_phase_1() {
   # 1.2 PostgreSQL — user=aidb, password from secrets
   local pg_pass pg_out
   pg_pass=$(cat /run/secrets/postgres_password 2>/dev/null | tr -d '\n' || true)
-  pg_out=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || echo 0)
+  pg_out=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || true)
   if [[ "$pg_out" -ge 1 ]]; then
     _pass "1.2.1" "postgres responds (user=aidb)"
   else
@@ -753,7 +753,7 @@ PY
 run_phase_4() {
   # 4.1 aq-hints CLI
   _check_output "4.1.1" "aq-hints responds to query" "." \
-    bash -c "\"${SCRIPT_DIR}/aq-hints\" --query 'nixos module help' 2>/dev/null | head -5"
+    bash -c "\"${SCRIPT_DIR}/aq-hints\" 'nixos module help' --format text 2>/dev/null | head -5"
 
   # 4.2 Hybrid coordinator /hints endpoint
   local _hk4
@@ -784,7 +784,7 @@ run_phase_5() {
   local aa_profile="/etc/apparmor.d/ai-llama-cpp"
   if [[ -f "$aa_profile" ]]; then
     local aa_mode
-    aa_mode=$(grep -o '(enforce)\|(complain)' /sys/kernel/security/apparmor/profiles 2>/dev/null | grep -c 'enforce' || echo 0)
+    aa_mode=$(grep -o '(enforce)\|(complain)' /sys/kernel/security/apparmor/profiles 2>/dev/null | grep -c 'enforce' || true)
     if [[ "$aa_mode" -ge 1 ]]; then
       _pass "5.1.1" "AppArmor has enforce-mode profiles active"
     else
@@ -851,7 +851,7 @@ run_phase_6() {
 
   # 6.5 MCP integrity check script
   _check "6.5.1" "check-mcp-integrity.sh present and executable" \
-    test -x "${REPO_ROOT}/scripts/check-mcp-integrity.sh"
+    test -x "${REPO_ROOT}/scripts/testing/check-mcp-integrity.sh"
 }
 
 # ---------------------------------------------------------------------------
@@ -869,7 +869,7 @@ run_phase_7() {
   prompt_count=$(python3 -c "
 import re, sys
 txt = open('${registry}').read() if __import__('os').path.exists('${registry}') else ''
-print(len(re.findall(r'^  [a-z_]+:', txt, re.MULTILINE)))
+print(len(re.findall(r'^\s*-\s+id:', txt, re.MULTILINE)))
 " 2>/dev/null || echo 0)
   if [[ "$prompt_count" -ge 3 ]]; then
     _pass "7.2.2" "prompt registry has ${prompt_count} entries (≥3)"
@@ -958,7 +958,8 @@ run_phase_10() {
   # 10.1 Pre-commit hooks
   local hooks_path
   hooks_path=$(git -C "${REPO_ROOT}" config core.hookspath 2>/dev/null || true)
-  if [[ "$hooks_path" == ".githooks" && -d "${REPO_ROOT}/.githooks" ]]; then
+  if [[ "$hooks_path" == ".githooks" || "$hooks_path" == "${REPO_ROOT}/.githooks" ]] && \
+     [[ -d "${REPO_ROOT}/.githooks" ]]; then
     _pass "10.1.1" "git hooks configured (.githooks/)"
   else
     _fail "10.1.1" "git hooks configured" "core.hookspath='${hooks_path}'"

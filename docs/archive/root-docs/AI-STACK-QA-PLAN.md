@@ -35,7 +35,7 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
   ```
   **Pass:** All Phase 1 tests pass.
 
-- [ ] **21.1.3** `aq-qa all` runs all implemented phases in sequence.
+- [x] **21.1.3** `aq-qa all` runs all implemented phases in sequence. <!-- PASS: fixed shared Qdrant endpoint export, validated `aq-qa all --json` and wrapper parity for phases 0-10/all on 2026-04-26 -->
   ```bash
   aq-qa all 2>&1 | tail -5
   ```
