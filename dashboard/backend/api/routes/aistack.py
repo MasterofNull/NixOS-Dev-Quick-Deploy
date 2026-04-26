@@ -3166,7 +3166,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
 _AQ_QA_CACHE: Dict[str, Any] = {}
 _AQ_QA_CACHE_TTL_S: float = float(os.getenv("DASHBOARD_AQ_QA_CACHE_TTL_SECONDS", "300"))
 
-_VALID_QA_PHASES = frozenset({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"})
+_VALID_QA_PHASES = frozenset({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all"})
 
 
 @router.get("/aq-qa/run/{phase}")
@@ -3178,7 +3178,7 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     """
     phase = phase.strip().lstrip("0") or "0"
     if phase not in _VALID_QA_PHASES:
-        raise HTTPException(status_code=400, detail=f"Invalid phase '{phase}'. Must be 0-10.")
+        raise HTTPException(status_code=400, detail=f"Invalid phase '{phase}'. Must be 0-10 or all.")
 
     now = time.time()
     cached = _AQ_QA_CACHE.get(phase)
@@ -3196,7 +3196,7 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     phase_timeouts = {
         "0": 120, "1": 150, "2": 200, "3": 200,
         "4": 90,  "5": 90,  "6": 90,  "7": 90,
-        "8": 120, "9": 90, "10": 90,
+        "8": 120, "9": 90, "10": 90, "all": 900,
     }
     timeout_s = phase_timeouts.get(phase, 120)
 
