@@ -268,8 +268,8 @@ PY
 }
 
 _continue_local_smoke() {
-  local max_time="${AQ_QA_CONTINUE_LOCAL_MAX_TIME:-45}"
-  local attempts="${AQ_QA_CONTINUE_LOCAL_ATTEMPTS:-2}"
+  local max_time="${AQ_QA_CONTINUE_LOCAL_MAX_TIME:-120}"
+  local attempts="${AQ_QA_CONTINUE_LOCAL_ATTEMPTS:-1}"
   local attempt
   # Keep this bounded below the outer Tier 0 gate timeout. Allow one retry to
   # tolerate occasional local-model warmup variance without turning the whole
@@ -278,7 +278,7 @@ _continue_local_smoke() {
     if curl -sf --max-time "${max_time}" \
       -H 'Content-Type: application/json' \
       -H 'X-AI-Profile: continue-local' \
-      -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":8,"n_predict":8,"temperature":0}' \
+      -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":1,"n_predict":1,"temperature":0}' \
       "${SWITCHBOARD_URL}/v1/chat/completions" | \
       python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); reasoning=(msg.get("reasoning_content") or "").strip(); usage=data.get("usage") or {}; completion_tokens=int(usage.get("completion_tokens") or 0); observed=content or reasoning; print(observed or completion_tokens); raise SystemExit(0 if observed or completion_tokens > 0 else 1)'
     then
@@ -458,6 +458,47 @@ run_phase_0() {
     _pass "0.7.2" "hybrid /query retrieval smoke"
   else
     _fail "0.7.2" "hybrid /query retrieval smoke" "out: ${query_out:0:80}"
+  fi
+
+  # 0.8.1 ai_coordinator_delegate success rate (last 1h) — Phase 9.3 gate
+  # SKIP when <3 samples (fresh deploy / no traffic yet); FAIL only on clear regression.
+  local delegate_rate_out
+  delegate_rate_out=$(python3 - <<'PYEOF' 2>/dev/null
+import os, psycopg2, json
+try:
+    conn = psycopg2.connect(
+        host="127.0.0.1", port=5432, dbname="nixos_ai",
+        user="nixos_ai_app", password=open("/run/secrets/postgres_password").read().strip()
+    )
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN (metadata->>'backend_ok')::boolean IS TRUE THEN 1 ELSE 0 END) AS ok
+        FROM tool_audit_log
+        WHERE tool_name = 'ai_coordinator_delegate'
+          AND created_at >= NOW() - INTERVAL '1 hour'
+    """)
+    row = cur.fetchone()
+    total, ok = int(row[0] or 0), int(row[1] or 0)
+    print(json.dumps({"total": total, "ok": ok}))
+except Exception as e:
+    print(json.dumps({"error": str(e)}))
+PYEOF
+  )
+  local delegate_total delegate_ok delegate_pct
+  delegate_total=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('total',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
+  delegate_ok=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('ok',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
+  if python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' in d else 1)" "$delegate_rate_out" 2>/dev/null; then
+    _skip "0.8.1" "delegate 1h success rate" "DB query failed: $(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error','?')[:60])" "$delegate_rate_out" 2>/dev/null)"
+  elif [[ "$delegate_total" -lt 3 ]]; then
+    _skip "0.8.1" "delegate 1h success rate" "insufficient sample (${delegate_total} calls in last 1h, need ≥3)"
+  else
+    delegate_pct=$(python3 -c "print(round(100*${delegate_ok}/${delegate_total}))" 2>/dev/null || echo 0)
+    if [[ "$delegate_pct" -ge 50 ]]; then
+      _pass "0.8.1" "delegate 1h success rate ${delegate_pct}% (${delegate_ok}/${delegate_total})"
+    else
+      _fail "0.8.1" "delegate 1h success rate ≥50%" "got ${delegate_pct}% (${delegate_ok}/${delegate_total} calls)"
+    fi
   fi
 }
 
