@@ -39,7 +39,20 @@ logger = logging.getLogger("hybrid-coordinator")
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _AQ_QA_SCRIPT = _REPO_ROOT / "scripts" / "ai" / "aq-qa"
 _FLAGSHIP_CLI_SMOKE_SCRIPT = _REPO_ROOT / "scripts" / "testing" / "smoke-flagship-cli-surfaces.sh"
-_QA_PHASE_ALIASES = {"phase0": "0", "phase1": "1", "phase2": "2", "phase3": "3", "all": "all"}
+_QA_PHASE_ALIASES = {
+    "phase0": "0",
+    "phase1": "1",
+    "phase2": "2",
+    "phase3": "3",
+    "phase4": "4",
+    "phase5": "5",
+    "phase6": "6",
+    "phase7": "7",
+    "phase8": "8",
+    "phase9": "9",
+    "phase10": "10",
+    "all": "all",
+}
 
 
 def _resolve_bash_binary() -> str:
@@ -120,7 +133,14 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "1": 120,  # Infrastructure checks
         "2": 180,  # Runtime/package/confinement loops
         "3": 180,  # AppArmor/confinement loops
-        "all": 300,  # All phases
+        "4": 120,  # Context engineering checks
+        "5": 120,  # Security hardening checks
+        "6": 120,  # Monitoring checks
+        "7": 120,  # Self-improvement checks
+        "8": 180,  # End-to-end workflow checks
+        "9": 120,  # Optimisation checks
+        "10": 120,  # Regression checks
+        "all": 900,  # Full QA batch
     }
     default_timeout = phase_timeouts.get(phase, 120)
     timeout_seconds = int(arguments.get("timeout_seconds") or default_timeout)
@@ -128,8 +148,8 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
         timeout_seconds = 5
     if output_format not in {"json", "text"}:
         raise ValueError("format must be 'json' or 'text'")
-    if phase not in {"0", "1", "2", "3", "all"}:
-        raise ValueError("phase must be one of 0, 1, 2, 3, all")
+    if phase not in {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all"}:
+        raise ValueError("phase must be one of 0-10 or all")
     if capability_only and phase != "0":
         raise ValueError("capability_only mode is only supported for phase 0")
     if not _AQ_QA_SCRIPT.exists():
@@ -579,7 +599,7 @@ TOOL_DEFINITIONS: List[Tool] = [
             "properties": {
                 "phase": {
                     "type": "string",
-                    "description": "QA phase to run: 0, 1, 2, 3, phase0-phase3, or all",
+                    "description": "QA phase to run: 0-10, phase0-phase10, or all",
                     "default": "0",
                 },
                 "format": {

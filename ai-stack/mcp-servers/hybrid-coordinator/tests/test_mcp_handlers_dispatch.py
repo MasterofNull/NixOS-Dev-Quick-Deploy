@@ -68,11 +68,13 @@ class TestNormalizeQaPhase:
         assert mcp_handlers._normalize_qa_phase("0") == "0"
         assert mcp_handlers._normalize_qa_phase("1") == "1"
         assert mcp_handlers._normalize_qa_phase("3") == "3"
+        assert mcp_handlers._normalize_qa_phase("10") == "10"
 
     def test_phase_prefix_stripped(self):
         assert mcp_handlers._normalize_qa_phase("phase0") == "0"
         assert mcp_handlers._normalize_qa_phase("phase1") == "1"
         assert mcp_handlers._normalize_qa_phase("phase3") == "3"
+        assert mcp_handlers._normalize_qa_phase("phase10") == "10"
 
     def test_all_alias_resolves(self):
         assert mcp_handlers._normalize_qa_phase("all") == "all"
@@ -220,9 +222,17 @@ class TestQaPhaseAliases:
         assert aliases.get("phase1") == "1"
         assert aliases.get("phase2") == "2"
         assert aliases.get("phase3") == "3"
+        assert aliases.get("phase10") == "10"
         assert aliases.get("all") == "all"
 
     def test_all_valid_phases_normalizable(self):
-        for phase in ("0", "1", "2", "3", "all"):
+        for phase in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all"):
             result = mcp_handlers._normalize_qa_phase(phase)
             assert result == phase
+
+    def test_extended_phase_validation_reaches_file_check(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(mcp_handlers, "_AQ_QA_SCRIPT", tmp_path / "nonexistent-aq-qa")
+        with pytest.raises(FileNotFoundError):
+            asyncio.run(
+                mcp_handlers.run_qa_check_as_dict({"phase": "10", "format": "json"})
+            )
