@@ -869,7 +869,8 @@ Not a current priority but track here for when it becomes one.
 
 **Problem:** Every `requirements.txt` in `ai-stack/mcp-servers/*/requirements.txt` uses `>=` version ranges without hash pinning. `pip install -r requirements.txt` will silently install a newer, potentially malicious version if a package is compromised on PyPI.
 
-- [x] **11.1.1** Generated `requirements.lock` files with `pip-compile --generate-hashes` for: ralph-wiggum (1469 lines), health-monitor (1390 lines), hybrid-coordinator (2800+ lines). aidb lock in progress (large dep graph). aider-wrapper: `aider-chat==0.86.1` does not exist on PyPI (hallucinated version); skip until requirements.txt is corrected. NixOS production deployment already uses `python3.withPackages` (hash-verified by Nix store); lock files serve as pip-based dev/CI artifacts.
+- [~] **11.1.1** Generate `requirements.lock` files with `pip-compile --generate-hashes` for the MCP servers.
+  *Progress (2026-02-27): Verified lock coverage for `aidb`, `ralph-wiggum`, `health-monitor`, and `hybrid-coordinator`; added a new `container-engine/requirements.lock`; removed impossible `pytest-anyio` and `trio` test constraints from `hybrid-coordinator/requirements.txt` so the existing lock matches the repo again. Remaining blockers are `aider-wrapper` (PyPI only exposes `aider-chat` through `0.16.0`, so `aider-chat==0.86.1` still cannot be locked) and `nixos-docs` (lock file still missing). NixOS production deployment already uses `python3.withPackages` (hash-verified by Nix store); lock files serve as pip-based dev/CI artifacts.*
 
 - [x] **11.1.2** Add `pip-audit` to the Makefile `make security-check` target. Run it against every locked requirements file.
   *Implemented (2026-02-26): `make security-check` added as alias for `make security-audit`, which calls `scripts/security/security-audit.sh` — already runs `pip-audit -r requirements.lock` for each lockfile found under `ai-stack/mcp-servers/`.*
