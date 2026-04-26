@@ -297,6 +297,20 @@ This split follows the current repo boundaries:
 - `rag/pipeline.py`, query validation, and vector-search tests own retrieval/search behavior,
 - `temporal_facts.py`, `temporal_query.py`, `layered_loading.py`, `context_manager.py`, and `aq-memory` own memory and context governance.
 
+### 8.5 Decomposition Wave 5
+
+The fifth refinement wave decomposes the old `dashboard-operator-surfaces` slice into:
+
+1. `dashboard-insights-readiness-surfaces`
+2. `operator-runtime-control-surfaces`
+3. `workflow-collaboration-operator-surfaces`
+
+This split follows the current repo boundaries:
+
+- `insights.py`, `metrics.py`, `health.py`, `aistack.py`, and the AI insights/metrics/health services own read-only readiness and reporting,
+- `services.py`, `deployments.py`, `containers.py`, `actions.py`, `config.py`, `testing.py`, plus runtime/service/context control services own mutating operator controls,
+- `workflows.py`, `collaboration.py`, `websockets.py`, and workflow/session guides own operator-facing workflow and collaboration flows.
+
 ---
 
 ## 9. Recommended Use
