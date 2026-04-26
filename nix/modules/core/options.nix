@@ -2252,56 +2252,76 @@
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "embedded-assist"
                 "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
                 "remote-tool-calling"
               ];
-              default = "remote-gemini";
-              description = "Profile used for Explore/discovery style prompts.";
+              default = "default";
+              description = ''
+                Profile used for Explore/discovery style prompts.
+                Local models are the primary backend; set to a remote-* value
+                only when a valid, responsive remote agent is available.
+              '';
             };
 
             planningProfile = lib.mkOption {
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "embedded-assist"
                 "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
                 "remote-tool-calling"
               ];
-              default = "remote-gemini";
-              description = "Profile used for Plan/workflow decomposition prompts.";
+              default = "default";
+              description = ''
+                Profile used for Plan/workflow decomposition prompts.
+                Local models are the primary backend; set to a remote-* value
+                only when a valid, responsive remote agent is available.
+              '';
             };
 
             implementationProfile = lib.mkOption {
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "embedded-assist"
                 "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
                 "remote-tool-calling"
               ];
-              default = "remote-coding";
-              description = "Profile used for implementation and patch generation prompts.";
+              default = "local-tool-calling";
+              description = ''
+                Profile used for implementation and patch generation prompts.
+                Local models are the primary backend; set to remote-coding only
+                when a valid, responsive remote coding agent is available.
+              '';
             };
 
             reasoningProfile = lib.mkOption {
               type = lib.types.enum [
                 "default"
                 "local-tool-calling"
+                "embedded-assist"
                 "remote-gemini"
                 "remote-free"
                 "remote-coding"
                 "remote-reasoning"
                 "remote-tool-calling"
               ];
-              default = "remote-reasoning";
-              description = "Profile used for architecture, policy, and risk reasoning prompts.";
+              default = "local-tool-calling";
+              description = ''
+                Profile used for architecture, policy, and risk reasoning prompts.
+                Local models are the primary backend; set to remote-reasoning only
+                when a valid, responsive remote reasoning agent is available.
+              '';
             };
 
             toolCallingProfile = lib.mkOption {
