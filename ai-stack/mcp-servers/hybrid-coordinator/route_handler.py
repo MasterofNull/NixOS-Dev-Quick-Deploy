@@ -71,6 +71,11 @@ _SYNTHETIC_GAP_PREFIXES = (
     "fetch http://localhost",
     "curl http://127.0.0.1",
     "curl http://localhost",
+    # Frontdoor / smoke-test probe patterns
+    "reply with exactly ",
+    "respond with exactly ",
+    "test harness connectivity",
+    "test harness ",
 )
 _SYNTHETIC_GAP_SOURCE_MARKERS = {
     "gap-eval-pack",
