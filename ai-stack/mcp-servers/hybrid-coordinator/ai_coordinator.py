@@ -57,12 +57,14 @@ def _profile_env(name: str, fallback: str) -> str:
 
 
 def _frontdoor_profile(route_name: str) -> str:
+    # Fallbacks are local-first. Remote profiles are set via env vars only when
+    # the operator has a verified, responsive remote agent available.
     mapping = {
         "default": ("AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "default"),
-        "explore": ("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "remote-gemini"),
-        "plan": ("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "remote-gemini"),
-        "implementation": ("AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE", "remote-coding"),
-        "reasoning": ("AI_LOCAL_FRONTDOOR_REASONING_PROFILE", "remote-reasoning"),
+        "explore": ("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "default"),
+        "plan": ("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "default"),
+        "implementation": ("AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE", "local-tool-calling"),
+        "reasoning": ("AI_LOCAL_FRONTDOOR_REASONING_PROFILE", "local-tool-calling"),
         "tool-calling": ("AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE", "local-tool-calling"),
         "continuation": ("AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE", "default"),
     }
@@ -485,7 +487,7 @@ def detect_query_complexity(query: str) -> Dict[str, Any]:
 def route_by_complexity(
     query: str,
     requested_profile: str = "",
-    prefer_local: bool = False,
+    prefer_local: bool = True,
 ) -> Dict[str, Any]:
     """
     Route query to appropriate model based on complexity.

@@ -524,6 +524,34 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Remote availability cache — gates remote routing without a per-request probe.
+# TTL: 5 minutes. A remote profile that returns 4xx/5xx is marked unavailable
+# until the TTL expires, after which it is re-probed on next use.
+# ---------------------------------------------------------------------------
+_REMOTE_AVAIL_CACHE: Dict[str, Any] = {}  # profile -> {"ok": bool, "ts": float}
+_REMOTE_AVAIL_TTL_S = 300.0
+_REMOTE_AVAIL_LOCK: Optional[Any] = None  # asyncio.Lock, init on first use
+
+
+def _is_remote_profile(profile: str) -> bool:
+    return str(profile or "").startswith("remote-")
+
+
+def _remote_avail_cache_get(profile: str) -> Optional[bool]:
+    """Return cached availability (True/False) or None if expired/missing."""
+    entry = _REMOTE_AVAIL_CACHE.get(profile)
+    if not entry:
+        return None
+    if time.time() - entry["ts"] > _REMOTE_AVAIL_TTL_S:
+        return None
+    return bool(entry["ok"])
+
+
+def _remote_avail_cache_set(profile: str, ok: bool) -> None:
+    _REMOTE_AVAIL_CACHE[profile] = {"ok": ok, "ts": time.time()}
+
+
 async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     state: Dict[str, Any] = {
         "remote_configured": bool(Config.SWITCHBOARD_REMOTE_URL),
@@ -701,7 +729,9 @@ def _apply_remote_runtime_status(
         runtime["status"] = "ready" if remote_configured and remote_aliases.get("tool_calling") else "offline"
         runtime["model_alias"] = remote_aliases.get("tool_calling") or ""
     elif runtime_id == "local-tool-calling":
-        runtime["status"] = "degraded"
+        # Local tool-calling uses the local llama.cpp via switchboard — always ready
+        # when the local model is loaded. Not degraded.
+        runtime["status"] = "ready"
     return runtime
 
 
@@ -781,30 +811,32 @@ def _select_agent_pool_candidate(
 # Phase 20.2: Priority-based delegation with automatic failover
 # ---------------------------------------------------------------------------
 
-# Task type to agent capability mapping
+# Task type to agent capability mapping.
+# Local models are listed first — they are the only required backend.
+# Remote profiles are optional fallbacks, included only when verified available.
 _TASK_TYPE_CAPABILITIES = {
     "coding": {
-        "priority_profiles": ["remote-coding", "remote-gemini", "remote-free", "local-tool-calling", "default"],
+        "priority_profiles": ["local-tool-calling", "default", "remote-coding", "remote-gemini", "remote-free"],
         "required_context_window": 8192,
         "prefer_free_first": False,
     },
     "reasoning": {
-        "priority_profiles": ["remote-reasoning", "remote-gemini", "remote-free", "default"],
+        "priority_profiles": ["local-tool-calling", "default", "remote-reasoning", "remote-gemini", "remote-free"],
         "required_context_window": 8192,
         "prefer_free_first": False,
     },
     "tool-calling": {
-        "priority_profiles": ["remote-tool-calling", "local-tool-calling", "remote-gemini", "remote-free", "default"],
+        "priority_profiles": ["local-tool-calling", "default", "remote-tool-calling", "remote-gemini", "remote-free"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
     "simple": {
-        "priority_profiles": ["remote-gemini", "remote-free", "default", "local-tool-calling"],
+        "priority_profiles": ["default", "local-tool-calling", "remote-gemini", "remote-free"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
     "default": {
-        "priority_profiles": ["remote-gemini", "remote-free", "default", "local-tool-calling"],
+        "priority_profiles": ["default", "local-tool-calling", "remote-gemini", "remote-free"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
@@ -9328,6 +9360,22 @@ async def run_http_mode(port: int) -> None:
             # Phase 9.3 — Use complexity routing for auto-selection
             routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
             selected_profile = routing_decision["recommended_profile"]
+
+            # Phase 9 — Remote availability pre-check: if the selected profile is
+            # remote and was recently marked unavailable, fall back to local immediately
+            # rather than failing. Remote agents are optional; local is always required.
+            if _is_remote_profile(selected_profile):
+                cached_avail = _remote_avail_cache_get(selected_profile)
+                if cached_avail is False:
+                    logger.info(
+                        "delegate: remote profile %s cached as unavailable, falling back to local",
+                        selected_profile,
+                    )
+                    selected_profile = "local-tool-calling"
+                    routing_decision = dict(routing_decision)
+                    routing_decision["recommended_profile"] = selected_profile
+                    routing_decision["rationale"] = routing_decision.get("rationale", "") + " [local-fallback:remote-cached-unavailable]"
+
             selected_runtime_id = _ai_coordinator_default_runtime_id_for_profile(selected_profile)
             # Phase 8.11 — Propagate thinking mode recommendation unless caller overrides
             if "thinking_mode" not in data:
@@ -10336,6 +10384,21 @@ asyncio.run(run())
                     quality_score=pool_quality_score,
                 )
                 pool_agent_acquired = False
+            # Phase 9 — Update remote availability cache based on actual response.
+            # 4xx (auth/policy) or 5xx (server error) marks the remote as unavailable
+            # for _REMOTE_AVAIL_TTL_S seconds so subsequent requests use local fallback.
+            if _is_remote_profile(effective_profile):
+                if response.status_code in {401, 403, 429} or response.status_code >= 500:
+                    _remote_avail_cache_set(effective_profile, False)
+                    logger.warning(
+                        "delegate: remote profile %s returned HTTP %s — marked unavailable for %ss",
+                        effective_profile,
+                        response.status_code,
+                        int(_REMOTE_AVAIL_TTL_S),
+                    )
+                elif response.status_code < 400:
+                    _remote_avail_cache_set(effective_profile, True)
+
             _record_capability_gap_outcomes(
                 capability_gaps,
                 duration_seconds=max(0.0, time.perf_counter() - request_started_at),
