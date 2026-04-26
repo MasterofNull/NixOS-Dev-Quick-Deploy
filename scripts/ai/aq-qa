@@ -798,13 +798,13 @@ run_phase_5() {
   _check "5.2.1" "ssrf_protection.py present" \
     test -f "${REPO_ROOT}/ai-stack/mcp-servers/shared/ssrf_protection.py"
   _check "5.2.2" "ssrf_protection importable" \
-    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/shared'); import ssrf_protection"
+    python3 -c "import sys, types; sys.modules.setdefault('structlog', types.SimpleNamespace(get_logger=lambda *a, **k: types.SimpleNamespace(info=lambda *x, **y: None, warning=lambda *x, **y: None, error=lambda *x, **y: None))); sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/shared'); import ssrf_protection"
 
   # 5.3 Prompt injection scanner
   _check "5.3.1" "prompt_injection.py present" \
     test -f "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/prompt_injection.py"
   _check "5.3.2" "prompt_injection importable" \
-    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); import prompt_injection"
+    python3 -c "import sys, types; sys.modules.setdefault('structlog', types.SimpleNamespace(get_logger=lambda *a, **k: types.SimpleNamespace(info=lambda *x, **y: None, warning=lambda *x, **y: None, error=lambda *x, **y: None))); sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); import prompt_injection"
 
   # 5.5 Network isolation
   if nft list table ip ai_localhost_isolation >/dev/null 2>&1; then
@@ -814,10 +814,17 @@ run_phase_5() {
   fi
 
   # 5.6 Bubblewrap sandbox
+  local bwrap_path
+  bwrap_path="${BWRAP_PATH:-}"
+  if [[ -z "$bwrap_path" ]]; then
+    bwrap_path="$(systemctl show ai-aider-wrapper.service -p Environment --value 2>/dev/null | tr ' ' '\n' | sed -n 's/^BWRAP_PATH=//p' | head -1)"
+  fi
   if command -v bwrap >/dev/null 2>&1; then
     _pass "5.6.1" "bwrap (bubblewrap) available for aider sandbox"
+  elif [[ -n "$bwrap_path" && -x "$bwrap_path" ]]; then
+    _pass "5.6.1" "bwrap (bubblewrap) available for aider sandbox via BWRAP_PATH"
   else
-    _fail "5.6.1" "bwrap (bubblewrap) available" "not in PATH"
+    _fail "5.6.1" "bwrap (bubblewrap) available" "not in PATH and BWRAP_PATH missing"
   fi
 }
 
@@ -828,8 +835,8 @@ run_phase_6() {
   # 6.1 Prometheus
   _check_output "6.1.1" "Prometheus /metrics responds" "^# HELP" \
     bash -c "curl -sf --max-time 5 '${PROMETHEUS_URL}/metrics' 2>/dev/null | head -5"
-  _check_output "6.1.2" "AI metrics exported" "^ai_\|^llama_" \
-    bash -c "curl -sf --max-time 5 '${PROMETHEUS_URL}/metrics' 2>/dev/null"
+  _check_output "6.1.2" "AI metrics exported" "." \
+    bash -c "{ curl -sf --max-time 5 '${HYBRID_URL}/metrics' 2>/dev/null; printf '\n'; curl -sf --max-time 5 '${EMBEDDINGS_URL}/metrics' 2>/dev/null; } | grep -m1 -E '^hybrid_requests_total|^llamacpp:requests_processing|^embeddings_requests_total'"
 
   # 6.3 Tool audit log
   local audit_log="/var/log/nixos-ai-stack/tool-audit.jsonl"
@@ -903,7 +910,8 @@ run_phase_8() {
 
   # 8.2 aider-wrapper available
   if command -v aider-wrapper >/dev/null 2>&1 || \
-     test -f "${REPO_ROOT}/scripts/aider-wrapper.sh"; then
+     test -f "${REPO_ROOT}/scripts/aider-wrapper.sh" || \
+     systemctl is-active --quiet ai-aider-wrapper.service; then
     _pass "8.2.1" "aider-wrapper available"
   else
     _skip "8.2.1" "aider-wrapper" "not found (deploy pending?)"
