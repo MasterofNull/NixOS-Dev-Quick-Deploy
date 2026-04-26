@@ -30,6 +30,69 @@
     "weight": 0.5
   },
   {
+    "url": "https://github.com/github/advisory-database",
+    "type": "github_repo",
+    "weight": 0.85,
+    "cadence_hours": 24,
+    "label": "GitHub Advisory Database — package and ecosystem vulnerability advisories"
+  },
+  {
+    "url": "https://github.com/CISAGov/kev-data",
+    "type": "github_repo",
+    "weight": 0.95,
+    "cadence_hours": 24,
+    "label": "CISA KEV catalog — known exploited vulnerabilities"
+  },
+  {
+    "url": "https://github.com/CVEProject/cvelistV5",
+    "type": "github_repo",
+    "weight": 0.8,
+    "cadence_hours": 24,
+    "label": "CVE List v5 — official CVE records"
+  },
+  {
+    "url": "https://github.com/mitre-attack/attack-stix-data",
+    "type": "github_repo",
+    "weight": 0.7,
+    "cadence_hours": 72,
+    "label": "MITRE ATT&CK STIX data — adversary tactics and techniques"
+  },
+  {
+    "url": "https://github.com/google/osv.dev",
+    "type": "github_repo",
+    "weight": 0.75,
+    "cadence_hours": 48,
+    "label": "OSV.dev — open vulnerability ecosystem"
+  },
+  {
+    "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+    "type": "research",
+    "weight": 0.75,
+    "cadence_hours": 24,
+    "label": "CISA Known Exploited Vulnerabilities Catalog"
+  },
+  {
+    "url": "https://nvd.nist.gov/vuln",
+    "type": "research",
+    "weight": 0.65,
+    "cadence_hours": 24,
+    "label": "NVD — National Vulnerability Database"
+  },
+  {
+    "url": "https://osv.dev/list",
+    "type": "research",
+    "weight": 0.6,
+    "cadence_hours": 24,
+    "label": "OSV.dev vulnerability list"
+  },
+  {
+    "url": "https://discourse.nixos.org/c/announcements/security",
+    "type": "discussion",
+    "weight": 0.55,
+    "cadence_hours": 48,
+    "label": "NixOS security announcements"
+  },
+  {
     "url": "https://paperswithcode.com/",
     "type": "research",
     "weight": 0.2,
@@ -154,5 +217,138 @@
     "type": "discussion",
     "weight": 0.05,
     "cadence_hours": 336
+  },
+  {
+    "url": "https://arxiv.org/rss/cs.AI",
+    "type": "research",
+    "weight": 0.35,
+    "cadence_hours": 168,
+    "label": "arXiv cs.AI — Artificial Intelligence"
+  },
+  {
+    "url": "https://arxiv.org/rss/cs.LG",
+    "type": "research",
+    "weight": 0.35,
+    "cadence_hours": 168,
+    "label": "arXiv cs.LG — Machine Learning"
+  },
+  {
+    "url": "https://arxiv.org/rss/cs.CL",
+    "type": "research",
+    "weight": 0.40,
+    "cadence_hours": 168,
+    "label": "arXiv cs.CL — NLP / LLMs / Language Agents"
+  },
+  {
+    "url": "https://arxiv.org/rss/cs.MA",
+    "type": "research",
+    "weight": 0.30,
+    "cadence_hours": 168,
+    "label": "arXiv cs.MA — Multi-Agent Systems"
+  },
+  {
+    "url": "https://arxiv.org/rss/cs.IR",
+    "type": "research",
+    "weight": 0.30,
+    "cadence_hours": 168,
+    "label": "arXiv cs.IR — Information Retrieval / RAG"
+  },
+  {
+    "url": "https://bair.berkeley.edu/blog/",
+    "type": "research",
+    "weight": 0.30,
+    "cadence_hours": 168,
+    "label": "UC Berkeley BAIR Blog"
+  },
+  {
+    "url": "https://hai.stanford.edu/news",
+    "type": "research",
+    "weight": 0.28,
+    "cadence_hours": 168,
+    "label": "Stanford HAI News"
+  },
+  {
+    "url": "https://news.mit.edu/topic/artificial-intelligence2",
+    "type": "research",
+    "weight": 0.28,
+    "cadence_hours": 168,
+    "label": "MIT News — Artificial Intelligence"
+  },
+  {
+    "url": "https://blog.ml.cmu.edu/",
+    "type": "research",
+    "weight": 0.25,
+    "cadence_hours": 336,
+    "label": "CMU Machine Learning Blog"
+  },
+  {
+    "url": "https://nlp.seas.harvard.edu/",
+    "type": "research",
+    "weight": 0.22,
+    "cadence_hours": 336,
+    "label": "Harvard NLP Group"
+  },
+  {
+    "url": "https://ai.cs.cornell.edu/",
+    "type": "research",
+    "weight": 0.22,
+    "cadence_hours": 336,
+    "label": "Cornell AI Group (arXiv host institution)"
+  },
+  {
+    "url": "https://nlp.cs.princeton.edu/",
+    "type": "research",
+    "weight": 0.22,
+    "cadence_hours": 336,
+    "label": "Princeton NLP — LLM evaluation, in-context learning"
+  },
+  {
+    "url": "https://nlp.washington.edu/research",
+    "type": "research",
+    "weight": 0.22,
+    "cadence_hours": 336,
+    "label": "UW NLP — semantic parsing, knowledge graphs, code NLP"
+  },
+  {
+    "url": "https://www.anthropic.com/research",
+    "type": "research",
+    "weight": 0.40,
+    "cadence_hours": 168,
+    "label": "Anthropic Research — Claude, safety, alignment, interpretability"
+  },
+  {
+    "url": "https://deepmind.google/research/publications/",
+    "type": "research",
+    "weight": 0.35,
+    "cadence_hours": 168,
+    "label": "Google DeepMind Publications"
+  },
+  {
+    "url": "https://ai.meta.com/research/publications/",
+    "type": "research",
+    "weight": 0.32,
+    "cadence_hours": 168,
+    "label": "Meta AI Research — LLaMA, FAISS, PyTorch"
+  },
+  {
+    "url": "https://allenai.org/research",
+    "type": "research",
+    "weight": 0.28,
+    "cadence_hours": 336,
+    "label": "Allen Institute for AI (AI2) — OLMo, AllenNLP, Semantic Scholar"
+  },
+  {
+    "url": "https://huggingface.co/papers",
+    "type": "research",
+    "weight": 0.30,
+    "cadence_hours": 72,
+    "label": "Hugging Face Daily Papers — community-curated arXiv"
+  },
+  {
+    "url": "https://paperswithcode.com/sota",
+    "type": "research",
+    "weight": 0.25,
+    "cadence_hours": 168,
+    "label": "Papers With Code — SOTA tracker across AI/ML benchmarks"
   }
 ]

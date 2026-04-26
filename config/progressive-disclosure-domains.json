@@ -32,7 +32,7 @@
           "extends": "standard",
           "tools": ["nix-diff", "nix-tree", "nixos-option", "nix flake"],
           "mcp_endpoints": ["/control/ai-coordinator/delegate", "/research/web/fetch"],
-          "research_packs": ["tech-documentation"],
+          "research_packs": ["tech-documentation", "security-advisories"],
           "memory_recall": ["nixos", "module", "flake", "derivation"]
         }
       }
@@ -86,7 +86,7 @@
           "mcp_endpoints": ["/control/ai-coordinator/delegate", "/control/autoresearch/run", "/learning/stats"],
           "skills": ["rag-techniques", "skill-creator"],
           "memory_recall": ["mcp", "workflow", "harness", "agent", "delegation"],
-          "research_packs": ["tech-documentation"]
+          "research_packs": ["tech-documentation", "security-advisories"]
         }
       }
     },
@@ -138,7 +138,8 @@
           "tools": ["kubectl", "terraform", "ansible"],
           "mcp_endpoints": ["/control/runtimes/schedule/select", "/metrics"],
           "skills": ["security-scanner", "performance-profiler"],
-          "memory_recall": ["deploy", "service", "rollback", "infrastructure"]
+          "memory_recall": ["deploy", "service", "rollback", "infrastructure"],
+          "research_packs": ["security-advisories"]
         }
       }
     },
@@ -163,6 +164,7 @@
           "extends": "standard",
           "tools": ["burpsuite", "metasploit"],
           "mcp_endpoints": ["/research/web/fetch"],
+          "research_packs": ["security-advisories"],
           "memory_recall": ["security", "cve", "vulnerability", "hardening"]
         }
       }

@@ -360,3 +360,793 @@ sources:
       - eval-risk
     schedule: weekly
     enabled: true
+
+  # ===========================================================================
+  # AI RESEARCH — arXiv Category Feeds
+  #
+  # arXiv is the primary open-access repository for AI research papers from
+  # all institutions: Stanford, MIT, Cornell, Harvard, CMU, Berkeley, and more.
+  # Uses the arXiv Atom API (max 100 papers per feed, sorted by last-updated).
+  # Collection: ai-research-feeds (refreshed weekly for recent work).
+  # ===========================================================================
+
+  - id: arxiv-cs-ai
+    type: url
+    description: >
+      arXiv cs.AI category feed — Artificial Intelligence papers (latest 100).
+      Covers planning, knowledge representation, automated reasoning, and AI
+      systems research from all institutions worldwide.
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.AI&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - artificial-intelligence
+      - planning
+      - reasoning
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-cs-lg
+    type: url
+    description: >
+      arXiv cs.LG category feed — Machine Learning papers (latest 100).
+      Covers neural architectures, training methods, optimization, generalization,
+      and ML systems research from all institutions.
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.LG&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - machine-learning
+      - neural-networks
+      - training
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-cs-cl
+    type: url
+    description: >
+      arXiv cs.CL category feed — Computation and Language (NLP/LLMs, latest 100).
+      Covers large language models, transformers, RAG, prompt engineering,
+      instruction following, and language agent research.
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.CL&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - nlp
+      - llm
+      - transformers
+      - rag
+      - language-models
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-cs-ma
+    type: url
+    description: >
+      arXiv cs.MA category feed — Multi-Agent Systems papers (latest 50).
+      Covers multi-agent coordination, distributed AI, agent communication,
+      and cooperative/competitive agent design research.
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.MA&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - multi-agent
+      - coordination
+      - distributed-ai
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-cs-ir
+    type: url
+    description: >
+      arXiv cs.IR category feed — Information Retrieval papers (latest 50).
+      Covers dense retrieval, RAG architectures, vector search, re-ranking,
+      hybrid search, and knowledge-grounded generation.
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.IR&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - information-retrieval
+      - rag
+      - vector-search
+      - reranking
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-cs-ne
+    type: url
+    description: >
+      arXiv cs.NE category feed — Neural and Evolutionary Computing (latest 50).
+      Covers neural architecture search, novel model structures, brain-inspired
+      computing, and evolutionary/genetic algorithm approaches.
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.NE&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - neural-computing
+      - architecture-search
+      - evolutionary
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-search-agents-rag
+    type: url
+    description: >
+      arXiv cross-category search: recent agentic AI + RAG papers (latest 50).
+      Searches across categories for papers on agent reasoning, tool use,
+      retrieval-augmented generation, and agentic coding systems.
+    url: https://export.arxiv.org/api/query?search_query=all:agentic+AND+%28ti:RAG+OR+ti:agent+OR+ti:tool-use+OR+ti:reasoning%29&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - agents
+      - rag
+      - tool-use
+      - reasoning
+      - agentic
+    schedule: weekly
+    enabled: true
+
+  - id: arxiv-search-code-llm
+    type: url
+    description: >
+      arXiv cross-category search: code generation + LLM for software engineering
+      (latest 50). Covers coding assistants, SWE-bench, code review, refactoring,
+      test generation, and AI-assisted development workflows.
+    url: https://export.arxiv.org/api/query?search_query=ti:code+AND+%28ti:LLM+OR+ti:language+model+OR+ti:agent%29&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - arxiv
+      - research
+      - code-generation
+      - software-engineering
+      - coding-agents
+      - swe-bench
+    schedule: weekly
+    enabled: true
+
+  # ===========================================================================
+  # AI RESEARCH — University Lab Research Pages
+  #
+  # Direct feeds from the leading academic AI research institutions.
+  # Content: research summaries, blog posts, publication lists.
+  # Collection: ai-research-labs
+  # ===========================================================================
+
+  - id: bair-blog
+    type: url
+    description: >
+      Berkeley AI Research (BAIR) Blog — research posts from UC Berkeley's
+      AI institute. Covers RL, robotics, NLP, safety, and ML systems.
+      Source institution: UC Berkeley (DeepMind, Google Brain, OpenAI alumni).
+    url: https://bair.berkeley.edu/blog/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - berkeley
+      - bair
+      - research
+      - blog
+      - rl
+      - robotics
+      - nlp
+      - safety
+    schedule: weekly
+    enabled: true
+
+  - id: stanford-hai-news
+    type: url
+    description: >
+      Stanford Human-Centered AI (HAI) Institute news and research highlights.
+      Covers AI policy, foundation model research, AI+society, and applied AI
+      systems. Stanford is home to foundational LLM and NLP research groups.
+    url: https://hai.stanford.edu/news
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - stanford
+      - hai
+      - research
+      - policy
+      - foundation-models
+      - applied-ai
+    schedule: weekly
+    enabled: true
+
+  - id: mit-news-ai
+    type: url
+    description: >
+      MIT News — Artificial Intelligence research coverage. MIT CSAIL, LIDS,
+      and affiliated groups publish breakthroughs in ML, robotics, computer
+      vision, NLP, and AI safety. Includes CSAIL and Broad Institute AI work.
+    url: https://news.mit.edu/topic/artificial-intelligence2
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - mit
+      - csail
+      - research
+      - ml
+      - robotics
+      - vision
+      - safety
+    schedule: weekly
+    enabled: true
+
+  - id: mit-csail-research
+    type: url
+    description: >
+      MIT CSAIL (Computer Science and Artificial Intelligence Laboratory)
+      research overview. One of the world's largest academic AI and CS labs,
+      covering systems, theory, vision, NLP, and robotics.
+    url: https://www.csail.mit.edu/research
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - mit
+      - csail
+      - research
+      - systems
+      - theory
+      - nlp
+    schedule: weekly
+    enabled: true
+
+  - id: harvard-nlp
+    type: url
+    description: >
+      Harvard NLP Group research page. Historically published transformer
+      architecture work (The Annotated Transformer), efficient NLP models,
+      and structured prediction research. PI: Alexander Rush.
+    url: https://nlp.seas.harvard.edu/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - harvard
+      - nlp
+      - research
+      - transformers
+      - structured-prediction
+      - efficient-nlp
+    schedule: weekly
+    enabled: true
+
+  - id: cmu-ml-blog
+    type: url
+    description: >
+      CMU Machine Learning Department blog and research updates. Carnegie Mellon
+      is home to some of the deepest ML research: probabilistic ML, AutoML,
+      federated learning, neural architecture search, and AI systems.
+    url: https://blog.ml.cmu.edu/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - cmu
+      - carnegie-mellon
+      - research
+      - probabilistic-ml
+      - automl
+      - federated-learning
+    schedule: weekly
+    enabled: true
+
+  - id: cmu-lti-research
+    type: url
+    description: >
+      CMU Language Technologies Institute (LTI) research page. Home of pioneering
+      work in NLP, speech, machine translation, dialogue systems, and conversational
+      AI. Source of Sphinx, GPT predecessors, and many NLP foundations.
+    url: https://www.lti.cs.cmu.edu/research
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - cmu
+      - lti
+      - nlp
+      - speech
+      - machine-translation
+      - dialogue
+    schedule: weekly
+    enabled: true
+
+  - id: princeton-nlp
+    type: url
+    description: >
+      Princeton NLP Group research page. Covers large language models, model
+      evaluation, in-context learning, and AI robustness. Published influential
+      work on LLM evaluation methodology and few-shot learning.
+    url: https://nlp.cs.princeton.edu/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - princeton
+      - nlp
+      - research
+      - llm
+      - evaluation
+      - in-context-learning
+    schedule: weekly
+    enabled: true
+
+  - id: uw-nlp
+    type: url
+    description: >
+      University of Washington NLP Group. Home of groundbreaking work on
+      semantic parsing, knowledge graphs, commonsense reasoning, and NLP
+      for code. Published AllenNLP and influential QA/reasoning benchmarks.
+    url: https://nlp.washington.edu/research
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - uw
+      - washington
+      - nlp
+      - semantic-parsing
+      - knowledge-graphs
+      - commonsense
+    schedule: weekly
+    enabled: true
+
+  - id: cornell-ai-cs
+    type: url
+    description: >
+      Cornell AI Group — arXiv host institution and AI research lab. Cornell's
+      CS/AI faculty research covers multi-agent systems, NLP, program synthesis,
+      theorem proving, and social computing. Also operators of arXiv.org.
+    url: https://ai.cs.cornell.edu/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - cornell
+      - research
+      - multi-agent
+      - nlp
+      - program-synthesis
+      - social-computing
+    schedule: weekly
+    enabled: true
+
+  - id: columbia-nlp
+    type: url
+    description: >
+      Columbia NLP Group research. Covers discourse analysis, question answering,
+      summarization, multilingual NLP, and LLM alignment research. Columbia
+      AI also includes strong systems and vision research groups.
+    url: https://www.cs.columbia.edu/nlp/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - columbia
+      - nlp
+      - research
+      - summarization
+      - multilingual
+      - alignment
+    schedule: weekly
+    enabled: true
+
+  - id: gatech-ml
+    type: url
+    description: >
+      Georgia Tech Machine Learning Center research. Strong in RL, computer
+      vision, robotics AI, and ML theory. Publishes influential work on
+      continual learning, meta-learning, and adversarial robustness.
+    url: https://ml.gatech.edu/content/research
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - gatech
+      - research
+      - reinforcement-learning
+      - continual-learning
+      - meta-learning
+      - robustness
+    schedule: weekly
+    enabled: true
+
+  # ===========================================================================
+  # AI RESEARCH — Industry Research Labs (Open Publications)
+  #
+  # Research from major AI labs that publish openly via blogs and arXiv.
+  # Collection: ai-research-labs (shared with university sources).
+  # ===========================================================================
+
+  - id: anthropic-research
+    type: url
+    description: >
+      Anthropic Research page — Constitutional AI, interpretability, RLHF,
+      AI safety, and large-scale language model research. Publishes work on
+      Claude model development, alignment, and responsible scaling.
+      NOTE: Returns HTTP 403 to automated fetchers. Use arXiv searches for
+      Anthropic papers (author:Anthropic) and direct arXiv links instead.
+    url: https://www.anthropic.com/research
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - anthropic
+      - research
+      - safety
+      - alignment
+      - constitutional-ai
+      - interpretability
+      - claude
+    schedule: weekly
+    enabled: false
+
+  - id: deepmind-publications
+    type: url
+    description: >
+      Google DeepMind publications page. Source of AlphaFold, Gemini, AlphaCode,
+      AlphaZero, and foundational RL/planning research. One of the highest-impact
+      AI research organizations globally.
+    url: https://deepmind.google/research/publications/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - deepmind
+      - google
+      - research
+      - alphafold
+      - gemini
+      - rl
+      - planning
+    schedule: weekly
+    enabled: true
+
+  - id: meta-ai-research
+    type: url
+    description: >
+      Meta AI Research publications page. Source of LLaMA, FAISS, PyTorch,
+      OPT, and foundational work on open-source AI models, dense retrieval,
+      and multilingual NLP. FAIR (Fundamental AI Research) operates here.
+      NOTE: Returns HTTP 500 (requires JS rendering). Disabled. Find Meta
+      AI papers via arXiv author searches instead.
+    url: https://ai.meta.com/research/publications/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - meta
+      - fair
+      - research
+      - llama
+      - faiss
+      - pytorch
+      - open-source
+      - multilingual
+    schedule: weekly
+    enabled: false
+
+  - id: microsoft-research-ai
+    type: url
+    description: >
+      Microsoft Research AI research area — covers foundation models, Azure AI,
+      Phi model series, retrieval systems, and AI safety. Phi-1/2/3/4 small
+      model research and AutoGen multi-agent framework originate here.
+    url: https://www.microsoft.com/en-us/research/research-area/artificial-intelligence/
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - microsoft
+      - research
+      - phi
+      - autogen
+      - multi-agent
+      - foundation-models
+      - retrieval
+    schedule: weekly
+    enabled: true
+
+  - id: ai2-research
+    type: url
+    description: >
+      Allen Institute for AI (AI2) research — non-profit AI research institute.
+      Source of AllenNLP, OLMo (open language models), SPECTER embeddings,
+      Semantic Scholar, and commonsense reasoning benchmarks.
+    url: https://allenai.org/research
+    fetch:
+      - full
+    collection: ai-research-labs
+    tags:
+      - ai2
+      - allen-institute
+      - research
+      - allennlp
+      - olmo
+      - open-models
+      - semantic-scholar
+      - commonsense
+    schedule: weekly
+    enabled: true
+
+  # ===========================================================================
+  # SECURITY INTELLIGENCE — Threats, Vulnerabilities, and Advisories
+  #
+  # Official vulnerability and threat-intel sources that should surface during
+  # planning, implementation, and operational change review.
+  # Collection: security-advisories
+  # ===========================================================================
+
+  - id: cisa-known-exploited-vulnerabilities
+    type: url
+    description: >
+      CISA Known Exploited Vulnerabilities catalog feed. High-signal source for
+      vulnerabilities with confirmed in-the-wild exploitation and remediation
+      due dates. Prioritize these during planning and deploy risk review.
+    url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+    fetch:
+      - full
+    collection: security-advisories
+    tags:
+      - security
+      - vulnerability
+      - cisa
+      - kev
+      - exploited
+      - cve
+      - threat-intel
+    schedule: daily
+    enabled: true
+
+  - id: github-advisory-database
+    type: github_repo
+    description: >
+      GitHub Advisory Database repository. Canonical GHSA source for
+      vulnerability advisories affecting packages and ecosystems referenced by
+      modern development workflows.
+    url: github/advisory-database
+    fetch:
+      - readme
+    collection: security-advisories
+    tags:
+      - security
+      - vulnerability
+      - ghsa
+      - github
+      - advisory
+      - supply-chain
+    schedule: weekly
+    enabled: true
+
+  - id: cve-project-cvelistv5
+    type: github_repo
+    description: >
+      Official CVE Program CVE List v5 repository. Source of truth for CVE
+      record structure and published vulnerability entries.
+    url: CVEProject/cvelistV5
+    fetch:
+      - readme
+    collection: security-advisories
+    tags:
+      - security
+      - vulnerability
+      - cve
+      - cna
+      - disclosure
+    schedule: weekly
+    enabled: true
+
+  - id: mitre-attack-stix-data
+    type: github_repo
+    description: >
+      MITRE ATT&CK STIX dataset repository. Adds adversary tactics and
+      techniques context so change planning can consider threat tradecraft,
+      not just CVE inventory.
+    url: mitre-attack/attack-stix-data
+    fetch:
+      - readme
+    collection: security-advisories
+    tags:
+      - security
+      - threat-intel
+      - mitre-attack
+      - tactics
+      - techniques
+      - adversary
+    schedule: weekly
+    enabled: true
+
+  - id: osv-vulnerability-database
+    type: github_repo
+    description: >
+      OSV open vulnerability ecosystem repository. Useful for modern
+      package-level vulnerability reasoning across ecosystems that appear in
+      this stack, including Python, Node, and container-adjacent tooling.
+    url: google/osv.dev
+    fetch:
+      - readme
+    collection: security-advisories
+    tags:
+      - security
+      - vulnerability
+      - osv
+      - packages
+      - supply-chain
+    schedule: weekly
+    enabled: true
+
+  - id: nixos-security-announcements
+    type: url
+    description: >
+      NixOS security announcements feed. Tracks upstream advisories relevant to
+      the declarative operating environment that owns this deployment.
+    url: https://discourse.nixos.org/c/announcements/security.rss
+    fetch:
+      - full
+    collection: security-advisories
+    tags:
+      - security
+      - nixos
+      - advisories
+      - rss
+      - cve
+    schedule: daily
+    enabled: true
+
+  # ===========================================================================
+  # AI RESEARCH — Aggregators and Paper Discovery
+  #
+  # High-signal aggregators that curate top AI papers across all sources.
+  # Collection: ai-research-feeds (aggregated with arXiv feeds).
+  # ===========================================================================
+
+  - id: huggingface-papers
+    type: url
+    description: >
+      Hugging Face daily papers feed — community-upvoted papers from arXiv
+      daily. Surfaces the most practically relevant AI research as rated by
+      ML practitioners. Covers LLMs, diffusion, agents, and ML tooling.
+      NOTE: huggingface.co/papers is JS-rendered; plain HTTP fetch returns
+      incomplete HTML. Use arXiv feeds as primary. Disabled until a server-side
+      rendering proxy or API endpoint is available.
+    url: https://huggingface.co/papers
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - huggingface
+      - papers
+      - aggregator
+      - daily
+      - community-curated
+      - llm
+      - diffusion
+    schedule: weekly
+    enabled: false
+
+  - id: paperswithcode-latest
+    type: url
+    description: >
+      Papers With Code latest research — AI/ML papers with linked code
+      implementations. Tracks state-of-the-art across tasks, benchmarks,
+      and datasets. Essential for identifying reproducible research.
+    url: https://paperswithcode.com/latest
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - paperswithcode
+      - research
+      - aggregator
+      - code
+      - benchmarks
+      - sota
+    schedule: weekly
+    enabled: true
+
+  - id: paperswithcode-sota
+    type: url
+    description: >
+      Papers With Code state-of-the-art tracker — current SOTA results across
+      AI/ML tasks and benchmarks. Useful for calibrating model/system capability
+      and identifying where research is advancing fastest.
+    url: https://paperswithcode.com/sota
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - paperswithcode
+      - sota
+      - benchmarks
+      - evaluation
+      - leaderboards
+    schedule: weekly
+    enabled: true
+
+  - id: semantic-scholar-ai
+    type: url
+    description: >
+      Semantic Scholar AI research feed — AI2-powered academic search engine
+      indexing 200M+ papers with semantic search, citation graphs, and
+      influence metrics. Best discovery tool for connecting research lineages.
+      NOTE: Requires API key for reliable access (429 rate-limit without key).
+      Set SEMANTIC_SCHOLAR_API_KEY in service env to re-enable.
+    url: https://api.semanticscholar.org/graph/v1/paper/search?query=large+language+model+agent+reasoning&fields=title,abstract,year,authors,externalIds&limit=50
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - semantic-scholar
+      - ai2
+      - research
+      - aggregator
+      - citation-graph
+    schedule: weekly
+    enabled: false
+
+  - id: semantic-scholar-rag
+    type: url
+    description: >
+      Semantic Scholar RAG/retrieval research feed — papers on retrieval-
+      augmented generation, dense retrieval, hybrid search, and knowledge-
+      grounded generation from the Semantic Scholar API.
+      NOTE: Requires API key for reliable access. Disabled until key configured.
+    url: https://api.semanticscholar.org/graph/v1/paper/search?query=retrieval+augmented+generation+RAG+2024+2025&fields=title,abstract,year,authors,externalIds&limit=50
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - semantic-scholar
+      - rag
+      - retrieval
+      - knowledge-grounded
+    schedule: weekly
+    enabled: false
+
+  - id: semantic-scholar-agents
+    type: url
+    description: >
+      Semantic Scholar agentic AI research feed — papers on AI agents, tool
+      use, multi-agent systems, and autonomous software engineering from the
+      Semantic Scholar API.
+      NOTE: Requires API key for reliable access. Disabled until key configured.
+    url: https://api.semanticscholar.org/graph/v1/paper/search?query=agentic+AI+tool+use+multi-agent+software+engineering+2024+2025&fields=title,abstract,year,authors,externalIds&limit=50
+    fetch:
+      - full
+    collection: ai-research-feeds
+    tags:
+      - semantic-scholar
+      - agents
+      - tool-use
+      - software-engineering
+      - agentic
+    schedule: weekly
+    enabled: false
