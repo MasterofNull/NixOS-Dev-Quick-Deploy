@@ -162,8 +162,6 @@ AIDB vector search endpoint: POST /vector/search (not /search).
 - 2.5.2 cosine similarity: PASS (0.714, strings from QA plan)
 
 ## Remaining High-Priority Open Work
-- **Phase 21.4**: MCP tool `run_qa_check` in hybrid-coordinator (requires deploy)
-- **Phase 21.5**: Post-deploy auto Phase 0 via `aq-qa 0` in nixos-quick-deploy.sh
 - Phase 11.0.3 + 11.2: Run import after `sudo systemctl restart ai-aidb.service`
 - Phase 11.1.1: aider-wrapper lock (aider-chat version invalid in requirements.txt)
 - Phase 11.1.3: pre-deployment hash check in NixOS module
