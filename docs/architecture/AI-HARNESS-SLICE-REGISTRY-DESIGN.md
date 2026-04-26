@@ -240,6 +240,21 @@ The initial registry covers these high-level slices:
 
 This is not the final slice taxonomy. It is the minimum useful first pass that reflects the repo’s current system boundaries.
 
+### 8.1 Decomposition Wave 1
+
+The first refinement wave starts by decomposing the broad `aq-*` tooling area into narrower operational slices:
+
+1. `aq-bootstrap-hints-tooling`
+2. `aq-runtime-diagnostics-tooling`
+3. `aq-workflow-orchestration-tooling`
+4. `aq-reporting-knowledge-tooling`
+
+This is the preferred pattern for future refinement:
+
+- start with one broad slice,
+- split it only when the repo already contains distinct contracts and entrypoints,
+- keep the scorecard engine stable while the taxonomy becomes more precise.
+
 ---
 
 ## 9. Recommended Use
@@ -339,6 +354,7 @@ The first cut is advisory. Recommended follow-up:
 
 - Add slice ownership to major architecture docs.
 - Expand registry entries with stronger acceptance signals.
+- Continue decomposing broad slices whose notes or evidence show they are carrying multiple operational roles.
 
 ### Phase 3
 

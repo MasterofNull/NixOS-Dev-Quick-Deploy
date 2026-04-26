@@ -749,41 +749,45 @@
       }
     },
     {
-      "id": "aq-cli-tooling",
-      "name": "AQ CLI Tooling",
+      "id": "aq-bootstrap-hints-tooling",
+      "name": "AQ Bootstrap and Hints Tooling",
       "domain": "tools",
-      "summary": "Primary local operator and agent command surface for onboarding, hints, runtime diagnosis, workflows, memory, and reports.",
+      "summary": "Onboarding, task bootstrap, context-card, and hint entrypoints for agents and operators.",
       "maturity_target": "observable",
       "owner_surface": {
         "primary_paths": [
           "scripts/ai",
-          "config/agent-context-cards.json"
+          "config/agent-context-cards.json",
+          "docs/agent-guides/01-QUICK-START.md"
         ],
         "entrypoints": [
           "scripts/ai/aq-prime",
+          "scripts/ai/aq-session-zero",
           "scripts/ai/aq-hints",
-          "scripts/ai/aq-context-bootstrap"
+          "scripts/ai/aq-context-bootstrap",
+          "scripts/ai/aq-context-card",
+          "scripts/ai/aq-context-manage"
         ]
       },
       "contract": {
         "inputs": [
           "task summaries",
-          "diagnostic presets",
-          "workflow objectives"
+          "bootstrap scope",
+          "requested context depth"
         ],
         "outputs": [
-          "hints",
+          "ranked hints",
+          "context bootstrap payloads",
           "context cards",
-          "runtime plans",
-          "reports"
+          "session-zero service guidance"
         ],
         "invariants": [
-          "agent-facing CLIs should remain discoverable and stable",
-          "workflow and runtime tools should emit actionable evidence"
+          "bootstrap tools must remain compact and search-first",
+          "hint and context tools must route users to existing harness surfaces instead of hidden internals"
         ],
         "failure_modes": [
           "CLI drift from backing APIs",
-          "surface sprawl without ownership"
+          "context-card guidance diverges from workflow and harness behavior"
         ],
         "rollback_commands": [
           "git revert <commit>"
@@ -791,11 +795,11 @@
       },
       "control_plane": {
         "config_paths": [
-          "config/agent-context-cards.json",
-          "config/workflow-blueprints.json"
+          "config/agent-context-cards.json"
         ],
         "policy_paths": [
-          "docs/agent-guides/01-QUICK-START.md"
+          "docs/agent-guides/01-QUICK-START.md",
+          "AGENTS.md"
         ],
         "service_units": [],
         "upstream_dependencies": [
@@ -808,22 +812,34 @@
       },
       "data_plane": {
         "runtime_paths": [
-          "scripts/ai"
+          "scripts/ai/aq-prime",
+          "scripts/ai/aq-session-zero",
+          "scripts/ai/aq-hints",
+          "scripts/ai/aq-context-bootstrap",
+          "scripts/ai/aq-context-card",
+          "scripts/ai/aq-context-manage"
         ],
         "storage_paths": [],
-        "api_endpoints": [],
-        "mcp_tools": []
+        "api_endpoints": [
+          "/hints"
+        ],
+        "mcp_tools": [
+          "get_hints",
+          "primer_workflow"
+        ]
       },
       "observability": {
         "health_checks": [
-          "aq-session-zero"
+          "aq-session-zero",
+          "aq-hints \"health\" --format=json --agent=codex"
         ],
         "dashboards": [
           "dashboard/backend/api/routes/insights.py"
         ],
         "alerts": [],
         "metrics_signals": [
-          "aq-report output"
+          "hint feedback",
+          "bootstrap route usage"
         ],
         "log_sources": [
           "CLI stdout/stderr"
@@ -849,7 +865,9 @@
           "aq-prime",
           "aq-session-zero",
           "aq-hints",
-          "aq-context-bootstrap"
+          "aq-context-bootstrap",
+          "aq-context-card",
+          "aq-context-manage"
         ],
         "dashboard_routes": [
           "/api/insights"
@@ -862,7 +880,421 @@
           "scripts/governance/repo-structure-lint.sh --staged"
         ],
         "notes": [
-          "This slice should eventually be split into operator, diagnostics, workflow, and knowledge sub-surfaces."
+          "This slice owns the initial harness entry experience and should remain compact and evidence-first."
+        ]
+      }
+    },
+    {
+      "id": "aq-runtime-diagnostics-tooling",
+      "name": "AQ Runtime Diagnostics Tooling",
+      "domain": "tools",
+      "summary": "Runtime diagnosis, remediation planning, and QA phase runners for live service health and incident classification.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/ai",
+          "docs/operations/ai-stack-runtime-diagnosis-loop.md",
+          "config/agent-context-cards.json"
+        ],
+        "entrypoints": [
+          "scripts/ai/aq-qa",
+          "scripts/ai/aq-runtime-diagnose",
+          "scripts/ai/aq-runtime-plan",
+          "scripts/ai/aq-runtime-remediate",
+          "scripts/ai/aq-runtime-act"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "runtime presets",
+          "service names",
+          "diagnostic fixtures",
+          "QA phase selection"
+        ],
+        "outputs": [
+          "health results",
+          "runtime diagnosis payloads",
+          "planned remediation actions"
+        ],
+        "invariants": [
+          "diagnostics should classify the failing layer before proposing changes",
+          "runtime actions should preserve reviewer-visible evidence and rollback paths"
+        ],
+        "failure_modes": [
+          "blind rebuild loops",
+          "unsafe or noisy remediation suggestions",
+          "QA phase drift from runtime planner assumptions"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/agent-context-cards.json"
+        ],
+        "policy_paths": [
+          "docs/operations/ai-stack-runtime-diagnosis-loop.md",
+          "docs/agent-guides/02-SERVICE-STATUS.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "systemd",
+          "hybrid-coordinator",
+          "llama-cpp"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "agents",
+          "Tier 0 validation"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/ai/aq-qa",
+          "scripts/ai/aq-runtime-diagnose",
+          "scripts/ai/aq-runtime-plan",
+          "scripts/ai/aq-runtime-remediate",
+          "scripts/ai/aq-runtime-act"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [],
+        "mcp_tools": [
+          "qa_check"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0",
+          "aq-runtime-diagnose --preset llama-cpp --json"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/metrics.py",
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml",
+          "config/anomaly-detection.yaml"
+        ],
+        "metrics_signals": [
+          "aq-qa phase output",
+          "runtime diagnosis summaries"
+        ],
+        "log_sources": [
+          "journalctl -u ai-*.service",
+          "CLI stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/check-runtime-incident-tooling.sh",
+          "scripts/testing"
+        ],
+        "acceptance_signals": [
+          "phase-0 health check remains available",
+          "runtime planner and diagnose entrypoints run successfully"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/ai-stack-runtime-diagnosis-loop.md",
+          "docs/agent-guides/02-SERVICE-STATUS.md"
+        ],
+        "cli_entrypoints": [
+          "aq-qa",
+          "aq-runtime-diagnose",
+          "aq-runtime-plan",
+          "aq-runtime-remediate",
+          "aq-runtime-act"
+        ],
+        "dashboard_routes": [
+          "/api/metrics",
+          "/api/insights/observability/readiness"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should stay tightly aligned with live service health and avoid accumulating imperative-only remediation paths."
+        ]
+      }
+    },
+    {
+      "id": "aq-workflow-orchestration-tooling",
+      "name": "AQ Workflow and Orchestration Tooling",
+      "domain": "tools",
+      "summary": "CLI surfaces for workflow execution, orchestration entry, and capability-directed task routing.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/ai",
+          "config/workflow-blueprints.json",
+          "ai-stack/workflows"
+        ],
+        "entrypoints": [
+          "scripts/ai/aq-workflow",
+          "scripts/ai/aq-system-act"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "workflow files",
+          "execution inputs",
+          "high-level task queries"
+        ],
+        "outputs": [
+          "workflow validation results",
+          "workflow execution state",
+          "orchestrated runtime recommendations"
+        ],
+        "invariants": [
+          "workflow CLI behavior must stay aligned with blueprint contracts",
+          "orchestration tools should favor existing harness workflow surfaces over hidden custom flows"
+        ],
+        "failure_modes": [
+          "workflow CLI diverges from server-side workflow engine",
+          "task routing bypasses established workflow blueprints"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/workflow-blueprints.json"
+        ],
+        "policy_paths": [
+          "docs/architecture/workflow-dsl-design.md",
+          "docs/architecture/workflow-executor-integration.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "hybrid-coordinator",
+          "workflow blueprints"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "agents"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/ai/aq-workflow",
+          "scripts/ai/aq-system-act"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/workflow/plan",
+          "/workflow/run/start"
+        ],
+        "mcp_tools": [
+          "workflow_plan",
+          "workflow_run_start",
+          "workflow_orchestrate"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-workflow list"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "workflow compliance",
+          "workflow run summaries"
+        ],
+        "log_sources": [
+          "CLI stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/workflows/tests",
+          "scripts/testing"
+        ],
+        "acceptance_signals": [
+          "workflow CLI validates and lists workflows",
+          "workflow orchestration remains reachable from CLI"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/architecture/workflow-dsl-design.md",
+          "docs/architecture/workflow-executor-integration.md"
+        ],
+        "cli_entrypoints": [
+          "aq-workflow",
+          "aq-system-act"
+        ],
+        "dashboard_routes": [
+          "/api/insights/workflows/compliance"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/repo-structure-lint.sh --staged"
+        ],
+        "notes": [
+          "This slice should remain a thin operational layer over the workflow engine rather than a separate orchestration system."
+        ]
+      }
+    },
+    {
+      "id": "aq-reporting-knowledge-tooling",
+      "name": "AQ Reporting and Knowledge Tooling",
+      "domain": "tools",
+      "summary": "Reporting, memory lookup, retrieval prewarm, and pattern/gap tooling for operator feedback and knowledge reuse.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/ai",
+          "ai-stack/prompts/registry.yaml",
+          "ai-stack/agent-memory"
+        ],
+        "entrypoints": [
+          "scripts/ai/aq-report",
+          "scripts/ai/aq-memory",
+          "scripts/ai/aq-patterns",
+          "scripts/ai/aq-gaps",
+          "scripts/ai/aq-cache-prewarm",
+          "scripts/ai/aq-rag-prewarm"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "time windows",
+          "memory queries",
+          "prewarm candidates",
+          "pattern or gap search terms"
+        ],
+        "outputs": [
+          "stack health digests",
+          "memory results",
+          "prewarm actions",
+          "gap and pattern summaries"
+        ],
+        "invariants": [
+          "reporting and knowledge tooling should surface actionable operator guidance",
+          "memory and prewarm tools should reuse existing harness data stores instead of creating parallel persistence"
+        ],
+        "failure_modes": [
+          "reporting drift from live telemetry",
+          "memory surfaces become detached from AIDB and agent-memory ownership"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "ai-stack/prompts/registry.yaml"
+        ],
+        "policy_paths": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "service_units": [],
+        "upstream_dependencies": [
+          "hybrid-coordinator",
+          "AIDB",
+          "agent memory"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "agents",
+          "dashboard insights"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/ai/aq-report",
+          "scripts/ai/aq-memory",
+          "scripts/ai/aq-patterns",
+          "scripts/ai/aq-gaps",
+          "scripts/ai/aq-cache-prewarm",
+          "scripts/ai/aq-rag-prewarm"
+        ],
+        "storage_paths": [
+          "runtime:/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json"
+        ],
+        "api_endpoints": [
+          "/hints"
+        ],
+        "mcp_tools": [
+          "store_memory",
+          "recall_memory",
+          "query_aidb"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-report --format json",
+          "aq-memory stats --project ai-stack"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "aq-report JSON cache",
+          "memory stats"
+        ],
+        "log_sources": [
+          "CLI stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing",
+          "ai-stack/mcp-servers/hybrid-coordinator/test_harness_eval_scorecard.py"
+        ],
+        "acceptance_signals": [
+          "aq-report emits JSON successfully",
+          "memory CLI remains queryable and stats-capable"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/orchestration-visibility-guide.md",
+          "docs/architecture/memory-system-design.md"
+        ],
+        "cli_entrypoints": [
+          "aq-report",
+          "aq-memory",
+          "aq-patterns",
+          "aq-gaps",
+          "aq-cache-prewarm",
+          "aq-rag-prewarm"
+        ],
+        "dashboard_routes": [
+          "/api/insights",
+          "/api/metrics"
+        ]
+      },
+      "governance": {
+        "risk_level": "medium",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/repo-structure-lint.sh --staged"
+        ],
+        "notes": [
+          "This slice should eventually be cross-linked more tightly with the AIDB and memory data slice through shared acceptance signals."
         ]
       }
     },
