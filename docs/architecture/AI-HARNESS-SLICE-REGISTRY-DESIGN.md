@@ -255,6 +255,20 @@ This is the preferred pattern for future refinement:
 - split it only when the repo already contains distinct contracts and entrypoints,
 - keep the scorecard engine stable while the taxonomy becomes more precise.
 
+### 8.2 Decomposition Wave 2
+
+The second refinement wave decomposes the old `monitoring-observability` slice into:
+
+1. `service-health-monitoring`
+2. `telemetry-alerting-observability`
+3. `readiness-insights-observability`
+
+This split follows the actual repo boundaries:
+
+- `scripts/health/` and dashboard health services own service probe truth,
+- `ai-stack/monitoring/`, `ai-stack/observability/`, and alert configs own telemetry and alerting,
+- `dashboard/backend/api/services/ai_insights.py` and `routes/insights.py` own readiness aggregation.
+
 ---
 
 ## 9. Recommended Use
