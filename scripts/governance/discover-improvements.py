@@ -90,6 +90,19 @@ def github_release_summary(data: dict | None, error: str | None) -> list[str]:
     return lines
 
 
+def github_repo_summary(repo_data: dict | None, error: str | None) -> list[str]:
+    if error:
+        return [f"- **Error:** {error}"]
+    if not repo_data:
+        return ["- **Repo data:** N/A"]
+    return [
+        f"- **Repo:** {repo_data.get('full_name', 'N/A')}",
+        f"- **Repo URL:** {repo_data.get('html_url', 'N/A')}",
+        f"- **Stars:** {repo_data.get('stargazers_count', 'N/A')}",
+        f"- **Updated:** {repo_data.get('updated_at', 'N/A')}",
+    ]
+
+
 def score_github_repo(repo_data: dict, release_data: dict | None, weight: float) -> float:
     stars = repo_data.get("stargazers_count", 0) or 0
     updated = repo_data.get("updated_at", "")
@@ -259,24 +272,30 @@ def main() -> int:
             skipped.append(f"- {url} (not due)")
             skipped_urls.append(url)
             continue
-        if source_type == "github_release":
+        if source_type in {"github_release", "github_repo"}:
             try:
                 repo_tuple = parse_github_repo(url)
                 if not repo_tuple:
                     continue
                 owner, repo = repo_tuple
                 repo_data = get_github_repo_data(owner, repo, repo_cache, repo_errors)
-                release_data = get_github_release_data(owner, repo, release_cache, release_errors)
                 if not repo_data:
                     raise ValueError(repo_errors.get(f"{owner}/{repo}", "Missing repo data"))
+                release_data = None
+                if source_type == "github_release":
+                    release_data = get_github_release_data(owner, repo, release_cache, release_errors)
                 score = score_github_repo(repo_data, release_data, weight)
                 lines = [
                     f"- **Repo:** {owner}/{repo}",
                     f"- **Score:** {score}",
-                    f"- **Latest release:** {release_data.get('name') or release_data.get('tag_name', 'N/A')}",
-                    f"- **Release URL:** {release_data.get('html_url', 'N/A')}",
                     f"- **Stars:** {repo_data.get('stargazers_count', 'N/A')}",
+                    f"- **Updated:** {repo_data.get('updated_at', 'N/A')}",
                 ]
+                if source_type == "github_release":
+                    lines.extend([
+                        f"- **Latest release:** {release_data.get('name') or release_data.get('tag_name', 'N/A')}",
+                        f"- **Release URL:** {release_data.get('html_url', 'N/A')}",
+                    ])
                 if score >= MIN_CANDIDATE_SCORE:
                     candidates.append((score, [url, *lines]))
             except Exception as exc:  # noqa: BLE001
@@ -331,11 +350,11 @@ def main() -> int:
                 release_error = release_errors.get(cache_key)
                 out_lines.append(f"- **Type:** {source_type}")
                 out_lines.append(f"- **Weight:** {weight}")
-                out_lines.extend(github_release_summary(release_cache.get(cache_key), release_error))
-                if repo_error:
-                    out_lines.append(f"- **Repo Error:** {repo_error}")
-                elif cache_key in repo_cache:
-                    out_lines.append(f"- **Stars:** {repo_cache[cache_key].get('stargazers_count', 'N/A')}")
+                out_lines.extend(github_repo_summary(repo_cache.get(cache_key), repo_error))
+                if source_type == "github_release":
+                    out_lines.extend(github_release_summary(release_cache.get(cache_key), release_error))
+                elif release_error and "rate limit" in release_error.lower():
+                    out_lines.append(f"- **Release Error:** {release_error}")
             else:
                 out_lines.append(f"- **Type:** {source_type}")
                 out_lines.append(f"- **Weight:** {weight}")
