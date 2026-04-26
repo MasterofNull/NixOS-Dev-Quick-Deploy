@@ -42,6 +42,21 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         delegated.assert_awaited_once()
         self.assertEqual(delegated.await_args.kwargs["profile"], "remote-reasoning")
 
+    async def test_execute_critical_uses_reasoning_profile_until_flagship_exists(self):
+        with patch.object(
+            self.router,
+            "_execute_via_coordinator",
+            AsyncMock(return_value="CRITICAL_OK"),
+        ) as delegated:
+            result = await self.router._execute_paid(
+                {"description": "critical architectural decision", "context": {}},
+                "claude-opus",
+            )
+
+        self.assertEqual(result, "CRITICAL_OK")
+        delegated.assert_awaited_once()
+        self.assertEqual(delegated.await_args.kwargs["profile"], "remote-reasoning")
+
     async def test_execute_with_routing_escalates_from_local_to_free(self):
         local_fail = AsyncMock(side_effect=Exception("local failed"))
         free_success = AsyncMock(return_value="FREE_RECOVERY")
@@ -77,6 +92,29 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
             self.router._extract_response_text({"data": {"output": "C"}}),
             "C",
         )
+
+    def test_build_prompt_includes_advisor_guidance(self):
+        prompt = self.router._build_prompt(
+            {
+                "description": "review the architecture change",
+                "context": {"summary": "routing cleanup"},
+                "advisor_guidance": {
+                    "action": "modify",
+                    "guidance": "Prefer the validated coordinator profile.",
+                    "reasoning": "The prior mapping drifted from switchboard profile names.",
+                },
+            },
+            optimize_for="remote",
+        )
+        self.assertIn("<advisor_guidance action=\"modify\">", prompt)
+        self.assertIn("Prefer the validated coordinator profile.", prompt)
+
+    def test_get_advisor_metrics_handles_empty_db(self):
+        self.router.advisor_enabled = True
+        metrics = self.router.get_advisor_metrics()
+        self.assertTrue(metrics["advisor_enabled"])
+        self.assertEqual(metrics["total_consultations"], 0)
+        self.assertEqual(metrics["consultation_rate_percent"], 0)
 
 
 if __name__ == "__main__":
