@@ -233,6 +233,19 @@ The first probe batch is intentionally limited to fast, non-destructive checks:
 - hybrid coordinator health, workflow planning, and route-decision endpoints,
 - workflow and service-health summary routes that return current runtime evidence.
 
+The current runtime-backed coverage is focused on the highest-signal slices first:
+
+- `routing-orchestration`
+- `workflow-engine`
+- `service-health-monitoring`
+- `readiness-insights-observability`
+- `dashboard-insights-readiness-surfaces`
+- `operator-runtime-control-surfaces`
+- `mcp-server-platform`
+- `security-scan-compliance-automation`
+- `policy-validation-governance`
+- `operator-security-audit-controls`
+
 This creates a stricter distinction:
 
 - `declared`: the repo says the slice has a surface,

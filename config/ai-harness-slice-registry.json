@@ -508,6 +508,50 @@
         "notes": [
           "This slice should eventually enforce a more uniform server manifest and middleware contract."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "hybrid-health-detailed",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "hybrid",
+            "path": "/health/detailed",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "dependencies"
+            ]
+          },
+          {
+            "id": "workflow-tooling-manifest",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "hybrid",
+            "path": "/workflow/tooling-manifest?q=runtime+verify+mcp",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "enabled",
+              "runtime",
+              "usage_rules"
+            ]
+          },
+          {
+            "id": "dashboard-ai-metrics",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/ai/metrics",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "timestamp",
+              "services"
+            ]
+          }
+        ]
       }
     },
     {
@@ -1808,6 +1852,7 @@
             "dimension": "discoverability",
             "service": "dashboard_api",
             "path": "/api/ai/metrics",
+            "timeout_seconds": 20,
             "expect_status": 200,
             "expect_json": true,
             "expect_keys": [
@@ -2099,6 +2144,52 @@
         "notes": [
           "This slice should become the operator-facing home for slice readiness over time."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "insights-observability-readiness",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/insights/observability/readiness",
+            "timeout_seconds": 20,
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "available",
+              "timestamp"
+            ]
+          },
+          {
+            "id": "insights-roadmap-readiness",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/insights/roadmap/readiness",
+            "timeout_seconds": 20,
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "phases"
+            ]
+          },
+          {
+            "id": "metrics-health-score",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/metrics/health-score",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "score",
+              "status"
+            ]
+          }
+        ]
       }
     },
     {
@@ -2280,6 +2371,7 @@
             "dimension": "discoverability",
             "service": "dashboard_api",
             "path": "/api/insights/system/health",
+            "timeout_seconds": 20,
             "expect_status": 200,
             "expect_json": true,
             "expect_keys": [
@@ -3293,6 +3385,37 @@
         "notes": [
           "This slice should increasingly connect severity thresholds and remediation expectations to explicit acceptance policy."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "security-compliance-insight",
+            "kind": "http",
+            "dimension": "discoverability",
+            "service": "dashboard_api",
+            "path": "/api/insights/security/compliance",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "controls",
+              "timestamp"
+            ]
+          },
+          {
+            "id": "security-audit-summary",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/security/audit",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "status",
+              "summary"
+            ]
+          }
+        ]
       }
     },
     {
@@ -3432,6 +3555,34 @@
         "notes": [
           "This is the meta-governance slice that should eventually consume scorecard output as one of its own readiness signals."
         ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "evaluate-agent-policy",
+            "kind": "command",
+            "dimension": "control_plane",
+            "command": [
+              "python3",
+              "scripts/governance/evaluate-agent-policy.py",
+              "--profile",
+              "default",
+              "--task",
+              "runtime verify policy"
+            ],
+            "stdout_contains": "\"allow\": true"
+          },
+          {
+            "id": "python-tooling-policy",
+            "kind": "command",
+            "dimension": "quality_gate",
+            "command": [
+              "bash",
+              "scripts/governance/check-python-tooling-policy.sh"
+            ],
+            "stdout_contains": "[python-tooling-policy] PASS"
+          }
+        ]
       }
     },
     {
@@ -3566,6 +3717,50 @@
         ],
         "notes": [
           "This slice should increasingly couple dashboard mutation rights to runtime audit and safety policy evidence."
+        ]
+      },
+      "runtime_verification": {
+        "probes": [
+          {
+            "id": "operator-audit-summary",
+            "kind": "http",
+            "dimension": "data_plane",
+            "service": "dashboard_api",
+            "path": "/api/audit/operator/summary",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "available",
+              "total_events"
+            ]
+          },
+          {
+            "id": "operator-audit-integrity",
+            "kind": "http",
+            "dimension": "governance",
+            "service": "dashboard_api",
+            "path": "/api/audit/operator/integrity",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "valid",
+              "seal_algorithm"
+            ]
+          },
+          {
+            "id": "firewall-status",
+            "kind": "http",
+            "dimension": "observability",
+            "service": "dashboard_api",
+            "path": "/api/firewall/status",
+            "expect_status": 200,
+            "expect_json": true,
+            "expect_keys": [
+              "enabled",
+              "backend",
+              "crowdsec_active"
+            ]
+          }
         ]
       }
     }
