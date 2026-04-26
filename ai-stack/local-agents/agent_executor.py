@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,6 +29,11 @@ import httpx
 from tool_registry import ToolCall, ToolRegistry, get_registry
 
 logger = logging.getLogger(__name__)
+
+_CODE_TASK_RE = re.compile(
+    r"\b(implement|write|code|script|function|class|patch|refactor|debug|fix|test)\b",
+    re.IGNORECASE,
+)
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -500,22 +506,47 @@ class LocalAgentExecutor:
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.fallback_endpoint}/query",
-                    json={
-                        "query": task.objective,
-                        "context": task.context,
-                    },
+                profile = self._select_remote_profile(task)
+                delegate_response = await client.post(
+                    f"{self.fallback_endpoint}/control/ai-coordinator/delegate",
+                    json=self._build_remote_delegate_payload(task, profile),
                     timeout=self.remote_timeout_seconds,
                 )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    task.result = data.get("response", "")
-                    task.status = TaskStatus.COMPLETED
+                if delegate_response.status_code == 200:
+                    data = delegate_response.json()
+                    response_text = self._extract_remote_response_text(data)
+                    if response_text:
+                        task.result = response_text
+                        task.status = TaskStatus.COMPLETED
+                    else:
+                        task.error = (
+                            "Remote delegate returned no response text; "
+                            "falling back to /query compatibility path"
+                        )
                 else:
-                    task.error = f"Remote fallback failed: {response.status_code} {response.text}"
-                    task.status = TaskStatus.FAILED
+                    task.error = (
+                        "Remote delegate failed: "
+                        f"{delegate_response.status_code} {delegate_response.text}"
+                    )
+
+                if task.status != TaskStatus.COMPLETED:
+                    response = await client.post(
+                        f"{self.fallback_endpoint}/query",
+                        json={
+                            "query": task.objective,
+                            "context": task.context,
+                        },
+                        timeout=self.remote_timeout_seconds,
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        task.result = data.get("response", "")
+                        task.status = TaskStatus.COMPLETED
+                    else:
+                        task.error = f"Remote fallback failed: {response.status_code} {response.text}"
+                        task.status = TaskStatus.FAILED
 
         except Exception as e:
             task.error = f"Remote fallback error: {e}"
@@ -524,6 +555,70 @@ class LocalAgentExecutor:
         task.execution_time_ms = (time.time() - start_time) * 1000
 
         return task
+
+    def _select_remote_profile(self, task: Task) -> str:
+        """Map local-agent fallback tasks onto canonical coordinator profiles."""
+        objective = str(task.objective or "")
+        if task.requires_flagship or task.quality_critical:
+            return "remote-reasoning"
+        if _CODE_TASK_RE.search(objective):
+            return "remote-coding"
+        return "remote-free"
+
+    def _build_remote_delegate_payload(self, task: Task, profile: str) -> Dict[str, Any]:
+        """Build coordinator delegate payload for local-agent fallback."""
+        return {
+            "task": task.objective,
+            "profile": profile,
+            "prefer_local": False,
+            "context": dict(task.context or {}),
+            "max_tokens": 1200 if profile == "remote-reasoning" else 900,
+            "temperature": 0.2,
+            "metadata": {
+                "entrypoint": "local-agents",
+                "task_id": task.id,
+                "requires_flagship": task.requires_flagship,
+                "quality_critical": task.quality_critical,
+                "latency_critical": task.latency_critical,
+                "complexity": task.complexity,
+            },
+        }
+
+    def _extract_remote_response_text(self, data: Any) -> str:
+        """Extract assistant text from common coordinator/delegate payloads."""
+        if isinstance(data, str):
+            return data.strip()
+        if not isinstance(data, dict):
+            return ""
+
+        for field in ("result", "response", "output", "content", "text"):
+            value = data.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        nested_result = data.get("result")
+        if isinstance(nested_result, dict):
+            nested_text = self._extract_remote_response_text(nested_result)
+            if nested_text:
+                return nested_text
+
+        nested_data = data.get("data")
+        if isinstance(nested_data, dict):
+            nested_text = self._extract_remote_response_text(nested_data)
+            if nested_text:
+                return nested_text
+
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+
+        return ""
 
     def _get_system_prompt(self, agent_type: AgentType, tools: List[Dict]) -> str:
         """Get system prompt for agent type with tool descriptions"""
