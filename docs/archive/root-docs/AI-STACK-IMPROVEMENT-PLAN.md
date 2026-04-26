@@ -874,7 +874,8 @@ Not a current priority but track here for when it becomes one.
 - [x] **11.1.2** Add `pip-audit` to the Makefile `make security-check` target. Run it against every locked requirements file.
   *Implemented (2026-02-26): `make security-check` added as alias for `make security-audit`, which calls `scripts/security/security-audit.sh` — already runs `pip-audit -r requirements.lock` for each lockfile found under `ai-stack/mcp-servers/`.*
 
-- [ ] **11.1.3** Add a pre-deployment check in the NixOS module that verifies the Python virtualenv hashes match the lockfiles before starting each MCP server. If hashes don't match, the service refuses to start.
+- [~] **11.1.3** Add a pre-deployment check in the NixOS module that verifies the Python virtualenv hashes match the lockfiles before starting each MCP server. If hashes don't match, the service refuses to start.
+  *Partial (2026-02-27): Added `scripts/security/verify-python-lock-runtime.py` and integrated it into `scripts/security/security-audit.sh`, which now emits persistent `lock-integrity/*.json` artifacts plus `"dependency_hash_mismatch"` findings for drift across every MCP `requirements.txt`. Direct service-start enforcement is deferred until the remaining lock drift is corrected; otherwise current repo-backed services would fail startup on known mismatches.*
   *Success metric: Manually modifying a package in the venv causes the service to refuse startup with a `"dependency_hash_mismatch"` log entry.*
 
 ---
