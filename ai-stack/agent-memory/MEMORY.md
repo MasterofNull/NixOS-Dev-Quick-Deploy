@@ -164,7 +164,7 @@ AIDB vector search endpoint: POST /vector/search (not /search).
 ## Remaining High-Priority Open Work
 - Phase 11.0.3 + 11.2: Run import after `sudo systemctl restart ai-aidb.service`
 - Phase 11.1.1: aider-wrapper lock (aider-chat version invalid in requirements.txt)
-- Phase 11.1.3: pre-deployment hash check in NixOS module
+- Phase 11.1.3: PARTIAL — lock-integrity verifier now runs in `scripts/security/security-audit.sh` and persists JSON artifacts; Nix service-start enforcement deferred until lock drift is resolved
 - Phase 12.2.2: Prometheus egress metrics
 - Phase 18.2.3: strategy_tag in tool_audit.jsonl from route_handler.py
 - Phase 19.4.5: AIDB import of CLAUDE.md + MEMORY.md for local LLM RAG (blocked on restart + 11.2)
