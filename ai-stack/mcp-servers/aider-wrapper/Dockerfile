@@ -10,9 +10,15 @@ RUN apt-get update && apt-get install -y \
 # Upgrade pip and install build tools
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install Python dependencies
+# Install Python server dependencies
 COPY aider-wrapper/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install aider CLI separately from the API server dependencies.
+# The Nix service injects AIDER_BIN from pkgs.aider-chat; this preserves the
+# legacy container path without forcing the server lockfile to track a PyPI-only
+# aider package version.
+RUN pip install --no-cache-dir aider-chat==0.16.0
 
 # Copy shared libraries (for authentication middleware)
 COPY shared /app/shared
