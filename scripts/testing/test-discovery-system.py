@@ -82,7 +82,7 @@ def test_duplicate_detection():
     """Verify config validation detects duplicate URLs."""
     print("TEST: Duplicate URL Detection")
 
-    config_dir = Path(__file__).parent.parent / "config"
+    config_dir = Path(__file__).resolve().parents[2] / "config"
     sources_file = config_dir / "improvement-sources.json"
 
     if not sources_file.exists():
@@ -105,6 +105,47 @@ def test_duplicate_detection():
         print(f"  ✓ No duplicate URLs found ({len(urls)} unique sources)")
         print("  ✅ Duplicate detection passed\n")
         return True
+
+
+def test_security_repo_sources_present():
+    """Verify high-signal security repo sources are present in improvement sources."""
+    print("TEST: Security Repo Sources")
+
+    config_dir = Path(__file__).resolve().parents[2] / "config"
+    sources_file = config_dir / "improvement-sources.json"
+
+    if not sources_file.exists():
+        print(f"  ⚠️  Config file not found: {sources_file}")
+        return False
+
+    with open(sources_file) as f:
+        sources = json.load(f)
+
+    required_urls = {
+        "https://github.com/github/advisory-database",
+        "https://github.com/CISAGov/kev-data",
+        "https://github.com/CVEProject/cvelistV5",
+        "https://github.com/mitre-attack/attack-stix-data",
+        "https://github.com/google/osv.dev",
+    }
+    source_urls = {source.get("url") for source in sources if isinstance(source, dict)}
+    missing = sorted(required_urls - source_urls)
+    if missing:
+        print(f"  ✗ Missing security repo sources: {missing}")
+        return False
+
+    github_repo_sources = [
+        source for source in sources
+        if isinstance(source, dict) and source.get("type") == "github_repo"
+    ]
+    if len(github_repo_sources) < 5:
+        print(f"  ✗ Expected >=5 github_repo sources, found {len(github_repo_sources)}")
+        return False
+
+    print(f"  ✓ Found {len(github_repo_sources)} github_repo sources")
+    print("  ✓ Required threat/vulnerability repositories present")
+    print("  ✅ Security repo source test passed\n")
+    return True
 
 
 def test_report_parsing():
@@ -318,6 +359,7 @@ def main():
     tests = [
         test_cadence_enforcement,
         test_duplicate_detection,
+        test_security_repo_sources_present,
         test_report_parsing,
         test_state_file_validation
     ]

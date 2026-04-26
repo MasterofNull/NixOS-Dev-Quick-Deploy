@@ -177,8 +177,8 @@
     {
       "slug": "security-advisories",
       "description": "Security advisory and CVE research pack.",
-      "max_urls": 2,
-      "default_max_text_chars": 1500,
+      "max_urls": 4,
+      "default_max_text_chars": 1800,
       "inputs": [
         {
           "name": "cve_id",
@@ -193,6 +193,13 @@
       ],
       "sources": [
         {
+          "name": "cisa-kev-catalog",
+          "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", "#content", ".content"],
+          "purpose": "CISA catalog of vulnerabilities known to be exploited in the wild."
+        },
+        {
           "name": "nvd-search",
           "url": "https://nvd.nist.gov/vuln/search",
           "fetch_mode": "http",
@@ -205,6 +212,21 @@
           "fetch_mode": "http",
           "selectors": ["main", "article", "#content"],
           "purpose": "GitHub Security Advisories database."
+        },
+        {
+          "name": "osv-vulns",
+          "url": "https://osv.dev/list",
+          "fetch_mode": "http",
+          "selectors": ["main", "article", "#content", ".content"],
+          "purpose": "OSV vulnerability list for ecosystem/package-level advisories."
+        },
+        {
+          "name": "nixos-security-announcements",
+          "url": "https://discourse.nixos.org/c/announcements/security",
+          "fetch_mode": "http",
+          "fallback_fetch_mode": "browser",
+          "selectors": ["main", "article", "#main-outlet", ".topic-list"],
+          "purpose": "NixOS-specific security announcements relevant to this stack."
         }
       ]
     }
