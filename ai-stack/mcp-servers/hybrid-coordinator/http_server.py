@@ -10133,8 +10133,8 @@ asyncio.run(run())
             initial_response = response
             initial_body = response.json()
 
-            # Phase 20.2: Enhanced failover chain for 402/429 errors
-            if response.status_code in {402, 429}:
+            # Phase 20.2: Enhanced failover chain for 402/429 errors + 401/403 auth/policy
+            if response.status_code in {401, 402, 403, 429}:
                 # Mark agent as rate-limited if applicable
                 if pool_agent:
                     _AGENT_POOL_MANAGER.mark_rate_limited(pool_agent.agent_id)
@@ -10198,7 +10198,7 @@ asyncio.run(run())
                         effective_profile = "remote-free"
                         effective_runtime_id = "openrouter-free"
                         fallback_applied = True
-                        fallback_reason = "remote profile returned 402/429; no failover chain available, retried on remote-free"
+                        fallback_reason = f"remote profile returned {response.status_code} (auth/rate-limit); no failover chain available, retried on remote-free"
             body = response.json()
 
             initial_classification = classify_delegated_response(
