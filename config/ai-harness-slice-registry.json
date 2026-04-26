@@ -1299,10 +1299,145 @@
       }
     },
     {
-      "id": "monitoring-observability",
-      "name": "Monitoring and Observability",
+      "id": "service-health-monitoring",
+      "name": "Service Health Monitoring",
       "domain": "monitoring",
-      "summary": "Metrics, alerts, dashboards, readiness views, and runtime health classification.",
+      "summary": "Systemd unit health, HTTP probes, and phase-oriented service checks for the AI stack.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "scripts/health",
+          "dashboard/backend/api/services/ai_service_health.py",
+          "dashboard/backend/api/services/systemd_units.py"
+        ],
+        "entrypoints": [
+          "scripts/health/system-health-check.sh",
+          "dashboard/backend/api/routes/health.py",
+          "dashboard/backend/api/routes/aistack.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "systemd unit state",
+          "HTTP health endpoints",
+          "service endpoint configuration"
+        ],
+        "outputs": [
+          "health summaries",
+          "probe outcomes",
+          "service availability classification"
+        ],
+        "invariants": [
+          "critical services must have explicit probe coverage",
+          "health summaries should distinguish unit failure from HTTP/runtime failure"
+        ],
+        "failure_modes": [
+          "blind spots in unit coverage",
+          "HTTP probes drift from declared service endpoints",
+          "aggregate health masks failing subservices"
+        ],
+        "rollback_commands": [
+          "git revert <commit>"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/service-endpoints.sh"
+        ],
+        "policy_paths": [
+          "docs/agent-guides/02-SERVICE-STATUS.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "systemd",
+          "service endpoint config"
+        ],
+        "downstream_consumers": [
+          "aq-qa",
+          "dashboard health routes",
+          "operators"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "scripts/health/system-health-check.sh",
+          "dashboard/backend/api/services/ai_service_health.py",
+          "dashboard/backend/api/services/systemd_units.py"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/health",
+          "/api/health/probe",
+          "/api/ai/metrics"
+        ],
+        "mcp_tools": [
+          "qa_check"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0",
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard.html"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml"
+        ],
+        "metrics_signals": [
+          "service health aggregate",
+          "phase-0 health checks"
+        ],
+        "log_sources": [
+          "journalctl -u ai-*.service",
+          "journalctl -u command-center-dashboard-api.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing",
+          "scripts/health/system-health-check.sh"
+        ],
+        "acceptance_signals": [
+          "service health checks remain runnable",
+          "dashboard health routes stay available"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/agent-guides/02-SERVICE-STATUS.md"
+        ],
+        "cli_entrypoints": [
+          "aq-qa"
+        ],
+        "dashboard_routes": [
+          "/api/health",
+          "/api/health/probe",
+          "/api/ai/metrics"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice owns the probe and service-status truth used by both operators and runtime tooling."
+        ]
+      }
+    },
+    {
+      "id": "telemetry-alerting-observability",
+      "name": "Telemetry and Alerting Observability",
+      "domain": "monitoring",
+      "summary": "Prometheus, Grafana, OpenTelemetry, anomaly detection, profiler, and alert/remediation plumbing.",
       "maturity_target": "governed",
       "owner_surface": {
         "primary_paths": [
@@ -1313,30 +1448,32 @@
           "config/anomaly-detection.yaml"
         ],
         "entrypoints": [
-          "scripts/health/system-health-check.sh",
-          "dashboard/backend/api/routes/metrics.py",
-          "dashboard/backend/api/routes/insights.py"
+          "scripts/observability/collect-ai-metrics.sh",
+          "ai-stack/observability/opentelemetry_config.py",
+          "ai-stack/observability/alert_engine.py"
         ]
       },
       "contract": {
         "inputs": [
           "service metrics",
-          "runtime probes",
-          "alert rules"
+          "structured logs",
+          "alert policies",
+          "anomaly baselines"
         ],
         "outputs": [
-          "dashboard metrics",
-          "alerts",
-          "readiness summaries"
+          "Prometheus metrics",
+          "Grafana dashboards",
+          "alerts and remediation triggers",
+          "profiling and telemetry summaries"
         ],
         "invariants": [
-          "critical services must have health coverage",
-          "readiness claims should be backed by probeable evidence"
+          "telemetry collection should be machine-readable and durable enough for operator review",
+          "alert rules should map to actionable remediation or escalation paths"
         ],
         "failure_modes": [
-          "blind spots",
-          "stale dashboards",
-          "alerts with no remediation path"
+          "stale metrics pipelines",
+          "alerts with no remediation path",
+          "telemetry implementation exists but is not wired into collection surfaces"
         ],
         "rollback_commands": [
           "git revert <commit>"
@@ -1351,38 +1488,45 @@
           "docs/operations/orchestration-visibility-guide.md"
         ],
         "service_units": [
-          "command-center-dashboard-api.service"
+          "prometheus.service",
+          "prometheus-node-exporter.service"
         ],
         "upstream_dependencies": [
-          "dashboard API",
-          "systemd probes"
+          "Prometheus",
+          "Grafana",
+          "OpenTelemetry"
         ],
         "downstream_consumers": [
+          "dashboard metrics and insights",
           "operators",
-          "governance scripts"
+          "governance reviews"
         ]
       },
       "data_plane": {
         "runtime_paths": [
-          "ai-stack/monitoring",
-          "ai-stack/observability",
-          "dashboard/backend/api/services/ai_insights.py"
+          "ai-stack/monitoring/local_llm_monitor.py",
+          "ai-stack/observability/opentelemetry_config.py",
+          "ai-stack/observability/metrics_middleware.py",
+          "ai-stack/observability/alert_engine.py",
+          "ai-stack/observability/anomaly_alert_integration.py",
+          "ai-stack/observability/performance_profiler.py",
+          "scripts/observability/collect-ai-metrics.sh",
+          "scripts/observability/parse-structured-logs.py"
         ],
         "storage_paths": [
           "ai-stack/monitoring/prometheus",
-          "ai-stack/observability/grafana-dashboards"
+          "ai-stack/monitoring/grafana/dashboards",
+          "ai-stack/observability/grafana-dashboards",
+          "ai-stack/observability/prometheus_config.yml"
         ],
         "api_endpoints": [
-          "/api/metrics",
-          "/api/insights/observability/readiness"
+          "/metrics",
+          "/api/ai/prometheus/query"
         ],
-        "mcp_tools": [
-          "qa_check"
-        ]
+        "mcp_tools": []
       },
       "observability": {
         "health_checks": [
-          "aq-qa 0",
           "scripts/health/system-health-check.sh"
         ],
         "dashboards": [
@@ -1391,11 +1535,146 @@
         ],
         "alerts": [
           "config/alert-rules.yaml",
-          "config/anomaly-detection.yaml"
+          "config/anomaly-detection.yaml",
+          "ai-stack/monitoring/prometheus/rules/p1-alerts.yml"
         ],
         "metrics_signals": [
-          "dashboard metrics route",
-          "workflow compliance readiness"
+          "Prometheus scrape data",
+          "structured telemetry",
+          "profiling readiness"
+        ],
+        "log_sources": [
+          "scripts/observability/collect-ai-metrics.sh output",
+          "journalctl -u prometheus.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "scripts/testing/validate-genai-observability.sh"
+        ],
+        "acceptance_signals": [
+          "metrics collection surfaces remain available",
+          "alerting and telemetry config files stay present and parseable"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "cli_entrypoints": [
+          "aq-report"
+        ],
+        "dashboard_routes": [
+          "/api/metrics",
+          "/api/ai/prometheus/query"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice owns the telemetry substrate and alert/remediation policy surface underneath operator dashboards."
+        ]
+      }
+    },
+    {
+      "id": "readiness-insights-observability",
+      "name": "Readiness and Insights Observability",
+      "domain": "monitoring",
+      "summary": "Repo-native readiness summaries and insight aggregation exposed through dashboard insight routes.",
+      "maturity_target": "governed",
+      "owner_surface": {
+        "primary_paths": [
+          "dashboard/backend/api/routes/insights.py",
+          "dashboard/backend/api/services/ai_insights.py",
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "entrypoints": [
+          "dashboard/backend/api/routes/insights.py",
+          "dashboard/backend/api/services/ai_insights.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "repo-native readiness heuristics",
+          "live coordinator readiness responses",
+          "telemetry-derived insight signals"
+        ],
+        "outputs": [
+          "observability readiness summaries",
+          "roadmap and subsystem readiness payloads",
+          "operator insight cards"
+        ],
+        "invariants": [
+          "readiness claims should be backed by probeable code or live endpoint evidence",
+          "insight routes should remain consistent with the current harness topology"
+        ],
+        "failure_modes": [
+          "stale readiness summaries",
+          "route proliferation with inconsistent semantics",
+          "repo-native readiness logic diverges from live system state"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart command-center-dashboard-api.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/workflow-blueprints.json"
+        ],
+        "policy_paths": [
+          "docs/operations/orchestration-visibility-guide.md"
+        ],
+        "service_units": [
+          "command-center-dashboard-api.service"
+        ],
+        "upstream_dependencies": [
+          "dashboard API",
+          "hybrid-coordinator",
+          "telemetry and service-health slices"
+        ],
+        "downstream_consumers": [
+          "operators",
+          "governance reviews",
+          "dashboard frontend"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "dashboard/backend/api/routes/insights.py",
+          "dashboard/backend/api/services/ai_insights.py",
+          "dashboard/backend/api/routes/metrics.py"
+        ],
+        "storage_paths": [],
+        "api_endpoints": [
+          "/api/insights/observability/readiness",
+          "/api/insights/roadmap/readiness",
+          "/api/insights/improvements/readiness",
+          "/api/insights/testing/readiness",
+          "/api/insights/deployments/readiness",
+          "/api/insights/patterns/readiness",
+          "/api/insights/experiments/readiness"
+        ],
+        "mcp_tools": []
+      },
+      "observability": {
+        "health_checks": [
+          "scripts/health/system-health-check.sh"
+        ],
+        "dashboards": [
+          "dashboard.html"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "readiness route responses",
+          "insight target summaries"
         ],
         "log_sources": [
           "journalctl -u command-center-dashboard-api.service"
@@ -1409,7 +1688,8 @@
           "scripts/testing/test-dashboard-insights-report-cache.py"
         ],
         "acceptance_signals": [
-          "metrics routes and readiness insights stay available"
+          "readiness insight routes stay available",
+          "dashboard insights remain backed by current repo-native logic"
         ]
       },
       "discoverability": {
@@ -1417,11 +1697,11 @@
           "docs/operations/orchestration-visibility-guide.md"
         ],
         "cli_entrypoints": [
-          "aq-report",
-          "aq-qa"
+          "aq-report"
         ],
         "dashboard_routes": [
           "/api/insights/observability/readiness",
+          "/api/insights/roadmap/readiness",
           "/api/metrics"
         ]
       },
