@@ -477,42 +477,44 @@
       }
     },
     {
-      "id": "aidb-memory-data",
-      "name": "AIDB, Memory, and Data",
+      "id": "aidb-ingestion-import-data",
+      "name": "AIDB Ingestion and Import Data",
       "domain": "data",
-      "summary": "Knowledge ingestion, vector search, agent memory, and persistence surfaces for harness retrieval.",
+      "summary": "Document ingestion, import pipelines, and schema-backed persistence for getting knowledge into AIDB.",
       "maturity_target": "observable",
       "owner_surface": {
         "primary_paths": [
-          "ai-stack/aidb",
-          "ai-stack/context_memory",
-          "ai-stack/agent-memory",
+          "ai-stack/mcp-servers/aidb",
+          "ai-stack/database/postgres",
           "scripts/data"
         ],
         "entrypoints": [
           "ai-stack/mcp-servers/aidb/server.py",
-          "scripts/data/sync-agent-instructions"
+          "ai-stack/mcp-servers/aidb/document_importer.py",
+          "scripts/data/import-documents.py",
+          "scripts/data/import-project-knowledge.sh"
         ]
       },
       "contract": {
         "inputs": [
           "documents",
-          "memory records",
-          "knowledge sync sources"
+          "knowledge sync sources",
+          "import payloads",
+          "schema migrations"
         ],
         "outputs": [
-          "search results",
-          "retrieval context",
-          "stored memories"
+          "persisted AIDB documents",
+          "import results",
+          "schema-backed stored content"
         ],
         "invariants": [
-          "knowledge and memory stores must avoid secret leakage",
-          "stored context should carry enough provenance to be reviewed"
+          "ingested content must avoid secret leakage and preserve provenance",
+          "import and persistence paths should remain compatible with declared schema surfaces"
         ],
         "failure_modes": [
           "data poisoning",
           "schema drift",
-          "knowledge sync without validation"
+          "import pipelines run without validation"
         ],
         "rollback_commands": [
           "git revert <commit>",
@@ -524,41 +526,39 @@
           "config/service-endpoints.sh"
         ],
         "policy_paths": [
-          "docs/memory-system"
+          "docs/AGENTS.md"
         ],
         "service_units": [
           "ai-aidb.service"
         ],
         "upstream_dependencies": [
-          "Qdrant",
           "PostgreSQL",
-          "embedding service"
+          "embedding service",
+          "Qdrant"
         ],
         "downstream_consumers": [
-          "hybrid-coordinator",
-          "aq-memory",
-          "dashboard insights"
+          "retrieval/search surfaces",
+          "dashboard insights",
+          "knowledge sync scripts"
         ]
       },
       "data_plane": {
         "runtime_paths": [
-          "ai-stack/mcp-servers/aidb",
-          "ai-stack/database/postgres",
-          "ai-stack/data"
+          "ai-stack/mcp-servers/aidb/document_importer.py",
+          "scripts/data/import-documents.py",
+          "scripts/data/import-project-knowledge.sh",
+          "scripts/data/import-collections.sh",
+          "scripts/data/bootstrap-aidb-data.sh"
         ],
         "storage_paths": [
           "ai-stack/database/postgres/migrations",
-          "ai-stack/agent-memory/MEMORY.md"
+          "ai-stack/aidb/schema/migrations/001_temporal_facts.sql",
+          "ai-stack/aidb/schema/temporal-facts-v2.sql"
         ],
         "api_endpoints": [
-          "/documents",
-          "/vector/search"
+          "/documents"
         ],
-        "mcp_tools": [
-          "query_aidb",
-          "store_memory",
-          "recall_memory"
-        ]
+        "mcp_tools": []
       },
       "observability": {
         "health_checks": [
@@ -573,10 +573,11 @@
         ],
         "metrics_signals": [
           "document ingest success",
-          "vector search health"
+          "import success/failure counts"
         ],
         "log_sources": [
-          "journalctl -u ai-aidb.service"
+          "journalctl -u ai-aidb.service",
+          "import-documents.py stdout/stderr"
         ]
       },
       "quality_gate": {
@@ -584,20 +585,21 @@
           "scripts/governance/tier0-validation-gate.sh --pre-commit"
         ],
         "test_paths": [
+          "ai-stack/mcp-servers/aidb/test_document_importer_route_stack.py",
           "ai-stack/aidb/tests"
         ],
         "acceptance_signals": [
-          "document ingest and retrieval path remain healthy"
+          "document ingest paths remain healthy",
+          "import routes and schema-backed persistence remain available"
         ]
       },
       "discoverability": {
         "docs": [
-          "docs/architecture/memory-system-design.md",
-          "docs/memory-system"
+          "docs/AGENTS.md"
         ],
         "cli_entrypoints": [
-          "aq-memory",
-          "aq-rag-prewarm"
+          "scripts/data/import-project-knowledge.sh",
+          "scripts/data/import-documents.py"
         ],
         "dashboard_routes": [
           "/api/insights"
@@ -613,7 +615,283 @@
           "scripts/governance/tier0-validation-gate.sh --pre-commit"
         ],
         "notes": [
-          "Provenance, trust, and retention should become stronger explicit fields over time."
+          "This slice should increasingly expose source trust and import validation as first-class acceptance signals."
+        ]
+      }
+    },
+    {
+      "id": "aidb-retrieval-search-data",
+      "name": "AIDB Retrieval and Search Data",
+      "domain": "data",
+      "summary": "Vector search, RAG retrieval, query validation, and retrieval-serving surfaces for AIDB consumers.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/mcp-servers/aidb",
+          "ai-stack/aidb/tests"
+        ],
+        "entrypoints": [
+          "ai-stack/mcp-servers/aidb/server.py",
+          "ai-stack/mcp-servers/aidb/rag/pipeline.py",
+          "ai-stack/mcp-servers/aidb/query_validator.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "search queries",
+          "vector search payloads",
+          "RAG retrieval requests"
+        ],
+        "outputs": [
+          "search results",
+          "retrieval context",
+          "validated query responses"
+        ],
+        "invariants": [
+          "retrieval surfaces should expose relevant, provenance-preserving results",
+          "query validation and retrieval should guard against unsafe or malformed input"
+        ],
+        "failure_modes": [
+          "vector search degradation",
+          "retrieval returns empty or stale context",
+          "query validation drift"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart ai-aidb.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/service-endpoints.sh"
+        ],
+        "policy_paths": [
+          "docs/architecture/memory-system-design.md"
+        ],
+        "service_units": [
+          "ai-aidb.service"
+        ],
+        "upstream_dependencies": [
+          "Qdrant",
+          "PostgreSQL",
+          "ingestion/import slice"
+        ],
+        "downstream_consumers": [
+          "hybrid-coordinator",
+          "query_aidb",
+          "aq-rag-prewarm"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/mcp-servers/aidb/rag/pipeline.py",
+          "ai-stack/mcp-servers/aidb/query_validator.py",
+          "ai-stack/mcp-servers/aidb/discovery_api.py",
+          "ai-stack/mcp-servers/aidb/discovery_endpoints.py"
+        ],
+        "storage_paths": [
+          "ai-stack/aidb/tests/test_vector_indexing.py"
+        ],
+        "api_endpoints": [
+          "/documents",
+          "/vector/search"
+        ],
+        "mcp_tools": [
+          "query_aidb"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-qa 0"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [
+          "config/alert-rules.yaml",
+          "config/anomaly-detection.yaml"
+        ],
+        "metrics_signals": [
+          "vector search health",
+          "retrieval path health"
+        ],
+        "log_sources": [
+          "journalctl -u ai-aidb.service"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/aidb/tests/test_vector_indexing.py",
+          "ai-stack/aidb/tests/test_layered_loading.py"
+        ],
+        "acceptance_signals": [
+          "vector search and retrieval path remain healthy"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/architecture/memory-system-design.md",
+          "docs/memory-system"
+        ],
+        "cli_entrypoints": [
+          "aq-rag-prewarm"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "AIDB API key"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "This slice should increasingly tie retrieval quality and trust filtering to explicit acceptance checks."
+        ]
+      }
+    },
+    {
+      "id": "memory-context-governance-data",
+      "name": "Memory and Context Governance Data",
+      "domain": "data",
+      "summary": "Agent memory, temporal facts, layered loading, context memory, and memory-specific governance surfaces.",
+      "maturity_target": "observable",
+      "owner_surface": {
+        "primary_paths": [
+          "ai-stack/context_memory",
+          "ai-stack/aidb",
+          "ai-stack/agent-memory",
+          "docs/memory-system"
+        ],
+        "entrypoints": [
+          "ai-stack/context_memory/context_manager.py",
+          "ai-stack/aidb/temporal_facts.py",
+          "ai-stack/aidb/temporal_query.py",
+          "ai-stack/aidb/layered_loading.py"
+        ]
+      },
+      "contract": {
+        "inputs": [
+          "memory records",
+          "agent diary entries",
+          "context loading queries"
+        ],
+        "outputs": [
+          "stored memories",
+          "temporal fact retrieval",
+          "layered context loads"
+        ],
+        "invariants": [
+          "stored context should carry enough provenance and validity semantics to be reviewed",
+          "memory surfaces should avoid silent drift between repo-owned memory logic and agent-facing tooling"
+        ],
+        "failure_modes": [
+          "memory inconsistency",
+          "temporal query drift",
+          "context loading becomes detached from memory governance"
+        ],
+        "rollback_commands": [
+          "git revert <commit>",
+          "sudo systemctl restart ai-aidb.service"
+        ]
+      },
+      "control_plane": {
+        "config_paths": [
+          "config/service-endpoints.sh"
+        ],
+        "policy_paths": [
+          "docs/memory-system",
+          "docs/architecture/memory-system-design.md"
+        ],
+        "service_units": [
+          "ai-aidb.service"
+        ],
+        "upstream_dependencies": [
+          "AIDB",
+          "PostgreSQL"
+        ],
+        "downstream_consumers": [
+          "aq-memory",
+          "agents",
+          "retrieval/search slice"
+        ]
+      },
+      "data_plane": {
+        "runtime_paths": [
+          "ai-stack/context_memory/context_manager.py",
+          "ai-stack/aidb/temporal_facts.py",
+          "ai-stack/aidb/temporal_query.py",
+          "ai-stack/aidb/agent_diary.py",
+          "ai-stack/aidb/layered_loading.py"
+        ],
+        "storage_paths": [
+          "ai-stack/agent-memory/MEMORY.md"
+        ],
+        "api_endpoints": [],
+        "mcp_tools": [
+          "store_memory",
+          "recall_memory"
+        ]
+      },
+      "observability": {
+        "health_checks": [
+          "aq-memory stats --project ai-stack"
+        ],
+        "dashboards": [
+          "dashboard/backend/api/routes/insights.py"
+        ],
+        "alerts": [],
+        "metrics_signals": [
+          "memory stats",
+          "layered loading health"
+        ],
+        "log_sources": [
+          "aq-memory stdout/stderr"
+        ]
+      },
+      "quality_gate": {
+        "validation_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "test_paths": [
+          "ai-stack/aidb/tests/test_temporal_facts.py",
+          "ai-stack/aidb/tests/test_temporal_query.py",
+          "ai-stack/aidb/tests/test_layered_loading.py"
+        ],
+        "acceptance_signals": [
+          "memory CLI remains queryable and stats-capable",
+          "temporal facts and layered loading tests remain healthy"
+        ]
+      },
+      "discoverability": {
+        "docs": [
+          "docs/architecture/memory-system-design.md",
+          "docs/memory-system"
+        ],
+        "cli_entrypoints": [
+          "aq-memory"
+        ],
+        "dashboard_routes": [
+          "/api/insights"
+        ]
+      },
+      "governance": {
+        "risk_level": "high",
+        "secret_surfaces": [
+          "stored memory content",
+          "AIDB API key"
+        ],
+        "review_commands": [
+          "scripts/governance/tier0-validation-gate.sh --pre-commit"
+        ],
+        "notes": [
+          "Provenance, trust, retention, and temporal validity should continue becoming stronger explicit fields over time."
         ]
       }
     },
