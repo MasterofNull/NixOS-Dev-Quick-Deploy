@@ -62,15 +62,15 @@ Replaces ad-hoc manual verification with tracked, reproducible test gates.
 
 ### 21.4 — MCP Tool: `run_qa_check` (future — requires deploy)
 
-- [ ] **21.4.1** hybrid-coordinator exposes `run_qa_check(phase)` tool.
+- [x] **21.4.1** hybrid-coordinator exposes `run_qa_check(phase)` tool. <!-- PASS: implemented in mcp_handlers.py/tooling_manifest.py and verified by roadmap guard patterns on 2026-04-26 -->
   **Pass:** `use_mcp_tool run_qa_check {"phase": "0"}` returns health JSON.
-  **Note:** Requires NixOS redeploy; implement after Phase 0 QA passes.
+  **Note:** Live code path now accepts phases `0-10` and `all` through the MCP wrapper.
 
 ### 21.5 — Post-deploy Auto Phase 0
 
-- [ ] **21.5.1** `nixos-quick-deploy.sh` calls `aq-qa 0` after successful switch.
+- [x] **21.5.1** `nixos-quick-deploy.sh` calls `aq-qa 0` after successful switch. <!-- PASS: deploy capability verification and post-deploy convergence probe aq-qa 0 JSON; roadmap verifier covers the wiring on 2026-04-26 -->
   **Pass:** Deploy output includes Phase 0 summary; deploy exits 1 if Phase 0 fails.
-  **Note:** Modify deploy script after `aq-qa 0` is stable.
+  **Note:** Quick deploy now verifies repo-backed AI capability activation via workflow plan, `qa_check`, and learning export, while post-deploy convergence reuses `aq-qa 0 --json`.
 
 ---
 
