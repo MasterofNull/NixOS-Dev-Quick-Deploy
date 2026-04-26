@@ -495,6 +495,17 @@ try:
                     continue
                 if now - ts > WINDOW_S:
                     continue
+                # Exclude intentional smoke-test calls (very short timeout_s, sub-10s latency,
+                # and 504 timeout outcome). These are check-ai-coordinator-delegate-smoke.sh
+                # calls with timeout_s=5 and should not contaminate real success-rate metrics.
+                latency_ms = float(entry.get("latency_ms") or 0)
+                is_smoke_timeout = (
+                    entry.get("outcome") == "error"
+                    and entry.get("error_message") == "http_status_504"
+                    and latency_ms < 15000
+                )
+                if is_smoke_timeout:
+                    continue
                 total += 1
                 if entry.get("outcome") == "success":
                     ok += 1
