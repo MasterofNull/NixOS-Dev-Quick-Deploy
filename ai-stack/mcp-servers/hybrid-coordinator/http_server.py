@@ -6400,6 +6400,7 @@ async def run_http_mode(port: int) -> None:
             request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
             request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
             request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
+            request["audit_metadata"]["strategy_tag"] = str(result.get("route", "unknown"))
             request["audit_metadata"]["backend"] = str(result.get("backend", "unknown"))
             backend_reason_class = str(result.get("backend_reason_class", "") or "").strip()
             if backend_reason_class:
