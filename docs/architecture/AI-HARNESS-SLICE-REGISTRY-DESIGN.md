@@ -269,6 +269,20 @@ This split follows the actual repo boundaries:
 - `ai-stack/monitoring/`, `ai-stack/observability/`, and alert configs own telemetry and alerting,
 - `dashboard/backend/api/services/ai_insights.py` and `routes/insights.py` own readiness aggregation.
 
+### 8.3 Decomposition Wave 3
+
+The third refinement wave decomposes the old `agent-guidance-communications` slice into:
+
+1. `prompt-registry-evaluation-guidance`
+2. `hints-context-guidance`
+3. `agent-instruction-sync-distribution`
+
+This split follows the current repo boundaries:
+
+- `ai-stack/prompts/registry.yaml` plus `aq-prompt-eval` own prompt registry and scoring,
+- `hints_engine.py`, `aq-hints`, and context-card/bootstrap surfaces own task-scoped guidance,
+- `sync-agent-instructions` and `import-agent-instructions.sh` own policy distribution and AIDB-facing instruction sync.
+
 ---
 
 ## 9. Recommended Use
