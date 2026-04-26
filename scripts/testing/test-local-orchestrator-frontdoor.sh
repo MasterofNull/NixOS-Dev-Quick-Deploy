@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: static regression check for local-orchestrator front-door CLI wiring.
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"

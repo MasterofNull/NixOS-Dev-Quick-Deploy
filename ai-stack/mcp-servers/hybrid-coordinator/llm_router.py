@@ -31,6 +31,20 @@ except ImportError:
     DecisionPoint = None
     Config = None
 
+# Import routing contract (canonical tier/profile/cost registry)
+try:
+    from routing_contract import (
+        CostEstimates as _CostEstimates,
+        profile_for_tier as _profile_for_tier,
+        profile_for_model_alias as _profile_for_model_alias,
+        legacy_tier_to_routing_tier as _legacy_tier_to_routing_tier,
+        validate_profile as _validate_profile,
+    )
+    _CONTRACT_AVAILABLE = True
+except ImportError:
+    logger.warning("routing_contract not available, using legacy cost estimates")
+    _CONTRACT_AVAILABLE = False
+
 
 class AgentTier(Enum):
     """Agent tier for routing priority"""
@@ -314,12 +328,25 @@ class LLMRouter:
 
     async def _execute_free(self, task: Dict, model: str) -> str:
         """Execute task with free sub-agent"""
-        profile = "remote-coding" if "coder" in model else "remote-free"
+        if _CONTRACT_AVAILABLE:
+            profile = _profile_for_model_alias(
+                model,
+                tier_hint=_legacy_tier_to_routing_tier(AgentTier.FREE.value),
+            )
+        else:
+            profile = "remote-coding" if "coder" in model else "remote-free"
         return await self._execute_via_coordinator(task, model, profile=profile, prefer_local=False)
 
     async def _execute_paid(self, task: Dict, model: str) -> str:
         """Execute task with paid model (last resort)"""
-        profile = "remote-reasoning" if model == "claude-sonnet" else "remote-gemini"
+        if _CONTRACT_AVAILABLE:
+            tier = AgentTier.CRITICAL if model == "claude-opus" else AgentTier.PAID
+            profile = _profile_for_model_alias(
+                model,
+                tier_hint=_legacy_tier_to_routing_tier(tier.value),
+            )
+        else:
+            profile = "remote-reasoning" if model == "claude-sonnet" else "remote-gemini"
         return await self._execute_via_coordinator(task, model, profile=profile, prefer_local=False)
 
     async def _execute_via_coordinator(
@@ -331,6 +358,8 @@ class LLMRouter:
         prefer_local: bool,
     ) -> str:
         """Delegate execution through the hybrid coordinator so router tiers reuse harness failover."""
+        if _CONTRACT_AVAILABLE:
+            _validate_profile(profile)
         prompt = self._build_prompt(task, optimize_for="remote")
         timeout_s = float(task.get("timeout_s") or task.get("timeout") or 45.0)
         payload: Dict[str, Any] = {
@@ -475,26 +504,38 @@ class LLMRouter:
 
     def _build_prompt(self, task: Dict, optimize_for: str = "local") -> str:
         """Build prompt optimized for target model"""
+        # Include advisor guidance when available (was injected into task dict but never consumed)
+        advisor_guidance = task.get("advisor_guidance")
+        advisor_note = ""
+        if advisor_guidance and isinstance(advisor_guidance, dict):
+            action = advisor_guidance.get("action", "proceed")
+            reasoning = advisor_guidance.get("reasoning", "")[:300]
+            if reasoning:
+                advisor_note = f"\n[Advisor guidance — {action}]: {reasoning}\n"
 
         if optimize_for == "local":
             # Concise prompts work best with local models
             return f"""Task: {task['description']}
 
-Context: {task.get('context', {}).get('summary', 'N/A')}
-
+Context: {task.get('context', {}).get('summary', 'N/A')}{advisor_note}
 Provide a direct, focused response. Be concise and specific.
 
 Response:"""
 
         else:
             # More detailed prompts for larger models
+            advisor_section = ""
+            if advisor_guidance and isinstance(advisor_guidance, dict):
+                action = advisor_guidance.get("action", "proceed")
+                guidance_text = advisor_guidance.get("guidance", "")[:500]
+                advisor_section = f'\n<advisor_guidance action="{action}">\n{guidance_text}\n</advisor_guidance>'
             return f"""<task>
 {task['description']}
 </task>
 
 <context>
 {json.dumps(task.get('context', {}), indent=2)}
-</context>
+</context>{advisor_section}
 
 <instructions>
 Analyze the task and provide a comprehensive response.
@@ -920,12 +961,16 @@ Keep response under 500 words."""
         conn.close()
 
     def _estimate_cost(self, tier: AgentTier) -> float:
-        """Estimate cost per task by tier"""
+        """Estimate cost per task by tier (sourced from routing_contract.CostEstimates)."""
+        if _CONTRACT_AVAILABLE:
+            routing_tier = _legacy_tier_to_routing_tier(tier.value)
+            return _CostEstimates.for_tier(routing_tier)
+        # Legacy fallback (stale values — prefer routing_contract env vars instead)
         cost_map = {
-            AgentTier.LOCAL: 0.0,      # Infrastructure already paid
-            AgentTier.FREE: 0.0,       # Free tier APIs
-            AgentTier.PAID: 0.02,      # ~$0.02 per task
-            AgentTier.CRITICAL: 0.05   # ~$0.05 per task
+            AgentTier.LOCAL: 0.0,
+            AgentTier.FREE: 0.0,
+            AgentTier.PAID: 0.005,
+            AgentTier.CRITICAL: 0.025,
         }
         return cost_map.get(tier, 0.0)
 
@@ -1007,80 +1052,81 @@ Keep response under 500 words."""
             return {"advisor_enabled": False}
 
         conn = sqlite3.connect(self.metrics_db)
+        try:
+            # Total advisor consultations
+            total_consultations = conn.execute(
+                "SELECT COUNT(*) FROM advisor_consultations"
+            ).fetchone()[0]
 
-        # Total advisor consultations
-        total_consultations = conn.execute(
-            "SELECT COUNT(*) FROM advisor_consultations"
-        ).fetchone()[0]
+            # Decision type distribution
+            decision_distribution = {
+                row[0]: row[1]
+                for row in conn.execute("""
+                    SELECT decision_type, COUNT(*) as count
+                    FROM advisor_consultations
+                    GROUP BY decision_type
+                """)
+            }
 
-        # Decision type distribution
-        cursor = conn.execute("""
-            SELECT decision_type, COUNT(*) as count
-            FROM advisor_consultations
-            GROUP BY decision_type
-        """)
-        decision_distribution = {row[0]: row[1] for row in cursor}
+            # Executor tier distribution
+            executor_distribution = {
+                row[0]: row[1]
+                for row in conn.execute("""
+                    SELECT executor_tier, COUNT(*) as count
+                    FROM advisor_consultations
+                    GROUP BY executor_tier
+                """)
+            }
 
-        # Executor tier distribution (which tiers use advisor most)
-        cursor = conn.execute("""
-            SELECT executor_tier, COUNT(*) as count
-            FROM advisor_consultations
-            GROUP BY executor_tier
-        """)
-        executor_distribution = {row[0]: row[1] for row in cursor}
+            # Aggregated scalar metrics
+            avg_time = conn.execute(
+                "SELECT AVG(time_to_consult_ms) FROM advisor_consultations"
+            ).fetchone()[0] or 0
 
-        # Average consultation time
-        avg_time = conn.execute(
-            "SELECT AVG(time_to_consult_ms) FROM advisor_consultations"
-        ).fetchone()[0] or 0
+            total_advisor_cost = conn.execute(
+                "SELECT SUM(advisor_cost) FROM advisor_consultations"
+            ).fetchone()[0] or 0.0
 
-        # Total advisor cost
-        total_advisor_cost = conn.execute(
-            "SELECT SUM(advisor_cost) FROM advisor_consultations"
-        ).fetchone()[0] or 0.0
+            total_tokens = conn.execute(
+                "SELECT SUM(advisor_tokens) FROM advisor_consultations"
+            ).fetchone()[0] or 0
 
-        # Total advisor tokens
-        total_tokens = conn.execute(
-            "SELECT SUM(advisor_tokens) FROM advisor_consultations"
-        ).fetchone()[0] or 0
+            # Success rate (if tracked)
+            success_data = conn.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN task_success = 1 THEN 1 ELSE 0 END) as successes
+                FROM advisor_consultations
+                WHERE task_success IS NOT NULL
+            """).fetchone()
 
-        # Success rate (if tracked)
-        success_data = conn.execute("""
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN task_success = 1 THEN 1 ELSE 0 END) as successes
-            FROM advisor_consultations
-            WHERE task_success IS NOT NULL
-        """).fetchone()
+            # Fallback usage statistics
+            fallback_usage = {
+                f"rank_{row[0]}": row[1]
+                for row in conn.execute("""
+                    SELECT fallback_rank, COUNT(*) as count
+                    FROM advisor_consultations
+                    GROUP BY fallback_rank
+                    ORDER BY fallback_rank
+                """)
+            }
 
-        conn.close()
+            # Cross-table: total routing decisions for consultation rate
+            total_tasks = conn.execute(
+                "SELECT COUNT(*) FROM routing_decisions"
+            ).fetchone()[0] if total_consultations > 0 else 0
+        finally:
+            conn.close()
 
         success_rate = None
         if success_data and success_data[0] > 0:
             success_rate = (success_data[1] / success_data[0]) * 100
 
-        # Calculate consultation rate relative to total tasks
-        total_tasks = conn.execute(
-            "SELECT COUNT(*) FROM routing_decisions"
-        ).fetchone()[0] if total_consultations > 0 else 0
-
         consultation_rate = (total_consultations / total_tasks * 100) if total_tasks > 0 else 0
 
-        # Fallback usage statistics
-        cursor = conn.execute("""
-            SELECT fallback_rank, COUNT(*) as count
-            FROM advisor_consultations
-            GROUP BY fallback_rank
-            ORDER BY fallback_rank
-        """)
-        fallback_usage = {f"rank_{row[0]}": row[1] for row in cursor}
-
-        # Primary vs fallback success rate
         primary_count = fallback_usage.get("rank_0", 0)
         fallback_count = total_consultations - primary_count
         primary_success_rate = (primary_count / total_consultations * 100) if total_consultations > 0 else 0
-
-        conn.close()
 
         return {
             "advisor_enabled": True,
