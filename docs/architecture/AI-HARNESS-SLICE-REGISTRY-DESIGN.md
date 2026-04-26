@@ -283,6 +283,20 @@ This split follows the current repo boundaries:
 - `hints_engine.py`, `aq-hints`, and context-card/bootstrap surfaces own task-scoped guidance,
 - `sync-agent-instructions` and `import-agent-instructions.sh` own policy distribution and AIDB-facing instruction sync.
 
+### 8.4 Decomposition Wave 4
+
+The fourth refinement wave decomposes the old `aidb-memory-data` slice into:
+
+1. `aidb-ingestion-import-data`
+2. `aidb-retrieval-search-data`
+3. `memory-context-governance-data`
+
+This split follows the current repo boundaries:
+
+- `document_importer.py`, import scripts, and schema/migration surfaces own ingestion and persistence,
+- `rag/pipeline.py`, query validation, and vector-search tests own retrieval/search behavior,
+- `temporal_facts.py`, `temporal_query.py`, `layered_loading.py`, `context_manager.py`, and `aq-memory` own memory and context governance.
+
 ---
 
 ## 9. Recommended Use
