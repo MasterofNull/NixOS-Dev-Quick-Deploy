@@ -77,6 +77,12 @@ Non-goals for this first cut:
 - auto-generated service graphs,
 - or deep semantic validation of every command and endpoint.
 
+The next tightening pass adds optional runtime-backed verification for selected slices. This is still intentionally bounded:
+
+- it verifies declared probes, not every possible route or command,
+- it stays read-mostly and avoids destructive runtime mutations,
+- and it remains opt-in through the scorecard CLI so structural validation still works offline.
+
 ---
 
 ## 4. Slice Model
@@ -210,6 +216,27 @@ Each dimension is scored pass/warn/fail using repo evidence:
 - `quality_gate`: validation commands and test paths exist
 - `discoverability`: docs and at least one CLI/API/dashboard entry surface exist
 - `governance`: risk level and review commands are present
+
+### 7.3 Runtime Verification Mode
+
+The scorecard now supports an optional runtime-backed second layer:
+
+```bash
+python3 scripts/governance/ai-harness-slice-scorecard.py --runtime-verify
+```
+
+When enabled, the scorecard executes declared `runtime_verification.probes` for slices that opt in. Probe failures are folded back into the owning dimension, so a slice can remain structurally complete while still failing runtime verification.
+
+The first probe batch is intentionally limited to fast, non-destructive checks:
+
+- dashboard read-only health, metrics, insights, config, and service-list routes,
+- hybrid coordinator health, workflow planning, and route-decision endpoints,
+- workflow and service-health summary routes that return current runtime evidence.
+
+This creates a stricter distinction:
+
+- `declared`: the repo says the slice has a surface,
+- `runtime-verified`: the surface answered correctly in the current environment.
 
 The scorecard then derives:
 
