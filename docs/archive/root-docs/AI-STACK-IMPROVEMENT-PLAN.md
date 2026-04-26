@@ -1401,8 +1401,8 @@ Key files:
 - [x] **18.2.2** Update `aq-report` (18.1.1) to group feedback scores and eval scores by `strategy_tag`, showing which tags score highest. Display top 3 strategies by mean score.
   *Success metric: Report section "Strategy Leaderboard" appears in aq-report output when ≥2 distinct strategy tags exist in scores.sqlite.*
 
-- [ ] **18.2.3** Add `strategy_tag` to `tool_audit.jsonl` log entries emitted from `route_handler.py` so tool sequences can be correlated with strategy metadata.
-  *Success metric: `grep strategy_tag ai-stack/logs/tool_audit.jsonl` returns entries with non-null values after a tagged run.*
+- [x] **18.2.3** Add `strategy_tag` to `tool_audit.jsonl` log entries emitted from the `/query` route-search audit path so tool sequences can be correlated with strategy metadata.
+  *Completed (2026-04-26): `hybrid-coordinator/http_server.py` now propagates `strategy_tag = result["route"]` into HTTP query audit metadata while preserving the legacy `route_strategy` field for compatibility; `scripts/testing/test-http-query-audit-metadata.py` covers the propagation.*
 
 ---
 

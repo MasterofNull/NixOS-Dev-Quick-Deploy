@@ -1276,7 +1276,7 @@ These are improvement tasks, not binary pass/fail — each has a target metric.
 ## Known Gaps to Address During Testing
 
 1. **Prometheus scrape targets** — verify MCP services expose `/metrics` (Phase 12.2.2 partially done).
-2. **Strategy tags in tool_audit.jsonl** — Phase 18.2.3 open; leaderboard section will be empty until fixed.
+2. **Strategy tags in tool_audit.jsonl** — fixed in the HTTP `/query` audit path; leaderboard can now correlate tool-audit rows with routing strategy tags once fresh runtime traffic is generated.
 3. **AIDB import of CLAUDE.md/MEMORY.md** — Phase 19.4.5; RAG over project rules not yet active.
 4. **Aider lock file** — Phase 11.1.1; `aider-chat` version invalid, may fail Phase 8.2.
 5. **Integrity baseline** — must run `bash scripts/security/update-mcp-integrity-baseline.sh` before Phase 6.5 tests.

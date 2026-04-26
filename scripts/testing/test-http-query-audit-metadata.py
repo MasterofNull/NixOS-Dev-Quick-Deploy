@@ -45,6 +45,10 @@ def main() -> int:
         "query audit metadata should propagate remote-required flags into tool-audit rows",
     )
     assert_true(
+        'request["audit_metadata"]["strategy_tag"] = str(result.get("route", "unknown"))' in text,
+        "query audit metadata should propagate strategy_tag into tool-audit rows",
+    )
+    assert_true(
         'request["audit_metadata"]["local_inference_lane"] = local_inference_lane' in text,
         "query audit metadata should propagate the selected local inference lane into tool-audit rows",
     )

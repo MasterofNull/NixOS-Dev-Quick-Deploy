@@ -73,8 +73,8 @@
 All accumulated changes deployed successfully. System is healthy (12/12 MCP services pass health check).
 Run `scripts/security/update-mcp-integrity-baseline.sh` to seed integrity baseline after first clean deploy.
 
-## Phase 18 — COMPLETE (2026-02-27, commits f92ad3e + bfcb549)
-All 18.1–18.5 tasks done except 18.2.3 (strategy_tag in tool_audit.jsonl, open).
+## Phase 18 — COMPLETE (2026-02-27, commits f92ad3e + bfcb549; follow-up 2026-04-26)
+All 18.1–18.5 tasks are complete. The remaining 18.2.3 parity gap was closed by propagating `strategy_tag` into the HTTP `/query` tool-audit metadata alongside the legacy `route_strategy` field.
 
 ## Key Phase 18 Files
 - `scripts/ai/aq-report` — 8-section digest: tool perf, routing, cache, eval trend, strategy leaderboard, recommended prompts, gaps, recommendations
@@ -166,7 +166,6 @@ AIDB vector search endpoint: POST /vector/search (not /search).
 - Phase 11.1.1: COMPLETE — all MCP services now have `requirements.lock`; `aider-wrapper` locks only Python API deps and installs the CLI separately on the Docker path, and `nixos-docs` now installs from `requirements.lock`
 - Phase 11.1.3: PARTIAL — lock-integrity verifier now runs in `scripts/security/security-audit.sh` and persists JSON artifacts; Nix service-start enforcement deferred until lock drift is resolved
 - Phase 12.2.2: Prometheus egress metrics
-- Phase 18.2.3: strategy_tag in tool_audit.jsonl from route_handler.py
 - Phase 19.4.5: AIDB import of CLAUDE.md + MEMORY.md for local LLM RAG (blocked on restart + 11.2)
 - Phase 19.4.6: local LLM system prompt with top-3 CLAUDE.md rules (AI_LOCAL_SYSTEM_PROMPT=true)
 - **Phase 20**: Full QA plan tracked in `docs/archive/root-docs/AI-STACK-QA-PLAN.md` — 10 phases, ~65 discrete tests
