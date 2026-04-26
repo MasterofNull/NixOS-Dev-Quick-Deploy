@@ -1,9 +1,10 @@
 # Aider-Wrapper Requirements
 # Updated: 2026-01-11 with ACTUAL January 2026 versions
 
-# Aider - v0.86.1 (Latest as of Jan 2026)
-# Supports Python 3.8-3.13, Claude Sonnet 4, GPT 4.1, DeepSeek R1
-aider-chat==0.86.1
+# Runtime note:
+# The aider CLI binary is injected by Nix via AIDER_BIN for the live service.
+# Keep this file limited to Python server dependencies so it can be hash-locked
+# independently of the external aider binary packaging path.
 
 # Web Framework - Let aider determine compatible versions
 fastapi
