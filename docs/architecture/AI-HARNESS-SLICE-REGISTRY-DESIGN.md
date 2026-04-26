@@ -311,6 +311,22 @@ This split follows the current repo boundaries:
 - `services.py`, `deployments.py`, `containers.py`, `actions.py`, `config.py`, `testing.py`, plus runtime/service/context control services own mutating operator controls,
 - `workflows.py`, `collaboration.py`, `websockets.py`, and workflow/session guides own operator-facing workflow and collaboration flows.
 
+### 8.6 Decomposition Wave 6
+
+The sixth refinement wave decomposes the old `security-governance` slice into:
+
+1. `secrets-credential-governance`
+2. `security-scan-compliance-automation`
+3. `policy-validation-governance`
+4. `operator-security-audit-controls`
+
+This split follows the current repo boundaries:
+
+- `secrets.nix`, `manage-secrets`, and `secrets-rotation-plan.sh` own secret inventory, runtime wiring, and rotation impact,
+- `security-audit.sh`, scan/penetration scripts, and `routes/security.py` own scanning and compliance automation,
+- `tier0-validation-gate.sh`, `repo-structure-lint.sh`, policy evaluators, and unattended-sudo checks own repo governance enforcement,
+- `routes/audit.py`, `routes/firewall.py`, and runtime audit controls own operator-facing audit and security mutation surfaces.
+
 ---
 
 ## 9. Recommended Use
