@@ -90,6 +90,34 @@ def coerce_memory_summary(summary: Optional[str], content: Optional[str]) -> str
     return str(content or "").strip()
 
 
+# Phase 12.3 — Memory validation gate (PoW): block poisoned or trivially empty writes.
+_MEMORY_POISON_TOKENS = frozenset({
+    "<|im_end|>", "<|endoftext|>", "</s>", "<|end|>",
+    "<|eot_id|>", "<|start_header_id|>", "<|end_header_id|>",
+})
+_MEMORY_MIN_CONTENT_CHARS = 20
+
+
+def validate_memory_content(summary: str, content: Optional[str]) -> None:
+    """Raise ValueError if the memory payload fails basic quality checks.
+
+    Guards:
+    - Trivially short summary/content (likely noise or an empty agent call)
+    - Stop-token leakage that would poison the vector index with model artifacts
+    """
+    text = (str(content or "") + " " + summary).strip()
+    if len(text) < _MEMORY_MIN_CONTENT_CHARS:
+        raise ValueError(
+            f"memory_too_short: combined content+summary must be "
+            f">={_MEMORY_MIN_CONTENT_CHARS} chars, got {len(text)}"
+        )
+    for tok in _MEMORY_POISON_TOKENS:
+        if tok in text:
+            raise ValueError(
+                f"memory_poison_token: payload contains stop token '{tok}'"
+            )
+
+
 def _sanitize_memory_text(value: Optional[str], *, field_name: str, max_chars: int) -> str:
     text = str(value or "").strip()
     if not text:
