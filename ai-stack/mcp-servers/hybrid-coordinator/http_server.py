@@ -121,7 +121,6 @@ from model_coordinator import (
 )
 import mcp_handlers
 import delegation_handlers
-from auth_middleware import create_api_key_middleware as _create_api_key_middleware
 import openai_a2a_handlers
 import ops_handlers
 import workflow_session_handlers
@@ -4022,8 +4021,76 @@ async def run_http_mode(port: int) -> None:
                 response.headers["X-Request-ID"] = request_id
             clear_contextvars()
 
-    # Phase 12.4: auth middleware extracted to auth_middleware.py
-    api_key_middleware = _create_api_key_middleware()
+    @web.middleware
+    async def api_key_middleware(request, handler):
+        def _is_loopback_request(req: web.Request) -> bool:
+            """Check if the request originates from localhost."""
+            remote = (req.remote or "").strip()
+            if remote in {"127.0.0.1", "::1", "localhost"}:
+                return True
+            forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
+            return forwarded_for in {"127.0.0.1", "::1", "localhost"}
+
+        def _is_loopback_agent_request(req: web.Request) -> bool:
+            """Loopback bypass for local agent endpoints.
+
+            Local agents (Qwen, Claude Code, Aider, etc.) running on the same
+            machine should be able to use the harness without manual API key
+            configuration. Remote requests still require full auth.
+            """
+            if not _is_loopback_request(req):
+                return False
+            # Only bypass for endpoints that local agents actually need
+            agent_prefixes = (
+                "/hints",
+                "/workflow/",
+                "/query",
+                "/v1/orchestrate",
+                "/v1/",
+                "/review/",
+                "/discovery/",
+                "/control/ai-coordinator/",
+                "/control/llm/",
+                "/control/agents/",
+                "/control/agents",
+                "/control/review/",
+                "/control/runtimes",
+                "/control/runtimes/",
+                "/memory/",
+                "/learning/",
+                "/cache/",
+                "/harness/",
+                "/parity/",
+                "/feedback",
+                "/status",
+                "/alerts",
+                "/stats",
+                "/learning/stats",
+            )
+            return any(req.path.startswith(pfx) for pfx in agent_prefixes)
+
+        # Public endpoints that don't require authentication
+        public_paths = (
+            "/health",
+            "/metrics",
+            "/.well-known/mcp.json",
+            "/.well-known/agent.json",
+            "/.well-known/agent-card.json",
+            "/health/detailed",
+            "/health/aggregate",
+        )
+        if request.path in public_paths:
+            return await handler(request)
+        if _is_loopback_agent_request(request):
+            return await handler(request)
+        if not Config.API_KEY:
+            return await handler(request)
+        token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+        if token.startswith("Bearer "):
+            token = token.split(" ", 1)[1]
+        if token != Config.API_KEY:
+            return web.json_response({"error": "unauthorized"}, status=401)
+        return await handler(request)
 
     # ------------------------------------------------------------------
     # Route handlers
@@ -4662,14 +4729,6 @@ async def run_http_mode(port: int) -> None:
             data = await request.json()
             memory_type = normalize_memory_type(data.get("memory_type", ""))
             summary = coerce_memory_summary(data.get("summary"), data.get("content"))
-
-            # A-Tier Validation Gate: Prevent "Memory Poisoning"
-            # If content contains code blocks, perform a quick syntax check before storing.
-            if "```" in (data.get("content") or ""):
-                # Small teams can't afford to debug hallucinations in memory.
-                # We could trigger a non-blocking local validation here.
-                pass
-
             # Phase 1.3 — Profile memory store operation
             _mem_store_start = time.time()
             result = await _store_memory(
@@ -5883,258 +5942,17 @@ async def run_http_mode(port: int) -> None:
                 state_dir.mkdir(parents=True, exist_ok=True)
                 agent_state_file = state_dir / f"agent-{agent_id}.json"
 
-                # Build agent code that calls switchboard for tool-augmented execution
-                agent_code = '''
-import asyncio, json, os, sys, time, httpx, pathlib
-AGENT_ID = os.environ["AGENT_ID"]
-AGENT_ROLE = os.environ["AGENT_ROLE"]
-SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
-AGENT_TASK = os.environ["AGENT_TASK"]
-SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
-LLAMA_CPP_URL = os.environ.get("LLAMA_CPP_URL", "http://127.0.0.1:8080")  # Phase 12.1: direct fallback
-HYBRID_URL = os.environ.get("HYBRID_URL", "http://127.0.0.1:8003")
-STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
-MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
-TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
-AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "180"))
-# Thinking mode: disable by default to skip CoT overhead for delegation tasks.
-# NO_THINK_PREFIX_STR is the model-specific prefix (e.g. "/no_think" for Qwen3).
-# When empty, no prefix is prepended regardless of thinking mode setting.
-_thinking_on = os.environ.get("AGENT_THINKING_MODE", "off") == "on"
-NO_THINK_PREFIX_STR = os.environ.get("AGENT_NO_THINK_PREFIX", "")
-NO_THINK_PREFIX = (not _thinking_on) and bool(NO_THINK_PREFIX_STR)
-# Stop sequences: loaded from model-catalog via coordinator; fallback to ChatML tokens.
-try:
-    import json as _json
-    STOP_SEQUENCES = _json.loads(os.environ.get("AGENT_STOP_SEQUENCES", "[]")) or ["<|im_end|>", "<|endoftext|>"]
-except Exception:
-    STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
-# Phase 8.7 — tool calling: opt-in via AGENT_TOOLS_ENABLED=true
-TOOLS_ENABLED = os.environ.get("AGENT_TOOLS_ENABLED", "false").lower() == "true"
-MAX_TOOL_ROUNDS = int(os.environ.get("AGENT_MAX_TOOL_ROUNDS", "3"))
-# Phase 8.9 — streaming mode: emit token chunks to stdout as SSE lines.
-# Incompatible with TOOLS_ENABLED (tool rounds must be synchronous).
-STREAMING_MODE = os.environ.get("AGENT_STREAMING", "false").lower() == "true" and not TOOLS_ENABLED
-
-# OpenAI-compatible tool schemas for harness endpoints (loopback auth bypass applies).
-TOOL_SCHEMAS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "route_search",
-            "description": "Search the codebase and project documentation for relevant context using semantic and keyword RAG.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query string"},
-                    "limit": {"type": "integer", "description": "Max results to return (1-10)", "default": 5},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "recall_memory",
-            "description": "Recall prior agent context, solutions, or task outcomes from memory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Memory recall query"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-]
-
-def _profile_for_role(role):
-    normalized = str(role or "").strip().lower()
-    if normalized == "coder":
-        return "local-tool-calling"
-    # continue-local has ~150-char system prompt vs local-agent ~2000-char.
-    # Lighter profile avoids >300s prefill overhead for simple delegate tasks.
-    return "continue-local"
-
-def _write_state(state):
-    if STATE_FILE:
-        p = pathlib.Path(STATE_FILE)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(state))
-
-async def _dispatch_tool(client, name, args):
-    """Execute a harness tool call and return a plaintext result string."""
-    try:
-        if name == "route_search":
-            query = str(args.get("query", "")).strip()
-            limit = max(1, min(10, int(args.get("limit", 5))))
-            r = await client.post(
-                f"{HYBRID_URL}/query",
-                json={"query": query, "mode": "retrieval_only", "limit": limit, "prefer_local": True},
-                timeout=30.0,
-            )
-            if r.status_code == 200:
-                results = r.json().get("results") or []
-                if results:
-                    return "\\n".join(
-                        f"[{i+1}] {res.get('content','')[:400]}"
-                        for i, res in enumerate(results[:limit])
+                # Phase 12.4 / senior review: agent logic lives in a real Python file.
+                _runtime_path = (
+                    Path(__file__).parent.parent.parent
+                    / "agents" / "runtimes" / "local_agent_runtime.py"
+                )
+                if not _runtime_path.exists():
+                    logger.error("local_agent_runtime.py not found at %s", _runtime_path)
+                    return web.json_response(
+                        {"error": "agent_runtime_missing", "path": str(_runtime_path)},
+                        status=500,
                     )
-                return "No results found."
-            return f"route_search error: HTTP {r.status_code}"
-        elif name == "recall_memory":
-            query = str(args.get("query", "")).strip()
-            r = await client.post(
-                f"{HYBRID_URL}/query",
-                json={"query": query, "mode": "memory_only", "limit": 5, "prefer_local": True},
-                timeout=30.0,
-            )
-            if r.status_code == 200:
-                results = r.json().get("results") or []
-                if results:
-                    return "\\n".join(
-                        f"[{i+1}] {res.get('content','')[:400]}"
-                        for i, res in enumerate(results[:5])
-                    )
-                return "No memories found."
-            return f"recall_memory error: HTTP {r.status_code}"
-        return f"unknown_tool: {name}"
-    except Exception as exc:
-        return f"tool_error({name}): {exc}"
-
-async def run():
-    state = {"id": AGENT_ID, "role": AGENT_ROLE,
-             "status": "running", "started_at": time.time(), "tool_calls": 0}
-    _write_state(state)
-    try:
-        task_content = AGENT_TASK
-        if NO_THINK_PREFIX and not task_content.startswith(NO_THINK_PREFIX_STR):
-            task_content = NO_THINK_PREFIX_STR + " " + task_content
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": task_content},
-        ]
-        inference_base = {
-            "temperature": TEMPERATURE,
-            "max_tokens": MAX_TOKENS,
-            "stream": False,
-            "stop": STOP_SEQUENCES,
-        }
-        if TOOLS_ENABLED:
-            inference_base["tools"] = TOOL_SCHEMAS
-            inference_base["tool_choice"] = "auto"
-        # Use local-tool-calling profile when tools are enabled: it enforces
-        # llama.cpp grammar constraints that produce proper tool_calls JSON.
-        profile = "local-tool-calling" if TOOLS_ENABLED else _profile_for_role(AGENT_ROLE)
-        headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
-        content = ""
-        async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
-            if STREAMING_MODE:
-                # Phase 8.9 — streaming path: request stream=True, emit each token chunk
-                # as a newline-delimited JSON line so the parent process can relay SSE.
-                content_parts = []
-                async with client.stream(
-                    "POST",
-                    f"{SWITCHBOARD_URL}/v1/chat/completions",
-                    json={"messages": messages, "temperature": TEMPERATURE,
-                          "max_tokens": MAX_TOKENS, "stream": True, "stop": STOP_SEQUENCES},
-                    headers=headers,
-                ) as sresp:
-                    sresp.raise_for_status()
-                    async for raw_line in sresp.aiter_lines():
-                        raw_line = raw_line.strip()
-                        if not raw_line or raw_line == ":":
-                            continue
-                        line = raw_line[6:] if raw_line.startswith("data: ") else raw_line
-                        if line == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(line)
-                            piece = (chunk.get("choices") or [{}])[0].get("delta", {}).get("content") or ""
-                            if piece:
-                                content_parts.append(piece)
-                                sys.stdout.write(json.dumps({"t": piece, "done": False}) + "\\n")
-                                sys.stdout.flush()
-                        except Exception:
-                            pass
-                content = "".join(content_parts)
-                state.update({"status": "completed", "result": content,
-                              "completed_at": time.time(), "finish_reason": "stop"})
-                _write_state(state)
-                sys.stdout.write(json.dumps({"done": True, "ok": True, "content": content, "agent_id": AGENT_ID}) + "\\n")
-                sys.stdout.flush()
-                return
-            max_rounds = MAX_TOOL_ROUNDS if TOOLS_ENABLED else 1
-            for _round in range(max_rounds):
-                # Phase 12.1: try switchboard first; on connection error fall back to
-                # llama.cpp directly. Switchboard being offline should not hard-fail
-                # local delegation — llama.cpp is always the underlying backend.
-                _inference_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
-                _inference_headers = headers
-                try:
-                    resp = await client.post(
-                        _inference_url,
-                        json={"messages": messages, **inference_base},
-                        headers=_inference_headers,
-                    )
-                except (httpx.ConnectError, httpx.ConnectTimeout):
-                    _inference_url = f"{LLAMA_CPP_URL}/v1/chat/completions"
-                    _inference_headers = {}  # llama.cpp has no profile routing
-                    resp = await client.post(
-                        _inference_url,
-                        json={"messages": messages, **inference_base},
-                        headers=_inference_headers,
-                    )
-                resp.raise_for_status()
-                data = resp.json()
-                msg = data["choices"][0]["message"]
-                tool_calls = msg.get("tool_calls") or []
-                if not tool_calls:
-                    # No (more) tool calls — final answer
-                    content = (msg.get("content") or "").strip()
-                    if not content:
-                        content = (msg.get("reasoning_content") or "").strip()
-                    break
-                # Append assistant turn with tool_calls
-                assistant_turn = {"role": "assistant"}
-                if msg.get("content"):
-                    assistant_turn["content"] = msg["content"]
-                assistant_turn["tool_calls"] = tool_calls
-                messages.append(assistant_turn)
-                # Dispatch each tool call and append results
-                for tc in tool_calls:
-                    tc_id = tc.get("id", f"call_{_round}")
-                    tc_name = (tc.get("function") or {}).get("name", "")
-                    try:
-                        tc_args = json.loads((tc.get("function") or {}).get("arguments", "{}"))
-                    except Exception:
-                        tc_args = {}
-                    tc_result = await _dispatch_tool(client, tc_name, tc_args)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc_id,
-                        "content": tc_result,
-                    })
-                    state["tool_calls"] += 1
-                    _write_state(state)
-            else:
-                # Exhausted rounds — use last non-empty content
-                if not content:
-                    last_msg = messages[-1] if messages else {}
-                    content = str(last_msg.get("content") or "")
-        state.update({"status": "completed", "result": content,
-                      "completed_at": time.time(),
-                      "finish_reason": data["choices"][0].get("finish_reason", "stop")})
-        _write_state(state)
-        print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
-    except Exception as e:
-        state.update({"status": "failed", "error": str(e), "completed_at": time.time()})
-        _write_state(state)
-        print(json.dumps({"ok": False, "error": str(e), "agent_id": AGENT_ID}), file=sys.stderr)
-        sys.exit(1)
-asyncio.run(run())
-'''
                 # Resolve model capabilities from catalog for model-agnostic agent spawning.
                 _model_caps = _active_model_capabilities()
                 _stop_seqs_default = json.dumps(_model_caps.get("stop_sequences") or ["<|im_end|>", "<|endoftext|>"])
@@ -6169,7 +5987,7 @@ asyncio.run(run())
                     env["AGENT_TOOLS_ENABLED"] = "false"
 
                 proc = await asyncio.create_subprocess_exec(
-                    sys.executable, "-c", agent_code,
+                    sys.executable, str(_runtime_path),
                     env=env,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
