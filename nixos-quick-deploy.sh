@@ -26,6 +26,16 @@ set -Eeuo pipefail
 
 readonly SCRIPT_VERSION="5.0.0"
 
+# NixOS places the setuid sudo wrapper in /run/wrappers/bin, not in the nix
+# store path that ends up in the default PATH.  Prepend it here so every sudo
+# call in this script (sudo -n true, sudo systemctl start, etc.) resolves the
+# correct binary.  Without this, sudo reports "must be owned by uid 0 and have
+# the setuid bit set" and all privilege-escalation paths silently degrade.
+if [[ -d /run/wrappers/bin ]]; then
+  PATH="/run/wrappers/bin:${PATH}"
+  export PATH
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "${SCRIPT_DIR}/flake.nix" && -d "${SCRIPT_DIR}/nix" ]]; then
   REPO_ROOT="${SCRIPT_DIR}"
@@ -4031,23 +4041,46 @@ verify_or_download_ai_models() {
   local chat_model_present=false
   local embed_model_present=false
 
-  # Check if models are already present at the TARGET paths (valid size > 10MB)
-  if [[ -f "$chat_model_path" ]]; then
+  # Check if models are already present at the TARGET paths (valid size > 10MB).
+  # The llama-cpp state dir is owned by a DynamicUser so direct access may be
+  # permission-denied; fall back to sudo -n stat, and if that also fails, infer
+  # presence from the service being active (it won't start without the model).
+  _model_sz() {
+    local path="$1"
+    local sz
+    sz="$(stat -c%s "$path" 2>/dev/null)" && { echo "$sz"; return; }
+    sz="$(sudo -n stat -c%s "$path" 2>/dev/null)" && { echo "$sz"; return; }
+    echo 0
+  }
+  _model_du() {
+    local path="$1"
+    du -h "$path" 2>/dev/null | cut -f1 \
+      || sudo -n du -h "$path" 2>/dev/null | cut -f1 \
+      || echo "?"
+  }
+
+  if [[ -f "$chat_model_path" ]] || sudo -n test -f "$chat_model_path" 2>/dev/null; then
     local chat_sz
-    chat_sz="$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)"
+    chat_sz="$(_model_sz "$chat_model_path")"
     if [[ "$chat_sz" -gt 10485760 ]]; then
       chat_model_present=true
-      log "Model verification: chat model present ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+      log "Model verification: chat model present ($(_model_du "$chat_model_path"))"
     fi
+  elif systemctl is-active --quiet llama-cpp.service 2>/dev/null; then
+    chat_model_present=true
+    log "Model verification: chat model inferred present (llama-cpp.service is active)"
   fi
 
-  if [[ -f "$embed_model_path" ]]; then
+  if [[ -f "$embed_model_path" ]] || sudo -n test -f "$embed_model_path" 2>/dev/null; then
     local embed_sz
-    embed_sz="$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)"
+    embed_sz="$(_model_sz "$embed_model_path")"
     if [[ "$embed_sz" -gt 10485760 ]]; then
       embed_model_present=true
-      log "Model verification: embedding model present ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+      log "Model verification: embedding model present ($(_model_du "$embed_model_path"))"
     fi
+  elif systemctl is-active --quiet llama-cpp-embed.service 2>/dev/null; then
+    embed_model_present=true
+    log "Model verification: embedding model inferred present (llama-cpp-embed.service is active)"
   fi
 
   if [[ "$chat_model_present" == true && "$embed_model_present" == true ]]; then
@@ -4070,20 +4103,24 @@ verify_or_download_ai_models() {
 
   log "Model verification: Phase 1 download incomplete — triggering fallback via systemd..."
 
-  # Trigger chat model fetch
+  # Trigger chat model fetch (requires privilege; prefer sudo -n, else plain systemctl)
   if [[ "$chat_model_present" != true ]]; then
-    systemctl reset-failed llama-cpp-model-fetch.service 2>/dev/null || true
+    sudo -n systemctl reset-failed llama-cpp-model-fetch.service 2>/dev/null \
+      || systemctl reset-failed llama-cpp-model-fetch.service 2>/dev/null || true
     log "Model download: starting llama-cpp-model-fetch..."
-    if ! systemctl start llama-cpp-model-fetch 2>/dev/null; then
+    if ! sudo -n systemctl start llama-cpp-model-fetch 2>/dev/null \
+       && ! systemctl start llama-cpp-model-fetch 2>/dev/null; then
       log_warn "Model download: failed to trigger chat model fetch"
     fi
   fi
 
-  # Trigger embedding model fetch
+  # Trigger embedding model fetch (requires privilege; prefer sudo -n, else plain systemctl)
   if [[ "$embed_model_present" != true ]]; then
-    systemctl reset-failed llama-cpp-embed-model-fetch.service 2>/dev/null || true
+    sudo -n systemctl reset-failed llama-cpp-embed-model-fetch.service 2>/dev/null \
+      || systemctl reset-failed llama-cpp-embed-model-fetch.service 2>/dev/null || true
     log "Model download: starting llama-cpp-embed-model-fetch..."
-    if ! systemctl start llama-cpp-embed-model-fetch 2>/dev/null; then
+    if ! sudo -n systemctl start llama-cpp-embed-model-fetch 2>/dev/null \
+       && ! systemctl start llama-cpp-embed-model-fetch 2>/dev/null; then
       log_warn "Model download: failed to trigger embedding model fetch"
     fi
   fi
