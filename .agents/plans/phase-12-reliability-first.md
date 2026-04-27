@@ -1,6 +1,6 @@
 # Phase 12 — Reliability-First: Delegation, RAG Quality, Memory Gate
 
-Status: `planned`
+Status: `in-progress` (12.1–12.3 complete; 12.4 ongoing)
 Created: 2026-04-26
 Owner: Claude (orchestrator) / Qwen (implementation slices)
 Predecessor: Phase 11 (complete — 11.6 deferred)
@@ -34,13 +34,13 @@ Three independent workstreams, all targeting measurable reliability improvements
 
 ## Evidence Baselines
 
-| Metric | Current | Target |
-|--------|---------|--------|
-| `ai_coordinator_delegate` success rate | 23.5% | ≥90% |
-| `route_search` P95 latency | 59,496ms | ≤10,000ms |
-| RAG recall share (route_search) | 0% | — (gate added, not a recall target) |
-| Memory writes with validation | 0% | 100% of new writes |
-| http_server.py line count | 9,600 | ≤2,000 (Phase 12.4) |
+| Metric | Baseline | Status | Target |
+|--------|---------|--------|--------|
+| `ai_coordinator_delegate` success rate | 23.5% | fixes committed (nixos-rebuild pending) | ≥90% |
+| `route_search` P95 latency | 59,496ms | — | ≤10,000ms |
+| RAG confidence gate | missing | `AI_RETRIEVAL_MIN_CONFIDENCE=0.65` added | operational |
+| Memory writes with validation | 0% | 100% gated (stop-token + min-length) | 100% |
+| http_server.py line count | 9,600 | 7,116 | ≤5,000 (Phase 11.6 gate) / ≤2,000 (full) |
 
 ---
 
@@ -63,7 +63,7 @@ Out of scope:
 
 ## Phase 12.1 — Delegation Root-Cause Diagnosis
 
-Status: `pending`
+Status: `complete` (commits `1482c221`)
 
 **Problem**: `ai_coordinator_delegate` succeeds 23.5% of the time. The pre-rebuild
 number may have improved post-rebuild, but there is no post-rebuild measurement yet.
@@ -96,7 +96,7 @@ aq-report --metric delegation_success --since=24h
 
 ## Phase 12.2 — RAG Noise Reduction (Retrieval Confidence Gate)
 
-Status: `pending`
+Status: `complete` (commit `fd36943a`)
 
 **Problem**: RAG recall share is 0% for route_search queries, yet context is still
 being prepended. This means every query gets token overhead with no signal benefit —
@@ -129,7 +129,7 @@ python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/search_router.py
 
 ## Phase 12.3 — Memory Validation Gate
 
-Status: `pending`
+Status: `complete` (commit `d559b80f`) — Python-level PoW gate in memory_manager.py and mcp_handlers.py. The CLI `--draft`/`review`/`promote` workflow from the plan is deferred (not yet implemented in `aq-memory`).
 
 **Problem**: Agents (including quantized local models) can write to procedural memory
 via `aq-memory add` with no human review or score threshold. A hallucinated "best
@@ -160,7 +160,7 @@ bash -n scripts/ai/aq-memory
 
 ## Phase 12.4 — Continue http_server.py Decomposition
 
-Status: `pending` (blocked on Phase 12.1 root-cause — don't move code we're debugging)
+Status: `in-progress` — 7,116 lines (from 9,600 baseline). Modules extracted so far: `auth_middleware.py`, `local_agent_runtime.py`, `real_time_learning_engine.py`, `agent_registry.py`, `runtime_manager.py`, `orchestration_utils.py`.
 
 **Problem**: http_server.py is still 9,600 lines. Target is <2,000.
 
@@ -186,7 +186,17 @@ code while debugging it creates a moving target.
 
 | Date | Slice | Result | Evidence |
 |------|-------|--------|----------|
-| — | — | — | — |
+| 2026-04-26 | 12.1 delegation diagnosis | DONE | `.agent/workflows/phase-12-delegation-diagnosis.md` |
+| 2026-04-26 | 12.1 RC-1 switchboard fallback | DONE | commit `1482c221` |
+| 2026-04-26 | 12.1 RC-2 quality threshold | DONE | `QualityThreshold.PERMISSIVE=0.55` |
+| 2026-04-26 | 12.1 RC-3 timeout increase | DONE | `AI_DELEGATE_TIMEOUT_S=240` |
+| 2026-04-27 | 12.4 agent runtime extraction | DONE | commit `2626b759` → `local_agent_runtime.py` |
+| 2026-04-27 | 12.3 memory validation gate | DONE | commit `d559b80f` → `validate_memory_content()` |
+| 2026-04-27 | 12.2 RAG confidence gate | DONE | commit `fd36943a` → `AI_RETRIEVAL_MIN_CONFIDENCE=0.65` |
+| 2026-04-27 | 12.4 real_time_learning_engine | DONE | commit `2a88bf01` → `-266 lines` |
+| 2026-04-27 | 12.4 agent_registry | DONE | commit `a0a7e764` → `-619 lines` |
+| 2026-04-27 | 12.4 runtime_manager | DONE | commit `379ab6b7` → `-682 lines` |
+| 2026-04-27 | 12.4 orchestration_utils | DONE | commit `e9df22c9` → `-721 lines` |
 
 ---
 
