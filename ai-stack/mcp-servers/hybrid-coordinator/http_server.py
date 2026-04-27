@@ -2484,6 +2484,60 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response(_error_payload("internal_error", exc), status=500)
 
+    async def handle_web_research_fetch(request: web.Request) -> web.Response:
+        """POST /research/web/fetch — fetch and extract text from one or more URLs."""
+        try:
+            from web_research import fetch_web_research
+            data = await request.json() if request.can_read_body else {}
+            result = await fetch_web_research(
+                urls=data.get("urls", []),
+                selectors=data.get("selectors"),
+                max_text_chars=data.get("max_text_chars"),
+            )
+            return web.json_response(result)
+        except (ValueError, RuntimeError) as exc:
+            return web.json_response(_error_payload("client_error", exc), status=400)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_browser_research_fetch(request: web.Request) -> web.Response:
+        """POST /research/web/browser-fetch — fetch URLs via headless browser."""
+        try:
+            from browser_research import fetch_browser_research
+            data = await request.json() if request.can_read_body else {}
+            result = await fetch_browser_research(
+                urls=data.get("urls", []),
+                selectors=data.get("selectors"),
+                max_text_chars=data.get("max_text_chars"),
+            )
+            return web.json_response(result)
+        except (ValueError, RuntimeError) as exc:
+            return web.json_response(_error_payload("client_error", exc), status=400)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
+    async def handle_curated_research_fetch(request: web.Request) -> web.Response:
+        """POST /research/workflows/curated-fetch — run a named curated research workflow."""
+        try:
+            from research_workflows import run_curated_research_workflow
+            data = await request.json() if request.can_read_body else {}
+            workflow_slug = data.get("workflow_slug", "")
+            if not workflow_slug:
+                return web.json_response(
+                    _error_payload("client_error", ValueError("workflow_slug is required")),
+                    status=400,
+                )
+            result = await run_curated_research_workflow(
+                workflow_slug=workflow_slug,
+                inputs=data.get("inputs"),
+                max_text_chars=data.get("max_text_chars"),
+            )
+            return web.json_response(result)
+        except (ValueError, KeyError, RuntimeError) as exc:
+            return web.json_response(_error_payload("client_error", exc), status=400)
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     async def handle_prsi_pending(_request: web.Request) -> web.Response:
         """
         GET /control/prsi/pending — Fast read of pending PRSI actions from queue file.
