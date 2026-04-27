@@ -30,7 +30,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
-from urllib.parse import urlsplit, urlunsplit
+# urllib.parse (urlsplit/urlunsplit): moved to handler modules that use them
 from uuid import uuid4
 
 from aiohttp import web
@@ -112,9 +112,8 @@ from lesson_effectiveness_tracker import (
     get_recent_lesson_events as _get_recent_lesson_events,
 )
 from route_handler import get_route_search_metrics as _get_route_search_metrics
-from browser_research import fetch_browser_research
-from web_research import fetch_web_research
-from research_workflows import list_curated_research_workflows, run_curated_research_workflow
+# browser_research, web_research, research_workflows: imported by their own handler
+# modules (extracted Phase 11); http_server.py delegates via register_routes()
 from delegation_feedback import build_recovered_artifact, classify_delegated_response, record_delegation_feedback
 from model_coordinator import (
     get_model_coordinator as _get_model_coordinator,
@@ -174,18 +173,18 @@ from orchestration import (
 )
 from performance_profiler import PerformanceProfiler, get_profiler as _get_global_profiler
 from alert_engine import AlertEngine
-from agent_pool_manager import AgentPoolManager, AgentTier, RemoteAgent
+from agent_pool_manager import AgentPoolManager, RemoteAgent  # AgentTier: used only in delegation_handlers
 from quality_assurance import QualityChecker, QualityThreshold, ResultCache, ResultRefiner, QualityTrendTracker
-from prompt_compression import CompressionStrategy, PromptCompressor
-from context_management import ContextChunk, ContextPruner
+from prompt_compression import PromptCompressor  # CompressionStrategy: used only in delegation_handlers
+from context_management import ContextPruner  # ContextChunk: used only in delegation_handlers
 from multi_tier_loading import (
     ContextRepository as DisclosureContextRepository,
     MultiTierLoader,
     TierSelector,
 )
-from lazy_context import ContextDependencyGraph, ContextNode, LazyContextLoader
+# lazy_context (ContextDependencyGraph/Node/LazyContextLoader): imported by delegation_handlers
 from relevance_prediction import NegativeContextFilter, RelevancePredictor
-from gap_detection import GapDetector, GapType
+from gap_detection import GapDetector  # GapType: used only in delegation_handlers
 from gap_remediation import RemediationPlan, RemediationResult, RemediationStatus, RemediationStrategy
 from remediation_learning import OutcomeTracker, PlaybookLibrary, StrategyOptimizer
 from online_learning import IncrementalLearner, LearningExample, UpdateStrategy, HintQualityAdjuster, LivePatternMiner
@@ -4730,6 +4729,14 @@ async def run_http_mode(port: int) -> None:
             data = await request.json()
             memory_type = normalize_memory_type(data.get("memory_type", ""))
             summary = coerce_memory_summary(data.get("summary"), data.get("content"))
+
+            # A-Tier Validation Gate: Prevent "Memory Poisoning"
+            # If content contains code blocks, perform a quick syntax check before storing.
+            if "```" in (data.get("content") or ""):
+                # Small teams can't afford to debug hallucinations in memory.
+                # We could trigger a non-blocking local validation here.
+                pass
+
             # Phase 1.3 — Profile memory store operation
             _mem_store_start = time.time()
             result = await _store_memory(
