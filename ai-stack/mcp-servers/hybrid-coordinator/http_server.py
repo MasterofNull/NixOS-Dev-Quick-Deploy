@@ -121,6 +121,7 @@ from model_coordinator import (
 )
 import mcp_handlers
 import delegation_handlers
+from auth_middleware import create_api_key_middleware as _create_api_key_middleware
 import openai_a2a_handlers
 import ops_handlers
 import workflow_session_handlers
@@ -4021,76 +4022,8 @@ async def run_http_mode(port: int) -> None:
                 response.headers["X-Request-ID"] = request_id
             clear_contextvars()
 
-    @web.middleware
-    async def api_key_middleware(request, handler):
-        def _is_loopback_request(req: web.Request) -> bool:
-            """Check if the request originates from localhost."""
-            remote = (req.remote or "").strip()
-            if remote in {"127.0.0.1", "::1", "localhost"}:
-                return True
-            forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
-            return forwarded_for in {"127.0.0.1", "::1", "localhost"}
-
-        def _is_loopback_agent_request(req: web.Request) -> bool:
-            """Loopback bypass for local agent endpoints.
-
-            Local agents (Qwen, Claude Code, Aider, etc.) running on the same
-            machine should be able to use the harness without manual API key
-            configuration. Remote requests still require full auth.
-            """
-            if not _is_loopback_request(req):
-                return False
-            # Only bypass for endpoints that local agents actually need
-            agent_prefixes = (
-                "/hints",
-                "/workflow/",
-                "/query",
-                "/v1/orchestrate",
-                "/v1/",
-                "/review/",
-                "/discovery/",
-                "/control/ai-coordinator/",
-                "/control/llm/",
-                "/control/agents/",
-                "/control/agents",
-                "/control/review/",
-                "/control/runtimes",
-                "/control/runtimes/",
-                "/memory/",
-                "/learning/",
-                "/cache/",
-                "/harness/",
-                "/parity/",
-                "/feedback",
-                "/status",
-                "/alerts",
-                "/stats",
-                "/learning/stats",
-            )
-            return any(req.path.startswith(pfx) for pfx in agent_prefixes)
-
-        # Public endpoints that don't require authentication
-        public_paths = (
-            "/health",
-            "/metrics",
-            "/.well-known/mcp.json",
-            "/.well-known/agent.json",
-            "/.well-known/agent-card.json",
-            "/health/detailed",
-            "/health/aggregate",
-        )
-        if request.path in public_paths:
-            return await handler(request)
-        if _is_loopback_agent_request(request):
-            return await handler(request)
-        if not Config.API_KEY:
-            return await handler(request)
-        token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
-        if token.startswith("Bearer "):
-            token = token.split(" ", 1)[1]
-        if token != Config.API_KEY:
-            return web.json_response({"error": "unauthorized"}, status=401)
-        return await handler(request)
+    # Phase 12.4: auth middleware extracted to auth_middleware.py
+    api_key_middleware = _create_api_key_middleware()
 
     # ------------------------------------------------------------------
     # Route handlers
