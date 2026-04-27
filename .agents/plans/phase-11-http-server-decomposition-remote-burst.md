@@ -1,6 +1,6 @@
 # Phase 11 — http_server.py Decomposition + Remote Cloud Burst
 
-Status: `in progress — phases 11.2 through 11.4 complete`
+Status: `in progress — phases 11.2 through 11.5 complete`
 Created: 2026-04-26
 Owner: Claude (orchestrator) / Qwen (implementation slices)
 Predecessor: Phase 10 (complete — pending nixos-rebuild deployment)
@@ -29,7 +29,7 @@ Two independent improvements identified from the strategic re-evaluation (2026-0
 
 | Signal                          | Value               | Target                            |
 | ------------------------------- | ------------------- | --------------------------------- |
-| http_server.py line count       | 10,376              | ≤1,000 (routing+wiring only)      |
+| http_server.py line count       | 9,600               | ≤1,000 (routing+wiring only)      |
 | Remote routing share (7d)       | 0%                  | ≥10% for complex/overflow queries |
 | ai_coordinator_delegate success | 23.5% (pre-rebuild) | ≥90% (post-rebuild)               |
 | route_search P95                | 59,496ms            | ≤15,000ms (post-rebuild cap)      |
@@ -151,14 +151,15 @@ Observed result:
 | ---------- | ----- | ------ | -------- |
 | 2026-04-26 | 11.2  | complete | `fc370db7` extracted delegation helpers into `delegation_handlers.py` |
 | 2026-04-26 | 11.3  | complete | `ab363479` extracted workflow session handlers into `workflow_session_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
-| 2026-04-26 | 11.4  | complete | pending commit extracted OpenAI-compat and A2A handlers into `openai_a2a_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
+| 2026-04-26 | 11.4  | complete | `29c3cb5b` extracted OpenAI-compat and A2A handlers into `openai_a2a_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
+| 2026-04-26 | 11.5  | complete | pending commit extracted ops handlers into `ops_handlers.py`; focused source-contract + roadmap validation passed |
 
 ---
 
 ## Phase 11.4 — Extract OpenAI-Compat + A2A Handlers
 
 Status: `complete`
-Commit: `pending`
+Commit: `29c3cb5b`
 
 **Problem**: OpenAI-compatible endpoint handlers (`/v1/chat/completions`, `/v1/models`,
 `/v1/completions`) and A2A agent card handlers (`/.well-known/agent.json`) are ~300
@@ -186,14 +187,18 @@ Observed result:
 
 ## Phase 11.5 — Extract Ops Handlers (Learning/Feedback/Alert/Cache)
 
+Status: `complete`
+Commit: `pending`
+
 **Problem**: Learning, feedback, alert management, and cache handlers are operational
 concerns that have nothing to do with the core query/delegation path but take up ~2000
 lines in http_server.py.
 
 **Fix strategy**:
 - Create `ops_handlers.py`
-- Move `handle_learning_*`, `handle_feedback*`, `handle_alert*`, `handle_cache_*`,
-  `handle_model_*`, `handle_reload_model`, `handle_qa_check`
+- Move `handle_health*`, `handle_stats`, `handle_learning_*`, `handle_feedback*`,
+  `handle_alert*`, `handle_cache_*`, `handle_model_*`, `handle_reload_model`
+- Register these routes through `ops_handlers.register_routes(http_app)`
 
 **Validation**:
 ```bash
@@ -201,6 +206,11 @@ python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/ops_handlers.py
 curl -s localhost:8003/learning/stats | python3 -m json.tool | grep -q "total"
 curl -s localhost:8003/cache/stats | python3 -m json.tool | grep -q "hit_rate"
 ```
+
+Observed result:
+- `http_server.py` reduced from `10,376` lines after Phase 11.4 to `9,600`
+- Ops routes now register through `ops_handlers.register_routes(http_app)`
+- Static roadmap checks now validate extracted ops routes in `ops_handlers.py`
 
 ---
 
