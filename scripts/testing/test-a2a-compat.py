@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
+OPENAI_A2A_HANDLERS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "openai_a2a_handlers.py"
 
 
 def assert_contains(source: str, needle: str, message: str) -> None:
@@ -15,11 +16,13 @@ def assert_contains(source: str, needle: str, message: str) -> None:
 
 
 def main() -> int:
-    source = HTTP_SERVER.read_text(encoding="utf-8")
+    http_server_source = HTTP_SERVER.read_text(encoding="utf-8")
+    source = OPENAI_A2A_HANDLERS.read_text(encoding="utf-8")
 
     assert_contains(source, 'http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)', "missing A2A well-known route")
     assert_contains(source, 'http_app.router.add_post("/a2a", handle_a2a_rpc)', "missing A2A RPC route")
     assert_contains(source, 'http_app.router.add_get("/a2a/tasks/{session_id}/events", handle_a2a_task_events)', "missing A2A task-events route")
+    assert_contains(http_server_source, 'openai_a2a_handlers.register_routes(http_app)', "http_server should register extracted OpenAI/A2A routes")
 
     assert_contains(source, 'def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:', "missing A2A agent card helper")
     assert_contains(source, '"protocolVersion": "0.3.0"', "agent card should declare protocol version")
