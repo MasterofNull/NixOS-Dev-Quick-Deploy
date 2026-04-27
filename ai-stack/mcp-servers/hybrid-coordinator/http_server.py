@@ -310,6 +310,7 @@ from agent_registry import (
     _normalize_agent_role,
     _validate_intent_contract,
     _coerce_intent_contract,
+    _default_intent_contract,
     _load_agent_evaluations_registry,
     _save_agent_evaluations_registry,
     _record_agent_consensus_event,
