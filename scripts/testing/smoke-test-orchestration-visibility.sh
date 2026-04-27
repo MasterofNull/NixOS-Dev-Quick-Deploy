@@ -18,7 +18,7 @@ echo "  ✓ loadAgentEvaluationTrends function present"
 # Test 2: Verify endpoint handlers in hybrid coordinator
 echo ""
 echo "Test 2: Hybrid coordinator endpoint handlers..."
-grep -q 'async def handle_workflow_run_team_detailed' ai-stack/mcp-servers/hybrid-coordinator/http_server.py
+grep -q 'async def handle_workflow_run_team_detailed' ai-stack/mcp-servers/hybrid-coordinator/workflow_session_handlers.py
 echo "  ✓ Team detailed handler defined"
 
 grep -q 'async def handle_ai_coordinator_evaluation_trends' ai-stack/mcp-servers/hybrid-coordinator/http_server.py
@@ -36,7 +36,7 @@ echo "  ✓ Evaluation trends proxy endpoint defined"
 # Test 4: Verify Python syntax
 echo ""
 echo "Test 4: Python syntax validation..."
-python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/http_server.py 2>/dev/null
+python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/http_server.py ai-stack/mcp-servers/hybrid-coordinator/workflow_session_handlers.py 2>/dev/null
 echo "  ✓ Hybrid coordinator syntax valid"
 
 python3 -m py_compile dashboard/backend/api/routes/aistack.py 2>/dev/null
