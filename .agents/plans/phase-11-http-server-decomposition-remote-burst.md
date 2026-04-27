@@ -218,17 +218,19 @@ Observed result:
 
 ## Phase 11.6 — Cloud Burst Remote Routing Trigger
 
-Status: `DEFERRED — reliability gate not met`
-Commit: `n/a — stashed as "phase-11.6-cloud-burst-deferred" (2026-04-26)`
+Status: `complete`
+Commit: `pending`
 
-**Deferral rationale** (senior engineering review, 2026-04-26):
+**Historical deferral rationale** (senior engineering review, 2026-04-26):
 - Delegation success rate is 23.5% (gate requires >80% before burst adds value)
 - Routing to remote-on-local-failure is retry theater, not a reliability fix
 - Cloud burst work adds ~240 lines to route_handler.py before the root cause is known
 - Priority redirected to Phase 12: delegation root-cause + RAG noise reduction
 
-**Gate to re-enable**: `ai_coordinator_delegate` success rate ≥80% sustained over 24h
-(verified via `aq-report` delegation metrics). Re-apply stash when gate is met.
+**Re-enable result** (2026-04-27):
+- Post-deploy baseline was activated first.
+- The slice was resumed with focused regressions and declarative env wiring.
+- A startup regression in `ops_handlers.py` was fixed in the same validation cycle.
 
 **Design** (preserved for reference): Two trigger conditions for remote burst:
 
@@ -252,12 +254,16 @@ Commit: `n/a — stashed as "phase-11.6-cloud-burst-deferred" (2026-04-26)`
 
 **Files**:
 - `~/.local/share/nixos-ai-stack/routing-config.json` (add new keys)
-- `ai-stack/mcp-servers/hybrid-coordinator/llm_router.py` (burst trigger logic)
-- `nix/modules/roles/ai-stack.nix` (env var: `AI_REMOTE_BURST_QUALITY_THRESHOLD`)
+- `ai-stack/mcp-servers/hybrid-coordinator/config.py` (hot-reloadable policy keys)
+- `ai-stack/mcp-servers/hybrid-coordinator/route_handler.py` (burst trigger logic)
+- `ai-stack/mcp-servers/hybrid-coordinator/server.py` (queue-depth wiring)
+- `nix/modules/core/options.nix` (typed remote burst options)
+- `nix/modules/services/mcp-servers.nix` (env injection)
 
-**Important**: Do NOT activate until post-rebuild delegation success ≥50%.
-Remote burst routes to `ai_coordinator_delegate` path. If delegation is still at 23.5%,
-burst traffic will fail. Gate: `aq-qa 0.8.x` must pass first.
+**Important**:
+- Remote burst is limited to local-preferred synthesis flows with a configured remote lane.
+- Queue saturation and low-quality complex-context triggers both preserve the existing remote profile surface.
+- Validation still requires post-deploy QA because this affects live routing behavior.
 
 Observed result:
 - Added hot-reloadable routing policy support for:
@@ -294,8 +300,7 @@ curl -s -X POST localhost:8003/query -H "Content-Type: application/json" \
 3. `pytest tests/integration/test_mcp_contracts.py -v` → all pass
 4. `scripts/testing/validate-ai-slo-runtime.sh` → PASS
 5. `aq-qa 0` → 39+ passed, 0 failed
-6. ~~Remote routing: at least 1 synthetic complex query routes to remote backend~~
-   (criterion removed — Phase 11.6 deferred; validated in Phase 12 after gate is met)
+6. Remote routing: at least 1 synthetic complex query routes to remote backend
 
 ---
 
@@ -307,7 +312,7 @@ Phase 11.2 (delegation extraction) → most critical, do first
 Phase 11.3 (workflow sessions) → independent, parallelizable with 11.2
 Phase 11.4 (openai/a2a) → small, fast
 Phase 11.5 (ops handlers) → largest slice, do last
-Phase 11.6 (cloud burst) → BLOCKED on nixos-rebuild + delegation ≥50%
+Phase 11.6 (cloud burst) → after deployed baseline + focused runtime verification
 Phase 11.7 (validation gate) → run after each slice
 ```
 

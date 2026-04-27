@@ -8,8 +8,20 @@ extracted coordinator modules.
 
 import json
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+
+# Match http_server.py path bootstrap so extracted modules can resolve
+# sibling capability/efficiency helpers during direct import under systemd.
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "efficiency"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclosure"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "capability-gap"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "real-time-learning"))
 
 from context_management import ContextChunk
 from lazy_context import ContextDependencyGraph, ContextNode, LazyContextLoader

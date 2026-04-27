@@ -37,7 +37,7 @@ from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 import capability_discovery
-from config import Config
+from config import Config, routing_config
 from metrics import (
     ROUTE_DECISIONS,
     ROUTE_ERRORS,
@@ -148,6 +148,7 @@ _llama_cpp_client_ref: Optional[Callable] = None
 _llama_cpp_reasoning_client_ref: Optional[Callable] = None
 _switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
+_queue_depth_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
 
@@ -841,6 +842,94 @@ def _prompt_instruction_for_lane_reason(lane_reason: Optional[str]) -> str:
     return "Provide a concise response using the context."
 
 
+def _query_complexity_info(
+    query: str,
+    *,
+    classified: Optional[task_classifier.TaskComplexity] = None,
+) -> Dict[str, Any]:
+    """Prefer the coordinator's complexity detector when available."""
+    try:
+        from ai_coordinator import detect_query_complexity
+
+        return detect_query_complexity(query)
+    except Exception:  # noqa: BLE001
+        pass
+
+    task_type = str(getattr(classified, "task_type", "") or "").strip().lower()
+    if task_type == "reasoning":
+        complexity = "complex"
+    elif task_type == "code":
+        complexity = "complex"
+    elif task_type == "lookup":
+        complexity = "simple"
+    elif task_type == "format":
+        complexity = "simple"
+    else:
+        complexity = "medium"
+    return {"complexity": complexity}
+
+
+def _recommended_remote_profile(query: str) -> str:
+    """Map a burst decision to the existing remote profile surface."""
+    try:
+        from ai_coordinator import route_by_complexity
+
+        decision = route_by_complexity(query, requested_profile="", prefer_local=False)
+        profile = str(decision.get("recommended_profile", "") or "").strip()
+        if profile:
+            return profile
+    except Exception:  # noqa: BLE001
+        pass
+    return "remote-reasoning"
+
+
+async def _remote_burst_decision(
+    query: str,
+    *,
+    prefer_local: bool,
+    context_quality: float,
+    classified: Optional[task_classifier.TaskComplexity] = None,
+) -> Optional[Dict[str, Any]]:
+    """Activate remote burst only for local-preferred flows with a remote lane configured."""
+    if not prefer_local or not Config.SWITCHBOARD_REMOTE_URL:
+        return None
+
+    policy = await routing_config.get_policy()
+    queue_depth = 0
+    if _queue_depth_ref is not None:
+        try:
+            queue_depth = int(_queue_depth_ref() or 0)
+        except Exception:  # noqa: BLE001
+            queue_depth = 0
+
+    queue_trigger = max(0, int(policy["remote_burst_queue_depth_trigger"]))
+    if queue_trigger and queue_depth >= queue_trigger:
+        return {
+            "activated": True,
+            "reason": "queue_saturation",
+            "reason_class": "remote_burst_queue_saturation",
+            "queue_depth": queue_depth,
+            "queue_depth_trigger": queue_trigger,
+            "recommended_profile": _recommended_remote_profile(query),
+        }
+
+    complexity_info = _query_complexity_info(query, classified=classified)
+    complexity = str(complexity_info.get("complexity", "") or "").strip().lower()
+    quality_threshold = float(policy["remote_burst_quality_threshold"])
+    if complexity in {"complex", "architecture"} and context_quality < quality_threshold:
+        return {
+            "activated": True,
+            "reason": "context_quality_below_remote_burst_threshold",
+            "reason_class": "remote_burst_quality_threshold",
+            "context_quality": context_quality,
+            "quality_threshold": quality_threshold,
+            "complexity": complexity,
+            "recommended_profile": _recommended_remote_profile(query),
+        }
+
+    return None
+
+
 def _use_classifier_optimized_prompt(
     complexity: Optional[task_classifier.TaskComplexity],
     lane_reason: Optional[str],
@@ -869,13 +958,14 @@ def init(
     llama_cpp_reasoning_client_ref: Optional[Callable] = None,
     switchboard_client_ref: Callable,
     postgres_client_ref: Callable,
+    queue_depth_ref: Optional[Callable] = None,
     collections: Dict[str, Any],
 ) -> None:
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
     global _hybrid_search, _tree_search, _select_backend
     global _record_query_gap, _record_telemetry, _summarize
     global _context_compressor_ref, _llama_cpp_client_ref, _llama_cpp_reasoning_client_ref
-    global _switchboard_client_ref, _postgres_client_ref, _COLLECTIONS
+    global _switchboard_client_ref, _postgres_client_ref, _queue_depth_ref, _COLLECTIONS
     global _query_expander
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
@@ -888,6 +978,7 @@ def init(
     _llama_cpp_reasoning_client_ref = llama_cpp_reasoning_client_ref
     _switchboard_client_ref = switchboard_client_ref
     _postgres_client_ref = postgres_client_ref
+    _queue_depth_ref = queue_depth_ref
     _COLLECTIONS = collections
     _query_expander = QueryExpander(Config.LLAMA_CPP_URL)
 
@@ -1259,20 +1350,53 @@ async def route_search(
                         results["task_complexity"] = task_complexity_summary
                         _skip_synthesis = True
                 else:
+                    burst_decision = await _remote_burst_decision(
+                        query,
+                        prefer_local=prefer_local,
+                        context_quality=float(_best_score),
+                        classified=_complexity,
+                    )
                     local_inference_lane, local_inference_lane_reason = _select_local_inference_lane(
                         query,
                         _complexity,
                         compressed_tokens,
                         distinct_reasoning_client_available,
                     )
-                    _inference_client = (
-                        llama_cpp_reasoning_client
-                        if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
-                        else llama_cpp_client
-                    )
-                    _inference_path = "/chat/completions"
-                    _inference_headers = {}
-                    response_max_tokens = _local_response_budget(_complexity.task_type)
+                    if burst_decision is not None:
+                        _swb = _switchboard_client_ref() if _switchboard_client_ref else None
+                        if _swb and Config.SWITCHBOARD_URL:
+                            _inference_client = _swb
+                            _inference_path = "/v1/chat/completions"
+                            _inference_headers = {
+                                "x-ai-route": "remote",
+                                "x-ai-profile": burst_decision["recommended_profile"],
+                            }
+                            response_max_tokens = remote_max_tokens
+                            results["remote_burst"] = dict(burst_decision)
+                            task_complexity_summary["remote_burst"] = dict(burst_decision)
+                            logger.info(
+                                "route_search_remote_burst reason=%s profile=%s",
+                                burst_decision["reason"],
+                                burst_decision["recommended_profile"],
+                            )
+                        else:
+                            _inference_client = (
+                                llama_cpp_reasoning_client
+                                if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
+                                else llama_cpp_client
+                            )
+                            _inference_path = "/chat/completions"
+                            _inference_headers = {}
+                            response_max_tokens = _local_response_budget(_complexity.task_type)
+                    else:
+                        _inference_client = (
+                            llama_cpp_reasoning_client
+                            if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
+                            else llama_cpp_client
+                        )
+                        _inference_path = "/chat/completions"
+                        _inference_headers = {}
+                        response_max_tokens = _local_response_budget(_complexity.task_type)
                     if _should_skip_local_brief_synthesis(query, _complexity, retrieval_summary_text):
                         response_text = retrieval_summary_text
                         selected_backend = "local"
@@ -1320,7 +1444,10 @@ async def route_search(
                     (r.get("score", 0.0) for r in _all_results if isinstance(r, dict)), default=0.5,
                 )
                 selected_backend = "remote" if _inference_headers.get("x-ai-route") == "remote" else "local"
-                if _complexity and _complexity.remote_required:
+                remote_burst = results.get("remote_burst") if isinstance(results, dict) else None
+                if isinstance(remote_burst, dict) and remote_burst.get("reason_class"):
+                    backend_reason_class = str(remote_burst["reason_class"])
+                elif _complexity and _complexity.remote_required:
                     backend_reason_class = "complexity_remote_required"
                 elif _complexity:
                     backend_reason_class = "complexity_local_suitable"
