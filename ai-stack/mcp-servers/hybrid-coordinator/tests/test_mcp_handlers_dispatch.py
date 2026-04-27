@@ -54,6 +54,7 @@ sys.modules.setdefault(
     types.SimpleNamespace(
         coerce_memory_summary=lambda x: x,
         normalize_memory_type=lambda x: x,
+        validate_memory_content=lambda summary, content: None,
     ),
 )
 
