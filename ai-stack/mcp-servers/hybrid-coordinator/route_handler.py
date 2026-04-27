@@ -771,13 +771,31 @@ def _build_local_synthesis_context(
     max_items: int = 3,
     max_chars: int = 700,
 ) -> str:
-    """Build a compact local prompt context from top retrieval hits."""
+    """Build a compact local prompt context from top retrieval hits.
+
+    Phase 12.2: If no result meets AI_RETRIEVAL_MIN_CONFIDENCE, suppress
+    context injection entirely to avoid low-signal "hallucination bait".
+    """
     rows = (
         (results or {}).get("combined_results")
         or (results or {}).get("semantic_results")
         or (results or {}).get("keyword_results")
         or []
     )
+    # Confidence gate: suppress context if best hit is below the injection threshold.
+    if isinstance(rows, list) and rows:
+        best_score = max(
+            float(item.get("score", 0.0)) for item in rows if isinstance(item, dict)
+        )
+        min_confidence = float(os.getenv("AI_RETRIEVAL_MIN_CONFIDENCE", "0.65"))
+        if best_score < min_confidence:
+            logger.info(
+                "context_suppressed best_score=%.3f threshold=%.3f results=%d",
+                best_score,
+                min_confidence,
+                len(rows),
+            )
+            return _compact_text(response_text, max_chars=max_chars)
     compact_lines: List[str] = []
     if isinstance(rows, list):
         for item in rows:
