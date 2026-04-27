@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 HTTP_SERVER_PATH = Path(__file__).with_name("http_server.py")
 TARGET_FUNCTIONS = {
     "_load_aq_report_status_summary",
+    "_should_prioritize_memory_recall",
     "_build_workflow_plan",
 }
 
@@ -36,7 +37,7 @@ def _load_helpers(aq_report_path: Path) -> Dict[str, Any]:
             },
         ),
         "_audit_planned_tools": lambda query, catalog: (catalog, {"enabled": True}),
-        "workflow_tool_catalog": lambda query: [
+        "workflow_tool_catalog": lambda query, **_: [
             {"name": "hints", "endpoint": "/hints"},
             {"name": "discovery", "endpoint": "/discovery/capabilities"},
             {"name": "route_search", "endpoint": "/query"},
