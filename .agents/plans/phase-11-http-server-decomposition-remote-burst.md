@@ -1,6 +1,6 @@
 # Phase 11 — http_server.py Decomposition + Remote Cloud Burst
 
-Status: `in progress — phases 11.2 and 11.3 complete`
+Status: `in progress — phases 11.2 through 11.4 complete`
 Created: 2026-04-26
 Owner: Claude (orchestrator) / Qwen (implementation slices)
 Predecessor: Phase 10 (complete — pending nixos-rebuild deployment)
@@ -29,7 +29,7 @@ Two independent improvements identified from the strategic re-evaluation (2026-0
 
 | Signal                          | Value               | Target                            |
 | ------------------------------- | ------------------- | --------------------------------- |
-| http_server.py line count       | 11,404              | ≤1,000 (routing+wiring only)      |
+| http_server.py line count       | 10,376              | ≤1,000 (routing+wiring only)      |
 | Remote routing share (7d)       | 0%                  | ≥10% for complex/overflow queries |
 | ai_coordinator_delegate success | 23.5% (pre-rebuild) | ≥90% (post-rebuild)               |
 | route_search P95                | 59,496ms            | ≤15,000ms (post-rebuild cap)      |
@@ -151,10 +151,14 @@ Observed result:
 | ---------- | ----- | ------ | -------- |
 | 2026-04-26 | 11.2  | complete | `fc370db7` extracted delegation helpers into `delegation_handlers.py` |
 | 2026-04-26 | 11.3  | complete | `ab363479` extracted workflow session handlers into `workflow_session_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
+| 2026-04-26 | 11.4  | complete | pending commit extracted OpenAI-compat and A2A handlers into `openai_a2a_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
 
 ---
 
 ## Phase 11.4 — Extract OpenAI-Compat + A2A Handlers
+
+Status: `complete`
+Commit: `pending`
 
 **Problem**: OpenAI-compatible endpoint handlers (`/v1/chat/completions`, `/v1/models`,
 `/v1/completions`) and A2A agent card handlers (`/.well-known/agent.json`) are ~300
@@ -170,6 +174,13 @@ python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/openai_a2a_handler
 curl -s localhost:8003/v1/models | python3 -m json.tool | grep -q "data"
 curl -s localhost:8003/.well-known/agent.json | python3 -m json.tool | grep -q "name"
 ```
+
+Observed result:
+- `http_server.py` reduced from `11,404` lines after Phase 11.3 to `10,376`
+- OpenAI-compatible routes and A2A routes now register through `openai_a2a_handlers.register_routes(http_app)`
+- Static contract checks moved to the extracted module:
+  - `python3 scripts/testing/test-a2a-compat.py`
+  - `python3 scripts/testing/test-continue-coordinator-ingress.py`
 
 ---
 
