@@ -47,6 +47,7 @@ class QualityDimension(Enum):
 class QualityThreshold(Enum):
     """Quality threshold levels"""
     MINIMAL = 0.5  # Barely acceptable
+    PERMISSIVE = 0.55  # Relaxed threshold for keyword-overlap scorer (Phase 12.1)
     ACCEPTABLE = 0.7  # Good enough
     HIGH = 0.85  # Very good
     EXCELLENT = 0.95  # Exceptional

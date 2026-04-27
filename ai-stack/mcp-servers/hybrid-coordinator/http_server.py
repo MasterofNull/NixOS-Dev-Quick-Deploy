@@ -231,7 +231,7 @@ _AGENT_POOL_MANAGER = AgentPoolManager()
 # Entries expire after _DELEGATE_TASK_TTL_S seconds (lazy cleanup on read).
 _DELEGATE_TASK_REGISTRY: Dict[str, Dict[str, Any]] = {}
 _DELEGATE_TASK_TTL_S: float = 600.0
-_DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.ACCEPTABLE)
+_DELEGATED_QUALITY_CHECKER = QualityChecker(threshold=QualityThreshold.PERMISSIVE)  # Phase 12.1: relaxed from ACCEPTABLE(0.7) — keyword-overlap scorer over-rejects paraphrasing
 _DELEGATED_RESULT_REFINER = ResultRefiner()
 _DELEGATED_RESULT_CACHE = ResultCache()
 _DELEGATED_QUALITY_TRACKER = QualityTrendTracker()
@@ -5913,7 +5913,7 @@ async def run_http_mode(port: int) -> None:
             if "temperature" in data:
                 payload["temperature"] = float(data.get("temperature"))
 
-            timeout_s = float(data.get("timeout_s") or 180.0)
+            timeout_s = float(data.get("timeout_s") or float(os.getenv("AI_DELEGATE_TIMEOUT_S", "240")))  # Phase 12.1: increased from 180 for llama.cpp 90-120s inference
             finalization_applied = False
             finalization_status_code = None
             openrouter_empty_content_retries = 0
@@ -5951,6 +5951,7 @@ AGENT_ROLE = os.environ["AGENT_ROLE"]
 SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
 AGENT_TASK = os.environ["AGENT_TASK"]
 SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+LLAMA_CPP_URL = os.environ.get("LLAMA_CPP_URL", "http://127.0.0.1:8080")  # Phase 12.1: direct fallback
 HYBRID_URL = os.environ.get("HYBRID_URL", "http://127.0.0.1:8003")
 STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
@@ -6126,11 +6127,25 @@ async def run():
                 return
             max_rounds = MAX_TOOL_ROUNDS if TOOLS_ENABLED else 1
             for _round in range(max_rounds):
-                resp = await client.post(
-                    f"{SWITCHBOARD_URL}/v1/chat/completions",
-                    json={"messages": messages, **inference_base},
-                    headers=headers,
-                )
+                # Phase 12.1: try switchboard first; on connection error fall back to
+                # llama.cpp directly. Switchboard being offline should not hard-fail
+                # local delegation — llama.cpp is always the underlying backend.
+                _inference_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+                _inference_headers = headers
+                try:
+                    resp = await client.post(
+                        _inference_url,
+                        json={"messages": messages, **inference_base},
+                        headers=_inference_headers,
+                    )
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    _inference_url = f"{LLAMA_CPP_URL}/v1/chat/completions"
+                    _inference_headers = {}  # llama.cpp has no profile routing
+                    resp = await client.post(
+                        _inference_url,
+                        json={"messages": messages, **inference_base},
+                        headers=_inference_headers,
+                    )
                 resp.raise_for_status()
                 data = resp.json()
                 msg = data["choices"][0]["message"]
@@ -6205,6 +6220,7 @@ asyncio.run(run())
                     "AGENT_MAX_TOOL_ROUNDS": str(int(data.get("max_tool_rounds", 3))),
                     "HYBRID_URL": "http://127.0.0.1:8003",
                     "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
+                    "LLAMA_CPP_URL": Config.LLAMA_CPP_URL,  # Phase 12.1: direct fallback URL
                     "PYTHONUNBUFFERED": "1",
                 })
                 # Phase 8.9 — streaming mode overrides: force stream, disable tools
