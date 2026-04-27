@@ -1,6 +1,6 @@
 # Phase 11 — http_server.py Decomposition + Remote Cloud Burst
 
-Status: `in progress — phases 11.2 through 11.5 complete`
+Status: `in progress — phases 11.2 through 11.6 complete`
 Created: 2026-04-26
 Owner: Claude (orchestrator) / Qwen (implementation slices)
 Predecessor: Phase 10 (complete — pending nixos-rebuild deployment)
@@ -152,7 +152,9 @@ Observed result:
 | 2026-04-26 | 11.2  | complete | `fc370db7` extracted delegation helpers into `delegation_handlers.py` |
 | 2026-04-26 | 11.3  | complete | `ab363479` extracted workflow session handlers into `workflow_session_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
 | 2026-04-26 | 11.4  | complete | `29c3cb5b` extracted OpenAI-compat and A2A handlers into `openai_a2a_handlers.py`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed |
-| 2026-04-26 | 11.5  | complete | pending commit extracted ops handlers into `ops_handlers.py`; focused source-contract + roadmap validation passed |
+| 2026-04-26 | 11.5  | complete | `7d655371` extracted ops handlers into `ops_handlers.py`; focused source-contract + roadmap validation passed |
+| 2026-04-26 | 11.6  | deferred | stashed "phase-11.6-cloud-burst-deferred"; gate: delegation ≥80% before re-enabling |
+| 2026-04-27 | 11.6  | complete | pending commit added remote burst policy + route-handler activation with focused routing/Nix regressions passing |
 
 ---
 
@@ -188,7 +190,7 @@ Observed result:
 ## Phase 11.5 — Extract Ops Handlers (Learning/Feedback/Alert/Cache)
 
 Status: `complete`
-Commit: `pending`
+Commit: `7d655371`
 
 **Problem**: Learning, feedback, alert management, and cache handlers are operational
 concerns that have nothing to do with the core query/delegation path but take up ~2000
@@ -216,11 +218,19 @@ Observed result:
 
 ## Phase 11.6 — Cloud Burst Remote Routing Trigger
 
-**Problem**: 100% local routing defeats the "hybrid" architecture. Remote routing is
-wired but no activation rules trigger it. The coordinator's confidence threshold is 0.35
-(very permissive — almost all queries stay local even with poor context quality).
+Status: `DEFERRED — reliability gate not met`
+Commit: `n/a — stashed as "phase-11.6-cloud-burst-deferred" (2026-04-26)`
 
-**Design**: Two trigger conditions for remote burst:
+**Deferral rationale** (senior engineering review, 2026-04-26):
+- Delegation success rate is 23.5% (gate requires >80% before burst adds value)
+- Routing to remote-on-local-failure is retry theater, not a reliability fix
+- Cloud burst work adds ~240 lines to route_handler.py before the root cause is known
+- Priority redirected to Phase 12: delegation root-cause + RAG noise reduction
+
+**Gate to re-enable**: `ai_coordinator_delegate` success rate ≥80% sustained over 24h
+(verified via `aq-report` delegation metrics). Re-apply stash when gate is met.
+
+**Design** (preserved for reference): Two trigger conditions for remote burst:
 
 1. **Quality trigger** (context_quality < threshold AND query complexity = complex):
    Route to remote when local model is unlikely to produce a useful response.
@@ -249,6 +259,15 @@ wired but no activation rules trigger it. The coordinator's confidence threshold
 Remote burst routes to `ai_coordinator_delegate` path. If delegation is still at 23.5%,
 burst traffic will fail. Gate: `aq-qa 0.8.x` must pass first.
 
+Observed result:
+- Added hot-reloadable routing policy support for:
+  - `remote_burst_quality_threshold`
+  - `remote_burst_queue_depth_trigger`
+- Route synthesis now bursts to remote when:
+  - local queue depth meets the configured trigger, or
+  - query complexity is `complex`/`architecture` and retrieval context quality is below the configured threshold
+- Added focused regressions for both burst triggers plus declarative env wiring
+
 **Validation** (post-rebuild only):
 ```bash
 # Set low threshold to force a test query to remote
@@ -275,8 +294,8 @@ curl -s -X POST localhost:8003/query -H "Content-Type: application/json" \
 3. `pytest tests/integration/test_mcp_contracts.py -v` → all pass
 4. `scripts/testing/validate-ai-slo-runtime.sh` → PASS
 5. `aq-qa 0` → 39+ passed, 0 failed
-6. Remote routing: at least 1 synthetic complex query routes to remote backend
-   (verified via `aq-report --since=1h` routing split)
+6. ~~Remote routing: at least 1 synthetic complex query routes to remote backend~~
+   (criterion removed — Phase 11.6 deferred; validated in Phase 12 after gate is met)
 
 ---
 
