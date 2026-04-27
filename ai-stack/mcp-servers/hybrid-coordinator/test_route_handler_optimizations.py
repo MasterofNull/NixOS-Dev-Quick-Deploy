@@ -38,6 +38,7 @@ Config.AI_TASK_CLASSIFICATION_ENABLED = False
 Config.AI_PROMPT_CACHE_POLICY_ENABLED = False
 Config.AI_PROMPT_CACHE_STATIC_PREFIX = ""
 Config.LLAMA_CPP_URL = "http://localhost:8000"
+Config.SWITCHBOARD_REMOTE_URL = ""
 Config.AI_ROUTE_KEYWORD_POOL_DEFAULT = 24
 Config.AI_ROUTE_KEYWORD_POOL_COMPACT = 12
 Config.AI_ROUTE_KEYWORD_POOL_SINGLE_COLLECTION = 8
@@ -56,6 +57,14 @@ Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTINUATION_TOKENS = 120
 Config.AI_ROUTE_LOCAL_REASONING_LANE_MIN_CONTEXT_TOKENS = 160
 Config.AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS = 40
 sys.modules['config'].Config = Config
+sys.modules['config'].routing_config = MagicMock()
+sys.modules['config'].routing_config.get_policy = AsyncMock(
+    return_value={
+        "local_confidence_threshold": 0.35,
+        "remote_burst_quality_threshold": 0.4,
+        "remote_burst_queue_depth_trigger": 1,
+    }
+)
 
 # Now we can import route_handler
 import route_handler
@@ -1308,14 +1317,133 @@ class TestGeneratedResponsePaths:
         assert fake_client.calls[0]["path"] == "/chat/completions"
 
 
+class TestRemoteBurstRouting:
+    """Test Phase 11.6 remote burst triggers."""
+
+    def test_remote_burst_queue_saturation(self):
+        asyncio.run(self._run_remote_burst_queue_saturation())
+
+    async def _run_remote_burst_queue_saturation(self):
+        fake_local_client = MagicMock()
+        fake_local_client.post = AsyncMock()
+        fake_remote_response = MagicMock()
+        fake_remote_response.raise_for_status = MagicMock()
+        fake_remote_response.json = MagicMock(
+            return_value={"choices": [{"message": {"content": "remote burst answer"}}]}
+        )
+        fake_switchboard = MagicMock()
+        fake_switchboard.post = AsyncMock(return_value=fake_remote_response)
+        fake_complexity = SimpleNamespace(
+            task_type="synthesize",
+            token_estimate=180,
+            local_suitable=True,
+            remote_required=False,
+            reason="local_candidate",
+            optimized_prompt=None,
+        )
+
+        original_remote_url = Config.SWITCHBOARD_REMOTE_URL
+        original_classification = Config.AI_TASK_CLASSIFICATION_ENABLED
+        Config.SWITCHBOARD_REMOTE_URL = "https://remote.example/v1"
+        Config.AI_TASK_CLASSIFICATION_ENABLED = True
+        try:
+            with patch.object(route_handler, "_hybrid_search", AsyncMock(return_value={"combined_results": [{"score": 0.8, "content": "ctx"}]})):
+                with patch.object(route_handler, "_summarize", MagicMock(return_value="summary")):
+                    with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                        with patch.object(route_handler, "_record_query_gap", AsyncMock()):
+                            with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                                with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                    with patch.object(route_handler, "_llama_cpp_client_ref", return_value=fake_local_client):
+                                        with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=None):
+                                            with patch.object(route_handler, "_switchboard_client_ref", return_value=fake_switchboard):
+                                                with patch.object(route_handler, "_queue_depth_ref", return_value=2):
+                                                    with patch.object(route_handler.task_classifier, "classify", MagicMock(return_value=fake_complexity)):
+                                                        with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                                                            with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                                with patch.object(route_handler, "_injection_scanner", MagicMock()):
+                                                                    route_handler._injection_scanner.filter_results = MagicMock(return_value=([{"score": 0.8, "content": "ctx"}], 0))
+                                                                    result = await route_handler.route_search(
+                                                                        query="design the next routing change",
+                                                                        mode="hybrid",
+                                                                        prefer_local=True,
+                                                                        context={"source": "test"},
+                                                                        generate_response=True,
+                                                                    )
+        finally:
+            Config.SWITCHBOARD_REMOTE_URL = original_remote_url
+            Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        assert result["backend"] == "remote"
+        assert result["backend_reason_class"] == "remote_burst_queue_saturation"
+        assert result["results"]["remote_burst"]["reason"] == "queue_saturation"
+
+    def test_remote_burst_low_quality_complex(self):
+        asyncio.run(self._run_remote_burst_low_quality_complex())
+
+    async def _run_remote_burst_low_quality_complex(self):
+        fake_local_client = MagicMock()
+        fake_local_client.post = AsyncMock()
+        fake_remote_response = MagicMock()
+        fake_remote_response.raise_for_status = MagicMock()
+        fake_remote_response.json = MagicMock(
+            return_value={"choices": [{"message": {"content": "remote burst low quality answer"}}]}
+        )
+        fake_switchboard = MagicMock()
+        fake_switchboard.post = AsyncMock(return_value=fake_remote_response)
+        fake_complexity = SimpleNamespace(
+            task_type="reasoning",
+            token_estimate=260,
+            local_suitable=True,
+            remote_required=False,
+            reason="local_candidate",
+            optimized_prompt=None,
+        )
+
+        original_remote_url = Config.SWITCHBOARD_REMOTE_URL
+        original_classification = Config.AI_TASK_CLASSIFICATION_ENABLED
+        Config.SWITCHBOARD_REMOTE_URL = "https://remote.example/v1"
+        Config.AI_TASK_CLASSIFICATION_ENABLED = True
+        try:
+            with patch.object(route_handler, "_hybrid_search", AsyncMock(return_value={"combined_results": [{"score": 0.2, "content": "weak ctx"}]})):
+                with patch.object(route_handler, "_summarize", MagicMock(return_value="summary")):
+                    with patch.object(route_handler, "_record_telemetry", MagicMock()):
+                        with patch.object(route_handler, "_record_query_gap", AsyncMock()):
+                            with patch.object(route_handler, "_postgres_client_ref", return_value=None):
+                                with patch.object(route_handler, "_context_compressor_ref", return_value=None):
+                                    with patch.object(route_handler, "_llama_cpp_client_ref", return_value=fake_local_client):
+                                        with patch.object(route_handler, "_llama_cpp_reasoning_client_ref", return_value=None):
+                                            with patch.object(route_handler, "_switchboard_client_ref", return_value=fake_switchboard):
+                                                with patch.object(route_handler, "_queue_depth_ref", return_value=0):
+                                                    with patch.object(route_handler.task_classifier, "classify", MagicMock(return_value=fake_complexity)):
+                                                        with patch.object(route_handler.capability_discovery, "format_context", MagicMock(return_value="")):
+                                                            with patch.object(route_handler, "_query_complexity_info", MagicMock(return_value={"complexity": "complex"})):
+                                                                with patch.object(route_handler, "sanitize_query", lambda x: x):
+                                                                    with patch.object(route_handler, "_injection_scanner", MagicMock()):
+                                                                        route_handler._injection_scanner.filter_results = MagicMock(return_value=([{"score": 0.2, "content": "weak ctx"}], 0))
+                                                                        result = await route_handler.route_search(
+                                                                            query="design a distributed multi-agent system architecture",
+                                                                            mode="hybrid",
+                                                                            prefer_local=True,
+                                                                            context={"source": "test"},
+                                                                            generate_response=True,
+                                                                        )
+        finally:
+            Config.SWITCHBOARD_REMOTE_URL = original_remote_url
+            Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
+
+        assert result["backend"] == "remote"
+        assert result["backend_reason_class"] == "remote_burst_quality_threshold"
+        assert result["results"]["remote_burst"]["reason"] == "context_quality_below_remote_burst_threshold"
+
+
 async def run_async_tests():
     """Run all async tests."""
     tests = [
-        TestParallelization().test_parallel_expansion_and_discovery(),
-        TestTimeoutGuards().test_search_timeout(),
-        TestSkipBackendSelection().test_backend_selection_skipped_on_retrieval_only(),
-        TestGeneratedResponsePaths().test_route_search_generates_local_response_with_prompt_cache_metadata(),
-        TestGeneratedResponsePaths().test_route_search_falls_back_to_local_after_remote_4xx(),
+        TestParallelization()._run_parallel_expansion_and_discovery(),
+        TestTimeoutGuards()._run_search_timeout(),
+        TestSkipBackendSelection()._run_backend_selection_skipped_on_retrieval_only(),
+        TestGeneratedResponsePaths()._run_route_search_generates_local_response_with_prompt_cache_metadata(),
+        TestGeneratedResponsePaths()._run_route_search_falls_back_to_local_after_remote_4xx(),
     ]
     results = await asyncio.gather(*tests, return_exceptions=True)
     return results

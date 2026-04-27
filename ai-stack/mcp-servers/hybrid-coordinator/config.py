@@ -450,6 +450,16 @@ class RoutingConfig:
             os.getenv("LOCAL_CONFIDENCE_THRESHOLD", HYBRID_SETTINGS.local_confidence_threshold)
         )
     )
+    remote_burst_quality_threshold: float = field(
+        default_factory=lambda: float(
+            os.getenv("AI_REMOTE_BURST_QUALITY_THRESHOLD", "0.4")
+        )
+    )
+    remote_burst_queue_depth_trigger: int = field(
+        default_factory=lambda: int(
+            os.getenv("AI_REMOTE_BURST_QUEUE_DEPTH_TRIGGER", "1")
+        )
+    )
     _path: Path = field(
         default_factory=lambda: Path(
             os.path.expanduser(
@@ -467,27 +477,52 @@ class RoutingConfig:
     _loaded_at: float = field(default=0.0, repr=False)
     _ttl: float = field(default=60.0, repr=False)
 
+    def _reload_from_disk(self) -> None:
+        if not self._path.exists():
+            return
+        try:
+            raw = self._path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            self.threshold = float(data.get("local_confidence_threshold", self.threshold))
+            self.remote_burst_quality_threshold = float(
+                data.get("remote_burst_quality_threshold", self.remote_burst_quality_threshold)
+            )
+            self.remote_burst_queue_depth_trigger = int(
+                data.get("remote_burst_queue_depth_trigger", self.remote_burst_queue_depth_trigger)
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def get_policy(self) -> Dict[str, Any]:
+        """Return the active hot-reloaded routing policy."""
+        now = time.monotonic()
+        if now - self._loaded_at >= self._ttl:
+            self._reload_from_disk()
+            self._loaded_at = now
+        return {
+            "local_confidence_threshold": self.threshold,
+            "remote_burst_quality_threshold": self.remote_burst_quality_threshold,
+            "remote_burst_queue_depth_trigger": self.remote_burst_queue_depth_trigger,
+        }
+
     async def get_threshold(self) -> float:
         """Return current threshold, reloading from disk if TTL has expired."""
-        now = time.monotonic()
-        if now - self._loaded_at < self._ttl:
-            return self.threshold
-        if self._path.exists():
-            try:
-                raw = self._path.read_text(encoding="utf-8")
-                data = json.loads(raw)
-                value = float(data["local_confidence_threshold"])
-                self.threshold = value
-            except Exception:  # noqa: BLE001
-                pass
-        self._loaded_at = now
+        policy = await self.get_policy()
+        self.threshold = float(policy["local_confidence_threshold"])
         return self.threshold
 
     def write_threshold(self, value: float) -> None:
         """Atomically write a new threshold to the config file."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        data: Dict[str, Any] = {}
+        if self._path.exists():
+            try:
+                data = json.loads(self._path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                data = {}
+        data["local_confidence_threshold"] = value
         tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"local_confidence_threshold": value}), encoding="utf-8")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
         tmp.replace(self._path)
         self.threshold = value
         self._loaded_at = time.monotonic()

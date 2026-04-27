@@ -960,6 +960,8 @@ in {
                 "LOCAL_MAX_INPUT_TOKENS=600"
                 "LOCAL_MAX_OUTPUT_TOKENS=300"
                 "LOCAL_CONFIDENCE_THRESHOLD=0.35"
+                "AI_REMOTE_BURST_QUALITY_THRESHOLD=${toString ai.switchboard.remoteBurst.qualityThreshold}"
+                "AI_REMOTE_BURST_QUEUE_DEPTH_TRIGGER=${toString ai.switchboard.remoteBurst.queueDepthTrigger}"
                 "EMBEDDING_SERVICE_URL=${embedUrl}"
                 "AIDB_URL=http://127.0.0.1:${toString mcp.aidbPort}"
                 "QDRANT_URL=${qdrantUrl}"

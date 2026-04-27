@@ -1565,6 +1565,27 @@
           };
         };
 
+        remoteBurst = {
+          qualityThreshold = lib.mkOption {
+            type = lib.types.float;
+            default = 0.4;
+            description = ''
+              Retrieval quality threshold below which complex local-preferred
+              queries may burst to the configured remote reasoning lane.
+            '';
+          };
+
+          queueDepthTrigger = lib.mkOption {
+            type = lib.types.addCheck lib.types.int (value: value >= 0);
+            default = 1;
+            description = ''
+              Local llama.cpp queue depth that activates remote burst for
+              local-preferred synthesis requests. Set to 0 to disable the
+              queue-depth trigger.
+            '';
+          };
+        };
+
         continueLocal = {
           maxInputTokens = lib.mkOption {
             type = lib.types.ints.positive;

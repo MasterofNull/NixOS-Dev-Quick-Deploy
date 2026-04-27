@@ -18,17 +18,16 @@ from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 from aiohttp import web
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from alert_engine import AlertSeverity
 from metrics import (
-    CONTENT_TYPE_LATEST,
     ORCHESTRATION_ACTIVE_SESSIONS,
     ORCHESTRATION_PENDING_DELEGATIONS,
     ORCHESTRATION_REGISTERED_AGENTS,
     ORCHESTRATION_TOOL_PENDING_APPROVALS,
     ORCHESTRATION_WORKSPACES_BY_MODE,
     PROCESS_MEMORY_BYTES,
-    generate_latest,
 )
 
 logger = logging.getLogger("hybrid-coordinator")
