@@ -257,7 +257,7 @@ check_pattern "nix/modules/services/monitoring.nix" 'llamacpp_request_processing
 # Phase 21.3 — Cache intelligence with event-driven invalidation
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'EMBEDDING_CACHE_INVALIDATIONS' 'Cache invalidation counter metric defined'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'EMBEDDING_CACHE_SIZE' 'Cache size gauge metric defined'
-check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/cache/invalidate' 'Cache invalidation endpoint registered'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/ops_handlers.py" '/cache/invalidate' 'Cache invalidation endpoint registered'
 check_pattern "scripts/data/rebuild-qdrant-collections.sh" 'cache/invalidate' 'Rebuild script triggers cache invalidation'
 check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_size_keys' 'Dashboard tracks embedding cache size'
 check_pattern "nix/modules/services/monitoring.nix" 'embedding_cache_invalidations_total' 'Dashboard tracks cache invalidation rate'
@@ -677,7 +677,7 @@ check_pattern "config/parity-scorecard.json" '"id": "cache_intelligence"' 'Parit
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_RELOADS' 'Model reload counter metric defined'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_RELOAD_DURATION' 'Model reload duration histogram defined'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/metrics.py" 'MODEL_ACTIVE_INFO' 'Model active info gauge defined'
-check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server.py" '/model/status' 'Model status endpoint registered'
+check_pattern "ai-stack/mcp-servers/hybrid-coordinator/ops_handlers.py" '/model/status' 'Model status endpoint registered'
 check_pattern "nix/modules/services/monitoring.nix" 'model_reloads_total' 'Dashboard tracks model reloads'
 check_pattern "config/parity-scorecard.json" '"id": "model_management"' 'Parity scorecard tracks model management'
 check_pattern "scripts/testing/test-switchboard-continue-context-window.sh" 'maxInputTokens' 'Continue-local oversized-input trimming config is validated'
