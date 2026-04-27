@@ -191,7 +191,79 @@ for source in config.get("sources", []):
         import urllib.request as _ureq
         try:
             with _ureq.urlopen(source["url"], timeout=30) as resp:
-                texts.append((source["url"], resp.read().decode("utf-8")))
+                raw = resp.read().decode("utf-8")
+            stripped = raw.lstrip()
+
+            if stripped.startswith("<?xml") or stripped.startswith("<feed") or stripped.startswith("<rss"):
+                # Atom/RSS XML — parse into one markdown document per entry (each < 50KB limit)
+                try:
+                    from xml.etree import ElementTree as ET
+                    root = ET.fromstring(raw)
+                    ns_atom = "http://www.w3.org/2005/Atom"
+                    entries = root.findall(f"{{{ns_atom}}}entry") or root.findall("entry") or []
+                    if entries:
+                        for i, entry in enumerate(entries):
+                            t = (entry.findtext(f"{{{ns_atom}}}title") or entry.findtext("title") or "").strip()
+                            s = (entry.findtext(f"{{{ns_atom}}}summary") or entry.findtext("description") or "").strip()
+                            eid = (entry.findtext(f"{{{ns_atom}}}id") or entry.findtext("link") or "").strip()
+                            pub = (entry.findtext(f"{{{ns_atom}}}published") or entry.findtext("pubDate") or "")[:10]
+                            authors = [a.findtext(f"{{{ns_atom}}}name") or "" for a in
+                                       (entry.findall(f"{{{ns_atom}}}author") or entry.findall("author"))]
+                            cats = [c.get("term", c.get("label", "")) for c in
+                                    (entry.findall(f"{{{ns_atom}}}category") or entry.findall("category"))]
+                            entry_md = "\n".join(filter(None, [
+                                f"# {t.replace(chr(10), ' ')}",
+                                f"**Authors**: {', '.join(a for a in authors[:5] if a)}" if authors else "",
+                                f"**Published**: {pub}" if pub else "",
+                                f"**Categories**: {', '.join(c for c in cats[:5] if c)}" if cats else "",
+                                f"**Link**: {eid}" if eid else "",
+                                f"\n{s[:2000]}" if s else "",
+                            ]))
+                            slug = eid.rsplit("/", 1)[-1].replace("v1", "").replace("v2", "").strip() or str(i)
+                            texts.append((f"{sid}/{slug}", entry_md))
+                    else:
+                        # Fallback: single doc for feed header (e.g. RSS with no standard entries)
+                        texts.append((sid, raw[:51000]))
+                except Exception as xe:
+                    print(f"  WARN: XML parse failed for {sid}: {xe}", file=sys.stderr)
+                    texts.append((sid, raw[:51000]))
+
+            elif "<html" in stripped.lower() or "<!doctype" in stripped.lower():
+                # HTML page — strip tags, extract readable text, chunk into 40KB pieces
+                try:
+                    from html.parser import HTMLParser as _HP
+                    import re as _re
+                    class _TextExtractor(_HP):
+                        def __init__(self):
+                            super().__init__()
+                            self._skip = False
+                            self.parts = []
+                        def handle_starttag(self, tag, attrs):
+                            if tag.lower() in ("script", "style", "nav", "footer", "header", "aside"):
+                                self._skip = True
+                        def handle_endtag(self, tag):
+                            if tag.lower() in ("script", "style", "nav", "footer", "header", "aside"):
+                                self._skip = False
+                            if tag.lower() in ("p", "div", "li", "h1", "h2", "h3", "h4", "br", "tr"):
+                                self.parts.append("\n")
+                        def handle_data(self, data):
+                            if not self._skip:
+                                d = data.strip()
+                                if d:
+                                    self.parts.append(d)
+                    ex = _TextExtractor()
+                    ex.feed(raw)
+                    text = _re.sub(r'\s{3,}', '\n\n', " ".join(ex.parts))
+                    header = f"# {source.get('id', sid)}\nSource: {source['url']}\n\n"
+                    body = (header + text)[:40000]
+                    texts.append((sid, body))
+                except Exception as he:
+                    print(f"  WARN: HTML strip failed for {sid}: {he}", file=sys.stderr)
+                    texts.append((sid, raw[:40000]))
+
+            else:
+                # Plain text / JSON / other — chunk if needed
+                texts.append((sid, raw[:40000]))
         except Exception as e:
             print(f"  ERROR fetching {source['url']}: {e}", file=sys.stderr)
 
