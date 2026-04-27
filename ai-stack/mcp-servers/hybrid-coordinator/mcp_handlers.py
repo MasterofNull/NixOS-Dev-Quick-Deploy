@@ -33,7 +33,7 @@ import asyncio
 from mcp.types import TextContent, Tool
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
-from memory_manager import coerce_memory_summary, normalize_memory_type
+from memory_manager import coerce_memory_summary, normalize_memory_type, validate_memory_content
 
 logger = logging.getLogger("hybrid-coordinator")
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -986,6 +986,7 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
         elif name == "store_agent_memory":
             memory_type = normalize_memory_type(arguments.get("memory_type", ""))
             summary = coerce_memory_summary(arguments.get("summary"), arguments.get("content"))
+            validate_memory_content(summary, arguments.get("content"))
             result = await _store_memory(
                 memory_type=memory_type,
                 summary=summary,

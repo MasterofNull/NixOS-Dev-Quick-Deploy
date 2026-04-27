@@ -78,7 +78,7 @@ from ai_coordinator import (
     get_routing_stats as _ai_coordinator_get_routing_stats,
 )
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
-from memory_manager import coerce_memory_summary, normalize_memory_type, get_memory_latency_metrics
+from memory_manager import coerce_memory_summary, normalize_memory_type, get_memory_latency_metrics, validate_memory_content
 from rag_reflection import get_reflection_stats as _get_rag_reflection_stats
 from generator_critic import get_critic_stats as _get_generator_critic_stats
 from quality_cache import (
@@ -4729,6 +4729,8 @@ async def run_http_mode(port: int) -> None:
             data = await request.json()
             memory_type = normalize_memory_type(data.get("memory_type", ""))
             summary = coerce_memory_summary(data.get("summary"), data.get("content"))
+            # Phase 12.3 — Reject poisoned/trivial payloads before any AIDB write
+            validate_memory_content(summary, data.get("content"))
             # Phase 1.3 — Profile memory store operation
             _mem_store_start = time.time()
             result = await _store_memory(
