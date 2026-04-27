@@ -160,7 +160,7 @@ bash -n scripts/ai/aq-memory
 
 ## Phase 12.4 — Continue http_server.py Decomposition
 
-Status: `in-progress` — 7,116 lines (from 9,600 baseline). Modules extracted so far: `auth_middleware.py`, `local_agent_runtime.py`, `real_time_learning_engine.py`, `agent_registry.py`, `runtime_manager.py`, `orchestration_utils.py`.
+Status: `in-progress` — 6,309 lines (from 9,600 baseline). Modules extracted so far: `auth_middleware.py`, `local_agent_runtime.py`, `real_time_learning_engine.py`, `agent_registry.py`, `runtime_manager.py`, `orchestration_utils.py`, `workflow_planning.py`, `session_builders.py`.
 
 **Problem**: http_server.py is still 9,600 lines. Target is <2,000.
 
@@ -197,6 +197,8 @@ code while debugging it creates a moving target.
 | 2026-04-27 | 12.4 agent_registry | DONE | commit `a0a7e764` → `-619 lines` |
 | 2026-04-27 | 12.4 runtime_manager | DONE | commit `379ab6b7` → `-682 lines` |
 | 2026-04-27 | 12.4 orchestration_utils | DONE | commit `e9df22c9` → `-721 lines` |
+| 2026-04-27 | 12.4 workflow_planning | DONE | commit `fed18938` → `-493 lines` |
+| 2026-04-27 | 12.4 session_builders + import fix | DONE | commit `bfa3ebbf` → `-314 lines` |
 
 ---
 
