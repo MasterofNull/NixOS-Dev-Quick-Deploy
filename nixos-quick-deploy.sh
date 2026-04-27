@@ -3721,75 +3721,83 @@ PYEOF
   fi
 }
 
-ensure_host_facts_access
+run_phase1_model_selection() {
+  ensure_host_facts_access
+  if [[ "${SKIP_MODEL_SELECTION:-}" != true ]]; then
+    prompt_model_selection
+  fi
+}
 
-# Run Phase 1 model selection (interactive, before preflight)
-if [[ "${SKIP_MODEL_SELECTION:-}" != true ]]; then
-  prompt_model_selection
-fi
+resolve_deploy_targets() {
+  NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
+  HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
 
-section "Preflight Validation"
-if [[ "$RUN_DISCOVERY" == true ]]; then
-  run_timed_step "Hardware Discovery" run_discovery_step
-fi
+  if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! has_configuration_name "homeConfigurations" "${HM_TARGET}"; then
+    HM_TARGET="${PRIMARY_USER}"
+  fi
 
-prepare_filtered_flake_projection
+  assert_targets_exist "${NIXOS_TARGET}" "${HM_TARGET}"
+  log "NixOS target: ${NIXOS_TARGET}"
+  log "Home target: ${HM_TARGET}"
+}
 
-ensure_host_facts_access
-assert_host_storage_config
-assert_previous_boot_fsck_clean
-assert_runtime_account_unlocked "${PRIMARY_USER}" false
-# Snapshot current password hash so we can detect accidental changes post-switch.
-snapshot_password_hash "${PRIMARY_USER}"
+run_ai_secrets_bootstrap_phase() {
+  if [[ "${RUN_AI_SECRETS_BOOTSTRAP}" == true || "${FORCE_AI_SECRETS_BOOTSTRAP}" == true ]]; then
+    bootstrap_ai_stack_secrets_if_needed
+  else
+    AI_SECRETS_BOOTSTRAP_STATUS="skipped:cli-disabled"
+  fi
+  log "AI secrets bootstrap status: ${AI_SECRETS_BOOTSTRAP_STATUS}"
+}
 
-NIXOS_TARGET="${NIXOS_TARGET_OVERRIDE:-${HOST_NAME}-${PROFILE}}"
-HM_TARGET="${HM_TARGET_OVERRIDE:-${PRIMARY_USER}-${HOST_NAME}}"
+run_preflight_phase() {
+  section "Preflight Validation"
+  if [[ "${RUN_DISCOVERY}" == true ]]; then
+    run_timed_step "Hardware Discovery" run_discovery_step
+  fi
 
-if [[ -z "${HM_TARGET_OVERRIDE}" ]] && ! has_configuration_name "homeConfigurations" "${HM_TARGET}"; then
-  HM_TARGET="${PRIMARY_USER}"
-fi
+  prepare_filtered_flake_projection
+  ensure_host_facts_access
+  assert_host_storage_config
+  assert_previous_boot_fsck_clean
+  assert_runtime_account_unlocked "${PRIMARY_USER}" false
+  # Snapshot current password hash so we can detect accidental changes post-switch.
+  snapshot_password_hash "${PRIMARY_USER}"
+  resolve_deploy_targets
+  run_ai_secrets_bootstrap_phase
+  run_timed_step "Preflight Validation Loop" run_pre_deploy_validation_loop
+}
 
-assert_targets_exist "${NIXOS_TARGET}" "${HM_TARGET}"
+run_pre_deploy_guardrails() {
+  assert_target_account_guardrails
+  assert_bootloader_preflight
+  assert_target_boot_mode
+  assert_safe_switch_context
+}
 
-if [[ "${RUN_AI_SECRETS_BOOTSTRAP}" == true || "${FORCE_AI_SECRETS_BOOTSTRAP}" == true ]]; then
-  bootstrap_ai_stack_secrets_if_needed
-else
-  AI_SECRETS_BOOTSTRAP_STATUS="skipped:cli-disabled"
-fi
-log "AI secrets bootstrap status: ${AI_SECRETS_BOOTSTRAP_STATUS}"
-
-log "NixOS target: ${NIXOS_TARGET}"
-log "Home target: ${HM_TARGET}"
-
-run_timed_step "Preflight Validation Loop" run_pre_deploy_validation_loop
-if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" == true ]]; then
-  log "Preflight-only validation loop complete. No deploy actions were executed."
-  exit 0
-fi
-
-assert_target_account_guardrails
-assert_bootloader_preflight
-assert_target_boot_mode
-assert_safe_switch_context
-
-if [[ "$RUN_PHASE0_DISKO" == true ]]; then
+run_phase0_disko_if_requested() {
+  [[ "${RUN_PHASE0_DISKO}" == true ]] || return 0
   if [[ "${DISKO_CONFIRM:-}" != "YES" ]]; then
     die "--phase0-disko is destructive. Re-run with DISKO_CONFIRM=YES to proceed."
   fi
 
+  local disk_layout
   disk_layout="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.disk.layout" 2>/dev/null || echo none)"
-  if [[ "$disk_layout" == "none" ]]; then
+  if [[ "${disk_layout}" == "none" ]]; then
     die "--phase0-disko requested but mySystem.disk.layout is 'none' for ${NIXOS_TARGET}."
   fi
 
   log "Running Phase 0 disko apply for layout '${disk_layout}' on target '${NIXOS_TARGET}'"
   run_privileged nix run github:nix-community/disko -- --mode disko "${FLAKE_REF}#${NIXOS_TARGET}"
   log "Phase 0 disko apply complete"
-fi
+}
 
-if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
+run_secureboot_enrollment_if_requested() {
+  [[ "${RUN_SECUREBOOT_ENROLL}" == true ]] || return 0
+
+  local secureboot_enabled
   secureboot_enabled="$(nix_eval_raw_safe "${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config.mySystem.secureboot.enable" 2>/dev/null || echo false)"
-  if [[ "$secureboot_enabled" != "true" ]]; then
+  if [[ "${secureboot_enabled}" != "true" ]]; then
     die "--enroll-secureboot-keys requested but mySystem.secureboot.enable is not true for ${NIXOS_TARGET}."
   fi
 
@@ -3801,12 +3809,19 @@ if [[ "$RUN_SECUREBOOT_ENROLL" == true ]]; then
   log "Running sbctl key enrollment"
   run_privileged sbctl enroll-keys -m
   log "sbctl key enrollment complete"
-fi
+}
 
-SYSTEM_GENERATION_BEFORE="$(current_system_generation)"
-HOME_GENERATION_BEFORE="$(current_home_generation)"
+run_optional_pre_deploy_steps() {
+  run_phase0_disko_if_requested
+  run_secureboot_enrollment_if_requested
+}
 
-if [[ "$MODE" == "build" ]]; then
+snapshot_pre_switch_generations() {
+  SYSTEM_GENERATION_BEFORE="$(current_system_generation)"
+  HOME_GENERATION_BEFORE="$(current_home_generation)"
+}
+
+run_build_mode_workflow() {
   section "Build Mode"
   log "Running dry build"
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
@@ -3820,8 +3835,7 @@ if [[ "$MODE" == "build" ]]; then
     log "Skipping Home Manager build"
   fi
   log "Dry build complete"
-  exit 0
-fi
+}
 
 # ---- Pre-rebuild model SHA256 recording -------------------------------------
 # Records SHA256 hashes of models ALREADY ON DISK into facts.nix before
@@ -3947,77 +3961,6 @@ pre_rebuild_model_download() {
   fi
   log "Pre-rebuild: model check complete."
 }
-
-# Runs for both boot and switch modes; skipped for dry-build (exited above).
-# Models are downloaded before nixos-rebuild so sha256 is set declaratively.
-pre_rebuild_model_download
-
-if [[ "$MODE" == "boot" ]]; then
-  section "Boot Staging"
-  log "Staging next boot generation"
-  if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
-    run_privileged nixos-rebuild boot --flake "${FLAKE_REF}#${NIXOS_TARGET}"
-  else
-    log "Skipping system boot staging (--skip-system-switch)"
-  fi
-
-  if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
-    log "Applying Home Manager configuration in boot mode"
-    home_switch "${HM_TARGET}"
-  else
-    log "Skipping Home Manager switch (--skip-home-switch)"
-  fi
-
-  if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]]; then
-    log "Syncing Flatpak apps for profile '${PROFILE}' (boot mode, system scope)"
-    if "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
-      log "Flatpak profile sync complete"
-    else
-      die "Flatpak profile sync failed in boot mode; declarative app state is not converged."
-    fi
-  fi
-
-  log "Skipping deprecated npm global AI tooling sync (declarative-only mode)."
-
-  log "Boot generation staged. Reboot to apply system-level changes (desktop, users, passwords, services)."
-  exit 0
-fi
-
-if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
-  section "System Switch"
-  log "Switching system configuration"
-  # Free any blocked AI stack ports before rebuild (prevents systemd service failures)
-  free_blocked_ai_ports
-  run_timed_step "System Switch" run_privileged nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
-else
-  log "Skipping system switch (--skip-system-switch)"
-fi
-
-if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
-  section "Home Switch"
-  log "Switching Home Manager configuration"
-  run_timed_step "Home Switch" home_switch "${HM_TARGET}"
-else
-  log "Skipping Home Manager switch (--skip-home-switch)"
-fi
-
-assert_runtime_account_unlocked "${PRIMARY_USER}" true
-# Verify the switch did not unexpectedly reset the login password.
-assert_password_unchanged "${PRIMARY_USER}"
-assert_post_switch_desktop_outcomes
-
-SYSTEM_GENERATION_AFTER="$(current_system_generation)"
-HOME_GENERATION_AFTER="$(current_home_generation)"
-
-if [[ "${SKIP_SYSTEM_SWITCH}" == false && -n "${SYSTEM_GENERATION_BEFORE}" && -n "${SYSTEM_GENERATION_AFTER}" && "${SYSTEM_GENERATION_BEFORE}" == "${SYSTEM_GENERATION_AFTER}" ]]; then
-  log "System generation link unchanged after switch (${SYSTEM_GENERATION_AFTER}); this is expected when there are no system-level config changes."
-fi
-
-if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${HOME_GENERATION_AFTER}" && "${HOME_GENERATION_BEFORE}" == "${HOME_GENERATION_AFTER}" ]]; then
-  log "Home Manager generation link unchanged after switch (${HOME_GENERATION_AFTER}); this is expected when there are no Home Manager config changes."
-fi
-
-restart_repo_backed_ai_services_if_needed
 
 # ── Post-switch model verification (fallback download if Phase 1 failed) ──
 # Models should already be downloaded during Phase 1 (prompt_model_selection).
@@ -4284,104 +4227,156 @@ verify_or_download_ai_models() {
   fi
 }
 
-if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
-  verify_or_download_ai_models
-fi
+run_boot_mode_workflow() {
+  section "Boot Staging"
+  log "Staging next boot generation"
+  if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+    run_privileged nixos-rebuild boot --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+  else
+    log "Skipping system boot staging (--skip-system-switch)"
+  fi
 
+  if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
+    log "Applying Home Manager configuration in boot mode"
+    home_switch "${HM_TARGET}"
+  else
+    log "Skipping Home Manager switch (--skip-home-switch)"
+  fi
 
-if [[ "$RUN_FLATPAK_SYNC" == true && -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]]; then
-  log "Syncing Flatpak apps for profile '${PROFILE}' (system scope)"
+  run_flatpak_sync_if_enabled "boot mode, system scope"
+  log "Skipping deprecated npm global AI tooling sync (declarative-only mode)."
+  log "Boot generation staged. Reboot to apply system-level changes (desktop, users, passwords, services)."
+}
+
+run_switch_mode_workflow() {
+  if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+    section "System Switch"
+    log "Switching system configuration"
+    # Free any blocked AI stack ports before rebuild (prevents systemd service failures)
+    free_blocked_ai_ports
+    run_timed_step "System Switch" run_privileged nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+  else
+    log "Skipping system switch (--skip-system-switch)"
+  fi
+
+  if [[ "${SKIP_HOME_SWITCH}" == false ]]; then
+    section "Home Switch"
+    log "Switching Home Manager configuration"
+    run_timed_step "Home Switch" home_switch "${HM_TARGET}"
+  else
+    log "Skipping Home Manager switch (--skip-home-switch)"
+  fi
+}
+
+run_post_switch_validations() {
+  assert_runtime_account_unlocked "${PRIMARY_USER}" true
+  # Verify the switch did not unexpectedly reset the login password.
+  assert_password_unchanged "${PRIMARY_USER}"
+  assert_post_switch_desktop_outcomes
+
+  SYSTEM_GENERATION_AFTER="$(current_system_generation)"
+  HOME_GENERATION_AFTER="$(current_home_generation)"
+
+  if [[ "${SKIP_SYSTEM_SWITCH}" == false && -n "${SYSTEM_GENERATION_BEFORE}" && -n "${SYSTEM_GENERATION_AFTER}" && "${SYSTEM_GENERATION_BEFORE}" == "${SYSTEM_GENERATION_AFTER}" ]]; then
+    log "System generation link unchanged after switch (${SYSTEM_GENERATION_AFTER}); this is expected when there are no system-level config changes."
+  fi
+
+  if [[ "${SKIP_HOME_SWITCH}" == false && -n "${HOME_GENERATION_BEFORE}" && -n "${HOME_GENERATION_AFTER}" && "${HOME_GENERATION_BEFORE}" == "${HOME_GENERATION_AFTER}" ]]; then
+    log "Home Manager generation link unchanged after switch (${HOME_GENERATION_AFTER}); this is expected when there are no Home Manager config changes."
+  fi
+
+  restart_repo_backed_ai_services_if_needed
+}
+
+run_flatpak_sync_if_enabled() {
+  local scope_label="$1"
+  [[ "${RUN_FLATPAK_SYNC}" == true ]] || return 0
+  [[ -x "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" ]] || return 0
+
+  log "Syncing Flatpak apps for profile '${PROFILE}' (${scope_label})"
   if "${REPO_ROOT}/scripts/data/sync-flatpak-profile.sh" --flake-ref "${FLAKE_REF}" --target "${NIXOS_TARGET}" --scope system; then
     log "Flatpak profile sync complete"
   else
     die "Flatpak profile sync failed; declarative app state is not converged."
   fi
-fi
+}
 
-log "Skipping deprecated npm global AI tooling sync (declarative-only mode)."
+wait_for_ai_service_http() {
+  local service_name="$1"
+  local health_url="$2"
+  local timeout="${3:-180}"
+  local interval="${4:-5}"
+  local elapsed=0
 
-# ---- Runtime orchestration -------------------------------------------------
-# Runtime lifecycle is declarative and module-owned via NixOS modules.
-# This script handles post-switch validation and convergence, not service
-# lifecycle management (which is owned by systemd units generated by Nix).
-log "Skipping imperative runtime orchestration in deploy-clean (declarative modules own lifecycle)."
+  log "  Waiting for ${service_name}..."
+  while ! curl -sf --connect-timeout 2 --max-time 5 "${health_url}" >/dev/null 2>&1; do
+    sleep "${interval}"
+    elapsed=$((elapsed + interval))
+    if (( elapsed >= timeout )); then
+      log "  WARNING: ${service_name} not ready after ${timeout}s"
+      return 1
+    fi
+  done
+  log "  ${service_name} is ready"
+}
 
-if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/health/system-health-check.sh" ]]; then
-  section "Post-flight Health"
-  run_nonfatal_postflight_check \
-    "Running post-deploy health check" \
-    "Post-deploy health check passed" \
-    "Post-deploy health check reported issues (non-critical)" \
-    run_timed_step "System Health Check" "${REPO_ROOT}/scripts/health/system-health-check.sh" --detailed
-fi
+ai_service_health_targets() {
+  printf '%s\t%s\n' "llama-cpp-embed.service" "${EMBEDDINGS_URL%/}/health"
+  printf '%s\t%s\n' "ai-aidb.service" "${AIDB_URL%/}/health"
+  printf '%s\t%s\n' "ai-hybrid-coordinator.service" "${HYBRID_URL%/}/health"
+  printf '%s\t%s\n' "ai-switchboard.service" "${SWITCHBOARD_URL%/}/health"
+  printf '%s\t%s\n' "llama-cpp.service" "${LLAMA_URL%/}/health"
+}
 
-if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
-  run_nonfatal_postflight_check \
-    "Running installed-vs-intended package comparison" \
-    "Installed-vs-intended comparison passed" \
-    "Installed-vs-intended comparison reported gaps (non-critical)" \
-    "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" --host "${HOST_NAME}" --profile "${PROFILE}" --flake-ref "${FLAKE_REF}"
-fi
-
-# ---- AI MCP stack post-flight ------------------------------------------------
-# Wait for AI services to be fully ready before running health checks
 wait_for_ai_services() {
   log "Waiting for AI services to be ready..."
   load_service_endpoints
-  local timeout=180
-  local interval=5
-  local service_name="" health_url=""
 
-  _wait_http_health() {
-    local service_name="$1"
-    local health_url="$2"
-    local elapsed=0
-
-    log "  Waiting for ${service_name}..."
-    while ! curl -sf --connect-timeout 2 --max-time 5 "${health_url}" >/dev/null 2>&1; do
-      sleep "${interval}"
-      elapsed=$((elapsed + interval))
-      if (( elapsed >= timeout )); then
-        log "  WARNING: ${service_name} not ready after ${timeout}s"
-        return 1
-      fi
-    done
-    log "  ${service_name} is ready"
-    return 0
-  }
-
-  ai_service_health_targets() {
-    printf '%s\t%s\n' "llama-cpp-embed.service" "${EMBEDDINGS_URL%/}/health"
-    printf '%s\t%s\n' "ai-aidb.service" "${AIDB_URL%/}/health"
-    printf '%s\t%s\n' "ai-hybrid-coordinator.service" "${HYBRID_URL%/}/health"
-    printf '%s\t%s\n' "ai-switchboard.service" "${SWITCHBOARD_URL%/}/health"
-    printf '%s\t%s\n' "llama-cpp.service" "${LLAMA_URL%/}/health"
-  }
-
+  local service_name health_url
   while IFS=$'\t' read -r service_name health_url; do
     [[ -n "${service_name}" && -n "${health_url}" ]] || continue
     if systemd_unit_enabled_or_running "${service_name}"; then
-      _wait_http_health "${service_name}" "${health_url}" || true
+      wait_for_ai_service_http "${service_name}" "${health_url}" 180 5 || true
     fi
   done < <(ai_service_health_targets)
 
   log "AI services ready check complete"
 }
 
-# Wait for services before health checks
-wait_for_ai_services
-verify_repo_backed_ai_services_are_live_if_needed
+run_general_postflight_checks() {
+  log "Skipping deprecated npm global AI tooling sync (declarative-only mode)."
+  log "Skipping imperative runtime orchestration in deploy-clean (declarative modules own lifecycle)."
 
-# Verify TCP connectivity to Redis/Qdrant/Postgres and HTTP /health endpoints
-# for all MCP services. Runs --optional to also report aider-wrapper and
-# supplementary services. Non-blocking: issues are logged but do not abort.
-if [[ "$RUN_HEALTH_CHECK" == true && -x "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" ]]; then
-  run_nonfatal_postflight_check \
-    "Running AI stack MCP health check" \
-    "AI MCP health check passed" \
-    "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details (non-critical)" \
-    "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" --optional
-fi
+  if [[ "${RUN_HEALTH_CHECK}" == true && -x "${REPO_ROOT}/scripts/health/system-health-check.sh" ]]; then
+    section "Post-flight Health"
+    run_nonfatal_postflight_check \
+      "Running post-deploy health check" \
+      "Post-deploy health check passed" \
+      "Post-deploy health check reported issues (non-critical)" \
+      run_timed_step "System Health Check" "${REPO_ROOT}/scripts/health/system-health-check.sh" --detailed
+  fi
+
+  if [[ -x "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" ]]; then
+    run_nonfatal_postflight_check \
+      "Running installed-vs-intended package comparison" \
+      "Installed-vs-intended comparison passed" \
+      "Installed-vs-intended comparison reported gaps (non-critical)" \
+      "${REPO_ROOT}/scripts/compare-installed-vs-intended.sh" --host "${HOST_NAME}" --profile "${PROFILE}" --flake-ref "${FLAKE_REF}"
+  fi
+}
+
+run_ai_postflight_checks() {
+  wait_for_ai_services
+  verify_repo_backed_ai_services_are_live_if_needed
+
+  if [[ "${RUN_HEALTH_CHECK}" == true && -x "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" ]]; then
+    run_nonfatal_postflight_check \
+      "Running AI stack MCP health check" \
+      "AI MCP health check passed" \
+      "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details (non-critical)" \
+      "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" --optional
+  fi
+}
 
 # ---- Embedding dimension migration (post-deploy) ----------------------------
 # Detects a vector-dimension mismatch between the deployed config and the live
@@ -4470,8 +4465,6 @@ run_embedding_migration_if_needed() {
   fi
 }
 
-run_embedding_migration_if_needed
-
 # ---- Command Center Dashboard post-flight ------------------------------------
 # Confirm the dashboard API is reachable and reports a healthy/degraded probe result.
 # Non-fatal: a down dashboard never aborts a successful deploy.
@@ -4513,11 +4506,61 @@ run_dashboard_runtime_postflight() {
   restart_prometheus_after_nftables_update_if_needed
 }
 
-run_dashboard_runtime_postflight
+run_switch_postflight() {
+  if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
+    verify_or_download_ai_models
+  fi
 
-run_postflight_convergence
+  run_flatpak_sync_if_enabled "system scope"
+  run_general_postflight_checks
+  run_ai_postflight_checks
+  run_embedding_migration_if_needed
+  run_dashboard_runtime_postflight
+  run_postflight_convergence
+}
 
-print_completion_test_results
-section "Completion Summary"
-print_deploy_completion_summary
-log "Clean deployment complete"
+print_completion_summary() {
+  print_completion_test_results
+  section "Completion Summary"
+  print_deploy_completion_summary
+  log "Clean deployment complete"
+}
+
+main() {
+  run_phase1_model_selection
+  run_preflight_phase
+
+  if [[ "${PRE_DEPLOY_PREFLIGHT_ONLY}" == true ]]; then
+    log "Preflight-only validation loop complete. No deploy actions were executed."
+    return 0
+  fi
+
+  run_pre_deploy_guardrails
+  run_optional_pre_deploy_steps
+  snapshot_pre_switch_generations
+
+  case "${MODE}" in
+    build)
+      run_build_mode_workflow
+      return 0
+      ;;
+    boot|switch)
+      pre_rebuild_model_download
+      ;;
+    *)
+      die "Unsupported deploy mode '${MODE}'. Expected build|boot|switch."
+      ;;
+  esac
+
+  if [[ "${MODE}" == "boot" ]]; then
+    run_boot_mode_workflow
+    return 0
+  fi
+
+  run_switch_mode_workflow
+  run_post_switch_validations
+  run_switch_postflight
+  print_completion_summary
+}
+
+main "$@"
