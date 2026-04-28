@@ -5038,6 +5038,81 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
+    async def handle_review_acceptance(request: web.Request) -> web.Response:
+        """Deterministic reviewer gate: criteria + keyword coverage scoring."""
+        try:
+            data = await request.json()
+            response_text = str(data.get("response", "") or "")
+            query = str(data.get("query", "") or "")
+            criteria = data.get("criteria", []) or []
+            expected_keywords = data.get("expected_keywords", []) or []
+            min_criteria_ratio = float(data.get("min_criteria_ratio", 0.7))
+            min_keyword_ratio = float(data.get("min_keyword_ratio", 0.6))
+            run_eval = bool(data.get("run_harness_eval", False))
+
+            if not response_text:
+                return web.json_response({"error": "response required"}, status=400)
+
+            text = response_text.lower()
+            criteria_hits = []
+            for criterion in criteria:
+                crit = str(criterion).strip()
+                if not crit:
+                    continue
+                hit = crit.lower() in text
+                criteria_hits.append({"criterion": crit, "hit": hit})
+            criteria_total = len(criteria_hits)
+            criteria_hit_count = len([c for c in criteria_hits if c["hit"]])
+            criteria_ratio = (criteria_hit_count / criteria_total) if criteria_total else 1.0
+
+            keyword_hits = []
+            for kw in expected_keywords:
+                item = str(kw).strip().lower()
+                if not item:
+                    continue
+                keyword_hits.append({"keyword": item, "hit": item in text})
+            keyword_total = len(keyword_hits)
+            keyword_hit_count = len([k for k in keyword_hits if k["hit"]])
+            keyword_ratio = (keyword_hit_count / keyword_total) if keyword_total else 1.0
+
+            harness_eval = None
+            if run_eval and query and expected_keywords and _run_harness_eval is not None:
+                try:
+                    harness_eval = await _run_harness_eval(
+                        query=query,
+                        expected_keywords=[str(k) for k in expected_keywords],
+                        mode="auto",
+                        max_latency_ms=None,
+                    )
+                except Exception as exc:
+                    harness_eval = {"error": str(exc)}
+
+            passed = criteria_ratio >= min_criteria_ratio and keyword_ratio >= min_keyword_ratio
+            if isinstance(harness_eval, dict) and harness_eval.get("passed") is False:
+                passed = False
+
+            return web.json_response({
+                "passed": passed,
+                "score": round((criteria_ratio + keyword_ratio) / 2.0, 4),
+                "criteria": {
+                    "hits": criteria_hits,
+                    "hit_count": criteria_hit_count,
+                    "total": criteria_total,
+                    "ratio": round(criteria_ratio, 4),
+                    "threshold": min_criteria_ratio,
+                },
+                "keywords": {
+                    "hits": keyword_hits,
+                    "hit_count": keyword_hit_count,
+                    "total": keyword_total,
+                    "ratio": round(keyword_ratio, 4),
+                    "threshold": min_keyword_ratio,
+                },
+                "harness_eval": harness_eval,
+            })
+        except Exception as exc:
+            return web.json_response(_error_payload("internal_error", exc), status=500)
+
     openai_a2a_handlers.register_routes(http_app)
     ops_handlers.register_routes(http_app)
     http_app.router.add_get("/status", handle_status)
