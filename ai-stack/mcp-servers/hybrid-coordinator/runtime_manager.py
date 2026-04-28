@@ -13,10 +13,14 @@ import json
 import logging
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ai_coordinator import prune_runtime_registry as _ai_coordinator_prune_runtime_registry
+from ai_coordinator import (
+    prune_runtime_registry as _ai_coordinator_prune_runtime_registry,
+    coerce_orchestration_context as _ai_coordinator_coerce_orchestration_context,
+)
 from config import Config
 
 logger = logging.getLogger("hybrid-coordinator")

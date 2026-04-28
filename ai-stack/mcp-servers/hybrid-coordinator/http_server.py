@@ -315,6 +315,7 @@ from agent_registry import (
     _save_agent_evaluations_registry,
     _record_agent_consensus_event,
     _record_agent_runtime_event,
+    _active_lesson_refs,
     _load_active_lesson_refs,
     _load_agent_lessons_registry,
     _save_agent_lessons_registry,

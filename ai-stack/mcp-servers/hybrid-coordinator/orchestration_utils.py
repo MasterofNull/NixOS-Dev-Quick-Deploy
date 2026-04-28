@@ -10,7 +10,10 @@ orchestration lane routing, agent team building, and consensus/arbiter updates.
 
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, Set
+
+from agent_registry import _load_agent_evaluations_registry_sync
 
 logger = logging.getLogger("hybrid-coordinator")
 
