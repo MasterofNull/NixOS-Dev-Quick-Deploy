@@ -125,6 +125,8 @@ import openai_a2a_handlers
 import ops_handlers
 import prsi_handlers
 import runtime_control_handlers
+import model_opt_handlers
+import llm_router_handlers
 import workflow_session_handlers
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
@@ -877,6 +879,11 @@ def init(
     )
     prsi_handlers.init(error_payload_fn=_error_payload)
     runtime_control_handlers.init(error_payload_fn=_error_payload)
+    llm_router_handlers.init(
+        error_payload_fn=_error_payload,
+        classify_and_route_task_fn=_classify_and_route_task,
+        get_model_coordinator_fn=_get_model_coordinator,
+    )
     audit_enabled = os.getenv("AI_TOOL_SECURITY_AUDIT_ENABLED", "true").lower() == "true"
     audit_enforce = os.getenv("AI_TOOL_SECURITY_AUDIT_ENFORCE", "true").lower() == "true"
     audit_ttl_hours = int(os.getenv("AI_TOOL_SECURITY_CACHE_TTL_HOURS", "168"))
@@ -3600,201 +3607,6 @@ async def run_http_mode(port: int) -> None:
     # Phase 12.1/12.2 — Model Coordination Endpoints
     # ------------------------------------------------------------------
 
-    async def handle_model_route(request: web.Request) -> web.Response:
-        """
-        POST /control/models/route — Classify and route a task to appropriate model(s).
-
-        Phase 12.1/12.2: Model role classification and dual-model routing.
-        Returns routing decision with primary/secondary model assignments.
-        """
-        try:
-            data = await request.json()
-            task = str(data.get("task") or data.get("query") or "").strip()
-            if not task:
-                return web.json_response({"error": "task required"}, status=400)
-
-            context = data.get("context") if isinstance(data.get("context"), dict) else {}
-            prefer_local = bool(data.get("prefer_local", True))
-
-            result = _classify_and_route_task(task, context, prefer_local=prefer_local)
-            result["task"] = task
-
-            return web.json_response(result)
-        except Exception as exc:
-            logger.error("handle_model_route error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
-    async def handle_model_list(request: web.Request) -> web.Response:
-        """GET /control/models — List available model profiles."""
-        try:
-            coordinator = _get_model_coordinator()
-            models = coordinator.list_available_models()
-            stats = coordinator.get_routing_stats()
-            return web.json_response({
-                "models": models,
-                "routing_stats": stats,
-            })
-        except Exception as exc:
-            logger.error("handle_model_list error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
-    async def handle_cache_warming_queue(request: web.Request) -> web.Response:
-        """
-        POST /control/cache/warm — Queue queries for proactive cache warming.
-        GET /control/cache/warm — Get current warming queue batch.
-        """
-        try:
-            coordinator = _get_model_coordinator()
-            if request.method == "POST":
-                data = await request.json()
-                queries = data.get("queries") if isinstance(data.get("queries"), list) else []
-                if not queries:
-                    query = str(data.get("query") or "").strip()
-                    if query:
-                        queries = [query]
-                for q in queries:
-                    domain = data.get("domain")
-                    priority = int(data.get("priority", 1))
-                    coordinator.queue_cache_warming(q, domain, priority)
-                return web.json_response({
-                    "status": "queued",
-                    "count": len(queries),
-                })
-            else:
-                batch_size = int(request.rel_url.query.get("batch_size", "5"))
-                batch = coordinator.get_cache_warming_batch(batch_size)
-                return web.json_response({
-                    "batch": batch,
-                    "queue_depth": len(batch),
-                })
-        except Exception as exc:
-            logger.error("handle_cache_warming_queue error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
-    async def handle_tool_suggestions(request: web.Request) -> web.Response:
-        """GET /control/tools/suggestions — Get tool suggestions for a domain."""
-        try:
-            domain = request.rel_url.query.get("domain", "ai-harness")
-            task_type = request.rel_url.query.get("task_type", "")
-            coordinator = _get_model_coordinator()
-            suggestions = coordinator.get_tool_suggestions(domain, task_type or None)
-            return web.json_response({
-                "domain": domain,
-                "task_type": task_type or "general",
-                "suggestions": suggestions,
-            })
-        except Exception as exc:
-            logger.error("handle_tool_suggestions error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
-    # ------------------------------------------------------------------
-    # LLM Router Endpoints (Tier-based Cost Optimization)
-    # ------------------------------------------------------------------
-
-    async def handle_llm_router_route(request: web.Request) -> web.Response:
-        """
-        POST /control/llm/route — Route task using tier-based cost optimization.
-
-        Implements Local > Free > Paid routing strategy.
-        Returns tier assignment and model selection.
-        """
-        try:
-            from llm_router import get_router
-
-            data = await request.json()
-            task_description = str(data.get("task") or data.get("description") or "").strip()
-            if not task_description:
-                return web.json_response({"error": "task required"}, status=400)
-
-            context = data.get("context") if isinstance(data.get("context"), dict) else {}
-
-            router = get_router()
-            tier, model = router.route_task(task_description, context)
-
-            return web.json_response({
-                "task": task_description,
-                "tier": tier.value,
-                "model": model,
-                "routing_strategy": "tier-based cost optimization",
-                "estimated_cost": router._estimate_cost(tier),
-            })
-        except ImportError:
-            return web.json_response({
-                "error": "llm_router not available",
-                "fallback": "use /control/models/route instead"
-            }, status=503)
-        except Exception as exc:
-            logger.error("handle_llm_router_route error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
-    async def handle_llm_router_execute(request: web.Request) -> web.Response:
-        """
-        POST /control/llm/execute — Execute task with intelligent routing and auto-escalation.
-
-        Executes task using tier-based routing with automatic escalation on failures.
-        Returns result with tier, model, cost, and escalation information.
-        """
-        try:
-            from llm_router import get_router
-
-            data = await request.json()
-            task = {
-                "description": str(data.get("task") or data.get("description") or "").strip(),
-                "context": data.get("context") if isinstance(data.get("context"), dict) else {},
-                "type": data.get("type", "unknown"),
-                "allow_escalation": bool(data.get("allow_escalation", True)),
-                "allow_advisor": bool(data.get("allow_advisor", True)),
-                "max_advisor_uses": int(data.get("max_advisor_uses", 3)),
-            }
-
-            if not task["description"]:
-                return web.json_response({"error": "task required"}, status=400)
-
-            router = get_router()
-            # Use execute_with_advisor so decision-point detection triggers proactive
-            # advisor consultation before execution (advisor strategy integration).
-            result = await router.execute_with_advisor(task)
-
-            return web.json_response(result)
-        except ImportError:
-            return web.json_response({
-                "error": "llm_router not available",
-                "fallback": "use /query or /control/models/route instead"
-            }, status=503)
-        except Exception as exc:
-            logger.error("handle_llm_router_execute error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
-    async def handle_llm_router_metrics(request: web.Request) -> web.Response:
-        """
-        GET /control/llm/metrics — Get LLM router metrics and cost savings.
-
-        Returns tier distribution, cost estimates, escalation rates, and savings.
-        """
-        try:
-            from llm_router import get_router
-
-            router = get_router()
-            metrics = router.get_metrics()
-
-            return web.json_response({
-                "metrics": metrics,
-                "target_distribution": {
-                    "local": "80%",
-                    "free": "15%",
-                    "paid": "5%",
-                },
-                "cost_optimization_goal": "95% reduction ($600/mo → $30/mo)",
-            })
-        except ImportError:
-            return web.json_response({
-                "error": "llm_router not available",
-                "message": "Tier-based routing not initialized"
-            }, status=503)
-        except Exception as exc:
-            logger.error("handle_llm_router_metrics error=%s", exc)
-            return web.json_response(_error_payload("internal_error", exc), status=500)
-
     # ------------------------------------------------------------------
     # App assembly and startup
     # ------------------------------------------------------------------
@@ -3894,190 +3706,6 @@ async def run_http_mode(port: int) -> None:
         return ws
 
     # Phase 5 — Model Optimization HTTP handlers
-    async def handle_model_optimization_readiness(request):
-        import model_optimization
-        result = await model_optimization.get_optimization_readiness()
-        return web.json_response(result)
-
-    async def handle_training_data_stats(request):
-        import model_optimization
-        result = await model_optimization.get_training_data_stats()
-        return web.json_response(result)
-
-    async def handle_training_data_flush(request):
-        import model_optimization
-        result = await model_optimization.flush_training_data()
-        return web.json_response(result)
-
-    async def handle_finetuning_jobs_list(request):
-        import model_optimization
-        status_filter = request.query.get("status")
-        result = await model_optimization.get_finetuning_jobs(status_filter=status_filter)
-        return web.json_response(result)
-
-    async def handle_finetuning_jobs_create(request):
-        import model_optimization
-        data = await request.json()
-        result = await model_optimization.start_finetuning_job(
-            base_model=data.get("base_model", ""),
-            task_type=data.get("task_type", "general"),
-            training_data_path=data.get("training_data_path"),
-        )
-        return web.json_response(result)
-
-    async def handle_model_performance(request):
-        import model_optimization
-        model_id = request.query.get("model_id")
-        result = await model_optimization.get_model_performance(model_id=model_id)
-        return web.json_response(result)
-
-    async def handle_synthetic_training_generate(request):
-        import model_optimization
-        data = await request.json()
-        result = await model_optimization.generate_synthetic_training_data(
-            target_examples=data.get("target_examples", 50),
-            categories=data.get("categories"),
-            strategies=data.get("strategies"),
-            min_quality=data.get("min_quality", 0.7),
-        )
-        return web.json_response(result)
-
-    async def handle_active_learning_select(request):
-        import model_optimization
-        data = await request.json()
-        result = await model_optimization.select_active_learning_examples(
-            budget=data.get("budget", 25),
-            strategy=data.get("strategy", "hybrid"),
-            candidate_paths=data.get("candidate_paths"),
-        )
-        return web.json_response(result)
-
-    async def handle_distillation_pipeline_run(request):
-        import model_optimization
-        data = await request.json()
-        result = await model_optimization.run_distillation_pipeline(
-            teacher_model=data.get("teacher_model", ""),
-            student_model=data.get("student_model", ""),
-            training_data_path=data.get("training_data_path"),
-            quantization_method=data.get("quantization_method", "gguf"),
-            quantization_bits=data.get("quantization_bits", 4),
-            pruning_sparsity=data.get("pruning_sparsity", 0.2),
-            enable_speculative_decoding=data.get("enable_speculative_decoding", True),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_features_readiness(request):
-        import advanced_features
-        result = await advanced_features.get_advanced_features_readiness()
-        return web.json_response(result)
-
-    async def handle_advanced_agent_quality_profiles(request):
-        import advanced_features
-        result = await advanced_features.get_agent_quality_profiles()
-        return web.json_response(result)
-
-    async def handle_advanced_agent_failover_select(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.select_failover_remote_agent(
-            min_composite_score=data.get("min_composite_score", 0.55),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_agent_benchmarks(request):
-        import advanced_features
-        result = await advanced_features.get_agent_benchmarks()
-        return web.json_response(result)
-
-    async def handle_advanced_prompt_optimize(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.optimize_prompt_template(
-            task_type=data.get("task_type", "implementation"),
-            task=data.get("task", ""),
-            context=data.get("context"),
-            constraints=data.get("constraints"),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_prompt_dynamic(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.generate_dynamic_prompt(
-            query=data.get("query", ""),
-            context=data.get("context"),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_prompt_ab_stats(request):
-        import advanced_features
-        result = await advanced_features.get_prompt_ab_stats()
-        return web.json_response(result)
-
-    async def handle_advanced_prompt_ab_record(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.record_prompt_variant_outcome(
-            task_type=data.get("task_type", "implementation"),
-            variant_id=data.get("variant_id", ""),
-            score=data.get("score", 0.0),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_context_tier_select(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.select_context_tier(
-            query=data.get("query", ""),
-            context=data.get("context"),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_context_tier_stats(request):
-        import advanced_features
-        result = await advanced_features.get_tier_selection_stats()
-        return web.json_response(result)
-
-    async def handle_advanced_failure_patterns(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.analyze_failure_patterns(
-            query=data.get("query", ""),
-            response=data.get("response", ""),
-            error_message=data.get("error_message"),
-            user_feedback=data.get("user_feedback"),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_capability_gap_stats(request):
-        import advanced_features
-        result = await advanced_features.get_capability_gap_stats()
-        return web.json_response(result)
-
-    async def handle_advanced_learning_signal(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.record_learning_signal(
-            query=data.get("query", ""),
-            response=data.get("response", ""),
-            outcome=data.get("outcome", "unknown"),
-            explicit_score=data.get("explicit_score"),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_learning_recommendations(request):
-        import advanced_features
-        data = await request.json()
-        result = await advanced_features.get_learning_recommendations(
-            query=data.get("query", ""),
-        )
-        return web.json_response(result)
-
-    async def handle_advanced_learning_stats(request):
-        import advanced_features
-        result = await advanced_features.get_learning_stats()
-        return web.json_response(result)
-
     # -------------------------------------------------------------------------
     # Phase 4.2 — Multi-Agent Orchestration Framework Endpoints
     # -------------------------------------------------------------------------
@@ -4638,47 +4266,16 @@ async def run_http_mode(port: int) -> None:
     # Batch 5.2 — Skill Usage Tracking and Recommendations
     http_app.router.add_get("/control/skills/usage", handle_skill_usage_stats)
     http_app.router.add_get("/control/skills/recommendations", handle_skill_recommendations)
-    # Phase 12.1/12.2 — Model Coordination endpoints
-    http_app.router.add_post("/control/models/route", handle_model_route)
-    http_app.router.add_get("/control/models", handle_model_list)
-    http_app.router.add_post("/control/cache/warm", handle_cache_warming_queue)
-    http_app.router.add_get("/control/cache/warm", handle_cache_warming_queue)
-    http_app.router.add_get("/control/tools/suggestions", handle_tool_suggestions)
-    # LLM Router endpoints (Tier-based cost optimization)
-    http_app.router.add_post("/control/llm/route", handle_llm_router_route)
-    http_app.router.add_post("/control/llm/execute", handle_llm_router_execute)
-    http_app.router.add_get("/control/llm/metrics", handle_llm_router_metrics)
+    # Phase 12.1/12.2 — Model Coordination + LLM Router endpoints
+    llm_router_handlers.register_routes(http_app)
     http_app.router.add_get("/control/autoresearch/status", handle_autoresearch_status)
     http_app.router.add_post("/control/autoresearch/run", handle_autoresearch_run)
     # Batch 3.2 — PRSI Action Execution endpoints
     prsi_handlers.register_routes(http_app)
     runtime_control_handlers.register_routes(http_app)
 
-    # Phase 5 — Model Optimization endpoints
-    http_app.router.add_get("/control/ai-coordinator/model-optimization/readiness", handle_model_optimization_readiness)
-    http_app.router.add_get("/control/ai-coordinator/model-optimization/training-data/stats", handle_training_data_stats)
-    http_app.router.add_post("/control/ai-coordinator/model-optimization/training-data/flush", handle_training_data_flush)
-    http_app.router.add_get("/control/ai-coordinator/model-optimization/finetuning/jobs", handle_finetuning_jobs_list)
-    http_app.router.add_post("/control/ai-coordinator/model-optimization/finetuning/jobs", handle_finetuning_jobs_create)
-    http_app.router.add_get("/control/ai-coordinator/model-optimization/performance", handle_model_performance)
-    http_app.router.add_post("/control/ai-coordinator/model-optimization/synthetic-data/generate", handle_synthetic_training_generate)
-    http_app.router.add_post("/control/ai-coordinator/model-optimization/active-learning/select", handle_active_learning_select)
-    http_app.router.add_post("/control/ai-coordinator/model-optimization/distillation/run", handle_distillation_pipeline_run)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/readiness", handle_advanced_features_readiness)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/offloading/quality-profiles", handle_advanced_agent_quality_profiles)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/offloading/failover-select", handle_advanced_agent_failover_select)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/offloading/benchmarks", handle_advanced_agent_benchmarks)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/prompt/optimize", handle_advanced_prompt_optimize)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/prompt/dynamic", handle_advanced_prompt_dynamic)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/prompt/ab-stats", handle_advanced_prompt_ab_stats)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/prompt/ab-record", handle_advanced_prompt_ab_record)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/context/tier-select", handle_advanced_context_tier_select)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/context/tier-stats", handle_advanced_context_tier_stats)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/capability-gap/failure-patterns", handle_advanced_failure_patterns)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/capability-gap/stats", handle_advanced_capability_gap_stats)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/learning/signal", handle_advanced_learning_signal)
-    http_app.router.add_post("/control/ai-coordinator/advanced-features/learning/recommendations", handle_advanced_learning_recommendations)
-    http_app.router.add_get("/control/ai-coordinator/advanced-features/learning/stats", handle_advanced_learning_stats)
+    # Phase 5 — Model Optimization + Advanced Features endpoints
+    model_opt_handlers.register_routes(http_app)
 
     # Phase 1: WebSocket alert endpoint
     http_app.router.add_get("/ws/alerts", handle_alerts_websocket)
