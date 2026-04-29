@@ -67,6 +67,28 @@ sources:
       - mcp
       - nixos
       - local
+
+  # ---------------------------------------------------------------------------
+  # Phase 13.3 — Harness CLI SKILL.md (OpenSkills progressive disclosure format)
+  # One file per harness CLI: synopsis, key options, env vars, output schema,
+  # and 2-3 examples. Max 80 lines each — agents consume only the tool they need.
+  # ---------------------------------------------------------------------------
+  - id: harness-cli-skills
+    type: local_dir
+    description: >
+      OpenSkills-format SKILL.md files for all harness CLI tools (aq-hints,
+      aq-delegate, aq-memory, aq-qa, aq-report, aq-runtime-diagnose).
+      Progressive disclosure: agents load only the skill for the tool they need.
+    url: scripts/ai/skills
+    fetch:
+      - glob:*.skill.md
+    collection: agent-skills
+    tags:
+      - skills
+      - harness
+      - cli
+      - progressive-disclosure
+      - local
     schedule: daily
     enabled: true
 

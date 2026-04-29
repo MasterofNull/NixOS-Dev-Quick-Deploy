@@ -11,6 +11,8 @@
 set -euo pipefail
 
 JSON_OUTPUT=0
+STORE_FINDINGS=0
+FINDINGS_DRY_RUN=0
 PRESET=""
 SERVICE=""
 HEALTH_URL=""
@@ -22,6 +24,8 @@ ALIAS_PROBE_CMD=""
 SMOKE_CMD=""
 RUN_SMOKE=0
 HYBRID_API_HEADER_NAME="${HYBRID_API_HEADER_NAME:-X-API-Key}"
+AIDB_URL="${AIDB_URL:-http://localhost:8002}"
+AIDB_KEY_FILE="${AIDB_KEY_FILE:-/run/secrets/aidb_api_key}"
 
 usage() {
   cat <<'EOF'
@@ -39,6 +43,8 @@ Options:
   --smoke-cmd CMD       Optional bounded smoke command
   --smoke               Execute the configured smoke command
   --json                Machine-readable output
+  --store-findings      Emit findings to AIDB (project=runtime-diagnose) — Phase 13.5
+  --dry-run             With --store-findings: print payload without posting
   --help, -h            Show help
 EOF
 }
@@ -117,6 +123,8 @@ while [[ $# -gt 0 ]]; do
     --smoke-cmd) SMOKE_CMD="${2:-}"; shift ;;
     --smoke) RUN_SMOKE=1 ;;
     --json) JSON_OUTPUT=1 ;;
+    --store-findings) STORE_FINDINGS=1 ;;
+    --dry-run) FINDINGS_DRY_RUN=1 ;;
     --help|-h) usage; exit 0 ;;
     *)
       printf 'aq-runtime-diagnose: unknown argument "%s"\n' "$1" >&2
@@ -333,6 +341,54 @@ else
   fi
   if [[ -n "$journal_focus" ]]; then
     printf '\njournal focus\n%s\n' "$journal_focus"
+  fi
+fi
+
+# Phase 13.5 — store findings to AIDB so agents can recall runtime failure patterns.
+if [[ "$STORE_FINDINGS" -eq 1 ]]; then
+  _aidb_key=""
+  if [[ -f "$AIDB_KEY_FILE" ]]; then
+    _aidb_key="${AIDB_KEY_FILE}"
+    _aidb_key="$(tr -d '[:space:]' < "$AIDB_KEY_FILE")"
+  elif [[ -n "${AIDB_API_KEY:-}" ]]; then
+    _aidb_key="$AIDB_API_KEY"
+  fi
+
+  _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _title="runtime-diagnose: ${SERVICE} (${_ts})"
+  _content="service: ${SERVICE}
+timestamp: ${_ts}
+status: ${classification}
+healthy: ${healthy}
+recommendation: ${recommendation}
+health_url: ${HEALTH_URL:-none}
+probe_output: ${probe_output:-none}
+journal_focus: ${journal_focus:-none}"
+
+  # Suppress storage if finding is trivially empty
+  if [[ ${#_content} -lt 40 ]]; then
+    printf 'aq-runtime-diagnose: --store-findings: content too short, skipping\n' >&2
+  else
+    _payload="$(printf '{"content":%s,"project":"runtime-diagnose","relative_path":"diagnose/%s-%s.md","title":%s}' \
+      "$(printf '%s' "$_content" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+      "$SERVICE" \
+      "$(date -u +%s)" \
+      "$(printf '%s' "$_title" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")"
+
+    if [[ "$FINDINGS_DRY_RUN" -eq 1 ]]; then
+      printf 'aq-runtime-diagnose: --store-findings --dry-run payload:\n%s\n' "$_payload"
+    else
+      _http_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+        -X POST "${AIDB_URL}/documents" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: ${_aidb_key}" \
+        -d "$_payload" 2>/dev/null || true)"
+      if [[ "$_http_code" == "200" || "$_http_code" == "201" ]]; then
+        printf 'aq-runtime-diagnose: findings stored to AIDB (HTTP %s)\n' "$_http_code"
+      else
+        printf 'aq-runtime-diagnose: AIDB store failed (HTTP %s) — findings not persisted\n' "$_http_code" >&2
+      fi
+    fi
   fi
 fi
 
