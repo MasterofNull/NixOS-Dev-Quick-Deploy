@@ -119,7 +119,7 @@ let
     }
       rate_limit:
         enabled: true
-        requests_per_minute: 60
+        requests_per_minute: 300
 
     rag:
       embedding_model: Qwen/Qwen3-Embedding-4B
@@ -871,6 +871,8 @@ in {
                 "RUNTIME_TOOL_SECURITY_POLICY_FILE=${runtimeToolSecurityPolicyJson}"
                 "PYTHONPATH=${repoMcp}:${repoMcp}/aidb"
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
+                # Higher ingest RPM for batch ingestion pipelines (general rate limit raised to 300 above)
+                "AIDB_RATE_LIMIT_INGEST_RPM=500"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"
