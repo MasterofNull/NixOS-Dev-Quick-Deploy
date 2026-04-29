@@ -165,8 +165,12 @@ def _post_document(
     relative_path: str,
     project: str,
     dry_run: bool,
+    max_retries: int = 5,
 ) -> bool:
-    """POST a single document to AIDB. Returns True on success."""
+    """POST a single document to AIDB. Returns True on success.
+
+    Retries on HTTP 429 (rate limited) with exponential backoff.
+    """
     payload = {
         "content": content,
         "project": project,
@@ -178,25 +182,37 @@ def _post_document(
 
     url = f"{AIDB_URL}/documents"
     data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key,
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.status in (200, 201)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode(errors="replace")[:200]
-        print(f"  [HTTP {e.code}] {relative_path}: {body}", file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"  [ERR] {relative_path}: {e}", file=sys.stderr)
-        return False
+
+    for attempt in range(max_retries + 1):
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.status in (200, 201)
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < max_retries:
+                backoff = 2 ** (attempt + 1)  # 2s, 4s, 8s, 16s, 32s
+                print(
+                    f"  [429] rate limited — backing off {backoff}s (attempt {attempt + 1}/{max_retries})",
+                    file=sys.stderr,
+                )
+                time.sleep(backoff)
+                continue
+            body = e.read().decode(errors="replace")[:200]
+            print(f"  [HTTP {e.code}] {relative_path}: {body}", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"  [ERR] {relative_path}: {e}", file=sys.stderr)
+            return False
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -224,8 +240,8 @@ def main() -> int:
         help=f"AIDB project name (default: {PROJECT_NAME})",
     )
     parser.add_argument(
-        "--delay", type=float, default=0.05,
-        help="Seconds between posts (throttle, default: 0.05)",
+        "--delay", type=float, default=1.0,
+        help="Seconds between posts (throttle, default: 1.0)",
     )
     args = parser.parse_args()
 
