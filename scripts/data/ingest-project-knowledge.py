@@ -166,6 +166,7 @@ def _post_document(
     project: str,
     dry_run: bool,
     max_retries: int = 5,
+    cooloff_seconds: int = 65,
 ) -> bool:
     """POST a single document to AIDB. Returns True on success.
 
@@ -197,14 +198,22 @@ def _post_document(
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.status in (200, 201)
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < max_retries:
-                backoff = 2 ** (attempt + 1)  # 2s, 4s, 8s, 16s, 32s
+            if e.code == 429:
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt + 1)  # 2s, 4s, 8s, 16s, 32s
+                    print(
+                        f"  [429] rate limited — backing off {backoff}s (attempt {attempt + 1}/{max_retries})",
+                        file=sys.stderr,
+                    )
+                    time.sleep(backoff)
+                    continue
+                # All retries exhausted — wait for the rate limit window to fully clear
                 print(
-                    f"  [429] rate limited — backing off {backoff}s (attempt {attempt + 1}/{max_retries})",
+                    f"  [429] max retries exhausted for {relative_path} — cooling off {cooloff_seconds}s",
                     file=sys.stderr,
                 )
-                time.sleep(backoff)
-                continue
+                time.sleep(cooloff_seconds)
+                return False
             body = e.read().decode(errors="replace")[:200]
             print(f"  [HTTP {e.code}] {relative_path}: {body}", file=sys.stderr)
             return False
@@ -240,8 +249,8 @@ def main() -> int:
         help=f"AIDB project name (default: {PROJECT_NAME})",
     )
     parser.add_argument(
-        "--delay", type=float, default=1.0,
-        help="Seconds between posts (throttle, default: 1.0)",
+        "--delay", type=float, default=2.0,
+        help="Seconds between posts (throttle, default: 2.0 — AIDB limit is 60 RPM)",
     )
     args = parser.parse_args()
 
