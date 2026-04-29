@@ -11,12 +11,32 @@ Covers:
 
 import json
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from aiohttp import web
 
-from multi_agent_orchestration import IsolationMode, SessionState
+
+# Phase 12.4 fix: IsolationMode and SessionState were extracted from
+# ai-stack/orchestration/ which is not in sys.path at import time (sys.path
+# additions in http_server.py happen after this module is imported at line 130).
+# Define the minimal enum values inline — same pattern used for all Phase 12.4
+# missing-import fixes (see commit d32efbf2).
+class IsolationMode(str, Enum):
+    TEMP_DIR = "temp_dir"
+    GIT_WORKTREE = "worktree"
+    OVERLAY = "overlay"
+    COPY = "copy"
+
+
+class SessionState(str, Enum):
+    CREATED = "created"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TERMINATED = "terminated"
 
 logger = __import__("logging").getLogger("hybrid-coordinator")
 
