@@ -1172,10 +1172,16 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
 
         response = await _post_delegate(effective_profile)
         initial_response = response
-        initial_body = response.json()
+        # Guard against non-JSON upstream responses (e.g. Cloudflare HTML 400 errors)
+        # that would otherwise raise JSONDecodeError before the failover logic runs.
+        try:
+            initial_body = response.json()
+        except Exception:
+            initial_body = {"error": {"message": response.text[:200], "code": response.status_code}}
 
         # Phase 20.2: Enhanced failover chain for 402/429 errors + 401/403 auth/policy
-        if response.status_code in {401, 402, 403, 429}:
+        # Also handle 400 from upstream WAF/auth rejections (e.g. Cloudflare 400 = invalid key).
+        if response.status_code in {400, 401, 402, 403, 429}:
             # Mark agent as rate-limited if applicable
             if pool_agent:
                 _AGENT_POOL_MANAGER.mark_rate_limited(pool_agent.agent_id)
@@ -1240,7 +1246,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     effective_runtime_id = "openrouter-free"
                     fallback_applied = True
                     fallback_reason = f"remote profile returned {response.status_code} (auth/rate-limit); no failover chain available, retried on remote-free"
-        body = response.json()
+        # Guard against non-JSON upstream bodies (Cloudflare WAF HTML, etc.)
+        try:
+            body = response.json()
+        except Exception:
+            body = {"error": {"message": response.text[:200], "code": response.status_code}}
 
         initial_classification = classify_delegated_response(
             task=task,
