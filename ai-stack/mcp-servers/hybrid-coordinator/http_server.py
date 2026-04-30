@@ -820,6 +820,52 @@ def init(
     workflow_planning.set_tool_security_auditor(_TOOL_SECURITY_AUDITOR)
 
 
+def _is_loopback_request(req: web.Request) -> bool:
+    """Return True when the request originates from localhost."""
+    remote = (req.remote or "").strip()
+    if remote in {"127.0.0.1", "::1", "localhost"}:
+        return True
+    forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
+    return forwarded_for in {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_loopback_agent_request(req: web.Request) -> bool:
+    """Allow local agents (Qwen, Claude Code, Aider, …) through without an API key.
+
+    Only bypasses auth for endpoints that local agents actually need; remote
+    requests still require full authentication.
+    """
+    if not _is_loopback_request(req):
+        return False
+    agent_prefixes = (
+        "/hints",
+        "/workflow/",
+        "/query",
+        "/v1/orchestrate",
+        "/v1/",
+        "/review/",
+        "/discovery/",
+        "/control/ai-coordinator/",
+        "/control/llm/",
+        "/control/agents/",
+        "/control/agents",
+        "/control/review/",
+        "/control/runtimes",
+        "/control/runtimes/",
+        "/memory/",
+        "/learning/",
+        "/cache/",
+        "/harness/",
+        "/parity/",
+        "/feedback",
+        "/status",
+        "/alerts",
+        "/stats",
+        "/learning/stats",
+    )
+    return any(req.path.startswith(pfx) for pfx in agent_prefixes)
+
+
 async def run_http_mode(port: int) -> None:
     """Build and run the aiohttp HTTP server."""
 
@@ -878,52 +924,6 @@ async def run_http_mode(port: int) -> None:
 
     @web.middleware
     async def api_key_middleware(request, handler):
-        def _is_loopback_request(req: web.Request) -> bool:
-            """Check if the request originates from localhost."""
-            remote = (req.remote or "").strip()
-            if remote in {"127.0.0.1", "::1", "localhost"}:
-                return True
-            forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
-            return forwarded_for in {"127.0.0.1", "::1", "localhost"}
-
-        def _is_loopback_agent_request(req: web.Request) -> bool:
-            """Loopback bypass for local agent endpoints.
-
-            Local agents (Qwen, Claude Code, Aider, etc.) running on the same
-            machine should be able to use the harness without manual API key
-            configuration. Remote requests still require full auth.
-            """
-            if not _is_loopback_request(req):
-                return False
-            # Only bypass for endpoints that local agents actually need
-            agent_prefixes = (
-                "/hints",
-                "/workflow/",
-                "/query",
-                "/v1/orchestrate",
-                "/v1/",
-                "/review/",
-                "/discovery/",
-                "/control/ai-coordinator/",
-                "/control/llm/",
-                "/control/agents/",
-                "/control/agents",
-                "/control/review/",
-                "/control/runtimes",
-                "/control/runtimes/",
-                "/memory/",
-                "/learning/",
-                "/cache/",
-                "/harness/",
-                "/parity/",
-                "/feedback",
-                "/status",
-                "/alerts",
-                "/stats",
-                "/learning/stats",
-            )
-            return any(req.path.startswith(pfx) for pfx in agent_prefixes)
-
         # Public endpoints that don't require authentication
         public_paths = (
             "/health",
