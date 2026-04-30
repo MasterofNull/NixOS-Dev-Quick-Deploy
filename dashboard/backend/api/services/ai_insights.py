@@ -1467,6 +1467,23 @@ class AIInsightsService:
                     "summary": f"miss_rate={float(memory_miss_pct):.1f}%",
                 }
             )
+        continuation_downshift = rag_posture.get("continuation_downshift", {}) if isinstance(rag_posture, dict) else {}
+        downshift_calls = int(continuation_downshift.get("downshifted_calls", 0) or 0) if isinstance(continuation_downshift, dict) else 0
+        downshift_candidates = int(continuation_downshift.get("candidate_calls", 0) or 0) if isinstance(continuation_downshift, dict) else 0
+        if downshift_candidates > 0 or downshift_calls > 0:
+            downshift_pct = float(continuation_downshift.get("downshift_pct", 0.0) or 0.0)
+            avoided_ms = continuation_downshift.get("estimated_synthesis_ms_avoided")
+            summary = f"downshifted={downshift_calls}/{downshift_candidates} ({downshift_pct:.1f}%)"
+            if avoided_ms is not None:
+                summary += f", avoided≈{float(avoided_ms):.0f}ms"
+            hotspots.append(
+                {
+                    "id": "continuation_downshift",
+                    "label": "Continuation Downshift Savings",
+                    "status": "healthy" if downshift_calls > 0 else "watch",
+                    "summary": summary,
+                }
+            )
 
         top_bottlenecks = [
             {
@@ -1515,6 +1532,7 @@ class AIInsightsService:
                 "retrieval_mix_recent": recent_mix,
                 "memory_recall_share_pct": rag_posture.get("memory_recall_share_pct"),
                 "memory_recall_miss_pct": memory_miss_pct,
+                "continuation_downshift": continuation_downshift,
                 "top_prewarm_candidate": top_candidate,
             },
         }
