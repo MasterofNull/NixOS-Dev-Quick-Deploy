@@ -13,7 +13,8 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Set
 
-from agent_registry import _load_agent_evaluations_registry_sync
+
+from agent_registry import _load_agent_evaluations_registry_sync, _normalize_orchestration_lane_list, _normalize_orchestration_lane_list
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -758,5 +759,3 @@ def _apply_arbiter_update(
     session["trajectory"] = trajectory
     session["updated_at"] = now
     return consensus
-
-

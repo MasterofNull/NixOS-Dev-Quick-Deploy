@@ -203,7 +203,17 @@ def _active_model_capabilities() -> Dict[str, Any]:
     return {}
 
 
+# Phase 14.3: Cache switchboard state for 30s to avoid repeated slow health probes
+# during multi-step delegation (ReadTimeout at 2.5s under load — 3 calls per delegate).
+_SWB_STATE_CACHE: Dict[str, Any] = {}
+_SWB_STATE_CACHE_TS: float = 0.0
+_SWB_STATE_CACHE_TTL = 30.0
+
+
 async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
+    global _SWB_STATE_CACHE, _SWB_STATE_CACHE_TS
+    if _SWB_STATE_CACHE and (time.time() - _SWB_STATE_CACHE_TS) < _SWB_STATE_CACHE_TTL:
+        return dict(_SWB_STATE_CACHE)
     state: Dict[str, Any] = {
         "remote_configured": bool(Config.SWITCHBOARD_REMOTE_URL),
         "remote_aliases": {
@@ -215,7 +225,7 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
         },
     }
     try:
-        async with httpx.AsyncClient(timeout=2.5) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             response = await client.get(f"{Config.SWITCHBOARD_URL.rstrip('/')}/health")
         if response.status_code != 200:
             return state
@@ -231,6 +241,8 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
         }
     except Exception:
         pass
+    _SWB_STATE_CACHE.update(state)
+    _SWB_STATE_CACHE_TS = time.time()
     return state
 
 
