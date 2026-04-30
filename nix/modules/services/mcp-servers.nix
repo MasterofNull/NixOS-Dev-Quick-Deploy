@@ -871,8 +871,15 @@ in {
                 "RUNTIME_TOOL_SECURITY_POLICY_FILE=${runtimeToolSecurityPolicyJson}"
                 "PYTHONPATH=${repoMcp}:${repoMcp}/aidb"
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
-                # Higher ingest RPM for batch ingestion pipelines (general rate limit raised to 300 above)
+                # Rate limits tuned for batch ingestion pipelines.
+                # Per-tool tiered limits (10/60/600 RPM by risk tier) remain unchanged — those protect
+                # against high-risk tool abuse. These env vars raise the three limits that throttle
+                # bulk document ingestion from localhost:
+                #   - General RPM: raised from 60 → 300 in config above (requests_per_minute)
+                #   - Ingest-specific RPM: 100 → 500 (separate ingest window in TieredRateLimiter)
+                #   - Global hourly: 1000 → 10000 (shared bucket consumed by every API call)
                 "AIDB_RATE_LIMIT_INGEST_RPM=500"
+                "AIDB_RATE_LIMIT_GLOBAL_RPH=10000"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"
