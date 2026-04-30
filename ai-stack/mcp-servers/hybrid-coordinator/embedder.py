@@ -65,8 +65,9 @@ async def embed_text_uncached(text: str) -> List[float]:
                 url: str,
                 body: Dict[str, Any],
                 headers: Optional[Dict[str, str]] = None,
+                timeout: float = 8.0,
             ) -> List[float]:
-                response = await _embedding_client.post(url, json=body, headers=headers or {}, timeout=30.0)
+                response = await _embedding_client.post(url, json=body, headers=headers or {}, timeout=timeout)
                 response.raise_for_status()
                 embedding = _extract_embedding(response.json())
                 if not embedding:
@@ -98,7 +99,7 @@ async def embed_text_uncached(text: str) -> List[float]:
             response = await _embedding_client.post(
                 f"{Config.LLAMA_CPP_URL}/v1/embeddings",
                 json={"model": "nomic-embed-text", "input": text},
-                timeout=30.0,
+                timeout=8.0,
             )
             response.raise_for_status()
             result = response.json()
