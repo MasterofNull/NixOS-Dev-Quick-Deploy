@@ -80,7 +80,7 @@ async def embed_text_uncached(text: str) -> List[float]:
                 try:
                     return await _request_embedding(
                         f"{Config.EMBEDDING_SERVICE_URL}/v1/embeddings",
-                        {"input": text},
+                        {"model": "text-embedding-ada-002", "input": text},
                         headers=headers,
                     )
                 except Exception:  # noqa: BLE001
