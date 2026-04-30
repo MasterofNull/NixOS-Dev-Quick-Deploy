@@ -127,6 +127,68 @@ def test_recent_hint_diversity_runtime_hint(tmpdir: Path) -> None:
     assert_true("runtime_recent_hint_concentration" in hint_ids, "expected recent hint concentration hint")
 
 
+def test_continuation_downshift_sparse_runtime_hint(tmpdir: Path) -> None:
+    report_path = tmpdir / "latest-aq-report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "rag_posture": {
+                    "available": True,
+                    "status": "healthy",
+                    "recent_retrieval_calls": 16,
+                    "memory_recall_share_pct": 32.0,
+                    "memory_recall_miss_pct": 0.0,
+                    "memory_recall_diagnosis": "healthy",
+                    "memory_recall_actions": [],
+                    "continuation_downshift": {
+                        "available": True,
+                        "candidate_calls": 4,
+                        "downshifted_calls": 0,
+                        "downshift_pct": 0.0,
+                        "estimated_synthesis_ms_avoided": None,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = HintsEngine(report_json_path=report_path)
+    hints = engine._hints_from_latest_report("continue from the last deploy session", [])
+    hint_ids = [item.id for item in hints]
+    assert_true("runtime_continuation_downshift_sparse" in hint_ids, "expected sparse continuation downshift hint")
+
+
+def test_continuation_downshift_active_runtime_hint(tmpdir: Path) -> None:
+    report_path = tmpdir / "latest-aq-report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "rag_posture": {
+                    "available": True,
+                    "status": "healthy",
+                    "recent_retrieval_calls": 16,
+                    "memory_recall_share_pct": 32.0,
+                    "memory_recall_miss_pct": 0.0,
+                    "memory_recall_diagnosis": "healthy",
+                    "memory_recall_actions": [],
+                    "continuation_downshift": {
+                        "available": True,
+                        "candidate_calls": 5,
+                        "downshifted_calls": 3,
+                        "downshift_pct": 60.0,
+                        "estimated_synthesis_ms_avoided": 180500.0,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = HintsEngine(report_json_path=report_path)
+    hints = engine._hints_from_latest_report("resume work from the last session", [])
+    hint_ids = [item.id for item in hints]
+    assert_true("runtime_continuation_downshift_active" in hint_ids, "expected active continuation downshift hint")
+
+
 def test_feedback_profile_runtime_hints() -> None:
     engine = HintsEngine()
     hints = engine._hints_from_feedback_profiles(
@@ -206,6 +268,10 @@ def main() -> int:
         test_historical_hint_watchlist_runtime_hint(Path(tmpdir))
     with tempfile.TemporaryDirectory(prefix="hints-runtime-recent-diversity-") as tmpdir:
         test_recent_hint_diversity_runtime_hint(Path(tmpdir))
+    with tempfile.TemporaryDirectory(prefix="hints-runtime-downshift-sparse-") as tmpdir:
+        test_continuation_downshift_sparse_runtime_hint(Path(tmpdir))
+    with tempfile.TemporaryDirectory(prefix="hints-runtime-downshift-active-") as tmpdir:
+        test_continuation_downshift_active_runtime_hint(Path(tmpdir))
     test_feedback_profile_runtime_hints()
     test_diversity_prefers_non_overused_candidates()
     test_synthetic_gap_alignment()
