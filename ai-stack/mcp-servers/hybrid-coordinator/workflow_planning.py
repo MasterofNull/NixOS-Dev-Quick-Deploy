@@ -262,9 +262,17 @@ def _is_continuation_query(query: str) -> bool:
 
 
 def _should_prioritize_memory_recall(query: str) -> bool:
+    """Return True when the query benefits from priming with recalled memory context.
+
+    Phase 14.5: broaden heuristics to raise trigger rate from ~12% toward >=30%.
+    Added phase/session context markers, agent-work vocabulary, status/progress
+    signals, and a relaxed single-token path for high-signal terms.
+    """
     if _is_continuation_query(query):
         return True
     query_lower = str(query or "").lower()
+
+    # Explicit long-horizon markers — always recall
     long_horizon_markers = (
         "current work",
         "remaining work",
@@ -274,15 +282,55 @@ def _should_prioritize_memory_recall(query: str) -> bool:
         "earlier attempt",
         "ongoing task",
         "ongoing issue",
+        # Phase 14.5 additions
+        "next session",
+        "last session",
+        "from last",
+        "where we left",
+        "pick up",
+        "continue from",
+        "phase gate",
+        "phase status",
+        "hand off",
+        "open items",
+        "outstanding work",
+        "unfinished",
+        "in progress",
+        "in-progress",
     )
     if any(marker in query_lower for marker in long_horizon_markers):
         return True
-    has_history_ref = any(token in query_lower for token in ("previous", "prior", "last", "earlier", "current", "ongoing", "remaining"))
-    has_repo_target = any(
-        token in query_lower
-        for token in ("patch", "deploy", "debug", "failure", "issue", "incident", "repo", "service", "system", "task", "work")
-    )
-    return has_history_ref and has_repo_target
+
+    # High-signal single tokens that strongly imply session context
+    history_tokens = {
+        "previous", "prior", "last", "earlier", "current", "ongoing",
+        "remaining", "resume", "handoff", "unfinished", "incomplete",
+        "pending", "blocked", "stalled", "next", "follow-up", "followup",
+    }
+    # Broad repo/work targets — anything that might need session grounding
+    repo_target_tokens = {
+        "patch", "deploy", "debug", "failure", "issue", "incident",
+        "repo", "service", "system", "task", "work",
+        # Phase 14.5 additions
+        "fix", "bug", "error", "phase", "sprint", "ticket", "pr",
+        "commit", "build", "test", "ci", "pipeline", "migration",
+        "refactor", "release", "rollback", "plan", "roadmap",
+        "agent", "session", "run", "step", "iteration",
+    }
+    has_history_ref = any(token in query_lower for token in history_tokens)
+    has_repo_target = any(token in query_lower for token in repo_target_tokens)
+    if has_history_ref and has_repo_target:
+        return True
+
+    # Phase 14.5: single-token fast path for high-signal standalone terms
+    high_signal_standalone = {
+        "handoff", "resume", "unfinished", "incomplete",
+        "blocked", "stalled",
+    }
+    if any(token in query_lower for token in high_signal_standalone):
+        return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------

@@ -844,10 +844,23 @@ class SearchRouter:
         keyword_limit: int = 5,
         score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
     ) -> Dict[str, Any]:
-        """Branch-and-aggregate retrieval over query expansions."""
+        """Branch-and-aggregate retrieval over query expansions.
+
+        Phase 14.4 optimization: cap per-branch keyword_pool and fix final slice.
+        Previously each branch used keyword_pool=60 (hybrid_search default) causing
+        Qdrant scroll of 60 docs/collection/branch → P95=7,981ms.
+        Now: keyword_pool capped at max(limit*2, 10) per branch; final slice uses
+        limit (not max(limit, keyword_limit, MAX_RECALL_ITEMS)).
+        """
         collections = collections or list(self._collections.keys())
         max_depth = max(1, Config.AI_TREE_SEARCH_MAX_DEPTH)
         branch_factor = max(1, Config.AI_TREE_SEARCH_BRANCH_FACTOR)
+
+        # Phase 14.4: cap keyword scroll budget per branch to limit * 2 (min 10).
+        # The full keyword_pool=60 default is only needed for single-query hybrid
+        # searches; tree branches aggregate across expansions so a smaller pool
+        # per branch achieves the same coverage with far less Qdrant scroll work.
+        branch_keyword_pool = max(limit * 2, 10)
 
         branches = [query]
         all_results: Dict[str, Dict[str, Any]] = {}
@@ -858,7 +871,9 @@ class SearchRouter:
             for branch_query in branches[:branch_factor]:
                 result = await self.hybrid_search(
                     query=branch_query, collections=collections,
-                    limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
+                    limit=limit, keyword_limit=keyword_limit,
+                    score_threshold=score_threshold,
+                    keyword_pool=branch_keyword_pool,
                 )
                 branch_runs.append({
                     "depth": depth, "query": branch_query,
@@ -874,7 +889,10 @@ class SearchRouter:
             branches = next_branches
 
         ranked = rerank_combined_results(query, list(all_results.values()))
-        ranked = ranked[: max(limit, keyword_limit, Config.AI_MEMORY_MAX_RECALL_ITEMS)]
+        # Phase 14.4: slice to caller-requested limit, not max(limit,kw_limit,recall_items).
+        # The old formula returned up to 8 items but paid full scroll cost for all branches;
+        # using limit directly aligns work with expected output size.
+        ranked = ranked[:max(limit, keyword_limit)]
         return {
             "query": query, "search_mode": "tree",
             "depth": max_depth, "branch_factor": branch_factor,
