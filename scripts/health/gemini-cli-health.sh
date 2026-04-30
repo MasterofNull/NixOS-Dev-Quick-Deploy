@@ -18,7 +18,10 @@ set -euo pipefail
 
 MODE="check"
 JSON_OUTPUT=0
-HELP_TIMEOUT_SECONDS="${GEMINI_HEALTH_TIMEOUT_SECONDS:-12}"
+# gemini --help takes ~39s on the current host with the live state directory.
+# Keep the default above observed latency so the health check measures hangs,
+# not ordinary startup cost.
+HELP_TIMEOUT_SECONDS="${GEMINI_HEALTH_TIMEOUT_SECONDS:-45}"
 PRIMARY_HOME="${AQ_PRIMARY_HOME:-${HOME:-}}"
 PRIMARY_USER="${AQ_PRIMARY_USER:-${USER:-}}"
 

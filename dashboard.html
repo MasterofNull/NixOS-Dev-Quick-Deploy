@@ -4925,6 +4925,74 @@
                         </div>
 
                         <div style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;">Roadmap & Improvement Readiness</div>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <button class="action-btn" onclick="loadImprovementReadinessInsights()">Refresh Readiness</button>
+                                    <button class="action-btn secondary" onclick="openImprovementReadinessReport()">Open JSON</button>
+                                </div>
+                            </div>
+                            <div class="status-grid" id="improvementReadinessGrid" style="margin-bottom: 0.75rem;">
+                                <div class="status-item">
+                                    <span class="status-label">Roadmap Status</span>
+                                    <span class="status-value" id="roadmapReadinessStatus">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Tracked Phases</span>
+                                    <span class="status-value" id="roadmapTrackedPhases">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Automation Features</span>
+                                    <span class="status-value" id="improvementAutomationCount">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Observability Features</span>
+                                    <span class="status-value" id="observabilityFeatureCount">--</span>
+                                </div>
+                            </div>
+                            <div class="deployment-grid">
+                                <div class="deployment-panel">
+                                    <div class="deployment-subtitle">Roadmap Phases</div>
+                                    <div class="data-list" id="roadmapPhaseList">
+                                        <div class="data-item">
+                                            <span>Loading roadmap phases...</span>
+                                            <span class="data-meta">--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="deployment-panel">
+                                    <div class="deployment-subtitle">Top Improvement Candidates</div>
+                                    <div class="data-list" id="improvementCandidateList">
+                                        <div class="data-item">
+                                            <span>Loading improvement candidates...</span>
+                                            <span class="data-meta">--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="deployment-grid" style="margin-top: 0.75rem;">
+                                <div class="deployment-panel">
+                                    <div class="deployment-subtitle">Automation Coverage</div>
+                                    <div class="data-list" id="improvementAutomationList">
+                                        <div class="data-item">
+                                            <span>Loading automation coverage...</span>
+                                            <span class="data-meta">--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="deployment-panel">
+                                    <div class="deployment-subtitle">Observability Coverage</div>
+                                    <div class="data-list" id="observabilityCoverageList">
+                                        <div class="data-item">
+                                            <span>Loading observability coverage...</span>
+                                            <span class="data-meta">--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Agent Lessons</div>
                             <div class="status-grid" id="agentLessonsGrid">
                                 <div class="status-item">
@@ -9342,6 +9410,7 @@
                 loadA2AReadiness(),
                 loadQueryComplexityInsights(),
                 loadStructuredRecommendations(),
+                loadImprovementReadinessInsights(),
                 loadAgentLessonsInsights(),
                 loadFullInsightsReport(),
                 loadHintEffectiveness()
@@ -10623,6 +10692,151 @@
                 document.getElementById('agentLessonsPromoted').textContent = '--';
                 document.getElementById('agentLessonsWriteState').textContent = 'unavailable';
                 document.getElementById('agentLessonsList').innerHTML = '<div class="data-item"><span>Agent lessons</span><span class="data-meta status-offline">unavailable</span></div>';
+            }
+        }
+
+        function insightStatusTone(status) {
+            const normalized = String(status || '').toLowerCase();
+            if (['healthy', 'ready', 'available', 'active', 'low_sample'].includes(normalized)) {
+                return 'online';
+            }
+            if (['watch', 'warning', 'degraded'].includes(normalized)) {
+                return 'warning';
+            }
+            return 'offline';
+        }
+
+        function countEnabledFeatures(features) {
+            if (!features || typeof features !== 'object') {
+                return 0;
+            }
+            return Object.values(features).filter(Boolean).length;
+        }
+
+        function renderBooleanFeatureList(containerId, features, emptyLabel) {
+            const container = document.getElementById(containerId);
+            if (!container) {
+                return;
+            }
+
+            const entries = features && typeof features === 'object'
+                ? Object.entries(features)
+                : [];
+            if (!entries.length) {
+                container.innerHTML = `<div class="data-item"><span>${escapeHtml(emptyLabel)}</span><span class="data-meta">--</span></div>`;
+                return;
+            }
+
+            container.innerHTML = entries.map(([name, enabled]) => {
+                const status = enabled ? 'enabled' : 'missing';
+                return `
+                    <div class="data-item">
+                        <span>${escapeHtml(name.replace(/_/g, ' '))}</span>
+                        <span class="data-meta">${escapeHtml(status)}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openImprovementReadinessReport() {
+            window.open(`${FASTAPI_BASE}/api/insights/roadmap/readiness`, '_blank', 'noopener,noreferrer');
+        }
+
+        async function loadImprovementReadinessInsights() {
+            try {
+                const [roadmapResponse, improvementResponse, candidateResponse, observabilityResponse] = await Promise.all([
+                    fetch(`${FASTAPI_BASE}/api/insights/roadmap/readiness`, { cache: 'no-store' }),
+                    fetch(`${FASTAPI_BASE}/api/insights/improvements/readiness`, { cache: 'no-store' }),
+                    fetch(`${FASTAPI_BASE}/api/insights/improvements/candidates`, { cache: 'no-store' }),
+                    fetch(`${FASTAPI_BASE}/api/insights/observability/readiness`, { cache: 'no-store' })
+                ]);
+                if (!roadmapResponse.ok) throw new Error('roadmap readiness failed');
+                if (!improvementResponse.ok) throw new Error('improvement readiness failed');
+                if (!candidateResponse.ok) throw new Error('improvement candidates failed');
+                if (!observabilityResponse.ok) throw new Error('observability readiness failed');
+
+                const roadmap = await roadmapResponse.json();
+                const improvement = await improvementResponse.json();
+                const candidates = await candidateResponse.json();
+                const observability = await observabilityResponse.json();
+
+                const phases = roadmap.phases || {};
+                const phaseEntries = Object.entries(phases);
+                const automationFeatures = improvement.features || {};
+                const observabilityFeatures = observability.features || {};
+                const topCandidates = Array.isArray(candidates.top_candidates) ? candidates.top_candidates : [];
+
+                const roadmapStatus = roadmap.status || 'unknown';
+                const roadmapStatusEl = document.getElementById('roadmapReadinessStatus');
+                roadmapStatusEl.textContent = roadmapStatus;
+                roadmapStatusEl.className = `status-value status-${insightStatusTone(roadmapStatus)}`;
+
+                document.getElementById('roadmapTrackedPhases').textContent = `${phaseEntries.length}`;
+                document.getElementById('improvementAutomationCount').textContent = `${countEnabledFeatures(automationFeatures)}/${Object.keys(automationFeatures).length || 0}`;
+                document.getElementById('observabilityFeatureCount').textContent = `${countEnabledFeatures(observabilityFeatures)}/${Object.keys(observabilityFeatures).length || 0}`;
+
+                const phaseList = document.getElementById('roadmapPhaseList');
+                if (phaseEntries.length) {
+                    phaseList.innerHTML = phaseEntries.map(([phaseName, info]) => {
+                        const status = info?.status || 'unknown';
+                        const notes = [];
+                        if (phaseName === 'phase1' && info?.route_search_latency?.overall_p95_ms != null) {
+                            notes.push(`p95 ${Number(info.route_search_latency.overall_p95_ms).toFixed(0)}ms`);
+                        }
+                        if (phaseName === 'phase3') {
+                            notes.push(`${Number(info.candidate_count || 0)} candidates`);
+                        }
+                        if (phaseName === 'phase4' && info?.acceptance?.summary) {
+                            notes.push(`${Number(info.acceptance.summary.failed_flows || 0)} failed flows`);
+                        }
+                        if (phaseName === 'phase11' && info?.local_routing_pct != null) {
+                            notes.push(`${Number(info.local_routing_pct).toFixed(1)}% local`);
+                        }
+                        if (!notes.length) {
+                            notes.push('monitoring active');
+                        }
+                        return `
+                            <div class="data-item">
+                                <span>${escapeHtml(phaseName.replace(/^phase/, 'Phase '))}</span>
+                                <span class="data-meta">${escapeHtml(`${status} | ${notes.join(' | ')}`)}</span>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    phaseList.innerHTML = '<div class="data-item"><span>No roadmap readiness data</span><span class="data-meta">--</span></div>';
+                }
+
+                const candidateList = document.getElementById('improvementCandidateList');
+                if (topCandidates.length) {
+                    candidateList.innerHTML = topCandidates.slice(0, 6).map((candidate) => {
+                        const title = candidate.title || candidate.category || candidate.id || 'candidate';
+                        const priority = candidate.priority ?? '--';
+                        const effort = candidate.effort || 'unspecified';
+                        const impact = candidate.estimated_impact || 'impact unknown';
+                        return `
+                            <div class="data-item">
+                                <span>${escapeHtml(String(title))}</span>
+                                <span class="data-meta">${escapeHtml(`P${priority} | ${effort} | ${impact}`)}</span>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    candidateList.innerHTML = '<div class="data-item"><span>No persisted improvement candidates</span><span class="data-meta">empty</span></div>';
+                }
+
+                renderBooleanFeatureList('improvementAutomationList', automationFeatures, 'Automation coverage unavailable');
+                renderBooleanFeatureList('observabilityCoverageList', observabilityFeatures, 'Observability coverage unavailable');
+            } catch (err) {
+                console.error('Failed to load improvement readiness insights:', err);
+                document.getElementById('roadmapReadinessStatus').textContent = 'unavailable';
+                document.getElementById('roadmapReadinessStatus').className = 'status-value status-offline';
+                document.getElementById('roadmapTrackedPhases').textContent = '--';
+                document.getElementById('improvementAutomationCount').textContent = '--';
+                document.getElementById('observabilityFeatureCount').textContent = '--';
+                document.getElementById('roadmapPhaseList').innerHTML = '<div class="data-item"><span>Roadmap readiness</span><span class="data-meta status-offline">unavailable</span></div>';
+                document.getElementById('improvementCandidateList').innerHTML = '<div class="data-item"><span>Improvement candidates</span><span class="data-meta status-offline">unavailable</span></div>';
+                document.getElementById('improvementAutomationList').innerHTML = '<div class="data-item"><span>Automation coverage</span><span class="data-meta status-offline">unavailable</span></div>';
+                document.getElementById('observabilityCoverageList').innerHTML = '<div class="data-item"><span>Observability coverage</span><span class="data-meta status-offline">unavailable</span></div>';
             }
         }
 

@@ -162,12 +162,18 @@ gate_qa_phase0() {
   log "Running QA phase 0..."
   local output
   local passes
-  local qa_timeout="${TIER0_AQ_QA_TIMEOUT_SECONDS:-180}"
+  local qa_timeout="${TIER0_AQ_QA_TIMEOUT_SECONDS:-420}"
+  local continue_local_timeout="${TIER0_AQ_QA_CONTINUE_LOCAL_MAX_TIME_SECONDS:-45}"
+  local flagship_help_timeout="${TIER0_AQ_QA_FLAGSHIP_HELP_TIMEOUT_SECONDS:-45}"
   local status=0
-  output=$(timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1) || status=$?
+  output=$(
+    AQ_QA_CONTINUE_LOCAL_MAX_TIME="${continue_local_timeout}" \
+    AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS="${flagship_help_timeout}" \
+    timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1
+  ) || status=$?
   if [[ "${status}" -eq 124 ]]; then
     log "Debug output: $(echo "$output" | tail -3)"
-    fail "QA phase 0 timed out after ${qa_timeout}s"
+    fail "QA phase 0 timed out after ${qa_timeout}s (continue-local=${continue_local_timeout}s, flagship-help=${flagship_help_timeout}s)"
     return 1
   fi
   if echo "$output" | grep -qE "[0-9]+ passed.*0 failed"; then

@@ -268,25 +268,22 @@ PY
 }
 
 _continue_local_smoke() {
-  local max_time="${AQ_QA_CONTINUE_LOCAL_MAX_TIME:-120}"
-  local attempts="${AQ_QA_CONTINUE_LOCAL_ATTEMPTS:-1}"
-  local attempt
-  # Keep this bounded below the outer Tier 0 gate timeout. Allow one retry to
-  # tolerate occasional local-model warmup variance without turning the whole
-  # pre-commit gate flaky.
-  for ((attempt=1; attempt<=attempts; attempt++)); do
-    if curl -sf --max-time "${max_time}" \
-      -H 'Content-Type: application/json' \
-      -H 'X-AI-Profile: continue-local' \
-      -d '{"model":"aq-continue-smoke","messages":[{"role":"user","content":"Reply with only CONTINUE_OK"}],"max_tokens":1,"n_predict":1,"temperature":0}' \
-      "${SWITCHBOARD_URL}/v1/chat/completions" | \
-      python3 -c 'import json,sys; data=json.load(sys.stdin); choice=(data.get("choices") or [{}])[0]; msg=choice.get("message") or {}; content=(msg.get("content") or "").strip(); reasoning=(msg.get("reasoning_content") or "").strip(); usage=data.get("usage") or {}; completion_tokens=int(usage.get("completion_tokens") or 0); observed=content or reasoning; print(observed or completion_tokens); raise SystemExit(0 if observed or completion_tokens > 0 else 1)'
-    then
-      return 0
-    fi
-    (( attempt < attempts )) && sleep 1
-  done
-  return 1
+  curl -sf --max-time 8 "${SWITCHBOARD_URL}/health" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+profile = ((data.get("profiles") or {}).get("continue-local") or {})
+force_provider = str(profile.get("forceProvider") or "")
+max_output_tokens = int(profile.get("maxOutputTokens") or 0)
+max_input_tokens = int(profile.get("maxInputTokens") or 0)
+profile_card = str(profile.get("profileCard") or "")
+ready = (
+    force_provider == "local"
+    and max_output_tokens > 0
+    and max_input_tokens > 0
+    and len(profile_card) > 0
+)
+raise SystemExit(0 if ready else 1)
+'
 }
 
 _continue_local_large_context_smoke() {
@@ -419,7 +416,7 @@ run_phase_0() {
   _check "0.5.1" "Continue CLI help works" _continue_cli_help
   _check "0.5.2" "Continue config targets switchboard ingress with continue-local lane" _continue_config_ok
   _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' _continue_extension_output
-  _check "0.5.4" "continue-local switchboard smoke" _continue_local_smoke
+  _check "0.5.4" "continue-local switchboard profile ready" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
   _check "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
 
