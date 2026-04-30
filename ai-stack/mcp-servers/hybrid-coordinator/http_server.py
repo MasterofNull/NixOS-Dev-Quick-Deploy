@@ -820,6 +820,414 @@ def init(
     workflow_planning.set_tool_security_auditor(_TOOL_SECURITY_AUDITOR)
 
 
+# ---------------------------------------------------------------------------
+# handle_query helpers — each covers one phase of the query pipeline.
+# All use module-level globals injected via init().
+# ---------------------------------------------------------------------------
+
+def _parse_query_input(data: Dict[str, Any]) -> tuple:
+    """Extract and normalise all fields from the raw request body."""
+    query = data.get("prompt") or data.get("query") or ""
+    generate_response = bool(data.get("generate_response", False))
+    prefer_local = bool(data.get("prefer_local", True))
+    semantic_tooling_autorun = os.getenv("AI_SEMANTIC_TOOLING_AUTORUN", "true").lower() == "true"
+    memory_recall_priority = _should_prioritize_memory_recall(query)
+    request_context = data.get("context")
+    if not isinstance(request_context, dict):
+        request_context = {}
+    orchestration = _coerce_orchestration_context(data)
+    request_context["orchestration"] = orchestration
+    include_debug_metadata = bool(data.get("include_debug_metadata") or data.get("debug"))
+    return (
+        query, generate_response, prefer_local, semantic_tooling_autorun,
+        memory_recall_priority, request_context, orchestration, include_debug_metadata,
+    )
+
+
+def _init_query_audit_and_tooling(
+    request,
+    orchestration: Dict[str, Any],
+    generate_response: bool,
+    semantic_tooling_autorun: bool,
+    memory_recall_priority: bool,
+) -> Dict[str, Any]:
+    """Initialise request['audit_metadata'] and return a blank tooling_layer dict."""
+    request["audit_metadata"] = {
+        "semantic_autorun_enabled": bool(semantic_tooling_autorun),
+        "semantic_autorun_planned": 0,
+        "semantic_autorun_executed": 0,
+        "tool_security_blocked": 0,
+        "tool_security_cache_hits": 0,
+        "tool_security_first_seen": 0,
+        "prompt_coaching_score": 0.0,
+        "prompt_coaching_missing_fields": 0,
+        "requesting_agent": orchestration["requesting_agent"],
+        "requester_role": orchestration["requester_role"],
+        "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
+        "generate_response": generate_response,
+        "memory_recall_priority": memory_recall_priority,
+        "memory_recall_attempted": False,
+        "backend": "unknown",
+    }
+    return {
+        "enabled": semantic_tooling_autorun,
+        "planned_tools": [],
+        "executed": [],
+        "hints": [],
+    }
+
+
+def _run_prompt_coaching(query: str, agent_type: str, request) -> Dict[str, Any]:
+    """Run HintsEngine prompt coaching; update audit fields. Returns coaching dict (empty on error)."""
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _hints_dir = _Path(__file__).parent
+        if str(_hints_dir) not in _sys.path:
+            _sys.path.insert(0, str(_hints_dir))
+        from hints_engine import HintsEngine  # type: ignore[import]
+        coaching = HintsEngine().prompt_coaching_as_dict(query, agent_type=agent_type)
+        request["audit_metadata"]["prompt_coaching_score"] = float(coaching.get("score", 0.0) or 0.0)
+        request["audit_metadata"]["prompt_coaching_missing_fields"] = len(
+            coaching.get("missing_fields", []) or []
+        )
+        return coaching
+    except Exception as exc:
+        logger.debug("prompt_coaching_skipped error=%s", exc)
+        return {}
+
+
+async def _inject_semantic_tooling(
+    query: str,
+    memory_recall_priority: bool,
+    request_context: Dict[str, Any],
+    tooling_layer: Dict[str, Any],
+    request,
+) -> None:
+    """Inject planned tools, hints, discovery, and memory recall into request_context/tooling_layer."""
+    planned, tool_security = _audit_planned_tools(
+        query, workflow_tool_catalog(query, memory_recall_priority=memory_recall_priority)
+    )
+    tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
+    tooling_layer["tool_security"] = tool_security
+    request["audit_metadata"]["tool_security_blocked"] = len(tool_security.get("blocked", []))
+    request["audit_metadata"]["tool_security_cache_hits"] = int(tool_security.get("cache_hits", 0))
+    request["audit_metadata"]["tool_security_first_seen"] = int(tool_security.get("first_seen", 0))
+
+    # Auto-hints: inject top semantic hints into route context.
+    if any(p.get("name") == "hints" for p in planned):
+        try:
+            _hint_start = time.perf_counter()
+            import sys as _sys
+            from pathlib import Path as _Path
+            _hints_dir = _Path(__file__).parent
+            if str(_hints_dir) not in _sys.path:
+                _sys.path.insert(0, str(_hints_dir))
+            from hints_engine import HintsEngine  # type: ignore[import]
+            hint_data = HintsEngine().rank_as_dict(query, context="", max_hints=2)
+            top_hints = hint_data.get("hints", []) if isinstance(hint_data, dict) else []
+            hint_snippets = [
+                str(h.get("snippet", "")).strip()
+                for h in top_hints
+                if isinstance(h, dict) and str(h.get("snippet", "")).strip()
+            ]
+            if hint_snippets:
+                request_context["tool_hints"] = hint_snippets[:2]
+                tooling_layer["hints"] = hint_snippets[:2]
+                tooling_layer["executed"].append("hints")
+                _audit_internal_tool_execution(
+                    request, "hints",
+                    (time.perf_counter() - _hint_start) * 1000.0,
+                    parameters={"query": query[:200], "result_count": len(hint_snippets[:2])},
+                )
+        except Exception as exc:
+            _audit_internal_tool_execution(
+                request, "hints", 0.0,
+                parameters={"query": query[:200]},
+                outcome="error", error_message=str(exc),
+            )
+            logger.debug("semantic_tooling_hints_skipped error=%s", exc)
+
+    # Auto-discovery: enrich context with capability overview.
+    if _progressive_disclosure and any(p.get("name") == "discovery" for p in planned):
+        try:
+            _discovery_start = time.perf_counter()
+            disc = await _progressive_disclosure.discover(level="overview", categories=None, token_budget=200)
+            if hasattr(disc, "model_dump"):
+                disc_data = disc.model_dump()
+            elif hasattr(disc, "dict"):
+                disc_data = disc.dict()
+            else:
+                disc_data = {}
+            request_context["tool_discovery"] = {
+                "summary": str(disc_data.get("summary", ""))[:300],
+                "capability_count": len(disc_data.get("capabilities", []) or []),
+            }
+            tooling_layer["executed"].append("discovery")
+            _audit_internal_tool_execution(
+                request, "discovery",
+                (time.perf_counter() - _discovery_start) * 1000.0,
+                parameters={
+                    "query": query[:200],
+                    "capability_count": int(request_context["tool_discovery"].get("capability_count", 0)),
+                },
+            )
+        except Exception as exc:
+            _audit_internal_tool_execution(
+                request, "discovery", 0.0,
+                parameters={"query": query[:200]},
+                outcome="error", error_message=str(exc),
+            )
+            logger.debug("semantic_tooling_discovery_skipped error=%s", exc)
+
+    # Memory recall: prepend relevant prior context.
+    if _recall_memory is not None and memory_recall_priority:
+        try:
+            _memory_start = time.perf_counter()
+            request_context["memory_recall_attempted"] = True
+            request["audit_metadata"]["memory_recall_attempted"] = True
+            memory_result = await asyncio.wait_for(
+                _recall_memory(query=query, memory_types=None, limit=3, retrieval_mode="hybrid"),
+                timeout=2.0,
+            )
+            memory_rows = memory_result.get("results", []) if isinstance(memory_result, dict) else []
+            memory_summaries = [
+                str(row.get("summary") or row.get("content") or "").strip()
+                for row in memory_rows
+                if isinstance(row, dict) and str(row.get("summary") or row.get("content") or "").strip()
+            ]
+            if memory_summaries:
+                request_context["prior_memory"] = memory_summaries[:3]
+                request_context["memory_recall"] = memory_summaries[:3]
+                tooling_layer["memory_recall"] = memory_summaries[:2]
+            else:
+                request_context["memory_recall_miss"] = True
+                request["audit_metadata"]["memory_recall_miss"] = True
+                tooling_layer["memory_recall"] = ["no stored prior context matched this continuation query"]
+            tooling_layer["executed"].append("memory_recall")
+            _audit_internal_tool_execution(
+                request, "recall_agent_memory",
+                (time.perf_counter() - _memory_start) * 1000.0,
+                parameters={
+                    "query": query[:200],
+                    "result_count": len(memory_summaries[:3]),
+                    "memory_recall_miss": not bool(memory_summaries),
+                },
+            )
+        except Exception as exc:
+            _audit_internal_tool_execution(
+                request, "recall_agent_memory", 0.0,
+                parameters={"query": query[:200]},
+                outcome="error", error_message=str(exc),
+            )
+            logger.debug("semantic_tooling_memory_recall_skipped error=%s", exc)
+
+
+async def _execute_query_search(
+    query: str,
+    data: Dict[str, Any],
+    prefer_local: bool,
+    request_context: Dict[str, Any],
+    generate_response: bool,
+) -> Dict[str, Any]:
+    """Gate on model loading, run route search with cache, return result dict.
+
+    Returns a dict with '_loading_error': True when the local model is still
+    loading and the caller should respond with HTTP 503.
+    """
+    _llm_timeout_s = float(data.get("llm_timeout_s") or os.getenv("AI_QUERY_LLM_TIMEOUT_S", "120"))
+
+    if prefer_local and _local_llm_loading_ref():
+        ready = await _wait_for_model(timeout=30.0)
+        if not ready:
+            return {
+                "_loading_error": True,
+                "queue_depth": _queue_depth_ref(),
+                "queue_max": _queue_max_ref(),
+            }
+
+    cache_enabled = bool(data.get("enable_cache", True))
+    _route_kwargs: Dict[str, Any] = dict(
+        query=query,
+        mode=data.get("mode", "auto"),
+        prefer_local=prefer_local,
+        context=request_context,
+        limit=int(data.get("limit", 5)),
+        keyword_limit=int(data.get("keyword_limit", 5)),
+        score_threshold=float(data.get("score_threshold", 0.7)),
+        generate_response=generate_response,
+    )
+
+    # Phase 8.10 — Parallel retrieval + cache check.
+    _retrieval_task: Optional[asyncio.Task] = None
+    cached_result = None
+    if cache_enabled and _should_use_cache(query):
+        _retrieval_task = asyncio.create_task(
+            asyncio.wait_for(_route_search(**_route_kwargs), timeout=_llm_timeout_s)
+        )
+        cached_result = _get_cached_response(query, context=request_context)
+
+    if cached_result:
+        if _retrieval_task is not None and not _retrieval_task.done():
+            _retrieval_task.cancel()
+        cached_response, cache_metadata = cached_result
+        logger.info("Cache hit for query: %s...", query[:60])
+        return {"response": cached_response, "from_cache": True, "cache_metadata": cache_metadata, "query": query}
+
+    if _retrieval_task is None:
+        _retrieval_task = asyncio.create_task(
+            asyncio.wait_for(_route_search(**_route_kwargs), timeout=_llm_timeout_s)
+        )
+    try:
+        result = await _retrieval_task
+    except asyncio.TimeoutError:
+        logger.warning(
+            "route_search_llm_timeout: query truncated after %.0fs (generate_response=%s)",
+            _llm_timeout_s, generate_response,
+        )
+        if generate_response:
+            result = await _route_search(
+                query=query,
+                mode=data.get("mode", "auto"),
+                prefer_local=prefer_local,
+                context=request_context,
+                limit=int(data.get("limit", 5)),
+                keyword_limit=int(data.get("keyword_limit", 5)),
+                score_threshold=float(data.get("score_threshold", 0.7)),
+                generate_response=False,
+            )
+        else:
+            result = {"results": [], "error": "route_search_timeout"}
+        result["truncated"] = True
+        result["truncation_reason"] = "llm_timeout"
+
+    if cache_enabled and result.get("response"):
+        quality_score = result.get("quality_score", 0)
+        if quality_score > 0:
+            _cache_response(
+                query=query,
+                response=result["response"],
+                quality_score=quality_score,
+                confidence=result.get("confidence", 1.0),
+                context=request_context,
+            )
+    return result
+
+
+def _annotate_query_result(
+    result: Dict[str, Any],
+    tooling_layer: Dict[str, Any],
+    request_context: Dict[str, Any],
+    orchestration: Dict[str, Any],
+    prompt_coaching: Dict[str, Any],
+    lesson_refs: list,
+    include_debug_metadata: bool,
+    semantic_tooling_autorun: bool,
+) -> None:
+    """Annotate result with tooling layer, memory context, lesson refs, coaching, orchestration."""
+    if semantic_tooling_autorun:
+        result["tooling_layer"] = _compact_tooling_layer_response(
+            tooling_layer, include_debug_metadata=include_debug_metadata,
+        )
+    if request_context.get("memory_recall_attempted"):
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+            result["metadata"] = meta
+        meta["memory_recall_attempted"] = True
+        meta["memory_recall_miss"] = bool(request_context.get("memory_recall_miss"))
+    if request_context.get("memory_recall"):
+        result["memory_recall"] = request_context.get("memory_recall")
+    if request_context.get("prior_memory"):
+        result["prior_memory"] = request_context.get("prior_memory")
+    if lesson_refs:
+        result["active_lesson_refs"] = lesson_refs
+    if prompt_coaching:
+        result["prompt_coaching"] = _query_prompt_coaching_response(
+            prompt_coaching, include_debug_metadata=include_debug_metadata,
+        )
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+            result["metadata"] = meta
+        meta["prompt_coaching"] = _compact_prompt_coaching_metadata(prompt_coaching)
+    meta = result.get("metadata")
+    if not isinstance(meta, dict):
+        meta = {}
+        result["metadata"] = meta
+    meta["orchestration"] = {
+        "requesting_agent": orchestration["requesting_agent"],
+        "requester_role": orchestration["requester_role"],
+        "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
+    }
+    if lesson_refs:
+        meta["active_lesson_refs"] = lesson_refs
+    result["orchestration"] = orchestration
+
+
+def _collect_query_audit(request, result: Dict[str, Any], tooling_layer: Dict[str, Any]) -> None:
+    """Write result-derived telemetry fields into request['audit_metadata']."""
+    audit = request["audit_metadata"]
+    audit["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
+    audit["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
+    audit["route_strategy"] = str(result.get("route", "unknown"))
+    audit["strategy_tag"] = str(result.get("route", "unknown"))
+    audit["backend"] = str(result.get("backend", "unknown"))
+
+    for key, src in (
+        ("backend_reason_class", "backend_reason_class"),
+        ("local_inference_lane", "local_inference_lane"),
+        ("local_inference_lane_reason", "local_inference_lane_reason"),
+    ):
+        val = str(result.get(src, "") or "").strip()
+        if val:
+            audit[key] = val
+
+    response_max_tokens = result.get("response_max_tokens")
+    if isinstance(response_max_tokens, int):
+        audit["response_max_tokens"] = response_max_tokens
+
+    task_complexity = result.get("task_complexity")
+    if isinstance(task_complexity, dict):
+        for key, src in (("task_complexity_reason", "reason"), ("task_complexity_type", "type")):
+            val = str(task_complexity.get(src, "") or "").strip()
+            if val:
+                audit[key] = val
+        tc_tokens = task_complexity.get("tokens")
+        if isinstance(tc_tokens, int):
+            audit["task_complexity_tokens"] = tc_tokens
+        for flag in ("local_suitable", "remote_required"):
+            if flag in task_complexity:
+                audit[f"task_complexity_{flag}"] = bool(task_complexity.get(flag))
+
+    retrieval_profile = result.get("retrieval_profile")
+    if isinstance(retrieval_profile, dict):
+        audit["retrieval_profile"] = str(retrieval_profile.get("profile", "standard"))
+        cols = retrieval_profile.get("collections")
+        if isinstance(cols, list):
+            audit["retrieval_collection_count"] = len(cols)
+
+    result_payload = result.get("results")
+    synthesis_fallback = result_payload.get("synthesis_fallback") if isinstance(result_payload, dict) else None
+    if isinstance(synthesis_fallback, dict):
+        fb_reason = str(synthesis_fallback.get("reason", "") or "").strip()
+        if fb_reason:
+            audit["fallback_reason"] = fb_reason
+        fb_status = synthesis_fallback.get("status_code")
+        if isinstance(fb_status, int):
+            audit["fallback_status_code"] = fb_status
+        orig_backend = str(synthesis_fallback.get("original_backend", "") or "").strip()
+        if orig_backend:
+            audit["fallback_original_backend"] = orig_backend
+
+    prompt_cache = result_payload.get("prompt_cache") if isinstance(result_payload, dict) else None
+    if isinstance(prompt_cache, dict):
+        audit["prompt_cache_policy_enabled"] = bool(prompt_cache.get("policy_enabled"))
+        cached_tokens = prompt_cache.get("cached_tokens")
+        if isinstance(cached_tokens, int):
+            audit["prompt_cache_cached_tokens"] = cached_tokens
+
+
 def _is_loopback_request(req: web.Request) -> bool:
     """Return True when the request originates from localhost."""
     remote = (req.remote or "").strip()
@@ -1048,411 +1456,49 @@ async def run_http_mode(port: int) -> None:
         """HTTP endpoint for query routing."""
         try:
             data = await request.json()
-            query = data.get("prompt") or data.get("query") or ""
+            (
+                query, generate_response, prefer_local, semantic_tooling_autorun,
+                memory_recall_priority, request_context, orchestration, include_debug_metadata,
+            ) = _parse_query_input(data)
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
-            generate_response = bool(data.get("generate_response", False))
-            semantic_tooling_autorun = os.getenv("AI_SEMANTIC_TOOLING_AUTORUN", "true").lower() == "true"
-            memory_recall_priority = _should_prioritize_memory_recall(query)
-            request_context = data.get("context")
-            if not isinstance(request_context, dict):
-                request_context = {}
-            orchestration = _coerce_orchestration_context(data)
-            request_context["orchestration"] = orchestration
-            include_debug_metadata = bool(data.get("include_debug_metadata") or data.get("debug"))
-            prompt_coaching: Dict[str, Any] = {}
-            request["audit_metadata"] = {
-                "semantic_autorun_enabled": bool(semantic_tooling_autorun),
-                "semantic_autorun_planned": 0,
-                "semantic_autorun_executed": 0,
-                "tool_security_blocked": 0,
-                "tool_security_cache_hits": 0,
-                "tool_security_first_seen": 0,
-                "prompt_coaching_score": 0.0,
-                "prompt_coaching_missing_fields": 0,
-                "requesting_agent": orchestration["requesting_agent"],
-                "requester_role": orchestration["requester_role"],
-                "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
-                "generate_response": generate_response,
-                "memory_recall_priority": memory_recall_priority,
-                "memory_recall_attempted": False,
-                "backend": "unknown",
-            }
-            tooling_layer = {
-                "enabled": semantic_tooling_autorun,
-                "planned_tools": [],
-                "executed": [],
-                "hints": [],
-            }
-            try:
-                import sys as _sys
-                from pathlib import Path as _Path
-                _hints_dir = _Path(__file__).parent
-                if str(_hints_dir) not in _sys.path:
-                    _sys.path.insert(0, str(_hints_dir))
-                from hints_engine import HintsEngine  # type: ignore[import]
-                prompt_coaching = HintsEngine().prompt_coaching_as_dict(
-                    query,
-                    agent_type=str(data.get("agent_type") or "human"),
-                )
-                request["audit_metadata"]["prompt_coaching_score"] = float(prompt_coaching.get("score", 0.0) or 0.0)
-                request["audit_metadata"]["prompt_coaching_missing_fields"] = len(
-                    prompt_coaching.get("missing_fields", []) or []
-                )
-            except Exception as exc:
-                logger.debug("prompt_coaching_skipped error=%s", exc)
-            if semantic_tooling_autorun:
-                planned, tool_security = _audit_planned_tools(query, workflow_tool_catalog(query, memory_recall_priority=memory_recall_priority))
-                tooling_layer["planned_tools"] = [p.get("name", "") for p in planned]
-                tooling_layer["tool_security"] = tool_security
-                request["audit_metadata"]["tool_security_blocked"] = len(tool_security.get("blocked", []))
-                request["audit_metadata"]["tool_security_cache_hits"] = int(tool_security.get("cache_hits", 0))
-                request["audit_metadata"]["tool_security_first_seen"] = int(tool_security.get("first_seen", 0))
 
-                # Auto-hints: pull top semantic hint and pass into route context.
-                if any(p.get("name") == "hints" for p in planned):
-                    try:
-                        _hint_start = time.perf_counter()
-                        import sys as _sys
-                        from pathlib import Path as _Path
-                        _hints_dir = _Path(__file__).parent
-                        if str(_hints_dir) not in _sys.path:
-                            _sys.path.insert(0, str(_hints_dir))
-                        from hints_engine import HintsEngine  # type: ignore[import]
-                        hint_data = HintsEngine().rank_as_dict(query, context="", max_hints=2)
-                        top_hints = hint_data.get("hints", []) if isinstance(hint_data, dict) else []
-                        hint_snippets = [
-                            str(h.get("snippet", "")).strip()
-                            for h in top_hints
-                            if isinstance(h, dict) and str(h.get("snippet", "")).strip()
-                        ]
-                        if hint_snippets:
-                            request_context["tool_hints"] = hint_snippets[:2]
-                            tooling_layer["hints"] = hint_snippets[:2]
-                            tooling_layer["executed"].append("hints")
-                            _audit_internal_tool_execution(
-                                request,
-                                "hints",
-                                (time.perf_counter() - _hint_start) * 1000.0,
-                                parameters={"query": query[:200], "result_count": len(hint_snippets[:2])},
-                            )
-                    except Exception as exc:
-                        _audit_internal_tool_execution(
-                            request,
-                            "hints",
-                            0.0,
-                            parameters={"query": query[:200]},
-                            outcome="error",
-                            error_message=str(exc),
-                        )
-                        logger.debug("semantic_tooling_hints_skipped error=%s", exc)
-
-                # Auto-discovery summary: enrich context with capability overview.
-                if _progressive_disclosure and any(p.get("name") == "discovery" for p in planned):
-                    try:
-                        _discovery_start = time.perf_counter()
-                        disc = await _progressive_disclosure.discover(
-                            level="overview",
-                            categories=None,
-                            token_budget=200,
-                        )
-                        if hasattr(disc, "model_dump"):
-                            disc_data = disc.model_dump()
-                        elif hasattr(disc, "dict"):
-                            disc_data = disc.dict()
-                        else:
-                            disc_data = {}
-                        request_context["tool_discovery"] = {
-                            "summary": str(disc_data.get("summary", ""))[:300],
-                            "capability_count": len(disc_data.get("capabilities", []) or []),
-                        }
-                        tooling_layer["executed"].append("discovery")
-                        _audit_internal_tool_execution(
-                            request,
-                            "discovery",
-                            (time.perf_counter() - _discovery_start) * 1000.0,
-                            parameters={
-                                "query": query[:200],
-                                "capability_count": int(request_context["tool_discovery"].get("capability_count", 0)),
-                            },
-                        )
-                    except Exception as exc:
-                        _audit_internal_tool_execution(
-                            request,
-                            "discovery",
-                            0.0,
-                            parameters={"query": query[:200]},
-                            outcome="error",
-                            error_message=str(exc),
-                        )
-                        logger.debug("semantic_tooling_discovery_skipped error=%s", exc)
-
-                if (
-                    _recall_memory is not None
-                    and memory_recall_priority
-                ):
-                    try:
-                        _memory_start = time.perf_counter()
-                        request_context["memory_recall_attempted"] = True
-                        request["audit_metadata"]["memory_recall_attempted"] = True
-                        memory_result = await asyncio.wait_for(
-                            _recall_memory(
-                                query=query,
-                                memory_types=None,
-                                limit=3,
-                                retrieval_mode="hybrid",
-                            ),
-                            timeout=2.0,
-                        )
-                        memory_rows = memory_result.get("results", []) if isinstance(memory_result, dict) else []
-                        memory_summaries = [
-                            str(row.get("summary") or row.get("content") or "").strip()
-                            for row in memory_rows
-                            if isinstance(row, dict) and str(row.get("summary") or row.get("content") or "").strip()
-                        ]
-                        if memory_summaries:
-                            request_context["prior_memory"] = memory_summaries[:3]
-                            request_context["memory_recall"] = memory_summaries[:3]
-                            tooling_layer["memory_recall"] = memory_summaries[:2]
-                        else:
-                            request_context["memory_recall_miss"] = True
-                            request["audit_metadata"]["memory_recall_miss"] = True
-                            tooling_layer["memory_recall"] = ["no stored prior context matched this continuation query"]
-                        tooling_layer["executed"].append("memory_recall")
-                        _audit_internal_tool_execution(
-                            request,
-                            "recall_agent_memory",
-                            (time.perf_counter() - _memory_start) * 1000.0,
-                            parameters={
-                                "query": query[:200],
-                                "result_count": len(memory_summaries[:3]),
-                                "memory_recall_miss": not bool(memory_summaries),
-                            },
-                        )
-                    except Exception as exc:
-                        _audit_internal_tool_execution(
-                            request,
-                            "recall_agent_memory",
-                            0.0,
-                            parameters={"query": query[:200]},
-                            outcome="error",
-                            error_message=str(exc),
-                        )
-                        logger.debug("semantic_tooling_memory_recall_skipped error=%s", exc)
-
-            prefer_local = bool(data.get("prefer_local", True))
-            if prefer_local and _local_llm_loading_ref():
-                ready = await _wait_for_model(timeout=30.0)
-                if not ready:
-                    return web.json_response(
-                        {
-                            "error": "model_loading",
-                            "detail": "Local model is loading and the queue is full or timed out. Retry or set prefer_local=false.",
-                            "queue_depth": _queue_depth_ref(),
-                            "queue_max": _queue_max_ref(),
-                        },
-                        status=503,
-                    )
-
-            # Quality cache check (if enabled and appropriate)
-            cache_enabled = bool(data.get("enable_cache", True))
-            _llm_timeout_s = float(
-                data.get("llm_timeout_s")
-                or os.getenv("AI_QUERY_LLM_TIMEOUT_S", "120")
+            tooling_layer = _init_query_audit_and_tooling(
+                request, orchestration, generate_response,
+                semantic_tooling_autorun, memory_recall_priority,
             )
-            _route_kwargs: Dict[str, Any] = dict(
-                query=query,
-                mode=data.get("mode", "auto"),
-                prefer_local=prefer_local,
-                context=request_context,
-                limit=int(data.get("limit", 5)),
-                keyword_limit=int(data.get("keyword_limit", 5)),
-                score_threshold=float(data.get("score_threshold", 0.7)),
-                generate_response=generate_response,
+            prompt_coaching = _run_prompt_coaching(
+                query, str(data.get("agent_type") or "human"), request,
             )
-
-            # Phase 8.10 — Parallel retrieval + cache check.
-            # Start retrieval as a background task immediately so Qdrant embedding
-            # and vector search begin while the (synchronous) cache lookup runs.
-            # On cache hit the retrieval task is cancelled; on miss the result is
-            # already in-flight, reducing effective latency for cache-miss requests.
-            _retrieval_task: Optional[asyncio.Task] = None
-            cached_result = None
-            if cache_enabled and _should_use_cache(query):
-                # Kick off retrieval in background before blocking on cache lookup
-                _retrieval_task = asyncio.create_task(
-                    asyncio.wait_for(_route_search(**_route_kwargs), timeout=_llm_timeout_s)
-                )
-                cached_result = _get_cached_response(query, context=request_context)
-
-            if cached_result:
-                # Cache hit — cancel pre-fetched retrieval task, return cached response
-                if _retrieval_task is not None and not _retrieval_task.done():
-                    _retrieval_task.cancel()
-                cached_response, cache_metadata = cached_result
-                result = {
-                    "response": cached_response,
-                    "from_cache": True,
-                    "cache_metadata": cache_metadata,
-                    "query": query,
-                }
-                logger.info(f"Cache hit for query: {query[:60]}...")
-            else:
-                # Cache miss — await pre-fetched task if already started, else start now
-                if _retrieval_task is None:
-                    _retrieval_task = asyncio.create_task(
-                        asyncio.wait_for(_route_search(**_route_kwargs), timeout=_llm_timeout_s)
-                    )
-                try:
-                    result = await _retrieval_task
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "route_search_llm_timeout: query truncated after %.0fs (generate_response=%s)",
-                        _llm_timeout_s,
-                        generate_response,
-                    )
-                    if generate_response:
-                        # Fallback: return vector results without LLM generation
-                        result = await _route_search(
-                            query=query,
-                            mode=data.get("mode", "auto"),
-                            prefer_local=prefer_local,
-                            context=request_context,
-                            limit=int(data.get("limit", 5)),
-                            keyword_limit=int(data.get("keyword_limit", 5)),
-                            score_threshold=float(data.get("score_threshold", 0.7)),
-                            generate_response=False,
-                        )
-                    else:
-                        result = {"results": [], "error": "route_search_timeout"}
-                    result["truncated"] = True
-                    result["truncation_reason"] = "llm_timeout"
-
-                # Cache the response if it has quality metrics
-                if cache_enabled and result.get("response"):
-                    quality_score = result.get("quality_score", 0)
-                    confidence = result.get("confidence", 1.0)
-
-                    # Only cache if we have a quality score (from critic evaluation)
-                    if quality_score > 0:
-                        _cache_response(
-                            query=query,
-                            response=result["response"],
-                            quality_score=quality_score,
-                            confidence=confidence,
-                            context=request_context,
-                        )
             if semantic_tooling_autorun:
-                result["tooling_layer"] = _compact_tooling_layer_response(
-                    tooling_layer,
-                    include_debug_metadata=include_debug_metadata,
+                await _inject_semantic_tooling(
+                    query, memory_recall_priority, request_context, tooling_layer, request,
                 )
-            if request_context.get("memory_recall_attempted"):
-                metadata = result.get("metadata")
-                if not isinstance(metadata, dict):
-                    metadata = {}
-                    result["metadata"] = metadata
-                metadata["memory_recall_attempted"] = True
-                metadata["memory_recall_miss"] = bool(request_context.get("memory_recall_miss"))
-            if request_context.get("memory_recall"):
-                result["memory_recall"] = request_context.get("memory_recall")
-            if request_context.get("prior_memory"):
-                result["prior_memory"] = request_context.get("prior_memory")
+
+            result = await _execute_query_search(
+                query, data, prefer_local, request_context, generate_response,
+            )
+            if result.get("_loading_error"):
+                return web.json_response(
+                    {
+                        "error": "model_loading",
+                        "detail": "Local model is loading and the queue is full or timed out. Retry or set prefer_local=false.",
+                        "queue_depth": result["queue_depth"],
+                        "queue_max": result["queue_max"],
+                    },
+                    status=503,
+                )
+
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
             lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
-            if lesson_refs:
-                result["active_lesson_refs"] = lesson_refs
-            if prompt_coaching:
-                result["prompt_coaching"] = _query_prompt_coaching_response(
-                    prompt_coaching,
-                    include_debug_metadata=include_debug_metadata,
-                )
-                metadata = result.get("metadata")
-                if not isinstance(metadata, dict):
-                    metadata = {}
-                    result["metadata"] = metadata
-                metadata["prompt_coaching"] = _compact_prompt_coaching_metadata(prompt_coaching)
-            metadata = result.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {}
-                result["metadata"] = metadata
-            metadata["orchestration"] = {
-                "requesting_agent": orchestration["requesting_agent"],
-                "requester_role": orchestration["requester_role"],
-                "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
-            }
-            if lesson_refs:
-                metadata["active_lesson_refs"] = lesson_refs
-            result["orchestration"] = orchestration
-            request["audit_metadata"]["semantic_autorun_planned"] = len(tooling_layer.get("planned_tools", []))
-            request["audit_metadata"]["semantic_autorun_executed"] = len(tooling_layer.get("executed", []))
-            request["audit_metadata"]["route_strategy"] = str(result.get("route", "unknown"))
-            request["audit_metadata"]["strategy_tag"] = str(result.get("route", "unknown"))
-            request["audit_metadata"]["backend"] = str(result.get("backend", "unknown"))
-            backend_reason_class = str(result.get("backend_reason_class", "") or "").strip()
-            if backend_reason_class:
-                request["audit_metadata"]["backend_reason_class"] = backend_reason_class
-            response_max_tokens = result.get("response_max_tokens")
-            if isinstance(response_max_tokens, int):
-                request["audit_metadata"]["response_max_tokens"] = response_max_tokens
-            local_inference_lane = str(result.get("local_inference_lane", "") or "").strip()
-            if local_inference_lane:
-                request["audit_metadata"]["local_inference_lane"] = local_inference_lane
-            local_inference_lane_reason = str(result.get("local_inference_lane_reason", "") or "").strip()
-            if local_inference_lane_reason:
-                request["audit_metadata"]["local_inference_lane_reason"] = local_inference_lane_reason
-            task_complexity = result.get("task_complexity")
-            if isinstance(task_complexity, dict):
-                task_complexity_reason = str(task_complexity.get("reason", "") or "").strip()
-                if task_complexity_reason:
-                    request["audit_metadata"]["task_complexity_reason"] = task_complexity_reason
-                task_complexity_type = str(task_complexity.get("type", "") or "").strip()
-                if task_complexity_type:
-                    request["audit_metadata"]["task_complexity_type"] = task_complexity_type
-                task_complexity_tokens = task_complexity.get("tokens")
-                if isinstance(task_complexity_tokens, int):
-                    request["audit_metadata"]["task_complexity_tokens"] = task_complexity_tokens
-                if "local_suitable" in task_complexity:
-                    request["audit_metadata"]["task_complexity_local_suitable"] = bool(
-                        task_complexity.get("local_suitable")
-                    )
-                if "remote_required" in task_complexity:
-                    request["audit_metadata"]["task_complexity_remote_required"] = bool(
-                        task_complexity.get("remote_required")
-                    )
-            retrieval_profile = result.get("retrieval_profile")
-            if isinstance(retrieval_profile, dict):
-                request["audit_metadata"]["retrieval_profile"] = str(
-                    retrieval_profile.get("profile", "standard")
-                )
-                collections = retrieval_profile.get("collections")
-                if isinstance(collections, list):
-                    request["audit_metadata"]["retrieval_collection_count"] = len(collections)
-            synthesis_fallback = None
-            result_payload = result.get("results")
-            if isinstance(result_payload, dict):
-                synthesis_fallback = result_payload.get("synthesis_fallback")
-            if isinstance(synthesis_fallback, dict):
-                fallback_reason = str(synthesis_fallback.get("reason", "") or "").strip()
-                if fallback_reason:
-                    request["audit_metadata"]["fallback_reason"] = fallback_reason
-                fallback_status = synthesis_fallback.get("status_code")
-                if isinstance(fallback_status, int):
-                    request["audit_metadata"]["fallback_status_code"] = fallback_status
-                original_backend = str(synthesis_fallback.get("original_backend", "") or "").strip()
-                if original_backend:
-                    request["audit_metadata"]["fallback_original_backend"] = original_backend
-            prompt_cache = None
-            if isinstance(result_payload, dict):
-                prompt_cache = result_payload.get("prompt_cache")
-            if isinstance(prompt_cache, dict):
-                request["audit_metadata"]["prompt_cache_policy_enabled"] = bool(
-                    prompt_cache.get("policy_enabled")
-                )
-                cached_tokens = prompt_cache.get("cached_tokens")
-                if isinstance(cached_tokens, int):
-                    request["audit_metadata"]["prompt_cache_cached_tokens"] = cached_tokens
+
+            _annotate_query_result(
+                result, tooling_layer, request_context, orchestration,
+                prompt_coaching, lesson_refs, include_debug_metadata, semantic_tooling_autorun,
+            )
+            _collect_query_audit(request, result, tooling_layer)
+
             iid = result.get("interaction_id", "")
             if iid:
                 try:
@@ -1466,7 +1512,10 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             audit_metadata = request.get("audit_metadata")
             if isinstance(audit_metadata, dict):
-                audit_metadata.setdefault("generate_response", generate_response if "generate_response" in locals() else False)
+                audit_metadata.setdefault(
+                    "generate_response",
+                    generate_response if "generate_response" in locals() else False,
+                )
                 prefer_local = bool(data.get("prefer_local", True)) if "data" in locals() and isinstance(data, dict) else True
                 if str(audit_metadata.get("backend", "unknown")) == "unknown":
                     audit_metadata["backend"] = "local" if prefer_local else "remote"
