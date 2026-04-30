@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional, Set
 
 
-from agent_registry import _load_agent_evaluations_registry_sync, _normalize_orchestration_lane_list, _normalize_orchestration_lane_list
+from agent_registry import _load_agent_evaluations_registry_sync, _normalize_orchestration_lane_list, _normalize_agent_role
 
 logger = logging.getLogger("hybrid-coordinator")
 
