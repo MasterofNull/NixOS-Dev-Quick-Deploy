@@ -654,10 +654,39 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
 
         requested_profile = str(data.get("profile") or "").strip().lower()
-        prefer_local = bool(data.get("prefer_local", True))
+        # Phase 14.2: default prefer_local=False — remote free-tier agents are ~10x faster
+        # than local llama.cpp (90-120s). Local is only used when explicitly requested.
+        prefer_local = bool(data.get("prefer_local", False))
 
-        # Phase 9.3 — Use complexity routing for auto-selection
-        routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
+        # Phase 14.2: Support legacy agent_type field by mapping to profile
+        if not requested_profile:
+            agent_type = str(data.get("agent_type") or "").strip().lower()
+            if agent_type:
+                requested_profile = (
+                    "remote-free" if agent_type in {"qwen", "gemini", "dolphin"}
+                    else "remote-coding" if agent_type == "codex"
+                    else "remote-gemini"
+                )
+
+        # Phase 14.2: Force remote-free fast-path when no profile and free agents available
+        if not requested_profile and not prefer_local:
+            if _AGENT_POOL_MANAGER and (
+                sum(
+                    1 for a in _AGENT_POOL_MANAGER.agents.values()
+                    if getattr(a.tier, "value", "") == "free" and a.is_available()
+                ) > 0
+            ):
+                routing_decision = {
+                    "recommended_profile": "remote-free",
+                    "complexity": "auto-free",
+                    "rationale": "agent pool free-tier fast-path (Phase 14.2)",
+                    "auto_routed": True,
+                }
+            else:
+                routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
+        else:
+            # Phase 9.3 — Use complexity routing for auto-selection
+            routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
         selected_profile = routing_decision["recommended_profile"]
 
         # Phase 9 — Remote availability pre-check: if the selected profile is
