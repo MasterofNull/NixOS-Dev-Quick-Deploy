@@ -286,41 +286,41 @@ aq-qa 0                               # 29-check phase-0 service health
 
 **Full CLI catalogue (all in system PATH after nixos-rebuild):**
 
-| Category | Commands |
-|----------|----------|
-| Onboarding | `aq-prime`, `aq-context-bootstrap`, `aq-context-card`, `aq-context-manage` |
-| Hints & search | `aq-hints`, `aq-index`, `aq-patterns`, `aq-autoresearch` |
-| Capability mgmt | `aq-capability-gap`, `aq-capability-plan`, `aq-capability-remediate`, `aq-capability-promote`, `aq-capability-stub`, `aq-capability-catalog-append`, `aq-capability-patch-prep`, `aq-capability-patch-apply` |
-| Runtime diagnosis | `aq-runtime-diagnose`, `aq-runtime-plan`, `aq-runtime-act`, `aq-runtime-remediate`, `aq-llama-debug` |
-| Unified entry | `aq-system-act --query "<task>"` |
-| Knowledge | `aq-gaps`, `aq-gap-import`, `aq-gap-auto-remediate`, `aq-index` |
-| Cache / RAG | `aq-cache-warm`, `aq-cache-prewarm`, `aq-rag-prewarm` |
-| Self-improvement | `aq-autonomous-improve`, `aq-optimizer`, `aq-meta-optimize` |
-| Workflow | `aq-workflow`, `aq-collaborate`, `aq-federated-learning`, `aqd workflows list` |
-| Reporting | `aq-report`, `aq-qa`, `aq-prompt-eval`, `aq-rate`, `aq-llm-monitor` |
-| Memory | `aq-memory search/add/list/agent-diary` |
+| Category          | Commands                                                                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Onboarding        | `aq-prime`, `aq-context-bootstrap`, `aq-context-card`, `aq-context-manage`                                                                                                                                   |
+| Hints & search    | `aq-hints`, `aq-index`, `aq-patterns`, `aq-autoresearch`                                                                                                                                                     |
+| Capability mgmt   | `aq-capability-gap`, `aq-capability-plan`, `aq-capability-remediate`, `aq-capability-promote`, `aq-capability-stub`, `aq-capability-catalog-append`, `aq-capability-patch-prep`, `aq-capability-patch-apply` |
+| Runtime diagnosis | `aq-runtime-diagnose`, `aq-runtime-plan`, `aq-runtime-act`, `aq-runtime-remediate`, `aq-llama-debug`                                                                                                         |
+| Unified entry     | `aq-system-act --query "<task>"`                                                                                                                                                                             |
+| Knowledge         | `aq-gaps`, `aq-gap-import`, `aq-gap-auto-remediate`, `aq-index`                                                                                                                                              |
+| Cache / RAG       | `aq-cache-warm`, `aq-cache-prewarm`, `aq-rag-prewarm`                                                                                                                                                        |
+| Self-improvement  | `aq-autonomous-improve`, `aq-optimizer`, `aq-meta-optimize`                                                                                                                                                  |
+| Workflow          | `aq-workflow`, `aq-collaborate`, `aq-federated-learning`, `aqd workflows list`                                                                                                                               |
+| Reporting         | `aq-report`, `aq-qa`, `aq-prompt-eval`, `aq-rate`, `aq-llm-monitor`                                                                                                                                          |
+| Memory            | `aq-memory search/add/list/agent-diary`                                                                                                                                                                      |
 
 **MCP bridge tools** (available to Claude Code via `hybrid-coordinator-bridge`):
 
-| Tool | Purpose |
-|------|---------|
-| `hybrid_search` | Semantic + lexical search |
-| `get_hints` | Ranked workflow hints |
-| `augment_query` | Pre-search context augmentation |
-| `qa_check` | AI stack QA health check |
-| `hints_feedback` | Submit hint accepted/rejected signal |
-| `coordinator_status` | AI coordinator status + lessons |
-| `coordinator_lessons` | Lessons learned by coordinator |
-| `web_fetch` | Fetch URL via harness research layer |
-| `workflow_orchestrate` | Start full agentic orchestration |
-| `store_memory` / `recall_memory` | Persistent agent memory |
-| `query_aidb` | AIDB knowledge query |
-| `workflow_plan` | Create execution plan |
-| `workflow_run_start` | Start persisted run with intent contract |
-| `primer_workflow` | Read-only session priming |
-| `brownfield_workflow` | Existing-project improvement |
-| `tooling_manifest` | Discover tools for a task type |
-| `list_sops` / `execute_sop` | SOP workflow templates |
+| Tool                             | Purpose                                  |
+| -------------------------------- | ---------------------------------------- |
+| `hybrid_search`                  | Semantic + lexical search                |
+| `get_hints`                      | Ranked workflow hints                    |
+| `augment_query`                  | Pre-search context augmentation          |
+| `qa_check`                       | AI stack QA health check                 |
+| `hints_feedback`                 | Submit hint accepted/rejected signal     |
+| `coordinator_status`             | AI coordinator status + lessons          |
+| `coordinator_lessons`            | Lessons learned by coordinator           |
+| `web_fetch`                      | Fetch URL via harness research layer     |
+| `workflow_orchestrate`           | Start full agentic orchestration         |
+| `store_memory` / `recall_memory` | Persistent agent memory                  |
+| `query_aidb`                     | AIDB knowledge query                     |
+| `workflow_plan`                  | Create execution plan                    |
+| `workflow_run_start`             | Start persisted run with intent contract |
+| `primer_workflow`                | Read-only session priming                |
+| `brownfield_workflow`            | Existing-project improvement             |
+| `tooling_manifest`               | Discover tools for a task type           |
+| `list_sops` / `execute_sop`      | SOP workflow templates                   |
 
 **Switchboard profiles** — select with `x-ai-profile:` header:
 `continue-local` · `embedded-assist` · `local-tool-calling` · `remote-coding` ·
@@ -333,13 +333,23 @@ aq-qa 0                               # 29-check phase-0 service health
 ### 📚 Essential Documentation Files
 
 **Read These First:**
-1. `AGENTS.md` (root compact) - Baseline policy + harness CLI reference
-2. `docs/agent-guides/01-QUICK-START.md` - Step-by-step session bootstrap
-3. `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` - Switchboard profile selection matrix
-4. `docs/SKILLS-AND-MCP-INVENTORY.md` - Complete tool inventory
-5. `docs/AGENT-AGNOSTIC-TOOLING-PLAN.md` - Agent-agnostic architecture
-6. `docs/AVAILABLE_TOOLS.md` - Tool reference guide
-5. `README.md` - Project overview
+1. `AGENTS.md` (root compact) — Baseline policy + harness CLI reference
+2. `docs/agent-guides/01-QUICK-START.md` — Step-by-step session bootstrap
+3. `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` — Switchboard profile selection matrix
+4. `docs/SKILLS-AND-MCP-INVENTORY.md` — Complete tool inventory
+5. `README.md` — Project overview
+
+**Load On-Demand (progressive disclosure):**
+
+| Guide                                            | Load when...                                            |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| `docs/agent-guides/60-CODE-QUALITY.md`           | Writing, reviewing, or refactoring code                 |
+| `docs/agent-guides/61-WORKFLOW-PRACTICES.md`     | Starting a task, before commit, deploy cadence          |
+| `docs/agent-guides/62-MEMORY-SYSTEM.md`          | Continuation task, long-horizon work, storing decisions |
+| `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md` | Token-efficient context loading strategy                |
+| `docs/agent-guides/12-DEBUGGING.md`              | Diagnosing service or harness failures                  |
+| `docs/agent-guides/40-HYBRID-WORKFLOW.md`        | Hybrid local+remote routing workflows                   |
+| `docs/memory-system/USER-GUIDE.md`               | Deep-dive on AIDB memory API                            |
 
 **Query AIDB for Any Topic:**
 ```bash
@@ -377,13 +387,10 @@ curl 'http://localhost:8002/documents?search=session&type=summary&project=NixOS-
 
 ## 🧹 Code Quality & Documentation Standards
 
-> **Critical:** This section prevents technical debt and reduces "cleanup cycles" after development.
-
-### Core Principles: CLEAN CODE, MINIMAL WASTE
-
-**The Problem:** "AI slop" - verbose code, unnecessary abstractions, scattered documentation, and over-engineering that creates maintenance burden.
-
-**The Solution:** Be **intentional, minimal, and organized** from the start.
+> **Load on demand:** `docs/agent-guides/60-CODE-QUALITY.md`
+>
+> Covers: clean code rules, function size, security, anti-patterns, doc lifecycle,
+> naming conventions, pre-commit cleanup checklist.
 
 ---
 
@@ -489,14 +496,14 @@ grep -r "class.*Model\|CREATE TABLE" .
 
 ### Where to Put Documentation
 
-| Content Type | Location | Examples |
-|-------------|----------|----------|
-| **System overview** | Root `README.md` | Project description, quick start |
-| **Agent training** | Root `AGENTS.md` | This file - comprehensive guide |
-| **User guides** | `docs/*.md` | Deployment, monitoring, APIs |
-| **Development notes** | `docs/development/` | Migration plans, decisions |
-| **Session reports** | `docs/archive/` | Status reports, test results |
-| **Code documentation** | Inline comments | Complex logic only |
+| Content Type           | Location            | Examples                         |
+| ---------------------- | ------------------- | -------------------------------- |
+| **System overview**    | Root `README.md`    | Project description, quick start |
+| **Agent training**     | Root `AGENTS.md`    | This file - comprehensive guide  |
+| **User guides**        | `docs/*.md`         | Deployment, monitoring, APIs     |
+| **Development notes**  | `docs/development/` | Migration plans, decisions       |
+| **Session reports**    | `docs/archive/`     | Status reports, test results     |
+| **Code documentation** | Inline comments     | Complex logic only               |
 
 ### ✅ Documentation Standards
 
@@ -544,6 +551,11 @@ grep -r "class.*Model\|CREATE TABLE" .
 ---
 
 ## 3. Development Workflow Best Practices
+
+> **Load on demand:** `docs/agent-guides/61-WORKFLOW-PRACTICES.md`
+>
+> Covers: session-zero bootstrap, harness-first rule, delegation policy, commit format,
+> deploy cadence, AI slop prevention, autonomous operations boundary.
 
 ### ✅ Before You Start
 
@@ -780,16 +792,34 @@ Look for:
 
 ## 8.5. Memory System Usage
 
-The AI harness provides a comprehensive memory system (AIDB) for persistent, temporal fact storage with multi-layer loading and agent-specific diaries.
+
+> **Load on demand:** `docs/agent-guides/62-MEMORY-SYSTEM.md`
+>
+> Covers: Qdrant memory collections (episodic/semantic/procedural), agent diaries,
+> lesson registry, progressive loading (L0-L3), semantic cache, memory hygiene,
+> CLI commands, API endpoints, and MCP tool usage.
+>
+> **Quick start for continuation tasks:**
+> ```bash
+> aq-memory search "<task>" --project ai-stack --limit 5   # recall before broad search
+> aq-memory agent-diary <your-name> --limit 5              # check your diary
+> ```
 
 ### When to Store Facts
 
 Store facts for:
-- **Technical decisions** - Architecture choices, library selections, design patterns
-- **User preferences** - Coding style, patterns, workflow preferences
-- **Important discoveries** - Bugs found, workarounds, insights
-- **Project events** - Milestones, deployments, configuration changes
-- **Valuable advice** - Best practices, lessons learned, recommendations
+
+
+
+
+
+- **Technical decisions** — Architecture choices, library selections, design patterns
+- **User preferences** — Coding style, patterns, workflow preferences
+- **Important discoveries** — Bugs found, workarounds, insights
+- **Project events** — Milestones, deployments, configuration changes
+- **Valuable advice** — Best practices, lessons learned, recommendations
+
+See `docs/agent-guides/62-MEMORY-SYSTEM.md` for full CLI/API reference and decision tree.
 
 ### Memory Best Practices
 
