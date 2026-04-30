@@ -57,13 +57,14 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
     add("hints", "/hints", "Ranked workflow hints and known pitfalls for the query.")
     add("discovery", "/discovery/capabilities", "Progressive disclosure of available stack capabilities.")
 
-    if any(k in q for k in ("find", "search", "retrieve", "context", "rag", "semantic", "lexical")):
+    explicit_retrieval_query = any(k in q for k in ("find", "search", "retrieve", "context", "rag", "semantic", "lexical"))
+    if explicit_retrieval_query:
         add("route_search", "/query", "Hybrid retrieval path for context and grounded answers.")
         add("memory_recall", "/memory/recall", "Recall prior procedural or semantic memory for similar tasks.")
 
     if memory_recall_priority:
-        add("route_search", "/query", "Hybrid retrieval path for context and grounded answers.")
         add("memory_recall", "/memory/recall", "Recall prior procedural or semantic memory for similar tasks.")
+        add("route_search", "/query", "Hybrid retrieval path for context and grounded answers.")
 
     if any(k in q for k in ("skill", "skills", "agentskill", "/learn", "learn skill", "shared skill")):
         add(
