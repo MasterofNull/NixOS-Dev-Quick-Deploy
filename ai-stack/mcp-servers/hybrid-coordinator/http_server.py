@@ -221,6 +221,7 @@ from workflow_planning import (
     _audit_planned_tools,
     _is_continuation_query,
     _should_prioritize_memory_recall,
+    _workflow_memory_first_strategy,
     _build_workflow_plan,
     _select_reasoning_pattern,
 )
@@ -864,6 +865,7 @@ def _init_query_audit_and_tooling(
         "requesting_agent": orchestration["requesting_agent"],
         "requester_role": orchestration["requester_role"],
         "delegate_via_coordinator_only": orchestration["delegate_via_coordinator_only"],
+        "generate_response_requested": generate_response,
         "generate_response": generate_response,
         "memory_recall_priority": memory_recall_priority,
         "memory_recall_attempted": False,
@@ -1023,6 +1025,77 @@ async def _inject_semantic_tooling(
             logger.debug("semantic_tooling_memory_recall_skipped error=%s", exc)
 
 
+def _apply_query_response_mode(
+    query: str,
+    data: Dict[str, Any],
+    request_context: Dict[str, Any],
+    generate_response: bool,
+    memory_recall_priority: bool,
+    request,
+) -> bool:
+    """Downshift a narrow continuation subset to retrieval-only when synthesis is the hotspot."""
+    aq_report_summary = _load_aq_report_status_summary()
+    retrieval_strategy = _workflow_memory_first_strategy(
+        query, memory_recall_priority, aq_report_summary,
+    )
+    request_context["retrieval_strategy"] = retrieval_strategy
+
+    effective_generate_response = generate_response
+    if generate_response and retrieval_strategy.get("active"):
+        normalized = str(query or "").strip().lower()
+        has_recalled_memory = bool(request_context.get("prior_memory") or request_context.get("memory_recall"))
+        resume_markers = (
+            "continue from",
+            "resume",
+            "pick up",
+            "where we left",
+            "left off",
+            "remaining work",
+            "open items",
+            "outstanding work",
+            "next steps",
+            "phase status",
+            "last session",
+            "last run",
+        )
+        explanation_markers = (
+            "explain why",
+            "why the",
+            "root cause",
+            "step by step",
+            "reason through",
+            "walk through",
+            "summarize",
+            "explain",
+            "describe",
+        )
+        explicit_search_markers = ("search", "find", "lookup", "retrieve", "grep", "rg ", "query")
+        if (
+            has_recalled_memory
+            and _is_continuation_query(query)
+            and any(marker in normalized for marker in resume_markers)
+            and not any(marker in normalized for marker in explanation_markers)
+            and not any(marker in normalized for marker in explicit_search_markers)
+        ):
+            effective_generate_response = False
+            request_context["response_generation_downshifted"] = True
+            request_context["response_generation_downshift_reason"] = "continuation_memory_first"
+            request_context["response_generation_downshift_evidence"] = retrieval_strategy.get("evidence", {})
+
+    if isinstance(request.get("audit_metadata"), dict):
+        request["audit_metadata"]["generate_response"] = effective_generate_response
+        request["audit_metadata"]["retrieval_strategy_mode"] = retrieval_strategy.get("mode", "standard")
+        request["audit_metadata"]["retrieval_strategy_active"] = bool(retrieval_strategy.get("active"))
+        request["audit_metadata"]["response_generation_downshifted"] = bool(
+            request_context.get("response_generation_downshifted")
+        )
+        if request_context.get("response_generation_downshift_reason"):
+            request["audit_metadata"]["response_generation_downshift_reason"] = request_context.get(
+                "response_generation_downshift_reason"
+            )
+    return effective_generate_response
+
+
 async def _execute_query_search(
     query: str,
     data: Dict[str, Any],
@@ -1129,6 +1202,12 @@ def _annotate_query_result(
         result["tooling_layer"] = _compact_tooling_layer_response(
             tooling_layer, include_debug_metadata=include_debug_metadata,
         )
+    if request_context.get("retrieval_strategy"):
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+            result["metadata"] = meta
+        meta["retrieval_strategy"] = request_context.get("retrieval_strategy")
     if request_context.get("memory_recall_attempted"):
         meta = result.get("metadata")
         if not isinstance(meta, dict):
@@ -1136,6 +1215,22 @@ def _annotate_query_result(
             result["metadata"] = meta
         meta["memory_recall_attempted"] = True
         meta["memory_recall_miss"] = bool(request_context.get("memory_recall_miss"))
+    if "generate_response_requested" in request_context:
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+            result["metadata"] = meta
+        meta["generate_response_requested"] = bool(request_context.get("generate_response_requested"))
+        meta["generate_response_effective"] = bool(request_context.get("generate_response_effective"))
+    if request_context.get("response_generation_downshifted"):
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            meta = {}
+            result["metadata"] = meta
+        meta["response_generation_downshifted"] = True
+        meta["response_generation_downshift_reason"] = str(
+            request_context.get("response_generation_downshift_reason") or ""
+        )
     if request_context.get("memory_recall"):
         result["memory_recall"] = request_context.get("memory_recall")
     if request_context.get("prior_memory"):
@@ -1474,6 +1569,11 @@ async def run_http_mode(port: int) -> None:
                 await _inject_semantic_tooling(
                     query, memory_recall_priority, request_context, tooling_layer, request,
                 )
+            request_context["generate_response_requested"] = generate_response
+            generate_response = _apply_query_response_mode(
+                query, data, request_context, generate_response, memory_recall_priority, request,
+            )
+            request_context["generate_response_effective"] = generate_response
 
             result = await _execute_query_search(
                 query, data, prefer_local, request_context, generate_response,
