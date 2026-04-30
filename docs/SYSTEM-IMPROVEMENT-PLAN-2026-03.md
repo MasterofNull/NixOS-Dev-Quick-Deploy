@@ -790,6 +790,184 @@ Use this block for each task execution:
 3. Maintain intent-contract coverage >=65% via bounded loop budgets and caller default-contract coercion.
 4. Keep Phase 7 program gate green on each pass (`scripts/testing/check-prsi-phase7-program.sh`).
 
+---
+
+## Phase 13 — Memory Systems Maturity
+
+Status: `complete` (all sub-phases delivered 2026-04-29; see plan file for ledger)
+Created: 2026-04-29
+Plan file: `.agents/plans/phase-13-memory-systems-maturity.md`
+
+### Context (Memory Systems Assessment, 2026-04-28)
+
+An internal assessment found the AI harness memory systems at ~70% infrastructure readiness
+but ~30% operational utility. The data plane (AIDB, Qdrant, Redis) exists but the reasoning
+plane cannot use it effectively. Root causes:
+
+1. **Embedding Critical Block** — `llama-embed` service missing `--embeddings` flag; semantic
+   search falls back to keyword-only matching; all RAG confidence scores are stubs.
+2. **Session Statelessness** — No multi-turn context persistence; agents cannot build recursive
+   reasoning (RLM) loops across turns.
+3. **No Memory Feedback API** — Confidence scores and self-refinement triggers undefined; no
+   automated feedback loop to suppress hallucinated memory entries.
+4. **Shallow Knowledge Base** — ~40 indexed entries; project-wide codebase not indexed.
+5. **Self-Healing Gap** — `aq-runtime-diagnose` findings not persisted; agents repeat failures.
+
+### Sub-Phases
+
+| Sub-Phase | Goal | Priority | Gate |
+|-----------|------|----------|------|
+| 13.1 | Enable `--embeddings` in llama-cpp + re-index knowledge base | **CRITICAL** | nixos-rebuild |
+| 13.2 | Multi-turn context API (`/context/multi_turn`, Redis-backed) | High | 13.1 |
+| 13.3 | OpenSkills SKILL.md format for all harness CLI tools | Medium | 13.1 (parallel) |
+| 13.4 | Project-wide knowledge ingestion pipeline (≥1,000 chunks) | High | 13.1 |
+| 13.5 | Self-healing memory probes (`aq-runtime-diagnose` → AIDB) | Medium | 13.1 + 13.2 |
+
+### Phase 13.1 — Enable Embeddings (Critical)
+
+Status: `complete` — `--embedding` flag confirmed present at `ai-stack.nix:1321`; `POST /embedding` returns real vectors; embeddings circuit breaker CLOSED.
+
+Tasks:
+1. Add `--embeddings` to `llama-embed` service flags in `nix/modules/roles/ai-stack.nix`
+2. nixos-rebuild to deploy
+3. Validate: `POST localhost:8081/embedding` returns a non-empty vector
+4. Run `scripts/data/populate-knowledge-from-web.py` to re-index with real embeddings
+5. Validate semantic search returns cosine-scored results (score > 0)
+
+Success criteria:
+- `curl localhost:8081/embedding` with test payload returns embedding vector
+- AIDB `/vector/search` returns results with `score` field populated (not null/zero)
+- `aq-qa 0` remains at 39+ passed
+
+### Phase 13.2 — Multi-Turn Context API
+
+Status: `complete` — `multi_turn_context.py` (584 lines) pre-existing and operational; `/context/multi_turn` registered; 2-turn session smoke confirmed.
+
+Tasks:
+1. Create `ai-stack/mcp-servers/hybrid-coordinator/context_handlers.py`:
+   - `POST /context/multi_turn` — store a turn (session_id, role, content, metadata)
+   - `GET /context/multi_turn/{session_id}` — retrieve full turn history
+   - `DELETE /context/multi_turn/{session_id}` — session teardown
+2. Extend `/query` to accept optional `session_id` and prepend prior turns
+3. Add `AI_MULTI_TURN_MAX_TOKENS` env var + Nix option; wire compaction via `progressive_disclosure.py`
+4. Register routes in `http_server.py` (import only, no inline logic)
+
+Success criteria:
+- 2-turn session smoke: post 2 turns, GET returns ordered `turn_index` list
+- `/query?session_id=X` incorporates prior turn content in response
+- `python3 -m py_compile context_handlers.py` passes
+
+### Phase 13.3 — OpenSkills SKILL.md Format
+
+Status: `complete` — 6 SKILL.md files in `scripts/ai/skills/`; registered in `knowledge-sources.yaml`. (commit `6a5c9a2e`)
+
+Tasks:
+1. Create `scripts/ai/skills/*.skill.md` for: `aq-hints`, `aq-delegate`, `aq-memory`,
+   `aq-qa`, `aq-report`, `aq-runtime-diagnose` (max 80 lines each)
+2. Register in `ai-stack/data/knowledge-sources.yaml`
+3. Add `scripts/testing/check-skill-md-format.sh` CI gate
+4. Wire into CI (`Syntax Validation` job)
+
+Success criteria:
+- `check-skill-md-format.sh` passes for all 6 SKILL.md files
+- Skills appear in AIDB `/vector/search` results for relevant queries
+
+### Phase 13.4 — Project-Wide Knowledge Ingestion
+
+Status: `complete` — `ingest-project-knowledge.py` created; 2,410+ docs in AIDB; breadth gate (`≥500`) passes; ingestion running to full corpus.
+
+Tasks:
+1. Create `scripts/data/ingest-project-knowledge.py`:
+   - Walk repo, chunk `.md`, `.nix`, `.py`, `.sh` into 512-token segments
+   - Skip archive, generated, secret-adjacent paths
+   - Target: ≥1,000 chunks
+2. Create `scripts/testing/check-knowledge-base-breadth.sh` (fails if < 500 AIDB docs)
+3. Wire as monthly step in `scripts/automation/post-deploy-converge.sh`
+
+Success criteria:
+- `--dry-run` reports ≥1,000 candidate chunks
+- Full run: AIDB document count ≥ 500
+- `check-knowledge-base-breadth.sh` passes
+
+### Phase 13.5 — Self-Healing Memory Probes
+
+Status: `complete` — `aq-runtime-diagnose --store-findings` emits findings to AIDB `project=runtime-diagnose`; smoke confirmed HTTP 200.
+
+Tasks:
+1. Extend `scripts/ai/aq-runtime-diagnose` with `--store-findings` flag
+2. Emit findings to AIDB `POST /documents` with `project=runtime-diagnose`
+3. In `route_handler.py`: prepend relevant recent diagnose findings for failure-related queries
+4. Enable `--store-findings` in `scripts/automation/post-deploy-converge.sh`
+
+Success criteria:
+- `bash -n scripts/ai/aq-runtime-diagnose` passes
+- `--store-findings --dry-run` emits AIDB payload without writing
+- Post full run: at least 1 document present in AIDB under `project=runtime-diagnose`
+
+### Verification Matrix
+
+Required before marking any Phase 13 task done:
+1. `python3 -m py_compile` for all touched Python files.
+2. `bash -n` for all touched shell scripts.
+3. AIDB health check: `curl localhost:8002/health` returns 200.
+4. Embedding endpoint check (after 13.1): `curl localhost:8081/embedding` returns vector.
+5. `aq-qa 0` → 39+ passed, 0 failed.
+6. Rollback: `sudo nixos-rebuild switch --rollback` documented per slice.
+
+### Work Queue
+
+### Task: MEM-001
+- Phase: 13.1
+- Owner agent: qwen
+- Files: `nix/modules/roles/ai-stack.nix`, `nix/modules/core/options.nix`
+- Commands:
+  - `grep -n "llama-embed\|extraArgs\|embeddings" nix/modules/roles/ai-stack.nix`
+  - `bash -n nix/modules/roles/ai-stack.nix` (syntax check via bash -n; nixos-rebuild is true gate)
+- Success criteria:
+  - `--embeddings` present in llama-embed service args
+  - nixos-rebuild deploys without error
+  - `curl localhost:8081/embedding` returns vector
+- Rollback: `sudo nixos-rebuild switch --rollback`
+- Status: pending
+
+### Task: MEM-002
+- Phase: 13.1 (after MEM-001 deployed)
+- Owner agent: qwen
+- Files: `scripts/data/populate-knowledge-from-web.py`
+- Commands:
+  - `python3 scripts/data/populate-knowledge-from-web.py`
+  - `curl -s -X POST localhost:8002/vector/search -H "X-API-Key: $(cat /run/secrets/aidb_api_key)" -H "Content-Type: application/json" -d '{"query":"NixOS","limit":3}'`
+- Success criteria:
+  - Semantic search returns scored results
+- Status: pending
+
+### Task: MEM-003
+- Phase: 13.2
+- Owner agent: qwen
+- Files: `ai-stack/mcp-servers/hybrid-coordinator/context_handlers.py` (new), `http_server.py`
+- Commands:
+  - `python3 -m py_compile context_handlers.py`
+  - multi-turn smoke curl sequence
+- Status: pending
+
+### Task: MEM-004
+- Phase: 13.3
+- Owner agent: qwen
+- Files: `scripts/ai/skills/*.skill.md` (new), `scripts/testing/check-skill-md-format.sh`
+- Status: pending
+
+### Task: MEM-005
+- Phase: 13.4
+- Owner agent: qwen
+- Files: `scripts/data/ingest-project-knowledge.py` (new), `scripts/testing/check-knowledge-base-breadth.sh`
+- Status: pending
+
+### Task: MEM-006
+- Phase: 13.5
+- Owner agent: qwen
+- Files: `scripts/ai/aq-runtime-diagnose`, `ai-stack/mcp-servers/hybrid-coordinator/route_handler.py`
+- Status: pending
+
 ## Latest Slice Update (2026-03-04)
 
 - Completed: npm security monitor runtime regression fix + lint gate.

@@ -202,6 +202,28 @@ code while debugging it creates a moving target.
 
 ---
 
+## Forward: Phase 13 — Memory Systems Maturity
+
+After Phase 12.4 completes (http_server.py < 5,000 lines), the next independent workstream
+is **Phase 13: Memory Systems Maturity** (plan: `.agents/plans/phase-13-memory-systems-maturity.md`).
+
+Phase 13 addresses the parallel finding from the 2026-04-28 memory assessment:
+- Phase 12.2 (RAG confidence gate) suppresses low-quality context injection — but context
+  quality remains structurally bounded because embeddings are not enabled. Phase 13.1 unblocks
+  this by adding `--embeddings` to the llama-embed service.
+- Phase 12.3 (memory validation gate) is the **write-side** complement. Phase 13.2
+  (multi-turn context API) is the **read/session-side** complement. Both are needed before
+  RLM loops are safe.
+- Phase 13 does NOT depend on Phase 12.4 completion — 13.1 (embeddings) can begin as
+  soon as the llama-embed Nix option is confirmed safe to change.
+
+Critical dependency note:
+- Do NOT use Phase 13's `context_handlers.py` (13.2) as inline code in `http_server.py`.
+  It must be a standalone module from day one, consistent with Phase 12.4's extraction
+  pattern. Register routes via `context_handlers.register_routes(http_app)` only.
+
+---
+
 ## Success Gate for Phase 11.6 Re-Enablement
 
 Phase 11.6 (Cloud Burst) may be re-enabled when ALL of the following are true:

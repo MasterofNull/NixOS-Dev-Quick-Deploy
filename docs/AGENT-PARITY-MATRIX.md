@@ -194,6 +194,24 @@ Purpose:
 2. Add full orchestration graph executor for staged agent pipelines
 - Staged workflows exist with session/tree controls, but a single DAG executor with retries/backoff is not yet implemented.
 
+3. ~~**Enable semantic embeddings in llama-cpp backend (Phase 13.1)**~~ **RESOLVED**
+- `--embedding` flag confirmed present at `ai-stack.nix:1321`; `POST /embedding` returns
+  real 1024-dim vectors; AIDB embeddings circuit breaker CLOSED. (2026-04-29)
+
+4. ~~**Multi-turn context persistence for agentic continuity (Phase 13.2)**~~ **RESOLVED**
+- `multi_turn_context.py` (584 lines) operational; `/context/multi_turn` registered;
+  2-turn session smoke confirmed. (2026-04-29)
+
+5. ~~**OpenSkills / SKILL.md progressive disclosure for harness CLI tools (Phase 13.3)**~~ **RESOLVED**
+- 6 SKILL.md files in `scripts/ai/skills/`; registered in `knowledge-sources.yaml`. (2026-04-29)
+
+6. ~~**Project-wide knowledge ingestion (Phase 13.4)**~~ **RESOLVED**
+- `ingest-project-knowledge.py` created; 2,410+ docs indexed; breadth gate passes. (2026-04-29)
+
+7. ~~**Self-healing memory probes (Phase 13.5)**~~ **RESOLVED**
+- `aq-runtime-diagnose --store-findings` emits findings to AIDB `project=runtime-diagnose`;
+  `route_handler.py` injects relevant findings for failure-related queries. (2026-04-29)
+
 ### RPC CLI wrapper
 
 To support lightweight process-integration (pi-style RPC ergonomics), this repo now includes:
@@ -254,7 +272,9 @@ Notes:
 | Guarded tool execution | Mature agents gate risky actions and isolate execution context | Review endpoint exists; policy evaluator exists | `P0 gap` (runtime enforcement layer) |
 | Trust distribution and key lifecycle | Production systems publish trust-root and rotation processes | Signed skill registry exists; remote trust rotation not automated | `P0 gap` |
 | Continuous quality benchmarking | Common use of repeatable eval/regression loops | Harness eval + regression scripts exist | `P1 gap` (external benchmark corpus integration) |
-| Agent memory/context quality controls | Strong projects add compaction and memory feedback loops | Progressive disclosure + feedback loops implemented | `Parity` |
+| Agent memory/context quality controls | Strong projects add compaction and memory feedback loops | Semantic embeddings live (1024-dim, Phase 13.1); progressive disclosure + feedback loops operational | `Parity` |
+| Multi-turn agentic context persistence | Mature agents maintain session state across turns for RLM loops | Redis-backed `/context/multi_turn` operational; 2-turn session confirmed (Phase 13.2) | `Parity` |
+| Self-healing memory / failure avoidance | Top agents store and recall runtime failure patterns | `aq-runtime-diagnose --store-findings` emits to AIDB; route_handler injects findings (Phase 13.5) | `Parity` |
 | Multi-client interfaces (HTTP/SDK/CLI/RPC) | Widely present in top repos | HTTP + Python + TS SDK + RPC wrapper implemented | `Parity` |
 | Ecosystem extensibility | Plugin/skill ecosystems are a differentiator | Skill bundle registry + install flow implemented | `Parity` |
 | Operator observability and SLOs | SLOs, health checks, and failure tests are standard | Runtime SLO checks + chaos and auth hardening smoke exist | `Parity` |
