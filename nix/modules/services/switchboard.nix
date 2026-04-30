@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Switchboard — local/remote LLM routing proxy (Switchboard strategy).
 #
@@ -10,23 +15,30 @@
 #   mySystem.aiStack.switchboard.enable = true
 # ---------------------------------------------------------------------------
 let
-  cfg      = config.mySystem;
-  ai       = cfg.aiStack;
-  swb      = ai.switchboard;
-  sec      = cfg.secrets;
-  mcp      = cfg.mcpServers;
+  cfg = config.mySystem;
+  ai = cfg.aiStack;
+  swb = ai.switchboard;
+  sec = cfg.secrets;
+  mcp = cfg.mcpServers;
   llamaUrl = "http://${ai.llamaCpp.host}:${toString ai.llamaCpp.port}";
-  embeddingUrl = if ai.embeddingServer.enable
+  embeddingUrl =
+    if ai.embeddingServer.enable
     then "http://${ai.llamaCpp.host}:${toString ai.embeddingServer.port}"
     else "";
-  remoteUrl = if swb.remoteUrl != null then swb.remoteUrl else "";
+  remoteUrl =
+    if swb.remoteUrl != null
+    then swb.remoteUrl
+    else "";
   remoteEnabled = remoteUrl != "";
   remoteKeyFile =
-    if swb.remoteApiKeyFile != null then swb.remoteApiKeyFile
-    else if sec.enable && remoteEnabled then "/run/secrets/${sec.names.remoteLlmApiKey}"
+    if swb.remoteApiKeyFile != null
+    then swb.remoteApiKeyFile
+    else if sec.enable && remoteEnabled
+    then "/run/secrets/${sec.names.remoteLlmApiKey}"
     else "";
   hybridUrl = "http://127.0.0.1:${toString mcp.hybridPort}";
-  hybridKeyFile = if sec.enable
+  hybridKeyFile =
+    if sec.enable
     then "/run/secrets/${sec.names.hybridApiKey}"
     else "";
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
@@ -299,20 +311,23 @@ let
   switchboardProfileCatalog =
     switchboardProfileDefaults
     // lib.mapAttrs
-      (name: value:
-        (if builtins.hasAttr name switchboardProfileDefaults
-         then switchboardProfileDefaults.${name}
-         else {})
-        // value)
-      configuredSwitchboardProfiles;
+    (name: value:
+      (
+        if builtins.hasAttr name switchboardProfileDefaults
+        then switchboardProfileDefaults.${name}
+        else {}
+      )
+      // value)
+    configuredSwitchboardProfiles;
   switchboardProfileCatalogJson = builtins.toJSON switchboardProfileCatalog;
   switchboardProfileCatalogFile = pkgs.writeText "ai-switchboard-profile-catalog.json" switchboardProfileCatalogJson;
 
-  switchboardPy = pkgs.python3.withPackages (ps: with ps; [
-    fastapi
-    uvicorn
-    httpx
-  ]);
+  switchboardPy = pkgs.python3.withPackages (ps:
+    with ps; [
+      fastapi
+      uvicorn
+      httpx
+    ]);
 
   switchboardScript = pkgs.writeText "ai-switchboard.py" ''
     #!/usr/bin/env python3
@@ -1457,6 +1472,9 @@ let
         headers["Connection"] = "close"
         if target_type == "remote" and REMOTE_API_KEY:
             headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
+            # OpenRouter requires these headers for free-tier Cloudflare WAF pass-through
+            headers.setdefault("HTTP-Referer", "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy")
+            headers.setdefault("X-Title", "NixOS-Dev-Quick-Deploy AI Harness")
 
         timeout = _timeout_for(target_type, is_stream)
         sem = _remote_sem if target_type == "remote" else _local_sem
@@ -1595,16 +1613,14 @@ let
     if __name__ == "__main__":
         uvicorn.run(app, host=HOST, port=PORT, timeout_graceful_shutdown=5)
   '';
-in
-{
+in {
   config = lib.mkIf (cfg.roles.aiStack.enable && swb.enable) {
-
     systemd.services.ai-switchboard = {
       description = "AI Switchboard — local/remote LLM routing proxy";
-      wantedBy    = [ "multi-user.target" "ai-stack.target" ];
-      partOf      = [ "ai-stack.target" ];
-      after       = [ "network-online.target" "ai-stack.target" ];
-      wants       = [ "network-online.target" ];
+      wantedBy = ["multi-user.target" "ai-stack.target"];
+      partOf = ["ai-stack.target"];
+      after = ["network-online.target" "ai-stack.target"];
+      wants = ["network-online.target"];
       unitConfig = {
         StartLimitIntervalSec = "300";
         StartLimitBurst = 5;
@@ -1623,14 +1639,44 @@ in
           "DEFAULT_PROVIDER=${swb.defaultProvider}"
           "REMOTE_LLM_URL=${remoteUrl}"
           "REMOTE_LLM_API_KEY_FILE=${remoteKeyFile}"
-          "SWB_REMOTE_MODEL_ALIAS_GEMINI=${if swb.remoteModelAliases.gemini != null then swb.remoteModelAliases.gemini else if swb.remoteModelAliases.free != null then swb.remoteModelAliases.free else ""}"
-          "SWB_REMOTE_MODEL_ALIASES_ENABLED=${if swb.remoteModelAliases.enable then "1" else "0"}"
-          "SWB_REMOTE_MODEL_ALIAS_FREE=${if swb.remoteModelAliases.free != null then swb.remoteModelAliases.free else ""}"
-          "SWB_REMOTE_MODEL_ALIAS_CODING=${if swb.remoteModelAliases.coding != null then swb.remoteModelAliases.coding else ""}"
-          "SWB_REMOTE_MODEL_ALIAS_REASONING=${if swb.remoteModelAliases.reasoning != null then swb.remoteModelAliases.reasoning else ""}"
-          "SWB_REMOTE_MODEL_ALIAS_TOOL_CALLING=${if swb.remoteModelAliases.toolCalling != null then swb.remoteModelAliases.toolCalling else ""}"
+          "SWB_REMOTE_MODEL_ALIAS_GEMINI=${
+            if swb.remoteModelAliases.gemini != null
+            then swb.remoteModelAliases.gemini
+            else if swb.remoteModelAliases.free != null
+            then swb.remoteModelAliases.free
+            else ""
+          }"
+          "SWB_REMOTE_MODEL_ALIASES_ENABLED=${
+            if swb.remoteModelAliases.enable
+            then "1"
+            else "0"
+          }"
+          "SWB_REMOTE_MODEL_ALIAS_FREE=${
+            if swb.remoteModelAliases.free != null
+            then swb.remoteModelAliases.free
+            else ""
+          }"
+          "SWB_REMOTE_MODEL_ALIAS_CODING=${
+            if swb.remoteModelAliases.coding != null
+            then swb.remoteModelAliases.coding
+            else ""
+          }"
+          "SWB_REMOTE_MODEL_ALIAS_REASONING=${
+            if swb.remoteModelAliases.reasoning != null
+            then swb.remoteModelAliases.reasoning
+            else ""
+          }"
+          "SWB_REMOTE_MODEL_ALIAS_TOOL_CALLING=${
+            if swb.remoteModelAliases.toolCalling != null
+            then swb.remoteModelAliases.toolCalling
+            else ""
+          }"
           "SWB_REMOTE_DAILY_TOKEN_CAP=${toString swb.remoteBudget.dailyTokenCap}"
-          "SWB_REMOTE_BUDGET_FALLBACK_LOCAL=${if swb.remoteBudget.fallbackToLocal then "1" else "0"}"
+          "SWB_REMOTE_BUDGET_FALLBACK_LOCAL=${
+            if swb.remoteBudget.fallbackToLocal
+            then "1"
+            else "0"
+          }"
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
           "SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS=${toString swb.continueLocal.maxInputTokens}"
           "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
@@ -1640,27 +1686,26 @@ in
           "LOCAL_AGENTS_PATH=${repoPath}/ai-stack/local-agents"
         ];
         EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";
-        User                  = cfg.primaryUser;
-        WorkingDirectory      = repoPath;
-        Restart               = "on-failure";
-        RestartSec            = "5s";
-        TimeoutStopSec        = "15s";
-        KillMode              = "mixed";
-        NoNewPrivileges       = true;
-        ProtectSystem         = "strict";
-        ProtectHome           = "read-only";
-        ReadOnlyPaths         = [ repoPath ];
-        ReadWritePaths        = [ localAgentStateDir ];
-        PrivateTmp            = true;
+        User = cfg.primaryUser;
+        WorkingDirectory = repoPath;
+        Restart = "on-failure";
+        RestartSec = "5s";
+        TimeoutStopSec = "15s";
+        KillMode = "mixed";
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = "read-only";
+        ReadOnlyPaths = [repoPath];
+        ReadWritePaths = [localAgentStateDir];
+        PrivateTmp = true;
         CapabilityBoundingSet = "";
-        RestrictSUIDSGID      = true;
-        LockPersonality       = true;
-        RestrictNamespaces    = true;
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+        RestrictNamespaces = true;
       };
     };
 
     networking.firewall.allowedTCPPorts =
-      lib.mkIf ai.listenOnLan [ swb.port ];
-
+      lib.mkIf ai.listenOnLan [swb.port];
   };
 }
