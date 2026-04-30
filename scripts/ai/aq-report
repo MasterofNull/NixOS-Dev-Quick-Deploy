@@ -1119,8 +1119,11 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
     backend_valid_latencies: List[float] = []
     synthesis_latencies: List[float] = []
     retrieval_only_latencies: List[float] = []
+    continuation_downshift_latencies: List[float] = []
     client_error_count = 0
     backend_unclassified_count = 0
+    continuation_candidates = 0
+    continuation_downshift_reasons: Dict[str, int] = {}
     for entry in route_events:
         metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
         latency = entry.get("latency_ms")
@@ -1131,6 +1134,12 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
         status_code = metadata.get("http_status")
         generate_response = metadata.get("generate_response")
+        generate_response_requested = metadata.get("generate_response_requested")
+        response_generation_downshifted = bool(metadata.get("response_generation_downshifted"))
+        response_generation_downshift_reason = str(
+            metadata.get("response_generation_downshift_reason", "") or ""
+        ).strip().lower()
+        retrieval_strategy_mode = str(metadata.get("retrieval_strategy_mode", "") or "").strip().lower()
         task_complexity_type = str(metadata.get("task_complexity_type", "") or "").strip().lower()
         local_inference_lane = str(metadata.get("local_inference_lane", "") or "").strip().lower()
         local_inference_lane_reason = str(metadata.get("local_inference_lane_reason", "") or "").strip().lower()
@@ -1148,6 +1157,14 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
                 synthesis_latencies.append(latency_value)
             elif generate_response is False:
                 retrieval_only_latencies.append(latency_value)
+            if generate_response_requested is True:
+                continuation_candidates += 1
+            if response_generation_downshifted and generate_response is False:
+                continuation_downshift_latencies.append(latency_value)
+                if response_generation_downshift_reason:
+                    continuation_downshift_reasons[response_generation_downshift_reason] = (
+                        continuation_downshift_reasons.get(response_generation_downshift_reason, 0) + 1
+                    )
         classes = [f"backend:{backend}"]
         if generate_response is True:
             classes.append("request:synthesis")
@@ -1159,6 +1176,12 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
                 classes.append(f"local_lane_reason:{local_inference_lane_reason}")
         elif generate_response is False:
             classes.append("request:retrieval_only")
+        if response_generation_downshifted:
+            classes.append("request:downshifted_continuation")
+        if retrieval_strategy_mode:
+            classes.append(f"retrieval_strategy:{retrieval_strategy_mode}")
+        if response_generation_downshift_reason:
+            classes.append(f"downshift_reason:{response_generation_downshift_reason}")
         if fallback_reason == "remote_4xx_local_fallback":
             classes.append("fallback:remote_4xx_local_fallback")
         if isinstance(status_code, int):
@@ -1194,6 +1217,15 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
             }
         )
     breakdown.sort(key=lambda item: (-int(item.get("calls", 0) or 0), str(item.get("label", ""))))
+    synthesis_p50 = _percentile(synthesis_latencies, 50)
+    continuation_downshift_p50 = _percentile(continuation_downshift_latencies, 50)
+    continuation_downshift_p95 = _percentile(continuation_downshift_latencies, 95)
+    estimated_synthesis_ms_avoided = None
+    if synthesis_p50 is not None and continuation_downshift_latencies:
+        estimated_synthesis_ms_avoided = round(
+            sum(max(0.0, float(synthesis_p50) - float(lat)) for lat in continuation_downshift_latencies),
+            1,
+        )
     return {
         "available": True,
         "window": window,
@@ -1207,11 +1239,30 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         "backend_valid_p50_ms": _percentile(backend_valid_latencies, 50),
         "backend_valid_p95_ms": _percentile(backend_valid_latencies, 95),
         "synthesis_calls": len(synthesis_latencies),
-        "synthesis_p50_ms": _percentile(synthesis_latencies, 50),
+        "synthesis_p50_ms": synthesis_p50,
         "synthesis_p95_ms": _percentile(synthesis_latencies, 95),
         "retrieval_only_calls": len(retrieval_only_latencies),
         "retrieval_only_p50_ms": _percentile(retrieval_only_latencies, 50),
         "retrieval_only_p95_ms": _percentile(retrieval_only_latencies, 95),
+        "continuation_downshift": {
+            "available": True,
+            "candidate_calls": continuation_candidates,
+            "downshifted_calls": len(continuation_downshift_latencies),
+            "downshift_pct": (
+                round(100 * len(continuation_downshift_latencies) / continuation_candidates, 1)
+                if continuation_candidates else 0.0
+            ),
+            "p50_ms": continuation_downshift_p50,
+            "p95_ms": continuation_downshift_p95,
+            "estimated_synthesis_ms_avoided": estimated_synthesis_ms_avoided,
+            "top_reasons": [
+                {"reason": reason, "calls": count}
+                for reason, count in sorted(
+                    continuation_downshift_reasons.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )[:3]
+            ],
+        },
         "client_error_count": client_error_count,
         "backend_unclassified_count": backend_unclassified_count,
         "breakdown": breakdown[:12],
@@ -4238,6 +4289,15 @@ def rag_posture(
         retrieval_breadth=retrieval_breadth,
         memory_recall_diagnosis=memory_recall_diagnosis,
     )
+    continuation_downshift = (
+        (route_latency or {}).get("continuation_downshift", {})
+        if isinstance(route_latency, dict)
+        else {}
+    )
+    if int(continuation_downshift.get("downshifted_calls", 0) or 0) > 0:
+        reasons.append(
+            f"continuation downshift avoided synthesis on {int(continuation_downshift.get('downshifted_calls', 0) or 0)} recent calls"
+        )
     return {
         "available": True,
         "status": status,
@@ -4259,6 +4319,16 @@ def rag_posture(
         "memory_recall_miss_pct": recall_miss_pct,
         "memory_recall_diagnosis": memory_recall_diagnosis,
         "memory_recall_actions": memory_recall_actions,
+        "continuation_downshift": {
+            "available": bool(continuation_downshift.get("available", False)),
+            "candidate_calls": int(continuation_downshift.get("candidate_calls", 0) or 0),
+            "downshifted_calls": int(continuation_downshift.get("downshifted_calls", 0) or 0),
+            "downshift_pct": continuation_downshift.get("downshift_pct"),
+            "p50_ms": continuation_downshift.get("p50_ms"),
+            "p95_ms": continuation_downshift.get("p95_ms"),
+            "estimated_synthesis_ms_avoided": continuation_downshift.get("estimated_synthesis_ms_avoided"),
+            "top_reasons": continuation_downshift.get("top_reasons", []),
+        },
         "tree_search_share_pct": round(100.0 * tree_recent / recent_calls, 1) if recent_calls else None,
         "prewarm_candidates": prewarm_candidates,
         "reasons": reasons,
@@ -4577,6 +4647,19 @@ def format_md(
             lines.append(f"- Memory recall diagnosis: **{memory_diagnosis}**")
         if memory_actions:
             lines.append(f"- Memory recall remediation: {'; '.join(str(action) for action in memory_actions)}")
+        continuation_downshift = rag_posture_summary.get("continuation_downshift") or {}
+        if continuation_downshift.get("available"):
+            downshifted_calls = int(continuation_downshift.get("downshifted_calls", 0) or 0)
+            candidate_calls = int(continuation_downshift.get("candidate_calls", 0) or 0)
+            if candidate_calls > 0 or downshifted_calls > 0:
+                lines.append(
+                    f"- Continuation downshift coverage: **{downshifted_calls}/{candidate_calls}** "
+                    f"({_na(continuation_downshift.get('downshift_pct'), '.1f', '%')})"
+                )
+            if continuation_downshift.get("estimated_synthesis_ms_avoided") is not None:
+                lines.append(
+                    f"- Estimated synthesis latency avoided: **{_na(continuation_downshift.get('estimated_synthesis_ms_avoided'), '.1f', 'ms')}**"
+                )
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"- Cache hit rate: **{_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}**")
         cache_context = rag_posture_summary.get("cache_context")
@@ -5382,6 +5465,19 @@ def format_text(
             lines.append(f"  Memory recall diagnosis: {memory_diagnosis}")
         if memory_actions:
             lines.append(f"  Memory recall remediation: {'; '.join(str(action) for action in memory_actions)}")
+        continuation_downshift = rag_posture_summary.get("continuation_downshift") or {}
+        if continuation_downshift.get("available"):
+            downshifted_calls = int(continuation_downshift.get("downshifted_calls", 0) or 0)
+            candidate_calls = int(continuation_downshift.get("candidate_calls", 0) or 0)
+            if candidate_calls > 0 or downshifted_calls > 0:
+                lines.append(
+                    f"  Continuation downshift coverage: {downshifted_calls}/{candidate_calls} "
+                    f"({_na(continuation_downshift.get('downshift_pct'), '.1f', '%')})"
+                )
+            if continuation_downshift.get("estimated_synthesis_ms_avoided") is not None:
+                lines.append(
+                    f"  Estimated synthesis latency avoided: {_na(continuation_downshift.get('estimated_synthesis_ms_avoided'), '.1f', 'ms')}"
+                )
         if rag_posture_summary.get("cache_hit_pct") is not None:
             lines.append(f"  Cache hit rate: {_na(rag_posture_summary.get('cache_hit_pct'), '.1f', '%')}")
         cache_context = rag_posture_summary.get("cache_context")

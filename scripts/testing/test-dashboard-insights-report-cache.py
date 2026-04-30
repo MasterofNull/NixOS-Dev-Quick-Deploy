@@ -25,6 +25,8 @@ def assert_true(condition: bool, message: str) -> None:
 
 async def exercise_shared_refresh(insights_service) -> None:
     service = insights_service.AIInsightsService()
+    service._cache = None
+    service._cache_timestamp = None
     calls = {"n": 0}
 
     class FakeProcess:
@@ -213,6 +215,53 @@ async def exercise_shutdown_cleans_inflight_refresh(insights_service) -> None:
     assert_true(service._report_process is None, "shutdown should clear the in-flight process reference")
 
 
+async def exercise_performance_hotspots_include_continuation_downshift(insights_service) -> None:
+    service = insights_service.AIInsightsService()
+    service._cache = {
+        "generated_at": "2026-04-30T21:00:00Z",
+        "window": "1h",
+        "cache": {"available": True, "hit_pct": 92.0},
+        "rag_posture": {
+            "status": "healthy",
+            "reasons": ["continuation downshift avoided synthesis on 2 recent calls"],
+            "recent_retrieval_calls": 12,
+            "retrieval_mix": {"recent": {"route_search": 8, "recall_agent_memory": 4, "tree_search": 0}},
+            "memory_recall_share_pct": 33.3,
+            "memory_recall_miss_pct": 0.0,
+            "continuation_downshift": {
+                "available": True,
+                "candidate_calls": 3,
+                "downshifted_calls": 2,
+                "downshift_pct": 66.7,
+                "estimated_synthesis_ms_avoided": 182500.0,
+            },
+            "prewarm_candidates": [],
+        },
+        "route_search_latency_decomposition": {
+            "overall_p95_ms": 4200.0,
+            "breakdown": [],
+        },
+        "route_retrieval_breadth": {"avg_collection_count": 1.5},
+        "route_retrieval_breadth_windows": {},
+        "structured_actions": [],
+        "recommendations": [],
+    }
+    service._cache_timestamp = insights_service.datetime.now(insights_service.timezone.utc)
+
+    result = await service.get_performance_hotspots()
+    hotspots = result.get("hotspots", [])
+    rag_posture = result.get("rag_posture", {})
+
+    assert_true(
+        any(item.get("id") == "continuation_downshift" for item in hotspots),
+        "performance hotspots should surface continuation downshift savings",
+    )
+    assert_true(
+        int(((rag_posture.get("continuation_downshift") or {}).get("downshifted_calls", 0) or 0)) == 2,
+        "rag posture payload should expose continuation downshift counts",
+    )
+
+
 def main() -> int:
     insights_service = importlib.import_module("api.services.ai_insights")
     insights_service = importlib.reload(insights_service)
@@ -223,6 +272,7 @@ def main() -> int:
     asyncio.run(exercise_persisted_seed_and_fallback(insights_service))
     asyncio.run(exercise_atomic_persist(insights_service))
     asyncio.run(exercise_shutdown_cleans_inflight_refresh(insights_service))
+    asyncio.run(exercise_performance_hotspots_include_continuation_downshift(insights_service))
     print("PASS: dashboard insights report cache shares refreshes and serves stale fallback")
     return 0
 
