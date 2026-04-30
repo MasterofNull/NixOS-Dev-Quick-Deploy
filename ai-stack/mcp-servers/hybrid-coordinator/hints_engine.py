@@ -2669,6 +2669,9 @@ class HintsEngine:
                 for action in (rag_posture.get("memory_recall_actions") or [])
                 if str(action).strip()
             ]
+            continuation_downshift = rag_posture.get("continuation_downshift", {})
+            if not isinstance(continuation_downshift, dict):
+                continuation_downshift = {}
             query_focus = any(
                 token in query_lower
                 for token in (
@@ -2776,6 +2779,51 @@ class HintsEngine:
                         )[:220],
                         reason="Derived from live aq-report rag posture showing low memory-recall share",
                         tags=["runtime", "rag", "memory", "retrieval"],
+                        agent_hints={},
+                    )
+                )
+            continuation_candidates = int(continuation_downshift.get("candidate_calls", 0) or 0)
+            continuation_downshifted = int(continuation_downshift.get("downshifted_calls", 0) or 0)
+            continuation_avoided_ms = continuation_downshift.get("estimated_synthesis_ms_avoided")
+            continuation_downshift_pct = continuation_downshift.get("downshift_pct")
+            if continuation_focus and continuation_candidates >= 3 and continuation_downshifted == 0:
+                hints.append(
+                    Hint(
+                        id="runtime_continuation_downshift_sparse",
+                        type="runtime_signal",
+                        title="Continuation downshift has not activated on recent candidate traffic",
+                        score=0.76,
+                        snippet=(
+                            f"Recent continuation-style candidate calls are {continuation_downshifted}/{continuation_candidates} downshifted. "
+                            "Confirm resume-style requests are reaching memory recall successfully before widening route_search synthesis tuning."
+                        )[:220],
+                        reason="Derived from live aq-report continuation downshift coverage showing no recent activations",
+                        tags=["runtime", "rag", "memory", "continuation", "latency"],
+                        agent_hints={},
+                    )
+                )
+            elif continuation_focus and continuation_downshifted > 0 and continuation_avoided_ms is not None:
+                try:
+                    downshift_pct_text = f"{float(continuation_downshift_pct or 0.0):.1f}%"
+                except (TypeError, ValueError):
+                    downshift_pct_text = "n/a"
+                try:
+                    avoided_ms_text = f"{float(continuation_avoided_ms or 0.0):.0f}ms"
+                except (TypeError, ValueError):
+                    avoided_ms_text = "n/a"
+                hints.append(
+                    Hint(
+                        id="runtime_continuation_downshift_active",
+                        type="runtime_signal",
+                        title="Continuation downshift is actively saving local synthesis time",
+                        score=0.8,
+                        snippet=(
+                            f"Continuation downshift covered {continuation_downshifted}/{continuation_candidates} recent candidates "
+                            f"({downshift_pct_text}) and avoided about {avoided_ms_text} "
+                            "of synthesis latency. Keep resume-style work memory-first."
+                        )[:220],
+                        reason="Derived from live aq-report continuation downshift savings data",
+                        tags=["runtime", "rag", "memory", "continuation", "latency"],
                         agent_hints={},
                     )
                 )

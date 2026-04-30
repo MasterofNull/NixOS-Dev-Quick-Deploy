@@ -3379,6 +3379,7 @@ def build_recommendations(
         )
         memory_share = rag_posture_summary.get("memory_recall_share_pct")
         memory_miss_pct = rag_posture_summary.get("memory_recall_miss_pct")
+        continuation_downshift = rag_posture_summary.get("continuation_downshift") or {}
         if rag_status == "low_sample":
             suffix = f" Candidate prewarm prompts: {prewarm_label}." if prewarm_label else ""
             recs.append(
@@ -3401,6 +3402,22 @@ def build_recommendations(
                 recs.append(
                     f"Memory recall usage is low ({memory_share}% of recent retrieval calls). "
                     "For ongoing repo/system tasks, prefer memory recall before broad route_search when prior context exists."
+                )
+        if continuation_downshift.get("available"):
+            candidate_calls = int(continuation_downshift.get("candidate_calls", 0) or 0)
+            downshifted_calls = int(continuation_downshift.get("downshifted_calls", 0) or 0)
+            downshift_pct = continuation_downshift.get("downshift_pct")
+            avoided_ms = continuation_downshift.get("estimated_synthesis_ms_avoided")
+            if candidate_calls >= 3 and downshifted_calls == 0:
+                recs.append(
+                    f"Continuation-query downshift has not activated yet ({downshifted_calls}/{candidate_calls} recent candidates). "
+                    "Check whether resume-style requests are reaching memory recall successfully before tuning route_search synthesis further."
+                )
+            elif downshifted_calls > 0 and avoided_ms is not None:
+                recs.append(
+                    f"Continuation-query downshift is active ({downshifted_calls}/{candidate_calls} candidates, "
+                    f"{_na(downshift_pct, '.1f', '%')} coverage; ~{_na(avoided_ms, '.0f', 'ms')} synthesis latency avoided). "
+                    "Prefer memory-first continuation handling and only widen synthesis for explanatory/root-cause follow-ups."
                 )
 
     # Batch D — Cache and Retrieval Effectiveness
