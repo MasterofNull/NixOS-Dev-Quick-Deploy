@@ -66,6 +66,7 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
     routing_windows = ((payload.get("routing_windows") or {}).get("windows") or {})
     remote_windows = ((payload.get("remote_profile_utilization_windows") or {}).get("windows") or {})
     route_latency = payload.get("route_search_latency_decomposition") or {}
+    rag_posture = payload.get("rag_posture") or {}
     delegation_windows = ((payload.get("delegated_prompt_failure_windows") or {}).get("windows") or {})
     delegation_trend = ((payload.get("delegated_prompt_failure_windows") or {}).get("trend") or {})
     recommendations = [
@@ -148,6 +149,9 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
                 "overall_p95_ms": route_latency.get("overall_p95_ms"),
                 "actionable_p95_ms": route_latency.get("actionable_p95_ms"),
                 "backend_valid_p95_ms": route_latency.get("backend_valid_p95_ms"),
+                "synthesis_p95_ms": route_latency.get("synthesis_p95_ms"),
+                "retrieval_only_p95_ms": route_latency.get("retrieval_only_p95_ms"),
+                "synthesis_calls": route_latency.get("synthesis_calls"),
                 "client_error_count": route_latency.get("client_error_count"),
                 "top_breakdown": (route_latency.get("breakdown") or [])[:3],
             },
@@ -157,6 +161,29 @@ def _load_aq_report_status_summary() -> Dict[str, Any]:
             "trend_1h": retrieval_1h,
             "trend_24h": retrieval_24h,
             "trend_7d": retrieval_windows.get("7d", {}),
+        },
+        "rag_posture": {
+            "available": bool(rag_posture.get("available", False)),
+            "status": str(rag_posture.get("status", "unknown") or "unknown"),
+            "recent_retrieval_calls": int(rag_posture.get("recent_retrieval_calls", 0) or 0),
+            "cache_hit_pct": rag_posture.get("cache_hit_pct"),
+            "memory_recall_share_pct": rag_posture.get("memory_recall_share_pct"),
+            "memory_recall_attempts": int(rag_posture.get("memory_recall_attempts", 0) or 0),
+            "memory_recall_miss_pct": rag_posture.get("memory_recall_miss_pct"),
+            "memory_recall_diagnosis": str(rag_posture.get("memory_recall_diagnosis", "") or "").strip().lower(),
+            "memory_recall_actions": [
+                str(action).strip()
+                for action in (rag_posture.get("memory_recall_actions") or [])
+                if str(action).strip()
+            ][:3],
+            "prewarm_candidates": [
+                {
+                    "id": str(candidate.get("id", "")).strip(),
+                    "reason": str(candidate.get("reason", "")).strip(),
+                }
+                for candidate in (rag_posture.get("prewarm_candidates") or [])[:3]
+                if isinstance(candidate, dict) and str(candidate.get("id", "")).strip()
+            ],
         },
         "delegation_failures": {
             "trend_status": delegation_trend.get("status", "unknown"),
@@ -333,6 +360,66 @@ def _should_prioritize_memory_recall(query: str) -> bool:
     return False
 
 
+def _workflow_memory_first_strategy(
+    query: str,
+    memory_recall_priority: bool,
+    aq_report_summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Prefer memory-first plans for continuation work when live telemetry says it helps."""
+    if not memory_recall_priority:
+        return {"active": False, "mode": "standard", "reasons": [], "evidence": {}}
+
+    retrieval = aq_report_summary.get("retrieval", {}) if isinstance(aq_report_summary, dict) else {}
+    routing = aq_report_summary.get("routing", {}) if isinstance(aq_report_summary, dict) else {}
+    rag_posture = aq_report_summary.get("rag_posture", {}) if isinstance(aq_report_summary, dict) else {}
+    latency = routing.get("latency", {}) if isinstance(routing, dict) else {}
+
+    memory_share = rag_posture.get("memory_recall_share_pct")
+    memory_diagnosis = str(rag_posture.get("memory_recall_diagnosis", "") or "").strip().lower()
+    synthesis_p95_ms = latency.get("synthesis_p95_ms")
+    recent_retrieval_calls = int(rag_posture.get("recent_retrieval_calls", 0) or 0)
+    retrieval_status = str(rag_posture.get("status", "unknown") or "unknown").strip().lower()
+
+    reasons: List[str] = []
+    try:
+        if memory_diagnosis in {"unused", "weak"} and recent_retrieval_calls >= 8:
+            reasons.append(f"memory_recall_{memory_diagnosis}")
+    except Exception:
+        pass
+    try:
+        if memory_share is not None and float(memory_share) <= 15.0 and recent_retrieval_calls >= 8:
+            reasons.append("memory_recall_share_low")
+    except (TypeError, ValueError):
+        pass
+    try:
+        if synthesis_p95_ms is not None and float(synthesis_p95_ms) >= 20000.0:
+            reasons.append("route_search_synthesis_hotspot")
+    except (TypeError, ValueError):
+        pass
+    if retrieval_status == "low_sample":
+        reasons.append("rag_cache_low_sample")
+
+    # Explicit retrieval/search asks should still advertise route_search early.
+    normalized = str(query or "").strip().lower()
+    explicit_search = any(
+        token in normalized
+        for token in ("search", "find", "retrieve", "lookup", "grep", "rg ", "query")
+    )
+    active = bool(reasons) and not explicit_search
+    return {
+        "active": active,
+        "mode": "memory-first" if active else "standard",
+        "reasons": reasons,
+        "evidence": {
+            "memory_recall_share_pct": memory_share,
+            "memory_recall_diagnosis": memory_diagnosis,
+            "synthesis_p95_ms": synthesis_p95_ms,
+            "recent_retrieval_calls": recent_retrieval_calls,
+            "memory_actions": list(rag_posture.get("memory_recall_actions", []) or [])[:2],
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Workflow plan builder
 # ---------------------------------------------------------------------------
@@ -355,9 +442,30 @@ def _build_workflow_plan(
     tool_catalog = {str(t.get("name", "")).strip(): dict(t) for t in tools if str(t.get("name", "")).strip()}
     reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, memory_recall_priority)
     aq_report_summary = _load_aq_report_status_summary()
+    retrieval_strategy = _workflow_memory_first_strategy(query, memory_recall_priority, aq_report_summary)
 
     def pick_tool_names(names: set[str]) -> List[str]:
         return [name for name in tool_catalog if name in names]
+
+    discover_tools = (
+        {"hints", "discovery", "memory_recall"}
+        if retrieval_strategy["active"]
+        else {"hints", "discovery", "route_search", "tree_search"}
+        | ({"memory_recall"} if memory_recall_priority else set())
+    )
+    plan_tools = (
+        {"hints", "discovery", "memory_recall"}
+        if retrieval_strategy["active"]
+        else {"hints", "discovery"} | ({"memory_recall"} if memory_recall_priority else set())
+    )
+    execute_tools = {
+        "memory_recall",
+        "route_search",
+        "web_research_fetch",
+        "browser_research_fetch",
+        "curated_research_fetch",
+        "feedback",
+    }
 
     return {
         "objective": query,
@@ -366,35 +474,21 @@ def _build_workflow_plan(
             {
                 "id": "discover",
                 "goal": "Collect high-signal context first.",
-                "tools": pick_tool_names(
-                    {"hints", "discovery", "route_search", "tree_search"}
-                    | ({"memory_recall"} if memory_recall_priority else set())
-                ),
+                "tools": pick_tool_names(discover_tools),
                 "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("discover", "react"),
                 "exit_criteria": "Top risks identified.",
             },
             {
                 "id": "plan",
                 "goal": "Turn findings into verified steps.",
-                "tools": pick_tool_names(
-                    {"hints", "discovery"} | ({"memory_recall"} if memory_recall_priority else set())
-                ),
+                "tools": pick_tool_names(plan_tools),
                 "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("plan", "react"),
                 "exit_criteria": "Ordered task list exists.",
             },
             {
                 "id": "execute",
                 "goal": "Apply small reversible changes.",
-                "tools": pick_tool_names(
-                    {
-                        "route_search",
-                        "memory_recall",
-                        "web_research_fetch",
-                        "browser_research_fetch",
-                        "curated_research_fetch",
-                        "feedback",
-                    }
-                ),
+                "tools": pick_tool_names(execute_tools),
                 "reasoning_pattern": reasoning_pattern["phase_recommendations"].get("execute", "react"),
                 "exit_criteria": "Primary objective implemented.",
             },
@@ -438,6 +532,7 @@ def _build_workflow_plan(
             ),
             "created_epoch_s": int(time.time()),
             "memory_recall_priority": memory_recall_priority,
+            "retrieval_strategy": retrieval_strategy,
             "reasoning_pattern": reasoning_pattern,
             "optimization_watch": aq_report_summary.get("optimization_watch", {"available": False}),
         },
