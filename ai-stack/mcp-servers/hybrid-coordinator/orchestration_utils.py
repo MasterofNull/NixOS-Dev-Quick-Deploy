@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Set
 
 
 from agent_registry import _load_agent_evaluations_registry_sync, _normalize_orchestration_lane_list, _normalize_agent_role
+from runtime_manager import _orchestration_prefers_local_handoff
+from ai_coordinator import default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile
 
 logger = logging.getLogger("hybrid-coordinator")
 
