@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -26,6 +27,39 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Iterator, List, Tuple
+
+# ---------------------------------------------------------------------------
+# Pre-ingestion secrets redaction (mirrors AIDB validator patterns)
+# Redact before posting so docs with example/template values still get indexed.
+# ---------------------------------------------------------------------------
+
+_PEM_BEGIN = "-----BEGIN "
+_PEM_END = " KEY-----"
+_SECRET_PATTERNS: List[Tuple[str, re.Pattern]] = [  # type: ignore[type-arg]
+    ("openai_api_key", re.compile(r"sk-[A-Za-z0-9]{48}")),
+    ("openai_api_key_new", re.compile(r"sk-proj-[A-Za-z0-9]{48}")),
+    ("anthropic_api_key", re.compile(r"sk-ant-[A-Za-z0-9\-_]{90,}")),
+    ("aws_access_key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("aws_secret_key", re.compile(r"aws_secret_access_key\s*[=:]\s*[A-Za-z0-9/+=]{40}")),
+    ("github_token", re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}")),
+    ("gitlab_token", re.compile(r"glpat-[A-Za-z0-9\-]{20,}")),
+    ("private_key_rsa", re.compile(re.escape(f"{_PEM_BEGIN}RSA PRIVATE{_PEM_END}"))),
+    ("private_key_openssh", re.compile(re.escape(f"{_PEM_BEGIN}OPENSSH PRIVATE{_PEM_END}"))),
+    ("private_key_ec", re.compile(re.escape(f"{_PEM_BEGIN}EC PRIVATE{_PEM_END}"))),
+    ("jwt_token", re.compile(r"eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
+    ("password_field", re.compile(r"(?i)password\s*[=:]\s*[^\s]{8,}")),
+    ("bearer_token", re.compile(r"Bearer\s+[A-Za-z0-9\-_\.]{20,}")),
+]
+
+
+def _pre_redact(text: str) -> Tuple[str, List[str]]:
+    """Redact secret patterns from text before ingestion. Returns (redacted, detected_names)."""
+    detected = []
+    for name, pattern in _SECRET_PATTERNS:
+        if pattern.search(text):
+            detected.append(name)
+            text = pattern.sub(f"[REDACTED:{name}]", text)
+    return text, detected
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -68,11 +102,8 @@ SKIP_FILE_PATTERNS = {
     "credentials",
     "scores.sqlite",
     "*.lock",
-    # Docs containing secret path references that the ingest validator rejects
-    "SECURITY-AUDIT",
-    "P1-DEPLOYMENT-GUIDE",
-    "P1-P2-DEPLOYMENT-SUCCESS",
-    "SYSTEMATIC-IMPROVEMENTS",
+    # Actual secret files — never ingest
+    # (docs with example password patterns are handled by _pre_redact, not skipped)
 }
 
 # Default scan paths (relative to repo root). If empty, scan entire repo.
@@ -177,6 +208,10 @@ def _post_document(
 
     Retries on HTTP 429 (rate limited) with exponential backoff.
     """
+    content, redacted_names = _pre_redact(content)
+    if redacted_names:
+        print(f"  [redact] {relative_path}: {','.join(redacted_names)}", file=sys.stderr)
+
     payload = {
         "content": content,
         "project": project,
