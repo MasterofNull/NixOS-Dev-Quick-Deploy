@@ -56,29 +56,32 @@ _DISCLOSURE_NEGATIVE_FILTER: Optional[Any] = None
 # ---------------------------------------------------------------------------
 # Phase 20.2: Priority-based delegation with automatic failover
 # ---------------------------------------------------------------------------
+# Phase 14.6: prefer embedded-assist over default for local fallback paths.
+# embedded-assist has injectHints=false and tighter context limits, making
+# it ~40-60s faster than default for local inference fallback after remote 401.
 _TASK_TYPE_CAPABILITIES = {
     "coding": {
-        "priority_profiles": ["local-tool-calling", "default", "remote-coding", "remote-gemini", "remote-free"],
+        "priority_profiles": ["local-tool-calling", "embedded-assist", "remote-coding", "remote-gemini", "remote-free"],
         "required_context_window": 8192,
         "prefer_free_first": False,
     },
     "reasoning": {
-        "priority_profiles": ["local-tool-calling", "default", "remote-reasoning", "remote-gemini", "remote-free"],
+        "priority_profiles": ["local-tool-calling", "embedded-assist", "remote-reasoning", "remote-gemini", "remote-free"],
         "required_context_window": 8192,
         "prefer_free_first": False,
     },
     "tool-calling": {
-        "priority_profiles": ["local-tool-calling", "default", "remote-tool-calling", "remote-gemini", "remote-free"],
+        "priority_profiles": ["local-tool-calling", "embedded-assist", "remote-tool-calling", "remote-gemini", "remote-free"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
     "simple": {
-        "priority_profiles": ["default", "local-tool-calling", "remote-gemini", "remote-free"],
+        "priority_profiles": ["embedded-assist", "local-tool-calling", "remote-gemini", "remote-free"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
     "default": {
-        "priority_profiles": ["default", "local-tool-calling", "remote-gemini", "remote-free"],
+        "priority_profiles": ["embedded-assist", "local-tool-calling", "remote-gemini", "remote-free"],
         "required_context_window": 4096,
         "prefer_free_first": True,
     },
@@ -285,6 +288,7 @@ def _build_delegation_fallback_chain(
                 "remote-reasoning": "openrouter-reasoning",
                 "remote-tool-calling": "openrouter-tool-calling",
                 "local-tool-calling": "local-tool-calling",
+                "embedded-assist": "local-hybrid",
                 "default": "local-hybrid",
             }
             runtime_id = runtime_map.get(profile, "local-hybrid")
