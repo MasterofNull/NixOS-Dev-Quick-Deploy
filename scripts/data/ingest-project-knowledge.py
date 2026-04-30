@@ -68,9 +68,11 @@ SKIP_FILE_PATTERNS = {
     "credentials",
     "scores.sqlite",
     "*.lock",
-    # Security/audit docs contain secret path references that the ingest validator rejects
+    # Docs containing secret path references that the ingest validator rejects
     "SECURITY-AUDIT",
     "P1-DEPLOYMENT-GUIDE",
+    "P1-P2-DEPLOYMENT-SUCCESS",
+    "SYSTEMATIC-IMPROVEMENTS",
 }
 
 # Default scan paths (relative to repo root). If empty, scan entire repo.
