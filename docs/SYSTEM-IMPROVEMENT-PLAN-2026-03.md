@@ -1202,11 +1202,11 @@ the AGI scaffold deployment. Key metrics from aq-report (2026-05-01):
 - Add `Retry-After` header respect in switchboard remote forwarding
 - Track per-provider rate-limit windows in Redis (`delegate:rate_limit:<provider>:<model>`)
 
-#### 21.2 — Flake + Local Override Fix
-- `deploy-options.local.nix` is gitignored and thus invisible to `nix eval` / flake
-- Feature flags (like `remoteUrl = null`) set there are silently ignored
-- Fix: add `--impure` to nixos-rebuild invocation in `nixos-quick-deploy.sh`, OR
-  move local-only override to a git-tracked path that checks runtime secrets presence
+#### 21.2 — Flake + Local Override Fix ✅ DONE (commit 23043d71)
+- Root cause: `deploy-options.local.nix` is gitignored → invisible to pure flake eval
+- Fix: moved `remoteUrl = lib.mkForce null` to git-tracked `deploy-options.nix`
+- Removed `builtins.getEnv "NIXOS_REPO_PATH"` + `--impure` from flake and deploy script
+- Pure `nix eval '.#nixosConfigurations.hyperd-ai-dev...remoteUrl'` now returns `null` without any env vars
 
 #### 21.3 — Hint Diversity Recovery
 - Current hint injection: 100% concentration on `registry_eval_scorecard_analysis`

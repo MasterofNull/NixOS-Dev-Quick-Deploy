@@ -57,7 +57,7 @@ Expected impact: reduce compound failure rate when both remote and local are tem
 
 Requires: nixos-rebuild switch
 
-### 21.2 — Flake Local-Override Visibility ✅ DONE (commit 8a10eaa3)
+### 21.2 — Flake Local-Override Visibility ✅ DONE (commit 23043d71, supersedes 8a10eaa3)
 
 Problem: `deploy-options.local.nix` is gitignored → flake evaluation uses git-tracked source tree
 → `./. + "path"` resolves to Nix store copy (no gitignored files) → `builtins.pathExists` returns false
@@ -65,12 +65,13 @@ Problem: `deploy-options.local.nix` is gitignored → flake evaluation uses git-
 → coordinator always gets `SWITCHBOARD_REMOTE_URL=https://openrouter.ai/api`
 → delegate tries OpenRouter free tier → rate limited (18 failures) + HTTP errors (24 failures)
 
-Fix:
-- `flake.nix`: use `builtins.getEnv "NIXOS_REPO_PATH"` to resolve absolute filesystem path
-  for `hostDeployOptionsLocalPath` when env var is set
-- `nixos-quick-deploy.sh`: pass `NIXOS_REPO_PATH=${REPO_ROOT} --impure` to nixos-rebuild
+Initial fix (8a10eaa3): used `builtins.getEnv "NIXOS_REPO_PATH"` + `--impure` to read gitignored file.
+Superseded fix (23043d71): moved `remoteUrl = lib.mkForce null` to git-tracked `deploy-options.nix`.
+- Removed `builtins.getEnv`, `_repoEnvPath`, impure `hostDeployOptionsLocalPath` from `flake.nix`
+- Removed `env NIXOS_REPO_PATH=...` and `--impure` from `nixos-quick-deploy.sh`
+- `deploy-options.local.nix` retains only secrets wiring (sops paths) — no policy overrides
 
-Verification: `NIXOS_REPO_PATH=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy nix eval --impure '.#nixosConfigurations.hyperd-ai-dev.config.mySystem.aiStack.switchboard.remoteUrl'` → `null` ✓
+Verification: `nix eval '.#nixosConfigurations.hyperd-ai-dev.config.mySystem.aiStack.switchboard.remoteUrl'` → `null` (pure, no env vars) ✓
 
 Requires: nixos-rebuild switch (will set SWITCHBOARD_REMOTE_URL="" in coordinator)
 
@@ -95,11 +96,13 @@ Status: deferred — misleading metric, but no actual diversity problem (43 inje
 Before marking 21.1+21.2 fully verified:
 1. ✅ `nix-instantiate --parse` passes for `mcp-servers.nix`
 2. ✅ `bash -n nixos-quick-deploy.sh` passes
-3. ✅ `NIXOS_REPO_PATH=... nix eval --impure ...remoteUrl` → `null`
+3. ✅ `nix eval '.#nixosConfigurations.hyperd-ai-dev...remoteUrl'` → `null` (pure, no env vars, commit 23043d71)
 4. ⏳ `systemctl show ai-hybrid-coordinator | grep SWITCHBOARD_REMOTE_URL` → `=` (empty) after rebuild
 5. ⏳ `aq-qa 0` → 40 passed / 0 failed after rebuild
 6. ⏳ `aq-report` → `ai_coordinator_delegate` success rate improvement after 24h
 7. ⏳ `systemctl show ai-hybrid-coordinator | grep AI_DELEGATE_LOCAL_SLOT` → max retries=4
+8. ✅ `/identity/self` → 5 capabilities, 2 relationships (qwen, hyperd), last_value_update set
+9. ✅ `/world/forecast` → 3 predictions with time_of_day source (10 seed patterns in DB)
 
 ---
 
@@ -126,13 +129,61 @@ Before marking 21.1+21.2 fully verified:
   systemctl show ai-hybrid-coordinator --property=Environment | grep -o 'AI_DELEGATE_LOCAL_SLOT[^ ]*'
   aq-qa 0
   ```
-- Status: **pending** (requires nixos-rebuild switch with `NIXOS_REPO_PATH`)
+- Status: **pending** (requires pure nixos-rebuild switch: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`)
 
 ### Task: OP-004
 - Phase: 21.3 (deferred)
 - Owner: qwen (implementation)
 - Files: `ai-stack/mcp-servers/hybrid-coordinator/http_server.py` (add DB write in `_inject_semantic_tooling`)
 - Status: **deferred** — not urgent
+
+### Task: OP-007 ✅ DONE (2026-05-01 session 3)
+- Phase: 21.4 — Agent priority and model availability realignment
+- Owner: Claude
+- Root cause: `_select_next_available_delegation_target` had no guard on
+  `SWITCHBOARD_REMOTE_URL`. When local slots were busy the fallback chain
+  reached `remote-gemini` which the switchboard immediately rejects when
+  `REMOTE_URL=""` → all 112 backend failures in 7d were spurious remote
+  attempts, not real inference failures.
+- Files changed (commit e6f453e0):
+  - `delegation_handlers.py`: added `_remote_routing_active()` + `_fleet_model_available()`
+    guards in `_select_next_available_delegation_target`. Remote profiles are
+    skipped when REMOTE_URL is empty; fleet manager Redis cooldown state is
+    checked before each remote attempt.
+  - `agent_pool_manager.py`: removed qwen3-next-80b and qwen3-coder free agents
+    (gone from OpenRouter free tier). Added: meta-llama/llama-3.3-70b:free,
+    deepseek-r1:free, gemini-2.0-flash-exp:free, dolphin-mistral retained.
+  - `model_fleet_manager.py`: removed qwen3-next-80b:free from coding+chat
+    free pools; added gemini-2.0-flash-exp:free to coding free pool.
+  - `nix/hosts/hyperd/deploy-options.nix`: corrected all 5 remote model aliases:
+    free→llama-3.3-70b:free, gemini→gemini-2.0-flash-exp:free,
+    coding→deepseek-r1:free, reasoning→deepseek-r1:free,
+    toolCalling→llama-3.3-70b:free. remoteUrl stays null.
+- Expected impact: eliminate ~100% of spurious remote-profile backend failures
+  (remote-gemini was 100% of the failure volume with 0% success rate).
+- Status: **done** — requires nixos-rebuild to deploy delegation_handlers changes
+
+### Task: OP-005 ✅ DONE (2026-05-01 session 2)
+- Phase: AGI scaffold enrichment
+- Owner: Claude
+- Actions:
+  - Discovered `capability_registered` + `agent_collaboration` are the correct identity event types
+    (summarizer ignores `capability_discovered`, `relationship_updated`, `value_reinforced`)
+  - Posted 5 `capability_registered` events (AGI orchestration, NixOS config, hybrid inference,
+    affective modulation, world model warming)
+  - Posted 2 `value_update` events (operational_reliability, transparency)
+  - Posted 2 `agent_collaboration` events (qwen→implementer, hyperd→operator)
+  - `/identity/self` now returns populated capabilities + relationships ✅
+- Status: **done**
+
+### Task: OP-006 ✅ DONE (2026-05-01 session 2)
+- Phase: World model bootstrap
+- Owner: Claude
+- Actions:
+  - Seeded `query_sequence_patterns` with 10 rows (5 for local hour 9, 5 for UTC hour 16)
+  - `/world/forecast` now returns 3 time-of-day predictions with confidence scores ✅
+  - Root cause of zero predictions: pattern rows must match UTC `hour_of_day`; forecaster uses `datetime.now(timezone.utc).hour`
+- Status: **done**
 
 ---
 
