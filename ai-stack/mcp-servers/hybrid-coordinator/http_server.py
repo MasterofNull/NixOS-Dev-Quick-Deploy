@@ -137,6 +137,7 @@ import ai_coordinator_handlers
 import model_fleet_manager as _mfm
 import agentic_memory_journal as _journal
 import identity_handlers  # Phase 16.4: persistent identity kernel
+import affective_handlers  # Phase 19: values signals / affective engine
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
     _agent_pool_status_snapshot,
@@ -1619,6 +1620,38 @@ async def run_http_mode(port: int) -> None:
                         _f.write(iid)
                 except OSError:
                     pass
+
+            # Phase 19 — Affective engine: modulate response if enabled
+            if os.environ.get("AFFECTIVE_ENABLED", "false").lower() == "true":
+                try:
+                    _aff_bypass = request.headers.get("X-Affective-Bypass", "false").lower() == "true"
+                    if not _aff_bypass and result.get("response"):
+                        _aff_eng_dir = str(affective_handlers._AFFECTIVE_DIR)
+                        if _aff_eng_dir not in sys.path:
+                            sys.path.insert(0, _aff_eng_dir)
+                        from signal_detectors import SignalDetectors as _SigDet  # noqa: PLC0415
+                        from state_model import AffectiveState as _AffState  # noqa: PLC0415
+                        from output_modulator import OutputModulator as _OutMod  # noqa: PLC0415
+                        _req_ctx = {"query": query}
+                        _det = _SigDet()
+                        _state = _AffState(
+                            empathy_signal=_det.detect_empathy(_req_ctx),
+                            compassion_level=_det.detect_compassion(_req_ctx),
+                            aesthetic_gap=_det.detect_aesthetic_gap(result.get("response", "")),
+                        )
+                        result["response"] = _OutMod().modulate(result["response"], _state)
+                        # Cache state snapshot for /affective/state endpoint
+                        affective_handlers.update_state_snapshot({
+                            "empathy_signal": _state.empathy_signal,
+                            "reciprocity_debt": _state.reciprocity_debt,
+                            "aesthetic_gap": _state.aesthetic_gap,
+                            "compassion_level": _state.compassion_level,
+                            "dominant_signal": _state.dominant_signal(),
+                            "timestamp": _state.timestamp.isoformat(),
+                        })
+                except Exception as _aff_exc:
+                    logger.debug("affective pipeline skipped (non-fatal): %s", _aff_exc)
+
             return web.json_response(result)
         except Exception as exc:
             audit_metadata = request.get("audit_metadata")
@@ -1923,6 +1956,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/memory/journal/stats", handle_journal_stats)
     # Phase 16.4: Identity kernel
     identity_handlers.register_routes(http_app)
+    affective_handlers.register_routes(http_app)  # Phase 19: values signals
 
     # Phase 2.4: Register YAML workflow routes
     if YAML_WORKFLOWS_AVAILABLE:
