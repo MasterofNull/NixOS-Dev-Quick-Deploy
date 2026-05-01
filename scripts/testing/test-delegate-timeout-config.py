@@ -52,6 +52,10 @@ def main() -> None:
         "agent_timeout_sec=local_agent_timeout_s," in handlers_text,
         "expected delegate handler to pass inner timeout budget into local agent spawns",
     )
+    assert_true(
+        'parsed_error.get("error") == "local_agent_timeout"' in handlers_text,
+        "expected delegate handler to translate named local agent timeouts into 504 responses",
+    )
 
     print("PASS: delegated timeout layering stays declarative and split across outer/inner budgets")
 

@@ -314,6 +314,13 @@ async def run() -> None:
                     headers=headers,
                     state=state,
                 )
+                if resp.status_code == 503:
+                    try:
+                        err_body = resp.json()
+                    except Exception:
+                        err_body = {}
+                    if (err_body.get("error") or {}).get("type") == "local_slot_busy":
+                        raise RuntimeError("local_slot_busy")
                 resp.raise_for_status()
                 data = resp.json()
                 msg = data["choices"][0]["message"]
@@ -358,10 +365,13 @@ async def run() -> None:
         print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
 
     except Exception as exc:
-        state.update({"status": "failed", "error": str(exc), "completed_at": time.time()})
+        error_text = str(exc)
+        if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)) or not error_text:
+            error_text = "local_agent_timeout"
+        state.update({"status": "failed", "error": error_text, "completed_at": time.time()})
         _write_state(state)
         print(
-            json.dumps({"ok": False, "error": str(exc), "agent_id": AGENT_ID}),
+            json.dumps({"ok": False, "error": error_text, "agent_id": AGENT_ID}),
             file=sys.stderr,
         )
         sys.exit(1)
