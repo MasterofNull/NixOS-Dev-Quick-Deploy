@@ -514,6 +514,7 @@ let
     @app.get("/health")
     async def health():
         budget_state = _budget_state_current()
+        local_runtime = await _local_runtime_health_snapshot()
         return {
             "status": "ok",
             "service": "ai-switchboard",
@@ -538,6 +539,7 @@ let
                 "remote_budget_fallback_local": REMOTE_BUDGET_FALLBACK_LOCAL,
                 "remote_model_aliases_enabled": REMOTE_MODEL_ALIASES_ENABLED,
             },
+            "local_runtime": local_runtime,
             "remote_budget": budget_state,
         }
 
@@ -1319,6 +1321,58 @@ let
                 }
             }
         return None
+
+    def _parse_prometheus_gauge(metrics_text: str, metric_name: str) -> float | None:
+        prefix = f"{metric_name} "
+        for line in metrics_text.splitlines():
+            if line.startswith(prefix):
+                raw_value = line[len(prefix):].strip()
+                try:
+                    return float(raw_value)
+                except ValueError:
+                    return None
+        return None
+
+    async def _local_runtime_health_snapshot() -> dict:
+        local_slot_capacity = int(LOCAL_CONCURRENCY)
+        local_slot_available = int(_local_sem._value) if _local_sem is not None else local_slot_capacity
+        local_slot_busy = local_slot_available <= 0
+        snapshot = {
+            "slot_capacity": local_slot_capacity,
+            "slot_available": local_slot_available,
+            "slot_busy": local_slot_busy,
+            "source": "switchboard_semaphore",
+            "llama_metrics_available": False,
+        }
+        try:
+            if _local_health_client is not None:
+                resp = await _local_health_client.get(f"{LLAMA_URL}/metrics")
+            else:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)) as client:
+                    resp = await client.get(f"{LLAMA_URL}/metrics")
+            if resp.status_code >= 400:
+                snapshot["llama_metrics_status_code"] = resp.status_code
+                return snapshot
+            metrics_text = resp.text
+            snapshot["llama_metrics_available"] = True
+            requests_processing = _parse_prometheus_gauge(metrics_text, "llamacpp:requests_processing")
+            requests_deferred = _parse_prometheus_gauge(metrics_text, "llamacpp:requests_deferred")
+            busy_slots_per_decode = _parse_prometheus_gauge(metrics_text, "llamacpp:n_busy_slots_per_decode")
+            if requests_processing is not None:
+                snapshot["requests_processing"] = int(requests_processing)
+            if requests_deferred is not None:
+                snapshot["requests_deferred"] = int(requests_deferred)
+            if busy_slots_per_decode is not None:
+                snapshot["busy_slots_per_decode"] = busy_slots_per_decode
+            snapshot["slot_busy"] = bool(
+                snapshot.get("slot_busy")
+                or (requests_processing is not None and requests_processing >= 1)
+            )
+            if snapshot["slot_busy"] and snapshot["source"] == "switchboard_semaphore":
+                snapshot["source"] = "switchboard_semaphore+llama_metrics"
+        except Exception as exc:
+            snapshot["llama_metrics_error"] = f"{type(exc).__name__}: {exc}"
+        return snapshot
 
     @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def proxy(path: str, request: Request):
