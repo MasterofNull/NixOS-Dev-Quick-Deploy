@@ -1172,3 +1172,46 @@ Key deliverables:
 
 Tasks: WM-001 → WM-005 (see plan file)
 Owner agents: qwen (implementation), Claude (review)
+
+Deployment notes (2026-05-01):
+- Env-injection service modules added: `nix/modules/services/affective-engine.nix`, `agent-mesh.nix`, `world-model.nix` (commit 501effba)
+- AGI feature flags moved to `nix/modules/profiles/ai-dev.nix` — profile-driven, not hostname-driven (commit 93b5770b)
+- Phase 20 DB migration applied: `query_sequence_patterns` table live in aidb
+- All 4 AGI endpoints verified: `/affective/state`, `/agents/mesh/status`, `/world/forecast`, `/identity/self`
+- aq-qa: 40 passed / 0 failed
+
+---
+
+## Phase 21 — Operational Hardening (Post-AGI Scaffold)
+
+Status: `planned`
+Created: 2026-05-01
+Predecessor: Phase 20 (AGI scaffold fully deployed)
+
+Improve operational reliability of the deployed AI stack based on observed telemetry after
+the AGI scaffold deployment. Key metrics from aq-report (2026-05-01):
+- `ai_coordinator_delegate` success rate: 32.6% (93 backend failures)
+- Failure classes: `provider_http_error(24)`, `rate_limited(18)`, `provider_auth_or_policy(4)`
+- Root cause: remote free-tier rate limits + local slot busy (single llama.cpp slot)
+
+### Sub-phases
+
+#### 21.1 — Delegate Retry Hardening
+- When remote returns 429 AND local returns slot_busy, enter exponential backoff (max 45s)
+  rather than immediately failing
+- Add `Retry-After` header respect in switchboard remote forwarding
+- Track per-provider rate-limit windows in Redis (`delegate:rate_limit:<provider>:<model>`)
+
+#### 21.2 — Flake + Local Override Fix
+- `deploy-options.local.nix` is gitignored and thus invisible to `nix eval` / flake
+- Feature flags (like `remoteUrl = null`) set there are silently ignored
+- Fix: add `--impure` to nixos-rebuild invocation in `nixos-quick-deploy.sh`, OR
+  move local-only override to a git-tracked path that checks runtime secrets presence
+
+#### 21.3 — Hint Diversity Recovery
+- Current hint injection: 100% concentration on `registry_eval_scorecard_analysis`
+- Add minimum 3 hint candidates per injection cycle
+- Wire anti-dominance guard from existing `hints_engine` into injection pipeline
+
+Owner agents: Claude (architect/implement), qwen (test slices)
+Plan file: `.agents/plans/phase-21-operational-hardening.md` (TBD)

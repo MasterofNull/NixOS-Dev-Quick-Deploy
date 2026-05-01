@@ -1071,6 +1071,10 @@ in {
                 "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
                 "AI_DELEGATE_TIMEOUT_S=${toString ai.aiHarness.runtime.delegateTimeoutSeconds}"
                 "AI_DELEGATE_TIMEOUT_SLACK_S=${toString ai.aiHarness.runtime.delegateInnerSlackSeconds}"
+                # Local slot retry: wait up to 4×15s=60s for llama.cpp to free when remote is also rate-limited.
+                "AI_DELEGATE_LOCAL_SLOT_BUSY_MAX_RETRIES=4"
+                "AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_DELAY_S=15.0"
+                "AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_BUDGET_FLOOR_S=5.0"
                 "AI_SEMANTIC_CACHE_WARM_ON_START=${
                   if ai.aiHarness.runtime.cachePrewarm.startupWarmEnable
                   then "true"
