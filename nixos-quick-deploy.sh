@@ -4291,10 +4291,8 @@ run_switch_mode_workflow() {
     log "Switching system configuration"
     # Free any blocked AI stack ports before rebuild (prevents systemd service failures)
     free_blocked_ai_ports
-    # NIXOS_REPO_PATH + --impure lets the flake see gitignored deploy-options.local.nix
-    # via absolute filesystem path resolution (builtins.getEnv + builtins.pathExists).
-    run_timed_step "System Switch" run_privileged env NIXOS_REPO_PATH="${REPO_ROOT}" \
-      nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}" --impure
+    run_timed_step "System Switch" run_privileged \
+      nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
   else
     log "Skipping system switch (--skip-system-switch)"
   fi

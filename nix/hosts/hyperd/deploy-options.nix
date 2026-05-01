@@ -2,7 +2,7 @@
 {
   config = lib.mkIf (config.mySystem.profile == "ai-dev") {
     mySystem.aiStack.switchboard = {
-      remoteUrl = lib.mkDefault "https://openrouter.ai/api";
+      remoteUrl = lib.mkForce null;
       remoteModelAliases.free = lib.mkDefault "qwen/qwen3-next-80b-a3b-instruct:free";
       remoteModelAliases.gemini = lib.mkDefault "qwen/qwen3-next-80b-a3b-instruct:free";
       remoteModelAliases.coding = lib.mkDefault "qwen/qwen3-coder:free";
