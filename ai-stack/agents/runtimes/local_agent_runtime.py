@@ -120,6 +120,58 @@ def _write_state(state: dict) -> None:
         p.write_text(json.dumps(state))
 
 
+def _build_inference_payload(messages: list[dict]) -> dict:
+    payload: dict = {
+        "messages": messages,
+        "temperature": TEMPERATURE,
+        "max_tokens": MAX_TOKENS,
+        "stream": False,
+        "stop": STOP_SEQUENCES,
+    }
+    if TOOLS_ENABLED:
+        payload["tools"] = TOOL_SCHEMAS
+        payload["tool_choice"] = "auto"
+    return payload
+
+
+def _payload_for_direct_llama(payload: dict) -> dict:
+    sanitized = dict(payload)
+    sanitized.pop("tools", None)
+    sanitized.pop("tool_choice", None)
+    return sanitized
+
+
+async def _post_completion_with_fallback(
+    client: httpx.AsyncClient,
+    *,
+    payload: dict,
+    headers: dict,
+    state: dict,
+) -> httpx.Response:
+    inference_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+    try:
+        return await client.post(inference_url, json=payload, headers=headers)
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        state["fallback_backend"] = "llama.cpp"
+        state["fallback_reason"] = "switchboard_unreachable"
+        _write_state(state)
+        return await client.post(
+            f"{LLAMA_CPP_URL}/v1/chat/completions",
+            json=_payload_for_direct_llama(payload),
+            headers={},
+        )
+
+
+def _streaming_payload(messages: list[dict]) -> dict:
+    return {
+        "messages": messages,
+        "temperature": TEMPERATURE,
+        "max_tokens": MAX_TOKENS,
+        "stream": True,
+        "stop": STOP_SEQUENCES,
+    }
+
+
 async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> str:
     """Execute a harness tool call and return a plaintext result string."""
     try:
@@ -183,16 +235,6 @@ async def run() -> None:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": task_content},
         ]
-        inference_base: dict = {
-            "temperature": TEMPERATURE,
-            "max_tokens": MAX_TOKENS,
-            "stream": False,
-            "stop": STOP_SEQUENCES,
-        }
-        if TOOLS_ENABLED:
-            inference_base["tools"] = TOOL_SCHEMAS
-            inference_base["tool_choice"] = "auto"
-
         profile = "local-tool-calling" if TOOLS_ENABLED else _profile_for_role(AGENT_ROLE)
         headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
         content = ""
@@ -201,18 +243,31 @@ async def run() -> None:
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
             if STREAMING_MODE:
                 content_parts = []
-                async with client.stream(
-                    "POST",
-                    f"{SWITCHBOARD_URL}/v1/chat/completions",
-                    json={
-                        "messages": messages,
-                        "temperature": TEMPERATURE,
-                        "max_tokens": MAX_TOKENS,
-                        "stream": True,
-                        "stop": STOP_SEQUENCES,
-                    },
-                    headers=headers,
-                ) as sresp:
+                stream_payload = _streaming_payload(messages)
+                stream_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+                stream_headers = headers
+                try:
+                    stream_ctx = client.stream(
+                        "POST",
+                        stream_url,
+                        json=stream_payload,
+                        headers=stream_headers,
+                    )
+                    sresp = await stream_ctx.__aenter__()
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    state["fallback_backend"] = "llama.cpp"
+                    state["fallback_reason"] = "switchboard_unreachable"
+                    _write_state(state)
+                    stream_url = f"{LLAMA_CPP_URL}/v1/chat/completions"
+                    stream_headers = {}
+                    stream_ctx = client.stream(
+                        "POST",
+                        stream_url,
+                        json=_payload_for_direct_llama(stream_payload),
+                        headers=stream_headers,
+                    )
+                    sresp = await stream_ctx.__aenter__()
+                try:
                     sresp.raise_for_status()
                     async for raw_line in sresp.aiter_lines():
                         raw_line = raw_line.strip()
@@ -234,6 +289,8 @@ async def run() -> None:
                                 sys.stdout.flush()
                         except Exception:
                             pass
+                finally:
+                    await stream_ctx.__aexit__(None, None, None)
                 content = "".join(content_parts)
                 state.update({
                     "status": "completed",
@@ -251,24 +308,12 @@ async def run() -> None:
 
             max_rounds = MAX_TOOL_ROUNDS if TOOLS_ENABLED else 1
             for _round in range(max_rounds):
-                # Try switchboard first; fall back to llama.cpp directly on connection error.
-                # Switchboard being offline should not hard-fail local delegation.
-                _inference_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
-                _inference_headers = headers
-                try:
-                    resp = await client.post(
-                        _inference_url,
-                        json={"messages": messages, **inference_base},
-                        headers=_inference_headers,
-                    )
-                except (httpx.ConnectError, httpx.ConnectTimeout):
-                    _inference_url = f"{LLAMA_CPP_URL}/v1/chat/completions"
-                    _inference_headers = {}  # llama.cpp has no profile routing header
-                    resp = await client.post(
-                        _inference_url,
-                        json={"messages": messages, **inference_base},
-                        headers=_inference_headers,
-                    )
+                resp = await _post_completion_with_fallback(
+                    client,
+                    payload=_build_inference_payload(messages),
+                    headers=headers,
+                    state=state,
+                )
                 resp.raise_for_status()
                 data = resp.json()
                 msg = data["choices"][0]["message"]
