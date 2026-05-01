@@ -1069,7 +1069,7 @@ Endpoints: `GET /control/model-fleet/status`, `GET /memory/journal`, `GET /memor
 
 ## Phase 16 — Identity Kernel
 
-Status: `pending`
+Status: `complete` (commit 008cd50a, 2026-05-01)
 Created: 2026-04-30
 Plan file: `.agents/plans/phase-16-identity-kernel.md`
 
@@ -1089,7 +1089,7 @@ Owner agents: qwen (implementation), Claude (review)
 
 ## Phase 17 — Closed-Loop Improver
 
-Status: `pending`
+Status: `complete` (commit 26e8307a, 2026-05-01)
 Created: 2026-04-30
 Plan file: `.agents/plans/phase-17-closed-loop-improver.md`
 
@@ -1110,7 +1110,7 @@ Owner agents: qwen (implementation), Claude (review + PRSI approval gate)
 
 ## Phase 18 — Agent Mesh Collective Memory
 
-Status: `pending`
+Status: `complete` (commit 9431637d, 2026-05-01)
 Created: 2026-04-30
 Plan file: `.agents/plans/phase-18-agent-mesh-collective-memory.md`
 
@@ -1130,7 +1130,7 @@ Owner agents: qwen (implementation), Claude (review)
 
 ## Phase 19 — Values Signals (Affective Layer)
 
-Status: `pending`
+Status: `complete` (commit 23b55e6d, 2026-05-01)
 Created: 2026-04-30
 Plan file: `.agents/plans/phase-19-values-signals.md`
 Dependency: Phase 16 (value_constitution.py must exist)
@@ -1153,7 +1153,7 @@ Owner agents: qwen (implementation), Claude (review)
 
 ## Phase 20 — World Model & Predictive Context Warming
 
-Status: `pending`
+Status: `complete` (commit cc753cba, 2026-05-01)
 Created: 2026-04-30
 Plan file: `.agents/plans/phase-20-world-model-predictive.md`
 Dependency: Phases 18 + 13 (knowledge base must be indexed)
