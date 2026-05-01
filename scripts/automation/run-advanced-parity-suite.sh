@@ -61,6 +61,8 @@ run "${ROOT}/scripts/testing/smoke-cross-client-compat.sh"
 run "${ROOT}/scripts/testing/smoke-focused-parity.sh"
 run "${ROOT}/scripts/testing/check-ai-coordinator-delegate-smoke.sh"
 run "${ROOT}/scripts/testing/test-local-orchestrator-frontdoor.sh"
+# Phase 17: closed-loop improver gate
+run "${ROOT}/scripts/testing/validate-autonomous-loop-gates.sh"
 # warn-only: remote routing is deliberately prefer_local=true on this hardware
 "${ROOT}/scripts/testing/check-remote-profiles.sh" || true
 

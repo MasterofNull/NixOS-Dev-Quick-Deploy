@@ -71,6 +71,18 @@ in {
       default = false;
       description = "Dry run mode - generate hypotheses but don't execute experiments";
     };
+
+    maxExperimentsPerCycle = lib.mkOption {
+      type = lib.types.int;
+      default = 3;
+      description = "Maximum number of experiments to execute per autonomous loop cycle.";
+    };
+
+    autoApplyBlastRadiusMax = lib.mkOption {
+      type = lib.types.enum [ "low" "medium" ];
+      default = "low";
+      description = "Maximum blast_radius allowed for auto-apply. Anything above this threshold is routed to the PRSI queue.";
+    };
   };
 
   config = lib.mkMerge [
@@ -104,6 +116,10 @@ in {
           POSTGRES_DB = mcp.postgres.database;
           POSTGRES_USER = mcp.postgres.user;
           LLM_URL = "http://localhost:${toString ai.llamaCpp.port}/v1/chat/completions";
+          # Phase 17: experiment budget + blast-radius cap
+          AUTONOMOUS_MAX_EXPERIMENTS = toString autonomous.maxExperimentsPerCycle;
+          AUTONOMOUS_AUTO_APPLY_BLAST_RADIUS_MAX = autonomous.autoApplyBlastRadiusMax;
+          PRSI_ARTIFACT_DIR = "${dataDir}/prsi-artifacts/runs";
         };
 
         script = ''
