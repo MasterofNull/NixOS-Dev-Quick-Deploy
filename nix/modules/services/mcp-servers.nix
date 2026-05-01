@@ -1066,6 +1066,8 @@ in {
                 "AI_RUN_DEFAULT_SAFETY_MODE=${ai.aiHarness.runtime.defaultSafetyMode}"
                 "AI_RUN_DEFAULT_TOKEN_LIMIT=${toString ai.aiHarness.runtime.defaultTokenLimit}"
                 "AI_RUN_DEFAULT_TOOL_CALL_LIMIT=${toString ai.aiHarness.runtime.defaultToolCallLimit}"
+                "AI_DELEGATE_TIMEOUT_S=${toString ai.aiHarness.runtime.delegateTimeoutSeconds}"
+                "AI_DELEGATE_TIMEOUT_SLACK_S=${toString ai.aiHarness.runtime.delegateInnerSlackSeconds}"
                 "AI_SEMANTIC_CACHE_WARM_ON_START=${
                   if ai.aiHarness.runtime.cachePrewarm.startupWarmEnable
                   then "true"
