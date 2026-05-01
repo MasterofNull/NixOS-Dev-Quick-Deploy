@@ -40,32 +40,33 @@ Against this repository's current AI stack implementation.
 | API auth hardening checks | Yes | Yes | Implemented | Added static+runtime auth-hardening check script for hybrid API path. |
 | Runtime SLO guardrails | Yes | Partial | Implemented | Added SLO config and runtime validator script (`config/ai-slo-thresholds.json`). |
 | Cross-client compatibility suite | Yes | Yes | Implemented | Added client matrix smoke across HTTP, RPC, and Python SDK. |
-| Persistent system identity (survives reboots) | Common in production agents | Partial via sessions | **Gap — Phase 16** | No append-only identity kernel; `GET /identity/self` does not exist. Plan: `phase-16-identity-kernel.md` |
-| Closed autonomous improvement loop | Partial (human-in-loop) | Not core | **Gap — Phase 17** | `autonomous_loop.py` has placeholder at lines 301–310; no real experiment executor. Plan: `phase-17-closed-loop-improver.md` |
-| Agent team collective memory (cross-session) | Common in multi-agent orchestrators | Not core | **Gap — Phase 18** | `agent_spawner.py` is stateless; no collaboration archive in AIDB. Plan: `phase-18-agent-mesh-collective-memory.md` |
-| Values/affective signals as behavioral modulators | Rare (experimental) | Not core | **Gap — Phase 19** | Value hierarchy defined in YAML but has no runtime effect. Plan: `phase-19-values-signals.md` |
-| Predictive context warming (intent forecasting) | Uncommon | Not core | **Gap — Phase 20** | No query-pattern index; no proactive cache warming. Plan: `phase-20-world-model-predictive.md` |
+| Persistent system identity (survives reboots) | Common in production agents | Partial via sessions | **Implemented — Phase 16** | Append-only JSONL journal; `GET /identity/self` live; checkpoint thread running. Commit: `008cd50a`. |
+| Closed autonomous improvement loop | Partial (human-in-loop) | Not core | **Implemented — Phase 17** | Real `ExperimentExecutor` + `SandboxValidator`; 8-gate CI guard. Commit: `26e8307a`. |
+| Agent team collective memory (cross-session) | Common in multi-agent orchestrators | Not core | **Implemented — Phase 18** | Redis blackboard + AIDB collaboration archive; experience replay pre-spawn. Commit: `9431637d`. |
+| Values/affective signals as behavioral modulators | Rare (experimental) | Not core | **Implemented — Phase 19** | Stateless signal detectors + reciprocity tracker + output modulator live. Commit: `23b55e6d`. |
+| Predictive context warming (intent forecasting) | Uncommon | Not core | **Implemented — Phase 20** | `query_sequence_patterns` table + 15-min systemd timer + `/world/forecast` endpoint live. Commit: `cc753cba`. |
 
-## AGI Scaffold Gap Assessment (2026-04-30)
+## AGI Scaffold Gap Assessment (2026-04-30 → RESOLVED 2026-05-01)
 
 Source: System Assessment via `aq-prime` full harness integration session.
 
-### Gaps by Severity
+### Gaps by Severity (all resolved)
 
-| Gap | Phase | Severity | Blocker? |
-|-----|-------|----------|---------|
-| `autonomous_loop.py` experiment execution is a placeholder | 17 | Critical | Blocks true autonomy |
-| No persistent identity kernel | 16 | High | Blocks values + prediction phases |
-| Agent spawner stateless, no collective team memory | 18 | High | Limits delegation quality |
-| Values have no computational form | 19 | Medium | Blocks "hand-in-glove" collaboration feel |
-| No predictive warming | 20 | Medium | Quality-of-life, not blocking |
+| Gap | Phase | Severity | Status |
+|-----|-------|----------|--------|
+| `autonomous_loop.py` experiment execution is a placeholder | 17 | Critical | **RESOLVED** — ExperimentExecutor + SandboxValidator deployed |
+| No persistent identity kernel | 16 | High | **RESOLVED** — append-only journal + checkpoint service live |
+| Agent spawner stateless, no collective team memory | 18 | High | **RESOLVED** — Redis blackboard + AIDB archive operational |
+| Values have no computational form | 19 | Medium | **RESOLVED** — signal detectors + output modulator active |
+| No predictive warming | 20 | Medium | **RESOLVED** — 15-min context warmer timer + pattern index live |
 
-### Recommended Execution Order
+### Post-AGI Operational Gaps (Phase 21)
 
-Phase 17 → Phase 16 → Phase 18 → Phase 19 → Phase 20
-
-Rationale: Phase 17 (closed-loop improver) is independent and highest-value. Phase 16
-(identity kernel) is prerequisite for 19. Phase 18 (agent mesh) is prerequisite for 20.
+| Gap | Severity | Notes |
+|-----|----------|-------|
+| `ai_coordinator_delegate` 32.6% success rate | High | Remote free-tier rate limits + local slot busy compound; retry backoff improved (commit pending) |
+| `deploy-options.local.nix` ignored by flake eval | Medium | gitignored file not accessible via `nix eval`; `mkForce` overrides silently ignored |
+| Hint injection volume low (1 in 7d) | Low | Anti-dominance guard not triggering; needs injection frequency increase |
 
 ## Newly Added Parity Closure
 
