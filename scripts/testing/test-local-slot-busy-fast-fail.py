@@ -66,7 +66,29 @@ def main() -> None:
         "expected delegate handler to return HTTP 503 for local_slot_busy",
     )
 
-    print("PASS: local-slot-busy fast-fail is wired end-to-end (switchboard → runtime → coordinator)")
+    # Coordinator: advances fallback chain to remote profiles on slot_busy
+    assert_true(
+        "_slot_busy_next_profile" in handlers_text,
+        "expected delegate handler to track slot_busy fallback profile",
+    )
+    assert_true(
+        "_lb_err.get(\"error\") == \"local_slot_busy\"" in handlers_text,
+        "expected delegate handler to detect local_slot_busy in spawn response",
+    )
+    assert_true(
+        "_is_remote_profile(c[\"profile\"])" in handlers_text,
+        "expected delegate handler to filter fallback chain to remote-only on slot_busy",
+    )
+    assert_true(
+        "delegation_slot_busy_advance" in handlers_text,
+        "expected delegate handler to log slot_busy advance event",
+    )
+    assert_true(
+        "_slot_busy_next_profile or selected_profile" in handlers_text,
+        "expected HTTP delegate path to pick up slot_busy advance profile",
+    )
+
+    print("PASS: local-slot-busy fast-fail is wired end-to-end (switchboard → runtime → coordinator → remote advance)")
 
 
 if __name__ == "__main__":
