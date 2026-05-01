@@ -25,6 +25,7 @@ from ai_coordinator import (
     detect_query_complexity,
     extract_task_from_openai_messages,
     get_routing_stats,
+    local_fallback_profile,
     merge_runtime_defaults,
     prune_runtime_registry,
     route_by_complexity,
@@ -53,6 +54,20 @@ def test_retrieval_prefers_local_when_requested():
     assert decision["task_archetype"] == "retrieval"
     assert decision["model_class"] == "lightweight"
     assert decision["recommended_profile"] == "embedded-assist"
+
+
+def test_local_fallback_profile_prefers_embedded_assist_for_lightweight_tasks():
+    assert local_fallback_profile("Search the docs and summarize the current switchboard status") == "embedded-assist"
+    assert local_fallback_profile("Continue the current repo review and summarize the next steps") == "embedded-assist"
+
+
+def test_local_fallback_profile_preserves_tool_calling_lane_when_tools_are_needed():
+    assert local_fallback_profile("Use tools to inspect the runtime", tools_present=True) == "local-tool-calling"
+    assert local_fallback_profile("ignored", requested_profile="local-tool-calling") == "local-tool-calling"
+
+
+def test_local_fallback_profile_uses_default_for_heavier_non_tool_work():
+    assert local_fallback_profile("Implement the coordinator patch and update validation") == "default"
 
 
 def test_implementation_routes_to_coding_lane():

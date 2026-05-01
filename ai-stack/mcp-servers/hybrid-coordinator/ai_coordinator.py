@@ -316,6 +316,14 @@ def prune_runtime_registry(registry: Dict[str, Any], now: int | None = None) -> 
 def infer_profile(task: str, requested_profile: str = "") -> str:
     profile = str(requested_profile or "").strip().lower()
 
+    if _frontdoor_routing_enabled():
+        if profile in {"default", "local", "local-hybrid", "continue-local"}:
+            return _frontdoor_profile("default")
+        if profile in {"explore", "exploration", "discover", "discovery"}:
+            return _frontdoor_profile("explore")
+        if profile in {"plan", "planner", "planning"}:
+            return _frontdoor_profile("plan")
+
     # Phase 0 Slice 0.1: Try route alias resolution first
     if _ROUTE_ALIASES_AVAILABLE and requested_profile:
         # Check if this is a route alias (case-insensitive)
@@ -328,13 +336,13 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
 
     # Existing profile resolution logic
     if profile in {"default", "local", "local-hybrid", "continue-local"}:
-        return _frontdoor_profile("default") if _frontdoor_routing_enabled() else "default"
+        return "default"
     if profile in {"embedded-assist", "embedded", "assist"}:
         return "embedded-assist"
     if profile in {"explore", "exploration", "discover", "discovery"}:
-        return _frontdoor_profile("explore") if _frontdoor_routing_enabled() else "remote-gemini"
+        return "remote-gemini"
     if profile in {"plan", "planner", "planning"}:
-        return _frontdoor_profile("plan") if _frontdoor_routing_enabled() else "remote-gemini"
+        return "remote-gemini"
     if profile == "local-tool-calling":
         return "local-tool-calling"
     if profile in {"remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
@@ -622,6 +630,28 @@ def route_by_complexity(
     })
 
     return decision
+
+
+def local_fallback_profile(
+    task: str,
+    *,
+    tools_present: bool = False,
+    requested_profile: str = "",
+) -> str:
+    """Choose the lightest viable local lane for delegated fallback."""
+    normalized = str(requested_profile or "").strip().lower()
+    if tools_present or normalized == "local-tool-calling":
+        return "local-tool-calling"
+
+    complexity_info = detect_query_complexity(task or "")
+    task_archetype = str(complexity_info.get("task_archetype", "general") or "general")
+    complexity = str(complexity_info.get("complexity", "simple") or "simple")
+
+    if task_archetype in {"planning", "retrieval", "continuation", "general"}:
+        return "embedded-assist"
+    if complexity in {"simple", "medium"}:
+        return "embedded-assist"
+    return "default"
 
 
 def get_routing_stats() -> Dict[str, Any]:

@@ -64,6 +64,7 @@ from ai_coordinator import (
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     build_empty_content_retry_messages as _ai_coordinator_build_empty_content_retry_messages,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
+    local_fallback_profile as _ai_coordinator_local_fallback_profile,
     route_by_complexity as _ai_coordinator_route_by_complexity,
 )
 from delegation_feedback import (
@@ -672,6 +673,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         # Phase 14.2: default prefer_local=False — remote free-tier agents are ~10x faster
         # than local llama.cpp (90-120s). Local is only used when explicitly requested.
         prefer_local = bool(data.get("prefer_local", False))
+        tools_present = isinstance(data.get("tools"), list) and len(data.get("tools") or []) > 0
 
         # Phase 14.2: Support legacy agent_type field by mapping to profile
         if not requested_profile:
@@ -710,11 +712,17 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         if _is_remote_profile(selected_profile):
             cached_avail = _remote_avail_cache_get(selected_profile)
             if cached_avail is False:
-                logger.info(
-                    "delegate: remote profile %s cached as unavailable, falling back to local",
-                    selected_profile,
+                local_fallback_profile = _ai_coordinator_local_fallback_profile(
+                    task,
+                    tools_present=tools_present,
+                    requested_profile=requested_profile,
                 )
-                selected_profile = "local-tool-calling"
+                logger.info(
+                    "delegate: remote profile %s cached as unavailable, falling back to %s",
+                    selected_profile,
+                    local_fallback_profile,
+                )
+                selected_profile = local_fallback_profile
                 routing_decision = dict(routing_decision)
                 routing_decision["recommended_profile"] = selected_profile
                 routing_decision["rationale"] = routing_decision.get("rationale", "") + " [local-fallback:remote-cached-unavailable]"
@@ -734,6 +742,23 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         swb_state = await _switchboard_ai_coordinator_state()
         remote_aliases = swb_state.get("remote_aliases", {})
         remote_configured = bool(swb_state.get("remote_configured", False))
+        if _is_remote_profile(selected_profile) and not remote_configured:
+            selected_profile = _ai_coordinator_local_fallback_profile(
+                task,
+                tools_present=tools_present,
+                requested_profile=requested_profile,
+            )
+            selected_runtime_id = _ai_coordinator_default_runtime_id_for_profile(selected_profile)
+            routing_decision = dict(routing_decision)
+            routing_decision["recommended_profile"] = selected_profile
+            routing_decision["rationale"] = (
+                f"{routing_decision.get('rationale', '')} [local-fallback:remote-not-configured]"
+            ).strip()
+            async with _runtime_registry_lock:
+                registry = await _load_runtime_registry()
+                runtime = (registry.get("runtimes", {}) or {}).get(selected_runtime_id)
+            if not isinstance(runtime, dict):
+                return web.json_response({"error": "runtime not found"}, status=404)
         runtime = _apply_remote_runtime_status(runtime, selected_runtime_id, remote_aliases, remote_configured)
 
         status = str(runtime.get("status", "unknown")).strip().lower()
@@ -1456,7 +1481,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             )
         )
         if local_fallback_needed:
-            local_profile = "local-tool-calling" if isinstance(payload.get("tools"), list) and payload.get("tools") else "default"
+            local_profile = _ai_coordinator_local_fallback_profile(
+                task,
+                tools_present=isinstance(payload.get("tools"), list) and len(payload.get("tools") or []) > 0,
+                requested_profile=requested_profile,
+            )
             local_runtime_id = _ai_coordinator_default_runtime_id_for_profile(local_profile)
             local_payload = dict(payload)
             local_payload.pop("model", None)
