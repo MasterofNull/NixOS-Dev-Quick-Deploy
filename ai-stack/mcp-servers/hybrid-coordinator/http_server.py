@@ -1958,6 +1958,35 @@ async def run_http_mode(port: int) -> None:
     identity_handlers.register_routes(http_app)
     affective_handlers.register_routes(http_app)  # Phase 19: values signals
 
+    # Phase 20: World Model — /world/forecast (inline handler)
+    async def handle_world_forecast(request):
+        """GET /world/forecast — current intent predictions + latest warming log."""
+        import json as _json
+        _wm_dir = str(Path(__file__).resolve().parent.parent.parent / "world-model")
+        if _wm_dir not in sys.path:
+            sys.path.insert(0, _wm_dir)
+        forecast_data = {"predictions": [], "sources": [], "warming_log": None}
+        try:
+            from intent_forecaster import IntentForecaster as _IF  # noqa: PLC0415
+            result = _IF().forecast()
+            forecast_data["predictions"] = result.predictions
+            forecast_data["sources"] = result.sources
+        except Exception as _exc:
+            logger.debug("world_forecast forecaster error (non-fatal): %s", _exc)
+        try:
+            _log_path = os.path.join(
+                os.environ.get("DATA_DIR", "/var/lib/ai-stack/hybrid"),
+                "telemetry", "world-model-warm-latest.json",
+            )
+            if os.path.exists(_log_path):
+                with open(_log_path) as _f:
+                    forecast_data["warming_log"] = _json.load(_f)
+        except Exception:
+            pass
+        return web.json_response(forecast_data)
+
+    http_app.router.add_get("/world/forecast", handle_world_forecast)
+
     # Phase 2.4: Register YAML workflow routes
     if YAML_WORKFLOWS_AVAILABLE:
         try:

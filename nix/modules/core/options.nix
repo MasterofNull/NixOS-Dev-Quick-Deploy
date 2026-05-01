@@ -3107,6 +3107,28 @@
         };
       };
 
+      worldModel = {
+        enable = lib.mkEnableOption "Predictive context warming / world model (Phase 20)";
+
+        warmThreshold = lib.mkOption {
+          type = lib.types.str;
+          default = "0.4";
+          description = "Minimum confidence score for a predicted query to be warmed (0.0–1.0).";
+        };
+
+        maxWarmQueriesPerRun = lib.mkOption {
+          type = lib.types.int;
+          default = 5;
+          description = "Maximum number of queries to warm per timer run.";
+        };
+
+        patternRetentionDays = lib.mkOption {
+          type = lib.types.int;
+          default = 7;
+          description = "Days to retain query-sequence pattern rows before pruning.";
+        };
+      };
+
       agentMesh = {
         enable = lib.mkEnableOption "Agent mesh collective memory (Phase 18)";
 
