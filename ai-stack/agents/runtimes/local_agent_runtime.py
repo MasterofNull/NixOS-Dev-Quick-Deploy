@@ -128,6 +128,8 @@ def _build_inference_payload(messages: list[dict]) -> dict:
         "stream": False,
         "stop": STOP_SEQUENCES,
     }
+    if not _thinking_on:
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
     if TOOLS_ENABLED:
         payload["tools"] = TOOL_SCHEMAS
         payload["tool_choice"] = "auto"
@@ -163,13 +165,16 @@ async def _post_completion_with_fallback(
 
 
 def _streaming_payload(messages: list[dict]) -> dict:
-    return {
+    payload = {
         "messages": messages,
         "temperature": TEMPERATURE,
         "max_tokens": MAX_TOKENS,
         "stream": True,
         "stop": STOP_SEQUENCES,
     }
+    if not _thinking_on:
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    return payload
 
 
 async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> str:

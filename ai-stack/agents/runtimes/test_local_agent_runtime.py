@@ -154,8 +154,25 @@ def test_post_completion_falls_back_to_llama_and_strips_tool_payload():
     assert fake_client.post_calls[1]["headers"] == {}
     assert "tools" not in fake_client.post_calls[1]["json"]
     assert "tool_choice" not in fake_client.post_calls[1]["json"]
+    assert fake_client.post_calls[1]["json"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert state["fallback_backend"] == "llama.cpp"
     assert state["fallback_reason"] == "switchboard_unreachable"
+
+
+def test_build_inference_payload_disables_thinking_when_runtime_is_off():
+    module = _load_runtime(AGENT_THINKING_MODE="off")
+
+    payload = module._build_inference_payload([{"role": "user", "content": "Answer briefly."}])
+
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_build_inference_payload_omits_thinking_override_when_runtime_is_on():
+    module = _load_runtime(AGENT_THINKING_MODE="on")
+
+    payload = module._build_inference_payload([{"role": "user", "content": "Reason carefully."}])
+
+    assert "chat_template_kwargs" not in payload
 
 
 def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable():
