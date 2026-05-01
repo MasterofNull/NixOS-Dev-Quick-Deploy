@@ -39,6 +39,19 @@ def main() -> int:
         '"type": "local_model_loading"' in switchboard_text,
         "switchboard should classify the local llama.cpp warmup state explicitly",
     )
+    assert_true(
+        'profile not in ("continue-local", "embedded-assist")' in switchboard_text,
+        "switchboard should scope forced no-think handling to lightweight local profiles",
+    )
+    assert_true(
+        'kwargs["enable_thinking"] = False' in switchboard_text,
+        "switchboard should disable thinking explicitly for lightweight local profiles",
+    )
+    runtime_text = (ROOT / "ai-stack" / "agents" / "runtimes" / "local_agent_runtime.py").read_text(encoding="utf-8")
+    assert_true(
+        'payload["chat_template_kwargs"] = {"enable_thinking": False}' in runtime_text,
+        "local agent runtime should disable thinking explicitly when routed in no-think mode",
+    )
 
     sys.path.insert(0, str(HYBRID_DIR))
     os.environ["AI_STRICT_ENV"] = "false"

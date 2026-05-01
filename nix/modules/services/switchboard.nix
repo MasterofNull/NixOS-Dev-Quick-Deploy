@@ -614,6 +614,20 @@ let
             payload["model"] = alias_model
         return payload
 
+    def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str) -> dict:
+        if not isinstance(payload, dict) or target_type != "local":
+            return payload
+        if profile not in ("continue-local", "embedded-assist"):
+            return payload
+        kwargs = payload.get("chat_template_kwargs")
+        if not isinstance(kwargs, dict):
+            kwargs = {}
+        if "enable_thinking" not in kwargs:
+            kwargs = dict(kwargs)
+            kwargs["enable_thinking"] = False
+            payload["chat_template_kwargs"] = kwargs
+        return payload
+
     def _effective_profile(request: Request) -> str:
         profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
         if not profile:
@@ -1373,6 +1387,7 @@ let
 
         if isinstance(payload, dict):
             payload = _rewrite_model(payload, profile)
+            payload = _apply_local_thinking_profile(payload, profile, target_type)
             if path == "chat/completions":
                 msgs = payload.get("messages")
                 if isinstance(msgs, list):
