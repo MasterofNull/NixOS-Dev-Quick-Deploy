@@ -363,6 +363,10 @@ let
   # Phase 21.1 — OTEL collector config with Tempo exporter for trace persistence.
   # Traces are forwarded to Grafana Tempo for storage and querying.
   otelCollectorConfig = pkgs.writeText "ai-otel-collector.yaml" ''
+    extensions:
+      health_check:
+        endpoint: 127.0.0.1:${toString ports.otelCollectorHealth}
+
     receivers:
       otlp:
         protocols:
@@ -385,6 +389,7 @@ let
           insecure: true
 
     service:
+      extensions: [health_check]
       telemetry:
         logs:
           level: "warn"
