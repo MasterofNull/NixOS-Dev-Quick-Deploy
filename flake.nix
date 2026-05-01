@@ -67,7 +67,14 @@
       hostDefaultPath = hostName: hostPath hostName + "/default.nix";
       hostHardwarePath = hostName: hostPath hostName + "/hardware-configuration.nix";
       hostDeployOptionsPath = hostName: hostPath hostName + "/deploy-options.nix";
-      hostDeployOptionsLocalPath = hostName: hostPath hostName + "/deploy-options.local.nix";
+      # When NIXOS_REPO_PATH is set (impure rebuild), resolve deploy-options.local.nix
+      # against the real filesystem so gitignored override files are visible to builtins.pathExists.
+      _repoEnvPath = builtins.getEnv "NIXOS_REPO_PATH";
+      hostDeployOptionsLocalPath = hostName:
+        let absLocal = "${_repoEnvPath}/nix/hosts/${hostName}/deploy-options.local.nix";
+        in if _repoEnvPath != "" && builtins.pathExists absLocal
+           then absLocal
+           else hostPath hostName + "/deploy-options.local.nix";
       hostHomePath = hostName: hostPath hostName + "/home.nix";
       hostHomeDeployOptionsPath = hostName: hostPath hostName + "/home-deploy-options.nix";
 
