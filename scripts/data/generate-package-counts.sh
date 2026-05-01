@@ -62,15 +62,24 @@ prepare_filtered_flake_ref() {
   case "${FLAKE_REF}" in
     "path:."|"path:${PROJECT_ROOT}")
       PROJECTED_FLAKE_DIR="$(mktemp -d)"
-      tar \
-        --exclude='.git' \
-        --exclude='.aidb' \
-        --exclude='.coverage' \
-        --exclude='.cache' \
-        --exclude='.direnv' \
-        --exclude='result' \
-        --exclude='result-*' \
-        -cf - -C "${PROJECT_ROOT}" . | tar -xf - -C "${PROJECTED_FLAKE_DIR}"
+      if command -v git >/dev/null 2>&1 && git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        # Copy only tracked and non-ignored worktree files. This keeps flake
+        # evaluation aligned with the current repo state without dragging large
+        # ignored artifacts through the projection step.
+        git -C "${PROJECT_ROOT}" ls-files -z --cached --others --exclude-standard \
+          | tar -C "${PROJECT_ROOT}" --null -T - -cf - \
+          | tar -xf - -C "${PROJECTED_FLAKE_DIR}"
+      else
+        tar \
+          --exclude='.git' \
+          --exclude='.aidb' \
+          --exclude='.coverage' \
+          --exclude='.cache' \
+          --exclude='.direnv' \
+          --exclude='result' \
+          --exclude='result-*' \
+          -cf - -C "${PROJECT_ROOT}" . | tar -xf - -C "${PROJECTED_FLAKE_DIR}"
+      fi
       FLAKE_REF="path:${PROJECTED_FLAKE_DIR}"
       ;;
   esac
