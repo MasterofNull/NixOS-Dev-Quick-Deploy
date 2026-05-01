@@ -22,6 +22,14 @@ from ai_coordinator import (
     coerce_orchestration_context as _ai_coordinator_coerce_orchestration_context,
     route_by_complexity as _ai_coordinator_route_by_complexity,
 )
+from orchestration_utils import (
+    _ORCHESTRATION_LANES,
+    _ORCHESTRATION_COLLABORATOR_LANES,
+    _ORCHESTRATION_REVIEW_LANES,
+    _ORCHESTRATION_ESCALATION_LANES,
+    _ORCHESTRATION_CONSENSUS_MODES,
+    _ORCHESTRATION_SELECTION_STRATEGIES,
+)
 from config import Config
 
 logger = logging.getLogger("hybrid-coordinator")
