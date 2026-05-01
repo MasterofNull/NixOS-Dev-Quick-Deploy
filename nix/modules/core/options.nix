@@ -1813,6 +1813,26 @@
             description = "Hard cap (seconds) on LLM generation within /query. On timeout, returns vector results without generation (truncated=true). Prevents route_search P95 from being driven by slow inference.";
           };
 
+          delegateTimeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 240;
+            description = ''
+              Outer timeout (seconds) for delegated coordinator requests. This
+              bounds the full delegate path, including subprocess startup,
+              inference, finalization, and response marshaling.
+            '';
+          };
+
+          delegateInnerSlackSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 30;
+            description = ''
+              Reserved slack (seconds) between the delegated request timeout and
+              the inner local-agent inference timeout. Keeps process startup and
+              teardown overhead from consuming the full delegate budget.
+            '';
+          };
+
           safetyPolicy = lib.mkOption {
             type = lib.types.attrs;
             default = {

@@ -871,6 +871,8 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             payload["temperature"] = float(data.get("temperature"))
 
         timeout_s = float(data.get("timeout_s") or float(os.getenv("AI_DELEGATE_TIMEOUT_S", "240")))  # Phase 12.1: increased from 180 for llama.cpp 90-120s inference
+        delegate_timeout_slack_s = float(os.getenv("AI_DELEGATE_TIMEOUT_SLACK_S", "30"))
+        local_agent_timeout_s = max(1.0, timeout_s - min(delegate_timeout_slack_s, max(1.0, timeout_s * 0.125)))
         finalization_applied = False
         finalization_status_code = None
         openrouter_empty_content_retries = 0
@@ -890,6 +892,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         async def _spawn_local_agent(
             role: str, task_text: str, system_prompt: str,
             max_tokens: int, temperature: float, timeout_sec: float,
+            agent_timeout_sec: Optional[float] = None,
             sse_request: Optional[web.Request] = None,
         ) -> web.Response:
             """Spawn a local agent subprocess and wait for result.
@@ -925,7 +928,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 "AGENT_STATE_FILE": str(agent_state_file),
                 "AGENT_MAX_TOKENS": str(max_tokens),
                 "AGENT_TEMPERATURE": str(temperature),
-                "AGENT_TIMEOUT": str(timeout_sec),
+                "AGENT_TIMEOUT": str(agent_timeout_sec if agent_timeout_sec is not None else timeout_sec),
                 # Enable thinking mode only when caller requests and model supports it.
                 "AGENT_THINKING_MODE": str(data.get("thinking_mode", "off")) if _think_supported else "off",
                 # Model-agnostic stop sequences and no-think prefix from model-catalog.yaml.
@@ -1076,6 +1079,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 max_tokens=int(data.get("max_tokens", 768)),
                 temperature=float(data.get("temperature", 0.3)),
                 timeout_sec=timeout_s,
+                agent_timeout_sec=local_agent_timeout_s,
             )
 
             # Phase 8.9 — Streaming dispatch: SSE token stream to caller.
