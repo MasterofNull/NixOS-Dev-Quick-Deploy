@@ -77,6 +77,7 @@ from delegation_handlers import (
     _apply_remote_runtime_status,
     _assess_delegated_response_quality,
     _build_delegation_fallback_chain,
+    _extract_delegated_response_text,
     _inject_delegated_response_text,
     _is_remote_profile,
     _optimize_delegated_messages,
@@ -86,6 +87,8 @@ from delegation_handlers import (
     _select_agent_pool_candidate,
     _select_next_available_delegation_target,
 )
+import model_fleet_manager as _mfm
+import agentic_memory_journal as _journal
 from real_time_learning_engine import (
     _GAP_DETECTOR,
     _build_gap_failure_text,
@@ -1192,6 +1195,16 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             # Add failed profile to exclusion list
             excluded_profiles.add(effective_profile)
 
+            # Phase 15.1: Record per-model error for the failing model in fleet state
+            _failing_model = (pool_agent.model_id if pool_agent else "") or payload.get("model", "")
+            if _failing_model:
+                _err_msg_init = str((initial_body.get("error") or {}).get("message", ""))[:200]
+                asyncio.create_task(_mfm.record_error(
+                    _failing_model,
+                    error_code=response.status_code,
+                    error_msg=_err_msg_init,
+                ))
+
             # Build and use failover chain
             failover_chain = _build_delegation_fallback_chain(
                 task,
@@ -1587,6 +1600,47 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 )
             elif response.status_code < 400:
                 _remote_avail_cache_set(effective_profile, True)
+
+        # Phase 15.1 + 15.3: Fleet model state update + agentic memory journal write
+        _delegate_model_id = (pool_agent.model_id if pool_agent else "") or payload.get("model", "")
+        _delegate_latency_ms = max(0.0, (time.perf_counter() - request_started_at) * 1000.0)
+        _fleet_entry = _mfm.get_model_entry(_delegate_model_id)
+        if _delegate_model_id:
+            if response.status_code < 400:
+                asyncio.create_task(_mfm.record_success(
+                    _delegate_model_id,
+                    latency_ms=_delegate_latency_ms,
+                    tokens_out=int((body.get("usage") or {}).get("completion_tokens", 0) or 0),
+                ))
+            else:
+                asyncio.create_task(_mfm.record_error(
+                    _delegate_model_id,
+                    error_code=response.status_code,
+                    error_msg=str((body.get("error") or {}).get("message", ""))[:200],
+                ))
+        asyncio.create_task(_journal.write_entry(
+            task_summary=task,
+            task_archetype=_mfm.infer_capability_from_task(task, effective_profile),
+            model_id=_delegate_model_id or effective_profile,
+            provider=_fleet_entry.provider if _fleet_entry else "",
+            tier=_fleet_entry.tier if _fleet_entry else (
+                "local" if not _is_remote_profile(effective_profile) else "remote"
+            ),
+            profile=effective_profile,
+            runtime_id=effective_runtime_id,
+            agent_role=str(routing_decision.get("task_archetype", "implementer") or "implementer"),
+            success=response.status_code < 400,
+            error_code=response.status_code if response.status_code >= 400 else 0,
+            error_msg=str((body.get("error") or {}).get("message", ""))[:200] if response.status_code >= 400 else "",
+            latency_ms=_delegate_latency_ms,
+            tokens_in=int((body.get("usage") or {}).get("prompt_tokens", 0) or 0),
+            tokens_out=int((body.get("usage") or {}).get("completion_tokens", 0) or 0),
+            outcome_summary=(_extract_delegated_response_text(body) or "")[:300],
+            session_id=str(request.get("request_id", "") or ""),
+            task_id=str(data.get("task_id") or request.get("request_id", "") or ""),
+            fallback_used=fallback_applied,
+            fallback_from=next(iter(excluded_profiles), "") if fallback_applied else "",
+        ))
 
         _record_capability_gap_outcomes(
             capability_gaps,
