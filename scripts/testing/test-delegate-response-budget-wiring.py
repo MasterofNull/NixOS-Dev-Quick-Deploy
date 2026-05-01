@@ -38,6 +38,18 @@ def main() -> None:
         'payload["max_tokens"] = delegated_max_tokens' in handlers_text,
         "expected delegate handler to inject bounded delegated max_tokens into the payload",
     )
+    assert_true(
+        "def _should_short_circuit_to_continue_local_http(" in handlers_text,
+        "expected delegate handler to define a short-circuit helper for tiny local delegate asks",
+    )
+    assert_true(
+        'selected_profile = "continue-local"' in handlers_text,
+        "expected tiny local delegate asks to bypass subprocess spawn onto continue-local HTTP",
+    )
+    assert_true(
+        "[local-fast-path:continue-local-http]" in handlers_text,
+        "expected delegate routing rationale to record continue-local HTTP fast-path selection",
+    )
 
     print("PASS: delegated response budget is wired into coordinator dispatch")
 
