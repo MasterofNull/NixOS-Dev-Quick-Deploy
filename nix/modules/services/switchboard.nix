@@ -394,7 +394,7 @@ let
     LOCAL_READ_TIMEOUT_S = float(os.environ.get("SWB_LOCAL_READ_TIMEOUT_S", "900"))
     REMOTE_READ_TIMEOUT_S = float(os.environ.get("SWB_REMOTE_READ_TIMEOUT_S", "300"))
     STREAM_READ_TIMEOUT_S = float(os.environ.get("SWB_STREAM_READ_TIMEOUT_S", "1800"))
-    LOCAL_CONCURRENCY = max(1, int(os.environ.get("SWB_LOCAL_CONCURRENCY", "2")))
+    LOCAL_CONCURRENCY = max(1, int(os.environ.get("SWB_LOCAL_CONCURRENCY", "1")))
     REMOTE_CONCURRENCY = max(1, int(os.environ.get("SWB_REMOTE_CONCURRENCY", "4")))
     CONTINUE_LOCAL_MAX_INPUT_TOKENS = max(256, int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS", "${toString swb.continueLocal.maxInputTokens}")))
     CONTINUE_LOCAL_MAX_MESSAGES = max(2, int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_MESSAGES", "${toString swb.continueLocal.maxMessages}")))
@@ -1478,6 +1478,29 @@ let
 
         timeout = _timeout_for(target_type, is_stream)
         sem = _remote_sem if target_type == "remote" else _local_sem
+
+        # Fast-fail when the local inference slot is already fully occupied.
+        # llama.cpp runs with --parallel 1 (one slot); queuing behind a large
+        # in-flight prompt (4-7 min prefill) causes silent hangs for all callers
+        # (IDE chat, continue-local, local-agent).  Asyncio is single-threaded
+        # so the _value peek is race-free — no await between check and acquire.
+        if (
+            path == "chat/completions"
+            and target_type == "local"
+            and _local_sem is not None
+            and _local_sem._value <= 0
+        ):
+            return JSONResponse(
+                status_code=503,
+                headers={"Retry-After": "30", "X-AI-Upstream-State": "busy"},
+                content={
+                    "error": {
+                        "message": "local inference slot busy — request rejected to prevent silent hang",
+                        "type": "local_slot_busy",
+                        "retry_after_s": 30,
+                    }
+                },
+            )
 
         try:
             async with sem:

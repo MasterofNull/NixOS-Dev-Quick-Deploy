@@ -1017,6 +1017,23 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
 
             if proc.returncode != 0:
                 error_msg = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+                parsed_error = None
+                try:
+                    parsed_error = json.loads(error_msg)
+                except Exception:
+                    parsed_error = None
+                if isinstance(parsed_error, dict) and parsed_error.get("error") == "local_agent_timeout":
+                    return web.json_response({
+                        "error": "local_agent_timeout",
+                        "agent_id": parsed_error.get("agent_id", agent_id),
+                        "timeout_s": timeout_sec,
+                    }, status=504)
+                if isinstance(parsed_error, dict) and parsed_error.get("error") == "local_slot_busy":
+                    return web.json_response({
+                        "error": "local_slot_busy",
+                        "agent_id": parsed_error.get("agent_id", agent_id),
+                        "retry_after_s": 30,
+                    }, status=503)
                 return web.json_response({
                     "error": "local_agent_failed",
                     "agent_id": agent_id,

@@ -187,3 +187,21 @@ def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable():
     assert fake_client.stream_calls[1]["url"] == "http://llama.test/v1/chat/completions"
     assert fake_client.stream_calls[1]["headers"] == {}
 
+
+def test_run_reports_named_timeout_for_empty_timeout_exceptions():
+    module = _load_runtime()
+    fake_client = _FakeAsyncClient(post_plan=[httpx.ReadTimeout("")])
+    module.httpx.AsyncClient = lambda timeout: fake_client
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            asyncio.run(module.run())
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected local agent runtime to exit on timeout")
+
+    payload = json.loads(stderr.getvalue().strip())
+    assert payload["error"] == "local_agent_timeout"
