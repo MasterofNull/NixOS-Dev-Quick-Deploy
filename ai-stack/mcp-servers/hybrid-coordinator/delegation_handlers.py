@@ -640,6 +640,35 @@ def _ensure_system_message(messages: List[Dict[str, Any]]) -> List[Dict[str, Any
     return [{"role": "system", "content": "Use the supplied context conservatively and prefer direct evidence."}, *[dict(message) for message in messages]]
 
 
+def _should_skip_progressive_context_for_tiny_local_reply(
+    *,
+    profile_name: str,
+    context_budget: int,
+    messages: List[Dict[str, Any]],
+) -> bool:
+    normalized_profile = str(profile_name or "").strip().lower()
+    if normalized_profile not in {"default", "continue-local", "embedded-assist"}:
+        return False
+    if int(context_budget or 0) > 48:
+        return False
+
+    latest_user = ""
+    for message in reversed(messages):
+        if str(message.get("role", "")).strip() == "user":
+            latest_user = _message_content_text(message).strip()
+            if latest_user:
+                break
+    if not latest_user:
+        return False
+
+    lowered = latest_user.lower()
+    return (
+        " only" in lowered
+        and len(latest_user.split()) <= 12
+        and any(token in lowered for token in ("reply", "respond", "return"))
+    )
+
+
 async def _apply_progressive_context(
     task: str,
     messages: List[Dict[str, Any]],
@@ -650,6 +679,12 @@ async def _apply_progressive_context(
 ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
     if not messages:
         return messages, {"applied": False}
+    if _should_skip_progressive_context_for_tiny_local_reply(
+        profile_name=profile_name,
+        context_budget=context_budget,
+        messages=messages,
+    ):
+        return messages, {"applied": False, "skipped_for_tiny_local_reply": True}
 
     category = _infer_progressive_context_category(task, context)
     budget = max(200, int(context_budget or 0) or 0)
@@ -726,6 +761,12 @@ def _optimize_delegated_messages(
 ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
     if not messages:
         return messages, {"applied": False}
+    if _should_skip_progressive_context_for_tiny_local_reply(
+        profile_name=profile_name,
+        context_budget=0,
+        messages=messages,
+    ):
+        return messages, {"applied": False, "skipped_for_tiny_local_reply": True}
 
     optimized = [dict(message) for message in messages]
     original_tokens = _estimate_message_tokens(optimized)

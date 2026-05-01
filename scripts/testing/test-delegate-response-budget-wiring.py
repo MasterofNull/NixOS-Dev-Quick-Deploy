@@ -7,6 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COORDINATOR = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py"
 HANDLERS = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator_handlers.py"
+DELEGATION = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/delegation_handlers.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -17,6 +18,7 @@ def assert_true(condition: bool, message: str) -> None:
 def main() -> None:
     coordinator_text = COORDINATOR.read_text(encoding="utf-8")
     handlers_text = HANDLERS.read_text(encoding="utf-8")
+    delegation_text = DELEGATION.read_text(encoding="utf-8")
 
     assert_true(
         "def delegated_response_budget(" in coordinator_text,
@@ -49,6 +51,26 @@ def main() -> None:
     assert_true(
         "[local-fast-path:continue-local-http]" in handlers_text,
         "expected delegate routing rationale to record continue-local HTTP fast-path selection",
+    )
+    assert_true(
+        "def _should_skip_progressive_context_for_tiny_local_reply(" in delegation_text,
+        "expected delegation helpers to define a tiny-local-reply context skip helper",
+    )
+    assert_true(
+        "skipped_for_tiny_local_reply" in delegation_text,
+        "expected progressive-context helper to record tiny-local-reply skips",
+    )
+    assert_true(
+        "_should_skip_progressive_context_for_tiny_local_reply(" in handlers_text,
+        "expected delegate handler to consult the tiny-local-reply context skip helper",
+    )
+    assert_true(
+        'progressive_context_meta = {"applied": False, "skipped_for_tiny_local_reply": True}' in handlers_text,
+        "expected tiny local reply fast-path to bypass progressive context injection",
+    )
+    assert_true(
+        'prompt_optimization = {"applied": False, "skipped_for_tiny_local_reply": True}' in handlers_text,
+        "expected tiny local reply fast-path to bypass delegated prompt optimization",
     )
 
     print("PASS: delegated response budget is wired into coordinator dispatch")
