@@ -21,6 +21,7 @@ from ai_coordinator import (
     build_reasoning_finalization_messages,
     build_tool_call_finalization_messages,
     coerce_orchestration_context,
+    delegated_response_budget,
     default_runtime_id_for_profile,
     detect_query_complexity,
     extract_task_from_openai_messages,
@@ -101,6 +102,37 @@ def test_tool_calling_routes_to_tool_lane():
     assert decision["task_archetype"] == "tool-calling"
     assert decision["model_class"] == "tool-calling"
     assert decision["recommended_profile"] == "remote-tool-calling"
+
+
+def test_delegated_response_budget_caps_strict_reply_only_tasks():
+    assert delegated_response_budget("Reply with READY only.", "default") == 48
+    assert delegated_response_budget("Reply with READY only.", "embedded-assist", requested_max_tokens=200) == 48
+
+
+def test_delegated_response_budget_keeps_tool_calling_lanes_bounded_but_larger():
+    assert delegated_response_budget(
+        "Use tools to inspect runtime status and return TOOL_READY only.",
+        "local-tool-calling",
+        tools_present=True,
+    ) == 220
+    assert delegated_response_budget(
+        "Use tools to inspect runtime status and return TOOL_READY only.",
+        "remote-tool-calling",
+        tools_present=True,
+        requested_max_tokens=128,
+    ) == 128
+
+
+def test_delegated_response_budget_caps_lightweight_planning_and_retrieval():
+    assert delegated_response_budget(
+        "Plan the next bounded rollout validation steps.",
+        "remote-gemini",
+    ) == 128
+    assert delegated_response_budget(
+        "Search the docs and summarize the switchboard health state.",
+        "embedded-assist",
+        requested_max_tokens=512,
+    ) == 128
 
 
 def test_detect_query_complexity_exposes_task_archetype():
