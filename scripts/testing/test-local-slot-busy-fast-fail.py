@@ -88,6 +88,26 @@ def main() -> None:
         "expected HTTP delegate path to pick up slot_busy advance profile",
     )
 
+    # Coordinator: lightweight local HTTP profiles get a bounded retry before
+    # surfacing slot-busy back to the caller.
+    assert_true(
+        "_post_delegate_with_local_slot_retry" in handlers_text,
+        "expected delegate handler to wrap HTTP delegate calls with local slot retry",
+    )
+    assert_true(
+        'retryable_local_profiles = {"default", "continue-local", "embedded-assist"}' in handlers_text,
+        "expected bounded local slot retry to target lightweight local profiles",
+    )
+    assert_true(
+        'AI_DELEGATE_LOCAL_SLOT_BUSY_MAX_RETRIES' in handlers_text
+        and 'AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_DELAY_S' in handlers_text,
+        "expected local slot retry to be env-tunable",
+    )
+    assert_true(
+        "delegation_local_slot_busy_retry" in handlers_text,
+        "expected retry attempts to emit a dedicated log event",
+    )
+
     print("PASS: local-slot-busy fast-fail is wired end-to-end (switchboard → runtime → coordinator → remote advance)")
 
 
