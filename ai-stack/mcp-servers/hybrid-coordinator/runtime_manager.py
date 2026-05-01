@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from ai_coordinator import (
     prune_runtime_registry as _ai_coordinator_prune_runtime_registry,
     coerce_orchestration_context as _ai_coordinator_coerce_orchestration_context,
+    route_by_complexity as _ai_coordinator_route_by_complexity,
 )
 from config import Config
 
