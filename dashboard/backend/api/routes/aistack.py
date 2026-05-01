@@ -248,6 +248,20 @@ def _normalize_status(raw: Any, ok_values: tuple[str, ...]) -> str:
     return value or "unknown"
 
 
+def _switchboard_local_lane_status(local_runtime: Any) -> str:
+    """Summarize switchboard local-lane state for dashboard consumers."""
+    if not isinstance(local_runtime, dict):
+        return "unknown"
+    if local_runtime.get("slot_busy") is True:
+        return "busy"
+    slot_available = local_runtime.get("slot_available")
+    if isinstance(slot_available, (int, float)) and slot_available > 0:
+        return "available"
+    if local_runtime.get("llama_metrics_error"):
+        return "degraded"
+    return "unknown"
+
+
 class FeedbackPayload(BaseModel):
     query: str = Field(..., min_length=1)
     correction: str = Field(..., min_length=1)
@@ -2218,6 +2232,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
     )
 
     switchboard_status = _normalize_status(switchboard_health.get("status"), ("ok", "healthy"))
+    switchboard_local_runtime = switchboard_health.get("local_runtime")
     aider_wrapper_status = _normalize_status(aider_wrapper_health.get("status"), ("ok", "healthy"))
 
     if not qdrant_health_raw:
@@ -2321,6 +2336,8 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "routing_mode": switchboard_health.get("routing_mode", "unknown"),
                 "default_provider": switchboard_health.get("default_provider", "unknown"),
                 "remote_configured": bool(switchboard_health.get("remote_configured", False)),
+                "local_lane_status": _switchboard_local_lane_status(switchboard_local_runtime),
+                "local_runtime": switchboard_local_runtime,
             },
             "aider_wrapper": {
                 "service": "aider-wrapper",
