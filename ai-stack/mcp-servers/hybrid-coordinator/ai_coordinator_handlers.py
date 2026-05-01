@@ -1250,6 +1250,19 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 pool_agent_acquired = True
                 payload["model"] = pool_agent.model_id
 
+        def _delegate_remaining_budget_s() -> float:
+            return max(0.0, timeout_s - (time.perf_counter() - request_started_at))
+
+        def _response_error_type(resp: httpx.Response) -> str:
+            try:
+                err_body = resp.json()
+            except Exception:
+                return ""
+            error = err_body.get("error") if isinstance(err_body, dict) else {}
+            if isinstance(error, dict):
+                return str(error.get("type") or "").strip()
+            return ""
+
         async def _post_delegate(profile_name: str, delegate_payload: Optional[Dict[str, Any]] = None) -> httpx.Response:
             local_profiles = {"default", "continue-local", "embedded-assist", "local-tool-calling"}
             headers = {
@@ -1267,6 +1280,47 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     json=delegate_payload or payload,
                 )
 
+        async def _post_delegate_with_local_slot_retry(
+            profile_name: str,
+            delegate_payload: Optional[Dict[str, Any]] = None,
+        ) -> httpx.Response:
+            response = await _post_delegate(profile_name, delegate_payload)
+            retryable_local_profiles = {"default", "continue-local", "embedded-assist"}
+            if profile_name not in retryable_local_profiles:
+                return response
+            if response.status_code != 503 or _response_error_type(response) != "local_slot_busy":
+                return response
+
+            max_retries = max(0, int(os.getenv("AI_DELEGATE_LOCAL_SLOT_BUSY_MAX_RETRIES", "1") or 0))
+            retry_delay_s = max(
+                0.0,
+                float(os.getenv("AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_DELAY_S", "1.25") or 0.0),
+            )
+            budget_floor_s = max(
+                0.0,
+                float(os.getenv("AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_BUDGET_FLOOR_S", "0.75") or 0.0),
+            )
+
+            for attempt in range(max_retries):
+                remaining_s = _delegate_remaining_budget_s()
+                if remaining_s <= budget_floor_s:
+                    break
+                sleep_s = min(retry_delay_s, max(0.0, remaining_s - budget_floor_s))
+                if sleep_s <= 0.0:
+                    break
+                logger.info(
+                    "delegation_local_slot_busy_retry: profile=%s attempt=%d sleep_s=%.2f remaining_s=%.2f",
+                    profile_name,
+                    attempt + 1,
+                    sleep_s,
+                    remaining_s,
+                )
+                await asyncio.sleep(sleep_s)
+                response = await _post_delegate(profile_name, delegate_payload)
+                if response.status_code != 503 or _response_error_type(response) != "local_slot_busy":
+                    break
+            return response
+
         effective_profile = _slot_busy_next_profile or selected_profile
         effective_runtime_id = _slot_busy_next_runtime or selected_runtime_id
         fallback_applied = bool(_slot_busy_next_profile)
@@ -1278,7 +1332,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         failover_chain_used = False
         excluded_profiles = set()
 
-        response = await _post_delegate(effective_profile)
+        response = await _post_delegate_with_local_slot_retry(effective_profile)
         initial_response = response
         # Guard against non-JSON upstream responses (e.g. Cloudflare HTML 400 errors)
         # that would otherwise raise JSONDecodeError before the failover logic runs.
@@ -1350,7 +1404,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         payload["model"] = fallback_pool_agent.model_id
 
                 # Retry with new profile
-                response = await _post_delegate(effective_profile)
+                response = await _post_delegate_with_local_slot_retry(effective_profile)
                 runtime = _apply_remote_runtime_status(
                     dict((registry.get("runtimes", {}) or {}).get(effective_runtime_id) or {}),
                     effective_runtime_id,
