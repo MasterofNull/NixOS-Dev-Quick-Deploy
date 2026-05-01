@@ -89,6 +89,7 @@ from delegation_handlers import (
     _remote_profile_uses_agent_pool,
     _select_agent_pool_candidate,
     _select_next_available_delegation_target,
+    _should_skip_progressive_context_for_tiny_local_reply,
 )
 import model_fleet_manager as _mfm
 import agentic_memory_journal as _journal
@@ -901,15 +902,6 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 context=context,
                 profile=selected_profile,
             )
-        progressive_context, progressive_context_meta = await _apply_progressive_context(
-            task,
-            messages,
-            context=data.get("context") if isinstance(data.get("context"), dict) else None,
-            profile_name=selected_profile,
-            context_budget=int(data.get("max_tokens") or 0),
-        )
-        messages = progressive_context
-        messages, prompt_optimization = _optimize_delegated_messages(messages, selected_profile)
 
         payload: Dict[str, Any] = {
             "messages": messages,
@@ -944,6 +936,25 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             routing_decision["rationale"] = (
                 f"{routing_decision.get('rationale', '')} [local-fast-path:continue-local-http]"
             ).strip()
+        skip_tiny_local_context = _should_skip_progressive_context_for_tiny_local_reply(
+            profile_name="continue-local" if short_circuit_continue_local_http else selected_profile,
+            context_budget=delegated_max_tokens,
+            messages=messages,
+        )
+        if skip_tiny_local_context:
+            progressive_context_meta = {"applied": False, "skipped_for_tiny_local_reply": True}
+            prompt_optimization = {"applied": False, "skipped_for_tiny_local_reply": True}
+        else:
+            progressive_context, progressive_context_meta = await _apply_progressive_context(
+                task,
+                messages,
+                context=data.get("context") if isinstance(data.get("context"), dict) else None,
+                profile_name=selected_profile,
+                context_budget=int(data.get("max_tokens") or 0),
+            )
+            messages = progressive_context
+            messages, prompt_optimization = _optimize_delegated_messages(messages, selected_profile)
+            payload["messages"] = messages
 
         delegate_timeout_slack_s = float(os.getenv("AI_DELEGATE_TIMEOUT_SLACK_S", "30"))
         local_agent_timeout_s = max(1.0, timeout_s - min(delegate_timeout_slack_s, max(1.0, timeout_s * 0.125)))
