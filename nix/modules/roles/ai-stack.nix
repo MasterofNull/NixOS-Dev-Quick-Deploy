@@ -51,6 +51,12 @@ let
     with ps; [
       pyyaml
     ]);
+  worldModelPython = pkgs.python3.withPackages (ps:
+    with ps; [
+      httpx
+      psycopg
+      redis
+    ]);
   gapAutoRemediatePath = lib.makeBinPath [
     pkgs.bash
     pkgs.bc
@@ -2035,6 +2041,7 @@ in {
             "WORLD_MODEL_WARM_THRESHOLD=${cfg.aiStack.worldModel.warmThreshold}"
             "WORLD_MODEL_MAX_WARM_QUERIES=${toString cfg.aiStack.worldModel.maxWarmQueriesPerRun}"
             "WORLD_MODEL_PATTERN_RETENTION_DAYS=${toString cfg.aiStack.worldModel.patternRetentionDays}"
+            "PYTHON_BIN=${worldModelPython}/bin/python3"
           ];
         };
       };

@@ -71,23 +71,23 @@ in
         users = [ cfg.primaryUser ];
         commands = [
           {
-            command = "/home/${cfg.primaryUser}/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh";
+            command = "/home/${cfg.primaryUser}/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh *";
             options = [ "NOPASSWD" ];
           }
           {
-            command = "/run/current-system/sw/bin/nixos-rebuild";
+            command = "/run/current-system/sw/bin/nixos-rebuild *";
             options = [ "NOPASSWD" ];
           }
           {
-            command = "/run/current-system/sw/bin/systemctl";
+            command = "/run/current-system/sw/bin/systemctl *";
             options = [ "NOPASSWD" ];
           }
           {
-            command = "/run/current-system/sw/bin/journalctl";
+            command = "/run/current-system/sw/bin/journalctl *";
             options = [ "NOPASSWD" ];
           }
           {
-            command = "/run/current-system/sw/bin/flatpak";
+            command = "/run/current-system/sw/bin/flatpak *";
             options = [ "NOPASSWD" ];
           }
         ];
