@@ -473,6 +473,49 @@ async def record_error(model_id: str, *, error_code: int, error_msg: str = "") -
     )
 
 
+async def record_error_with_retry_after(
+    model_id: str,
+    *,
+    error_code: int,
+    retry_after_s: float,
+    error_msg: str = "",
+) -> None:
+    """Like record_error but uses the actual Retry-After header value for cooldown.
+
+    When a remote provider returns a 429 with a Retry-After header we should
+    respect that value instead of our generic 300s constant. This avoids
+    unnecessarily blocking a model for longer (or shorter) than the provider
+    actually requires.
+
+    Args:
+        model_id: OpenRouter model slug.
+        error_code: HTTP status code (expected 429 but valid for any 4xx/5xx).
+        retry_after_s: seconds from the Retry-After response header (≥0).
+        error_msg: short human-readable error text from the response body.
+    """
+    now = time.time()
+    state = await _read_model_state(model_id)
+
+    # Clamp: minimum 10s, maximum 3600s (1h) to guard against bogus header values.
+    clamped = max(10.0, min(float(retry_after_s), 3600.0))
+    new_cooldown = now + clamped
+
+    await _write_model_state(model_id, {
+        "error_count_1h": str(state.error_count_1h + 1),
+        "last_error": error_msg[:200],
+        "last_error_code": str(error_code),
+        "last_error_at": str(now),
+        "cooldown_until": str(new_cooldown),
+        "success_count_1h": str(state.success_count_1h),
+        "avg_latency_ms": str(state.avg_latency_ms),
+        "last_success_at": str(state.last_success_at),
+    })
+    logger.info(
+        "fleet_record_error model=%s code=%d retry_after_s=%.0f (clamped=%.0f) msg=%s",
+        model_id, error_code, retry_after_s, clamped, error_msg[:80],
+    )
+
+
 async def get_available_models(
     capability: str,
     *,

@@ -1418,15 +1418,33 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             # Add failed profile to exclusion list
             excluded_profiles.add(effective_profile)
 
-            # Phase 15.1: Record per-model error for the failing model in fleet state
+            # Phase 15.1: Record per-model error for the failing model in fleet state.
+            # Phase 22.2: Respect Retry-After header for 429 responses so cooldown
+            # matches the provider's actual backoff window instead of our fixed 300s.
             _failing_model = (pool_agent.model_id if pool_agent else "") or payload.get("model", "")
             if _failing_model:
                 _err_msg_init = str((initial_body.get("error") or {}).get("message", ""))[:200]
-                asyncio.create_task(_mfm.record_error(
-                    _failing_model,
-                    error_code=response.status_code,
-                    error_msg=_err_msg_init,
-                ))
+                _retry_after_raw = response.headers.get("retry-after", "") or response.headers.get("Retry-After", "")
+                if response.status_code == 429 and _retry_after_raw:
+                    try:
+                        asyncio.create_task(_mfm.record_error_with_retry_after(
+                            _failing_model,
+                            error_code=response.status_code,
+                            retry_after_s=float(_retry_after_raw),
+                            error_msg=_err_msg_init,
+                        ))
+                    except (ValueError, TypeError):
+                        asyncio.create_task(_mfm.record_error(
+                            _failing_model,
+                            error_code=response.status_code,
+                            error_msg=_err_msg_init,
+                        ))
+                else:
+                    asyncio.create_task(_mfm.record_error(
+                        _failing_model,
+                        error_code=response.status_code,
+                        error_msg=_err_msg_init,
+                    ))
 
             # Build and use failover chain
             failover_chain = _build_delegation_fallback_chain(
@@ -1840,11 +1858,28 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     tokens_out=int((body.get("usage") or {}).get("completion_tokens", 0) or 0),
                 ))
             else:
-                asyncio.create_task(_mfm.record_error(
-                    _delegate_model_id,
-                    error_code=response.status_code,
-                    error_msg=str((body.get("error") or {}).get("message", ""))[:200],
-                ))
+                _final_err_msg = str((body.get("error") or {}).get("message", ""))[:200]
+                _final_retry_after = response.headers.get("retry-after", "") or response.headers.get("Retry-After", "")
+                if response.status_code == 429 and _final_retry_after:
+                    try:
+                        asyncio.create_task(_mfm.record_error_with_retry_after(
+                            _delegate_model_id,
+                            error_code=response.status_code,
+                            retry_after_s=float(_final_retry_after),
+                            error_msg=_final_err_msg,
+                        ))
+                    except (ValueError, TypeError):
+                        asyncio.create_task(_mfm.record_error(
+                            _delegate_model_id,
+                            error_code=response.status_code,
+                            error_msg=_final_err_msg,
+                        ))
+                else:
+                    asyncio.create_task(_mfm.record_error(
+                        _delegate_model_id,
+                        error_code=response.status_code,
+                        error_msg=_final_err_msg,
+                    ))
         asyncio.create_task(_journal.write_entry(
             task_summary=task,
             task_archetype=_mfm.infer_capability_from_task(task, effective_profile),
