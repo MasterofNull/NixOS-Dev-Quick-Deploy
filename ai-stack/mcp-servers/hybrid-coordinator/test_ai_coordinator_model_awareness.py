@@ -433,6 +433,33 @@ def test_build_messages_adds_default_constraints_and_tool_completion_rules():
     assert "Tool-calling completion rules:" in body
 
 
+def test_build_messages_uses_compact_contract_for_strict_reply_only_tasks():
+    messages = build_messages(
+        task="Reply with READY only.",
+        profile="default",
+    )
+
+    body = messages[1]["content"]
+    assert "Task: Reply with READY only." in body
+    assert "Return exactly the requested token(s) or phrase." in body
+    assert "Do not add explanation, evidence, markdown, JSON, tool plans, or extra sections." in body
+    assert "Expected artifact:" not in body
+    assert "Required output sections:" not in body
+    assert "Completion rules:" not in body
+
+
+def test_build_messages_preserves_full_contract_for_tool_calling_reply_only_tasks():
+    messages = build_messages(
+        task="Reply with TOOL_READY only.",
+        profile="remote-tool-calling",
+    )
+
+    body = messages[1]["content"]
+    assert "Expected artifact:" in body
+    assert "Required output sections:" in body
+    assert "Tool-calling completion rules:" in body
+
+
 def test_build_messages_uses_local_harness_prompt_for_local_profiles():
     original_builder = Config.build_local_system_prompt
     Config.build_local_system_prompt = staticmethod(lambda: "Local harness contact prompt")
