@@ -37,6 +37,7 @@ async def _fake_fetch_with_fallback(url: str, fallback=None, headers=None):
             "routing_mode": "hybrid",
             "default_provider": "local",
             "remote_configured": False,
+            "local_lane_status": "busy-long-running",
             "local_runtime": {
                 "slot_capacity": 1,
                 "slot_available": 0,

@@ -36,6 +36,7 @@ async def _run() -> None:
                 "routing_mode": "hybrid",
                 "default_provider": "local",
                 "remote_configured": False,
+                "local_lane_status": "busy-long-running",
                 "local_runtime": {
                     "slot_capacity": 1,
                     "slot_available": 0,

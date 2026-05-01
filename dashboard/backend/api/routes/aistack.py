@@ -265,6 +265,14 @@ def _switchboard_local_lane_status(local_runtime: Any) -> str:
     return "unknown"
 
 
+def _resolve_switchboard_local_lane_status(payload: Any, local_runtime: Any) -> str:
+    if isinstance(payload, dict):
+        explicit = str(payload.get("local_lane_status") or "").strip()
+        if explicit:
+            return explicit
+    return _switchboard_local_lane_status(local_runtime)
+
+
 class FeedbackPayload(BaseModel):
     query: str = Field(..., min_length=1)
     correction: str = Field(..., min_length=1)
@@ -2339,7 +2347,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "routing_mode": switchboard_health.get("routing_mode", "unknown"),
                 "default_provider": switchboard_health.get("default_provider", "unknown"),
                 "remote_configured": bool(switchboard_health.get("remote_configured", False)),
-                "local_lane_status": _switchboard_local_lane_status(switchboard_local_runtime),
+                "local_lane_status": _resolve_switchboard_local_lane_status(switchboard_health, switchboard_local_runtime),
                 "local_runtime": switchboard_local_runtime,
             },
             "aider_wrapper": {
