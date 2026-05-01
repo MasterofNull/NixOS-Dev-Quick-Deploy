@@ -3068,20 +3068,44 @@ def _get_last_prewarm_run(service: str) -> Dict[str, Any]:
 
         lines = result.stdout.split("\n")
 
-        # Parse seed-routing-traffic output
-        # Looking for: "seed-routing-traffic: N OK, M FAIL"
+        # Parse the most-recent prewarm result. Two formats are in use:
+        #   JSON  (aq-rag-prewarm primary path): '{"passed": N, "failed": M, ...}'
+        #   Text  (seed-routing-traffic fallback): 'seed-routing-traffic: N OK, M FAIL'
+        # Iterate reversed (most-recent first) and break on the first match so
+        # stale results from earlier runs in the 50-line window are ignored.
         queries_ok = None
         queries_fail = None
         backend_seeded = False
 
-        for line in reversed(lines):  # Most recent first
-            if "seed-routing-traffic:" in line and "OK," in line and "FAIL" in line:
-                # Parse "seed-routing-traffic: 8 OK, 0 FAIL"
-                match = re.search(r"(\d+)\s+OK,\s+(\d+)\s+FAIL", line)
+        # Accumulate consecutive JSON lines that form a single object.
+        json_buf: list = []
+        for line in reversed(lines):
+            stripped = line.strip()
+
+            # JSON format: collect lines until we can parse a complete object.
+            if stripped.startswith("{") or json_buf:
+                json_buf.append(stripped)
+                combined = " ".join(reversed(json_buf))
+                try:
+                    obj = json.loads(combined)
+                    if isinstance(obj.get("passed"), int) and isinstance(obj.get("failed"), int):
+                        queries_ok = obj["passed"]
+                        queries_fail = obj["failed"]
+                        break  # most recent match found — stop
+                except (json.JSONDecodeError, ValueError):
+                    pass  # keep accumulating
+                if len(json_buf) > 20:
+                    json_buf = []  # abandon this fragment, reset
+
+            # Text format: "seed-routing-traffic: N OK, M FAIL"
+            if "seed-routing-traffic:" in stripped and "OK," in stripped and "FAIL" in stripped:
+                match = re.search(r"(\d+)\s+OK,\s+(\d+)\s+FAIL", stripped)
                 if match:
                     queries_ok = int(match.group(1))
                     queries_fail = int(match.group(2))
-            if "backend-selection seeded" in line:
+                    break  # most recent match found — stop
+
+            if "backend-selection seeded" in stripped:
                 backend_seeded = True
 
         # Get last activation timestamp
