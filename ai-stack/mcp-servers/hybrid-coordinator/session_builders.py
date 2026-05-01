@@ -126,6 +126,7 @@ def _build_workflow_run_session(
     incoming_contract = data.get("intent_contract")
     if incoming_contract is None and selected_blueprint:
         incoming_contract = selected_blueprint.get("intent_contract", {})
+    blueprint_selection = data.get("blueprint_selection") if isinstance(data.get("blueprint_selection"), dict) else {}
     validation = _validate_intent_contract(_coerce_intent_contract(query, incoming_contract))
     orchestration_payload = dict(orchestration)
     orchestration_payload.setdefault("query", query)
@@ -178,6 +179,7 @@ def _build_workflow_run_session(
             if isinstance(selected_blueprint, dict)
             else ""
         ) or None,
+        "blueprint_selection": blueprint_selection or None,
         "intent_contract": validation["normalized"],
         "orchestration": orchestration_payload,
         "orchestration_policy": policy_validation["normalized"],
@@ -215,6 +217,8 @@ def _build_workflow_run_session(
                 "team_slots": seeded_team.get("active_slots", []),
                 "reasoning_pattern": reasoning_pattern.get("selected_pattern", ""),
                 "reasoning_pattern_boost": reasoning_pattern.get("boost_multiplier", 1.0),
+                "blueprint_id": str(data.get("blueprint_id", "") or "").strip() or None,
+                "blueprint_selection_mode": str(blueprint_selection.get("mode", "") or "").strip() or "unspecified",
             }
         ],
     }

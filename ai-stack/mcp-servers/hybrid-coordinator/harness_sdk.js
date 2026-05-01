@@ -289,8 +289,15 @@ export class HarnessClient {
       user_intent: normalized,
       definition_of_done: `Complete requested workflow task: ${normalized.slice(0, 120)}`,
       depth_expectation: "minimum",
-      spirit_constraints: ["follow declarative-first policy", "capture validation evidence"],
-      no_early_exit_without: ["all requested checks complete"],
+      spirit_constraints: [
+        "follow declarative-first policy",
+        "capture validation evidence",
+        "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
+      ],
+      no_early_exit_without: [
+        "all requested checks complete",
+        "context strategy or blocker documented when the task is long-running",
+      ],
     };
   }
 

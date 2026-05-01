@@ -129,6 +129,8 @@ def test_build_workflow_plan_includes_optimization_watch_metadata(tmp_path):
 
     assert plan["metadata"]["optimization_watch"]["available"] is True
     assert plan["metadata"]["optimization_watch"]["top_recommendations"][0] == "Prefer direct path/title matches in fallback summaries"
+    assert plan["metadata"]["context_strategy"]["mode"] == "progressive-disclosure"
+    assert plan["metadata"]["context_strategy"]["recommended_cards"] == ["token-discipline", "harness-first"]
 
 
 def test_build_workflow_plan_prefers_memory_first_for_continuation_hotspot(tmp_path):
@@ -176,6 +178,13 @@ def test_build_workflow_plan_prefers_memory_first_for_continuation_hotspot(tmp_p
     assert plan["metadata"]["retrieval_strategy"]["active"] is True
     assert plan["metadata"]["retrieval_strategy"]["mode"] == "memory-first"
     assert "route_search_synthesis_hotspot" in plan["metadata"]["retrieval_strategy"]["reasons"]
+    assert plan["metadata"]["context_strategy"]["mode"] == "context-offload"
+    assert plan["metadata"]["context_strategy"]["recommended_blueprint_id"] == "long-running-context-offload"
+    assert plan["metadata"]["context_strategy"]["recommended_cards"] == [
+        "context-offload",
+        "token-discipline",
+        "harness-first",
+    ]
     assert plan["phases"][0]["tools"] == ["hints", "discovery", "memory_recall"]
     assert plan["phases"][1]["tools"] == ["hints", "discovery", "memory_recall"]
     assert plan["phases"][2]["tools"][:2] == ["memory_recall", "route_search"]
