@@ -43,6 +43,11 @@ async def _fake_fetch_with_fallback(url: str, fallback=None, headers=None):
                 "slot_busy": True,
                 "source": "switchboard_semaphore+llama_metrics",
                 "llama_metrics_available": True,
+                "active_request": {
+                    "profile": "continue-local",
+                    "duration_s": 91.2,
+                    "long_running": True,
+                },
             },
         }
     if "7534" in url and url.endswith("/health"):
@@ -110,7 +115,10 @@ def main() -> int:
             payload = response.json()
             switchboard = ((payload.get("services") or {}).get("switchboard") or {})
             local_runtime = switchboard.get("local_runtime") or {}
-            assert_true(switchboard.get("local_lane_status") == "busy", "busy local switchboard lane should surface as busy")
+            assert_true(
+                switchboard.get("local_lane_status") == "busy-long-running",
+                "long-running local switchboard lane should surface as busy-long-running",
+            )
             assert_true(local_runtime.get("slot_busy") is True, "switchboard local runtime should preserve busy semaphore state")
             assert_true(
                 local_runtime.get("source") == "switchboard_semaphore+llama_metrics",

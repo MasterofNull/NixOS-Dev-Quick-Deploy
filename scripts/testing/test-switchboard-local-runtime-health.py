@@ -46,6 +46,26 @@ def main() -> None:
         'snapshot["llama_metrics_error"] = f"{type(exc).__name__}: {exc}"' in text,
         "expected local runtime health to surface non-HTTP metrics probe failures explicitly",
     )
+    assert_true(
+        'snapshot["active_request"] = active_request' in text,
+        "expected local runtime health to expose active local request metadata when available",
+    )
+    assert_true(
+        "def _begin_local_active_request(path: str, profile: str, payload: dict | None, is_stream: bool) -> str:" in text,
+        "expected switchboard to define a helper that tracks in-flight local request metadata",
+    )
+    assert_true(
+        '"latest_user_excerpt"' in text and '"estimated_input_tokens"' in text,
+        "expected active local request metadata to include request attribution and size signals",
+    )
+    assert_true(
+        '"long_running"' in text and "LOCAL_BUSY_WARN_S" in text,
+        "expected active local request metadata to flag long-running slot occupancy",
+    )
+    assert_true(
+        "_clear_local_active_request(local_active_request_id)" in text,
+        "expected switchboard to clear tracked local request metadata after completion",
+    )
 
     print("PASS: switchboard health exposes local runtime slot occupancy")
 
