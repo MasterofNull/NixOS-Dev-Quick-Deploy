@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SWITCHBOARD_NIX = REPO_ROOT / "nix/modules/services/switchboard.nix"
+MCP_SERVERS_NIX = REPO_ROOT / "nix/modules/services/mcp-servers.nix"
 RUNTIME_PATH = REPO_ROOT / "ai-stack/agents/runtimes/local_agent_runtime.py"
 HANDLERS_PATH = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator_handlers.py"
 
@@ -17,6 +18,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> None:
     swb_text = SWITCHBOARD_NIX.read_text(encoding="utf-8")
+    mcp_servers_text = MCP_SERVERS_NIX.read_text(encoding="utf-8")
     runtime_text = RUNTIME_PATH.read_text(encoding="utf-8")
     handlers_text = HANDLERS_PATH.read_text(encoding="utf-8")
 
@@ -106,6 +108,12 @@ def main() -> None:
     assert_true(
         "delegation_local_slot_busy_retry" in handlers_text,
         "expected retry attempts to emit a dedicated log event",
+    )
+    assert_true(
+        '"AI_DELEGATE_LOCAL_SLOT_BUSY_MAX_RETRIES=4"' in mcp_servers_text
+        and '"AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_DELAY_S=15.0"' in mcp_servers_text
+        and '"AI_DELEGATE_LOCAL_SLOT_BUSY_RETRY_BUDGET_FLOOR_S=5.0"' in mcp_servers_text,
+        "expected deployed hybrid coordinator env to tune local slot retry behavior",
     )
 
     print("PASS: local-slot-busy fast-fail is wired end-to-end (switchboard → runtime → coordinator → remote advance)")
