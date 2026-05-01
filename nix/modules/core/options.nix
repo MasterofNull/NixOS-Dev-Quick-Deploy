@@ -3062,6 +3062,28 @@
           description = "Redis maxmemory-policy setting.";
         };
       };
+
+      identityKernel = {
+        enable = lib.mkEnableOption "Persistent AGI identity kernel";
+
+        checkpointIntervalSeconds = lib.mkOption {
+          type = lib.types.int;
+          default = 300;
+          description = "How often (in seconds) the identity checkpoint is written.";
+        };
+
+        journalPath = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/ai-stack/identity";
+          description = "Directory for the append-only identity JSONL journal and checkpoint.";
+        };
+
+        valueConstitutionFile = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "Path to the user-editable YAML value constitution file. Empty = use default shipped with the repo.";
+        };
+      };
     };
 
     profileData = {

@@ -9,6 +9,7 @@
     ./capability-registry.nix
     ./switchboard.nix
     ./autonomous-improvement.nix
+    ./identity-kernel.nix
     ./meta-optimization.nix
     ./crowdsec.nix
     ./lore-sync.nix
