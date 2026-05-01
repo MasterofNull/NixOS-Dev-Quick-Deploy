@@ -134,6 +134,8 @@ import memory_context_handlers
 import agents_task_handlers
 import evidence_safety_handlers
 import ai_coordinator_handlers
+import model_fleet_manager as _mfm
+import agentic_memory_journal as _journal
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
     _agent_pool_status_snapshot,
@@ -763,6 +765,12 @@ def init(
         agent_pool_manager=_AGENT_POOL_MANAGER,
         store_memory_fn=_store_memory,
         error_payload_fn=_error_payload,
+    )
+    # Phase 15.1 + 15.3: Model fleet manager + agentic memory journal
+    _mfm.init()
+    _journal.init(
+        aidb_url=os.getenv("AIDB_URL", ""),
+        aidb_api_key=_read_secret_file(os.getenv("AIDB_API_KEY_FILE", "")),
     )
     memory_context_handlers.init(
         store_memory_fn=_store_memory,
@@ -1739,6 +1747,43 @@ async def run_http_mode(port: int) -> None:
     # Phase 12.4: handle_hints, handle_hints_feedback, handle_agent_status extracted
     # to hints_handlers.py (routes registered via hints_handlers.register_routes).
 
+    # Phase 15.1: Model fleet status endpoint
+    async def handle_fleet_status(request: web.Request) -> web.Response:
+        try:
+            status = await _mfm.get_fleet_status()
+            return web.json_response(status)
+        except Exception as exc:
+            logger.exception("handle_fleet_status error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    # Phase 15.3: Journal read endpoints
+    async def handle_journal_entries(request: web.Request) -> web.Response:
+        try:
+            params = request.rel_url.query
+            entries = await _journal.get_entries(
+                limit=int(params.get("limit", "50")),
+                model_id=params.get("model_id") or None,
+                tier=params.get("tier") or None,
+                task_archetype=params.get("task_archetype") or None,
+                success_only=params.get("success_only", "").lower() == "true",
+                errors_only=params.get("errors_only", "").lower() == "true",
+                since_epoch=float(params.get("since_epoch", "0")),
+            )
+            return web.json_response({"entries": entries, "count": len(entries)})
+        except Exception as exc:
+            logger.exception("handle_journal_entries error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def handle_journal_stats(request: web.Request) -> web.Response:
+        try:
+            params = request.rel_url.query
+            stats = await _journal.get_stats(
+                since_epoch=float(params.get("since_epoch", "0")),
+            )
+            return web.json_response(stats)
+        except Exception as exc:
+            logger.exception("handle_journal_stats error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
 
     # Initialize rate limiter with endpoint-specific limits
     rate_limiter_config = RateLimiterConfig(
@@ -1868,6 +1913,11 @@ async def run_http_mode(port: int) -> None:
     agents_task_handlers.register_routes(http_app)  # Phase 12.4: extracted to agents_task_handlers.py
 
     evidence_safety_handlers.register_routes(http_app)
+
+    # Phase 15.1 + 15.3: Fleet status + journal endpoints
+    http_app.router.add_get("/control/model-fleet/status", handle_fleet_status)
+    http_app.router.add_get("/memory/journal", handle_journal_entries)
+    http_app.router.add_get("/memory/journal/stats", handle_journal_stats)
 
     # Phase 2.4: Register YAML workflow routes
     if YAML_WORKFLOWS_AVAILABLE:
