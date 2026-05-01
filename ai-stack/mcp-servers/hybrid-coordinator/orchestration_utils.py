@@ -15,10 +15,20 @@ from typing import Any, Dict, List, Optional, Set
 
 
 from agent_registry import _load_agent_evaluations_registry_sync, _normalize_orchestration_lane_list, _normalize_agent_role
-from runtime_manager import _orchestration_prefers_local_handoff
 from ai_coordinator import default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile
 
 logger = logging.getLogger("hybrid-coordinator")
+
+def _orchestration_prefers_local_handoff(query: str) -> bool:
+    normalized = str(query or "").strip().lower()
+    if not normalized:
+        return False
+    tokens = (
+        "embedded", "embedding", "local tool", "local tools",
+        "local model", "local models", "continue-local", "handoff to local",
+    )
+    return any(token in normalized for token in tokens)
+
 
 _ORCHESTRATION_ESCALATION_LANES: Set[str] = {"remote-reasoning", "flagship-remote", "none"}
 _ORCHESTRATION_LANES: Set[str] = {

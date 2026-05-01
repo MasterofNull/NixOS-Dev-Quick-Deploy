@@ -29,6 +29,7 @@ from orchestration_utils import (
     _ORCHESTRATION_ESCALATION_LANES,
     _ORCHESTRATION_CONSENSUS_MODES,
     _ORCHESTRATION_SELECTION_STRATEGIES,
+    _orchestration_prefers_local_handoff,
 )
 from config import Config
 
@@ -89,23 +90,6 @@ def _coerce_orchestration_context(incoming: Any) -> Dict[str, Any]:
     if "requester_role" not in normalized:
         normalized["requester_role"] = data.get("role") or "orchestrator"
     return _ai_coordinator_coerce_orchestration_context(normalized)
-
-
-def _orchestration_prefers_local_handoff(query: str) -> bool:
-    normalized = str(query or "").strip().lower()
-    if not normalized:
-        return False
-    tokens = (
-        "embedded",
-        "embedding",
-        "local tool",
-        "local tools",
-        "local model",
-        "local models",
-        "continue-local",
-        "handoff to local",
-    )
-    return any(token in normalized for token in tokens)
 
 
 def _default_orchestration_policy_for_query(query: str) -> Dict[str, Any]:
