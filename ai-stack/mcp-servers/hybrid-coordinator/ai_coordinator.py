@@ -700,6 +700,41 @@ def delegated_response_budget(
     return 0
 
 
+def _should_use_compact_delegation_contract(task: str, profile: str) -> bool:
+    normalized_task = str(task or "").strip()
+    if not normalized_task:
+        return False
+    profile_name = str(profile or "").strip().lower()
+    if profile_name in {"local-tool-calling", "remote-tool-calling"}:
+        return False
+    complexity_info = detect_query_complexity(normalized_task)
+    task_archetype = str(complexity_info.get("task_archetype", "general") or "general")
+    word_count = int(complexity_info.get("word_count", 0) or 0)
+    return bool(
+        _STRICT_REPLY_ONLY_RE.search(normalized_task)
+        or (task_archetype in {"general", "continuation"} and word_count <= 12 and " only" in normalized_task.lower())
+    )
+
+
+def _compact_delegation_contract_block(task: str, profile: str, context: Dict[str, Any] | None) -> str:
+    ctx = context if isinstance(context, dict) else {}
+    constraints = _normalize_list(ctx.get("constraints"))
+    output_format = str(ctx.get("output_format") or "").strip()
+
+    lines = [
+        f"Task: {task.strip()}",
+        "Return exactly the requested token(s) or phrase.",
+        "Do not add explanation, evidence, markdown, JSON, tool plans, or extra sections.",
+        "If the exact requested output cannot be produced from the task as written, say what is missing in one short sentence.",
+    ]
+    if output_format:
+        lines.append(f"Output format constraint: {output_format}")
+    if constraints:
+        lines.append("Constraints:")
+        lines.extend(f"- {item}" for item in constraints[:4])
+    return "\n".join(lines)
+
+
 def get_routing_stats() -> Dict[str, Any]:
     """Get routing decision statistics for analysis."""
     if not _ROUTING_DECISIONS:
@@ -1151,7 +1186,11 @@ def build_messages(
     else:
         sys_prompt = _delegation_system_prompt(profile)
     messages.append({"role": "system", "content": sys_prompt})
-    body = _delegation_contract_block(str(task or ""), profile, context)
+    normalized_task = str(task or "")
+    if _should_use_compact_delegation_contract(normalized_task, profile):
+        body = _compact_delegation_contract_block(normalized_task, profile, context)
+    else:
+        body = _delegation_contract_block(normalized_task, profile, context)
     extra_context = context.get("extra_context") if isinstance(context, dict) else None
     if extra_context:
         body += "\n\nAdditional context:\n" + str(extra_context).strip()
