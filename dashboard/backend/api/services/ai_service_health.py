@@ -82,6 +82,20 @@ AI_SERVICES = {
 }
 
 
+def _switchboard_local_lane_status(local_runtime: Any) -> str:
+    """Summarize switchboard local runtime state for health consumers."""
+    if not isinstance(local_runtime, dict):
+        return "unknown"
+    if local_runtime.get("slot_busy") is True:
+        return "busy"
+    slot_available = local_runtime.get("slot_available")
+    if isinstance(slot_available, (int, float)) and slot_available > 0:
+        return "available"
+    if local_runtime.get("llama_metrics_error"):
+        return "degraded"
+    return "unknown"
+
+
 class AIServiceHealthMonitor:
     """Monitor health and metrics for all AI stack services."""
 
@@ -153,6 +167,8 @@ class AIServiceHealthMonitor:
         # Get process metrics
         process_metrics = await self._get_process_metrics(service_id)
 
+        service_details = self._service_details(service_id, http_health)
+
         # Determine overall status
         is_healthy = (
             systemd_status["active"]
@@ -166,7 +182,24 @@ class AIServiceHealthMonitor:
             "systemd": systemd_status,
             "http_health": http_health,
             "metrics": process_metrics,
+            "details": service_details,
             "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    def _service_details(self, service_id: str, http_health: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Return service-specific health details for dashboard consumers."""
+        if service_id != "ai-switchboard" or not isinstance(http_health, dict):
+            return None
+        payload = http_health.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        local_runtime = payload.get("local_runtime")
+        return {
+            "routing_mode": payload.get("routing_mode", "unknown"),
+            "default_provider": payload.get("default_provider", "unknown"),
+            "remote_configured": bool(payload.get("remote_configured", False)),
+            "local_lane_status": _switchboard_local_lane_status(local_runtime),
+            "local_runtime": local_runtime,
         }
 
     async def _get_systemd_status(self, service_id: str) -> Dict[str, Any]:
@@ -226,10 +259,18 @@ class AIServiceHealthMonitor:
 
         try:
             async with self._session.get(url) as response:
+                payload: Optional[Any] = None
+                content_type = response.headers.get("Content-Type", "")
+                if "json" in content_type.lower():
+                    try:
+                        payload = await response.json()
+                    except Exception:
+                        payload = None
                 return {
                     "healthy": response.status in (200, 204),
                     "status_code": response.status,
                     "response_time_ms": int(response.headers.get("X-Response-Time", 0)),
+                    "payload": payload,
                 }
         except asyncio.TimeoutError:
             return {
