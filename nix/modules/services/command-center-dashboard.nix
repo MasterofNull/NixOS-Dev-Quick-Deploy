@@ -121,6 +121,7 @@ in
       environment = {
         SERVICE_HOST = "127.0.0.1";
         PROMETHEUS_PORT = toString mon.prometheusPort;
+        OTEL_COLLECTOR_HEALTH_PORT = toString ports.otelCollectorHealth;
         DASHBOARD_API_BIND_ADDRESS = cc.bindAddress;
         DASHBOARD_API_PORT = toString cc.apiPort;
         DASHBOARD_MODE = "systemd";

@@ -11,70 +11,72 @@ from datetime import datetime
 import aiohttp
 import psutil
 
+from api.config import service_endpoints
+
 logger = logging.getLogger(__name__)
 
 # Service definitions with health check endpoints
 AI_SERVICES = {
     "ai-aidb": {
         "name": "AIDB Service",
-        "health_url": "http://127.0.0.1:8002/health",
-        "metrics_url": "http://127.0.0.1:8002/metrics",
+        "health_url": f"{service_endpoints.AIDB_URL}/health",
+        "metrics_url": f"{service_endpoints.AIDB_URL}/metrics",
         "category": "ai-core",
     },
     "ai-hybrid-coordinator": {
         "name": "Hybrid Coordinator",
-        "health_url": "http://127.0.0.1:8003/health",
-        "metrics_url": "http://127.0.0.1:8003/stats",
+        "health_url": f"{service_endpoints.HYBRID_URL}/health",
+        "metrics_url": f"{service_endpoints.HYBRID_URL}/stats",
         "category": "ai-core",
     },
     "ai-ralph-wiggum": {
         "name": "Ralph Wiggum",
-        "health_url": "http://127.0.0.1:8004/health",
+        "health_url": f"{service_endpoints.RALPH_URL}/health",
         "category": "ai-core",
     },
     "ai-switchboard": {
         "name": "AI Switchboard",
-        "health_url": "http://127.0.0.1:8085/health",
+        "health_url": f"{service_endpoints.SWITCHBOARD_URL}/health",
         "category": "ai-core",
     },
     "qdrant": {
         "name": "Qdrant Vector DB",
-        "health_url": "http://127.0.0.1:6333/",
+        "health_url": f"{service_endpoints.QDRANT_URL}/",
         "category": "storage",
     },
     "llama-cpp": {
         "name": "Llama.cpp (Chat)",
-        "health_url": "http://127.0.0.1:8080/health",
+        "health_url": f"{service_endpoints.LLAMA_URL}/health",
         "category": "llm",
     },
     "llama-cpp-embed": {
         "name": "Llama.cpp (Embeddings)",
-        "health_url": "http://127.0.0.1:8081/health",
+        "health_url": f"{service_endpoints.EMBEDDINGS_URL}/health",
         "category": "llm",
     },
     "redis-mcp": {
         "name": "Redis MCP",
-        "port": 6379,
+        "port": service_endpoints.REDIS_PORT,
         "category": "storage",
     },
     "postgresql": {
         "name": "PostgreSQL",
-        "port": 5432,
+        "port": service_endpoints.POSTGRES_PORT,
         "category": "storage",
     },
     "prometheus": {
         "name": "Prometheus",
-        "health_url": "http://127.0.0.1:9090/-/ready",
+        "health_url": f"{service_endpoints.PROMETHEUS_URL}/-/ready",
         "category": "observability",
     },
     "prometheus-node-exporter": {
         "name": "Node Exporter",
-        "health_url": "http://127.0.0.1:9100/metrics",
+        "health_url": f"http://{service_endpoints.SERVICE_HOST}:9100/metrics",
         "category": "observability",
     },
     "ai-otel-collector": {
         "name": "OpenTelemetry Collector",
-        "health_url": "http://127.0.0.1:13133/",
+        "health_url": f"{service_endpoints.OTEL_COLLECTOR_HEALTH_URL}/",
         "category": "observability",
     },
 }

@@ -2887,6 +2887,12 @@
         default = 9464;
         description = "OpenTelemetry collector internal Prometheus telemetry port.";
       };
+
+      otelCollectorHealth = lib.mkOption {
+        type = lib.types.port;
+        default = 13133;
+        description = "OpenTelemetry collector health-check extension port.";
+      };
     };
 
     localhostIsolation = {
