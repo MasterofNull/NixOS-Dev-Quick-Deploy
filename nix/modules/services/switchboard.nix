@@ -1032,6 +1032,25 @@ let
         updated["content"] = _truncate_text_to_token_budget(_extract_content_text(message), max_tokens)
         return updated
 
+    def _looks_like_strict_reply_only(messages: list) -> bool:
+        if not isinstance(messages, list):
+            return False
+        latest_user = ""
+        for message in reversed(messages):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            latest_user = _extract_content_text(message).strip()
+            if latest_user:
+                break
+        if not latest_user:
+            return False
+        lowered = latest_user.lower()
+        return (
+            " only" in lowered
+            and len(latest_user.split()) <= 12
+            and any(token in lowered for token in ("reply", "respond", "return"))
+        )
+
     def _tokenize(text: str) -> list[str]:
         return [t for t in re.split(r"[^a-z0-9_./-]+", (text or "").lower()) if len(t) >= 2]
 
@@ -1238,6 +1257,9 @@ let
         max_messages = profile_settings.get("maxMessages")
         if not isinstance(max_tokens, int) or not isinstance(max_messages, int):
             return messages, False, 0, 0, "none", 1.0, False
+        if profile in ("continue-local", "embedded-assist") and _looks_like_strict_reply_only(messages):
+            max_tokens = min(max_tokens, 256)
+            max_messages = min(max_messages, 2)
 
         before = _estimate_messages_tokens(messages)
         if before <= max_tokens and len(messages) <= max_messages:
