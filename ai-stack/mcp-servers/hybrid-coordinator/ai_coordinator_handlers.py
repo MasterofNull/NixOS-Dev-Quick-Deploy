@@ -880,6 +880,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         pool_agent_acquired = False
         pool_quality_score = 0.0
         request_started_at = time.perf_counter()
+        # Slot-busy fallback coords: set inside the local subprocess path when
+        # the llama slot is occupied and a remote advance target is found.
+        # Checked by the HTTP-delegate init block below to route accordingly.
+        _slot_busy_next_profile: Optional[str] = None
+        _slot_busy_next_runtime: Optional[str] = None
 
         # ── Local subprocess agent spawning ──────────────────────────────
         # For local runtimes, spawn actual subprocess agents instead of
@@ -1161,29 +1166,64 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 }, status=202)
 
             local_response = await _spawn_local_agent(**_spawn_kwargs)
-            # Phase 8.8 — Auto-consolidate successful delegate outcomes into memory.
-            if (
-                local_response.status == 200
-                and _store_memory is not None
-                and bool(data.get("auto_memorize", True))
-            ):
+
+            # Slot-busy advance: the single llama.cpp slot is occupied by a
+            # long-running task.  Filter the fallback chain to remote-only
+            # profiles and advance rather than returning a cold 503 to the
+            # caller.  If no remote is configured the cold 503 is returned as
+            # before — the caller should retry with backoff.
+            if local_response.status == 503:
                 try:
-                    resp_body = json.loads(local_response.body)
-                    result_content = (
-                        (resp_body.get("choices") or [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
+                    _lb_err = json.loads(local_response.body)
+                except Exception:
+                    _lb_err = {}
+                if _lb_err.get("error") == "local_slot_busy":
+                    _lb_chain = _build_delegation_fallback_chain(
+                        task, requested_profile, prefer_local=False
                     )
-                    if result_content and len(result_content.strip()) > 20:
-                        await _store_memory(
-                            content=f"Delegate task [{agent_role}]: {user_task[:200]}\nOutcome: {result_content[:400]}",
-                            memory_type="procedural",
-                            tags=["delegate", agent_role, routing_decision.get("task_archetype", "general")],
-                            source="delegate_auto_consolidation",
+                    _lb_remote = [
+                        c for c in _lb_chain if _is_remote_profile(c["profile"])
+                    ]
+                    _lb_next = _select_next_available_delegation_target(
+                        _lb_remote, exclude_profiles=set()
+                    )
+                    if _lb_next:
+                        logger.info(
+                            "delegation_slot_busy_advance: profile=%s slot busy,"
+                            " advancing to profile=%s runtime=%s",
+                            selected_profile,
+                            _lb_next["profile"],
+                            _lb_next["runtime_id"],
                         )
-                except Exception as _mem_exc:
-                    logger.debug("delegate_memory_consolidation_skipped error=%s", _mem_exc)
-            return local_response
+                        _slot_busy_next_profile = _lb_next["profile"]
+                        _slot_busy_next_runtime = _lb_next["runtime_id"]
+                        # Fall through to HTTP delegate path — do NOT return.
+
+            if _slot_busy_next_profile is None:
+                # Phase 8.8 — Auto-consolidate successful delegate outcomes into memory.
+                if (
+                    local_response.status == 200
+                    and _store_memory is not None
+                    and bool(data.get("auto_memorize", True))
+                ):
+                    try:
+                        resp_body = json.loads(local_response.body)
+                        result_content = (
+                            (resp_body.get("choices") or [{}])[0]
+                            .get("message", {})
+                            .get("content", "")
+                        )
+                        if result_content and len(result_content.strip()) > 20:
+                            await _store_memory(
+                                content=f"Delegate task [{agent_role}]: {user_task[:200]}\nOutcome: {result_content[:400]}",
+                                memory_type="procedural",
+                                tags=["delegate", agent_role, routing_decision.get("task_archetype", "general")],
+                                source="delegate_auto_consolidation",
+                            )
+                    except Exception as _mem_exc:
+                        logger.debug("delegate_memory_consolidation_skipped error=%s", _mem_exc)
+                return local_response
+            # _slot_busy_next_profile is set: fall through to HTTP delegate path
 
         if "model" not in payload and _remote_profile_uses_agent_pool(selected_profile):
             pool_agent = _select_agent_pool_candidate(
@@ -1211,11 +1251,14 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     json=delegate_payload or payload,
                 )
 
-        effective_profile = selected_profile
-        effective_runtime_id = selected_runtime_id
-        fallback_applied = False
+        effective_profile = _slot_busy_next_profile or selected_profile
+        effective_runtime_id = _slot_busy_next_runtime or selected_runtime_id
+        fallback_applied = bool(_slot_busy_next_profile)
         local_fallback_applied = False
-        fallback_reason = ""
+        fallback_reason = (
+            f"local_slot_busy: advanced to {_slot_busy_next_profile}"
+            if _slot_busy_next_profile else ""
+        )
         failover_chain_used = False
         excluded_profiles = set()
 
