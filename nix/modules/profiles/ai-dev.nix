@@ -109,6 +109,14 @@ in
       ];
     };
 
+    # ── AGI Scaffold — Phases 16–20 ─────────────────────────────────────────────
+    # Any host running the ai-dev profile gets the full AGI scaffold.
+    # Override with lib.mkForce false in host/default.nix to disable.
+    mySystem.aiStack.identityKernel.enable  = lib.mkDefault true;
+    mySystem.aiStack.agentMesh.enable       = lib.mkDefault true;
+    mySystem.aiStack.affectiveEngine.enable = lib.mkDefault true;
+    mySystem.aiStack.worldModel.enable      = lib.mkDefault true;
+
     # ── Touchpad defaults for modern laptops ────────────────────────────────────
     # clickfinger eliminates accidental middle-click on ClickPads
     services.libinput.touchpad = {
