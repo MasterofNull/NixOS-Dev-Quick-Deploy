@@ -274,6 +274,22 @@ def _select_local_slot_busy_advance_target(
     )
 
 
+def _should_short_circuit_to_continue_local_http(
+    profile_name: str,
+    *,
+    tools_present: bool,
+    delegated_max_tokens: int,
+    async_mode: bool,
+    streaming_mode: bool,
+) -> bool:
+    normalized = str(profile_name or "").strip().lower()
+    if tools_present or async_mode or streaming_mode:
+        return False
+    if normalized not in {"default", "embedded-assist"}:
+        return False
+    return 0 < int(delegated_max_tokens or 0) <= 48
+
+
 async def _aidb_shared_skills_catalog(limit: int = 25) -> Dict[str, Any]:
     aidb_url = Config.AIDB_URL.rstrip("/")
     if not aidb_url:
@@ -916,6 +932,19 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         if "temperature" in data:
             payload["temperature"] = float(data.get("temperature"))
 
+        short_circuit_continue_local_http = _should_short_circuit_to_continue_local_http(
+            selected_profile,
+            tools_present=isinstance(payload.get("tools"), list) and len(payload.get("tools") or []) > 0,
+            delegated_max_tokens=delegated_max_tokens,
+            async_mode=bool(data.get("async_mode", False)),
+            streaming_mode=bool(data.get("streaming_mode", False)),
+        )
+        if short_circuit_continue_local_http:
+            routing_decision = dict(routing_decision)
+            routing_decision["rationale"] = (
+                f"{routing_decision.get('rationale', '')} [local-fast-path:continue-local-http]"
+            ).strip()
+
         delegate_timeout_slack_s = float(os.getenv("AI_DELEGATE_TIMEOUT_SLACK_S", "30"))
         local_agent_timeout_s = max(1.0, timeout_s - min(delegate_timeout_slack_s, max(1.0, timeout_s * 0.125)))
         finalization_applied = False
@@ -938,6 +967,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         # state tracking.
         def _is_local_runtime(runtime_id: str) -> bool:
             return str(runtime_id or "").startswith("local-")
+
+        if short_circuit_continue_local_http and _is_local_runtime(selected_runtime_id):
+            selected_profile = "continue-local"
+            runtime = dict(runtime)
+            runtime["profile"] = selected_profile
 
         async def _spawn_local_agent(
             role: str, task_text: str, system_prompt: str,
