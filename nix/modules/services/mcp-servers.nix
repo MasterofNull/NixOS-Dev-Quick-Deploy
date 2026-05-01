@@ -74,6 +74,9 @@ let
   mutableStateDir = cfg.deployment.mutableSpaces.aiStackStateDir;
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
+  singleLineEnv = value:
+    lib.escapeShellArg
+      (lib.replaceStrings ["\r" "\n"] [" " " "] value);
   mcpIntegrityBaseline = "${mutableStateDir}/mcp-source-baseline.sha256";
   migrationsIni = "${toString repoSource}/ai-stack/migrations/alembic.ini";
   aidbConfig = pkgs.writeText "aidb-config.yaml" ''
@@ -1137,7 +1140,7 @@ in {
                   then "true"
                   else "false"
                 }"
-                "AI_LOCAL_SYSTEM_PROMPT_IDENTITY=${lib.escapeShellArg ai.aiHarness.runtime.localSystemPrompt.identity}"
+                "AI_LOCAL_SYSTEM_PROMPT_IDENTITY=${singleLineEnv ai.aiHarness.runtime.localSystemPrompt.identity}"
                 "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.rules}"
                 "AI_LOCAL_SYSTEM_PROMPT_WORKFLOW_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.workflow}"
                 "AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.outputSections}"
