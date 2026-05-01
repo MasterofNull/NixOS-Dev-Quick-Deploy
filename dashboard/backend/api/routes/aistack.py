@@ -2244,6 +2244,11 @@ async def get_ai_metrics() -> Dict[str, Any]:
 
     switchboard_status = _normalize_status(switchboard_health.get("status"), ("ok", "healthy"))
     switchboard_local_runtime = switchboard_health.get("local_runtime")
+    switchboard_last_local_completion = (
+        switchboard_local_runtime.get("last_completion")
+        if isinstance(switchboard_local_runtime, dict)
+        else None
+    )
     aider_wrapper_status = _normalize_status(aider_wrapper_health.get("status"), ("ok", "healthy"))
 
     if not qdrant_health_raw:
@@ -2349,6 +2354,7 @@ async def get_ai_metrics() -> Dict[str, Any]:
                 "remote_configured": bool(switchboard_health.get("remote_configured", False)),
                 "local_lane_status": _resolve_switchboard_local_lane_status(switchboard_health, switchboard_local_runtime),
                 "local_runtime": switchboard_local_runtime,
+                "last_local_completion": switchboard_last_local_completion,
             },
             "aider_wrapper": {
                 "service": "aider-wrapper",

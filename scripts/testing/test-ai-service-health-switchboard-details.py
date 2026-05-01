@@ -42,6 +42,14 @@ async def _run() -> None:
                     "slot_available": 0,
                     "slot_busy": True,
                     "source": "switchboard_semaphore+llama_metrics",
+                    "last_completion": {
+                        "profile": "continue-local",
+                        "path": "chat/completions",
+                        "status_code": 200,
+                        "prompt_tokens": 817,
+                        "prompt_tokens_details": {"cached_tokens": 749},
+                        "timings": {"prompt_n": 68, "prompt_ms": 8385.377},
+                    },
                     "active_request": {
                         "profile": "continue-local",
                         "duration_s": 91.2,
@@ -63,6 +71,10 @@ async def _run() -> None:
     assert_true(
         (details.get("local_runtime") or {}).get("slot_busy") is True,
         "switchboard details should preserve local runtime occupancy payload",
+    )
+    assert_true(
+        (details.get("last_local_completion") or {}).get("prompt_tokens") == 817,
+        "switchboard details should expose the last local completion summary",
     )
     assert_true(details.get("routing_mode") == "hybrid", "switchboard details should expose routing mode")
 

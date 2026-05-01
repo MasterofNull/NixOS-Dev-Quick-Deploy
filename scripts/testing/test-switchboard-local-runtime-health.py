@@ -71,6 +71,26 @@ def main() -> None:
         "expected active local request metadata to flag long-running slot occupancy",
     )
     assert_true(
+        "def _record_local_completion(path: str, profile: str, status_code: int, body: bytes | None) -> None:" in text,
+        "expected switchboard to define a helper that stores the last local completion snapshot",
+    )
+    assert_true(
+        "def _local_last_completion_snapshot() -> dict | None:" in text,
+        "expected switchboard to define a helper that exposes the last local completion snapshot",
+    )
+    assert_true(
+        'snapshot["last_completion"] = last_completion' in text,
+        "expected local runtime health to expose the last local completion snapshot",
+    )
+    assert_true(
+        '_record_local_completion(path, profile, upstream.status_code, upstream.content)' in text,
+        "expected successful local chat completions to refresh the last completion snapshot",
+    )
+    assert_true(
+        '"prompt_tokens_details"' in text and '"timings"' in text,
+        "expected local completion snapshot to preserve cached token and timing fields",
+    )
+    assert_true(
         "def _local_lane_status(local_runtime: dict | None) -> str:" in text,
         "expected switchboard to define a canonical local lane status helper",
     )
