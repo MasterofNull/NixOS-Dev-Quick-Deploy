@@ -64,6 +64,7 @@ from ai_coordinator import (
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     build_empty_content_retry_messages as _ai_coordinator_build_empty_content_retry_messages,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
+    infer_profile as _ai_coordinator_infer_profile,
     local_fallback_profile as _ai_coordinator_local_fallback_profile,
     route_by_complexity as _ai_coordinator_route_by_complexity,
 )
@@ -670,10 +671,15 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
 
         requested_profile = str(data.get("profile") or "").strip().lower()
+        if requested_profile:
+            requested_profile = _ai_coordinator_infer_profile(task, requested_profile=requested_profile)
+        timeout_s = float(data.get("timeout_s") or float(os.getenv("AI_DELEGATE_TIMEOUT_S", "240")))  # Phase 12.1: increased from 180 for llama.cpp 90-120s inference
         # Phase 14.2: default prefer_local=False — remote free-tier agents are ~10x faster
         # than local llama.cpp (90-120s). Local is only used when explicitly requested.
         prefer_local = bool(data.get("prefer_local", False))
         tools_present = isinstance(data.get("tools"), list) and len(data.get("tools") or []) > 0
+        auto_prefer_local = not requested_profile and not tools_present and timeout_s <= 10.0
+        routing_prefer_local = prefer_local or auto_prefer_local
 
         # Phase 14.2: Support legacy agent_type field by mapping to profile
         if not requested_profile:
@@ -686,7 +692,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 )
 
         # Phase 14.2: Force remote-free fast-path when no profile and free agents available
-        if not requested_profile and not prefer_local:
+        if not requested_profile and not routing_prefer_local:
             if _AGENT_POOL_MANAGER and (
                 sum(
                     1 for a in _AGENT_POOL_MANAGER.agents.values()
@@ -700,10 +706,21 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     "auto_routed": True,
                 }
             else:
-                routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
+                routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, routing_prefer_local)
         else:
             # Phase 9.3 — Use complexity routing for auto-selection
-            routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, prefer_local)
+            routing_decision = _ai_coordinator_route_by_complexity(task, requested_profile, routing_prefer_local)
+        if requested_profile:
+            routing_decision = dict(routing_decision)
+            routing_decision["recommended_profile"] = requested_profile
+            routing_decision["rationale"] = (
+                f"{routing_decision.get('rationale', '')} [requested-profile:{requested_profile}]"
+            ).strip()
+        elif auto_prefer_local:
+            routing_decision = dict(routing_decision)
+            routing_decision["rationale"] = (
+                f"{routing_decision.get('rationale', '')} [local-preference:bounded-timeout]"
+            ).strip()
         selected_profile = routing_decision["recommended_profile"]
 
         # Phase 9 — Remote availability pre-check: if the selected profile is
@@ -774,7 +791,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             fallback_chain = _build_delegation_fallback_chain(
                 task,
                 requested_profile,
-                prefer_local,
+                routing_prefer_local,
             )
 
             # Find next available target
@@ -870,7 +887,6 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         if "temperature" in data:
             payload["temperature"] = float(data.get("temperature"))
 
-        timeout_s = float(data.get("timeout_s") or float(os.getenv("AI_DELEGATE_TIMEOUT_S", "240")))  # Phase 12.1: increased from 180 for llama.cpp 90-120s inference
         delegate_timeout_slack_s = float(os.getenv("AI_DELEGATE_TIMEOUT_SLACK_S", "30"))
         local_agent_timeout_s = max(1.0, timeout_s - min(delegate_timeout_slack_s, max(1.0, timeout_s * 0.125)))
         finalization_applied = False
@@ -1235,7 +1251,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 payload["model"] = pool_agent.model_id
 
         async def _post_delegate(profile_name: str, delegate_payload: Optional[Dict[str, Any]] = None) -> httpx.Response:
-            local_profiles = {"default", "local-tool-calling"}
+            local_profiles = {"default", "continue-local", "embedded-assist", "local-tool-calling"}
             headers = {
                 "Content-Type": "application/json",
                 "X-AI-Profile": "continue-local" if profile_name == "default" else profile_name,
@@ -1298,7 +1314,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             failover_chain = _build_delegation_fallback_chain(
                 task,
                 requested_profile,
-                prefer_local,
+                routing_prefer_local,
             )
 
             next_target = _select_next_available_delegation_target(
