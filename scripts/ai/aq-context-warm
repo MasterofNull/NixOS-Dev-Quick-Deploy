@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# aq-context-warm — World Model Predictive Context Warming (Phase 20)
+# Runs the intent forecaster and warms the semantic cache for predicted queries.
+#
+# Usage:
+#   aq-context-warm               # warm eligible predictions
+#   aq-context-warm --dry-run     # log intent only, no HTTP calls
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WORLD_MODEL_DIR="${REPO_ROOT}/ai-stack/world-model"
+
+if [[ "${WORLD_MODEL_ENABLED:-false}" != "true" ]]; then
+    echo "aq-context-warm: WORLD_MODEL_ENABLED is not 'true', skipping." >&2
+    exit 0
+fi
+
+exec python3 - "$@" <<'PYEOF'
+import sys
+import os
+import importlib.util
+
+repo_root = os.environ.get("REPO_ROOT", os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)) if False else os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
+
+# Inject world-model path
+wm_dir = os.path.join(repo_root, "ai-stack", "world-model")
+if wm_dir not in sys.path:
+    sys.path.insert(0, wm_dir)
+
+dry_run = "--dry-run" in sys.argv
+
+from intent_forecaster import IntentForecaster
+from context_warmer import ContextWarmer
+
+result = IntentForecaster().forecast()
+summary = ContextWarmer().warm(result.predictions, dry_run=dry_run)
+
+import json
+print(json.dumps(summary, indent=2))
+PYEOF

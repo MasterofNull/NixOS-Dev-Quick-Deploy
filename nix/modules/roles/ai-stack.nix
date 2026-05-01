@@ -2013,6 +2013,47 @@ in {
       };
     })
 
+    # Phase 20 — World Model: Predictive Context Warming (every 15 minutes)
+    (lib.mkIf (roleEnabled && ai.aiStack.worldModel.enable) {
+      systemd.services.ai-context-warmer = {
+        description = "AI world model predictive context warming";
+        after = ["network-online.target" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-context-warm";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          PrivateTmp = true;
+          MemoryMax = "128M";
+          Environment = [
+            "WORLD_MODEL_ENABLED=true"
+            "WORLD_MODEL_WARM_THRESHOLD=${cfg.aiStack.worldModel.warmThreshold}"
+            "WORLD_MODEL_MAX_WARM_QUERIES=${toString cfg.aiStack.worldModel.maxWarmQueriesPerRun}"
+            "WORLD_MODEL_PATTERN_RETENTION_DAYS=${toString cfg.aiStack.worldModel.patternRetentionDays}"
+          ];
+        };
+      };
+
+      systemd.timers.ai-context-warmer = {
+        description = "Predictive context warming timer (every 15 minutes)";
+        wantedBy = ["timers.target"];
+        timerConfig =
+          {
+            OnCalendar = "*:0/15";
+            Persistent = true;
+            RandomizedDelaySec = "2min";
+          }
+          // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+            DeferReactivation = true;
+          };
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {

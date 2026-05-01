@@ -1,6 +1,6 @@
 # Phase 20 — World Model: Predictive Context Warming
 
-Status: `pending`
+Status: `complete`
 Created: 2026-04-30
 Owner: Claude (orchestrator) / Qwen (implementation)
 Source: System Assessment & AGI Scaffold Architecture (2026-04-30)
@@ -218,45 +218,33 @@ Before marking any task done:
 
 ### Task: WM-001
 - Phase: 20.1
-- Owner agent: qwen
-- Files: `ai-stack/world-model/pattern_index.py`, DB migration file
-- Commands:
-  - `python3 -m py_compile ai-stack/world-model/pattern_index.py`
-  - `psql $POSTGRES_URL -c "SELECT COUNT(*) FROM query_sequence_patterns"`
-- Status: pending
+- Owner agent: claude
+- Files: `ai-stack/world-model/pattern_index.py`, `ai-stack/database/postgres/migrations/V20__world_model_query_patterns.sql`
+- Status: **done** (2026-05-01)
 
 ### Task: WM-002
 - Phase: 20.2
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `ai-stack/world-model/intent_forecaster.py`
-- Commands: `python3 -m py_compile ai-stack/world-model/intent_forecaster.py`
-- Status: pending
+- Status: **done** (2026-05-01)
 
 ### Task: WM-003
 - Phase: 20.3
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `ai-stack/world-model/context_warmer.py`
-- Commands: `python3 -m py_compile ai-stack/world-model/context_warmer.py`
-- Status: pending
+- Status: **done** (2026-05-01)
 
 ### Task: WM-004
 - Phase: 20.4
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `scripts/ai/aq-context-warm`, `nix/modules/roles/ai-stack.nix`
-- Commands:
-  - `bash -n scripts/ai/aq-context-warm`
-  - `nix-instantiate --parse nix/modules/roles/ai-stack.nix`
-  - `aq-context-warm --dry-run`
-- Status: pending
+- Status: **done** (2026-05-01)
 
 ### Task: WM-005
 - Phase: 20.5
-- Owner agent: qwen
-- Files: `http_server.py`, `nix/modules/core/options.nix`
-- Commands:
-  - `nix-instantiate --parse nix/modules/core/options.nix`
-  - `curl -s -H "X-API-Key: $(cat /run/secrets/hybrid_coordinator_api_key)" http://localhost:8003/world/forecast`
-- Status: pending
+- Owner agent: claude
+- Files: `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`, `nix/modules/core/options.nix`
+- Status: **done** (2026-05-01)
 
 ---
 
