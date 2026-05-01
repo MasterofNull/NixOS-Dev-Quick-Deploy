@@ -3085,6 +3085,28 @@
         };
       };
 
+      affectiveEngine = {
+        enable = lib.mkEnableOption "Affective/values signal layer (Phase 19)";
+
+        compassionWordThreshold = lib.mkOption {
+          type = lib.types.int;
+          default = 2;
+          description = "Minimum distress-marker word count to activate compassion signal.";
+        };
+
+        reciprocityTtlDays = lib.mkOption {
+          type = lib.types.int;
+          default = 30;
+          description = "Rolling TTL (days) for Redis reciprocity accounting keys.";
+        };
+
+        empathyRetryThreshold = lib.mkOption {
+          type = lib.types.int;
+          default = 3;
+          description = "Retry count threshold at which empathy signal reaches maximum.";
+        };
+      };
+
       agentMesh = {
         enable = lib.mkEnableOption "Agent mesh collective memory (Phase 18)";
 

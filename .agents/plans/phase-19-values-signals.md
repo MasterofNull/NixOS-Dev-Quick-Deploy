@@ -1,6 +1,6 @@
 # Phase 19 — Values Signals: Affective Layer as Behavioral Modulator
 
-Status: `pending`
+Status: `complete`
 Created: 2026-04-30
 Owner: Claude (orchestrator) / Qwen (implementation)
 Source: System Assessment & AGI Scaffold Architecture (2026-04-30)
@@ -235,47 +235,39 @@ Before marking any task done:
 
 ### Task: AFF-001
 - Phase: 19.1
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `ai-stack/affective-engine/state_model.py`
-- Commands: `python3 -m py_compile ai-stack/affective-engine/state_model.py`
-- Status: pending
+- Status: **done** (2026-04-30)
 
 ### Task: AFF-002
 - Phase: 19.2
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `ai-stack/affective-engine/signal_detectors.py`
-- Commands: `python3 -m py_compile ai-stack/affective-engine/signal_detectors.py`
-- Status: pending
+- Status: **done** (2026-04-30)
 
 ### Task: AFF-003
 - Phase: 19.3
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `ai-stack/affective-engine/reciprocity_tracker.py`
-- Commands: `python3 -m py_compile ai-stack/affective-engine/reciprocity_tracker.py`
-- Status: pending
+- Status: **done** (2026-04-30)
 
 ### Task: AFF-004
 - Phase: 19.4
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `ai-stack/affective-engine/output_modulator.py`
-- Commands: `python3 -m py_compile ai-stack/affective-engine/output_modulator.py`
-- Status: pending
+- Status: **done** (2026-04-30)
 
 ### Task: AFF-005
 - Phase: 19.5
-- Owner agent: qwen
-- Files: `ai-stack/mcp-servers/hybrid-coordinator/route_handler.py`, `affective_handlers.py`
-- Commands:
-  - `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/route_handler.py`
-  - `curl -s http://localhost:8003/affective/state`
-- Status: pending
+- Owner agent: claude
+- Files: `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`, `affective_handlers.py`
+- Status: **done** (2026-04-30)
 
 ### Task: AFF-006
 - Phase: 19.6
-- Owner agent: qwen
+- Owner agent: claude
 - Files: `nix/modules/core/options.nix`
-- Commands: `nix-instantiate --parse nix/modules/core/options.nix`
-- Status: pending
+- Status: **done** (2026-04-30)
 
 ---
 
