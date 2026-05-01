@@ -252,6 +252,28 @@ async def _switchboard_ai_coordinator_state() -> Dict[str, Any]:
     return state
 
 
+def _select_local_slot_busy_advance_target(
+    task: str,
+    requested_profile: str,
+    *,
+    remote_configured: bool,
+) -> Optional[Dict[str, Any]]:
+    if not remote_configured:
+        return None
+    fallback_chain = _build_delegation_fallback_chain(
+        task,
+        requested_profile,
+        prefer_local=False,
+    )
+    remote_targets = [
+        candidate for candidate in fallback_chain if _is_remote_profile(candidate["profile"])
+    ]
+    return _select_next_available_delegation_target(
+        remote_targets,
+        exclude_profiles=set(),
+    )
+
+
 async def _aidb_shared_skills_catalog(limit: int = 25) -> Dict[str, Any]:
     aidb_url = Config.AIDB_URL.rstrip("/")
     if not aidb_url:
@@ -1201,14 +1223,10 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 except Exception:
                     _lb_err = {}
                 if _lb_err.get("error") == "local_slot_busy":
-                    _lb_chain = _build_delegation_fallback_chain(
-                        task, requested_profile, prefer_local=False
-                    )
-                    _lb_remote = [
-                        c for c in _lb_chain if _is_remote_profile(c["profile"])
-                    ]
-                    _lb_next = _select_next_available_delegation_target(
-                        _lb_remote, exclude_profiles=set()
+                    _lb_next = _select_local_slot_busy_advance_target(
+                        task,
+                        requested_profile,
+                        remote_configured=remote_configured,
                     )
                     if _lb_next:
                         logger.info(
@@ -1221,6 +1239,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         _slot_busy_next_profile = _lb_next["profile"]
                         _slot_busy_next_runtime = _lb_next["runtime_id"]
                         # Fall through to HTTP delegate path — do NOT return.
+                    elif not remote_configured:
+                        logger.info(
+                            "delegation_slot_busy_no_remote_advance: profile=%s slot busy and remote routing is not configured",
+                            selected_profile,
+                        )
 
             if _slot_busy_next_profile is None:
                 # Phase 8.8 — Auto-consolidate successful delegate outcomes into memory.

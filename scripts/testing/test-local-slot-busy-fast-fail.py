@@ -68,7 +68,8 @@ def main() -> None:
         "expected delegate handler to return HTTP 503 for local_slot_busy",
     )
 
-    # Coordinator: advances fallback chain to remote profiles on slot_busy
+    # Coordinator: advances fallback chain to remote profiles on slot_busy,
+    # but only when remote routing is actually configured.
     assert_true(
         "_slot_busy_next_profile" in handlers_text,
         "expected delegate handler to track slot_busy fallback profile",
@@ -78,12 +79,20 @@ def main() -> None:
         "expected delegate handler to detect local_slot_busy in spawn response",
     )
     assert_true(
-        "_is_remote_profile(c[\"profile\"])" in handlers_text,
-        "expected delegate handler to filter fallback chain to remote-only on slot_busy",
+        "_select_local_slot_busy_advance_target(" in handlers_text,
+        "expected delegate handler to centralize slot_busy remote-advance selection",
+    )
+    assert_true(
+        "if not remote_configured:" in handlers_text,
+        "expected slot_busy remote advance to stop when remote routing is not configured",
     )
     assert_true(
         "delegation_slot_busy_advance" in handlers_text,
         "expected delegate handler to log slot_busy advance event",
+    )
+    assert_true(
+        "delegation_slot_busy_no_remote_advance" in handlers_text,
+        "expected delegate handler to log when slot_busy cannot advance because remote routing is unavailable",
     )
     assert_true(
         "_slot_busy_next_profile or selected_profile" in handlers_text,
