@@ -11,6 +11,7 @@ without human intervention.
 
 import asyncio
 import json
+import os
 import sys
 import uuid
 from dataclasses import dataclass, asdict
@@ -76,6 +77,9 @@ class AutonomousLoop:
         self.pg_database = pg_database
         self.pg_password = pg_password
         self.dry_run = dry_run
+        self.max_experiments_per_cycle = int(
+            os.environ.get("AUTONOMOUS_MAX_EXPERIMENTS", "3")
+        )
 
         # Initialize components
         self.trend_db = TrendDatabase(
@@ -200,7 +204,7 @@ class AutonomousLoop:
         1. Sync metrics
         2. Check for triggers
         3. Research (if triggered)
-        4. Execute experiments (placeholder for now)
+        4. Execute experiments (ExperimentExecutor + SandboxValidator)
         5. Validate and learn
         """
         print("🔄 Autonomous Improvement Loop")
@@ -294,20 +298,30 @@ class AutonomousLoop:
                 cycle.experiments_accepted = 0
                 cycle.experiments_rejected = 0
             else:
-                print("   ⏸️  Experiment execution not yet implemented")
-                print("   📝 Next: Integrate with existing autoresearch framework")
-                print(f"   Top hypothesis: {hypotheses[0].description}")
+                from experiment_executor import ExperimentExecutor
+                from sandbox_validator import SandboxValidator
 
-                # Placeholder: In real implementation, would:
-                # 1. Convert hypothesis to autoresearch experiment config
-                # 2. Run A/B test (baseline vs variant)
-                # 3. Collect metrics and compute statistical significance
-                # 4. Auto-accept if improvement >5% and p<0.05
-                # 5. Apply changes to production if accepted
+                executor = ExperimentExecutor(
+                    cycle_id=cycle.id, dry_run=self.dry_run
+                )
+                validator = SandboxValidator(cycle_id=cycle.id)
 
-                cycle.experiments_run = 0
-                cycle.experiments_accepted = 0
-                cycle.experiments_rejected = 0
+                for i, hyp in enumerate(hypotheses[:self.max_experiments_per_cycle]):
+                    spec = executor.convert_hypothesis(hyp)
+                    result = executor.execute(spec)
+
+                    if result.applied:
+                        report = validator.run_gates(spec, result)
+                        if report.recommendation == "revert":
+                            executor.revert(spec)
+                            cycle.experiments_rejected += 1
+                        else:
+                            cycle.experiments_accepted += 1
+                    elif result.queued:
+                        # PRSI queue handles high-risk changes via human approval
+                        cycle.experiments_run += 1
+
+                    cycle.experiments_run += 1
 
             print()
 
