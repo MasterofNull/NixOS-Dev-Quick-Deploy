@@ -47,6 +47,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Phase 18 — Agent Mesh collective memory (lazy import; non-fatal if unavailable)
+try:
+    from collective_memory import CollectiveMemory as _CollectiveMemory
+    from experience_replay import ExperienceReplay as _ExperienceReplay
+    _MESH_AVAILABLE = True
+except ImportError:
+    _MESH_AVAILABLE = False
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -437,11 +445,26 @@ async def spawn_team(
     log.info("Spawning team %s for task: %s", team_id, task[:80])
     log.info("Team roles: %s", roles)
 
+    # Phase 18 — Experience replay: inject past collaboration context into task
+    past_context = ""
+    if _MESH_AVAILABLE and os.environ.get("AGENT_MESH_ENABLED", "true").lower() != "false":
+        try:
+            replay = _ExperienceReplay()
+            records = await replay.retrieve(task)
+            past_context = replay.format_as_context(records)
+            if past_context:
+                log.info("team %s: injecting %d past collaboration(s) as context", team_id, len(records))
+        except Exception as exc:
+            log.debug("experience_replay skipped (non-fatal): %s", exc)
+
     members = []
     processes = {}
 
+    # Augment task with past context if available
+    task_with_context = (past_context + "\n---\n\n" + task) if past_context else task
+
     for role in roles:
-        instance = state.register(role, task)
+        instance = state.register(role, task_with_context)
         members.append(instance.to_dict())
 
         proc = _spawn_agent_process(
@@ -512,6 +535,25 @@ async def wait_for_team(team_id: str, timeout: float = 300.0) -> Dict[str, Any]:
         team_file.write_text(json.dumps(team_state, indent=2))
 
         if all_done:
+            # Phase 18 — archive collaboration record to AIDB
+            if _MESH_AVAILABLE and os.environ.get("AGENT_MESH_ENABLED", "true").lower() != "false":
+                try:
+                    outcomes = [r.get("status", "unknown") for r in results.values()]
+                    overall = "success" if all(o == "completed" for o in outcomes) else "partial"
+                    patterns = [
+                        f"{r.get('role', '?')}:{r.get('status', '?')}"
+                        for r in results.values()
+                    ]
+                    mem = _CollectiveMemory()
+                    await mem.archive_collaboration(team_id, {
+                        "task_summary": team_state["task"][:300],
+                        "roles": team_state.get("roles", []),
+                        "outcome": overall,
+                        "duration_s": round(time.time() - start, 1),
+                        "patterns": patterns,
+                    })
+                except Exception as exc:
+                    log.debug("archive_collaboration skipped (non-fatal): %s", exc)
             return team_state
 
         await asyncio.sleep(1.0)

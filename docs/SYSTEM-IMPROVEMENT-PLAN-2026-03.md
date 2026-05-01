@@ -1014,3 +1014,161 @@ Required before marking any Phase 13 task done:
   - Strict Phase 7 program gate now passes in strict mode when switchboard is reachable.
   - `run-harness-improvement-pass.sh` now uses bounded harness-eval timeout with `/query` fallback to avoid long blocking failures.
   - Resolved runtime blocker: native `TASK_AUDIT_LOG_PATH` output now materializes at `/var/log/nixos-ai-stack/aider-task-audit.jsonl` after aider-wrapper audit-write fix + service restart.
+
+---
+
+## AGI Scaffold Program (Phases 16–20)
+
+Source: System Assessment & AGI Scaffold Architecture (2026-04-30)
+Assessment by: integrated agent session via `aq-prime` + full harness probe
+
+### Assessment Findings Summary
+
+The stack is infrastructure-complete but has five open gaps before it can be considered
+a persistent, values-aligned collaborative system:
+
+| Gap | Severity | Phase |
+|-----|----------|-------|
+| No persistent self-model (identity survives reboots) | High | 16 |
+| Experiment execution loop is a placeholder (`autonomous_loop.py:301`) | Critical | 17 |
+| Agent spawner is stateless — no collective team memory | High | 18 |
+| Values (beauty, empathy, reciprocity) have no computational form | Medium | 19 |
+| No predictive context warming — system reacts, never anticipates | Medium | 20 |
+
+### Program Status
+
+| Phase | Title | Status | Plan File |
+|-------|-------|--------|-----------|
+| 16 | Identity Kernel | `pending` | `.agents/plans/phase-16-identity-kernel.md` |
+| 17 | Closed-Loop Improver | `pending` | `.agents/plans/phase-17-closed-loop-improver.md` |
+| 18 | Agent Mesh Collective Memory | `pending` | `.agents/plans/phase-18-agent-mesh-collective-memory.md` |
+| 19 | Values Signals (Affective Layer) | `pending` | `.agents/plans/phase-19-values-signals.md` |
+| 20 | World Model & Predictive Warming | `pending` | `.agents/plans/phase-20-world-model-predictive.md` |
+
+Recommended execution order: 17 → 16 → 18 → 19 → 20
+(17 first: closing the experiment execution gap is the highest-value unlock)
+
+---
+
+## Phase 15 — Model Fleet + Agentic Memory Journal
+
+Status: `complete` (15.1 + 15.3 delivered 2026-05-01)
+
+| Sub-Phase | Goal | Status |
+|-----------|------|--------|
+| 15.1 | Model fleet manager (7 pools, 62 models, Redis-backed) | `complete` |
+| 15.3 | Agentic memory journal (Redis hot + AIDB persistent) | `complete` |
+
+Commit: `113f7406`
+Key files:
+- `ai-stack/mcp-servers/hybrid-coordinator/model_fleet_manager.py`
+- `ai-stack/mcp-servers/hybrid-coordinator/agentic_memory_journal.py`
+Endpoints: `GET /control/model-fleet/status`, `GET /memory/journal`, `GET /memory/journal/stats`
+
+---
+
+## Phase 16 — Identity Kernel
+
+Status: `pending`
+Created: 2026-04-30
+Plan file: `.agents/plans/phase-16-identity-kernel.md`
+
+Give the system a persistent, append-only identity that survives reboots. On every boot,
+replay the journal and reconstruct `GET /identity/self`. Prerequisite for Phases 19–20.
+
+Key deliverables:
+- `ai-stack/identity-kernel/narrative_engine.py`
+- `ai-stack/identity-kernel/value_constitution.py`
+- `nix/modules/services/identity-kernel.nix`
+- `GET /identity/self` endpoint
+
+Tasks: IDK-001 → IDK-005 (see plan file)
+Owner agents: qwen (implementation), Claude (review)
+
+---
+
+## Phase 17 — Closed-Loop Improver
+
+Status: `pending`
+Created: 2026-04-30
+Plan file: `.agents/plans/phase-17-closed-loop-improver.md`
+
+**HIGHEST PRIORITY** — Replace the placeholder block in `autonomous_loop.py` (lines 301–310)
+with a real experiment executor + sandbox validator. Low-blast-radius changes auto-apply;
+high-blast-radius changes route to PRSI queue for human approval.
+
+Key deliverables:
+- `ai-stack/autonomous-improvement/experiment_executor.py`
+- `ai-stack/autonomous-improvement/sandbox_validator.py`
+- `autonomous_loop.py` — placeholder removed, real pipeline wired
+- `scripts/testing/validate-autonomous-loop-gates.sh`
+
+Tasks: CLO-001 → CLO-004 (see plan file)
+Owner agents: qwen (implementation), Claude (review + PRSI approval gate)
+
+---
+
+## Phase 18 — Agent Mesh Collective Memory
+
+Status: `pending`
+Created: 2026-04-30
+Plan file: `.agents/plans/phase-18-agent-mesh-collective-memory.md`
+
+Extend `agent_spawner.py` so teams share a Redis blackboard during collaboration and write
+a collaboration record to AIDB when complete. Next team for a similar task retrieves top-3
+past collaborations as L2 context.
+
+Key deliverables:
+- `ai-stack/local-agents/collective_memory.py`
+- `ai-stack/local-agents/experience_replay.py`
+- `GET /agents/mesh/status` + `GET /agents/mesh/collaborations` endpoints
+
+Tasks: AMC-001 → AMC-005 (see plan file)
+Owner agents: qwen (implementation), Claude (review)
+
+---
+
+## Phase 19 — Values Signals (Affective Layer)
+
+Status: `pending`
+Created: 2026-04-30
+Plan file: `.agents/plans/phase-19-values-signals.md`
+Dependency: Phase 16 (value_constitution.py must exist)
+
+Translate the value hierarchy from `config/identity-values.yaml` into runtime behavioral
+signals. Uses observable proxies (retry count, error rate, query word patterns) — no ML
+model required. Kill switch: `AFFECTIVE_ENABLED=false`.
+
+Key deliverables:
+- `ai-stack/affective-engine/state_model.py`
+- `ai-stack/affective-engine/signal_detectors.py`
+- `ai-stack/affective-engine/output_modulator.py`
+- `ai-stack/affective-engine/reciprocity_tracker.py`
+- `GET /affective/state` endpoint
+
+Tasks: AFF-001 → AFF-006 (see plan file)
+Owner agents: qwen (implementation), Claude (review)
+
+---
+
+## Phase 20 — World Model & Predictive Context Warming
+
+Status: `pending`
+Created: 2026-04-30
+Plan file: `.agents/plans/phase-20-world-model-predictive.md`
+Dependency: Phases 18 + 13 (knowledge base must be indexed)
+
+Lightweight intent forecasting from query-sequence patterns + time-of-day signals. Runs a
+15-minute systemd timer that pre-warms the semantic cache for predicted next queries.
+Kill switch: `WORLD_MODEL_ENABLED=false`.
+
+Key deliverables:
+- `ai-stack/world-model/intent_forecaster.py`
+- `ai-stack/world-model/context_warmer.py`
+- `ai-stack/world-model/pattern_index.py`
+- `scripts/ai/aq-context-warm`
+- `ai-context-warmer.service` + `ai-context-warmer.timer`
+- `GET /world/forecast` endpoint
+
+Tasks: WM-001 → WM-005 (see plan file)
+Owner agents: qwen (implementation), Claude (review)

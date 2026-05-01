@@ -40,6 +40,32 @@ Against this repository's current AI stack implementation.
 | API auth hardening checks | Yes | Yes | Implemented | Added static+runtime auth-hardening check script for hybrid API path. |
 | Runtime SLO guardrails | Yes | Partial | Implemented | Added SLO config and runtime validator script (`config/ai-slo-thresholds.json`). |
 | Cross-client compatibility suite | Yes | Yes | Implemented | Added client matrix smoke across HTTP, RPC, and Python SDK. |
+| Persistent system identity (survives reboots) | Common in production agents | Partial via sessions | **Gap — Phase 16** | No append-only identity kernel; `GET /identity/self` does not exist. Plan: `phase-16-identity-kernel.md` |
+| Closed autonomous improvement loop | Partial (human-in-loop) | Not core | **Gap — Phase 17** | `autonomous_loop.py` has placeholder at lines 301–310; no real experiment executor. Plan: `phase-17-closed-loop-improver.md` |
+| Agent team collective memory (cross-session) | Common in multi-agent orchestrators | Not core | **Gap — Phase 18** | `agent_spawner.py` is stateless; no collaboration archive in AIDB. Plan: `phase-18-agent-mesh-collective-memory.md` |
+| Values/affective signals as behavioral modulators | Rare (experimental) | Not core | **Gap — Phase 19** | Value hierarchy defined in YAML but has no runtime effect. Plan: `phase-19-values-signals.md` |
+| Predictive context warming (intent forecasting) | Uncommon | Not core | **Gap — Phase 20** | No query-pattern index; no proactive cache warming. Plan: `phase-20-world-model-predictive.md` |
+
+## AGI Scaffold Gap Assessment (2026-04-30)
+
+Source: System Assessment via `aq-prime` full harness integration session.
+
+### Gaps by Severity
+
+| Gap | Phase | Severity | Blocker? |
+|-----|-------|----------|---------|
+| `autonomous_loop.py` experiment execution is a placeholder | 17 | Critical | Blocks true autonomy |
+| No persistent identity kernel | 16 | High | Blocks values + prediction phases |
+| Agent spawner stateless, no collective team memory | 18 | High | Limits delegation quality |
+| Values have no computational form | 19 | Medium | Blocks "hand-in-glove" collaboration feel |
+| No predictive warming | 20 | Medium | Quality-of-life, not blocking |
+
+### Recommended Execution Order
+
+Phase 17 → Phase 16 → Phase 18 → Phase 19 → Phase 20
+
+Rationale: Phase 17 (closed-loop improver) is independent and highest-value. Phase 16
+(identity kernel) is prerequisite for 19. Phase 18 (agent mesh) is prerequisite for 20.
 
 ## Newly Added Parity Closure
 
