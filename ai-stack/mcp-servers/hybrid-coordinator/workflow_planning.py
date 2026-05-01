@@ -443,6 +443,57 @@ def _build_workflow_plan(
     reasoning_pattern = _select_reasoning_pattern(query, prompt_coaching, memory_recall_priority)
     aq_report_summary = _load_aq_report_status_summary()
     retrieval_strategy = _workflow_memory_first_strategy(query, memory_recall_priority, aq_report_summary)
+    normalized_query = str(query or "").strip().lower()
+    rag_posture = aq_report_summary.get("rag_posture", {}) if isinstance(aq_report_summary, dict) else {}
+    context_offload_signals = any(
+        token in normalized_query
+        for token in (
+            "token usage",
+            "token spend",
+            "token budget",
+            "prompt cache",
+            "prompt caching",
+            "context offload",
+            "compaction",
+            "long-running",
+            "many turns",
+            "multi-turn",
+            "memory recall",
+            "agentic flow",
+            "agent workflow",
+            "delegation",
+            "resume",
+            "continue from",
+        )
+    )
+    context_offload_recommended = bool(
+        retrieval_strategy.get("active") or memory_recall_priority or context_offload_signals
+    )
+    context_strategy = {
+        "mode": "context-offload" if context_offload_recommended else "progressive-disclosure",
+        "recommended_blueprint_id": "long-running-context-offload" if context_offload_recommended else "",
+        "recommended_cards": (
+            ["context-offload", "token-discipline", "harness-first"]
+            if context_offload_recommended
+            else ["token-discipline", "harness-first"]
+        ),
+        "recommended_commands": (
+            [
+                "aq-context-manage check",
+                "aq-memory search \"<task or decision>\" --project ai-stack --limit 5",
+                "scripts/ai/harness-rpc.js run-start --query \"<task>\" --blueprint long-running-context-offload --intent-depth standard",
+            ]
+            if context_offload_recommended
+            else [
+                "aq-hints \"<task>\" --format=json --agent=codex",
+                "aq-context-card --card token-discipline --level standard",
+            ]
+        ),
+        "memory_first": bool(retrieval_strategy.get("active")),
+        "prompt_cache_reuse_expected": True,
+        "cache_pressure": "low-sample" if "rag_cache_low_sample" in retrieval_strategy.get("reasons", []) else "steady",
+        "prewarm_candidates": list(rag_posture.get("prewarm_candidates", []) or [])[:2],
+    }
 
     def pick_tool_names(names: set[str]) -> List[str]:
         return [name for name in tool_catalog if name in names]
@@ -533,6 +584,7 @@ def _build_workflow_plan(
             "created_epoch_s": int(time.time()),
             "memory_recall_priority": memory_recall_priority,
             "retrieval_strategy": retrieval_strategy,
+            "context_strategy": context_strategy,
             "reasoning_pattern": reasoning_pattern,
             "optimization_watch": aq_report_summary.get("optimization_watch", {"available": False}),
         },

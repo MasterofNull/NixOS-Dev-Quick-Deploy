@@ -145,6 +145,62 @@ def _workflow_sessions_path() -> Path:
     return data_dir / "workflow-sessions.json"
 
 
+def _normalize_activation_patterns(raw: Any) -> List[str]:
+    if isinstance(raw, str):
+        items = raw.split(",")
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        return []
+    patterns: List[str] = []
+    for item in items:
+        normalized = str(item or "").strip().lower()
+        if normalized:
+            patterns.append(normalized)
+    return patterns
+
+
+def _score_blueprint_for_query(query: str, blueprint: Dict[str, Any]) -> tuple[int, List[str]]:
+    normalized_query = str(query or "").strip().lower()
+    if not normalized_query or not isinstance(blueprint, dict):
+        return 0, []
+    score = 0
+    matches: List[str] = []
+    for pattern in _normalize_activation_patterns(blueprint.get("activation_patterns", [])):
+        if pattern and pattern in normalized_query:
+            score += max(2, len(pattern.split()))
+            matches.append(pattern)
+    if not matches:
+        return 0, []
+    return score, matches
+
+
+def _auto_select_workflow_blueprint(
+    query: str,
+    blueprints_data: Dict[str, Any],
+) -> tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+    blueprints = blueprints_data.get("blueprints", []) if isinstance(blueprints_data, dict) else []
+    best_blueprint: Optional[Dict[str, Any]] = None
+    best_score = 0
+    best_matches: List[str] = []
+    for blueprint in blueprints:
+        if not isinstance(blueprint, dict):
+            continue
+        score, matches = _score_blueprint_for_query(query, blueprint)
+        if score > best_score:
+            best_blueprint = blueprint
+            best_score = score
+            best_matches = matches
+    if not best_blueprint:
+        return None, {}
+    return best_blueprint, {
+        "mode": "auto",
+        "score": best_score,
+        "matched_patterns": best_matches[:5],
+        "query_excerpt": str(query or "").strip()[:160],
+    }
+
+
 async def _active_lesson_refs(limit: int = 2) -> List[Dict[str, Any]]:
     refs = await _load_lesson_refs(limit=limit)
     return refs if isinstance(refs, list) else []
@@ -593,6 +649,20 @@ async def handle_workflow_run_start(request: web.Request) -> web.Response:
         blueprints_data = _load_and_validate_workflow_blueprints()
         blueprint_id = str(data.get("blueprint_id", "") or "").strip()
         selected_blueprint = blueprints_data.get("blueprint_by_id", {}).get(blueprint_id) if blueprint_id else None
+        blueprint_selection: Dict[str, Any] = {}
+        if selected_blueprint:
+            blueprint_selection = {
+                "mode": "explicit",
+                "requested_blueprint_id": blueprint_id,
+            }
+        else:
+            selected_blueprint, blueprint_selection = _auto_select_workflow_blueprint(query, blueprints_data)
+            if selected_blueprint:
+                data = dict(data)
+                data["blueprint_id"] = str(selected_blueprint.get("id", "") or "").strip()
+        if blueprint_selection:
+            data = dict(data)
+            data["blueprint_selection"] = blueprint_selection
         orchestration = _coerce_orchestration_context(data)
         lesson_refs = await _active_lesson_refs(limit=2)
         session = _build_workflow_run_session(
