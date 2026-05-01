@@ -2650,6 +2650,94 @@
           };
         };
       };
+
+      identityKernel = {
+        enable = lib.mkEnableOption "Persistent AGI identity kernel";
+
+        checkpointIntervalSeconds = lib.mkOption {
+          type = lib.types.int;
+          default = 300;
+          description = "How often (in seconds) the identity checkpoint is written.";
+        };
+
+        journalPath = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/ai-stack/identity";
+          description = "Directory for the append-only identity JSONL journal and checkpoint.";
+        };
+
+        valueConstitutionFile = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "Path to the user-editable YAML value constitution file. Empty = use default shipped with the repo.";
+        };
+      };
+
+      affectiveEngine = {
+        enable = lib.mkEnableOption "Affective/values signal layer (Phase 19)";
+
+        compassionWordThreshold = lib.mkOption {
+          type = lib.types.int;
+          default = 2;
+          description = "Minimum distress-marker word count to activate compassion signal.";
+        };
+
+        reciprocityTtlDays = lib.mkOption {
+          type = lib.types.int;
+          default = 30;
+          description = "Rolling TTL (days) for Redis reciprocity accounting keys.";
+        };
+
+        empathyRetryThreshold = lib.mkOption {
+          type = lib.types.int;
+          default = 3;
+          description = "Retry count threshold at which empathy signal reaches maximum.";
+        };
+      };
+
+      worldModel = {
+        enable = lib.mkEnableOption "Predictive context warming / world model (Phase 20)";
+
+        warmThreshold = lib.mkOption {
+          type = lib.types.str;
+          default = "0.4";
+          description = "Minimum confidence score for a predicted query to be warmed (0.0–1.0).";
+        };
+
+        maxWarmQueriesPerRun = lib.mkOption {
+          type = lib.types.int;
+          default = 5;
+          description = "Maximum number of queries to warm per timer run.";
+        };
+
+        patternRetentionDays = lib.mkOption {
+          type = lib.types.int;
+          default = 7;
+          description = "Days to retain query-sequence pattern rows before pruning.";
+        };
+      };
+
+      agentMesh = {
+        enable = lib.mkEnableOption "Agent mesh collective memory (Phase 18)";
+
+        collaborationRetentionDays = lib.mkOption {
+          type = lib.types.int;
+          default = 90;
+          description = "Number of days to retain collaboration records in AIDB before pruning.";
+        };
+
+        blackboardTtlSeconds = lib.mkOption {
+          type = lib.types.int;
+          default = 3600;
+          description = "Redis TTL (seconds) for ephemeral agent team blackboard entries.";
+        };
+
+        distanceThreshold = lib.mkOption {
+          type = lib.types.str;
+          default = "0.5";
+          description = "Maximum AIDB vector distance for experience-replay retrieval (0=exact, 1=any).";
+        };
+      };
     };
 
     # ---------------------------------------------------------------------------
@@ -3063,93 +3151,6 @@
         };
       };
 
-      identityKernel = {
-        enable = lib.mkEnableOption "Persistent AGI identity kernel";
-
-        checkpointIntervalSeconds = lib.mkOption {
-          type = lib.types.int;
-          default = 300;
-          description = "How often (in seconds) the identity checkpoint is written.";
-        };
-
-        journalPath = lib.mkOption {
-          type = lib.types.str;
-          default = "/var/lib/ai-stack/identity";
-          description = "Directory for the append-only identity JSONL journal and checkpoint.";
-        };
-
-        valueConstitutionFile = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = "Path to the user-editable YAML value constitution file. Empty = use default shipped with the repo.";
-        };
-      };
-
-      affectiveEngine = {
-        enable = lib.mkEnableOption "Affective/values signal layer (Phase 19)";
-
-        compassionWordThreshold = lib.mkOption {
-          type = lib.types.int;
-          default = 2;
-          description = "Minimum distress-marker word count to activate compassion signal.";
-        };
-
-        reciprocityTtlDays = lib.mkOption {
-          type = lib.types.int;
-          default = 30;
-          description = "Rolling TTL (days) for Redis reciprocity accounting keys.";
-        };
-
-        empathyRetryThreshold = lib.mkOption {
-          type = lib.types.int;
-          default = 3;
-          description = "Retry count threshold at which empathy signal reaches maximum.";
-        };
-      };
-
-      worldModel = {
-        enable = lib.mkEnableOption "Predictive context warming / world model (Phase 20)";
-
-        warmThreshold = lib.mkOption {
-          type = lib.types.str;
-          default = "0.4";
-          description = "Minimum confidence score for a predicted query to be warmed (0.0–1.0).";
-        };
-
-        maxWarmQueriesPerRun = lib.mkOption {
-          type = lib.types.int;
-          default = 5;
-          description = "Maximum number of queries to warm per timer run.";
-        };
-
-        patternRetentionDays = lib.mkOption {
-          type = lib.types.int;
-          default = 7;
-          description = "Days to retain query-sequence pattern rows before pruning.";
-        };
-      };
-
-      agentMesh = {
-        enable = lib.mkEnableOption "Agent mesh collective memory (Phase 18)";
-
-        collaborationRetentionDays = lib.mkOption {
-          type = lib.types.int;
-          default = 90;
-          description = "Number of days to retain collaboration records in AIDB before pruning.";
-        };
-
-        blackboardTtlSeconds = lib.mkOption {
-          type = lib.types.int;
-          default = 3600;
-          description = "Redis TTL (seconds) for ephemeral agent team blackboard entries.";
-        };
-
-        distanceThreshold = lib.mkOption {
-          type = lib.types.str;
-          default = "0.5";
-          description = "Maximum AIDB vector distance for experience-replay retrieval (0=exact, 1=any).";
-        };
-      };
     };
 
     profileData = {
