@@ -10,6 +10,9 @@
     ./switchboard.nix
     ./autonomous-improvement.nix
     ./identity-kernel.nix
+    ./affective-engine.nix
+    ./agent-mesh.nix
+    ./world-model.nix
     ./meta-optimization.nix
     ./crowdsec.nix
     ./lore-sync.nix
