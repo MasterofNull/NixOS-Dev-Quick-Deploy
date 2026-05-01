@@ -15,17 +15,25 @@ if [[ "${WORLD_MODEL_ENABLED:-false}" != "true" ]]; then
     echo "aq-context-warm: WORLD_MODEL_ENABLED is not 'true', skipping." >&2
     exit 0
 fi
+export REPO_ROOT
 
-exec python3 - "$@" <<'PYEOF'
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "${PYTHON_BIN}" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN="$(command -v python3)"
+    elif [[ -x /run/current-system/sw/bin/python3 ]]; then
+        PYTHON_BIN="/run/current-system/sw/bin/python3"
+    else
+        echo "aq-context-warm: python3 not found; set PYTHON_BIN or ensure /run/current-system/sw/bin/python3 exists" >&2
+        exit 127
+    fi
+fi
+
+exec "${PYTHON_BIN}" - "$@" <<'PYEOF'
 import sys
 import os
-import importlib.util
 
-repo_root = os.environ.get("REPO_ROOT", os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..")
-)) if False else os.path.abspath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-)
+repo_root = os.environ["REPO_ROOT"]
 
 # Inject world-model path
 wm_dir = os.path.join(repo_root, "ai-stack", "world-model")
