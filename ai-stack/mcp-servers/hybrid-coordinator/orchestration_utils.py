@@ -21,6 +21,22 @@ from ai_coordinator import default_runtime_id_for_profile as _ai_coordinator_def
 logger = logging.getLogger("hybrid-coordinator")
 
 _ORCHESTRATION_ESCALATION_LANES: Set[str] = {"remote-reasoning", "flagship-remote", "none"}
+_ORCHESTRATION_LANES: Set[str] = {
+    "implementation",
+    "hardening",
+    "self-improvement",
+    "operations",
+    "diagnostics",
+    "research",
+    "reasoning",
+}
+# Collaborator lanes are drawn from the same pool as primary lanes
+_ORCHESTRATION_COLLABORATOR_LANES: Set[str] = _ORCHESTRATION_LANES
+_ORCHESTRATION_REVIEW_LANES: Set[str] = {"codex-review", "peer-review", "artifact-review"}
+_ORCHESTRATION_CONSENSUS_MODES: Set[str] = {"reviewer-gate", "evidence-review", "arbiter-review"}
+_ORCHESTRATION_SELECTION_STRATEGIES: Set[str] = {
+    "orchestrator-first", "local-first", "evidence-first", "escalate-on-complexity"
+}
 
 def _compact_prompt_coaching_metadata(prompt_coaching: Dict[str, Any]) -> Dict[str, Any]:
     """Avoid repeating the full coaching payload inside metadata."""

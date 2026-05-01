@@ -331,18 +331,7 @@ from agent_registry import (
     _save_agent_lessons_registry,
 )
 _TOOL_SECURITY_AUDITOR: Optional[ToolSecurityAuditor] = None
-_ORCHESTRATION_LANES = {
-    "implementation",
-    "hardening",
-    "self-improvement",
-    "operations",
-    "diagnostics",
-    "research",
-    "reasoning",
-}
-_ORCHESTRATION_REVIEW_LANES = {"codex-review", "peer-review", "artifact-review"}
-_ORCHESTRATION_CONSENSUS_MODES = {"reviewer-gate", "evidence-review", "arbiter-review"}
-_ORCHESTRATION_SELECTION_STRATEGIES = {"orchestrator-first", "local-first", "evidence-first", "escalate-on-complexity"}
+# Orchestration lane/mode constants live in orchestration_utils (shared with runtime_manager)
 # _AQ_REPORT_LATEST_JSON: moved to workflow_planning.py
 
 # Phase 1: Alert Engine instance (initialized on first access)
@@ -548,7 +537,12 @@ def _audit_internal_tool_execution(
 
 # Phase 12.4: orchestration utilities extracted to orchestration_utils.py
 from orchestration_utils import (
+    _ORCHESTRATION_LANES,
+    _ORCHESTRATION_COLLABORATOR_LANES,
+    _ORCHESTRATION_REVIEW_LANES,
     _ORCHESTRATION_ESCALATION_LANES,
+    _ORCHESTRATION_CONSENSUS_MODES,
+    _ORCHESTRATION_SELECTION_STRATEGIES,
     _compact_prompt_coaching_metadata,
     _query_prompt_coaching_response,
     _compact_tooling_layer_response,
