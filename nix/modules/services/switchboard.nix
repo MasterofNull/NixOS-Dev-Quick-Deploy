@@ -1674,6 +1674,18 @@ let
                     payload["messages"] = messages
                     body = json.dumps(payload).encode("utf-8")
 
+        # Inject cache_prompt=true for local chat/completions so llama.cpp reuses
+        # KV-cache state for the fixed system-prompt prefix across requests.
+        # Eliminates cold prefill on the profile card tokens after the first request.
+        if (
+            target_type == "local"
+            and path == "chat/completions"
+            and isinstance(payload, dict)
+            and not payload.get("cache_prompt")
+        ):
+            payload["cache_prompt"] = True
+            body = json.dumps(payload).encode("utf-8")
+
         is_stream = bool(isinstance(payload, dict) and payload.get("stream") is True)
         local_tool_execution_used = False
         local_tool_calls_used = 0
