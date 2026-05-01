@@ -171,3 +171,34 @@ Status: **planned** (lower priority than 22.1-22.3)
 - Owner: Claude
 - Files: `http_server.py`, `scripts/ai/aq-report`
 - Status: **planned** (lower priority)
+
+### Task: P22-005 ✅ DONE (2026-05-01)
+- Phase: 22.5 — Architectural: eliminate remote model hardcoding
+- Owner: Claude
+- Root cause: `agent_pool_manager.py` contained hardcoded model IDs
+  (meta-llama, deepseek-r1, gemini-flash-exp, dolphin-mistral, gpt-3.5-turbo,
+  claude-haiku). This violated local-first design — the pool should reflect
+  operator configuration, not Python source code.
+- Fix (commit c9e509d9): `_initialize_default_agents()` now reads
+  `SWITCHBOARD_REMOTE_ALIAS_*` env vars set by Nix at build time.
+  When all vars are empty (local-only deployment) → pool is empty → local llama.cpp
+  handles all inference. Remote models enter the pool only when the operator
+  configures aliases in `remoteModelAliases.*` Nix options.
+- Pool deduplicates by model_id; infers provider + tier from slug.
+- Status: **done**
+
+### Task: P22-006
+- Phase: 22.6 — Eval score DB refresh
+- Owner: Claude
+- Finding: PRSI showed `eval_latest_below_threshold:50.0<60.0` — reading stale DB
+  records from early March 2026 (gap_pack_v1: 1/4=25%). Current eval runs show
+  100% (3/3 and 4/4). Gap-eval-pack now writes new 100% score to scores.sqlite.
+- Status: **done** (score updated 2026-05-01)
+
+### Task: P22-007
+- Phase: 22.7 — PRSI stale item cleanup
+- Owner: Claude
+- Action: rejected `tighten_openrouter_delegation_contract` PRSI item (id: 57bd1e2235b54705)
+  — stale since remote routing disabled (commit 23043d71)
+- Cache prewarm: 8 seeds sent to hybrid coordinator (2026-05-01)
+- Status: **done**
