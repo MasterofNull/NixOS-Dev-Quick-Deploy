@@ -99,6 +99,14 @@ def _switchboard_local_lane_status(local_runtime: Any) -> str:
     return "unknown"
 
 
+def _resolve_switchboard_local_lane_status(payload: Any, local_runtime: Any) -> str:
+    if isinstance(payload, dict):
+        explicit = str(payload.get("local_lane_status") or "").strip()
+        if explicit:
+            return explicit
+    return _switchboard_local_lane_status(local_runtime)
+
+
 class AIServiceHealthMonitor:
     """Monitor health and metrics for all AI stack services."""
 
@@ -201,7 +209,7 @@ class AIServiceHealthMonitor:
             "routing_mode": payload.get("routing_mode", "unknown"),
             "default_provider": payload.get("default_provider", "unknown"),
             "remote_configured": bool(payload.get("remote_configured", False)),
-            "local_lane_status": _switchboard_local_lane_status(local_runtime),
+            "local_lane_status": _resolve_switchboard_local_lane_status(payload, local_runtime),
             "local_runtime": local_runtime,
         }
 

@@ -21,8 +21,16 @@ def main() -> None:
         "expected switchboard /health to include a local runtime snapshot",
     )
     assert_true(
+        "local_lane_status = _local_lane_status(local_runtime)" in text,
+        "expected switchboard /health to derive a canonical local lane status",
+    )
+    assert_true(
         '"local_runtime": local_runtime' in text,
         "expected switchboard health payload to expose local_runtime",
+    )
+    assert_true(
+        '"local_lane_status": local_lane_status' in text,
+        "expected switchboard health payload to expose the canonical local lane status",
     )
     assert_true(
         "async def _local_runtime_health_snapshot() -> dict:" in text,
@@ -61,6 +69,14 @@ def main() -> None:
     assert_true(
         '"long_running"' in text and "LOCAL_BUSY_WARN_S" in text,
         "expected active local request metadata to flag long-running slot occupancy",
+    )
+    assert_true(
+        "def _local_lane_status(local_runtime: dict | None) -> str:" in text,
+        "expected switchboard to define a canonical local lane status helper",
+    )
+    assert_true(
+        '"busy-long-running"' in text,
+        "expected canonical local lane status helper to distinguish long-running busy state",
     )
     assert_true(
         "_clear_local_active_request(local_active_request_id)" in text,

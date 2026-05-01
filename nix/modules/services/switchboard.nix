@@ -519,6 +519,7 @@ let
     async def health():
         budget_state = _budget_state_current()
         local_runtime = await _local_runtime_health_snapshot()
+        local_lane_status = _local_lane_status(local_runtime)
         return {
             "status": "ok",
             "service": "ai-switchboard",
@@ -543,6 +544,7 @@ let
                 "remote_budget_fallback_local": REMOTE_BUDGET_FALLBACK_LOCAL,
                 "remote_model_aliases_enabled": REMOTE_MODEL_ALIASES_ENABLED,
             },
+            "local_lane_status": local_lane_status,
             "local_runtime": local_runtime,
             "remote_budget": budget_state,
         }
@@ -996,6 +998,21 @@ let
         snapshot["duration_s"] = round(duration_s, 3)
         snapshot["long_running"] = duration_s >= LOCAL_BUSY_WARN_S
         return snapshot
+
+    def _local_lane_status(local_runtime: dict | None) -> str:
+        if not isinstance(local_runtime, dict):
+            return "unknown"
+        active_request = local_runtime.get("active_request")
+        if isinstance(active_request, dict) and active_request.get("long_running") is True:
+            return "busy-long-running"
+        if local_runtime.get("slot_busy") is True:
+            return "busy"
+        slot_available = local_runtime.get("slot_available")
+        if isinstance(slot_available, (int, float)) and slot_available > 0:
+            return "available"
+        if local_runtime.get("llama_metrics_error"):
+            return "degraded"
+        return "unknown"
 
     def _truncate_text_to_token_budget(text: str, max_tokens: int) -> str:
         raw = str(text or "")
