@@ -63,6 +63,7 @@ from ai_coordinator import (
     build_reasoning_finalization_messages as _ai_coordinator_build_reasoning_finalization_messages,
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
     build_empty_content_retry_messages as _ai_coordinator_build_empty_content_retry_messages,
+    delegated_response_budget as _ai_coordinator_delegated_response_budget,
     default_runtime_id_for_profile as _ai_coordinator_default_runtime_id_for_profile,
     infer_profile as _ai_coordinator_infer_profile,
     local_fallback_profile as _ai_coordinator_local_fallback_profile,
@@ -882,8 +883,14 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             payload["tools"] = data.get("tools")
         if "tool_choice" in data:
             payload["tool_choice"] = data.get("tool_choice")
-        if "max_tokens" in data:
-            payload["max_tokens"] = int(data.get("max_tokens") or 0)
+        delegated_max_tokens = _ai_coordinator_delegated_response_budget(
+            task,
+            selected_profile,
+            requested_max_tokens=int(data.get("max_tokens") or 0),
+            tools_present=isinstance(payload.get("tools"), list) and len(payload.get("tools") or []) > 0,
+        )
+        if delegated_max_tokens > 0:
+            payload["max_tokens"] = delegated_max_tokens
         if "temperature" in data:
             payload["temperature"] = float(data.get("temperature"))
 

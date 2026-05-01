@@ -398,6 +398,10 @@ _LIGHTWEIGHT_COMPLEXITY_MAX_WORDS = max(
     8,
     int(os.getenv("AI_COORDINATOR_LIGHTWEIGHT_COMPLEXITY_MAX_WORDS", "32")),
 )
+_STRICT_REPLY_ONLY_RE = re.compile(
+    r"\b(reply|respond|return)\b[\s\S]{0,80}\bonly\b",
+    re.IGNORECASE,
+)
 
 
 def _record_routing_decision(decision: Dict[str, Any]) -> None:
@@ -652,6 +656,48 @@ def local_fallback_profile(
     if complexity in {"simple", "medium"}:
         return "embedded-assist"
     return "default"
+
+
+def delegated_response_budget(
+    task: str,
+    profile: str,
+    *,
+    requested_max_tokens: int = 0,
+    tools_present: bool = False,
+) -> int:
+    """Choose a bounded delegated output budget based on task shape and lane."""
+    profile_name = str(profile or "").strip().lower()
+    explicit_budget = max(0, int(requested_max_tokens or 0))
+    complexity_info = detect_query_complexity(task or "")
+    task_archetype = str(complexity_info.get("task_archetype", "general") or "general")
+    complexity = str(complexity_info.get("complexity", "simple") or "simple")
+    word_count = int(complexity_info.get("word_count", 0) or 0)
+    normalized_task = str(task or "").strip()
+
+    if tools_present or profile_name in {"local-tool-calling", "remote-tool-calling"}:
+        cap = 220
+    elif _STRICT_REPLY_ONLY_RE.search(normalized_task) or (
+        word_count <= 12 and " only" in normalized_task.lower()
+    ):
+        cap = 48
+    elif task_archetype in {"planning", "retrieval", "continuation", "general"}:
+        cap = 128 if profile_name in {"default", "embedded-assist", "remote-gemini", "remote-free"} else 96
+    elif task_archetype == "implementation" and complexity == "simple":
+        cap = 192
+    elif complexity == "simple":
+        cap = 160
+    elif complexity == "medium" and profile_name in {"default", "embedded-assist", "remote-gemini", "remote-free"}:
+        cap = 256
+    else:
+        cap = 0
+
+    if explicit_budget > 0 and cap > 0:
+        return min(explicit_budget, cap)
+    if explicit_budget > 0:
+        return explicit_budget
+    if cap > 0:
+        return cap
+    return 0
 
 
 def get_routing_stats() -> Dict[str, Any]:
