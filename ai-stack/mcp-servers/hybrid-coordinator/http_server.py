@@ -136,6 +136,7 @@ import evidence_safety_handlers
 import ai_coordinator_handlers
 import model_fleet_manager as _mfm
 import agentic_memory_journal as _journal
+import identity_handlers  # Phase 16.4: persistent identity kernel
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
     _agent_pool_status_snapshot,
@@ -772,6 +773,8 @@ def init(
         aidb_url=os.getenv("AIDB_URL", ""),
         aidb_api_key=_read_secret_file(os.getenv("AIDB_API_KEY_FILE", "")),
     )
+    # Phase 16.4: Identity kernel
+    identity_handlers.init()
     memory_context_handlers.init(
         store_memory_fn=_store_memory,
         recall_memory_fn=_recall_memory,
@@ -1918,6 +1921,8 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/model-fleet/status", handle_fleet_status)
     http_app.router.add_get("/memory/journal", handle_journal_entries)
     http_app.router.add_get("/memory/journal/stats", handle_journal_stats)
+    # Phase 16.4: Identity kernel
+    identity_handlers.register_routes(http_app)
 
     # Phase 2.4: Register YAML workflow routes
     if YAML_WORKFLOWS_AVAILABLE:
