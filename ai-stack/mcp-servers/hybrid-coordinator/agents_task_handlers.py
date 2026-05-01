@@ -672,6 +672,79 @@ async def handle_review_reject(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# Phase 18 — Agent Mesh endpoints
+# ---------------------------------------------------------------------------
+
+async def handle_agents_mesh_status(request: web.Request) -> web.Response:
+    """GET /agents/mesh/status — active teams + Redis/AIDB connectivity probe."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "local-agents"))
+        from collective_memory import CollectiveMemory  # noqa: PLC0415
+        mem = CollectiveMemory()
+        redis_ok = mem.is_redis_connected()
+        active = mem.get_active_teams()
+    except Exception as exc:
+        logger.warning("mesh_status: collective_memory unavailable: %s", exc)
+        redis_ok = False
+        active = []
+
+    # Light AIDB probe
+    aidb_ok = False
+    try:
+        import httpx as _httpx
+        aidb_url = os.environ.get("AIDB_URL", "http://127.0.0.1:8002")
+        async with _httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{aidb_url}/health")
+            aidb_ok = r.status_code == 200
+    except Exception:
+        pass
+
+    return web.json_response({
+        "active_teams": active,
+        "redis_connected": redis_ok,
+        "aidb_connected": aidb_ok,
+        "mesh_enabled": os.environ.get("AGENT_MESH_ENABLED", "true").lower() != "false",
+    })
+
+
+async def handle_agents_mesh_collaborations(request: web.Request) -> web.Response:
+    """GET /agents/mesh/collaborations?limit=10 — recent collaboration records from AIDB."""
+    limit = min(int(request.query.get("limit", "10")), 50)
+    try:
+        aidb_url = os.environ.get("AIDB_URL", "http://127.0.0.1:8002")
+        aidb_key_file = os.environ.get("AIDB_API_KEY_FILE", "")
+        aidb_key = ""
+        if aidb_key_file:
+            try:
+                aidb_key = open(aidb_key_file).read().strip()
+            except OSError:
+                pass
+
+        headers = {}
+        if aidb_key:
+            headers["X-API-Key"] = aidb_key
+
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"{aidb_url}/documents",
+                params={"project": "agent-collaborations", "limit": limit},
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                docs = data.get("documents", data) if isinstance(data, dict) else data
+                return web.json_response({"collaborations": docs, "count": len(docs)})
+            return web.json_response(
+                {"error": f"AIDB {resp.status_code}", "collaborations": []},
+                status=502,
+            )
+    except Exception as exc:
+        logger.warning("mesh_collaborations failed: %s", exc)
+        return web.json_response({"error": str(exc), "collaborations": []}, status=500)
+
+
+# ---------------------------------------------------------------------------
 # Route registration
 # ---------------------------------------------------------------------------
 
@@ -688,3 +761,6 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_get("/control/review/status", handle_review_status)
     http_app.router.add_post("/control/review/accept", handle_review_accept)
     http_app.router.add_post("/control/review/reject", handle_review_reject)
+    # Phase 18 — Agent Mesh
+    http_app.router.add_get("/agents/mesh/status", handle_agents_mesh_status)
+    http_app.router.add_get("/agents/mesh/collaborations", handle_agents_mesh_collaborations)

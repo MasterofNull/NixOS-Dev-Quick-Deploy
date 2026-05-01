@@ -3084,6 +3084,28 @@
           description = "Path to the user-editable YAML value constitution file. Empty = use default shipped with the repo.";
         };
       };
+
+      agentMesh = {
+        enable = lib.mkEnableOption "Agent mesh collective memory (Phase 18)";
+
+        collaborationRetentionDays = lib.mkOption {
+          type = lib.types.int;
+          default = 90;
+          description = "Number of days to retain collaboration records in AIDB before pruning.";
+        };
+
+        blackboardTtlSeconds = lib.mkOption {
+          type = lib.types.int;
+          default = 3600;
+          description = "Redis TTL (seconds) for ephemeral agent team blackboard entries.";
+        };
+
+        distanceThreshold = lib.mkOption {
+          type = lib.types.str;
+          default = "0.5";
+          description = "Maximum AIDB vector distance for experience-replay retrieval (0=exact, 1=any).";
+        };
+      };
     };
 
     profileData = {
