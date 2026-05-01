@@ -124,88 +124,71 @@ class AgentPoolManager:
         logger.info(f"Agent Pool Manager initialized with {len(self.agents)} agents")
 
     def _initialize_default_agents(self):
-        """Initialize default free agents from OpenRouter"""
-        # Free agents (OpenRouter free tier examples)
-        # Free agents: Qwen free tier (qwen3-next-80b, qwen3-coder) removed as of
-        # 2026-05 — no longer available on OpenRouter free tier.
-        # Current pool uses verified-available free alternatives ranked by reliability.
-        free_agents = [
-            {
-                "agent_id": "free_meta_llama_70b",
-                "name": "Meta Llama 3.3 70B Instruct",
-                "provider": "openrouter",
-                "model_id": "meta-llama/llama-3.3-70b-instruct:free",
-                "tier": AgentTier.FREE,
-                "cost_per_1k_tokens": 0.0,
-                "max_tokens": 8192,
-                "context_window": 131072,
-                "max_concurrent": 5,
-            },
-            {
-                "agent_id": "free_deepseek_r1",
-                "name": "DeepSeek R1 (free)",
-                "provider": "openrouter",
-                "model_id": "deepseek/deepseek-r1:free",
-                "tier": AgentTier.FREE,
-                "cost_per_1k_tokens": 0.0,
-                "max_tokens": 8192,
-                "context_window": 65536,
-                "max_concurrent": 3,
-            },
-            {
-                "agent_id": "free_gemini_flash_exp",
-                "name": "Google Gemini 2.0 Flash Exp",
-                "provider": "openrouter",
-                "model_id": "google/gemini-2.0-flash-exp:free",
-                "tier": AgentTier.FREE,
-                "cost_per_1k_tokens": 0.0,
-                "max_tokens": 8192,
-                "context_window": 1048576,
-                "max_concurrent": 3,
-            },
-            {
-                "agent_id": "free_dolphin_mistral_24b",
-                "name": "Dolphin Mistral 24B Venice",
-                "provider": "openrouter",
-                "model_id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-                "tier": AgentTier.FREE,
-                "cost_per_1k_tokens": 0.0,
-                "max_tokens": 8192,
-                "context_window": 32768,
-                "max_concurrent": 5,
-            },
+        """Populate the remote agent pool from SWITCHBOARD_REMOTE_ALIAS_* env vars.
+
+        Design principle: the pool MUST NOT hardcode specific remote model IDs.
+        The local harness runs entirely on the local llama.cpp instance; remote
+        models are an optional offload layer configured by the operator via Nix
+        (mySystem.aiStack.switchboard.remoteModelAliases.*).
+
+        When SWITCHBOARD_REMOTE_URL is empty (the default for local-only
+        deployments) no remote routing occurs regardless of pool contents.
+        This function pre-populates named slots so that if the operator later
+        enables a remote URL the pool is ready without a restart.
+
+        Pool is empty when all alias env vars are unset — full local-only mode.
+        """
+        import os
+
+        # Ordered alias slots: env var → (agent_id, human label, max_concurrent)
+        alias_slots: List[Tuple[str, str, str, int]] = [
+            ("SWITCHBOARD_REMOTE_ALIAS_FREE",        "remote_free",        "Remote Free Lane",         5),
+            ("SWITCHBOARD_REMOTE_ALIAS_GEMINI",       "remote_gemini",      "Remote Gemini Lane",       3),
+            ("SWITCHBOARD_REMOTE_ALIAS_CODING",       "remote_coding",      "Remote Coding Lane",       3),
+            ("SWITCHBOARD_REMOTE_ALIAS_REASONING",    "remote_reasoning",   "Remote Reasoning Lane",    2),
+            ("SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING", "remote_tool_calling","Remote Tool-Calling Lane", 3),
         ]
 
-        # Paid agents (fallback)
-        paid_agents = [
-            {
-                "agent_id": "paid_gpt35",
-                "name": "GPT-3.5 Turbo",
-                "provider": "openai",
-                "model_id": "gpt-3.5-turbo",
-                "tier": AgentTier.PAID_CHEAP,
-                "cost_per_1k_tokens": 0.0015,
-                "max_tokens": 4096,
-                "context_window": 16385,
-                "max_concurrent": 10,
-            },
-            {
-                "agent_id": "paid_claude_haiku",
-                "name": "Claude 3 Haiku",
-                "provider": "anthropic",
-                "model_id": "claude-3-haiku-20240307",
-                "tier": AgentTier.PAID_STANDARD,
-                "cost_per_1k_tokens": 0.0025,
-                "max_tokens": 4096,
-                "context_window": 200000,
-                "max_concurrent": 10,
-            },
-        ]
+        seen_model_ids: set = set()
+        registered = 0
 
-        # Register all agents
-        for agent_data in free_agents + paid_agents:
-            agent = RemoteAgent(**agent_data)
+        for env_var, agent_id, label, max_concurrent in alias_slots:
+            model_id = os.getenv(env_var, "").strip()
+            if not model_id:
+                continue
+            if model_id in seen_model_ids:
+                # Deduplicate: multiple alias slots can reference the same model.
+                continue
+            seen_model_ids.add(model_id)
+
+            provider = model_id.split("/")[0] if "/" in model_id else "openrouter"
+            tier = AgentTier.FREE if model_id.endswith(":free") else AgentTier.PAID_STANDARD
+
+            agent = RemoteAgent(
+                agent_id=agent_id,
+                name=label,
+                provider=provider,
+                model_id=model_id,
+                tier=tier,
+                cost_per_1k_tokens=0.0,
+                max_tokens=8192,
+                context_window=32768,
+                max_concurrent=max_concurrent,
+            )
             self.register_agent(agent)
+            registered += 1
+
+        if registered == 0:
+            logger.info(
+                "AgentPoolManager: no SWITCHBOARD_REMOTE_ALIAS_* vars set — "
+                "pool empty; all inference routed to local llama.cpp"
+            )
+        else:
+            logger.info(
+                "AgentPoolManager: %d remote slot(s) registered from env "
+                "(active only when SWITCHBOARD_REMOTE_URL is configured)",
+                registered,
+            )
 
     def register_agent(self, agent: RemoteAgent):
         """Register an agent"""
