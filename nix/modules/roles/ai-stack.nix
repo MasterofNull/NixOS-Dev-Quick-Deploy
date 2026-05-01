@@ -2014,7 +2014,7 @@ in {
     })
 
     # Phase 20 — World Model: Predictive Context Warming (every 15 minutes)
-    (lib.mkIf (roleEnabled && ai.aiStack.worldModel.enable) {
+    (lib.mkIf (roleEnabled && ai.worldModel.enable) {
       systemd.services.ai-context-warmer = {
         description = "AI world model predictive context warming";
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
