@@ -252,6 +252,9 @@ def _switchboard_local_lane_status(local_runtime: Any) -> str:
     """Summarize switchboard local-lane state for dashboard consumers."""
     if not isinstance(local_runtime, dict):
         return "unknown"
+    active_request = local_runtime.get("active_request")
+    if isinstance(active_request, dict) and active_request.get("long_running") is True:
+        return "busy-long-running"
     if local_runtime.get("slot_busy") is True:
         return "busy"
     slot_available = local_runtime.get("slot_available")

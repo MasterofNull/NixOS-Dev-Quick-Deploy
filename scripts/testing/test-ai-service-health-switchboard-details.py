@@ -41,6 +41,11 @@ async def _run() -> None:
                     "slot_available": 0,
                     "slot_busy": True,
                     "source": "switchboard_semaphore+llama_metrics",
+                    "active_request": {
+                        "profile": "continue-local",
+                        "duration_s": 91.2,
+                        "long_running": True,
+                    },
                 },
             },
         },
@@ -50,7 +55,10 @@ async def _run() -> None:
     details = result.get("details") or {}
 
     assert_true(result.get("status") == "healthy", "healthy switchboard service should remain healthy")
-    assert_true(details.get("local_lane_status") == "busy", "switchboard details should expose busy local lane state")
+    assert_true(
+        details.get("local_lane_status") == "busy-long-running",
+        "switchboard details should expose long-running local lane state distinctly",
+    )
     assert_true(
         (details.get("local_runtime") or {}).get("slot_busy") is True,
         "switchboard details should preserve local runtime occupancy payload",

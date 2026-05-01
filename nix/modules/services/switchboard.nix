@@ -477,6 +477,7 @@ let
     app = FastAPI(title="AI Switchboard")
     _local_sem = None
     _remote_sem = None
+    _local_active_request = None
     # Shared httpx clients — avoids a new TCP connection per chat/completions
     # request.  Clients are initialised on startup and closed on shutdown.
     # • _hints_client    — hint injection (hybrid-coordinator /hints)
@@ -485,13 +486,15 @@ let
     _hints_client: httpx.AsyncClient | None = None
     _embed_client: httpx.AsyncClient | None = None
     _local_health_client: httpx.AsyncClient | None = None
+    LOCAL_BUSY_WARN_S = float(os.environ.get("SWB_LOCAL_BUSY_WARN_S", "30"))
 
     @app.on_event("startup")
     async def _startup():
         import asyncio
-        global _local_sem, _remote_sem, _hints_client, _embed_client, _local_health_client
+        global _local_sem, _remote_sem, _hints_client, _embed_client, _local_health_client, _local_active_request
         _local_sem = asyncio.Semaphore(LOCAL_CONCURRENCY)
         _remote_sem = asyncio.Semaphore(REMOTE_CONCURRENCY)
+        _local_active_request = None
         _hints_client = httpx.AsyncClient(timeout=HINTS_TIMEOUT_S)
         _embed_client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=2.0, read=SEMANTIC_EMBED_TIMEOUT_S, write=2.0, pool=2.0)
@@ -502,13 +505,14 @@ let
 
     @app.on_event("shutdown")
     async def _shutdown():
-        global _hints_client, _embed_client, _local_health_client
+        global _hints_client, _embed_client, _local_health_client, _local_active_request
         for client in (_hints_client, _embed_client, _local_health_client):
             if client is not None:
                 try:
                     await client.aclose()
                 except Exception:
                     pass
+        _local_active_request = None
         _hints_client = _embed_client = _local_health_client = None
 
     @app.get("/health")
@@ -937,6 +941,62 @@ let
             )
         return str(content)
 
+    def _latest_user_excerpt(messages: list, max_chars: int = 160) -> str:
+        for message in reversed(messages):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            text = _extract_content_text(message).strip()
+            if not text:
+                continue
+            if len(text) <= max_chars:
+                return text
+            return text[: max_chars - 3].rstrip() + "..."
+        return ""
+
+    def _begin_local_active_request(path: str, profile: str, payload: dict | None, is_stream: bool) -> str:
+        global _local_active_request
+        request_id = str(time.time_ns())
+        messages = payload.get("messages") if isinstance(payload, dict) else []
+        if not isinstance(messages, list):
+            messages = []
+        metadata = {
+            "id": request_id,
+            "path": path,
+            "profile": str(profile or "").strip(),
+            "stream": bool(is_stream),
+            "started_at": time.time(),
+            "estimated_input_tokens": int(_estimate_payload_tokens(payload) or 0),
+            "message_count": len(messages),
+        }
+        if isinstance(payload, dict) and payload.get("max_tokens") is not None:
+            try:
+                metadata["max_tokens"] = int(payload.get("max_tokens") or 0)
+            except Exception:
+                pass
+        latest_user_excerpt = _latest_user_excerpt(messages)
+        if latest_user_excerpt:
+            metadata["latest_user_excerpt"] = latest_user_excerpt
+        _local_active_request = metadata
+        return request_id
+
+    def _clear_local_active_request(request_id: str) -> None:
+        global _local_active_request
+        if not isinstance(_local_active_request, dict):
+            return
+        if str(_local_active_request.get("id") or "") != str(request_id or ""):
+            return
+        _local_active_request = None
+
+    def _local_active_request_snapshot() -> dict | None:
+        if not isinstance(_local_active_request, dict):
+            return None
+        snapshot = dict(_local_active_request)
+        started_at = float(snapshot.get("started_at") or 0.0)
+        duration_s = max(0.0, time.time() - started_at) if started_at > 0 else 0.0
+        snapshot["duration_s"] = round(duration_s, 3)
+        snapshot["long_running"] = duration_s >= LOCAL_BUSY_WARN_S
+        return snapshot
+
     def _truncate_text_to_token_budget(text: str, max_tokens: int) -> str:
         raw = str(text or "")
         if max_tokens <= 0 or _estimate_tokens(raw) <= max_tokens:
@@ -1344,6 +1404,9 @@ let
             "source": "switchboard_semaphore",
             "llama_metrics_available": False,
         }
+        active_request = _local_active_request_snapshot()
+        if active_request:
+            snapshot["active_request"] = active_request
         try:
             if _local_health_client is not None:
                 resp = await _local_health_client.get(f"{LLAMA_URL}/metrics")
@@ -1573,72 +1636,83 @@ let
 
         try:
             async with sem:
-                if (
-                    path == "chat/completions"
-                    and profile == "local-tool-calling"
-                    and target_type == "local"
-                    and isinstance(payload, dict)
-                    and not is_stream
-                ):
-                    try:
-                        local_body, local_tool_calls_used = await _execute_local_tool_calling(payload)
-                    except ValueError as exc:
-                        return JSONResponse(
-                            status_code=400,
-                            content={"error": {"message": str(exc), "type": "invalid_local_tool_request"}},
-                        )
-                    except RuntimeError as exc:
-                        return JSONResponse(
-                            status_code=502,
-                            content={"error": {"message": str(exc), "type": "local_tool_execution_error"}},
-                        )
-                    response = JSONResponse(status_code=200, content=local_body)
-                    local_tool_execution_used = True
-                else:
-                    client = httpx.AsyncClient(timeout=timeout)
-                    if is_stream:
-                        req = client.build_request(
-                            method=request.method,
-                            url=f"{target}/v1/{path}",
-                            headers=headers,
-                            content=body,
-                            params=dict(request.query_params),
-                        )
-                        upstream = await client.send(req, stream=True)
-
-                        async def _iter():
-                            try:
-                                async for chunk in upstream.aiter_bytes():
-                                    yield chunk
-                            finally:
-                                await upstream.aclose()
-                                await client.aclose()
-
-                        response = StreamingResponse(
-                            _iter(),
-                            status_code=upstream.status_code,
-                            headers=_response_headers(dict(upstream.headers)),
-                        )
+                local_active_request_id = ""
+                retain_local_request_until_stream_close = False
+                if target_type == "local" and path == "chat/completions":
+                    local_active_request_id = _begin_local_active_request(path, profile, payload, is_stream)
+                try:
+                    if (
+                        path == "chat/completions"
+                        and profile == "local-tool-calling"
+                        and target_type == "local"
+                        and isinstance(payload, dict)
+                        and not is_stream
+                    ):
+                        try:
+                            local_body, local_tool_calls_used = await _execute_local_tool_calling(payload)
+                        except ValueError as exc:
+                            return JSONResponse(
+                                status_code=400,
+                                content={"error": {"message": str(exc), "type": "invalid_local_tool_request"}},
+                            )
+                        except RuntimeError as exc:
+                            return JSONResponse(
+                                status_code=502,
+                                content={"error": {"message": str(exc), "type": "local_tool_execution_error"}},
+                            )
+                        response = JSONResponse(status_code=200, content=local_body)
+                        local_tool_execution_used = True
                     else:
-                        async with client:
-                            upstream = await client.request(
+                        client = httpx.AsyncClient(timeout=timeout)
+                        if is_stream:
+                            req = client.build_request(
                                 method=request.method,
                                 url=f"{target}/v1/{path}",
                                 headers=headers,
                                 content=body,
                                 params=dict(request.query_params),
                             )
-                        if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
-                            return JSONResponse(
-                                status_code=503,
-                                headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
-                                content=_loading_error_payload(),
+                            upstream = await client.send(req, stream=True)
+
+                            async def _iter():
+                                try:
+                                    async for chunk in upstream.aiter_bytes():
+                                        yield chunk
+                                finally:
+                                    await upstream.aclose()
+                                    await client.aclose()
+                                    if local_active_request_id:
+                                        _clear_local_active_request(local_active_request_id)
+
+                            retain_local_request_until_stream_close = target_type == "local" and bool(local_active_request_id)
+                            response = StreamingResponse(
+                                _iter(),
+                                status_code=upstream.status_code,
+                                headers=_response_headers(dict(upstream.headers)),
                             )
-                        response = Response(
-                            content=upstream.content,
-                            status_code=upstream.status_code,
-                            headers=_response_headers(dict(upstream.headers)),
-                        )
+                        else:
+                            async with client:
+                                upstream = await client.request(
+                                    method=request.method,
+                                    url=f"{target}/v1/{path}",
+                                    headers=headers,
+                                    content=body,
+                                    params=dict(request.query_params),
+                                )
+                            if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
+                                return JSONResponse(
+                                    status_code=503,
+                                    headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
+                                    content=_loading_error_payload(),
+                                )
+                            response = Response(
+                                content=upstream.content,
+                                status_code=upstream.status_code,
+                                headers=_response_headers(dict(upstream.headers)),
+                            )
+                finally:
+                    if local_active_request_id and not retain_local_request_until_stream_close:
+                        _clear_local_active_request(local_active_request_id)
         except httpx.TimeoutException:
             return JSONResponse(
                 status_code=504,
