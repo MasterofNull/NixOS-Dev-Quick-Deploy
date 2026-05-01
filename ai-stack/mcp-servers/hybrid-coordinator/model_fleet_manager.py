@@ -190,16 +190,18 @@ _POOL_REGISTRY: Dict[str, List[ModelEntry]] = {
         ModelEntry("meta-llama/llama-3.3-70b-instruct", "Meta", "paid_standard",
                    ["coding", "chat"], 128000, 8192,
                    "Open-weight fallback. Reliable general coder."),
-        # Free coding fallbacks
-        ModelEntry("qwen/qwen3-next-80b-a3b-instruct:free", "Alibaba", "free",
-                   ["coding", "chat", "reasoning"], 32768, 4096,
-                   "Primary free coder. MoE architecture."),
+        # Free coding fallbacks (verified available 2026-05).
+        # qwen3-next-80b-a3b-instruct:free and qwen3-coder:free removed —
+        # no longer available on OpenRouter free tier.
         ModelEntry("deepseek/deepseek-r1:free", "DeepSeek", "free",
                    ["coding", "reasoning"], 65536, 8192,
-                   "Free reasoning + code. May be rate-limited."),
+                   "Free reasoning + code. Strong chain-of-thought."),
         ModelEntry("meta-llama/llama-3.3-70b-instruct:free", "Meta", "free",
                    ["coding", "chat"], 128000, 4096,
-                   "Free Llama 3.3 70B coding fallback."),
+                   "Free Llama 3.3 70B. Reliable general coder."),
+        ModelEntry("google/gemini-2.0-flash-exp:free", "Google", "free",
+                   ["coding", "chat", "vision"], 1048576, 8192,
+                   "Free Gemini flash. Large context. Rate-limited on free tier."),
     ],
 
     # ── REASONING ────────────────────────────────────────────────────────────
@@ -281,9 +283,6 @@ _POOL_REGISTRY: Dict[str, List[ModelEntry]] = {
         ModelEntry("meta-llama/llama-3.1-8b-instruct:free", "Meta", "free",
                    ["chat"], 131072, 4096,
                    "Fast, lightweight free chat model."),
-        ModelEntry("qwen/qwen3-next-80b-a3b-instruct:free", "Alibaba", "free",
-                   ["coding", "chat", "reasoning"], 32768, 4096,
-                   "Free MoE chat fallback."),
         ModelEntry("google/gemini-2.0-flash-exp:free", "Google", "free",
                    ["writing", "chat", "vision"], 1048576, 8192,
                    "Free Gemini chat fallback."),

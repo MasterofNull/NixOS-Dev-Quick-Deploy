@@ -126,28 +126,42 @@ class AgentPoolManager:
     def _initialize_default_agents(self):
         """Initialize default free agents from OpenRouter"""
         # Free agents (OpenRouter free tier examples)
+        # Free agents: Qwen free tier (qwen3-next-80b, qwen3-coder) removed as of
+        # 2026-05 — no longer available on OpenRouter free tier.
+        # Current pool uses verified-available free alternatives ranked by reliability.
         free_agents = [
             {
-                "agent_id": "free_qwen3_next_80b",
-                "name": "Qwen3 Next 80B Instruct",
+                "agent_id": "free_meta_llama_70b",
+                "name": "Meta Llama 3.3 70B Instruct",
                 "provider": "openrouter",
-                "model_id": "qwen/qwen3-next-80b-a3b-instruct:free",
+                "model_id": "meta-llama/llama-3.3-70b-instruct:free",
                 "tier": AgentTier.FREE,
                 "cost_per_1k_tokens": 0.0,
-                "max_tokens": 16384,
-                "context_window": 262144,
+                "max_tokens": 8192,
+                "context_window": 131072,
+                "max_concurrent": 5,
+            },
+            {
+                "agent_id": "free_deepseek_r1",
+                "name": "DeepSeek R1 (free)",
+                "provider": "openrouter",
+                "model_id": "deepseek/deepseek-r1:free",
+                "tier": AgentTier.FREE,
+                "cost_per_1k_tokens": 0.0,
+                "max_tokens": 8192,
+                "context_window": 65536,
                 "max_concurrent": 3,
             },
             {
-                "agent_id": "free_qwen3_coder",
-                "name": "Qwen3 Coder 480B A35B",
+                "agent_id": "free_gemini_flash_exp",
+                "name": "Google Gemini 2.0 Flash Exp",
                 "provider": "openrouter",
-                "model_id": "qwen/qwen3-coder:free",
+                "model_id": "google/gemini-2.0-flash-exp:free",
                 "tier": AgentTier.FREE,
                 "cost_per_1k_tokens": 0.0,
-                "max_tokens": 16384,
-                "context_window": 262000,
-                "max_concurrent": 5,
+                "max_tokens": 8192,
+                "context_window": 1048576,
+                "max_concurrent": 3,
             },
             {
                 "agent_id": "free_dolphin_mistral_24b",

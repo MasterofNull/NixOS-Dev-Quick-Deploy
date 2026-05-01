@@ -125,6 +125,62 @@ def _is_remote_profile(profile: str) -> bool:
     return str(profile or "").startswith("remote-")
 
 
+def _remote_routing_active() -> bool:
+    """Return True only when SWITCHBOARD_REMOTE_URL is configured.
+
+    When the remote URL is empty the switchboard immediately rejects all
+    remote-* profile requests (switchboard.nix line ~1397). Skipping remote
+    profiles here avoids wasted round-trips and eliminates the corresponding
+    backend-failure telemetry noise.
+    """
+    try:
+        from config import Config  # already on sys.path
+        return bool(Config.SWITCHBOARD_REMOTE_URL)
+    except Exception:
+        return False
+
+
+def _fleet_model_available(profile: str) -> bool:
+    """Check model_fleet_manager Redis cooldown for the model behind *profile*.
+
+    Maps switchboard profile → env alias → fleet cooldown state.
+    Returns True (allow) when fleet manager is unavailable or the model is
+    not currently in a cooldown window.
+    """
+    try:
+        import os
+        import model_fleet_manager as _mfm_local  # sibling module on sys.path
+        alias_map = {
+            "remote-gemini": os.getenv("SWITCHBOARD_REMOTE_ALIAS_GEMINI", ""),
+            "remote-free": os.getenv("SWITCHBOARD_REMOTE_ALIAS_FREE", ""),
+            "remote-coding": os.getenv("SWITCHBOARD_REMOTE_ALIAS_CODING", ""),
+            "remote-reasoning": os.getenv("SWITCHBOARD_REMOTE_ALIAS_REASONING", ""),
+            "remote-tool-calling": os.getenv("SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING", ""),
+        }
+        model_id = alias_map.get(profile, "")
+        if not model_id:
+            return True  # no alias configured → nothing to check
+        import time
+        key = _mfm_local._model_key(model_id, "cooldown_until")
+        redis = _mfm_local._redis
+        if redis is None:
+            return True  # Redis not connected → optimistic allow
+        # Synchronous read via hiredis low-level if available
+        raw = redis.get(key)
+        if raw is None:
+            return True
+        cooldown_until = float(raw)
+        if cooldown_until > time.time():
+            logger.info(
+                "delegation_failover: fleet cooldown active for %s (profile=%s), skipping",
+                model_id, profile,
+            )
+            return False
+        return True
+    except Exception:
+        return True  # any error → optimistic allow
+
+
 def _remote_avail_cache_get(profile: str) -> Optional[bool]:
     entry = _REMOTE_AVAIL_CACHE.get(profile)
     if not entry:
@@ -343,10 +399,21 @@ def _select_next_available_delegation_target(
     exclude_agent_id: str = "",
 ) -> Optional[Dict[str, Any]]:
     exclude = exclude_profiles or set()
+    remote_active = _remote_routing_active()
     for target in fallback_chain:
         profile = target["profile"]
         runtime_id = target["runtime_id"]
         if profile in exclude:
+            continue
+        # Skip remote profiles entirely when SWITCHBOARD_REMOTE_URL is not set.
+        # The switchboard rejects remote-* requests immediately when REMOTE_URL=""
+        # which produces spurious backend-failure telemetry with 0% success rate.
+        if _is_remote_profile(profile) and not remote_active:
+            logger.debug("delegation_failover: skip %s — remote URL not configured", profile)
+            continue
+        # Skip remote profiles whose underlying model is in a fleet cooldown window.
+        if _is_remote_profile(profile) and not _fleet_model_available(profile):
+            logger.info("delegation_failover: skip %s — fleet model in cooldown", profile)
             continue
         if not _check_runtime_available(runtime_id):
             logger.info("delegation_failover: runtime %s unavailable, skipping", runtime_id)
