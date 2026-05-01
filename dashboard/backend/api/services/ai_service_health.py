@@ -211,6 +211,11 @@ class AIServiceHealthMonitor:
             "remote_configured": bool(payload.get("remote_configured", False)),
             "local_lane_status": _resolve_switchboard_local_lane_status(payload, local_runtime),
             "local_runtime": local_runtime,
+            "last_local_completion": (
+                local_runtime.get("last_completion")
+                if isinstance(local_runtime, dict)
+                else None
+            ),
         }
 
     async def _get_systemd_status(self, service_id: str) -> Dict[str, Any]:

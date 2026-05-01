@@ -44,6 +44,14 @@ async def _fake_fetch_with_fallback(url: str, fallback=None, headers=None):
                 "slot_busy": True,
                 "source": "switchboard_semaphore+llama_metrics",
                 "llama_metrics_available": True,
+                "last_completion": {
+                    "profile": "continue-local",
+                    "path": "chat/completions",
+                    "status_code": 200,
+                    "prompt_tokens": 817,
+                    "prompt_tokens_details": {"cached_tokens": 749},
+                    "timings": {"prompt_n": 68, "prompt_ms": 8385.377},
+                },
                 "active_request": {
                     "profile": "continue-local",
                     "duration_s": 91.2,
@@ -124,6 +132,14 @@ def main() -> int:
             assert_true(
                 local_runtime.get("source") == "switchboard_semaphore+llama_metrics",
                 "switchboard local runtime should expose the combined occupancy source",
+            )
+            assert_true(
+                (switchboard.get("last_local_completion") or {}).get("prompt_tokens") == 817,
+                "dashboard ai metrics should surface the last local completion summary",
+            )
+            assert_true(
+                (((switchboard.get("last_local_completion") or {}).get("prompt_tokens_details") or {}).get("cached_tokens") == 749),
+                "dashboard ai metrics should preserve cached token detail in the last completion summary",
             )
 
         print("PASS: dashboard ai metrics exposes switchboard local runtime status")

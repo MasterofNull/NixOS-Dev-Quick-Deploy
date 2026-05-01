@@ -478,6 +478,7 @@ let
     _local_sem = None
     _remote_sem = None
     _local_active_request = None
+    _local_last_completion = None
     # Shared httpx clients — avoids a new TCP connection per chat/completions
     # request.  Clients are initialised on startup and closed on shutdown.
     # • _hints_client    — hint injection (hybrid-coordinator /hints)
@@ -491,10 +492,11 @@ let
     @app.on_event("startup")
     async def _startup():
         import asyncio
-        global _local_sem, _remote_sem, _hints_client, _embed_client, _local_health_client, _local_active_request
+        global _local_sem, _remote_sem, _hints_client, _embed_client, _local_health_client, _local_active_request, _local_last_completion
         _local_sem = asyncio.Semaphore(LOCAL_CONCURRENCY)
         _remote_sem = asyncio.Semaphore(REMOTE_CONCURRENCY)
         _local_active_request = None
+        _local_last_completion = None
         _hints_client = httpx.AsyncClient(timeout=HINTS_TIMEOUT_S)
         _embed_client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=2.0, read=SEMANTIC_EMBED_TIMEOUT_S, write=2.0, pool=2.0)
@@ -505,7 +507,7 @@ let
 
     @app.on_event("shutdown")
     async def _shutdown():
-        global _hints_client, _embed_client, _local_health_client, _local_active_request
+        global _hints_client, _embed_client, _local_health_client, _local_active_request, _local_last_completion
         for client in (_hints_client, _embed_client, _local_health_client):
             if client is not None:
                 try:
@@ -513,6 +515,7 @@ let
                 except Exception:
                     pass
         _local_active_request = None
+        _local_last_completion = None
         _hints_client = _embed_client = _local_health_client = None
 
     @app.get("/health")
@@ -999,6 +1002,56 @@ let
         snapshot["long_running"] = duration_s >= LOCAL_BUSY_WARN_S
         return snapshot
 
+    def _record_local_completion(path: str, profile: str, status_code: int, body: bytes | None) -> None:
+        global _local_last_completion
+        snapshot = {
+            "path": str(path or "").strip(),
+            "profile": str(profile or "").strip(),
+            "status_code": int(status_code),
+            "captured_at": time.time(),
+        }
+        if status_code < 200 or status_code >= 300 or not body:
+            _local_last_completion = snapshot
+            return
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except Exception:
+            _local_last_completion = snapshot
+            return
+        if not isinstance(payload, dict):
+            _local_last_completion = snapshot
+            return
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = usage.get(key)
+                if isinstance(value, (int, float)):
+                    snapshot[key] = int(value)
+            prompt_tokens_details = usage.get("prompt_tokens_details")
+            if isinstance(prompt_tokens_details, dict):
+                cached_tokens = prompt_tokens_details.get("cached_tokens")
+                if isinstance(cached_tokens, (int, float)):
+                    snapshot["prompt_tokens_details"] = {"cached_tokens": int(cached_tokens)}
+        timings = payload.get("timings")
+        if isinstance(timings, dict):
+            summary = {}
+            for key in ("prompt_n", "prompt_ms", "predicted_n", "predicted_ms"):
+                value = timings.get(key)
+                if isinstance(value, (int, float)):
+                    summary[key] = float(value) if str(key).endswith("_ms") else int(value)
+            if summary:
+                snapshot["timings"] = summary
+        _local_last_completion = snapshot
+
+    def _local_last_completion_snapshot() -> dict | None:
+        if not isinstance(_local_last_completion, dict):
+            return None
+        snapshot = dict(_local_last_completion)
+        captured_at = float(snapshot.get("captured_at") or 0.0)
+        age_s = max(0.0, time.time() - captured_at) if captured_at > 0 else 0.0
+        snapshot["age_s"] = round(age_s, 3)
+        return snapshot
+
     def _local_lane_status(local_runtime: dict | None) -> str:
         if not isinstance(local_runtime, dict):
             return "unknown"
@@ -1446,6 +1499,9 @@ let
         active_request = _local_active_request_snapshot()
         if active_request:
             snapshot["active_request"] = active_request
+        last_completion = _local_last_completion_snapshot()
+        if last_completion:
+            snapshot["last_completion"] = last_completion
         try:
             if _local_health_client is not None:
                 resp = await _local_health_client.get(f"{LLAMA_URL}/metrics")
@@ -1744,6 +1800,8 @@ let
                                     headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
                                     content=_loading_error_payload(),
                                 )
+                            if target_type == "local" and path == "chat/completions":
+                                _record_local_completion(path, profile, upstream.status_code, upstream.content)
                             response = Response(
                                 content=upstream.content,
                                 status_code=upstream.status_code,
