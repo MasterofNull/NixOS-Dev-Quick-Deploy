@@ -160,3 +160,4 @@ nix/hosts/*/.sops.yaml
 
 # Strands-style workflow artifacts (scratchpad is temporary working files)
 .agents/scratchpad/
+tmp/
