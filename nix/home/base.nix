@@ -47,6 +47,7 @@ let
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   switchboardProfiles = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "profiles" ] { } systemConfig;
   continueLocalProfile = lib.attrByPath [ "continue-local" ] { } switchboardProfiles;
+  localAgentProfile = lib.attrByPath [ "local-agent" ] { } switchboardProfiles;
   defaultSwitchboardProfile = lib.attrByPath [ "default" ] { } switchboardProfiles;
   continueContextLength =
     lib.attrByPath [ "advertisedContextWindow" ]
@@ -57,6 +58,14 @@ let
       (lib.attrByPath [ "maxOutputTokens" ] 768 defaultSwitchboardProfile)
       continueLocalProfile;
   continueTabMaxTokens = lib.min 96 (lib.max 32 continueChatMaxTokens);
+  localAgentContextLength =
+    let
+      advertised = lib.attrByPath [ "advertisedContextWindow" ] aiLlamaCtxSize localAgentProfile;
+      bounded = lib.attrByPath [ "maxInputTokens" ] null localAgentProfile;
+    in
+    if bounded != null then lib.min advertised bounded else advertised;
+  localAgentChatMaxTokens =
+    lib.attrByPath [ "maxOutputTokens" ] 1024 localAgentProfile;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   vscodeLinuxTarget =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "linux-x64"
@@ -1202,8 +1211,8 @@ PYEOF
           "X-AI-Profile": "local-agent"
         }
       },
-      "contextLength": ${toString continueContextLength},
-      "maxTokens": 1024
+      "contextLength": ${toString localAgentContextLength},
+      "maxTokens": ${toString localAgentChatMaxTokens}
     }
   ],
   "tabAutocompleteModel": {
