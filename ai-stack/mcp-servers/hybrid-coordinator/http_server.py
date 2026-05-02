@@ -905,6 +905,41 @@ def _run_prompt_coaching(query: str, agent_type: str, request) -> Dict[str, Any]
         return {}
 
 
+_HINT_AUDIT_PATH = Path(
+    os.getenv("HINT_AUDIT_LOG_PATH", "/var/log/nixos-ai-stack/hint-audit.jsonl")
+)
+
+
+def _write_query_hint_audit(hints: list, query: str) -> None:
+    """P22-004: append coordinator hint injections to hint-audit.jsonl.
+
+    Mirrors the schema written by aider-wrapper so aq-report §14 captures
+    the much larger /query synthesis volume alongside aider-wrapper calls.
+    """
+    try:
+        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        _HINT_AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _HINT_AUDIT_PATH.open("a", encoding="utf-8") as fh:
+            for h in hints:
+                if not isinstance(h, dict):
+                    continue
+                snippet = str(h.get("snippet", "") or h.get("compact_injection", "")).strip()
+                if not snippet:
+                    continue
+                entry = json.dumps({
+                    "timestamp": ts,
+                    "service": "hybrid-coordinator",
+                    "task_id": "",
+                    "hint_id": str(h.get("id", h.get("domain_id", "unknown"))),
+                    "hint_snippet": snippet[:80],
+                    "hint_accepted": True,
+                    "query_prefix": query[:80],
+                })
+                fh.write(entry + "\n")
+    except Exception as exc:
+        logger.debug("query_hint_audit_write_failed error=%s", exc)
+
+
 async def _inject_semantic_tooling(
     query: str,
     memory_recall_priority: bool,
@@ -948,6 +983,9 @@ async def _inject_semantic_tooling(
                     (time.perf_counter() - _hint_start) * 1000.0,
                     parameters={"query": query[:200], "result_count": len(hint_snippets[:2])},
                 )
+                # P22-004: track hint injections from /query synthesis path
+                # into hint-audit.jsonl so aq-report §14 captures coordinator volume.
+                _write_query_hint_audit(top_hints[:2], query)
         except Exception as exc:
             _audit_internal_tool_execution(
                 request, "hints", 0.0,

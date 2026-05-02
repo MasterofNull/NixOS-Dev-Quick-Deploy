@@ -1,6 +1,6 @@
 # Phase 22 — Eval Recovery + Fleet Resilience
 
-Status: `in_progress`
+Status: `in_progress` (P22-001 through P22-007 done; P22-008 committed pending rebuild; P22-004 in_progress)
 Created: 2026-05-01
 Owner: Claude (orchestrator/implementer)
 Predecessor: Phase 21 (Operational Hardening — all tasks committed, pending nixos-rebuild)
@@ -68,46 +68,27 @@ Expected post-rebuild results:
 - `SWITCHBOARD_REMOTE_ALIAS_FREE=meta-llama/llama-3.3-70b-instruct:free` ✓
 - aq-qa 0.8.1: delegate success rate ≥50% (remote profiles now skipped → local handles all calls)
 
-Status: **pending nixos-rebuild**
+Status: **done** (2026-05-01 — rebuild confirmed; env vars live; aq-qa 39/0)
+
+Confirmed results:
+- `AI_DELEGATE_LOCAL_SLOT_BUSY_MAX_RETRIES=4` ✓
+- `SWITCHBOARD_REMOTE_URL=` (empty) ✓
+- `SWITCHBOARD_REMOTE_ALIAS_GEMINI=google/gemini-2.0-flash-exp:free` ✓
+- `SWITCHBOARD_REMOTE_ALIAS_FREE=meta-llama/llama-3.3-70b-instruct:free` ✓
+- aq-qa 39 passed / 0 failed / 1 skipped (0.8.1 insufficient sample — correct)
 
 ---
 
 ### 22.2 — Redis Rate-Limit Tracking per Provider (model_fleet_manager.py)
 
-**Problem**: `_fleet_model_available()` in `delegation_handlers.py` checks per-model cooldown in Redis.
-But when a model returns `Retry-After: 60` the cooldown is set from `_COOLDOWN_BY_CODE[429]=300s`.
-We're not parsing the actual `Retry-After` header so cooldowns may be too long or too short.
-
-**Fix**:
-- Add `record_rate_limit_with_retry_after(model_id, retry_after_seconds)` to `model_fleet_manager.py`
-- Wire it into `ai_coordinator_handlers.py` delegate error path: parse `Retry-After` header from remote response
-- If `Retry-After` is present, use it instead of the fixed 300s cooldown
-
-**Files**:
-- `ai-stack/mcp-servers/hybrid-coordinator/model_fleet_manager.py`
-- `ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator_handlers.py`
-
-Status: **planned**
+Status: **done** (2026-05-01 — implemented; `record_error_with_retry_after()` in model_fleet_manager.py;
+wired into ai_coordinator_handlers.py delegate error path at lines ~1433 and ~1873)
 
 ---
 
 ### 22.3 — Eval Gap-Pack Run + Score Recovery
 
-**Problem**: PRSI shows `eval_latest_below_threshold:50.0<60.0`. Root cause unknown — needs eval run.
-
-**Diagnosis**:
-```bash
-python3 scripts/automation/run-gap-eval-pack.py --limit 20 2>&1 | tail -20
-```
-
-**Fix options** (after diagnosis):
-- If gaps are NixOS-knowledge misses → import missing knowledge to AIDB
-- If retrieval precision is low → adjust embedding similarity threshold
-- If eval scoring is too strict → review scoring rubric
-
-**Files**: `scripts/automation/run-gap-eval-pack.py`, AIDB knowledge import
-
-Status: **planned** (depends on eval run result)
+Status: **done** (2026-05-01 — aq-report §4: runs=2, latest=100.0%, mean=100.0%, stable)
 
 ---
 
@@ -118,12 +99,6 @@ Aider-wrapper usage dropped because direct Claude Code replaced it as the primar
 The hybrid coordinator's `_inject_semantic_tooling()` writes to the hint-audit.jsonl via aider-wrapper;
 since aider-wrapper isn't being invoked, injections are naturally low.
 
-**Options**:
-A. Accept: hint injection is an aider-wrapper concern; direct Claude Code doesn't use that path.
-   Update aq-report section 14 to clarify the metric scope.
-B. Extend: add hint injection tracking for direct coordinator `/query` calls (new JSONL or DB write).
-   This captures the much larger volume of orchestrate/synthesize calls.
-
 **Recommendation**: Option B — wire injection tracking into coordinator `/query` synthesis path.
 This gives a truer picture of hint utilization across all execution paths.
 
@@ -131,46 +106,57 @@ This gives a truer picture of hint utilization across all execution paths.
 - `ai-stack/mcp-servers/hybrid-coordinator/http_server.py` (synthesis hint tracking)
 - `scripts/ai/aq-report` (section 14 scope clarification)
 
-Status: **planned** (lower priority than 22.1-22.3)
+Status: **in_progress** (2026-05-02)
 
 ---
 
 ## Verification Matrix
 
-1. ⏳ `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` (user terminal action)
-2. ⏳ `systemctl show ai-hybrid-coordinator` → Phase 21 env vars active
-3. ⏳ `aq-qa 0` → 40/0 after rebuild
-4. ⏳ `aq-report` → delegate success rate improvement (24h window post-rebuild)
-5. ⏳ Gap-eval-pack → eval score ≥60%
-6. ⏳ `aq-report` → cache_hit improving (8 seeds done 2026-05-01)
+1. ✅ `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — done
+2. ✅ `systemctl show ai-hybrid-coordinator` → Phase 21 env vars active — confirmed
+3. ✅ `aq-qa 0` → 39/0 (0 failed, 1 skipped — correct)
+4. ✅ `aq-report` → eval=100%, cache warming (28% hit rate, low sample)
+5. ✅ Gap-eval-pack → eval score 100% (P22-006)
+6. ✅ `aq-report` → cache_hit at 28% (25 samples, warming)
+7. ⏳ P22-004 hint tracking in /query — in_progress
+8. ⏳ nixos-rebuild for cache_prompt fix (commit 84b7231d)
 
 ---
 
 ## Work Queue
 
-### Task: P22-001
+### Task: P22-001 ✅ DONE (2026-05-01)
 - Phase: 22.1
 - Owner: User (terminal) + Claude (validation)
 - Action: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`
-- Status: **pending** (requires user terminal action)
+- Status: **done** — rebuild confirmed; env vars live; aq-qa 39/0
 
-### Task: P22-002
+### Task: P22-002 ✅ DONE (2026-05-01)
 - Phase: 22.2
 - Owner: Claude
 - Files: `model_fleet_manager.py`, `ai_coordinator_handlers.py`
-- Status: **in_progress** (see implementation below)
+- Status: **done** — `record_error_with_retry_after()` implemented and wired
 
-### Task: P22-003
+### Task: P22-003 ✅ DONE (2026-05-01)
 - Phase: 22.3
 - Owner: Claude
 - Files: `scripts/automation/run-gap-eval-pack.py`
-- Status: **planned**
+- Status: **done** — eval score 100%, aq-report §4 confirmed
 
 ### Task: P22-004
 - Phase: 22.4
 - Owner: Claude
 - Files: `http_server.py`, `scripts/ai/aq-report`
-- Status: **planned** (lower priority)
+- Status: **in_progress** (2026-05-02)
+
+### Task: P22-008 ✅ COMMITTED (2026-05-02, pending nixos-rebuild)
+- Phase: 22.8 — Cold prefill elimination via KV-cache reuse
+- Owner: Claude
+- File: `nix/modules/services/switchboard.nix`
+- Commit: `84b7231d`
+- Fix: inject `cache_prompt=true` for all local `chat/completions` payloads;
+  eliminates ~11.8 s cold prefill on the fixed profile-card prefix after first request
+- Status: **committed** — activate with `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`
 
 ### Task: P22-005 ✅ DONE (2026-05-01)
 - Phase: 22.5 — Architectural: eliminate remote model hardcoding
