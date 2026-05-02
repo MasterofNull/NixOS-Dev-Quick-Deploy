@@ -1088,20 +1088,11 @@ def _apply_query_response_mode(
     if generate_response and retrieval_strategy.get("active"):
         normalized = str(query or "").strip().lower()
         has_recalled_memory = bool(request_context.get("prior_memory") or request_context.get("memory_recall"))
-        resume_markers = (
-            "continue from",
-            "resume",
-            "pick up",
-            "where we left",
-            "left off",
-            "remaining work",
-            "open items",
-            "outstanding work",
-            "next steps",
-            "phase status",
-            "last session",
-            "last run",
-        )
+        # P23-001: Removed the duplicate resume_markers gate — _is_continuation_query already
+        # classifies continuation intent. The old dual-gate required both _is_continuation_query
+        # AND a separate resume_markers list, but resume_markers used "continue from" (not "continue")
+        # and "remaining work" (not "remaining improvements"), so queries that correctly passed
+        # _is_continuation_query failed the second check → 0/8 downshift coverage in aq-report.
         explanation_markers = (
             "explain why",
             "why the",
@@ -1117,7 +1108,6 @@ def _apply_query_response_mode(
         if (
             has_recalled_memory
             and _is_continuation_query(query)
-            and any(marker in normalized for marker in resume_markers)
             and not any(marker in normalized for marker in explanation_markers)
             and not any(marker in normalized for marker in explicit_search_markers)
         ):
