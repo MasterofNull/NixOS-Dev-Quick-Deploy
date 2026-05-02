@@ -490,6 +490,30 @@ let
     LOCAL_BUSY_WARN_S = float(os.environ.get("SWB_LOCAL_BUSY_WARN_S", "30"))
     STARTUP_PREFIX_WARM_ENABLED = os.environ.get("SWB_STARTUP_PREFIX_WARM_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 
+    def _compact_guidance_contract() -> str:
+        return (
+            "[compact-guidance] Return at most 3 numbered lines. "
+            "Keep each line short and actionable. "
+            "No preamble, no explanation, no code fences."
+        )
+
+    def _apply_compact_guidance_contract(messages: list, profile: str) -> tuple[list, bool]:
+        if (
+            profile not in ("continue-local", "embedded-assist")
+            or not isinstance(messages, list)
+            or not _looks_like_compact_guidance_request(messages)
+        ):
+            return messages, False
+        contract = _compact_guidance_contract()
+        for message in messages:
+            if (
+                isinstance(message, dict)
+                and message.get("role") == "system"
+                and contract in str(message.get("content", ""))
+            ):
+                return messages, False
+        return ([{"role": "system", "content": contract}] + list(messages)), True
+
     def _startup_prefix_warm_messages(profile: str) -> list[dict]:
         card = _profile_card(profile)
         user_content = f"Warm the {profile} local editor lane."
@@ -498,6 +522,7 @@ let
                 "Diagnose why the local editor path is slow and return 3 compact next steps."
             )
         messages = [{"role": "user", "content": user_content}]
+        messages, _ = _apply_compact_guidance_contract(messages, profile)
         if card:
             messages.insert(0, {"role": "system", "content": card})
         return messages
@@ -1686,18 +1711,19 @@ let
                 msgs = payload.get("messages")
                 if isinstance(msgs, list):
                     with_card, card_applied = _ensure_profile_card(msgs, profile)
+                    with_guidance_contract, _ = _apply_compact_guidance_contract(with_card, profile)
                     # --- Loop guard: detect repetitive assistant turns and inject a break ---
-                    loop_msg = _detect_loop(with_card)
+                    loop_msg = _detect_loop(with_guidance_contract)
                     if loop_msg:
                         already_injected = any(
                             isinstance(m, dict) and "[loop-guard]" in str(m.get("content", ""))
-                            for m in with_card
+                            for m in with_guidance_contract
                         )
                         if not already_injected:
-                            with_card = [{"role": "system", "content": loop_msg}] + list(with_card)
+                            with_guidance_contract = [{"role": "system", "content": loop_msg}] + list(with_guidance_contract)
                             _log_loop_event(profile, LOOP_DETECT_THRESHOLD, LOOP_DETECT_WINDOW)
                     # --- end loop guard ---
-                    trimmed, did_trim, before, after, policy, relevance, gate_applied = await _trim_profile_messages(with_card, profile)
+                    trimmed, did_trim, before, after, policy, relevance, gate_applied = await _trim_profile_messages(with_guidance_contract, profile)
                     payload["messages"] = trimmed
                     input_trimmed = did_trim
                     input_tokens_before = before

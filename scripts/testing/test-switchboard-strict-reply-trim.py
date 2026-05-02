@@ -53,6 +53,14 @@ def main() -> None:
         "expected switchboard to define a compact local response budget helper",
     )
     assert_true(
+        "def _compact_guidance_contract() -> str:" in text,
+        "expected switchboard to define a compact guidance response contract helper",
+    )
+    assert_true(
+        "def _apply_compact_guidance_contract(messages: list, profile: str) -> tuple[list, bool]:" in text,
+        "expected switchboard to define a compact guidance contract injection helper",
+    )
+    assert_true(
         'payload["max_tokens"] = max(32, target)' in text,
         "expected compact local guidance requests to clamp max_tokens",
     )
@@ -67,6 +75,14 @@ def main() -> None:
     assert_true(
         'compact_guidance = profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages)' in text,
         "expected switchboard trimming to classify compact local guidance prompts before applying the tighter budget",
+    )
+    assert_true(
+        '"[compact-guidance] Return at most 3 numbered lines. "' in text,
+        "expected compact guidance requests to use an explicit terse output contract",
+    )
+    assert_true(
+        "with_guidance_contract, _ = _apply_compact_guidance_contract(with_card, profile)" in text,
+        "expected switchboard request shaping to inject the compact guidance contract before trimming",
     )
     assert_true(
         "max_tokens = min(max_tokens, 128)" in text,
