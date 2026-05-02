@@ -99,12 +99,18 @@ def main() -> None:
         "expected switchboard to define a startup prefix warmup helper",
     )
     assert_true(
+        "def _startup_prefix_warm_messages(profile: str) -> list[dict]:" in text,
+        "expected switchboard to define a representative startup warmup message helper",
+    )
+    assert_true(
         'asyncio.create_task(_warm_local_profile_prefix("continue-local"))' in text,
         "expected switchboard startup to schedule continue-local prefix warmup",
     )
     assert_true(
-        '"cache_prompt": True' in text and 'f"Warm the {profile} local editor lane."' in text,
-        "expected startup prefix warmup to seed llama.cpp cache with a compact local editor prompt",
+        '"cache_prompt": True' in text
+        and '"Diagnose why the local editor path is slow and return 3 compact next steps."' in text
+        and '"messages": _startup_prefix_warm_messages(profile)' in text,
+        "expected startup prefix warmup to seed llama.cpp cache with a representative compact local editor prompt",
     )
     assert_true(
         "def _local_lane_status(local_runtime: dict | None) -> str:" in text,

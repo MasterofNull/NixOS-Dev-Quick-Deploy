@@ -490,18 +490,24 @@ let
     LOCAL_BUSY_WARN_S = float(os.environ.get("SWB_LOCAL_BUSY_WARN_S", "30"))
     STARTUP_PREFIX_WARM_ENABLED = os.environ.get("SWB_STARTUP_PREFIX_WARM_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
 
+    def _startup_prefix_warm_messages(profile: str) -> list[dict]:
+        card = _profile_card(profile)
+        user_content = f"Warm the {profile} local editor lane."
+        if profile in ("continue-local", "embedded-assist"):
+            user_content = (
+                "Diagnose why the local editor path is slow and return 3 compact next steps."
+            )
+        messages = [{"role": "user", "content": user_content}]
+        if card:
+            messages.insert(0, {"role": "system", "content": card})
+        return messages
+
     async def _warm_local_profile_prefix(profile: str) -> None:
         if not STARTUP_PREFIX_WARM_ENABLED:
             return
-        card = _profile_card(profile)
-        if not card:
-            return
         payload = {
             "model": "AUTODETECT",
-            "messages": [
-                {"role": "system", "content": card},
-                {"role": "user", "content": f"Warm the {profile} local editor lane."},
-            ],
+            "messages": _startup_prefix_warm_messages(profile),
             "temperature": 0,
             "max_tokens": 4,
             "cache_prompt": True,
