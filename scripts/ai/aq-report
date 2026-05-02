@@ -5091,11 +5091,13 @@ def format_md(
         lines.append(f"{i}. {rec}")
     lines.append("")
 
-    # 10. Hint Adoption (Phase 19.3.4)
-    lines += ["## 10. Hint Adoption (aq-hints → aider-wrapper)", ""]
+    # 10. Hint Adoption (Phase 19.3.4 + P22-004)
+    # P22-004: coordinator /query synthesis now also writes to hint-audit.jsonl
+    # (service=hybrid-coordinator); aider-wrapper entries have service=aider-wrapper.
+    lines += ["## 10. Hint Adoption (aq-hints → aider-wrapper + coordinator)", ""]
     if adoption and adoption.get("available"):
         if adoption["total"] == 0:
-            lines.append("*No hint-injected aider tasks in this window.*")
+            lines.append("*No hint injections recorded in this window (aider-wrapper or coordinator).*")
         else:
             lines += [
                 f"- Tasks with hint injection: **{adoption['total']}**",
@@ -5910,10 +5912,10 @@ def format_text(
         lines.append(cur_line)
     lines.append("")
 
-    lines += ["[ 10. Hint Adoption (aq-hints → aider-wrapper) ]"]
+    lines += ["[ 10. Hint Adoption (aq-hints → aider-wrapper + coordinator) ]"]
     if adoption and adoption.get("available"):
         if adoption["total"] == 0:
-            lines.append("  No hint-injected aider tasks in this window.")
+            lines.append("  No hint injections recorded in this window (aider-wrapper or coordinator).")
         else:
             lines += [
                 f"  Injected: {adoption['total']}   Successful: {adoption['accepted']}"
