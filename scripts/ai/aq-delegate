@@ -191,6 +191,80 @@ if echo "$TASK_LOWER" | grep -qE 'memory|prior|previous|recall|context|session|h
 fi
 
 # ---------------------------------------------------------------------------
+# Phase 24: Frontend design (impeccable) context — all agents
+# ---------------------------------------------------------------------------
+if echo "$TASK_LOWER" | grep -qE 'design|ui|ux|frontend|css|component|layout|typography|color|animation|responsive|impeccable|audit.*ui|critique|polish.*ui|accessibility|a11y|dark.mode|animate|colorize|typeset'; then
+  CONTEXT_BLOCKS+=("IMPECCABLE DESIGN CONTEXT (all-agent):
+  Skill:        impeccable (registered in harness skill registry)
+  AIDB project: impeccable-design (35 reference docs: typography, color, motion, UX)
+  Commands:     audit | critique | polish | craft | animate | colorize | typeset
+                bolder | quieter | distill | overdrive | layout | shape
+  Tool sequence:
+    1. GET  /hints?q=impeccable+<command>              — ranked hints
+    2. POST /query {query,project:impeccable-design}   — retrieve reference docs
+    3. GET  /control/ai-coordinator/skills             — list registered skills
+    4. npx impeccable detect <target>                  — anti-pattern scan (24+ patterns)
+  Anti-patterns to avoid:
+    gradient-text, glassmorphism-overuse, side-stripe-borders,
+    hero-metric-template, identical-card-grid, modal-first,
+    layout-animation, missing-reduced-motion, pure-black-white
+  SEARCH FIRST: grep -rn 'PRODUCT.md\|DESIGN.md' . --include='*.md'")
+fi
+
+# ---------------------------------------------------------------------------
+# Phase 24: Trading agents context — all agents
+# ---------------------------------------------------------------------------
+if echo "$TASK_LOWER" | grep -qE 'trade|trading|stock|ticker|market.anal|portfolio|financial|earnings|fundamental|sentiment.anal|technical.ind|bull|bear|equity|shares|price.target|ohlcv|macd|rsi|bollinger'; then
+  CONTEXT_BLOCKS+=("TRADING AGENTS CONTEXT (all-agent):
+  Framework:    ai-stack/trading-agents/ (5-team: analysts+researchers+trader+risk+portfolio)
+  Config:       ai-stack/trading-agents/config.py (reads from env vars, never hardcoded)
+  CLI:          scripts/ai/aq-trading <TICKER> <DATE> [--analysts <csv>] [--rounds <n>]
+  HTTP API (any agent can call these):
+    GET  http://127.0.0.1:8003/trading/analyze?ticker=AAPL&date=2026-05-01
+    GET  http://127.0.0.1:8003/trading/forecast?ticker=AAPL&date=2026-05-01
+    POST http://127.0.0.1:8003/trading/debate    (JSON body: ticker, trade_date, reports)
+    GET  http://127.0.0.1:8003/trading/history?ticker=AAPL
+    GET  http://127.0.0.1:8003/trading/tools     (tool discovery catalog)
+  Analyst types: market | fundamentals | news | sentiment
+  Data tools:   get_stock_data, get_indicators, get_fundamentals, get_balance_sheet,
+                get_cashflow, get_income_statement, get_news, get_insider_transactions
+  Tool sequence:
+    1. GET  /trading/tools                    — discover available tools
+    2. GET  /hints?q=trading+analysis         — workflow hints
+    3. GET  /trading/forecast?ticker=X&date=Y — quick signal
+    4. GET  /trading/analyze?ticker=X&date=Y  — full pipeline
+    5. POST /feedback {result,rating}         — capture outcome
+  SEARCH FIRST: find ai-stack/trading-agents/ -name '*.py' | head -20")
+fi
+
+# ---------------------------------------------------------------------------
+# Universal tool catalog — injected for ALL agents regardless of task
+# ---------------------------------------------------------------------------
+CONTEXT_BLOCKS+=("UNIVERSAL TOOL CATALOG (all-agent HTTP API at http://127.0.0.1:8003):
+  Core workflow:
+    GET  /hints?q=<task>                      — ranked hints + workflow guidance
+    POST /query {query,mode,limit}            — hybrid RAG retrieval + synthesis
+    GET  /discovery/capabilities              — stack capability flags
+    GET  /control/ai-coordinator/skills       — all registered skills (impeccable, trading, etc.)
+  Memory:
+    POST /memory/recall {query,limit}         — semantic memory search
+    POST /feedback {query,correction,rating}  — capture corrections/outcomes
+  Orchestration:
+    POST /control/ai-coordinator/delegate     — delegate task to runtime lane
+    POST /workflow/orchestrate                — long-running multi-agent loop
+  Design intelligence (Phase 24):
+    GET  /control/ai-coordinator/skills       — impeccable skill (audit|critique|polish|craft)
+    POST /query {project:impeccable-design}   — design reference docs
+  Financial analysis (Phase 24):
+    GET  /trading/analyze?ticker=X&date=Y     — full 5-team analysis
+    GET  /trading/forecast?ticker=X&date=Y    — quick market signal
+    GET  /trading/tools                       — financial tool discovery
+  Health:
+    GET  /health                              — stack health check
+    GET  /status                              — service status
+  NOTE: All endpoints accept standard HTTP — callable by ANY agent/model/runtime.")
+
+# ---------------------------------------------------------------------------
 # Assemble the enriched prompt
 # ---------------------------------------------------------------------------
 CONTEXT_SEPARATOR="

@@ -186,6 +186,62 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "Poll Ralph loop execution state and optionally fetch final results.",
         )
 
+    # --- Phase 24: Frontend Design (impeccable) ---
+    if any(
+        k in q
+        for k in (
+            "design", "ui", "ux", "frontend", "css", "component", "layout",
+            "typography", "color", "animation", "responsive", "impeccable",
+            "audit ui", "critique", "polish ui", "accessibility", "a11y",
+            "dark mode", "light mode", "animate", "colorize", "typeset",
+        )
+    ):
+        add(
+            "impeccable_audit",
+            "/control/ai-coordinator/skills",
+            "Run impeccable design audit/critique against frontend code. "
+            "Skill: impeccable. Commands: audit|critique|polish|craft|animate|colorize|typeset.",
+        )
+        add(
+            "impeccable_reference",
+            "/query",
+            "Retrieve design reference docs from AIDB (project: impeccable-design). "
+            "Pass project=impeccable-design in query body.",
+        )
+
+    # --- Phase 24: Trading Agents (financial analysis) ---
+    if any(
+        k in q
+        for k in (
+            "trade", "trading", "stock", "ticker", "market analysis",
+            "analyst", "portfolio", "buy", "sell", "hold", "financial",
+            "earnings", "fundamentals", "sentiment analysis", "technical indicators",
+            "bull", "bear", "debate", "risk management", "equity", "shares",
+            "price target", "ohlcv", "macd", "rsi", "bollinger",
+        )
+    ):
+        add(
+            "trading_analyze",
+            "/trading/analyze",
+            "Full 5-team trading analysis: analysts + researcher debate + trader + risk + portfolio. "
+            "Params: ticker, date, analysts (csv), debate_rounds.",
+        )
+        add(
+            "trading_forecast",
+            "/trading/forecast",
+            "Quick market-only signal without full pipeline. Params: ticker, date.",
+        )
+        add(
+            "trading_tools",
+            "/trading/tools",
+            "Discover all available financial data tools (stock data, indicators, fundamentals, news).",
+        )
+        add(
+            "route_search",
+            "/query",
+            "Retrieve trading knowledge from AIDB (project: trading-knowledge).",
+        )
+
     if "route_search" not in seen:
         add("route_search", "/query", "Default execution path for response generation with retrieval.")
 
@@ -312,6 +368,44 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "mcp_tool": "",
         "args": [],
         "output_focus": "Counters and lag metrics only.",
+    },
+    # Phase 24: Frontend design (impeccable) — all-agent
+    "impeccable_audit": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": ["skill", "command", "target"],
+        "output_focus": "Design audit findings, anti-patterns detected, and actionable fix recommendations.",
+    },
+    "impeccable_reference": {
+        "method": "POST",
+        "mcp_tool": "hybrid_search",
+        "args": ["query", "project", "limit"],
+        "output_focus": "Design reference docs: typography, color, motion, spacing, UX principles.",
+    },
+    # Phase 24: Trading agents — all-agent
+    "trading_analyze": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": ["ticker", "date", "analysts", "debate_rounds"],
+        "output_focus": "Final trade decision (BUY/HOLD/SELL), position size, and analyst consensus summary.",
+    },
+    "trading_forecast": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": ["ticker", "date"],
+        "output_focus": "Quick market signal and preliminary trader recommendation.",
+    },
+    "trading_tools": {
+        "method": "GET",
+        "mcp_tool": "",
+        "args": [],
+        "output_focus": "Tool catalog: names, descriptions, params, and endpoints for financial data tools.",
+    },
+    "trading_debate": {
+        "method": "POST",
+        "mcp_tool": "",
+        "args": ["ticker", "trade_date", "market_report", "fundamentals_report", "debate_round"],
+        "output_focus": "Bull and bear arguments with updated debate round counter.",
     },
 }
 
