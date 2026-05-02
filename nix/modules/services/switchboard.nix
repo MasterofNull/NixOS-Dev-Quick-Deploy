@@ -488,6 +488,32 @@ let
     _embed_client: httpx.AsyncClient | None = None
     _local_health_client: httpx.AsyncClient | None = None
     LOCAL_BUSY_WARN_S = float(os.environ.get("SWB_LOCAL_BUSY_WARN_S", "30"))
+    STARTUP_PREFIX_WARM_ENABLED = os.environ.get("SWB_STARTUP_PREFIX_WARM_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+
+    async def _warm_local_profile_prefix(profile: str) -> None:
+        if not STARTUP_PREFIX_WARM_ENABLED:
+            return
+        card = _profile_card(profile)
+        if not card:
+            return
+        payload = {
+            "model": "AUTODETECT",
+            "messages": [
+                {"role": "system", "content": card},
+                {"role": "user", "content": f"Warm the {profile} local editor lane."},
+            ],
+            "temperature": 0,
+            "max_tokens": 4,
+            "cache_prompt": True,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        try:
+            await asyncio.sleep(1.0)
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=20.0, write=5.0, pool=2.0)) as client:
+                response = await client.post(f"{LLAMA_URL}/v1/chat/completions", json=payload)
+            response.raise_for_status()
+        except Exception as exc:
+            print(f"[switchboard] startup_prefix_warm_failed profile={profile} error={exc}")
 
     @app.on_event("startup")
     async def _startup():
@@ -504,6 +530,7 @@ let
         _local_health_client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)
         )
+        asyncio.create_task(_warm_local_profile_prefix("continue-local"))
 
     @app.on_event("shutdown")
     async def _shutdown():

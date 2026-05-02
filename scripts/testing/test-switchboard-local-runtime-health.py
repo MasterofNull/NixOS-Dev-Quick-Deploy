@@ -91,6 +91,22 @@ def main() -> None:
         "expected local completion snapshot to preserve cached token and timing fields",
     )
     assert_true(
+        "STARTUP_PREFIX_WARM_ENABLED" in text,
+        "expected switchboard to expose a startup prefix warmup toggle",
+    )
+    assert_true(
+        "async def _warm_local_profile_prefix(profile: str) -> None:" in text,
+        "expected switchboard to define a startup prefix warmup helper",
+    )
+    assert_true(
+        'asyncio.create_task(_warm_local_profile_prefix("continue-local"))' in text,
+        "expected switchboard startup to schedule continue-local prefix warmup",
+    )
+    assert_true(
+        '"cache_prompt": True' in text and 'f"Warm the {profile} local editor lane."' in text,
+        "expected startup prefix warmup to seed llama.cpp cache with a compact local editor prompt",
+    )
+    assert_true(
         "def _local_lane_status(local_runtime: dict | None) -> str:" in text,
         "expected switchboard to define a canonical local lane status helper",
     )
