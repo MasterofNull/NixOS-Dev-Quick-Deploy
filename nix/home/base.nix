@@ -47,7 +47,6 @@ let
   aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
   switchboardProfiles = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "profiles" ] { } systemConfig;
   continueLocalProfile = lib.attrByPath [ "continue-local" ] { } switchboardProfiles;
-  localAgentProfile = lib.attrByPath [ "local-agent" ] { } switchboardProfiles;
   defaultSwitchboardProfile = lib.attrByPath [ "default" ] { } switchboardProfiles;
   continueContextLength =
     lib.attrByPath [ "advertisedContextWindow" ]
@@ -58,14 +57,6 @@ let
       (lib.attrByPath [ "maxOutputTokens" ] 768 defaultSwitchboardProfile)
       continueLocalProfile;
   continueTabMaxTokens = lib.min 96 (lib.max 32 continueChatMaxTokens);
-  localAgentContextLength =
-    let
-      advertised = lib.attrByPath [ "advertisedContextWindow" ] aiLlamaCtxSize localAgentProfile;
-      bounded = lib.attrByPath [ "maxInputTokens" ] null localAgentProfile;
-    in
-    if bounded != null then lib.min advertised bounded else advertised;
-  localAgentChatMaxTokens =
-    lib.attrByPath [ "maxOutputTokens" ] 1024 localAgentProfile;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   vscodeLinuxTarget =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "linux-x64"
@@ -1157,7 +1148,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="25.0"
+    _config_version="26.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1175,19 +1166,10 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "25.0",
+  "__configVersion": "26.0",
   "models": [
     {
-      "title": "Switchboard Router (Authoritative)",
-      "provider": "openai",
-      "apiKey": "local-llama-cpp",
-      "apiBase": "${continueApiBase}",
-      "model": "${aiLlamaModel}",
-      "contextLength": ${toString continueContextLength},
-      "maxTokens": ${toString continueChatMaxTokens}
-    },
-    {
-      "title": "Local Stable (Continue Local)",
+      "title": "Continue Local (Primary)",
       "provider": "openai",
       "apiKey": "local-llama-cpp",
       "apiBase": "${continueApiBase}",
@@ -1199,20 +1181,6 @@ PYEOF
       },
       "contextLength": ${toString continueContextLength},
       "maxTokens": ${toString continueChatMaxTokens}
-    },
-    {
-      "title": "Local Agent (Harness-Aware)",
-      "provider": "openai",
-      "apiKey": "local-llama-cpp",
-      "apiBase": "${continueApiBase}",
-      "model": "${aiLlamaModel}",
-      "requestOptions": {
-        "headers": {
-          "X-AI-Profile": "local-agent"
-        }
-      },
-      "contextLength": ${toString localAgentContextLength},
-      "maxTokens": ${toString localAgentChatMaxTokens}
     }
   ],
   "tabAutocompleteModel": {
