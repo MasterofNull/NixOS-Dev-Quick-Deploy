@@ -1458,7 +1458,7 @@ let
             current_int = int(current) if current is not None else 0
         except Exception:
             current_int = 0
-        target = 64
+        target = 48
         if current_int > 0:
             target = min(target, current_int)
         payload["max_tokens"] = max(32, target)

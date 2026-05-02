@@ -57,6 +57,10 @@ def main() -> None:
         "expected compact local guidance requests to clamp max_tokens",
     )
     assert_true(
+        "target = 48" in text,
+        "expected compact local guidance requests to clamp output budgets to 48 tokens",
+    )
+    assert_true(
         "payload = _apply_compact_local_response_budget(payload, profile)" in text,
         "expected switchboard request shaping to apply compact local response budgets",
     )
