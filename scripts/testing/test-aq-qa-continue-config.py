@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 AQ_QA = ROOT / "scripts" / "ai" / "aq-qa"
+HOME_BASE = ROOT / "nix" / "home" / "base.nix"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -15,6 +16,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> int:
     script = AQ_QA.read_text(encoding="utf-8")
+    home_base = HOME_BASE.read_text(encoding="utf-8")
 
     assert_true(
         '0.5.2" "Continue config targets switchboard ingress with continue-local lane"' in script,
@@ -43,6 +45,19 @@ def main() -> int:
     assert_true(
         '_continue_extension_output' in script and 'AQ_PRIMARY_HOME="$(_primary_home)"' in script,
         "aq-qa should run Continue/editor smoke checks against the primary-user environment instead of the ambient HOME",
+    )
+    assert_true(
+        'localAgentProfile = lib.attrByPath [ "local-agent" ] { } switchboardProfiles;' in home_base,
+        "Continue config generation should derive a dedicated local-agent profile view from switchboard config",
+    )
+    assert_true(
+        "localAgentContextLength =" in home_base and 'lib.attrByPath [ "maxInputTokens" ] null localAgentProfile' in home_base,
+        "Continue config generation should cap the harness-aware editor model context to the local-agent input budget",
+    )
+    assert_true(
+        '"contextLength": ${toString localAgentContextLength}' in home_base
+        and '"maxTokens": ${toString localAgentChatMaxTokens}' in home_base,
+        "Continue config should render the harness-aware editor model with profile-specific context and output bounds",
     )
 
     print("PASS: aq-qa Continue config validation stays pinned to switchboard ingress")
