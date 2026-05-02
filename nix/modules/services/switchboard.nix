@@ -1356,10 +1356,11 @@ let
         max_messages = profile_settings.get("maxMessages")
         if not isinstance(max_tokens, int) or not isinstance(max_messages, int):
             return messages, False, 0, 0, "none", 1.0, False
+        compact_guidance = profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages)
         if profile in ("continue-local", "embedded-assist") and _looks_like_strict_reply_only(messages):
             max_tokens = min(max_tokens, 256)
             max_messages = min(max_messages, 2)
-        if profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages):
+        if compact_guidance:
             max_tokens = min(max_tokens, 128)
             max_messages = min(max_messages, 2)
 
@@ -1404,7 +1405,8 @@ let
                 if idx == largest_idx or not isinstance(message, dict):
                     continue
                 reserved_tokens += _estimate_tokens(_extract_content_text(message))
-            available_tokens = max(128, max_tokens - reserved_tokens)
+            min_truncate_tokens = 48 if compact_guidance else 128
+            available_tokens = max(min_truncate_tokens, max_tokens - reserved_tokens)
             if isinstance(kept[largest_idx], dict):
                 kept[largest_idx] = _truncate_message_to_token_budget(kept[largest_idx], available_tokens)
 

@@ -61,8 +61,8 @@ def main() -> None:
         "expected switchboard request shaping to apply compact local response budgets",
     )
     assert_true(
-        'if profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages):' in text,
-        "expected switchboard trimming to special-case compact local guidance prompts",
+        'compact_guidance = profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages)' in text,
+        "expected switchboard trimming to classify compact local guidance prompts before applying the tighter budget",
     )
     assert_true(
         "max_tokens = min(max_tokens, 128)" in text,
@@ -71,6 +71,10 @@ def main() -> None:
     assert_true(
         text.count("max_messages = min(max_messages, 2)") >= 2,
         "expected compact local guidance prompts to keep only the minimal turn window",
+    )
+    assert_true(
+        "min_truncate_tokens = 48 if compact_guidance else 128" in text,
+        "expected compact local guidance prompts to allow a lower truncation floor than generic prompts",
     )
 
     print("PASS: switchboard trims strict reply-only local prompts more aggressively")

@@ -88,10 +88,12 @@ Status: **done** (2026-05-02 — all 8 seeds 200 OK)
 
 ## Verification Matrix
 
-1. ⏳ `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — activate downshift fix + P22-004
-2. ⏳ `aq-report` §7b → continuation downshift coverage > 0 (24h window post-rebuild)
-3. ⏳ `aq-report` §14 → hint injections include coordinator entries
-4. ⏳ `aq-report` §3 → cache hit rate improving beyond 28%
+1. ✅ `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — done (2026-05-02)
+2. ✅ P23-001 live verified: continuation query → `downshifted=true`, `reason=continuation_memory_first`
+3. ✅ `cache_prompt=true` live: call 1 elapsed=25.9s cached=0; call 2 elapsed=16.5s cached=11 tokens
+4. ⏳ `aq-report` §7b → continuation downshift coverage > 0 (24h window)
+5. ⏳ `aq-report` §14 → hint injections include coordinator entries
+6. ⏳ `aq-report` §3 → cache hit rate improving beyond 28%
 
 ---
 
@@ -112,7 +114,7 @@ Status: **done** (2026-05-02 — all 8 seeds 200 OK)
 - Phase: 23.3 — Cache prewarm continuation seeds
 - Status: **done** — 8 seeds sent, all 200 OK
 
-### Task: P23-004
+### Task: P23-004 ✅ DONE (2026-05-02)
 - Phase: 23.4 — Validate and push all Phase 23 commits
-- Status: **pending commit**
+- Status: **done** — pushed 8479c433; nixos-rebuild complete; live verification passed
 
