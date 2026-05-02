@@ -1131,6 +1131,25 @@ let
             and any(token in lowered for token in ("reply", "respond", "return"))
         )
 
+    def _looks_like_compact_guidance_request(messages: list) -> bool:
+        if not isinstance(messages, list):
+            return False
+        latest_user = ""
+        for message in reversed(messages):
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            latest_user = _extract_content_text(message).strip()
+            if latest_user:
+                break
+        if not latest_user:
+            return False
+        lowered = latest_user.lower()
+        if len(latest_user.split()) > 120:
+            return False
+        compact_cues = ("compact", "brief", "concise", "short")
+        guidance_cues = ("next steps", "diagnosis", "diagnose", "plan", "path")
+        return any(cue in lowered for cue in compact_cues) and any(cue in lowered for cue in guidance_cues)
+
     def _tokenize(text: str) -> list[str]:
         return [t for t in re.split(r"[^a-z0-9_./-]+", (text or "").lower()) if len(t) >= 2]
 
@@ -1417,6 +1436,23 @@ let
             return False
         return _looks_like_strict_reply_only(messages)
 
+    def _apply_compact_local_response_budget(payload: dict, profile: str) -> dict:
+        if not isinstance(payload, dict) or profile not in ("continue-local", "embedded-assist"):
+            return payload
+        messages = payload.get("messages")
+        if not _looks_like_compact_guidance_request(messages):
+            return payload
+        current = payload.get("max_tokens")
+        try:
+            current_int = int(current) if current is not None else 0
+        except Exception:
+            current_int = 0
+        target = 64
+        if current_int > 0:
+            target = min(target, current_int)
+        payload["max_tokens"] = max(32, target)
+        return payload
+
     def _ensure_profile_card(messages: list, profile: str) -> tuple[list, bool]:
         if not isinstance(messages, list):
             return messages, False
@@ -1634,6 +1670,7 @@ let
         if isinstance(payload, dict):
             payload = _rewrite_model(payload, profile)
             payload = _apply_local_thinking_profile(payload, profile, target_type)
+            payload = _apply_compact_local_response_budget(payload, profile)
             if path == "chat/completions":
                 msgs = payload.get("messages")
                 if isinstance(msgs, list):

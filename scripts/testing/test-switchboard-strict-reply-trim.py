@@ -44,6 +44,22 @@ def main() -> None:
         "if _skip_profile_card_for_messages(profile, messages):" in text,
         "expected switchboard profile-card injection to skip strict reply-only local prompts",
     )
+    assert_true(
+        "def _looks_like_compact_guidance_request(messages: list) -> bool:" in text,
+        "expected switchboard to detect compact guidance requests on local editor lanes",
+    )
+    assert_true(
+        "def _apply_compact_local_response_budget(payload: dict, profile: str) -> dict:" in text,
+        "expected switchboard to define a compact local response budget helper",
+    )
+    assert_true(
+        'payload["max_tokens"] = max(32, target)' in text,
+        "expected compact local guidance requests to clamp max_tokens",
+    )
+    assert_true(
+        "payload = _apply_compact_local_response_budget(payload, profile)" in text,
+        "expected switchboard request shaping to apply compact local response budgets",
+    )
 
     print("PASS: switchboard trims strict reply-only local prompts more aggressively")
 
