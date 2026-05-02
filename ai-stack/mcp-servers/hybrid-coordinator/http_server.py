@@ -138,6 +138,8 @@ import model_fleet_manager as _mfm
 import agentic_memory_journal as _journal
 import identity_handlers  # Phase 16.4: persistent identity kernel
 import affective_handlers  # Phase 19: values signals / affective engine
+import trading_handlers          # Phase 24: multi-agent trading framework (agent-agnostic HTTP API)
+import auto_tool_select_handlers  # Phase 24: autonomous tool auto-selection for all agents
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
     _agent_pool_status_snapshot,
@@ -1979,6 +1981,8 @@ async def run_http_mode(port: int) -> None:
     # Phase 16.4: Identity kernel
     identity_handlers.register_routes(http_app)
     affective_handlers.register_routes(http_app)  # Phase 19: values signals
+    trading_handlers.register_routes(http_app)          # Phase 24: trading analysis (all-agent API)
+    auto_tool_select_handlers.register_routes(http_app)  # Phase 24: autonomous tool auto-selection
 
     # Phase 20: World Model — /world/forecast (inline handler)
     async def handle_world_forecast(request):

@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# aq-trading — CLI entry point for the multi-agent trading analysis pipeline
+#
+# Usage:
+#   aq-trading <TICKER> [DATE] [OPTIONS]
+#
+# Options:
+#   --quick              Market signal only (no full pipeline)
+#   --analysts <csv>     Analyst types: market,fundamentals,news,sentiment
+#   --rounds <n>         Researcher debate rounds (default: 1)
+#   --history            Show past decisions for ticker
+#   --tools              List available financial data tools
+#
+# Examples:
+#   aq-trading AAPL
+#   aq-trading NVDA 2026-05-01
+#   aq-trading TSLA --quick
+#   aq-trading AAPL --analysts market,fundamentals --rounds 2
+#   aq-trading MSFT --history
+#   aq-trading --tools
+#
+# All analysis routes through the hybrid coordinator HTTP API — any agent
+# can call these same endpoints directly without this CLI wrapper.
+
+set -euo pipefail
+
+COORDINATOR_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+TICKER=""
+DATE="$(date +%Y-%m-%d)"
+QUICK=0
+ANALYSTS="market,fundamentals,news,sentiment"
+ROUNDS=1
+SHOW_HISTORY=0
+SHOW_TOOLS=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quick)     QUICK=1 ; shift ;;
+    --history)   SHOW_HISTORY=1 ; shift ;;
+    --tools)     SHOW_TOOLS=1 ; shift ;;
+    --analysts)  ANALYSTS="$2" ; shift 2 ;;
+    --rounds)    ROUNDS="$2" ; shift 2 ;;
+    -*)
+      printf 'aq-trading: unknown flag: %s\n' "$1" >&2
+      exit 1
+      ;;
+    *)
+      if [[ -z "$TICKER" ]]; then
+        TICKER="${1^^}"  # uppercase
+      elif [[ "$DATE" == "$(date +%Y-%m-%d)" && "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        DATE="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Tool catalog (no ticker needed)
+# ---------------------------------------------------------------------------
+if [[ "$SHOW_TOOLS" -eq 1 ]]; then
+  printf 'Fetching trading tool catalog from %s...\n\n' "$COORDINATOR_URL"
+  curl -sf "${COORDINATOR_URL}/trading/tools" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+tools = data.get('tools', [])
+print(f'Available tools ({len(tools)}):')
+for t in tools:
+    print(f'  {t[\"name\"]:30s} — {t[\"description\"]}')
+    print(f'    Endpoint: {t[\"endpoint\"]}')
+"
+  exit 0
+fi
+
+if [[ -z "$TICKER" ]]; then
+  cat >&2 <<'EOF'
+Usage: aq-trading <TICKER> [DATE] [OPTIONS]
+
+Options:
+  --quick             Market signal only
+  --analysts <csv>    market,fundamentals,news,sentiment
+  --rounds <n>        Debate rounds (default: 1)
+  --history           Past decisions for ticker
+  --tools             List available tools
+
+Examples:
+  aq-trading AAPL
+  aq-trading NVDA 2026-05-01 --quick
+  aq-trading TSLA --analysts market,fundamentals --rounds 2
+  aq-trading --tools
+EOF
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Check coordinator is reachable
+# ---------------------------------------------------------------------------
+if ! curl -sf "${COORDINATOR_URL}/health" >/dev/null 2>&1; then
+  printf 'ERROR: Hybrid coordinator not reachable at %s\n' "$COORDINATOR_URL" >&2
+  printf 'Check: aq-qa 0\n' >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
+if [[ "$SHOW_HISTORY" -eq 1 ]]; then
+  printf 'Past decisions for %s:\n\n' "$TICKER"
+  curl -sf "${COORDINATOR_URL}/trading/history?ticker=${TICKER}&limit=10" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+decisions = data.get('decisions', [])
+if not decisions:
+    print('  No past decisions found.')
+else:
+    for d in decisions:
+        print(f'  {d.get(\"trade_date\", \"?\")}  {d.get(\"final_decision\", \"\")[:60]}  size={d.get(\"position_size\", 0):.2f}')
+"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Quick signal
+# ---------------------------------------------------------------------------
+if [[ "$QUICK" -eq 1 ]]; then
+  printf 'Running quick market signal: %s @ %s\n' "$TICKER" "$DATE"
+  printf 'Endpoint: GET %s/trading/forecast?ticker=%s&date=%s\n\n' "$COORDINATOR_URL" "$TICKER" "$DATE"
+
+  curl -sf "${COORDINATOR_URL}/trading/forecast?ticker=${TICKER}&date=${DATE}" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data.get('status') == 'ok':
+    print('=== MARKET REPORT (excerpt) ===')
+    print(data.get('market_report', '')[:500])
+    print()
+    print('=== TRADER SIGNAL ===')
+    print(data.get('trader_decision', ''))
+else:
+    print('Error:', data.get('error', 'unknown'))
+"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Full 5-team analysis
+# ---------------------------------------------------------------------------
+printf 'Running full trading analysis: %s @ %s\n' "$TICKER" "$DATE"
+printf 'Analysts: %s  |  Debate rounds: %d\n' "$ANALYSTS" "$ROUNDS"
+printf 'Endpoint: GET %s/trading/analyze\n\n' "$COORDINATOR_URL"
+printf 'This runs the full 5-team pipeline:\n'
+printf '  analysts → researcher debate → trader → risk mgmt → portfolio manager\n'
+printf 'On local Qwen3.6-35B this may take 10-30 minutes. Patience...\n\n'
+
+curl -sf "${COORDINATOR_URL}/trading/analyze?ticker=${TICKER}&date=${DATE}&analysts=${ANALYSTS}&debate_rounds=${ROUNDS}" \
+  | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+
+if data.get('status') != 'ok':
+    print('Error:', data.get('error', 'unknown'))
+    sys.exit(1)
+
+print('=' * 60)
+print(f'TRADING ANALYSIS: {data[\"ticker\"]} @ {data[\"trade_date\"]}')
+print('=' * 60)
+print()
+
+for key, label in [
+    ('market_report', 'MARKET/TECHNICAL'),
+    ('fundamentals_report', 'FUNDAMENTALS'),
+    ('news_report', 'NEWS/EVENTS'),
+    ('sentiment_report', 'SENTIMENT'),
+]:
+    report = data.get(key, '')
+    if report:
+        print(f'--- {label} ---')
+        print(report[:400])
+        print()
+
+print('--- RESEARCHER DEBATE ---')
+bull = data.get('bull_argument', '')
+bear = data.get('bear_argument', '')
+if bull:
+    print('BULL:', bull[:300])
+    print()
+if bear:
+    print('BEAR:', bear[:300])
+    print()
+
+print('--- TRADER DECISION ---')
+print(data.get('trader_decision', ''))
+print()
+
+print('--- RISK ASSESSMENT ---')
+print(data.get('risk_assessment', '')[:300])
+print()
+
+print('--- FINAL PORTFOLIO DECISION ---')
+print(data.get('final_decision', ''))
+print()
+print(f'Position Size: {data.get(\"position_size\", 0):.2f}')
+print('=' * 60)
+"

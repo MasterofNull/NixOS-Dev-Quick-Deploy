@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# aq-enrich-plans — Autonomously annotate all phase plans with tool sequences
+#
+# Scans .agents/plans/ and auto-injects tool recommendations for each task
+# based on keyword analysis. Agents are pre-loaded with the right tools
+# without any explicit user instruction.
+#
+# Usage:
+#   aq-enrich-plans                     # annotate all plans (dry-run)
+#   aq-enrich-plans --write             # write annotations to plan files
+#   aq-enrich-plans --plan <path>       # single plan file
+#   aq-enrich-plans --task "<text>"     # get tools for a specific task
+#   aq-enrich-plans --catalog           # print full tool catalog
+#
+# This enables fully autonomous tool selection: agents read the enriched
+# plans and already know which tools to use in which order.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+COORDINATOR_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+WRITE=0
+SINGLE_PLAN=""
+SINGLE_TASK=""
+SHOW_CATALOG=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --write)   WRITE=1 ; shift ;;
+    --catalog) SHOW_CATALOG=1 ; shift ;;
+    --plan)    SINGLE_PLAN="$2" ; shift 2 ;;
+    --task)    SINGLE_TASK="$2" ; shift 2 ;;
+    *)         shift ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Full tool catalog
+# ---------------------------------------------------------------------------
+if [[ "$SHOW_CATALOG" -eq 1 ]]; then
+  printf 'Fetching full tool catalog...\n\n'
+  if curl -sf "${COORDINATOR_URL}/tools/catalog" >/dev/null 2>&1; then
+    curl -sf "${COORDINATOR_URL}/tools/catalog?format=compact" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+tools = data.get('tools', {})
+by_domain = {}
+for name, t in tools.items():
+    d = t.get('domain', 'core')
+    by_domain.setdefault(d, []).append((name, t))
+for domain in sorted(by_domain):
+    print(f'\n[{domain.upper()}]')
+    for name, t in by_domain[domain]:
+        print(f'  {name:35s} {t[\"method\"]:4s} {t[\"endpoint\"]}')
+        print(f'    {t[\"description\"]}')
+print(f'\nTotal: {len(tools)} tools')
+"
+  else
+    printf 'Coordinator not reachable at %s\n' "$COORDINATOR_URL"
+    printf 'Falling back to local catalog from tooling_manifest.py...\n'
+  fi
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Single task tool lookup
+# ---------------------------------------------------------------------------
+if [[ -n "$SINGLE_TASK" ]]; then
+  printf 'Auto-selecting tools for task: "%s"\n\n' "$SINGLE_TASK"
+  ENCODED_TASK="$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$SINGLE_TASK")"
+
+  if curl -sf "${COORDINATOR_URL}/tools/auto-select?task=${ENCODED_TASK}" >/dev/null 2>&1; then
+    curl -sf "${COORDINATOR_URL}/tools/auto-select?task=${ENCODED_TASK}" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print('Recommended tools:')
+for t in data.get('tools', []):
+    print(f'  {t[\"name\"]:30s} → {t[\"endpoint\"]}')
+    print(f'    {t.get(\"reason\", \"\")}')
+print()
+print('Execution sequence:')
+for step in data.get('execution_order', []):
+    print(f'  {step[\"step\"]}. [{step[\"phase\"]:8s}] {step[\"tool\"]:25s} {step[\"endpoint\"]}')
+print()
+skills = data.get('recommended_skills', [])
+if skills:
+    print('Recommended skills:', ', '.join(skills))
+projects = data.get('aidb_projects', [])
+if projects:
+    print('AIDB projects:')
+    for p in projects:
+        print(f'  {p[\"project\"]}: {p[\"reason\"]}')
+"
+  else
+    printf 'Coordinator not running — using local tooling_manifest fallback\n'
+    cd "$REPO_ROOT/ai-stack/mcp-servers/hybrid-coordinator"
+    python3 -c "
+from tooling_manifest import workflow_tool_catalog
+import sys
+task = sys.argv[1]
+tools = workflow_tool_catalog(task)
+print('Matched tools:')
+for t in tools:
+    print(f'  {t[\"name\"]:30s} → {t[\"endpoint\"]}')
+    print(f'    {t.get(\"reason\", \"\")}')
+" "$SINGLE_TASK"
+  fi
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Enrich plan files
+# ---------------------------------------------------------------------------
+if [[ -n "$SINGLE_PLAN" ]]; then
+  PLAN_FILES=("${SINGLE_PLAN}")
+else
+  mapfile -t PLAN_FILES < <(find "${REPO_ROOT}/.agents/plans" -name "*.md" -type f 2>/dev/null | sort)
+fi
+
+if [[ ${#PLAN_FILES[@]} -eq 0 ]]; then
+  printf 'No plan files found in .agents/plans/\n'
+  exit 0
+fi
+
+printf 'Enriching %d plan file(s) with tool annotations...\n' "${#PLAN_FILES[@]}"
+[[ "$WRITE" -eq 0 ]] && printf '  (dry-run — use --write to save changes)\n'
+printf '\n'
+
+TOTAL_ANNOTATIONS=0
+
+for plan_file in "${PLAN_FILES[@]}"; do
+  rel_path="${plan_file#${REPO_ROOT}/}"
+  printf '  %s\n' "$rel_path"
+
+  if curl -sf "${COORDINATOR_URL}/health" >/dev/null 2>&1; then
+    # Use coordinator API
+    RESPONSE=$(curl -sf -X POST "${COORDINATOR_URL}/tools/enrich-plan" \
+      -H "Content-Type: application/json" \
+      -d "{\"plan_path\": \"${rel_path}\", \"write_back\": $([ "$WRITE" -eq 1 ] && echo true || echo false)}")
+
+    COUNT=$(echo "$RESPONSE" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+annotations = data.get('annotations', [])
+for a in annotations[:5]:
+    print(f'    task: {a[\"task\"][:60]}')
+    print(f'    tools: {', '.join(a[\"tools\"])}')
+print(len(annotations))
+" 2>/dev/null | tail -1)
+
+    TOTAL_ANNOTATIONS=$((TOTAL_ANNOTATIONS + ${COUNT:-0}))
+  else
+    # Fallback: local Python
+    cd "$REPO_ROOT/ai-stack/mcp-servers/hybrid-coordinator"
+    python3 -c "
+import sys
+sys.path.insert(0, '.')
+from auto_tool_select_handlers import _enrich_plan_content
+with open('${plan_file}') as f:
+    content = f.read()
+enriched, annotations = _enrich_plan_content(content)
+print(f'  Found {len(annotations)} annotatable tasks')
+for a in annotations[:3]:
+    print(f'    {a[\"task\"][:60]} → {a[\"tools\"]}')
+" 2>/dev/null || true
+  fi
+done
+
+printf '\nTotal annotations: %d\n' "$TOTAL_ANNOTATIONS"
+if [[ "$WRITE" -eq 0 ]]; then
+  printf '\nRun with --write to save tool annotations to plan files.\n'
+fi
