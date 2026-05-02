@@ -16,17 +16,22 @@ Routes:
   GET  /tools/catalog                          — full tool catalog for discovery
   POST /tools/enrich-plan                      — annotate a plan with tool sequences
   GET  /tools/for-phase?phase=<id>&plan=<path> — tools for a specific plan phase
+  GET  /skills/list                            — list all skills (filesystem + AIDB, all agents)
+  GET  /skills/<slug>/content                  — retrieve full skill content by slug (all agents)
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
 _logger: Any = None
 _config: Any = None
+_SKILL_FILES = ("SKILL.md",)
+_LEGACY_SKILL_SUFFIXES = (".skill.md",)
 
 
 def init(logger: Any = None, config: Any = None) -> None:
@@ -40,6 +45,8 @@ def register_routes(app: Any) -> None:
     app.router.add_get("/tools/catalog", handle_tool_catalog)
     app.router.add_post("/tools/enrich-plan", handle_enrich_plan)
     app.router.add_get("/tools/for-phase", handle_tools_for_phase)
+    app.router.add_get("/skills/list", handle_skills_list)
+    app.router.add_get(r"/skills/{slug}/content", handle_skill_content)
 
 
 # ---------------------------------------------------------------------------
@@ -253,9 +260,228 @@ async def handle_tools_for_phase(request: Any) -> Any:
                             text=json.dumps({"error": str(exc)}))
 
 
+async def handle_skills_list(request: Any) -> Any:
+    """List locally available skills plus approved shared skills from AIDB."""
+    from aiohttp import web
+
+    limit_raw = request.rel_url.query.get("limit", "50").strip()
+    domain = request.rel_url.query.get("domain", "").strip().lower()
+    try:
+        limit = max(1, min(200, int(limit_raw)))
+    except ValueError:
+        limit = 50
+
+    local_skills = _list_local_skills()
+    if domain:
+        local_skills = [
+            item for item in local_skills
+            if domain in item.get("slug", "").lower()
+            or domain in item.get("description", "").lower()
+            or domain in item.get("source_path", "").lower()
+        ]
+
+    remote_payload = await _fetch_remote_skills(limit=limit)
+    remote_skills = remote_payload.get("skills", [])
+    if domain:
+        remote_skills = [
+            item for item in remote_skills
+            if domain in item.get("slug", "").lower()
+            or domain in item.get("description", "").lower()
+            or domain in item.get("source_path", "").lower()
+        ]
+
+    merged = {item["slug"]: item for item in remote_skills if item.get("slug")}
+    for item in local_skills:
+        slug = item.get("slug", "")
+        if not slug:
+            continue
+        existing = merged.get(slug, {})
+        combined_sources = list(dict.fromkeys(existing.get("sources", []) + item.get("sources", [])))
+        merged[slug] = {
+            "slug": slug,
+            "name": item.get("name") or existing.get("name") or slug,
+            "description": item.get("description") or existing.get("description") or "",
+            "source_path": item.get("source_path") or existing.get("source_path") or "",
+            "managed_by": existing.get("managed_by", ""),
+            "sources": combined_sources or ["local"],
+            "content_endpoint": f"/skills/{slug}/content",
+        }
+
+    skills = sorted(merged.values(), key=lambda item: item.get("slug", ""))[:limit]
+    payload = {
+        "status": "ok",
+        "skills": skills,
+        "count": len(skills),
+        "local_skill_count": len(local_skills),
+        "remote_skill_count": len(remote_skills),
+        "remote_available": bool(remote_payload.get("available", False)),
+    }
+    if remote_payload.get("error"):
+        payload["remote_error"] = remote_payload["error"]
+    return web.Response(status=200, content_type="application/json", text=json.dumps(payload))
+
+
+async def handle_skill_content(request: Any) -> Any:
+    """Return the local skill file content for a given slug."""
+    from aiohttp import web
+
+    slug = _normalize_slug(str(request.match_info.get("slug", "")).strip())
+    if not slug:
+        return web.Response(status=400, content_type="application/json",
+                            text=json.dumps({"error": "slug parameter required"}))
+
+    match = _find_local_skill(slug)
+    if not match:
+        return web.Response(status=404, content_type="application/json",
+                            text=json.dumps({"error": f"skill not found: {slug}"}))
+
+    try:
+        content = match["path"].read_text(encoding="utf-8")
+    except OSError as exc:
+        return web.Response(status=500, content_type="application/json",
+                            text=json.dumps({"error": str(exc)}))
+
+    return web.Response(
+        status=200,
+        content_type="application/json",
+        text=json.dumps(
+            {
+                "status": "ok",
+                "slug": slug,
+                "name": match.get("name", slug),
+                "description": match.get("description", ""),
+                "source_path": str(match["path"]),
+                "content": content,
+            }
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _normalize_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9._-]+", "-", str(value or "").strip().lower())
+    return slug.strip("-._")
+
+
+def _skill_search_roots() -> List[Path]:
+    repo_root = Path(_find_repo_root())
+    return [
+        repo_root / ".agent" / "skills",
+        repo_root / "scripts" / "ai" / "skills",
+    ]
+
+
+def _parse_skill_description(path: Path) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("description:"):
+            return stripped.split(":", 1)[1].strip()
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith(("#", "---", "name:", "description:")):
+            return stripped[:180]
+    return ""
+
+
+def _skill_name_from_path(path: Path) -> str:
+    if path.name in _SKILL_FILES:
+        return path.parent.name
+    name = path.name
+    for suffix in _LEGACY_SKILL_SUFFIXES:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return path.stem
+
+
+def _find_local_skill(slug: str) -> Optional[Dict[str, Any]]:
+    target = _normalize_slug(slug)
+    for root in _skill_search_roots():
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.name not in _SKILL_FILES and not any(path.name.endswith(suffix) for suffix in _LEGACY_SKILL_SUFFIXES):
+                continue
+            name = _skill_name_from_path(path)
+            candidate = _normalize_slug(name)
+            if candidate != target:
+                continue
+            return {
+                "slug": candidate,
+                "name": name,
+                "description": _parse_skill_description(path),
+                "path": path,
+                "sources": ["local"],
+            }
+    return None
+
+
+def _list_local_skills() -> List[Dict[str, Any]]:
+    skills: Dict[str, Dict[str, Any]] = {}
+    for root in _skill_search_roots():
+        if not root.is_dir():
+            continue
+        source_label = "local"
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.name not in _SKILL_FILES and not any(path.name.endswith(suffix) for suffix in _LEGACY_SKILL_SUFFIXES):
+                continue
+            name = _skill_name_from_path(path)
+            slug = _normalize_slug(name)
+            existing = skills.get(slug, {})
+            sources = list(dict.fromkeys(existing.get("sources", []) + [source_label]))
+            skills[slug] = {
+                "slug": slug,
+                "name": name,
+                "description": existing.get("description") or _parse_skill_description(path),
+                "source_path": existing.get("source_path") or str(path),
+                "sources": sources,
+            }
+    return sorted(skills.values(), key=lambda item: item["slug"])
+
+
+async def _fetch_remote_skills(limit: int = 50) -> Dict[str, Any]:
+    aidb_url = str(os.getenv("AIDB_URL", "http://127.0.0.1:8002")).rstrip("/")
+    url = f"{aidb_url}/skills?include_pending=true"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        return {"available": False, "skills": [], "error": str(exc)[:180]}
+
+    skills = []
+    for item in payload if isinstance(payload, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status", "")).strip().lower() != "approved":
+            continue
+        slug = _normalize_slug(str(item.get("slug", "")).strip())
+        if not slug:
+            continue
+        skills.append(
+            {
+                "slug": slug,
+                "name": str(item.get("name", "")).strip() or slug,
+                "description": str(item.get("description", "")).strip(),
+                "managed_by": str(item.get("managed_by", "")).strip(),
+                "source_path": str(item.get("source_path", "")).strip(),
+                "sources": ["aidb"],
+            }
+        )
+    skills.sort(key=lambda item: item["slug"])
+    return {"available": True, "skills": skills[:limit], "total": len(skills)}
 
 def _recommend_skills(task: str) -> List[str]:
     q = task.lower()
