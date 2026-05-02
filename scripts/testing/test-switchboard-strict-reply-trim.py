@@ -60,6 +60,18 @@ def main() -> None:
         "payload = _apply_compact_local_response_budget(payload, profile)" in text,
         "expected switchboard request shaping to apply compact local response budgets",
     )
+    assert_true(
+        'if profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages):' in text,
+        "expected switchboard trimming to special-case compact local guidance prompts",
+    )
+    assert_true(
+        "max_tokens = min(max_tokens, 128)" in text,
+        "expected compact local guidance prompts to use a tighter input token budget",
+    )
+    assert_true(
+        text.count("max_messages = min(max_messages, 2)") >= 2,
+        "expected compact local guidance prompts to keep only the minimal turn window",
+    )
 
     print("PASS: switchboard trims strict reply-only local prompts more aggressively")
 
