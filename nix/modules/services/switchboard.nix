@@ -1359,6 +1359,9 @@ let
         if profile in ("continue-local", "embedded-assist") and _looks_like_strict_reply_only(messages):
             max_tokens = min(max_tokens, 256)
             max_messages = min(max_messages, 2)
+        if profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages):
+            max_tokens = min(max_tokens, 128)
+            max_messages = min(max_messages, 2)
 
         before = _estimate_messages_tokens(messages)
         if before <= max_tokens and len(messages) <= max_messages:
