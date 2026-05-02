@@ -32,6 +32,18 @@ def main() -> None:
         "max_messages = min(max_messages, 2)" in text,
         "expected strict reply-only local prompts to keep only the minimal turn window",
     )
+    assert_true(
+        "def _skip_profile_card_for_messages(profile: str, messages: list) -> bool:" in text,
+        "expected switchboard to define a helper for profile-card bypass on tiny local replies",
+    )
+    assert_true(
+        "return _looks_like_strict_reply_only(messages)" in text,
+        "expected strict reply-only local prompts to bypass profile-card injection",
+    )
+    assert_true(
+        "if _skip_profile_card_for_messages(profile, messages):" in text,
+        "expected switchboard profile-card injection to skip strict reply-only local prompts",
+    )
 
     print("PASS: switchboard trims strict reply-only local prompts more aggressively")
 
