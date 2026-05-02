@@ -23,8 +23,8 @@ def main() -> int:
         "aq-qa phase 0 should describe the switchboard ingress contract for Continue config",
     )
     assert_true(
-        script.count('http://127.0.0.1:8085/v1') >= 3,
-        "aq-qa should validate switchboard ingress for at least the base model, lane-specific model, and tab autocomplete",
+        script.count('http://127.0.0.1:8085/v1') >= 2,
+        "aq-qa should validate switchboard ingress for the primary Continue chat model and tab autocomplete",
     )
     assert_true(
         '/health' in script and 'expected_context' in script and 'expected_chat_max_tokens' in script,
@@ -47,17 +47,21 @@ def main() -> int:
         "aq-qa should run Continue/editor smoke checks against the primary-user environment instead of the ambient HOME",
     )
     assert_true(
-        'localAgentProfile = lib.attrByPath [ "local-agent" ] { } switchboardProfiles;' in home_base,
-        "Continue config generation should derive a dedicated local-agent profile view from switchboard config",
+        '{"23.0", "24.0", "25.0", "26.0"}' in script,
+        "aq-qa should accept the current Continue config schema version",
     )
     assert_true(
-        "localAgentContextLength =" in home_base and 'lib.attrByPath [ "maxInputTokens" ] null localAgentProfile' in home_base,
-        "Continue config generation should cap the harness-aware editor model context to the local-agent input budget",
+        '"title": "Continue Local (Primary)"' in home_base
+        and '"X-AI-Profile": "continue-local"' in home_base,
+        "Continue config should expose a single primary Continue chat model pinned to continue-local",
     )
     assert_true(
-        '"contextLength": ${toString localAgentContextLength}' in home_base
-        and '"maxTokens": ${toString localAgentChatMaxTokens}' in home_base,
-        "Continue config should render the harness-aware editor model with profile-specific context and output bounds",
+        '"Local Agent (Harness-Aware)"' not in home_base and 'localAgentProfile =' not in home_base,
+        "Continue config generation should not expose the heavier harness-aware chat model by default",
+    )
+    assert_true(
+        '_config_version="26.0"' in home_base and '"__configVersion": "26.0"' in home_base,
+        "Continue config generation should bump the schema version when the rendered model bounds change",
     )
 
     print("PASS: aq-qa Continue config validation stays pinned to switchboard ingress")
