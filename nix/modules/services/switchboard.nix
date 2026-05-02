@@ -1385,8 +1385,15 @@ let
             return ""
         return str(_profile_settings(profile).get("profileCard") or "").strip()
 
+    def _skip_profile_card_for_messages(profile: str, messages: list) -> bool:
+        if profile not in ("continue-local", "embedded-assist"):
+            return False
+        return _looks_like_strict_reply_only(messages)
+
     def _ensure_profile_card(messages: list, profile: str) -> tuple[list, bool]:
         if not isinstance(messages, list):
+            return messages, False
+        if _skip_profile_card_for_messages(profile, messages):
             return messages, False
         card = _profile_card(profile)
         if not card:
