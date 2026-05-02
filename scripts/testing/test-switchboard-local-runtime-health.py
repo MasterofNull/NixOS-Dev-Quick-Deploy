@@ -109,6 +109,7 @@ def main() -> None:
     assert_true(
         '"cache_prompt": True' in text
         and '"Diagnose why the local editor path is slow and return 3 compact next steps."' in text
+        and "_apply_compact_guidance_contract(messages, profile)" in text
         and '"messages": _startup_prefix_warm_messages(profile)' in text,
         "expected startup prefix warmup to seed llama.cpp cache with a representative compact local editor prompt",
     )
