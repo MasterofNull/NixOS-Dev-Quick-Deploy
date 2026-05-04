@@ -823,6 +823,15 @@ run_phase_5() {
   else
     _fail "5.6.1" "bwrap (bubblewrap) available" "not in PATH and BWRAP_PATH missing"
   fi
+
+  # 5.7 SafeCommandExecutor — agent immune system
+  local _sce_dir="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
+  _check "5.7.1" "safe_command_executor importable" \
+    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); from safe_command_executor import check_command; ok,_=check_command('ls /tmp'); assert ok"
+  _check "5.7.2" "safe_command_executor blocks rm -rf" \
+    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); from safe_command_executor import check_command; allowed,reason=check_command('rm -rf /critical'); assert not allowed and 'safety' in reason.lower()"
+  _check "5.7.3" "mcp-bridge-hybrid wires safe_command_executor" \
+    python3 -c "src=open('${REPO_ROOT}/scripts/ai/mcp-bridge-hybrid.py').read(); assert 'safe_command_executor' in src and '_sce_check' in src and 'blocked' in src"
 }
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,19 @@ import urllib.parse
 import urllib.request
 import urllib.error
 
+# SafeCommandExecutor — block destructive agent commands at the subprocess level
+try:
+    _SCE_DIR = os.path.abspath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "ai-stack", "mcp-servers", "hybrid-coordinator",
+    ))
+    if _SCE_DIR not in sys.path:
+        sys.path.insert(0, _SCE_DIR)
+    from safe_command_executor import check_command as _sce_check
+except ImportError:
+    def _sce_check(cmd: str):  # type: ignore[misc]
+        return True, "ok"
+
 HYBRID_URL = os.getenv("HYBRID_URL", "http://127.0.0.1:8003")
 AIDB_URL   = os.getenv("AIDB_URL",   "http://127.0.0.1:8002")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +87,11 @@ def _get(url: str, key: str) -> dict:
         return {"error": str(e)}
 
 def _run_local(argv: list[str], cwd: str | None = None) -> dict:
+    # Safety gate — block destructive commands before execution
+    _cmd_str = " ".join(str(a) for a in argv)
+    _allowed, _reason = _sce_check(_cmd_str)
+    if not _allowed:
+        return {"ok": False, "blocked": True, "error": _reason, "argv": argv}
     try:
         proc = subprocess.run(
             argv,
