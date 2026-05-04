@@ -202,7 +202,9 @@ profiles = health.get("profiles") or {}
 continue_profile = profiles.get("continue-local") or {}
 default_profile = profiles.get("default") or {}
 
-expected_context = continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
+# Use maxInputTokens (actual switchboard trim limit) as the reference for contextLength checks.
+# advertisedContextWindow is the model ceiling; maxInputTokens is what the switchboard enforces.
+expected_context = continue_profile.get("maxInputTokens") or continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
 expected_chat_max_tokens = continue_profile.get("maxOutputTokens") or default_profile.get("maxOutputTokens")
 expected_context = int(expected_context) if expected_context is not None else None
 expected_chat_max_tokens = int(expected_chat_max_tokens) if expected_chat_max_tokens is not None else None

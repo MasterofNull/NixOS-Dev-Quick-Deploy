@@ -1157,7 +1157,7 @@ PYEOF
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="25.0"
+    _config_version="26.0"
     _cfg="$HOME/.continue/config.json"
     _needs_write=false
 
@@ -1175,7 +1175,7 @@ PYEOF
       mkdir -p "$HOME/.continue"
       cat > "$_cfg" << 'CONTINUE_EOF'
 {
-  "__configVersion": "25.0",
+  "__configVersion": "26.0",
   "models": [
     {
       "title": "Switchboard Router (Authoritative)",
