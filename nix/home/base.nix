@@ -1,4 +1,10 @@
-{ lib, pkgs, config, osConfig ? {}, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  osConfig ? {},
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Home Manager base module — applies to every user on every host.
 #
@@ -15,10 +21,10 @@
 # ---------------------------------------------------------------------------
 let
   systemConfig =
-    if lib.hasAttrByPath [ "mySystem" ] osConfig
+    if lib.hasAttrByPath ["mySystem"] osConfig
     then osConfig
     else config;
-  repoPath = lib.attrByPath [ "mySystem" "mcpServers" "repoPath" ] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
+  repoPath = lib.attrByPath ["mySystem" "mcpServers" "repoPath"] "${config.home.homeDirectory}/Documents/NixOS-Dev-Quick-Deploy" systemConfig;
   sharedSkillsDir = "${repoPath}/.agent/skills";
   defaultPortRegistry = {
     llamaCpp = 8080;
@@ -31,45 +37,48 @@ let
     anthropicProxy = 8120;
     postgres = 5432;
   };
-  portRegistry = lib.attrByPath [ "mySystem" "ports" ] defaultPortRegistry systemConfig;
+  portRegistry = lib.attrByPath ["mySystem" "ports"] defaultPortRegistry systemConfig;
   getRegistryPort = portName:
-    lib.attrByPath [ portName ]
-      (throw "Missing centralized port registry entry: mySystem.ports.${portName}")
-      portRegistry;
-  aiSwitchboardPort = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "port" ] (getRegistryPort "switchboard") systemConfig;
-  aiLlamaPort = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "port" ] (getRegistryPort "llamaCpp") systemConfig;
-  aiLlamaModel = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "model" ] "local-model" systemConfig;
-  aiLlamaCtxSize = lib.attrByPath [ "mySystem" "aiStack" "llamaCpp" "ctxSize" ] 16384 systemConfig;
-  aiHybridPort = lib.attrByPath [ "mySystem" "mcpServers" "hybridPort" ] (getRegistryPort "mcpHybrid") systemConfig;
-  aiAidbPort = lib.attrByPath [ "mySystem" "mcpServers" "aidbPort" ] (getRegistryPort "mcpAidb") systemConfig;
-  aiRalphPort = lib.attrByPath [ "mySystem" "mcpServers" "ralphPort" ] (getRegistryPort "mcpRalph") systemConfig;
-  aiAiderPort = lib.attrByPath [ "mySystem" "mcpServers" "aiderWrapperPort" ] (getRegistryPort "aiderWrapper") systemConfig;
-  aiPostgresPort = lib.attrByPath [ "mySystem" "ports" "postgres" ] (getRegistryPort "postgres") systemConfig;
-  switchboardProfiles = lib.attrByPath [ "mySystem" "aiStack" "switchboard" "profiles" ] { } systemConfig;
-  continueLocalProfile = lib.attrByPath [ "continue-local" ] { } switchboardProfiles;
-  localAgentProfile = lib.attrByPath [ "local-agent" ] { } switchboardProfiles;
-  defaultSwitchboardProfile = lib.attrByPath [ "default" ] { } switchboardProfiles;
+    lib.attrByPath [portName]
+    (throw "Missing centralized port registry entry: mySystem.ports.${portName}")
+    portRegistry;
+  aiSwitchboardPort = lib.attrByPath ["mySystem" "aiStack" "switchboard" "port"] (getRegistryPort "switchboard") systemConfig;
+  aiLlamaPort = lib.attrByPath ["mySystem" "aiStack" "llamaCpp" "port"] (getRegistryPort "llamaCpp") systemConfig;
+  aiLlamaModel = lib.attrByPath ["mySystem" "aiStack" "llamaCpp" "model"] "local-model" systemConfig;
+  aiLlamaCtxSize = lib.attrByPath ["mySystem" "aiStack" "llamaCpp" "ctxSize"] 16384 systemConfig;
+  aiHybridPort = lib.attrByPath ["mySystem" "mcpServers" "hybridPort"] (getRegistryPort "mcpHybrid") systemConfig;
+  aiAidbPort = lib.attrByPath ["mySystem" "mcpServers" "aidbPort"] (getRegistryPort "mcpAidb") systemConfig;
+  aiRalphPort = lib.attrByPath ["mySystem" "mcpServers" "ralphPort"] (getRegistryPort "mcpRalph") systemConfig;
+  aiAiderPort = lib.attrByPath ["mySystem" "mcpServers" "aiderWrapperPort"] (getRegistryPort "aiderWrapper") systemConfig;
+  aiPostgresPort = lib.attrByPath ["mySystem" "ports" "postgres"] (getRegistryPort "postgres") systemConfig;
+  switchboardProfiles = lib.attrByPath ["mySystem" "aiStack" "switchboard" "profiles"] {} systemConfig;
+  continueLocalProfile = lib.attrByPath ["continue-local"] {} switchboardProfiles;
+  localAgentProfile = lib.attrByPath ["local-agent"] {} switchboardProfiles;
+  defaultSwitchboardProfile = lib.attrByPath ["default"] {} switchboardProfiles;
   continueContextLength =
-    lib.attrByPath [ "advertisedContextWindow" ]
-      (lib.attrByPath [ "advertisedContextWindow" ] aiLlamaCtxSize defaultSwitchboardProfile)
-      continueLocalProfile;
+    lib.attrByPath ["advertisedContextWindow"]
+    (lib.attrByPath ["advertisedContextWindow"] aiLlamaCtxSize defaultSwitchboardProfile)
+    continueLocalProfile;
   continueChatMaxTokens =
-    lib.attrByPath [ "maxOutputTokens" ]
-      (lib.attrByPath [ "maxOutputTokens" ] 768 defaultSwitchboardProfile)
-      continueLocalProfile;
+    lib.attrByPath ["maxOutputTokens"]
+    (lib.attrByPath ["maxOutputTokens"] 768 defaultSwitchboardProfile)
+    continueLocalProfile;
   continueTabMaxTokens = lib.min 96 (lib.max 32 continueChatMaxTokens);
-  localAgentContextLength =
-    let
-      advertised = lib.attrByPath [ "advertisedContextWindow" ] aiLlamaCtxSize localAgentProfile;
-      bounded = lib.attrByPath [ "maxInputTokens" ] null localAgentProfile;
-    in
-    if bounded != null then lib.min advertised bounded else advertised;
+  localAgentContextLength = let
+    advertised = lib.attrByPath ["advertisedContextWindow"] aiLlamaCtxSize localAgentProfile;
+    bounded = lib.attrByPath ["maxInputTokens"] null localAgentProfile;
+  in
+    if bounded != null
+    then lib.min advertised bounded
+    else advertised;
   localAgentChatMaxTokens =
-    lib.attrByPath [ "maxOutputTokens" ] 1024 localAgentProfile;
+    lib.attrByPath ["maxOutputTokens"] 1024 localAgentProfile;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   vscodeLinuxTarget =
-    if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then "linux-x64"
-    else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then "linux-arm64"
+    if pkgs.stdenv.hostPlatform.system == "x86_64-linux"
+    then "linux-x64"
+    else if pkgs.stdenv.hostPlatform.system == "aarch64-linux"
+    then "linux-arm64"
     else throw "Unsupported VSCodium extension platform: ${pkgs.stdenv.hostPlatform.system}";
   openaiCodexHashByTarget = {
     linux-x64 = "sha256-nXWyNNI+L7g5lc6Fa3DZTWsrA8WLXCmfJLwUstNUvDw=";
@@ -85,68 +94,92 @@ let
   continueApiBase = aiOpenAIBaseUrl;
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
-    { name = "PATH"; value = vscodiumPathValue; }
-    { name = "OPENAI_BASE_URL"; value = aiOpenAIBaseUrl; }
-    { name = "OPENAI_API_BASE"; value = aiOpenAIBaseUrl; }
-    { name = "OPENAI_API_KEY"; value = "dummy"; }
-    { name = "HYBRID_COORDINATOR_URL"; value = "http://127.0.0.1:${toString aiHybridPort}"; }
-    { name = "AIDB_URL"; value = "http://127.0.0.1:${toString aiAidbPort}"; }
-    { name = "MCP_CONFIG_PATH"; value = "${config.home.homeDirectory}/.mcp/config.json"; }
-    { name = "AI_AGENT_SKILLS_DIR"; value = sharedSkillsDir; }
+    {
+      name = "PATH";
+      value = vscodiumPathValue;
+    }
+    {
+      name = "OPENAI_BASE_URL";
+      value = aiOpenAIBaseUrl;
+    }
+    {
+      name = "OPENAI_API_BASE";
+      value = aiOpenAIBaseUrl;
+    }
+    {
+      name = "OPENAI_API_KEY";
+      value = "dummy";
+    }
+    {
+      name = "HYBRID_COORDINATOR_URL";
+      value = "http://127.0.0.1:${toString aiHybridPort}";
+    }
+    {
+      name = "AIDB_URL";
+      value = "http://127.0.0.1:${toString aiAidbPort}";
+    }
+    {
+      name = "MCP_CONFIG_PATH";
+      value = "${config.home.homeDirectory}/.mcp/config.json";
+    }
+    {
+      name = "AI_AGENT_SKILLS_DIR";
+      value = sharedSkillsDir;
+    }
   ];
 
   # openai.chatgpt — "Codex: OpenAI's coding agent" — not in nixpkgs 25.11;
   # packaged inline from Open VSX so it installs declaratively.
   openaiCodex = pkgs.vscode-utils.buildVscodeExtension {
-    pname              = "openai-chatgpt";
-    version            = "0.5.80";
+    pname = "openai-chatgpt";
+    version = "0.5.80";
     vscodeExtPublisher = "openai";
-    vscodeExtName      = "chatgpt";
-    vscodeExtUniqueId  = "openai.chatgpt";
-    vscodeExtVersion   = "0.5.80";
+    vscodeExtName = "chatgpt";
+    vscodeExtUniqueId = "openai.chatgpt";
+    vscodeExtVersion = "0.5.80";
     src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/openai/chatgpt/${vscodeLinuxTarget}/0.5.80/file/openai.chatgpt-0.5.80@${vscodeLinuxTarget}.vsix";
+      url = "https://open-vsx.org/api/openai/chatgpt/${vscodeLinuxTarget}/0.5.80/file/openai.chatgpt-0.5.80@${vscodeLinuxTarget}.vsix";
       sha256 = openaiCodexHashByTarget.${vscodeLinuxTarget};
       # Rename .vsix → .zip so the stdenv unzip hook fires (same trick used
       # by pkgs/applications/editors/vscode/extensions/mktplcExtRefToFetchArgs.nix).
-      name   = "openai-chatgpt.zip";
+      name = "openai-chatgpt.zip";
     };
   };
 
   # Google.geminicodeassist — "Gemini Code Assist" — not in nixpkgs 25.11;
   # packaged inline from Open VSX so it installs declaratively.
   geminiCodeAssist = pkgs.vscode-utils.buildVscodeExtension {
-    pname              = "Google-geminicodeassist";
-    version            = "2.79.0";
+    pname = "Google-geminicodeassist";
+    version = "2.79.0";
     vscodeExtPublisher = "Google";
-    vscodeExtName      = "geminicodeassist";
-    vscodeExtUniqueId  = "Google.geminicodeassist";
-    vscodeExtVersion   = "2.79.0";
+    vscodeExtName = "geminicodeassist";
+    vscodeExtUniqueId = "Google.geminicodeassist";
+    vscodeExtVersion = "2.79.0";
     src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/Google/geminicodeassist/2.79.0/file/Google.geminicodeassist-2.79.0.vsix";
+      url = "https://open-vsx.org/api/Google/geminicodeassist/2.79.0/file/Google.geminicodeassist-2.79.0.vsix";
       sha256 = "sha256-/8QmCFtD7f/RNkNuZexvoevpLa9FqrZfxqmPo2Ss4zk=";
-      name   = "Google-geminicodeassist.zip";
+      name = "Google-geminicodeassist.zip";
     };
   };
 
   # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
   # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
   qwenCodeCompanion = pkgs.vscode-utils.buildVscodeExtension {
-    pname              = "qwen-code-vscode-ide-companion";
-    version            = "0.15.2";
+    pname = "qwen-code-vscode-ide-companion";
+    version = "0.15.2";
     vscodeExtPublisher = "qwenlm";
-    vscodeExtName      = "qwen-code-vscode-ide-companion";
-    vscodeExtUniqueId  = "qwenlm.qwen-code-vscode-ide-companion";
-    vscodeExtVersion   = "0.15.2";
+    vscodeExtName = "qwen-code-vscode-ide-companion";
+    vscodeExtUniqueId = "qwenlm.qwen-code-vscode-ide-companion";
+    vscodeExtVersion = "0.15.2";
     src = pkgs.fetchurl {
-      url    = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.15.2/file/qwenlm.qwen-code-vscode-ide-companion-0.15.2.vsix";
+      url = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.15.2/file/qwenlm.qwen-code-vscode-ide-companion-0.15.2.vsix";
       sha256 = "sha256-OMo+KEZ4+M3ncBqHQbTA7YYeVBHlswKzvMbrr9qEl/w=";
-      name   = "qwen-code-vscode-ide-companion.zip";
+      name = "qwen-code-vscode-ide-companion.zip";
     };
   };
 
   # Continue CLI — declarative npm packaging
-  continueCli = pkgs.callPackage ../pkgs/continue-cli.nix { };
+  continueCli = pkgs.callPackage ../pkgs/continue-cli.nix {};
 
   continueMutableVsix = pkgs.fetchurl {
     url = "https://open-vsx.org/api/Continue/continue/${vscodeLinuxTarget}/1.3.38/file/Continue.continue-1.3.38@${vscodeLinuxTarget}.vsix";
@@ -154,22 +187,23 @@ let
     name = "Continue.continue-1.3.38-${vscodeLinuxTarget}.vsix";
   };
 
-  cyberpunkThemeArchive = pkgs.runCommand "max-ss.cyberpunk-1.2.14.zip" {
-    nativeBuildInputs = [ pkgs.zip ];
-  } ''
-    mkdir -p extension
-    cp -R ${../../templates/vscode/max-ss.cyberpunk-1.2.14-universal}/. extension/
-    ${pkgs.zip}/bin/zip -qr "$out" extension
-  '';
+  cyberpunkThemeArchive =
+    pkgs.runCommand "max-ss.cyberpunk-1.2.14.zip" {
+      nativeBuildInputs = [pkgs.zip];
+    } ''
+      mkdir -p extension
+      cp -R ${../../templates/vscode/max-ss.cyberpunk-1.2.14-universal}/. extension/
+      ${pkgs.zip}/bin/zip -qr "$out" extension
+    '';
 
   cyberpunkThemeExtension = pkgs.vscode-utils.buildVscodeExtension {
-    pname              = "max-ss-cyberpunk-theme";
-    version            = "1.2.14";
+    pname = "max-ss-cyberpunk-theme";
+    version = "1.2.14";
     vscodeExtPublisher = "max-SS";
-    vscodeExtName      = "Cyberpunk";
-    vscodeExtUniqueId  = "max-SS.Cyberpunk";
-    vscodeExtVersion   = "1.2.14";
-    src                = cyberpunkThemeArchive;
+    vscodeExtName = "Cyberpunk";
+    vscodeExtUniqueId = "max-SS.Cyberpunk";
+    vscodeExtVersion = "1.2.14";
+    src = cyberpunkThemeArchive;
   };
 
   cosmicThemeDarkPalette = builtins.readFile (../../templates + "/Royal Wine-inner.ron");
@@ -177,125 +211,127 @@ let
 
   # Declarative VSCodium settings managed by Home Manager.
   vscodiumSettings = {
-    "editor.fontSize"               = 14;
-    "editor.tabSize"                = 2;
-    "editor.insertSpaces"           = true;
-    "editor.formatOnSave"           = true;
-    "editor.formatOnPaste"          = false;
-    "editor.minimap.enabled"        = false;
-    "editor.wordWrap"               = "on";
-    "editor.rulers"                 = [ 80 120 ];
+    "editor.fontSize" = 14;
+    "editor.tabSize" = 2;
+    "editor.insertSpaces" = true;
+    "editor.formatOnSave" = true;
+    "editor.formatOnPaste" = false;
+    "editor.minimap.enabled" = false;
+    "editor.wordWrap" = "on";
+    "editor.rulers" = [80 120];
     "editor.bracketPairColorization.enabled" = true;
-    "editor.guides.bracketPairs"    = "active";
-    "editor.inlineSuggest.enabled"  = true;
-    "editor.suggestSelection"       = "first";
-    "files.trimTrailingWhitespace"  = true;
-    "files.insertFinalNewline"      = true;
-    "files.trimFinalNewlines"       = true;
-    "files.eol"                     = "\n";
-    "files.autoSave"                = "onFocusChange";
+    "editor.guides.bracketPairs" = "active";
+    "editor.inlineSuggest.enabled" = true;
+    "editor.suggestSelection" = "first";
+    "files.trimTrailingWhitespace" = true;
+    "files.insertFinalNewline" = true;
+    "files.trimFinalNewlines" = true;
+    "files.eol" = "\n";
+    "files.autoSave" = "onFocusChange";
     "files.exclude" = {
-      "**/.git"         = true;
-      "**/.DS_Store"    = true;
+      "**/.git" = true;
+      "**/.DS_Store" = true;
       "**/node_modules" = true;
-      "**/__pycache__"  = true;
-      "**/.mypy_cache"  = true;
-      "**/.ruff_cache"  = true;
-      "**/result"       = true;
-      "**/result-*"     = true;
+      "**/__pycache__" = true;
+      "**/.mypy_cache" = true;
+      "**/.ruff_cache" = true;
+      "**/result" = true;
+      "**/result-*" = true;
     };
     "terminal.integrated.defaultProfile.linux" = "zsh";
-    "terminal.integrated.fontSize"             = 13;
-    "terminal.integrated.scrollback"           = 10000;
-    "workbench.colorTheme"           = "Activate SCARLET protocol (beta)";
+    "terminal.integrated.fontSize" = 13;
+    "terminal.integrated.scrollback" = 10000;
+    "workbench.colorTheme" = "Activate SCARLET protocol (beta)";
     "workbench.preferredDarkColorTheme" = "Activate SCARLET protocol (beta)";
-    "window.autoDetectColorScheme"   = false;
-    "workbench.iconTheme"            = "vs-seti";
-    "workbench.startupEditor"        = "none";
+    "window.autoDetectColorScheme" = false;
+    "workbench.iconTheme" = "vs-seti";
+    "workbench.startupEditor" = "none";
     "workbench.editor.enablePreview" = false;
-    "nix.enableLanguageServer"                  = true;
-    "nix.serverPath"                            = "nil";
-    "nix.serverSettings".nil.formatting.command = [ "alejandra" ];
-    "[nix]"."editor.defaultFormatter"           = "jnoortheen.nix-ide";
-    "python.defaultInterpreterPath"       = "python3";
-    "python.analysis.typeCheckingMode"    = "basic";
+    "nix.enableLanguageServer" = true;
+    "nix.serverPath" = "nil";
+    "nix.serverSettings".nil.formatting.command = ["alejandra"];
+    "[nix]"."editor.defaultFormatter" = "jnoortheen.nix-ide";
+    "python.defaultInterpreterPath" = "python3";
+    "python.analysis.typeCheckingMode" = "basic";
     "[python]"."editor.defaultFormatter" = "ms-python.python";
-    "go.useLanguageServer"           = true;
-    "go.toolsManagement.autoUpdate"  = false;
-    "[go]"."editor.formatOnSave"     = true;
+    "go.useLanguageServer" = true;
+    "go.toolsManagement.autoUpdate" = false;
+    "[go]"."editor.formatOnSave" = true;
     "[go]"."editor.defaultFormatter" = "golang.go";
-    "rust-analyzer.checkOnSave.command"  = "clippy";
-    "rust-analyzer.inlayHints.enable"    = true;
-    "[rust]"."editor.defaultFormatter"   = "rust-lang.rust-analyzer";
-    "[yaml]"."editor.defaultFormatter"   = "redhat.vscode-yaml";
-    "yaml.validate"                      = true;
-    "continue.telemetryEnabled"          = false;
-    "continue.enableTabAutocomplete"     = true;
-    "continue.showInlineTip"             = true;
-    "cSpell.import"                      = [ ];
-    "extensions.autoUpdate"              = false;
-    "extensions.autoCheckUpdates"        = false;
-    "git.enableSmartCommit"              = true;
-    "git.confirmSync"                    = false;
-    "git.autofetch"                      = true;
-    "gitlens.telemetry.enabled"          = false;
-    "shellcheck.enable"                  = true;
-    "shellcheck.executablePath"          = "shellcheck";
-    "git.path"                           = "${config.programs.git.package}/bin/git";
+    "rust-analyzer.checkOnSave.command" = "clippy";
+    "rust-analyzer.inlayHints.enable" = true;
+    "[rust]"."editor.defaultFormatter" = "rust-lang.rust-analyzer";
+    "[yaml]"."editor.defaultFormatter" = "redhat.vscode-yaml";
+    "yaml.validate" = true;
+    "continue.telemetryEnabled" = false;
+    "continue.enableTabAutocomplete" = true;
+    "continue.showInlineTip" = true;
+    "cSpell.import" = [];
+    "extensions.autoUpdate" = false;
+    "extensions.autoCheckUpdates" = false;
+    "git.enableSmartCommit" = true;
+    "git.confirmSync" = false;
+    "git.autofetch" = true;
+    "gitlens.telemetry.enabled" = false;
+    "shellcheck.enable" = true;
+    "shellcheck.executablePath" = "shellcheck";
+    "git.path" = "${config.programs.git.package}/bin/git";
     # Native installer puts the binary at ~/.local/bin/claude.  Use the
     # absolute path so the extension works when VSCodium is launched from
     # the desktop launcher (PATH may not include ~/.local/bin there).
     # CLI paths are declarative; no npm-global compatibility wrappers.
 
-    "claude-code.executablePath"         = "${config.home.homeDirectory}/.local/bin/claude";
+    "claude-code.executablePath" = "${config.home.homeDirectory}/.local/bin/claude";
     # claudeProcessWrapper is intentionally omitted — setting it to the same
     # binary as executablePath causes the extension to call 'claude claude ...'
     # which crashes the extension host at startup.
-    "claude-code.environmentVariables"   = vscodiumAiEnv;
-    "claude-code.autoStart"              = false;
-    "claudeCode.executablePath"          = "${config.home.homeDirectory}/.local/bin/claude";
-    "claudeCode.environmentVariables"    = vscodiumAiEnv;
-    "claudeCode.autoStart"               = false;
-    "gpt-codex.executablePath"           = "codex";
-    "gpt-codex.environmentVariables"     = vscodiumAiEnv;
-    "gpt-codex.autoStart"                = false;
-    "gptCodex.executablePath"            = "codex";
-    "gptCodex.environmentVariables"      = vscodiumAiEnv;
-    "gptCodex.autoStart"                 = false;
-    "codex.executablePath"               = "codex";
-    "codex.environmentVariables"         = vscodiumAiEnv;
-    "codex.autoStart"                    = false;
-    "codexIDE.executablePath"            = "codex";
-    "codexIDE.environmentVariables"      = vscodiumAiEnv;
-    "codexIDE.autoStart"                 = false;
-    "codexIde.executablePath"            = "codex";
-    "codexIde.environmentVariables"      = vscodiumAiEnv;
-    "codexIde.autoStart"                 = false;
-    "openai.executablePath"              = "openai";
-    "openai.environmentVariables"        = vscodiumAiEnv;
-    "openai.autoStart"                   = false;
+    "claude-code.environmentVariables" = vscodiumAiEnv;
+    "claude-code.autoStart" = false;
+    "claudeCode.executablePath" = "${config.home.homeDirectory}/.local/bin/claude";
+    "claudeCode.environmentVariables" = vscodiumAiEnv;
+    "claudeCode.autoStart" = false;
+    "gpt-codex.executablePath" = "codex";
+    "gpt-codex.environmentVariables" = vscodiumAiEnv;
+    "gpt-codex.autoStart" = false;
+    "gptCodex.executablePath" = "codex";
+    "gptCodex.environmentVariables" = vscodiumAiEnv;
+    "gptCodex.autoStart" = false;
+    "codex.executablePath" = "codex";
+    "codex.environmentVariables" = vscodiumAiEnv;
+    "codex.autoStart" = false;
+    "codexIDE.executablePath" = "codex";
+    "codexIDE.environmentVariables" = vscodiumAiEnv;
+    "codexIDE.autoStart" = false;
+    "codexIde.executablePath" = "codex";
+    "codexIde.environmentVariables" = vscodiumAiEnv;
+    "codexIde.autoStart" = false;
+    "openai.executablePath" = "openai";
+    "openai.environmentVariables" = vscodiumAiEnv;
+    "openai.autoStart" = false;
     "[javascript]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
     "[typescript]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
-    "[json]"."editor.defaultFormatter"       = "esbenp.prettier-vscode";
-    "[jsonc]"."editor.defaultFormatter"      = "esbenp.prettier-vscode";
-    "[markdown]"."editor.defaultFormatter"   = "yzhang.markdown-all-in-one";
-    "telemetry.telemetryLevel"           = "off";
-    "redhat.telemetry.enabled"           = false;
-    "update.mode"                        = "none";
+    "[json]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
+    "[jsonc]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
+    "[markdown]"."editor.defaultFormatter" = "yzhang.markdown-all-in-one";
+    "telemetry.telemetryLevel" = "off";
+    "redhat.telemetry.enabled" = false;
+    "update.mode" = "none";
   };
 
   # Baseline JSON used to seed a writable settings.json on first activation.
-  vscodiumSettingsJSON = pkgs.writeText "vscodium-settings-baseline.json"
+  vscodiumSettingsJSON =
+    pkgs.writeText "vscodium-settings-baseline.json"
     (builtins.toJSON vscodiumSettings);
-  vscodiumArgvJSON = pkgs.writeText "vscodium-argv-baseline.json"
-    (builtins.toJSON ({
+  vscodiumArgvJSON =
+    pkgs.writeText "vscodium-argv-baseline.json"
+    (builtins.toJSON {
       # Mitigate Codium + Wayland + amdgpu freezes under memory pressure by
       # forcing software rendering for the Electron shell.
       "disable-hardware-acceleration" = true;
       # Force the editor onto XWayland on the Renoir/COSMIC workstation until
       # Electron-on-Wayland stops destabilizing the desktop session.
       "ozone-platform" = "x11";
-    }));
+    });
   vscodeMutableRuntimeExtensions = [
     "ms-python.debugpy"
     "ms-toolsai.jupyter"
@@ -305,48 +341,60 @@ let
 
   # Guard helper — silently skips an extension when its scope or name is
   # absent from pkgs.vscode-extensions (e.g. older or slimmer channels).
-  vsExt = scope: name:
-    let
-      hasScopes = pkgs ? vscode-extensions;
-      scopeSet = if hasScopes then pkgs.vscode-extensions else { };
-      hasScope = hasScopes && builtins.hasAttr scope scopeSet;
-      extSet = if hasScope then builtins.getAttr scope scopeSet else { };
-      hasName = hasScope && builtins.hasAttr name extSet;
-    in
-    lib.optionals hasName [ (builtins.getAttr name extSet) ];
+  vsExt = scope: name: let
+    hasScopes = pkgs ? vscode-extensions;
+    scopeSet =
+      if hasScopes
+      then pkgs.vscode-extensions
+      else {};
+    hasScope = hasScopes && builtins.hasAttr scope scopeSet;
+    extSet =
+      if hasScope
+      then builtins.getAttr scope scopeSet
+      else {};
+    hasName = hasScope && builtins.hasAttr name extSet;
+  in
+    lib.optionals hasName [(builtins.getAttr name extSet)];
 
   # VSCodium wrapped with native-lib LD_LIBRARY_PATH so node_sqlite3.node
   # (used by Continue) can dlopen libstdc++.so.6 from the GCC runtime.
   # Extracted into let so the activation hook can reference the store path
   # directly (PATH is incomplete during nixos-rebuild switch activation).
-  vscodiumWrapped = (pkgs.symlinkJoin {
-    name             = "vscodium-with-native-libs";
-    paths            = [ pkgs.vscodium ];
-    nativeBuildInputs = [ pkgs.makeWrapper ];
-    postBuild        = ''
-      wrapProgram $out/bin/codium \
-        --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]} \
-        --unset NIXOS_OZONE_WL \
-        --unset ELECTRON_OZONE_PLATFORM_HINT \
-        --add-flags --ozone-platform=x11
-    '';
-  }) // { inherit (pkgs.vscodium) version pname; meta = pkgs.vscodium.meta // { mainProgram = "codium"; }; };
+  vscodiumWrapped =
+    (pkgs.symlinkJoin {
+      name = "vscodium-with-native-libs";
+      paths = [pkgs.vscodium];
+      nativeBuildInputs = [pkgs.makeWrapper];
+      postBuild = ''
+        wrapProgram $out/bin/codium \
+          --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [pkgs.stdenv.cc.cc.lib]} \
+          --unset NIXOS_OZONE_WL \
+          --unset ELECTRON_OZONE_PLATFORM_HINT \
+          --add-flags --ozone-platform=x11
+      '';
+    })
+    // {
+      inherit (pkgs.vscodium) version pname;
+      meta = pkgs.vscodium.meta // {mainProgram = "codium";};
+    };
 
   # Nix store paths for tools the code-nix wrapper needs on its PATH.
   # These packages are in home.packages below so they're always present.
   vsWrapperPath = lib.makeBinPath (with pkgs; [
-    nil alejandra deadnix statix   # Nix LSP + formatters
-    shellcheck                      # Shell script linting
-    python3                         # Python runtime
-    go                              # Go runtime
-    rustc                           # Rust compiler
-    cargo                           # Rust toolchain
-    clippy                          # Rust lints used by rust-analyzer checkOnSave
-    rustfmt                         # Rust formatter for editor/tooling integration
-    nodejs                          # Node.js runtime (required by AI extension language servers)
+    nil
+    alejandra
+    deadnix
+    statix # Nix LSP + formatters
+    shellcheck # Shell script linting
+    python3 # Python runtime
+    go # Go runtime
+    rustc # Rust compiler
+    cargo # Rust toolchain
+    clippy # Rust lints used by rust-analyzer checkOnSave
+    rustfmt # Rust formatter for editor/tooling integration
+    nodejs # Node.js runtime (required by AI extension language servers)
   ]);
-in
-{
+in {
   home.stateVersion = "25.11";
   programs.home-manager.enable = true;
 
@@ -354,16 +402,16 @@ in
   xdg = {
     enable = true;
     userDirs = {
-      enable            = true;
+      enable = true;
       createDirectories = true;
-      desktop    = "${config.home.homeDirectory}/Desktop";
-      documents  = "${config.home.homeDirectory}/Documents";
-      download   = "${config.home.homeDirectory}/Downloads";
-      music      = "${config.home.homeDirectory}/Music";
-      pictures   = "${config.home.homeDirectory}/Pictures";
+      desktop = "${config.home.homeDirectory}/Desktop";
+      documents = "${config.home.homeDirectory}/Documents";
+      download = "${config.home.homeDirectory}/Downloads";
+      music = "${config.home.homeDirectory}/Music";
+      pictures = "${config.home.homeDirectory}/Pictures";
       publicShare = "${config.home.homeDirectory}/Public";
-      templates  = "${config.home.homeDirectory}/Templates";
-      videos     = "${config.home.homeDirectory}/Videos";
+      templates = "${config.home.homeDirectory}/Templates";
+      videos = "${config.home.homeDirectory}/Videos";
     };
     # Declarative COSMIC Terminal font for proper Powerlevel10k glyph rendering.
     configFile."cosmic/com.system76.CosmicTerm/v1/font_name" = {
@@ -381,8 +429,14 @@ in
     # Keep COSMIC theme overrides minimal and version-stable.
     # Newer COSMIC builds changed several per-key RON value types; forcing
     # old `Some((...))` forms breaks theme loading at session startup.
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/name" = { text = ''"cosmic-dark"''; force = true; };
-    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/is_dark" = { text = "true"; force = true; };
+    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/name" = {
+      text = ''"cosmic-dark"'';
+      force = true;
+    };
+    configFile."cosmic/com.system76.CosmicTheme.Dark/v1/is_dark" = {
+      text = "true";
+      force = true;
+    };
     configFile."cosmic/com.system76.CosmicTheme.Mode/v1/is_dark" = {
       text = "true";
       force = true;
@@ -417,7 +471,7 @@ in
 
   # Remove legacy per-key COSMIC theme overrides written by older revisions.
   # They can be type-incompatible with current COSMIC (causing theme parse errors).
-  home.activation.cleanupLegacyCosmicThemeOverrides = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.cleanupLegacyCosmicThemeOverrides = lib.hm.dag.entryAfter ["writeBoundary"] ''
     theme_dir="$HOME/.config/cosmic/com.system76.CosmicTheme.Dark/v1"
     if [ -d "$theme_dir" ]; then
       rm -f \
@@ -446,30 +500,61 @@ in
   # ---- Core user packages -------------------------------------------------
   home.packages = with pkgs; [
     # Search / text processing
-    ripgrep fd jq yq-go
+    ripgrep
+    fd
+    jq
+    yq-go
 
     # Archives
-    unzip p7zip
+    unzip
+    p7zip
 
     # Network
-    wget curl socat
+    wget
+    curl
+    socat
 
     # System inspection / modern CLI tools
-    htop btop lsof pciutils usbutils nvme-cli smartmontools
-    eza bat dust duf
+    htop
+    btop
+    lsof
+    pciutils
+    usbutils
+    nvme-cli
+    smartmontools
+    eza
+    bat
+    dust
+    duf
 
     # Core dev/tooling runtimes (critical for quick-deploy workflows)
-    git gh tree file xxd
-    nodejs chromium go rustc cargo clippy rustfmt ruby
+    git
+    gh
+    tree
+    file
+    xxd
+    nodejs
+    chromium
+    go
+    rustc
+    cargo
+    clippy
+    rustfmt
+    ruby
     # vscodium is installed via programs.vscode below; listing it here too
     # would create a duplicate entry in the nix profile.
     # neovim is provided by system packages; avoid duplicate nvim.desktop.
 
     # Nix utilities
-    nix-tree nix-diff nvd
+    nix-tree
+    nix-diff
+    nvd
 
     # Nix tooling — also on the VSCodium wrapper PATH (vsWrapperPath above)
-    nil alejandra deadnix statix
+    nil
+    alejandra
+    deadnix
+    statix
 
     # Shell linting — used by the shellcheck VSCodium extension
     shellcheck
@@ -481,40 +566,41 @@ in
     glow
 
     # Python AI/dev toolchain expected by system health checks
-    (python3.withPackages (ps: with ps; [
-      pandas
-      numpy
-      ps."scikit-learn"
-      torch
-      openai
-      anthropic
-      langchain
-      ps."qdrant-client"
-      ps."sentence-transformers"
-      polars
-      black
-      ruff
-      mypy
-      pytest
-      ps."pytest-cov"
-      ps."pytest-xdist"
-      ps.trio
-      # Note: pytest-anyio doesn't exist in nixpkgs; anyio includes pytest plugin
-      jupyterlab
-      notebook
-      transformers
-      accelerate
-      datasets
-      tensorflow
-      # `llama-index` and `llama-index-cli` currently install the same
-      # `bin/llamaindex-cli` entrypoint, which breaks buildEnv with a path
-      # collision during Home Manager activation.
-      # Install llama-index via project-local virtualenv/pip when needed.
-      chromadb
-      faiss
-      dask
-      gradio
-    ]))
+    (python3.withPackages (ps:
+      with ps; [
+        pandas
+        numpy
+        ps."scikit-learn"
+        torch
+        openai
+        anthropic
+        langchain
+        ps."qdrant-client"
+        ps."sentence-transformers"
+        polars
+        black
+        ruff
+        mypy
+        pytest
+        ps."pytest-cov"
+        ps."pytest-xdist"
+        ps.trio
+        # Note: pytest-anyio doesn't exist in nixpkgs; anyio includes pytest plugin
+        jupyterlab
+        notebook
+        transformers
+        accelerate
+        datasets
+        tensorflow
+        # `llama-index` and `llama-index-cli` currently install the same
+        # `bin/llamaindex-cli` entrypoint, which breaks buildEnv with a path
+        # collision during Home Manager activation.
+        # Install llama-index via project-local virtualenv/pip when needed.
+        chromadb
+        faiss
+        dask
+        gradio
+      ]))
 
     # Continue CLI — AI-powered coding assistant for the terminal
     continueCli
@@ -571,32 +657,32 @@ in
 
   # ---- Zsh ----------------------------------------------------------------
   programs.zsh = {
-    enable                    = true;
-    autosuggestion.enable     = true;
+    enable = true;
+    autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
-    enableCompletion          = true;
+    enableCompletion = true;
     history = {
-      size       = 50000;
-      save       = 50000;
+      size = 50000;
+      save = 50000;
       ignoreDups = true;
-      share      = true;
-      extended   = true;
+      share = true;
+      extended = true;
     };
     shellAliases = {
-      ll  = "ls -lah";
-      la  = "ls -A";
-      gs  = "git status";
-      gd  = "git diff";
-      gl  = "git log --oneline --graph --decorate -20";
+      ll = "ls -lah";
+      la = "ls -A";
+      gs = "git status";
+      gd = "git diff";
+      gl = "git log --oneline --graph --decorate -20";
       # NixOS rebuild shortcuts
       nrs = "sudo nixos-rebuild switch --flake .";
       nrb = "sudo nixos-rebuild boot --flake .";
       nrd = "sudo nixos-rebuild dry-build --flake .";
       hms = "home-manager switch --flake .";
       # AI CLI tools
-      continue = "cn";  # Continue CLI shorthand
+      continue = "cn"; # Continue CLI shorthand
       # pi-coding-agent wired to local switchboard (OpenAI-compatible proxy at :8085)
-      pi  = "OPENAI_BASE_URL=\"http://127.0.0.1:${toString aiSwitchboardPort}/v1\" OPENAI_API_KEY=dummy $HOME/.npm-global/bin/pi --provider openai";
+      pi = "OPENAI_BASE_URL=\"http://127.0.0.1:${toString aiSwitchboardPort}/v1\" OPENAI_API_KEY=dummy $HOME/.npm-global/bin/pi --provider openai";
     };
 
     # mkOrder 550 places this block before compinit (priority 550 = "before
@@ -634,7 +720,7 @@ in
 
   # Queue first-run prompt setup for the next interactive terminal after
   # each switch when ~/.p10k.zsh is missing.
-  home.activation.queueP10kFirstRun = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.queueP10kFirstRun = lib.hm.dag.entryAfter ["writeBoundary"] ''
     _p10k_cfg_dir="$HOME/.config/p10k"
     _p10k_pending="$_p10k_cfg_dir/.pending-first-run"
     mkdir -p "$_p10k_cfg_dir"
@@ -648,7 +734,7 @@ in
 
   # Remove legacy Starship bootstrap lines from pre-migration ~/.zshrc files.
   # Prompt is managed by Powerlevel10k in this repository baseline.
-  home.activation.removeLegacyStarshipBootstrap = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.removeLegacyStarshipBootstrap = lib.hm.dag.entryAfter ["writeBoundary"] ''
     zshrc="$HOME/.zshrc"
     if [ -f "$zshrc" ] && [ ! -L "$zshrc" ]; then
       ${pkgs.gnused}/bin/sed -i \
@@ -660,7 +746,7 @@ in
 
   # ---- Direnv: auto-activate nix develop environments --------------------
   programs.direnv = {
-    enable            = true;
+    enable = true;
     nix-direnv.enable = true;
     enableBashIntegration = true;
     enableZshIntegration = true;
@@ -712,17 +798,17 @@ in
 
   # ---- Session variables --------------------------------------------------
   home.sessionVariables = {
-    EDITOR  = "micro";
-    VISUAL  = "micro";
-    PAGER   = "less";
-    LESS    = "-FRX";
+    EDITOR = "micro";
+    VISUAL = "micro";
+    PAGER = "less";
+    LESS = "-FRX";
     # npm global prefix for AI CLI tools (Continue, pi, etc.)
     NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.npm-global";
   };
 
   home.sessionPath = [
     "$HOME/.local/bin"
-    "$HOME/.npm-global/bin"    # codex, qwen, gemini, pi CLI agents
+    "$HOME/.npm-global/bin" # codex, qwen, gemini, pi CLI agents
   ];
 
   # =========================================================================
@@ -740,7 +826,7 @@ in
   # Do NOT create home.file.".config/VSCodium/User/settings.json" in any
   # other module — that would conflict with this managed file.
   programs.vscode = {
-    enable  = true;
+    enable = true;
     # vscodiumWrapped defined in let block above — extracted so the
     # activation hook can reference its store path directly.
     package = vscodiumWrapped;
@@ -752,51 +838,49 @@ in
     profiles.default = {
       extensions =
         # ── Nix ────────────────────────────────────────────────────────────
-        vsExt "jnoortheen" "nix-ide"            # Nix language + nil LSP
+        vsExt "jnoortheen" "nix-ide" # Nix language + nil LSP
         # ── Python ─────────────────────────────────────────────────────────
-        ++ vsExt "ms-python"   "python"         # Python language support
-        ++ vsExt "ms-python"   "black-formatter" # Python formatter
-        ++ vsExt "ms-python"   "vscode-pylance"  # Python language server (bundles Pyright internally)
+        ++ vsExt "ms-python" "python" # Python language support
+        ++ vsExt "ms-python" "black-formatter" # Python formatter
+        ++ vsExt "ms-python" "vscode-pylance" # Python language server (bundles Pyright internally)
         # Bare ms-pyright.pyright removed — Pylance already includes Pyright's
         # type checker; running both causes duplicate diagnostics and conflicts.
         # ── Go ─────────────────────────────────────────────────────────────
-        ++ vsExt "golang"      "go"             # Go language support
+        ++ vsExt "golang" "go" # Go language support
         # ── Rust ───────────────────────────────────────────────────────────
-        ++ vsExt "rust-lang"   "rust-analyzer"  # Rust LSP
+        ++ vsExt "rust-lang" "rust-analyzer" # Rust LSP
         # ── Git / version control ──────────────────────────────────────────
-        ++ vsExt "eamodio"     "gitlens"        # Git supercharged
-        ++ vsExt "mhutchie"    "git-graph"      # Git branch graph
+        ++ vsExt "eamodio" "gitlens" # Git supercharged
+        ++ vsExt "mhutchie" "git-graph" # Git branch graph
         # ── AI coding assistant ────────────────────────────────────────────
         # All extensions below are confirmed in nixpkgs 25.11.
         # Note: Google scope uses capital G (pkgs.vscode-extensions."Google").
-        ++ vsExt "anthropic"   "claude-code"                    # Claude Code
-        ++ vsExt "Google"      "gemini-cli-vscode-ide-companion" # Gemini CLI companion
-        ++ [ geminiCodeAssist ]                                  # Gemini Code Assist (Open VSX)
-        ++ [ openaiCodex ]                                       # Codex — OpenAI's coding agent (Open VSX)
-        ++ [ qwenCodeCompanion ]  # Qwen Code VSCode IDE Companion v0.10.6
-        ++ [ cyberpunkThemeExtension ]                           # Cyberpunk theme (local template)
+        ++ vsExt "anthropic" "claude-code" # Claude Code
+        ++ vsExt "Google" "gemini-cli-vscode-ide-companion" # Gemini CLI companion
+        ++ [geminiCodeAssist] # Gemini Code Assist (Open VSX)
+        ++ [openaiCodex] # Codex — OpenAI's coding agent (Open VSX)
+        ++ [qwenCodeCompanion] # Qwen Code VSCode IDE Companion v0.10.6
+        ++ [cyberpunkThemeExtension] # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
-        ++ vsExt "redhat"      "vscode-yaml"
-        ++ vsExt "tamasfe"     "even-better-toml"
+        ++ vsExt "redhat" "vscode-yaml"
+        ++ vsExt "tamasfe" "even-better-toml"
         ++ vsExt "mechatroner" "rainbow-csv"
         # ── Shell scripting ─────────────────────────────────────────────────
-        ++ vsExt "timonwong"   "shellcheck"     # Powered by shellcheck binary
+        ++ vsExt "timonwong" "shellcheck" # Powered by shellcheck binary
         # ── Formatting / editing quality-of-life ───────────────────────────
         ++ vsExt "editorconfig" "editorconfig"
-        ++ vsExt "esbenp"      "prettier-vscode"
-        ++ vsExt "dbaeumer"    "vscode-eslint"
-        ++ vsExt "usernamehw"  "errorlens"
+        ++ vsExt "esbenp" "prettier-vscode"
+        ++ vsExt "dbaeumer" "vscode-eslint"
+        ++ vsExt "usernamehw" "errorlens"
         ++ vsExt "streetsidesoftware" "code-spell-checker"
         # ── Markdown ───────────────────────────────────────────────────────
-        ++ vsExt "yzhang"      "markdown-all-in-one"
-        ;
-
+        ++ vsExt "yzhang" "markdown-all-in-one";
     };
   };
 
   # Keep VSCodium user settings mutable so the UI can save changes.
   # If HM left a symlink from prior declarative mode, replace it with a file.
-  home.activation.createVSCodiumSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.createVSCodiumSettings = lib.hm.dag.entryAfter ["writeBoundary"] ''
     settings_dir="$HOME/.config/VSCodium/User"
     settings_file="$settings_dir/settings.json"
     mkdir -p "$settings_dir"
@@ -824,7 +908,7 @@ in
   # Enforce the selected Cyberpunk theme in mutable settings.json.
   # Must run after createVSCodiumSettings which creates the file; vscodeProfiles
   # runs before writeBoundary so cannot be used as a predecessor here.
-  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter [ "createVSCodiumSettings" ] ''
+  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter ["createVSCodiumSettings"] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
@@ -846,7 +930,7 @@ in
   # Remove stale AI extension keys that can break startup:
   #  - claudeProcessWrapper pointing to the same binary as executablePath
   #  - ANTHROPIC_BASE_URL override to an unavailable or incompatible local proxy
-  home.activation.migrateClaudeVscodeSettings = lib.hm.dag.entryAfter [ "enforceVSCodiumTheme" ] ''
+  home.activation.migrateClaudeVscodeSettings = lib.hm.dag.entryAfter ["enforceVSCodiumTheme"] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
@@ -873,7 +957,7 @@ in
 
   # Reset stale Continue workspace/global state that can block client bootstrap
   # after extension/config migrations.
-  home.activation.resetContinueVscodeState = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+  home.activation.resetContinueVscodeState = lib.hm.dag.entryAfter ["linkGeneration"] ''
     gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
     if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
       sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" >/dev/null 2>&1 || true
@@ -891,35 +975,35 @@ in
 
   # Remove stale VSCodium obsolete markers that can hide declarative Continue
   # installs after extension source/migration changes.
-  home.activation.clearContinueObsoleteMarker = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    obsolete_file="$HOME/.vscode-oss/extensions/.obsolete"
-    if [ -f "$obsolete_file" ] && command -v python3 >/dev/null 2>&1; then
-      python3 - "$obsolete_file" <<'PYEOF'
-import json
-import pathlib
-import sys
+  home.activation.clearContinueObsoleteMarker = lib.hm.dag.entryAfter ["linkGeneration"] ''
+        obsolete_file="$HOME/.vscode-oss/extensions/.obsolete"
+        if [ -f "$obsolete_file" ] && command -v python3 >/dev/null 2>&1; then
+          python3 - "$obsolete_file" <<'PYEOF'
+    import json
+    import pathlib
+    import sys
 
-path = pathlib.Path(sys.argv[1])
-try:
-    data = json.loads(path.read_text(encoding="utf-8"))
-except Exception:
-    sys.exit(0)
-if not isinstance(data, dict):
-    sys.exit(0)
-removed = False
-for key in list(data.keys()):
-    if key.lower().startswith("continue.continue"):
-        data.pop(key, None)
-        removed = True
-if removed:
-    path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
-PYEOF
-    fi
-    unset obsolete_file
+    path = pathlib.Path(sys.argv[1])
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        sys.exit(0)
+    if not isinstance(data, dict):
+        sys.exit(0)
+    removed = False
+    for key in list(data.keys()):
+        if key.lower().startswith("continue.continue"):
+            data.pop(key, None)
+            removed = True
+    if removed:
+        path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    PYEOF
+        fi
+        unset obsolete_file
   '';
 
   # Install runtime-mutable extensions that write inside their own install dir.
-  home.activation.ensureMutableRuntimeVscodeExtensions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+  home.activation.ensureMutableRuntimeVscodeExtensions = lib.hm.dag.entryAfter ["linkGeneration"] ''
     _codium="${vscodiumWrapped}/bin/codium"
     if [[ ! -x "$_codium" ]]; then
       echo "[vscodium] codium not found at ${vscodiumWrapped}/bin/codium; skipping mutable extension install"
@@ -949,7 +1033,7 @@ PYEOF
     fi
   '';
 
-  home.activation.cleanupVscodiumDesktopEntries = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.cleanupVscodiumDesktopEntries = lib.hm.dag.entryAfter ["writeBoundary"] ''
     codium_desktop="$HOME/.local/share/applications/codium.desktop"
     codium_url="$HOME/.local/share/applications/codium-url-handler.desktop"
     if [ -L "$codium_desktop" ]; then
@@ -974,93 +1058,93 @@ PYEOF
   home.file.".local/bin/vscodium-repair" = {
     executable = true;
     text = ''
-      #!/usr/bin/env bash
-      set -euo pipefail
-      echo "[vscodium-repair] Starting VSCodium recovery..."
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "[vscodium-repair] Starting VSCodium recovery..."
 
-      # 1. Stop any running codium instance
-      if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
-        echo "[vscodium-repair] Stopping running codium..."
-        pkill -u "$USER" -x codium || true
-        sleep 2
-      fi
+            # 1. Stop any running codium instance
+            if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+              echo "[vscodium-repair] Stopping running codium..."
+              pkill -u "$USER" -x codium || true
+              sleep 2
+            fi
 
-      ext_root="$HOME/.vscode-oss/extensions"
-      settings_file="$HOME/.config/VSCodium/User/settings.json"
-      mkdir -p "$ext_root"
+            ext_root="$HOME/.vscode-oss/extensions"
+            settings_file="$HOME/.config/VSCodium/User/settings.json"
+            mkdir -p "$ext_root"
 
-      # 2. Clear stale Continue obsolete markers
-      obsolete="$ext_root/.obsolete"
-      if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
-        echo "[vscodium-repair] Clearing Continue obsolete markers..."
-        python3 - "$obsolete" <<'PYEOF'
-import json, pathlib, sys
-path = pathlib.Path(sys.argv[1])
-try:
-    data = json.loads(path.read_text(encoding="utf-8"))
-except Exception:
-    sys.exit(0)
-if not isinstance(data, dict):
-    sys.exit(0)
-removed = [k for k in list(data.keys()) if "continue" in k.lower()]
-for k in removed:
-    data.pop(k, None)
-if removed:
-    path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
-    print(f"  Removed {len(removed)} marker(s): {removed}")
-PYEOF
-      fi
+            # 2. Clear stale Continue obsolete markers
+            obsolete="$ext_root/.obsolete"
+            if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
+              echo "[vscodium-repair] Clearing Continue obsolete markers..."
+              python3 - "$obsolete" <<'PYEOF'
+      import json, pathlib, sys
+      path = pathlib.Path(sys.argv[1])
+      try:
+          data = json.loads(path.read_text(encoding="utf-8"))
+      except Exception:
+          sys.exit(0)
+      if not isinstance(data, dict):
+          sys.exit(0)
+      removed = [k for k in list(data.keys()) if "continue" in k.lower()]
+      for k in removed:
+          data.pop(k, None)
+      if removed:
+          path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+          print(f"  Removed {len(removed)} marker(s): {removed}")
+      PYEOF
+            fi
 
-      # 3. Remove disabled Continue extension dirs
-      for d in "$ext_root"/continue.continue-*.disabled; do
-        [ -d "$d" ] || continue
-        echo "[vscodium-repair] Removing disabled dir: $d"
-        rm -rf "$d"
-      done
+            # 3. Remove disabled Continue extension dirs
+            for d in "$ext_root"/continue.continue-*.disabled; do
+              [ -d "$d" ] || continue
+              echo "[vscodium-repair] Removing disabled dir: $d"
+              rm -rf "$d"
+            done
 
-      # 4. Reinstall Continue extension from pinned VSIX
-      echo "[vscodium-repair] Reinstalling Continue extension..."
-      env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force
+            # 4. Reinstall Continue extension from pinned VSIX
+            echo "[vscodium-repair] Reinstalling Continue extension..."
+            env -u NIXOS_OZONE_WL codium --install-extension ${continueMutableVsix} --force
 
-      # 5. Enforce theme and core settings
-      if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
-        echo "[vscodium-repair] Enforcing theme settings..."
-        tmp="$(mktemp)"
-        if jq '
-          .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
-          .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
-          .["window.autoDetectColorScheme"] = false |
-          .["continue.enableTabAutocomplete"] = true |
-          .["continue.telemetryEnabled"] = false
-        ' "$settings_file" > "$tmp"; then
-          mv "$tmp" "$settings_file"
-          chmod u+rw "$settings_file"
-        else
-          rm -f "$tmp"
-        fi
-      fi
+            # 5. Enforce theme and core settings
+            if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+              echo "[vscodium-repair] Enforcing theme settings..."
+              tmp="$(mktemp)"
+              if jq '
+                .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
+                .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
+                .["window.autoDetectColorScheme"] = false |
+                .["continue.enableTabAutocomplete"] = true |
+                .["continue.telemetryEnabled"] = false
+              ' "$settings_file" > "$tmp"; then
+                mv "$tmp" "$settings_file"
+                chmod u+rw "$settings_file"
+              else
+                rm -f "$tmp"
+              fi
+            fi
 
-      # 6. Reset Continue state in VSCodium global storage
-      gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
-      if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
-        echo "[vscodium-repair] Clearing Continue global state..."
-        sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" 2>/dev/null || true
-      fi
+            # 6. Reset Continue state in VSCodium global storage
+            gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
+            if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
+              echo "[vscodium-repair] Clearing Continue global state..."
+              sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" 2>/dev/null || true
+            fi
 
-      # 7. Force Continue config version bump so createContinueConfig rewrites it
-      cfg="$HOME/.continue/config.json"
-      if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
-        echo "[vscodium-repair] Resetting Continue config version (will regenerate on next hm switch)..."
-        tmp="$(mktemp)"
-        if jq '.__configVersion = "0"' "$cfg" > "$tmp"; then
-          mv "$tmp" "$cfg"
-        else
-          rm -f "$tmp"
-        fi
-      fi
+            # 7. Force Continue config version bump so createContinueConfig rewrites it
+            cfg="$HOME/.continue/config.json"
+            if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
+              echo "[vscodium-repair] Resetting Continue config version (will regenerate on next hm switch)..."
+              tmp="$(mktemp)"
+              if jq '.__configVersion = "0"' "$cfg" > "$tmp"; then
+                mv "$tmp" "$cfg"
+              else
+                rm -f "$tmp"
+              fi
+            fi
 
-      echo "[vscodium-repair] Done. Launch VSCodium with: codium"
-      echo "  Run 'home-manager switch' to regenerate the Continue config."
+            echo "[vscodium-repair] Done. Launch VSCodium with: codium"
+            echo "  Run 'home-manager switch' to regenerate the Continue config."
     '';
   };
 
@@ -1081,14 +1165,13 @@ PYEOF
   };
 
   # Ship the first-run prompt wizard from the repository into ~/.local/bin.
-  home.file.".local/bin/p10k-setup-wizard.sh" =
-    lib.mkIf (builtins.pathExists ../../scripts/deploy/p10k-setup-wizard.sh) {
-      source = ../../scripts/deploy/p10k-setup-wizard.sh;
-      executable = true;
-    };
+  home.file.".local/bin/p10k-setup-wizard.sh" = lib.mkIf (builtins.pathExists ../../scripts/deploy/p10k-setup-wizard.sh) {
+    source = ../../scripts/deploy/p10k-setup-wizard.sh;
+    executable = true;
+  };
 
   home.file.".local/share/wallpapers/current-desktop-background.png".source =
-    (../../templates + "/ChatGPT Image Feb 21, 2026, 02_05_57 PM.png");
+    ../../templates + "/ChatGPT Image Feb 21, 2026, 02_05_57 PM.png";
 
   # Retire legacy COSMIC font enforcement units/scripts from earlier generations.
   # Cleanup happens in activation below; defining disabled home.file entries
@@ -1145,7 +1228,7 @@ PYEOF
   };
 
   # Refresh font cache so newly installed user-profile fonts are picked up.
-  home.activation.refreshUserFontCache = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.refreshUserFontCache = lib.hm.dag.entryAfter ["writeBoundary"] ''
     ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.nix-profile/share/fonts" >/dev/null 2>&1 || true
     ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.local/share/fonts" >/dev/null 2>&1 || true
     ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.fonts" >/dev/null 2>&1 || true
@@ -1156,115 +1239,192 @@ PYEOF
   # Not managed as a symlink so the user can edit it without HM clobbering
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
-  home.activation.createContinueConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    _config_version="26.0"
-    _cfg="$HOME/.continue/config.json"
-    _needs_write=false
+  home.activation.createContinueConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
+        _config_version="26.0"
+        _cfg="$HOME/.continue/config.json"
+        _needs_write=false
 
-    if [ ! -f "$_cfg" ]; then
-      _needs_write=true
-    elif command -v jq >/dev/null 2>&1; then
-      _existing_ver="$(jq -r '.__configVersion // "0"' "$_cfg" 2>/dev/null || echo "0")"
-      if [ "$_existing_ver" != "$_config_version" ]; then
-        _needs_write=true
-      fi
-      unset _existing_ver
-    fi
+        if [ ! -f "$_cfg" ]; then
+          _needs_write=true
+        elif command -v jq >/dev/null 2>&1; then
+          _existing_ver="$(jq -r '.__configVersion // "0"' "$_cfg" 2>/dev/null || echo "0")"
+          if [ "$_existing_ver" != "$_config_version" ]; then
+            _needs_write=true
+          fi
+          unset _existing_ver
+        fi
 
-    if [ "$_needs_write" = true ]; then
-      mkdir -p "$HOME/.continue"
-      cat > "$_cfg" << 'CONTINUE_EOF'
-{
-  "__configVersion": "26.0",
-  "models": [
+        if [ "$_needs_write" = true ]; then
+          mkdir -p "$HOME/.continue"
+          cat > "$_cfg" << 'CONTINUE_EOF'
     {
-      "title": "Switchboard Router (Authoritative)",
-      "provider": "openai",
-      "apiKey": "local-llama-cpp",
-      "apiBase": "${continueApiBase}",
-      "model": "${aiLlamaModel}",
-      "contextLength": ${toString continueContextLength},
-      "maxTokens": ${toString continueChatMaxTokens}
-    },
-    {
-      "title": "Local Stable (Continue Local)",
-      "provider": "openai",
-      "apiKey": "local-llama-cpp",
-      "apiBase": "${continueApiBase}",
-      "model": "${aiLlamaModel}",
-      "requestOptions": {
-        "headers": {
-          "X-AI-Profile": "continue-local"
+      "__configVersion": "26.0",
+      "rules": [
+        "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
+        "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
+        "TOOL DISCIPLINE: Use MCP tools for harness ops: harness_health, get_hints, hybrid_search, get_working_memory, store_memory, query_aidb, workflow_plan, get_prsi_pending, prsi_orchestrate.",
+        "AGENT MODE: In agent mode, issue tool calls directly — do not announce them. Do not say 'I will now call...' just call the tool.",
+        "SESSION START: At the start of any agent session, call get_working_memory first, then harness_health.",
+        "SEARCH-FIRST: Use get_hints MCP tool for ranked workflow guidance before implementing anything.",
+        "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
+        "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>'",
+        "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
+        "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8006 grafana:3000 owui:3001"
+      ],
+      "models": [
+        {
+
+          "title": "Local Chat (continue-local)",
+          "provider": "openai",
+          "apiKey": "local-llama-cpp",
+          "apiBase": "${continueApiBase}",
+          "model": "${aiLlamaModel}",
+
+
+
+
+
+
+
+
+
+          "requestOptions": {
+            "headers": {
+              "X-AI-Profile": "continue-local"
+            }
+          },
+          "contextLength": ${toString continueContextLength},
+          "maxTokens": ${toString continueChatMaxTokens}
+        },
+        {
+          "title": "Local Agent (Harness-Aware)",
+          "provider": "openai",
+          "apiKey": "local-llama-cpp",
+          "apiBase": "${continueApiBase}",
+          "model": "${aiLlamaModel}",
+          "requestOptions": {
+            "headers": {
+              "X-AI-Profile": "local-agent"
+            }
+          },
+          "contextLength": ${toString localAgentContextLength},
+          "maxTokens": ${toString localAgentChatMaxTokens}
+        },
+        {
+          "title": "Remote Claude Sonnet (OpenRouter)",
+          "provider": "openrouter",
+          "apiKey": "REDACTED_OPENROUTER_KEY",
+          "model": "anthropic/claude-sonnet-4-5",
+          "contextLength": 16000,
+          "maxTokens": 4096,
+          "requestOptions": {
+            "headers": {
+              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
+              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+            }
+          }
+        },
+        {
+          "title": "Remote Deepseek R1 Free (OpenRouter)",
+          "provider": "openrouter",
+          "apiKey": "REDACTED_OPENROUTER_KEY",
+          "model": "deepseek/deepseek-r1:free",
+          "contextLength": 8000,
+          "maxTokens": 2048,
+          "requestOptions": {
+            "headers": {
+              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
+              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+            }
+          }
+        },
+        {
+          "title": "Remote Gemini 2.0 Flash Free (OpenRouter)",
+          "provider": "openrouter",
+          "apiKey": "REDACTED_OPENROUTER_KEY",
+          "model": "google/gemini-2.0-flash-exp:free",
+          "contextLength": 8000,
+          "maxTokens": 2048,
+          "requestOptions": {
+            "headers": {
+              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
+              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+            }
+          }
+        },
+        {
+          "title": "Remote Llama 70B Free (OpenRouter)",
+          "provider": "openrouter",
+          "apiKey": "REDACTED_OPENROUTER_KEY",
+          "model": "meta-llama/llama-3.3-70b-instruct:free",
+          "contextLength": 8000,
+          "maxTokens": 2048,
+          "requestOptions": {
+            "headers": {
+              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
+              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+            }
+          }
         }
+      ],
+      "tabAutocompleteModel": {
+        "title": "Tab Autocomplete (Continue Local)",
+        "provider": "openai",
+        "apiKey": "local-llama-cpp",
+        "apiBase": "${continueApiBase}",
+        "model": "${aiLlamaModel}",
+        "requestOptions": {
+          "headers": {
+            "X-AI-Profile": "continue-local"
+          }
+        },
+        "contextLength": ${toString continueContextLength},
+        "maxTokens": ${toString continueTabMaxTokens}
       },
-      "contextLength": ${toString continueContextLength},
-      "maxTokens": ${toString continueChatMaxTokens}
-    },
-    {
-      "title": "Local Agent (Harness-Aware)",
-      "provider": "openai",
-      "apiKey": "local-llama-cpp",
-      "apiBase": "${continueApiBase}",
-      "model": "${aiLlamaModel}",
-      "requestOptions": {
-        "headers": {
-          "X-AI-Profile": "local-agent"
+      "contextProviders": [
+        {
+          "name": "aq-hints",
+          "params": {
+            "endpoint": "http://127.0.0.1:8003/hints"
+          }
+        },
+        { "name": "file", "params": {} },
+
+        { "name": "diff", "params": {} },
+        { "name": "codebase", "params": {} },
+        { "name": "terminal", "params": {} },
+        { "name": "problems", "params": {} }
+      ],
+      "slashCommands": [
+        { "name": "edit", "description": "Edit highlighted code" },
+
+        { "name": "comment", "description": "Add comments" },
+        { "name": "share", "description": "Export chat session to markdown" },
+        { "name": "cmd", "description": "Generate a shell command" },
+        { "name": "commit", "description": "Generate a git commit message" }
+      ],
+      "mcpServers": [
+        {
+          "name": "Harness MCP",
+          "command": "python3",
+          "args": ["/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"],
+          "env": {
+            "HYBRID_URL": "http://127.0.0.1:8003",
+            "AIDB_URL": "http://127.0.0.1:8002",
+            "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
+            "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
+          }
         }
-      },
-      "contextLength": ${toString localAgentContextLength},
-      "maxTokens": ${toString localAgentChatMaxTokens}
+      ],
+      "allowAnonymousTelemetry": false
     }
-  ],
-  "tabAutocompleteModel": {
-    "title": "Tab Autocomplete (Continue Local)",
-    "provider": "openai",
-    "apiKey": "local-llama-cpp",
-    "apiBase": "${continueApiBase}",
-    "model": "${aiLlamaModel}",
-    "requestOptions": {
-      "headers": {
-        "X-AI-Profile": "continue-local"
-      }
-    },
-    "contextLength": ${toString continueContextLength},
-    "maxTokens": ${toString continueTabMaxTokens}
-  },
-  "contextProviders": [
-    {
-      "name": "aq-hints",
-      "params": {
-        "endpoint": "http://127.0.0.1:8003/hints"
-      }
-    },
-    { "name": "file", "params": {} },
-    { "name": "diff", "params": {} }
-  ],
-  "slashCommands": [
-    { "name": "edit", "description": "Edit highlighted code" },
-    { "name": "comment", "description": "Add comments" }
-  ],
-  "mcpServers": [
-    {
-      "name": "Harness MCP",
-      "command": "python3",
-      "args": ["/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"],
-      "env": {
-        "HYBRID_URL": "http://127.0.0.1:8003",
-        "AIDB_URL": "http://127.0.0.1:8002",
-        "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
-        "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
-      }
-    }
-  ],
-  "allowAnonymousTelemetry": false
-}
-CONTINUE_EOF
-      echo "[createContinueConfig] Wrote Continue config v$_config_version"
-    fi
-    unset _config_version _cfg _needs_write
+    CONTINUE_EOF
+          echo "[createContinueConfig] Wrote Continue config v$_config_version"
+        fi
+        unset _config_version _cfg _needs_write
   '';
 
-  home.activation.migrateContinueConfigApiBase = lib.hm.dag.entryAfter [ "createContinueConfig" ] ''
+  home.activation.migrateContinueConfigApiBase = lib.hm.dag.entryAfter ["createContinueConfig"] ''
     cfg="$HOME/.continue/config.json"
     if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
       runtime_base="${continueApiBase}"
@@ -1299,71 +1459,71 @@ CONTINUE_EOF
   # ---- MCP config bootstrap ---------------------------------------------------
   # Keep a local MCP server catalog available for agent clients that read
   # ~/.mcp/config.json and ~/.config/claude/mcp.json.
-  home.activation.createMcpConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    mkdir -p "$HOME/.mcp"
-    if [ ! -f "$HOME/.mcp/config.json" ]; then
-      cat > "$HOME/.mcp/config.json" << 'MCP_EOF'
-{
-  "mcpServers": {
-    "mcp-nixos": {
-      "command": "nix",
-      "args": ["run", "github:utensils/mcp-nixos"]
-    },
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${repoPath}"]
-    },
-    "git": {
-      "command": "npx",
-      "args": ["-y", "@cyanheads/git-mcp-server"]
-    },
-    "fetch": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-fetch-typescript"]
-    },
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
-    },
-    "postgres": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://mcp@127.0.0.1:${toString aiPostgresPort}/mcp"]
-    },
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "set-me"
+  home.activation.createMcpConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
+        mkdir -p "$HOME/.mcp"
+        if [ ! -f "$HOME/.mcp/config.json" ]; then
+          cat > "$HOME/.mcp/config.json" << 'MCP_EOF'
+    {
+      "mcpServers": {
+        "mcp-nixos": {
+          "command": "nix",
+          "args": ["run", "github:utensils/mcp-nixos"]
+        },
+        "filesystem": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-filesystem", "${repoPath}"]
+        },
+        "git": {
+          "command": "npx",
+          "args": ["-y", "@cyanheads/git-mcp-server"]
+        },
+        "fetch": {
+          "command": "npx",
+          "args": ["-y", "mcp-server-fetch-typescript"]
+        },
+        "memory": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-memory"]
+        },
+        "postgres": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://mcp@127.0.0.1:${toString aiPostgresPort}/mcp"]
+        },
+        "github": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-github"],
+          "env": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "set-me"
+          }
+        }
       }
     }
-  }
-}
-MCP_EOF
-    fi
+    MCP_EOF
+        fi
 
-    if [ ! -f "$HOME/.mcp/registry.json" ]; then
-      cat > "$HOME/.mcp/registry.json" << 'MCP_REGISTRY_EOF'
-{
-  "servers": [
-    { "id": "mcp-nixos", "category": "nixos", "description": "NixOS package and option discovery" },
-    { "id": "filesystem", "category": "project", "description": "Project file read/write/search tools" },
-    { "id": "git", "category": "project", "description": "Repository status, diff, and commit tooling" },
-    { "id": "fetch", "category": "web", "description": "HTTP fetch for docs, APIs, and release notes" },
-    { "id": "memory", "category": "agent", "description": "Cross-session lightweight memory store" },
-    { "id": "postgres", "category": "database", "description": "PostgreSQL access for AIDB and ops data" },
-    { "id": "github", "category": "remote", "description": "GitHub repo/issue/PR automation" }
-  ]
-}
-MCP_REGISTRY_EOF
-    fi
+        if [ ! -f "$HOME/.mcp/registry.json" ]; then
+          cat > "$HOME/.mcp/registry.json" << 'MCP_REGISTRY_EOF'
+    {
+      "servers": [
+        { "id": "mcp-nixos", "category": "nixos", "description": "NixOS package and option discovery" },
+        { "id": "filesystem", "category": "project", "description": "Project file read/write/search tools" },
+        { "id": "git", "category": "project", "description": "Repository status, diff, and commit tooling" },
+        { "id": "fetch", "category": "web", "description": "HTTP fetch for docs, APIs, and release notes" },
+        { "id": "memory", "category": "agent", "description": "Cross-session lightweight memory store" },
+        { "id": "postgres", "category": "database", "description": "PostgreSQL access for AIDB and ops data" },
+        { "id": "github", "category": "remote", "description": "GitHub repo/issue/PR automation" }
+      ]
+    }
+    MCP_REGISTRY_EOF
+        fi
 
-    mkdir -p "$HOME/.config/claude"
-    ln -sfn "$HOME/.mcp/config.json" "$HOME/.config/claude/mcp.json"
+        mkdir -p "$HOME/.config/claude"
+        ln -sfn "$HOME/.mcp/config.json" "$HOME/.config/claude/mcp.json"
   '';
 
   # Make skills catalog agent-agnostic: Claude and Codex both read the same
   # project skill definitions from .agent/skills, without duplicate installs.
-  home.activation.linkSharedAgentSkills = lib.hm.dag.entryAfter [ "createMcpConfig" ] ''
+  home.activation.linkSharedAgentSkills = lib.hm.dag.entryAfter ["createMcpConfig"] ''
     src="${sharedSkillsDir}"
 
     if [ -d "$src" ]; then
@@ -1389,7 +1549,7 @@ MCP_REGISTRY_EOF
     unset src
   '';
 
-  home.activation.ensureCodexSkillExecutables = lib.hm.dag.entryAfter [ "linkSharedAgentSkills" ] ''
+  home.activation.ensureCodexSkillExecutables = lib.hm.dag.entryAfter ["linkSharedAgentSkills"] ''
     skills_root="$HOME/.codex/skills"
     if [ -d "$skills_root" ]; then
       find "$skills_root" -type f \( -path '*/scripts/*.sh' -o -path '*/scripts/*.py' \) -exec chmod 0755 {} +
@@ -1401,7 +1561,7 @@ MCP_REGISTRY_EOF
   # Code has access to all development tools (filesystem, git, fetch, etc.)
   # on first login.  Only writes when mcpServers key is absent; safe to run
   # on every home-manager switch — skips if already configured.
-  home.activation.seedClaudeSettings = lib.hm.dag.entryAfter [ "linkSharedAgentSkills" ] ''
+  home.activation.seedClaudeSettings = lib.hm.dag.entryAfter ["linkSharedAgentSkills"] ''
     mkdir -p "$HOME/.claude"
     settings="$HOME/.claude/settings.json"
     mcp_cfg="$HOME/.mcp/config.json"
@@ -1423,7 +1583,7 @@ MCP_REGISTRY_EOF
   '';
 
   # Allow GPT4All Flatpak to read locally hosted llama.cpp models.
-  home.activation.configureGpt4AllModelAccess = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.configureGpt4AllModelAccess = lib.hm.dag.entryAfter ["writeBoundary"] ''
     if command -v flatpak >/dev/null 2>&1; then
       if flatpak info io.gpt4all.gpt4all >/dev/null 2>&1; then
         flatpak override --user --filesystem=/var/lib/llama-cpp:ro io.gpt4all.gpt4all >/dev/null 2>&1 || true
@@ -1451,19 +1611,19 @@ MCP_REGISTRY_EOF
   systemd.user.services.ai-eval-startup = {
     Unit = {
       Description = "AI stack eval regression check on login";
-      After = [ "graphical-session.target" ];
+      After = ["graphical-session.target"];
     };
     Service = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash -lc '${repoPath}/scripts/automation/run-eval.sh --threshold 60 --output ${repoPath}/ai-stack/eval/results || true'";
     };
     Install = {
-      WantedBy = [ "default.target" ];
+      WantedBy = ["default.target"];
     };
   };
 
   # Remove stale wants links and clear any failed state from retired units.
-  home.activation.cleanupCosmicFontUnitWants = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.cleanupCosmicFontUnitWants = lib.hm.dag.entryAfter ["writeBoundary"] ''
     rm -f "$HOME/.config/systemd/user/enforce-cosmic-term-font.service" 2>/dev/null || true
     rm -f "$HOME/.config/systemd/user/enforce-cosmic-term-font.path" 2>/dev/null || true
     rm -f "$HOME/.config/systemd/user/default.target.wants/enforce-cosmic-term-font.service" 2>/dev/null || true
@@ -1476,11 +1636,10 @@ MCP_REGISTRY_EOF
   '';
 
   # Ensure degraded checks at reload time don't see stale failed font units.
-  home.activation.preReloadResetCosmicFontUnits = lib.hm.dag.entryBefore [ "reloadSystemd" ] ''
+  home.activation.preReloadResetCosmicFontUnits = lib.hm.dag.entryBefore ["reloadSystemd"] ''
     if command -v systemctl >/dev/null 2>&1; then
       systemctl --user disable --now enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
       systemctl --user reset-failed enforce-cosmic-term-font.service enforce-cosmic-term-font.path >/dev/null 2>&1 || true
     fi
   '';
-
 }
