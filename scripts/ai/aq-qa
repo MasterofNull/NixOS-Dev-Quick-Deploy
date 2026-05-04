@@ -832,7 +832,13 @@ run_phase_5() {
     python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); from safe_command_executor import check_command; allowed,reason=check_command('rm -rf /critical'); assert not allowed and 'safety' in reason.lower()"
   _check "5.7.3" "mcp-bridge-hybrid wires safe_command_executor" \
     python3 -c "src=open('${REPO_ROOT}/scripts/ai/mcp-bridge-hybrid.py').read(); assert 'safe_command_executor' in src and '_sce_check' in src and 'blocked' in src"
+  # 5.8 Agent safety smoke test suite
+  _check "5.8.1" "test-agent-safety.sh exists and is executable" \
+    test -x "${REPO_ROOT}/scripts/testing/test-agent-safety.sh"
+  _check "5.8.2" "agent safety smoke: all adversarial commands blocked" \
+    bash "${REPO_ROOT}/scripts/testing/test-agent-safety.sh"
 }
+
 
 # ---------------------------------------------------------------------------
 # Phase 6 — Monitoring & Observability
