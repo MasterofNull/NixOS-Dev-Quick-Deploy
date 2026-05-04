@@ -586,6 +586,176 @@ TOOLS = [
             "required": ["sop_name"],
         },
     },
+    # -----------------------------------------------------------------------
+    # Phase 24: Agent-agnostic tool discovery + skill registry
+    # Available to ALL agents: Continue, qwen, gemini, local llama.cpp, etc.
+    # -----------------------------------------------------------------------
+    {
+        "name": "list_skills",
+        "description": (
+            "List all skills registered in the harness skill registry (AIDB). "
+            "Returns every approved skill with slug, name, description, and retrieval endpoint. "
+            "Call this at agent startup to discover all available capabilities — no explicit "
+            "skill naming needed. Available to all agents and MCP clients."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "domain": {"type": "string", "description": "Filter by domain tag (optional)"},
+                "limit": {"type": "integer", "default": 50, "description": "Max results"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_skill_content",
+        "description": (
+            "Retrieve the full content of a specific skill by slug. "
+            "Returns the SKILL.md content with HTTP invocation patterns, commands, "
+            "tool sequences, and examples — usable by any agent without file access. "
+            "Slug examples: impeccable, tradingagents, ai-stack-qa, debug-workflow."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string", "description": "Skill slug (e.g. impeccable, tradingagents)"},
+            },
+            "required": ["slug"],
+        },
+    },
+    {
+        "name": "auto_select_tools",
+        "description": (
+            "Automatically select and sequence the right tools for any task description. "
+            "Returns an ordered tool manifest with HTTP endpoints, execution phases, "
+            "recommended skills, and AIDB project context — without requiring any "
+            "explicit tool naming. Call this at the START of any task. "
+            "Available to all agents and MCP clients."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "Free-text task description"},
+                "limit": {"type": "integer", "default": 8, "description": "Max tools to return"},
+            },
+            "required": ["task"],
+        },
+    },
+    {
+        "name": "tool_catalog",
+        "description": (
+            "Retrieve the full tool catalog — everything available in the harness. "
+            "Returns all tools with endpoints, methods, and descriptions grouped by domain "
+            "(core, design, trading, orchestration, research, quality). "
+            "Call once at agent startup for complete capability discovery."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "description": "Filter by domain: core|design|trading|orchestration|research|quality (default: all)",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["full", "compact", "names-only"],
+                    "default": "compact",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "trading_analyze",
+        "description": (
+            "Run the full 5-team trading analysis pipeline on a stock ticker: "
+            "market analyst (OHLCV + technicals) + fundamentals analyst (balance sheet, P&L) + "
+            "news analyst (headlines, insider transactions) + sentiment analyst → "
+            "bull/bear researcher debate → trader synthesis → risk management → portfolio approval. "
+            "Returns BUY/HOLD/SELL decision with position size and full reasoning. "
+            "Runs on local Qwen3.6-35B — no external API key required (yfinance for data)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Stock symbol (e.g. AAPL, NVDA)"},
+                "date": {"type": "string", "description": "Trade date YYYY-MM-DD"},
+                "analysts": {
+                    "type": "string",
+                    "default": "market,fundamentals,news,sentiment",
+                    "description": "Comma-separated analyst types to run",
+                },
+                "debate_rounds": {"type": "integer", "default": 1},
+            },
+            "required": ["ticker", "date"],
+        },
+    },
+    {
+        "name": "trading_forecast",
+        "description": (
+            "Quick market signal for a stock — runs only the market/technical analyst "
+            "and trader synthesis. Much faster than full pipeline. "
+            "Returns trend direction, key indicator readings, and preliminary BUY/HOLD/SELL. "
+            "Use for rapid screening before running full trading_analyze."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Stock symbol"},
+                "date": {"type": "string", "description": "Trade date YYYY-MM-DD"},
+            },
+            "required": ["ticker", "date"],
+        },
+    },
+    {
+        "name": "trading_tools",
+        "description": (
+            "Discover all available financial data tools: get_stock_data, get_indicators, "
+            "get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, "
+            "get_news, get_insider_transactions. Returns tool names, descriptions, "
+            "parameters, and HTTP endpoints. Use for tool discovery before trading analysis."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "impeccable_design",
+        "description": (
+            "Apply production-grade frontend design intelligence from the impeccable framework. "
+            "Retrieves design reference docs from AIDB and returns actionable guidance for: "
+            "audit (a11y, contrast, performance), critique (UX, hierarchy), polish (shipping readiness), "
+            "craft (full design workflow), animate, colorize (OKLCH), typeset (typography scale), "
+            "bolder, quieter, distill, overdrive. "
+            "Also detects anti-patterns: gradient-text, glassmorphism, side-stripe-borders, "
+            "hero-metric-template, identical-card-grid, missing-reduced-motion, etc."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "enum": [
+                        "audit", "critique", "polish", "craft", "shape", "animate",
+                        "colorize", "typeset", "bolder", "quieter", "distill", "overdrive",
+                        "layout", "onboard", "harden", "delight",
+                    ],
+                    "description": "Design command to apply",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Description of the UI/component being designed or reviewed",
+                },
+                "reference_query": {
+                    "type": "string",
+                    "description": "Specific design topic to retrieve from AIDB (optional)",
+                },
+            },
+            "required": ["command", "context"],
+        },
+    },
 ]
 
 
@@ -937,6 +1107,94 @@ def _call_tool(name: str, args: dict) -> str:
             return _format_result(result)
         except Exception as e:
             return _format_result({"error": f"Failed to execute SOP: {str(e)}"})
+
+    # -----------------------------------------------------------------------
+    # Phase 24: Agent-agnostic skill registry + tool discovery
+    # -----------------------------------------------------------------------
+    if name == "list_skills":
+        domain = args.get("domain", "")
+        limit = int(args.get("limit", 50))
+        params = f"?include_pending=true&limit={limit}"
+        r = _get(f"{AIDB_URL}/skills{params}", AIDB_KEY)
+        if isinstance(r, list):
+            skills = [
+                {
+                    "slug": s.get("slug", ""),
+                    "name": s.get("name", ""),
+                    "description": s.get("description", ""),
+                    "status": s.get("status", ""),
+                    "source_path": s.get("source_path", ""),
+                    "content_endpoint": f"{HYBRID_URL}/skills/{s.get('slug', '')}/content",
+                }
+                for s in r
+                if s.get("status") == "approved"
+            ]
+            if domain:
+                # filter by description keyword as proxy for domain
+                skills = [s for s in skills if domain.lower() in s.get("description", "").lower()]
+            return _format_result({"skills": skills, "count": len(skills)})
+        return _format_result(r)
+
+    if name == "get_skill_content":
+        slug = args.get("slug", "").strip()
+        if not slug:
+            return _format_result({"error": "slug is required"})
+        r = _get(f"{HYBRID_URL}/skills/{slug}/content", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "auto_select_tools":
+        task = args.get("task", "")
+        limit = int(args.get("limit", 8))
+        params = f"?task={urllib.parse.quote(task)}&limit={limit}"
+        r = _get(f"{HYBRID_URL}/tools/auto-select{params}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "tool_catalog":
+        domain = args.get("domain", "all")
+        fmt = args.get("format", "compact")
+        params = f"?domain={domain}&format={fmt}"
+        r = _get(f"{HYBRID_URL}/tools/catalog{params}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "trading_analyze":
+        ticker = args.get("ticker", "").upper()
+        date = args.get("date", "")
+        analysts = args.get("analysts", "market,fundamentals,news,sentiment")
+        rounds = int(args.get("debate_rounds", 1))
+        params = f"?ticker={ticker}&date={date}&analysts={analysts}&debate_rounds={rounds}"
+        r = _get(f"{HYBRID_URL}/trading/analyze{params}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "trading_forecast":
+        ticker = args.get("ticker", "").upper()
+        date = args.get("date", "")
+        r = _get(f"{HYBRID_URL}/trading/forecast?ticker={ticker}&date={date}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "trading_tools":
+        r = _get(f"{HYBRID_URL}/trading/tools", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "impeccable_design":
+        command = args.get("command", "audit")
+        context = args.get("context", "")
+        ref_query = args.get("reference_query", f"{command} design reference")
+        # Retrieve reference docs from AIDB
+        ref = _post(f"{AIDB_URL}/query", {
+            "query": ref_query,
+            "project": "impeccable-design",
+            "limit": 3,
+        }, AIDB_KEY)
+        # Get skill content
+        skill = _get(f"{HYBRID_URL}/skills/impeccable/content", HYBRID_KEY)
+        return _format_result({
+            "command": command,
+            "context": context,
+            "reference_docs": ref,
+            "skill_guidance": skill.get("content", "") if isinstance(skill, dict) else str(skill)[:500],
+            "anti_pattern_scan": "Run: npx impeccable detect <target-path>",
+            "http_api": f"POST {HYBRID_URL}/query with project=impeccable-design",
+        })
 
     return _format_result({"error": f"unknown tool: {name}"})
 
