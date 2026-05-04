@@ -817,6 +817,57 @@ TOOLS = [
             "required": ["option_path"],
         },
     },
+    # Phase 25-007: context offload + working memory tools
+    {
+        "name": "summarize_context",
+        "description": (
+            "Compress conversation history into a structured summary to avoid context limit errors. "
+            "Returns key_decisions, open_questions, next_steps, and a compressed summary string. "
+            "Use when the conversation is long — save the result with save_working_memory "
+            "so future sessions can resume without re-scanning history."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "history": {
+                    "type": "array",
+                    "description": "List of {role, content} message dicts to compress.",
+                    "items": {"type": "object"},
+                },
+                "max_tokens": {"type": "integer", "description": "Target token budget for summary (default 2000)."},
+                "focus": {"type": "string", "description": "What to focus on: decisions, next_steps, or all (default)."},
+            },
+            "required": ["history"],
+        },
+    },
+    {
+        "name": "save_working_memory",
+        "description": (
+            "Persist key session facts, decisions, and next steps to working memory so they survive context resets. "
+            "Call this after summarize_context or whenever you want to checkpoint progress. "
+            "A future session can call get_working_memory to resume without re-reading the full history."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "key_facts": {"type": "array", "items": {"type": "string"}, "description": "Key facts established this session."},
+                "decisions": {"type": "array", "items": {"type": "string"}, "description": "Decisions made."},
+                "next_steps": {"type": "array", "items": {"type": "string"}, "description": "Remaining tasks."},
+                "open_questions": {"type": "array", "items": {"type": "string"}, "description": "Unresolved questions."},
+                "session_id": {"type": "string", "description": "Optional session identifier."},
+                "metadata": {"type": "object", "description": "Optional extra context."},
+            },
+            "required": ["key_facts"],
+        },
+    },
+    {
+        "name": "get_working_memory",
+        "description": (
+            "Retrieve the last saved working memory. Call this at the START of a new session to resume "
+            "where you left off without re-reading the full conversation history."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -1273,6 +1324,29 @@ def _call_tool(name: str, args: dict) -> str:
         argv = ["nix", "eval", option_path]
         r = _run_local(argv, cwd=REPO_ROOT)
         r["option_path"] = option_path
+        return _format_result(r)
+
+    if name == "summarize_context":
+        r = _post(f"{HYBRID_URL}/agent/summarize-context", {
+            "history":    args.get("history", []),
+            "max_tokens": args.get("max_tokens", 2000),
+            "focus":      args.get("focus", "all"),
+        }, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "save_working_memory":
+        r = _post(f"{HYBRID_URL}/agent/working-memory/save", {
+            "session_id":     args.get("session_id", "default"),
+            "key_facts":      args.get("key_facts", []),
+            "decisions":      args.get("decisions", []),
+            "next_steps":     args.get("next_steps", []),
+            "open_questions": args.get("open_questions", []),
+            "metadata":       args.get("metadata", {}),
+        }, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "get_working_memory":
+        r = _get(f"{HYBRID_URL}/agent/working-memory", HYBRID_KEY)
         return _format_result(r)
 
     return _format_result({"error": f"unknown tool: {name}"})
