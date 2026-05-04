@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# ai-validate-and-commit — Use locally hosted agent to validate, comment, and commit changes
+#
+# Usage:
+#   ai-validate-and-commit [--agent <agent>] [--message <msg>]
+#
+# Flags:
+#   --agent <agent>    Use specific agent (default: qwen)
+#   --message <msg>    Override commit message
+#   --dry-run         Show what would be done without committing
+#   --auto-approve    Auto-approve the commit without confirmation
+#
+# Exit codes:
+#   0  Changes validated and committed successfully
+#   1  Validation failed or no changes to commit
+#   2  Git error
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Default configuration
+AGENT="qwen"
+CUSTOM_MESSAGE=""
+DRY_RUN=0
+AUTO_APPROVE=0
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent)
+      AGENT="$2"
+      shift 2
+      ;;
+    --message)
+      CUSTOM_MESSAGE="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --auto-approve)
+      AUTO_APPROVE=1
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+cd "$REPO_ROOT"
+
+# Check if there are any changes to commit
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "✓ Found uncommitted changes"
+else
+  echo "✗ No changes to commit"
+  exit 1
+fi
+
+# Get the diff
+DIFF_OUTPUT=$(git diff HEAD)
+DIFF_STAT=$(git diff --stat HEAD)
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Changes to validate:"
+echo "$DIFF_STAT"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Prepare the review prompt
+TASK_PROMPT="Review this Git diff for a NixOS AI stack project.
+
+You MUST respond with EXACTLY this JSON format (no markdown, no extra text):
+{
+  \"status\": \"APPROVE\",
+  \"commit_message\": \"Short descriptive message\",
+  \"commit_body\": \"Optional explanation\",
+  \"comments\": [\"Any concerns\"]
+}
+
+Valid status values: APPROVE, APPROVE_WITH_COMMENTS, REJECT
+
+Git diff:
+${DIFF_OUTPUT}
+
+Return ONLY the JSON, nothing else."
+
+# Create temp file for the response
+RESPONSE_FILE=$(mktemp)
+trap "rm -f '$RESPONSE_FILE'" EXIT
+
+echo ""
+echo "Sending review request to ${AGENT} agent..."
+echo ""
+
+# Call the agent and capture response
+if ! echo "$TASK_PROMPT" | ~/.npm-global/bin/${AGENT} > "$RESPONSE_FILE" 2>&1; then
+  echo "✗ Agent execution failed"
+  cat "$RESPONSE_FILE"
+  exit 1
+fi
+
+# Extract JSON from response (agent might include extra text)
+JSON_RESPONSE=$(cat "$RESPONSE_FILE" | grep -o '{.*}' | head -1)
+
+if [[ -z "$JSON_RESPONSE" ]]; then
+  echo "✗ No JSON found in agent response"
+  echo "Full response:"
+  cat "$RESPONSE_FILE"
+  exit 1
+fi
+
+# Validate JSON
+if ! echo "$JSON_RESPONSE" | jq -e . >/dev/null 2>&1; then
+  echo "✗ Invalid JSON response from agent"
+  echo "$JSON_RESPONSE"
+  exit 1
+fi
+
+# Extract the review response
+REVIEW_STATUS=$(echo "$JSON_RESPONSE" | jq -r '.status // "UNKNOWN"')
+COMMIT_MSG=$(echo "$JSON_RESPONSE" | jq -r '.commit_message // "Update configuration"')
+COMMIT_BODY=$(echo "$JSON_RESPONSE" | jq -r '.commit_body // ""')
+COMMENTS=$(echo "$JSON_RESPONSE" | jq -r '.comments // [] | join("\n")')
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "AI Review Result:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Status: $REVIEW_STATUS"
+echo ""
+echo "Suggested commit message:"
+echo "  $COMMIT_MSG"
+if [[ -n "$COMMIT_BODY" ]]; then
+  echo ""
+  echo "Body:"
+  echo "$COMMIT_BODY" | sed 's/^/  /'
+fi
+if [[ -n "$COMMENTS" ]]; then
+  echo ""
+  echo "Comments:"
+  echo "$COMMENTS" | sed 's/^/  • /'
+fi
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Handle review result
+case "$REVIEW_STATUS" in
+  APPROVE|APPROVE_WITH_COMMENTS)
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo ""
+      echo "[DRY RUN] Would commit with message: $COMMIT_MSG"
+      exit 0
+    fi
+
+    # Use custom message if provided
+    if [[ -n "$CUSTOM_MESSAGE" ]]; then
+      COMMIT_MSG="$CUSTOM_MESSAGE"
+    fi
+
+    # Ask for confirmation unless auto-approve is set
+    if [[ "$AUTO_APPROVE" -eq 0 ]]; then
+      echo ""
+      read -p "Proceed with commit? [y/N] " -n 1 -r
+      echo
+      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Commit cancelled"
+        exit 0
+      fi
+    fi
+
+    # Stage all changes
+    git add -A
+
+    # Commit with the AI-generated message
+    if [[ -n "$COMMIT_BODY" ]]; then
+      git commit -m "$COMMIT_MSG" -m "$COMMIT_BODY"
+    else
+      git commit -m "$COMMIT_MSG"
+    fi
+
+    echo ""
+    echo "✓ Changes committed successfully"
+    echo ""
+    echo "Commit hash: $(git rev-parse --short HEAD)"
+
+    # Show the commit
+    git show --stat HEAD
+
+    exit 0
+    ;;
+  REJECT)
+    echo ""
+    echo "✗ Changes REJECTED by AI reviewer"
+    echo "  Please review the comments and fix the issues before committing"
+    exit 1
+    ;;
+  *)
+    echo ""
+    echo "✗ Unknown review status: $REVIEW_STATUS"
+    exit 1
+    ;;
+esac
