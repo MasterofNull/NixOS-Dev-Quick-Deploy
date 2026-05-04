@@ -6,11 +6,23 @@ frontend codebase. Anti-pattern detection, critique, audit, and full craft workf
 
 **Source**: https://github.com/pbakaus/impeccable (Apache 2.0)
 **AIDB Project**: `impeccable-design`
-**Skill Definition**: `.claude/skills/impeccable/SKILL.md`
+**Canonical Skill**: `.agent/skills/impeccable/SKILL.md` (registered in AIDB — all agents)
+**HTTP Discovery**: `GET http://127.0.0.1:8003/skills/impeccable/content`
+**MCP Tool**: `list_skills` / `get_skill_content` (available to all MCP clients)
 
-## Synopsis
-```
-/impeccable <command> [target]
+## Synopsis (any agent/model)
+```bash
+# HTTP — any agent
+GET  http://127.0.0.1:8003/tools/auto-select?task=audit+frontend+design
+GET  http://127.0.0.1:8003/skills/impeccable/content
+POST http://127.0.0.1:8003/query  {"query":"...","project":"impeccable-design"}
+
+# MCP tool (Continue, qwen, any MCP client)
+get_skill_content  {"slug": "impeccable"}
+list_skills        {}
+
+# CLI fallback (anti-pattern scan)
+npx impeccable detect <target>
 ```
 
 ## Commands
@@ -34,7 +46,7 @@ frontend codebase. Anti-pattern detection, critique, audit, and full craft workf
 - `PRODUCT.md` — what the product does, who uses it
 - `DESIGN.md` — current design decisions and constraints
 
-If these files don't exist, run `/impeccable teach` first.
+If these files don't exist, invoke the `teach` command via HTTP or CLI to create them.
 
 ## Tool Sequence (Standard)
 
