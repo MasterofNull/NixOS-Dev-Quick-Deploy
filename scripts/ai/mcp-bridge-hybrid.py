@@ -774,6 +774,49 @@ TOOLS = [
             "required": ["command", "context"],
         },
     },
+    {
+        "name": "simulate_nix_change",
+        "description": (
+            "Dry-run validate a NixOS derivation build before committing any .nix file change. "
+            "Runs 'nix build <derivation> --dry-run' against the working tree. "
+            "REQUIRED before any autonomous .nix file modification. "
+            "Returns whether the build plan succeeds without actually building."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "derivation": {
+                    "type": "string",
+                    "description": "Nix derivation path (e.g. .#nixosConfigurations.hyperd.config.system.build.toplevel)",
+                },
+                "extra_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Extra nix build flags (optional)",
+                },
+            },
+            "required": ["derivation"],
+        },
+    },
+    {
+        "name": "validate_service_config",
+        "description": (
+            "Evaluate a NixOS service config option without building anything. "
+            "Runs 'nix eval <option_path>' to confirm a config option is syntactically valid "
+            "and has the expected value. Use to pre-validate service config changes "
+            "before applying them with nixos-rebuild."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "option_path": {
+                    "type": "string",
+                    "description": "NixOS option path (e.g. .#nixosConfigurations.hyperd.config.services.nginx.enable)",
+                },
+            },
+            "required": ["option_path"],
+        },
+    },
 ]
 
 
@@ -1213,6 +1256,24 @@ def _call_tool(name: str, args: dict) -> str:
             "anti_pattern_scan": "Run: npx impeccable detect <target-path>",
             "http_api": f"POST {HYBRID_URL}/query with project=impeccable-design",
         })
+
+    if name == "simulate_nix_change":
+        derivation = args.get("derivation", ".#nixosConfigurations.hyperd.config.system.build.toplevel")
+        extra = [str(a) for a in (args.get("extra_args") or [])]
+        argv = ["nix", "build", derivation, "--dry-run"] + extra
+        r = _run_local(argv, cwd=REPO_ROOT)
+        r["derivation"] = derivation
+        r["note"] = "dry-run only — no build output produced"
+        return _format_result(r)
+
+    if name == "validate_service_config":
+        option_path = args.get("option_path", "")
+        if not option_path:
+            return _format_result({"error": "option_path is required"})
+        argv = ["nix", "eval", option_path]
+        r = _run_local(argv, cwd=REPO_ROOT)
+        r["option_path"] = option_path
+        return _format_result(r)
 
     return _format_result({"error": f"unknown tool: {name}"})
 
