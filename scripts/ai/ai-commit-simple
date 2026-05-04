@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# ai-commit-simple — Simple AI-assisted commit with basic review
+#
+# Usage:
+#   ai-commit-simple [--message <msg>] [--dry-run]
+#
+# This tool gets a quick AI review and commit message suggestion.
+# It uses the AI coordinator API for fast, local processing.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Default configuration
+CUSTOM_MESSAGE=""
+DRY_RUN=0
+AUTO_APPROVE=0
+API_BASE="http://127.0.0.1:8003"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --message)
+      CUSTOM_MESSAGE="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --auto-approve|-y)
+      AUTO_APPROVE=1
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+cd "$REPO_ROOT"
+
+# Check if there are any changes to commit
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "✓ Found uncommitted changes"
+else
+  echo "✗ No changes to commit"
+  exit 1
+fi
+
+# Get the diff
+DIFF_OUTPUT=$(git diff HEAD)
+DIFF_STAT=$(git diff --stat HEAD)
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Changes to commit:"
+echo "$DIFF_STAT"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# If custom message provided, use it directly
+if [[ -n "$CUSTOM_MESSAGE" ]]; then
+  COMMIT_MSG="$CUSTOM_MESSAGE"
+  echo ""
+  echo "Using custom commit message: $COMMIT_MSG"
+  
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo ""
+    echo "[DRY RUN] Would commit with message: $COMMIT_MSG"
+    exit 0
+  fi
+  
+  if [[ "$AUTO_APPROVE" -eq 0 ]]; then
+    read -p "Proceed with commit? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "Commit cancelled"
+      exit 0
+    fi
+  fi
+  
+  git add -A
+  git commit -m "$COMMIT_MSG"
+  echo ""
+  echo "✓ Changes committed successfully"
+  echo "Commit hash: $(git rev-parse --short HEAD)"
+  exit 0
+fi
+
+# Otherwise, get AI suggestion
+echo ""
+echo "Getting AI-generated commit message..."
+echo ""
+
+# Simple prompt for commit message generation
+PROMPT="Generate a concise git commit message (max 72 chars) for these changes. Respond with ONLY the commit message text, nothing else:
+
+${DIFF_STAT}
+
+Key changes:
+$(echo "$DIFF_OUTPUT" | grep -E '^\+|^-' | head -10)
+"
+
+# Query the AI coordinator
+RESPONSE=$(curl -s -X POST \
+  "${API_BASE}/query" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n \
+    --arg query "$PROMPT" \
+    --arg agent "hybrid" \
+    '{query: $query, agent: $agent, max_tokens: 100, temperature: 0.3}')")
+
+# Extract suggested commit message
+SUGGESTED_MSG=$(echo "$RESPONSE" | jq -r '.answer // ""' | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+if [[ -z "$SUGGESTED_MSG" ]]; then
+  echo "⚠ Could not get AI suggestion, using generic message"
+  SUGGESTED_MSG="Update configuration"
+fi
+
+echo "Suggested commit message:"
+echo "  $SUGGESTED_MSG"
+echo ""
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[DRY RUN] Would commit with message: $SUGGESTED_MSG"
+  exit 0
+fi
+
+# Ask for confirmation
+if [[ "$AUTO_APPROVE" -eq 0 ]]; then
+  read -p "Use this message? [Y/n] " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Nn]$ ]]; then
+    read -p "Enter custom message: " CUSTOM_MSG_INPUT
+    if [[ -n "$CUSTOM_MSG_INPUT" ]]; then
+      SUGGESTED_MSG="$CUSTOM_MSG_INPUT"
+    else
+      echo "Commit cancelled"
+      exit 0
+    fi
+  fi
+fi
+
+# Commit with the message
+git add -A
+git commit -m "$SUGGESTED_MSG"
+
+echo ""
+echo "✓ Changes committed successfully"
+echo ""
+echo "Commit hash: $(git rev-parse --short HEAD)"
+echo ""
+
+# Show the commit
+git show --stat HEAD
+
+exit 0

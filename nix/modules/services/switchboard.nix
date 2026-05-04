@@ -188,7 +188,7 @@ let
       injectHints = true;
       modelAlias = null;
       advertisedContextWindow = ai.llamaCpp.ctxSize;
-      maxInputTokens = 3500;
+      maxInputTokens = 8000;
       maxMessages = 16;
       maxOutputTokens = 1024;
       embeddingsOnly = false;
