@@ -1157,6 +1157,19 @@ async def _execute_query_search(
             }
 
     cache_enabled = bool(data.get("enable_cache", True))
+    # Caller can pass max_tokens (int) or heavy=true to override the per-type budget
+    # and force switchboard routing for the full 900s inference window.
+    _max_tokens_raw = data.get("max_tokens") or data.get("max_tokens_override")
+    _heavy = bool(data.get("heavy", False))
+    _max_tokens_override: Optional[int] = None
+    if _heavy:
+        _max_tokens_override = int(os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_HEAVY", "3000"))
+    elif _max_tokens_raw is not None:
+        try:
+            _max_tokens_override = max(1, int(_max_tokens_raw))
+        except (TypeError, ValueError):
+            pass
+
     _route_kwargs: Dict[str, Any] = dict(
         query=query,
         mode=data.get("mode", "auto"),
@@ -1166,6 +1179,7 @@ async def _execute_query_search(
         keyword_limit=int(data.get("keyword_limit", 5)),
         score_threshold=float(data.get("score_threshold", 0.7)),
         generate_response=generate_response,
+        max_tokens_override=_max_tokens_override,
     )
 
     # Phase 8.10 — Parallel retrieval + cache check.
