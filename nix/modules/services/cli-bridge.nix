@@ -18,19 +18,11 @@ let
   cfg = config.mySystem;
   ai = cfg.aiStack;
   bridge = ai.cliBridge;
-  mcp = cfg.mcpServers;
   primaryUser = cfg.primaryUser;
 
-  repoSource =
-    if mcp.flakeRepoPath != null
-    then mcp.flakeRepoPath
-    else builtins.path {
-      path = mcp.repoPath;
-      name = "nixos-quick-deploy-repo";
-    };
-
   bridgePython = pkgs.python3.withPackages (ps: with ps; [ fastapi uvicorn ]);
-  bridgeScript = "${toString repoSource}/ai-stack/cli-bridge/claude_bridge.py";
+  bridgeScript = pkgs.writeText "ai-cli-bridge.py"
+    (builtins.readFile ../../../ai-stack/cli-bridge/claude_bridge.py);
 in
 {
   config = lib.mkIf (cfg.roles.aiStack.enable && bridge.enable) {
