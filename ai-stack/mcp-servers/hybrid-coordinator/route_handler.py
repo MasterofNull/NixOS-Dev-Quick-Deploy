@@ -148,9 +148,42 @@ _llama_cpp_client_ref: Optional[Callable] = None
 _llama_cpp_reasoning_client_ref: Optional[Callable] = None
 _switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
+_aidb_client_ref: Optional[Callable] = None
 _queue_depth_ref: Optional[Callable] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
+
+_DISTILL_MIN_WORDS = int(os.getenv("AI_DISTILL_MIN_WORDS", "50"))
+_DISTILL_PROJECT = os.getenv("AI_DISTILL_PROJECT", "session-knowledge")
+# Tokens above which we force switchboard routing (900s timeout) for heavy synthesis.
+_HEAVY_SYNTHESIS_TOKENS_THRESHOLD = int(os.getenv("AI_HEAVY_SYNTHESIS_TOKENS_THRESHOLD", "800"))
+
+
+async def _distill_and_store(query: str, response: str, interaction_id: str) -> None:
+    """Fire-and-forget: archive synthesis output to AIDB so future queries retrieve it."""
+    if not Config.AIDB_URL:
+        return
+    words = str(response or "").split()
+    if len(words) < _DISTILL_MIN_WORDS:
+        return
+    aidb = _aidb_client_ref() if _aidb_client_ref else None
+    if not aidb:
+        return
+    title = (query[:80] + "…") if len(query) > 80 else query
+    path = f"sessions/{interaction_id[:8]}/{_hash_query_for_cache(query)[:8]}.md"
+    payload = {
+        "content": f"Query: {query}\n\nSynthesis:\n{response}",
+        "project": _DISTILL_PROJECT,
+        "title": title,
+        "relative_path": path,
+    }
+    try:
+        resp = await aidb.post("/documents", json=payload)
+        if resp.status_code not in (200, 201):
+            logger.debug("distill_store status=%d path=%s", resp.status_code, path)
+    except Exception as exc:
+        logger.debug("distill_store_failed: %s", exc)
+
 
 # Batch 2.2: Route Search Optimization - Collection Latency Profiling
 @dataclass
@@ -958,6 +991,7 @@ def init(
     llama_cpp_reasoning_client_ref: Optional[Callable] = None,
     switchboard_client_ref: Callable,
     postgres_client_ref: Callable,
+    aidb_client_ref: Optional[Callable] = None,
     queue_depth_ref: Optional[Callable] = None,
     collections: Dict[str, Any],
 ) -> None:
@@ -965,8 +999,8 @@ def init(
     global _hybrid_search, _tree_search, _select_backend
     global _record_query_gap, _record_telemetry, _summarize
     global _context_compressor_ref, _llama_cpp_client_ref, _llama_cpp_reasoning_client_ref
-    global _switchboard_client_ref, _postgres_client_ref, _queue_depth_ref, _COLLECTIONS
-    global _query_expander
+    global _switchboard_client_ref, _postgres_client_ref, _aidb_client_ref
+    global _queue_depth_ref, _COLLECTIONS, _query_expander
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
     _select_backend = select_backend_fn
@@ -978,6 +1012,7 @@ def init(
     _llama_cpp_reasoning_client_ref = llama_cpp_reasoning_client_ref
     _switchboard_client_ref = switchboard_client_ref
     _postgres_client_ref = postgres_client_ref
+    _aidb_client_ref = aidb_client_ref
     _queue_depth_ref = queue_depth_ref
     _COLLECTIONS = collections
     _query_expander = QueryExpander(Config.LLAMA_CPP_URL)
@@ -992,6 +1027,7 @@ async def route_search(
     keyword_limit: int = 5,
     score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
     generate_response: bool = False,
+    max_tokens_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Route query to SQL, semantic, keyword, tree, or hybrid search."""
     query = sanitize_query(query)
@@ -1061,6 +1097,14 @@ async def route_search(
     task_complexity_summary = None
     local_inference_lane = None
     local_inference_lane_reason = None
+    # Caller-supplied budget override (e.g. heavy=True from /query). When set and above
+    # the direct-llama threshold, we force switchboard routing for the 900s outer timeout.
+    _override_tokens: Optional[int] = (
+        max(1, int(max_tokens_override)) if max_tokens_override is not None else None
+    )
+    _force_switchboard = (
+        _override_tokens is not None and _override_tokens > _HEAVY_SYNTHESIS_TOKENS_THRESHOLD
+    )
     _cap_disc: Dict[str, Any] = {
         "decision": "skipped", "reason": "not-evaluated", "cache_hit": False,
         "intent_tags": [], "tools": [], "skills": [], "servers": [], "datasets": [],
@@ -1380,6 +1424,31 @@ async def route_search(
                                 burst_decision["recommended_profile"],
                             )
                         else:
+                            _budget = _override_tokens or _local_response_budget(_complexity.task_type)
+                            _swb = _switchboard_client_ref() if _switchboard_client_ref else None
+                            if _force_switchboard and _swb and Config.SWITCHBOARD_URL:
+                                _inference_client = _swb
+                                _inference_path = "/v1/chat/completions"
+                                _inference_headers = {"X-AI-Profile": "embedded-assist", "X-AI-Route": "local"}
+                                local_inference_lane_reason = "heavy_synthesis_switchboard"
+                            else:
+                                _inference_client = (
+                                    llama_cpp_reasoning_client
+                                    if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
+                                    else llama_cpp_client
+                                )
+                                _inference_path = "/chat/completions"
+                                _inference_headers = {}
+                            response_max_tokens = _budget
+                    else:
+                        _budget = _override_tokens or _local_response_budget(_complexity.task_type)
+                        _swb = _switchboard_client_ref() if _switchboard_client_ref else None
+                        if _force_switchboard and _swb and Config.SWITCHBOARD_URL:
+                            _inference_client = _swb
+                            _inference_path = "/v1/chat/completions"
+                            _inference_headers = {"X-AI-Profile": "embedded-assist", "X-AI-Route": "local"}
+                            local_inference_lane_reason = "heavy_synthesis_switchboard"
+                        else:
                             _inference_client = (
                                 llama_cpp_reasoning_client
                                 if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
@@ -1387,16 +1456,7 @@ async def route_search(
                             )
                             _inference_path = "/chat/completions"
                             _inference_headers = {}
-                            response_max_tokens = _local_response_budget(_complexity.task_type)
-                    else:
-                        _inference_client = (
-                            llama_cpp_reasoning_client
-                            if local_inference_lane == "reasoning" and llama_cpp_reasoning_client is not None
-                            else llama_cpp_client
-                        )
-                        _inference_path = "/chat/completions"
-                        _inference_headers = {}
-                        response_max_tokens = _local_response_budget(_complexity.task_type)
+                        response_max_tokens = _budget
                     if _should_skip_local_brief_synthesis(query, _complexity, retrieval_summary_text):
                         response_text = retrieval_summary_text
                         selected_backend = "local"
@@ -1427,8 +1487,10 @@ async def route_search(
                     _inference_path = "/chat/completions"
                     _inference_headers = {}
                 local_inference_lane = "default"
-                local_inference_lane_reason = "default_local_lane"
-                response_max_tokens = _local_response_budget("synthesize")
+                local_inference_lane_reason = (
+                    "heavy_synthesis_switchboard" if _force_switchboard else "default_local_lane"
+                )
+                response_max_tokens = _override_tokens or _local_response_budget("synthesize")
             if not _skip_synthesis:
                 prompt_context = _prompt_context_for_lane_reason(
                     compressed_context,
@@ -1508,6 +1570,16 @@ async def route_search(
                     LLM_BACKEND_LATENCY.labels(backend=selected_backend).observe(
                         max(0.0, time.perf_counter() - _llm_start)
                     )
+                    # Distill and archive to AIDB so future queries retrieve learned knowledge
+                    # rather than re-generating. Fire-and-forget — never blocks the response.
+                    if (
+                        generate_response
+                        and str(response_text or "").strip()
+                        and not results.get("synthesis_fallback")
+                    ):
+                        asyncio.create_task(
+                            _distill_and_store(query, response_text, interaction_id)
+                        )
                 except Exception as exc:  # noqa: BLE001
                     response = getattr(exc, "response", None)
                     status_code = getattr(response, "status_code", None)

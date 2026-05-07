@@ -820,6 +820,7 @@ async def initialize_server():
         llama_cpp_reasoning_client_ref=lambda: llama_cpp_reasoning_client,
         switchboard_client_ref=lambda: switchboard_client,
         postgres_client_ref=lambda: postgres_client,
+        aidb_client_ref=lambda: aidb_client,
         queue_depth_ref=lambda: model_loader._model_loading_queue_depth,
         collections=COLLECTIONS,
     )

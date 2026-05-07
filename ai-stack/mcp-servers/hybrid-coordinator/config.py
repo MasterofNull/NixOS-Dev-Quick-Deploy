@@ -309,19 +309,23 @@ class Config:
         os.getenv("AI_ROUTE_CLASSIFIER_CONTEXT_CHARS", "1200")
     )
     # Qwen3.6-35B is a thinking model: <think>…</think> tokens count against max_tokens.
-    # Empirical: a trivial "2+2" query consumes ~115 tokens (thinking + answer).
-    # All budgets below must leave headroom above the thinking overhead floor.
+    # Empirical floor: ~115 tokens consumed by thinking on the most trivial query.
+    # The memory/distillation system (AIDB session-knowledge) handles continuity, so
+    # we spend tokens aggressively and let the knowledge base compact knowledge.
+    # Ceiling = 2000: ~540s at 3.7 t/s — safe within the 900s switchboard window.
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS", "1200")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS", "2000")
     )
+    # Lookup/format tasks still need real budget; thinking overhead makes 400 too tight.
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP", "400")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP", "800")
     )
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT", "400")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT", "800")
     )
+    # Reasoning tasks need room for multi-step thinking chains.
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING", "700")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING", "1500")
     )
     AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS = int(
         os.getenv("AI_ROUTE_LOCAL_REASONING_LANE_MIN_TOKENS", "360")
@@ -335,10 +339,15 @@ class Config:
     AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS = int(
         os.getenv("AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS", "480")
     )
-    # Thinking model: 350 budget was previously capped to 240 by the master ceiling.
-    # Ceiling now 1200; 600 gives headroom for ~150 thinking + ~450 answer tokens.
+    # Thinking model: synthesize = full interactive window.
+    # Ceiling 2000: ~540s at 3.7 t/s, safe within 900s switchboard timeout.
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE", "600")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE", "2000")
+    )
+    # Heavy/background tasks routed through switchboard for the full 900s window.
+    # ~2700 tokens × 3.7 t/s ≈ 730s — comfortably under the 900s hard limit.
+    AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_HEAVY = int(
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_HEAVY", "2700")
     )
     AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS = int(
         os.getenv("AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS", "800")
