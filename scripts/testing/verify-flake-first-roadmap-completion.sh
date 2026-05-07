@@ -605,7 +605,7 @@ check_absent_pattern "nix/pkgs/continue-cli.nix" 'npmDepsHash = null' 'Continue 
 check_pattern "nix/home/base.nix" '"__configVersion": "29\.0"' 'Continue config version tracks the current generated schema'
 check_pattern "nix/home/base.nix" 'continueContextLength' 'Continue config derives its context window from the declarative local model profile instead of a stale literal'
 check_pattern "nix/home/base.nix" '"name": "aq-hints"' 'Continue config restores the aq-hints HTTP context provider'
-check_pattern "scripts/ai/aq-qa" '0\.5\.2.*switchboard ingress with continue-local lane' 'aq-qa phase 0 documents switchboard ingress as the Continue config target'
+check_pattern "scripts/ai/aq-qa" '0\.5\.2.*switchboard ingress with local harness chat lane and continue-local tab lane' 'aq-qa phase 0 documents switchboard ingress as the Continue config target'
 check_pattern "scripts/ai/aq-qa" 'apiBase"\) == "http://127\.0\.0\.1:8085/v1"' 'aq-qa validates Continue chat and autocomplete against switchboard ingress'
 check_pattern "scripts/ai/aq-qa" 'expected_context|expected_chat_max_tokens|/health' 'aq-qa derives Continue context and token expectations from switchboard profile health'
 check_pattern "scripts/ai/aq-qa" '0\.5\.5' 'aq-qa includes a continue-local oversized-input trimming check'

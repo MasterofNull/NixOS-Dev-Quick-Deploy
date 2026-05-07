@@ -11571,6 +11571,18 @@
                             <span class="data-meta">${escapeHtml(`task=${top.task_type || '--'} | alias=${top.route_alias || '--'} | profile=${top.routed_profile || '--'} | local=${top.routed_local === null || top.routed_local === undefined ? '--' : top.routed_local} | why=${top.rationale || '--'}`)}</span>
                         </div>
                     `);
+                    rows.push(`
+                        <div class="data-item">
+                            <span>recent_decision_feed</span>
+                            <span class="data-meta">${escapeHtml(recentDecisions.slice(-3).reverse().map((row) => `${row.timestamp || '--'} ${row.route_alias || '--'}→${row.routed_profile || '--'} [${row.category || 'ok'}]`).join(' | '))}</span>
+                        </div>
+                    `);
+                    rows.push(`
+                        <div class="data-item">
+                            <span>recent_decision_api</span>
+                            <span class="data-meta">${escapeHtml('/api/aistack/routing/decisions?limit=25')}</span>
+                        </div>
+                    `);
                 }
                 if (notes.length) {
                     rows.push(...notes.slice(0, 3).map((note) => `
