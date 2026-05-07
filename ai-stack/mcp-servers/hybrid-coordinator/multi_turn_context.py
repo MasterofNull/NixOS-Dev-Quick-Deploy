@@ -7,6 +7,7 @@ Enables recursive language model (RLM) patterns with session tracking
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
@@ -178,6 +179,13 @@ class MultiTurnContextManager:
         session.queries.append(query)
         session.turn_count += 1
         session.last_accessed = start_time.isoformat()
+
+        # Compact context_sent list: if it grows too large, old IDs block all new context.
+        # Keep only the most recent half so fresh relevant results can always flow through.
+        _max_sent = int(os.getenv("AI_MULTITURN_MAX_CONTEXT_SENT", "80"))
+        if len(session.context_sent) > _max_sent:
+            session.context_sent = session.context_sent[-((_max_sent) // 2):]
+            logger.info("multiturn_context_sent_trimmed session=%s new_len=%d", session_id, len(session.context_sent))
 
         # Get context level config
         level_config = self.context_levels.get(context_level, self.context_levels["standard"])
