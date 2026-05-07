@@ -1411,7 +1411,8 @@ async def route_search(
                     _complexity.local_suitable,
                     _complexity.reason,
                 )
-                if _complexity.remote_required:
+                _use_remote = bool(_complexity.remote_required and Config.SWITCHBOARD_REMOTE_URL)
+                if _use_remote:
                     _swb = _switchboard_client_ref() if _switchboard_client_ref else None
                     if _swb and Config.SWITCHBOARD_URL:
                         _inference_client = _swb
@@ -1430,6 +1431,12 @@ async def route_search(
                         results["task_complexity"] = task_complexity_summary
                         _skip_synthesis = True
                 else:
+                    if _complexity.remote_required:
+                        # remote_required but no SWITCHBOARD_REMOTE_URL — degrade to local
+                        logger.info(
+                            "task_complexity_remote_no_remote type=%s → local_fallback",
+                            _complexity.task_type,
+                        )
                     burst_decision = await _remote_burst_decision(
                         query,
                         prefer_local=prefer_local,
@@ -1553,8 +1560,10 @@ async def route_search(
                 remote_burst = results.get("remote_burst") if isinstance(results, dict) else None
                 if isinstance(remote_burst, dict) and remote_burst.get("reason_class"):
                     backend_reason_class = str(remote_burst["reason_class"])
-                elif _complexity and _complexity.remote_required:
+                elif _complexity and _complexity.remote_required and _use_remote:
                     backend_reason_class = "complexity_remote_required"
+                elif _complexity and _complexity.remote_required:
+                    backend_reason_class = "complexity_remote_no_remote_fallback"
                 elif _complexity:
                     backend_reason_class = "complexity_local_suitable"
                 else:

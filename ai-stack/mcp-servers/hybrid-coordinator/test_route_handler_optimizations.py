@@ -1069,12 +1069,14 @@ class TestGeneratedResponsePaths:
         original_compression = getattr(Config, "AI_CONTEXT_COMPRESSION_ENABLED", False)
         original_classification = getattr(Config, "AI_TASK_CLASSIFICATION_ENABLED", False)
         original_switchboard_url = getattr(Config, "SWITCHBOARD_URL", "http://switchboard")
+        original_remote_url = getattr(Config, "SWITCHBOARD_REMOTE_URL", "")
         Config.build_local_system_prompt = staticmethod(lambda: "Local system prompt")
         Config.AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS = 320
         Config.LLAMA_CPP_INFERENCE_TIMEOUT = 5.0
         Config.AI_CONTEXT_COMPRESSION_ENABLED = False
         Config.AI_TASK_CLASSIFICATION_ENABLED = True
         Config.SWITCHBOARD_URL = "http://switchboard"
+        Config.SWITCHBOARD_REMOTE_URL = "https://remote.example/v1"
 
         class Remote4xxError(Exception):
             def __init__(self):
@@ -1161,6 +1163,7 @@ class TestGeneratedResponsePaths:
         Config.AI_CONTEXT_COMPRESSION_ENABLED = original_compression
         Config.AI_TASK_CLASSIFICATION_ENABLED = original_classification
         Config.SWITCHBOARD_URL = original_switchboard_url
+        Config.SWITCHBOARD_REMOTE_URL = original_remote_url
 
         assert result["backend"] == "local"
         assert result["backend_reason_class"] == "remote_4xx_local_fallback"
