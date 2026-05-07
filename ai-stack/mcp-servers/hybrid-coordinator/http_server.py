@@ -1742,12 +1742,20 @@ async def run_http_mode(port: int) -> None:
         context["route_alias"] = raw_route
 
         options = data.get("options") if isinstance(data.get("options"), dict) else {}
+
+        # Agent routes should synthesize by default; retrieval-only routes do not.
+        _agent_routes = {"local-agent", "LocalAgent", "Agent", "embedded-assist", "EmbeddedAssist"}
+        _default_generate = raw_route in _agent_routes or resolved_profile in {
+            "local-agent", "embedded-assist",
+        }
         forwarded_payload = {
             "prompt": prompt,
             "context": context,
-            "generate_response": bool(options.get("generate_response", False)),
+            "generate_response": bool(options.get("generate_response", _default_generate)),
             "prefer_local": bool(options.get("prefer_local", True)),
             "mode": options.get("mode", "hybrid"),
+            # Propagate LLM timeout hint from caller — defaults to 180s for local synthesis.
+            "llm_timeout_s": options.get("llm_timeout_s", data.get("llm_timeout_s", 180)),
         }
         if "limit" in options:
             forwarded_payload["limit"] = options["limit"]

@@ -1166,6 +1166,11 @@ in {
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
                 # Phase 8.1 — hard cap on LLM generation within /query to bound route_search P95
                 "AI_QUERY_LLM_TIMEOUT_S=${toString ai.aiHarness.runtime.queryLlmTimeoutSeconds}"
+                # Local synthesis token budgets — 48 was too small for any useful answer on
+                # edge hardware (3-4 t/s). 350 gives ~95s generation at 3.7 t/s, within the
+                # 300s LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS budget.
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=350"
+                "AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=800"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"
