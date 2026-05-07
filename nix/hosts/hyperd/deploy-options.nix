@@ -9,7 +9,7 @@
       remoteModelAliases.reasoning = lib.mkForce "anthropic/claude-sonnet-4-5";
       remoteModelAliases.toolCalling = lib.mkForce "openai/o4-mini";
       remoteModelAliases.free = lib.mkDefault "meta-llama/llama-3.3-70b-instruct:free";
-      remoteModelAliases.gemini = lib.mkDefault "google/gemini-2.0-flash-exp:free";
+      remoteModelAliases.gemini = lib.mkDefault "google/gemini-2.5-flash-lite";
       remoteBudget.dailyTokenCap = lib.mkDefault 0;
       remoteBudget.fallbackToLocal = lib.mkDefault true;
     };
