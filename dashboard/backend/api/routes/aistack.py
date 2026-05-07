@@ -3368,12 +3368,36 @@ async def get_task_classification_stats() -> Dict[str, Any]:
                 meta = entry.get("metadata") or {}
                 task_type = meta.get("task_type") or meta.get("classifier_task_type")
                 routed_local = meta.get("routed_local") or meta.get("local_suitable")
+                route_alias = meta.get("route_alias")
+                routed_profile = meta.get("routed_profile") or meta.get("recommended_profile")
+                routing_decision = meta.get("routing_decision") or {}
+                rationale = (
+                    meta.get("rationale")
+                    or (routing_decision.get("rationale") if isinstance(routing_decision, dict) else None)
+                )
                 if task_type:
                     by_task_type[task_type] = by_task_type.get(task_type, 0) + 1
                 if routed_local is True:
                     local_count += 1
                 elif routed_local is False:
                     remote_count += 1
+                if (
+                    task_type
+                    or route_alias
+                    or routed_profile
+                    or isinstance(routed_local, bool)
+                    or rationale
+                ):
+                    recent_decisions.append(
+                        {
+                            "timestamp": entry.get("timestamp"),
+                            "task_type": task_type,
+                            "route_alias": route_alias,
+                            "routed_profile": routed_profile,
+                            "routed_local": routed_local if isinstance(routed_local, bool) else None,
+                            "rationale": rationale,
+                        }
+                    )
         except OSError:
             pass
 
@@ -3385,9 +3409,95 @@ async def get_task_classification_stats() -> Dict[str, Any]:
         "local_pct": round(100 * local_count / total, 1) if total else None,
         "remote_pct": round(100 * remote_count / total, 1) if total else None,
         "by_task_type": by_task_type,
+        "recent_decisions": recent_decisions[-8:],
         "audit_log": str(audit_log),
         "audit_log_exists": audit_log.exists(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/routing/summary")
+async def get_routing_summary() -> Dict[str, Any]:
+    """Operator-facing live routing summary across alias policy, switchboard, and audit signals."""
+    switchboard_health = await fetch_with_fallback(f"{SERVICES['switchboard']}/health", {})
+    task_stats = await get_task_classification_stats()
+    repo_root = Path(__file__).resolve().parents[5]
+    route_aliases_path = repo_root / "config" / "route-aliases.json"
+
+    route_aliases_payload: Dict[str, Any] = {}
+    try:
+        route_aliases_payload = json.loads(route_aliases_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        route_aliases_payload = {}
+
+    raw_profiles = switchboard_health.get("profiles") if isinstance(switchboard_health, dict) else {}
+    profile_names = sorted(raw_profiles.keys()) if isinstance(raw_profiles, dict) else []
+    local_profiles = [name for name in profile_names if name.startswith("local") or name in {"default", "continue-local", "embedded-assist"}]
+    remote_profiles = [name for name in profile_names if name.startswith("remote")]
+    local_runtime = switchboard_health.get("local_runtime") if isinstance(switchboard_health, dict) else {}
+    active_request = local_runtime.get("active_request") if isinstance(local_runtime, dict) else {}
+    if not isinstance(active_request, dict):
+        active_request = {}
+
+    recent_decisions = list(task_stats.get("recent_decisions") or [])
+    if not recent_decisions:
+        recent_decisions = [
+            {
+                "timestamp": None,
+                "task_type": None,
+                "route_alias": None,
+                "routed_profile": None,
+                "routed_local": None,
+                "rationale": "No recent classified routing decisions recorded in tool audit.",
+            }
+        ]
+
+    remote_configured = bool(switchboard_health.get("remote_configured", False)) if isinstance(switchboard_health, dict) else False
+    local_lane_status = (
+        _resolve_switchboard_local_lane_status(switchboard_health, local_runtime)
+        if isinstance(switchboard_health, dict)
+        else "unknown"
+    )
+    operator_notes: List[str] = []
+    if not remote_configured:
+        operator_notes.append("Remote routing is not configured; explicit remote aliases will fall back or remain unavailable.")
+    if local_lane_status == "busy":
+        operator_notes.append("Local lane is currently busy; interactive local requests may queue behind the active slot.")
+    if task_stats.get("local_pct") is not None:
+        operator_notes.append(f"Recent classified routing skew: local={task_stats.get('local_pct')}% remote={task_stats.get('remote_pct')}%.")
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "frontdoor": {
+            "source": str(route_aliases_path),
+            "aliases": route_aliases_payload.get("aliases") or {},
+        },
+        "switchboard": {
+            "status": switchboard_health.get("status", "unknown") if isinstance(switchboard_health, dict) else "unknown",
+            "routing_mode": switchboard_health.get("routing_mode", "unknown") if isinstance(switchboard_health, dict) else "unknown",
+            "default_provider": switchboard_health.get("default_provider", "unknown") if isinstance(switchboard_health, dict) else "unknown",
+            "remote_configured": remote_configured,
+            "local_lane_status": local_lane_status,
+            "local_profiles": local_profiles,
+            "remote_profiles": remote_profiles,
+            "active_request": {
+                "profile": active_request.get("profile"),
+                "path": active_request.get("path"),
+                "duration_s": active_request.get("duration_s"),
+                "message_count": active_request.get("message_count"),
+                "estimated_input_tokens": active_request.get("estimated_input_tokens"),
+                "latest_user_excerpt": active_request.get("latest_user_excerpt"),
+            },
+            "remote_budget": switchboard_health.get("remote_budget") if isinstance(switchboard_health, dict) else {},
+        },
+        "classification": {
+            "total_classified": task_stats.get("total_classified"),
+            "local_pct": task_stats.get("local_pct"),
+            "remote_pct": task_stats.get("remote_pct"),
+            "by_task_type": task_stats.get("by_task_type") or {},
+        },
+        "recent_decisions": recent_decisions,
+        "notes": operator_notes,
     }
 
 
