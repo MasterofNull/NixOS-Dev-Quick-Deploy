@@ -2,7 +2,7 @@
 {
   config = lib.mkIf (config.mySystem.profile == "ai-dev") {
     mySystem.aiStack.switchboard = {
-      remoteUrl = lib.mkForce "https://openrouter.ai/api/v1";
+      remoteUrl = lib.mkForce "https://openrouter.ai/api";
       # Delegation priority: Claude (paid) → o4-mini/Codex (paid) → free fallbacks.
       # The API key is in SOPS: remote_llm_api_key → /run/secrets/remote_llm_api_key
       remoteModelAliases.coding = lib.mkForce "anthropic/claude-sonnet-4-5";
