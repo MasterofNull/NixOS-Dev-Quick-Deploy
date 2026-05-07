@@ -43,6 +43,10 @@ Budget note:
 - they are not the universal reply limit for user-facing editor prompts
 - internal agent-noise control should stay in workflow/session policy
 
+Front-door note:
+- `/v1/orchestrate` alias routing is sourced from `config/route-aliases.json`
+- `AI_LOCAL_FRONTDOOR_*` env vars are compatibility overrides for `local-orchestrator`, not the canonical coordinator contract
+
 ## Required Next Steps
 
 1. Keep all declarative agent surfaces green under real build validation, not parse-only checks.

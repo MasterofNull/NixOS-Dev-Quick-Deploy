@@ -92,6 +92,31 @@ Current intent:
 - workflow/session limits remain the authoritative control for internal
   delegation noise, reviewer loops, and context explosion prevention.
 
+## Front-Door Alias Contract
+
+Canonical source:
+- `config/route-aliases.json`
+
+Meaning:
+- `/v1/orchestrate` should resolve aliases from the repo config, not from
+  wrapper-specific environment defaults
+- `AI_LOCAL_FRONTDOOR_*` remains a compatibility layer for
+  `scripts/ai/local-orchestrator`
+
+Current local-first defaults:
+- `Explore` -> `default`
+- `Plan` -> `default`
+- `Implementation` -> `local-tool-calling`
+- `Reasoning` -> `local-tool-calling`
+- `ToolCalling` -> `local-tool-calling`
+- `Continuation` -> `default`
+
+Current explicit remote aliases:
+- `RemoteCoding` -> `remote-coding`
+- `RemoteReasoning` -> `remote-reasoning`
+- `RemoteFree` -> `remote-free`
+- `RemoteGemini` -> `remote-gemini`
+
 ## VSCodium Surfaces
 
 Declarative source of truth:

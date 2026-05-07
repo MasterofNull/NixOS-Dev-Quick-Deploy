@@ -34,13 +34,13 @@ class TestOrchestrateCoreLogic:
         resolver = RouteAliasResolver()
         assert resolver.resolve_alias("Plan") == "default"
 
-    def test_implementation_resolves_to_remote_coding(self):
+    def test_implementation_resolves_to_local_tool_calling(self):
         resolver = RouteAliasResolver()
-        assert resolver.resolve_alias("Implementation") == "remote-coding"
+        assert resolver.resolve_alias("Implementation") == "local-tool-calling"
 
-    def test_reasoning_resolves_to_remote_reasoning(self):
+    def test_reasoning_resolves_to_local_tool_calling(self):
         resolver = RouteAliasResolver()
-        assert resolver.resolve_alias("Reasoning") == "remote-reasoning"
+        assert resolver.resolve_alias("Reasoning") == "local-tool-calling"
 
     def test_toolcalling_resolves_to_local_tool_calling(self):
         resolver = RouteAliasResolver()
@@ -56,7 +56,7 @@ class TestOrchestrateCoreLogic:
 
     def test_convenience_function_works(self):
         assert resolve_route_alias("Explore") == "default"
-        assert resolve_route_alias("Implementation") == "remote-coding"
+        assert resolve_route_alias("Implementation") == "local-tool-calling"
 
 
 class TestOrchestratePayloadBuilding:
@@ -119,7 +119,7 @@ class TestOrchestratePayloadBuilding:
 
     def test_resolved_profile_returned(self):
         _, profile = self._build_forwarded_payload("q", "Implementation")
-        assert profile == "remote-coding"
+        assert profile == "local-tool-calling"
 
 
 class TestOrchestrateTelemetryHeaders:
@@ -139,4 +139,4 @@ class TestOrchestrateTelemetryHeaders:
 
     def test_profile_resolved_value_matches_alias_output(self):
         assert resolve_route_alias("Explore") == "default"
-        assert resolve_route_alias("Implementation") == "remote-coding"
+        assert resolve_route_alias("Implementation") == "local-tool-calling"

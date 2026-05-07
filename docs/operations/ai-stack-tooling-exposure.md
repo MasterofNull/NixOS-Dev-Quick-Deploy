@@ -185,10 +185,16 @@ The current compatibility alias map is:
 | `default` | `default` |
 | `Explore` | `default` |
 | `Plan` | `default` |
-| `Implementation` | `remote-coding` |
-| `Reasoning` | `remote-reasoning` |
+| `Implementation` | `local-tool-calling` |
+| `Reasoning` | `local-tool-calling` |
 | `ToolCalling` | `local-tool-calling` |
 | `Continuation` | `default` |
+
+Remote escalation remains explicit:
+- `RemoteCoding` -> `remote-coding`
+- `RemoteReasoning` -> `remote-reasoning`
+- `RemoteFree` -> `remote-free`
+- `RemoteGemini` -> `remote-gemini`
 
 ## Bounded Web Research Lane
 

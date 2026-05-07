@@ -47,6 +47,10 @@ def _harness_first_policy_path() -> Path:
     return _repo_root() / "config" / "harness-first-policy.json"
 
 
+def _route_aliases_path() -> Path:
+    return _repo_root() / "config" / "route-aliases.json"
+
+
 def _harness_runbook_path() -> Path:
     return _repo_root() / "docs" / "harness-first" / "HARNESS-FIRST-RUNBOOK.md"
 
@@ -281,6 +285,16 @@ def _load_harness_first_policy() -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _load_route_aliases_config() -> Dict[str, Any]:
+    aliases_path = _route_aliases_path()
+    try:
+        payload = json.loads(aliases_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed loading route aliases from %s: %s", aliases_path, exc)
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def _load_markdown_excerpt(path: Path, max_lines: int = 24) -> List[str]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -301,29 +315,36 @@ def _frontdoor_profile(name: str, fallback: str) -> str:
 
 
 def _build_frontdoor_routing_snapshot() -> Dict[str, Any]:
-    aliases = [
-        {"route": "default", "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "default")},
-        {"route": "Explore", "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "default")},
-        {"route": "Plan", "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "default")},
+    route_aliases = _load_route_aliases_config()
+    alias_map = route_aliases.get("aliases") if isinstance(route_aliases.get("aliases"), dict) else {}
+    aliases = [{"route": str(route), "profile": str(profile)} for route, profile in alias_map.items()]
+    env_overrides = [
+        {"name": "AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_DEFAULT_PROFILE", "default")},
+        {"name": "AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_EXPLORE_PROFILE", "default")},
+        {"name": "AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_PLAN_PROFILE", "default")},
         {
-            "route": "Implementation",
-            "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE", "remote-coding"),
+            "name": "AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE",
+            "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_IMPLEMENTATION_PROFILE", "local-tool-calling"),
         },
         {
-            "route": "Reasoning",
-            "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_REASONING_PROFILE", "remote-reasoning"),
+            "name": "AI_LOCAL_FRONTDOOR_REASONING_PROFILE",
+            "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_REASONING_PROFILE", "local-tool-calling"),
         },
         {
-            "route": "ToolCalling",
-            "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE", "local-tool-calling"),
+            "name": "AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE",
+            "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE", "local-tool-calling"),
         },
-        {"route": "Continuation", "profile": _frontdoor_profile("AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE", "default")},
+        {"name": "AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE", "value": _frontdoor_profile("AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE", "default")},
     ]
     return {
         "enabled": _bool_env("AI_LOCAL_FRONTDOOR_ROUTING_ENABLE", True),
         "runtime_editable": False,
         "redeploy_required": True,
-        "source": "AI_LOCAL_FRONTDOOR_* env vars (declarative service defaults)",
+        "source": str(_route_aliases_path()),
+        "compatibility_overrides": {
+            "source": "AI_LOCAL_FRONTDOOR_* env vars (local-orchestrator compatibility overrides)",
+            "fields": env_overrides,
+        },
         "aliases": aliases,
     }
 
@@ -370,6 +391,12 @@ async def _build_config_snapshot() -> Dict[str, Any]:
         {
             "label": "Workflow Blueprints",
             "path": str(_workflow_blueprints_path()),
+            "preview_lines": [],
+            "redeploy_required": True,
+        },
+        {
+            "label": "Front-Door Route Aliases",
+            "path": str(_route_aliases_path()),
             "preview_lines": [],
             "redeploy_required": True,
         },
@@ -426,8 +453,14 @@ async def _build_config_snapshot() -> Dict[str, Any]:
                     "redeploy_required": False,
                 },
                 {
+                    "surface": "config/route-aliases.json",
+                    "scope": "coordinator front-door route alias contract",
+                    "runtime_editable": False,
+                    "redeploy_required": True,
+                },
+                {
                     "surface": "AI_LOCAL_FRONTDOOR_*",
-                    "scope": "local harness first-layer route aliases",
+                    "scope": "local-orchestrator compatibility overrides",
                     "runtime_editable": False,
                     "redeploy_required": True,
                 },
@@ -450,6 +483,12 @@ async def _build_config_snapshot() -> Dict[str, Any]:
                     "scope": "primary human contact surface and agent bootstrap manifest",
                     "runtime_editable": False,
                     "redeploy_required": True,
+                },
+                {
+                    "surface": "config/route-aliases.json",
+                    "scope": "front-door alias routing for /v1/orchestrate",
+                    "runtime_editable": False,
+                    "redeploy_required": True,
                 }
             ],
             "known_gaps": [
@@ -457,6 +496,11 @@ async def _build_config_snapshot() -> Dict[str, Any]:
                     "surface": "/api/config",
                     "status": "misleading",
                     "detail": "Legacy dashboard config writes only dashboard-local runtime values, not hybrid harness or Nix settings.",
+                },
+                {
+                    "surface": "front-door routing visibility",
+                    "status": "corrected-source",
+                    "detail": "Dashboard now reports aliases from config/route-aliases.json; AI_LOCAL_FRONTDOOR_* remains a local-orchestrator compatibility overlay.",
                 },
                 {
                     "surface": "/api/actions",

@@ -46,10 +46,12 @@ class TestRouteAliasResolver:
         assert resolver.resolve_alias("default") == "default"
         assert resolver.resolve_alias("Explore") == "default"
         assert resolver.resolve_alias("Plan") == "default"
-        assert resolver.resolve_alias("Implementation") == "remote-coding"
-        assert resolver.resolve_alias("Reasoning") == "remote-reasoning"
+        assert resolver.resolve_alias("Implementation") == "local-tool-calling"
+        assert resolver.resolve_alias("Reasoning") == "local-tool-calling"
         assert resolver.resolve_alias("ToolCalling") == "local-tool-calling"
         assert resolver.resolve_alias("Continuation") == "default"
+        assert resolver.resolve_alias("RemoteCoding") == "remote-coding"
+        assert resolver.resolve_alias("RemoteReasoning") == "remote-reasoning"
 
     def test_case_insensitive_resolution(self):
         """Test that alias resolution is case-insensitive."""
@@ -60,8 +62,8 @@ class TestRouteAliasResolver:
         assert resolver.resolve_alias("EXPLORE") == "default"
         assert resolver.resolve_alias("ExPlOrE") == "default"
 
-        assert resolver.resolve_alias("implementation") == "remote-coding"
-        assert resolver.resolve_alias("IMPLEMENTATION") == "remote-coding"
+        assert resolver.resolve_alias("implementation") == "local-tool-calling"
+        assert resolver.resolve_alias("IMPLEMENTATION") == "local-tool-calling"
 
     def test_unknown_alias_fallback(self):
         """Test that unknown aliases fall back to 'default'."""
@@ -90,6 +92,7 @@ class TestRouteAliasResolver:
 
         # Valid profiles
         assert resolver.is_valid_profile("default") is True
+        assert resolver.is_valid_profile("local-agent") is True
         assert resolver.is_valid_profile("remote-coding") is True
         assert resolver.is_valid_profile("remote-reasoning") is True
         assert resolver.is_valid_profile("local-tool-calling") is True
@@ -144,7 +147,7 @@ class TestRouteAliasResolver:
 
         # Should fall back to defaults
         assert resolver.resolve_alias("Explore") == "default"
-        assert resolver.resolve_alias("Implementation") == "remote-coding"
+        assert resolver.resolve_alias("Implementation") == "local-tool-calling"
 
         stats = resolver.get_stats()
         assert stats["last_error"] is not None
@@ -280,7 +283,7 @@ class TestGlobalResolver:
     def test_resolve_route_alias_function(self):
         """Test convenience function for alias resolution."""
         assert resolve_route_alias("Explore") == "default"
-        assert resolve_route_alias("Implementation") == "remote-coding"
+        assert resolve_route_alias("Implementation") == "local-tool-calling"
         assert resolve_route_alias("unknown") == "default"
 
 
@@ -306,7 +309,7 @@ class TestBackwardCompatibility:
         resolver = RouteAliasResolver()
 
         assert resolver.resolve_alias("  Explore  ") == "default"
-        assert resolver.resolve_alias("\tImplementation\n") == "remote-coding"
+        assert resolver.resolve_alias("\tImplementation\n") == "local-tool-calling"
 
 
 if __name__ == "__main__":

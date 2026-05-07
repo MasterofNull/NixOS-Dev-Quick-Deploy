@@ -3,7 +3,7 @@ Route alias resolution system for Layer 1 Front-Door Routing.
 
 This module provides a RouteAliasResolver that maps OpenClaude-style route names
 (e.g., "Explore", "Plan", "Implementation") to existing harness profiles
-(e.g., "default", "remote-coding", "remote-reasoning").
+(e.g., "default", "local-tool-calling", "remote-reasoning").
 
 Purpose:
     - Provide stable front-door routing for all human-to-LLM requests
@@ -136,13 +136,24 @@ class RouteAliasResolver:
             "default": "default",
             "explore": "default",
             "plan": "default",
-            "implementation": "remote-coding",
-            "reasoning": "remote-reasoning",
+            "implementation": "local-tool-calling",
+            "reasoning": "local-tool-calling",
             "toolcalling": "local-tool-calling",
             "continuation": "default",
+            "local-agent": "local-agent",
+            "localagent": "local-agent",
+            "agent": "local-agent",
+            "embeddedassist": "embedded-assist",
+            "embedded-assist": "embedded-assist",
+            "remotefree": "remote-free",
+            "remotegemini": "remote-gemini",
+            "remotecoding": "remote-coding",
+            "remotereasoning": "remote-reasoning",
+            "remotetoolcalling": "remote-tool-calling",
         }
         self._allowed_profiles = {
             "default",
+            "local-agent",
             "local-tool-calling",
             "embedded-assist",
             "remote-gemini",
@@ -169,7 +180,7 @@ class RouteAliasResolver:
             >>> resolver.resolve_alias("Explore")
             'default'
             >>> resolver.resolve_alias("Implementation")
-            'remote-coding'
+            'local-tool-calling'
             >>> resolver.resolve_alias("unknown")
             'default'
         """

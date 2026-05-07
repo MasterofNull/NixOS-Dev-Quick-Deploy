@@ -11521,14 +11521,45 @@
 
             const frontdoor = snapshot?.frontdoor_routing || {};
             const aliasEntries = Array.isArray(frontdoor.aliases) ? frontdoor.aliases : [];
-            frontdoorContainer.innerHTML = aliasEntries.length
-                ? aliasEntries.map((entry) => `
+            const overrideEntries = Array.isArray(frontdoor.compatibility_overrides?.fields)
+                ? frontdoor.compatibility_overrides.fields
+                : [];
+            const frontdoorRows = [];
+            if (frontdoor.source) {
+                frontdoorRows.push(`
+                    <div class="data-item">
+                        <span>canonical_source</span>
+                        <span class="data-meta">${escapeHtml(String(frontdoor.source))}</span>
+                    </div>
+                `);
+            }
+            if (frontdoor.compatibility_overrides?.source) {
+                frontdoorRows.push(`
+                    <div class="data-item">
+                        <span>compatibility_overrides</span>
+                        <span class="data-meta">${escapeHtml(String(frontdoor.compatibility_overrides.source))}</span>
+                    </div>
+                `);
+            }
+            if (aliasEntries.length) {
+                frontdoorRows.push(...aliasEntries.map((entry) => `
                     <div class="data-item">
                         <span>${escapeHtml(String(entry.route || 'route'))}</span>
                         <span class="data-meta">${escapeHtml(String(entry.profile || '--'))}</span>
                     </div>
-                `).join('')
-                : `<div class="data-item"><span>Front-door routing unavailable</span><span class="data-meta">${escapeHtml(String(frontdoor.source || 'AI_LOCAL_FRONTDOOR_*'))}</span></div>`;
+                `));
+            }
+            if (overrideEntries.length) {
+                frontdoorRows.push(...overrideEntries.map((entry) => `
+                    <div class="data-item">
+                        <span>${escapeHtml(String(entry.name || 'override'))}</span>
+                        <span class="data-meta">${escapeHtml(String(entry.value || '--'))}</span>
+                    </div>
+                `));
+            }
+            frontdoorContainer.innerHTML = frontdoorRows.length
+                ? frontdoorRows.join('')
+                : `<div class="data-item"><span>Front-door routing unavailable</span><span class="data-meta">${escapeHtml(String(frontdoor.source || 'config/route-aliases.json'))}</span></div>`;
 
             const primaryContact = snapshot?.primary_contact || {};
             const bootstrap = Array.isArray(primaryContact.bootstrap) ? primaryContact.bootstrap.join(' | ') : '';
