@@ -28,6 +28,21 @@ Purpose:
 | Hybrid-coordinator local harness | Declarative system service | Active | workflow plan, hints, query, qa, learning/export | `aq-qa 0`, deploy capability verification |
 | Local orchestrator (`local-orchestrator`) | Repo-local shell front door | Active, primary human-facing contact layer | front-door alias routing, hybrid-coordinator, AIDB, llama.cpp | `scripts/ai/local-orchestrator --status` |
 
+## Routing Contract
+
+| Path | Entry Surface | Authoritative Ingress | Notes |
+| --- | --- | --- | --- |
+| Local editor chat | Continue IDE in VSCodium | switchboard `:8085/v1` with `continue-local` | user-facing interactive lane |
+| Local harness work | Continue "Local Agent (Harness-Aware)" or `aq-*` workflows | switchboard `local-agent` plus hybrid workflow APIs | keeps harness-aware local tasks separate from compact chat |
+| Remote editor chat | Continue remote model entries in VSCodium | switchboard `:8085/v1` with `remote-*` headers | remote providers stay behind switchboard policy |
+| Agent-to-agent workflow traffic | `aq-*`, `/workflow/*`, delegated runs | hybrid-coordinator `:8003` | `token_limit` and workflow policy are authoritative |
+| Operator graph visibility | Command Center dashboard | `/api/config/graphs/*` and `/api/deployments/graph` | exposes repo/workflow/deployment relationships |
+
+Budget note:
+- switchboard profile output values are defaults for the selected lane
+- they are not the universal reply limit for user-facing editor prompts
+- internal agent-noise control should stay in workflow/session policy
+
 ## Required Next Steps
 
 1. Keep all declarative agent surfaces green under real build validation, not parse-only checks.
