@@ -1616,15 +1616,29 @@ async def run_http_mode(port: int) -> None:
                 query, data, prefer_local, request_context, generate_response,
             )
             if result.get("_loading_error"):
-                return web.json_response(
-                    {
-                        "error": "model_loading",
-                        "detail": "Local model is loading and the queue is full or timed out. Retry or set prefer_local=false.",
-                        "queue_depth": result["queue_depth"],
-                        "queue_max": result["queue_max"],
-                    },
-                    status=503,
-                )
+                # Attempt transparent remote fallback before surfacing 503.
+                # Local agents should never gate remote workflows.
+                _remote_active = bool(os.getenv("SWITCHBOARD_REMOTE_URL", "").strip())
+                if _remote_active:
+                    logger.info(
+                        "local_model_loading: transparent fallback to remote for query=%r",
+                        query[:60],
+                    )
+                    result = await _execute_query_search(
+                        query, data, False, request_context, generate_response,
+                    )
+                    if not result.get("_loading_error"):
+                        result.setdefault("fallback_reason", "local_model_loading")
+                if result.get("_loading_error"):
+                    return web.json_response(
+                        {
+                            "error": "model_loading",
+                            "detail": "Local model is loading and no remote fallback is configured. Retry or set SWITCHBOARD_REMOTE_URL.",
+                            "queue_depth": result.get("queue_depth", 0),
+                            "queue_max": result.get("queue_max", 0),
+                        },
+                        status=503,
+                    )
 
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()

@@ -112,9 +112,15 @@ async def _llm_summary(
             "max_tokens": min(max_tokens, 800),
             "temperature": 0.1,
         }
+        import os as _os
+        _llm_url = (
+            _os.getenv("SWITCHBOARD_URL", "http://127.0.0.1:8085").rstrip("/")
+            + "/v1/chat/completions"
+        )
         async with _aiohttp.ClientSession() as sess:
             async with sess.post(
-                "http://127.0.0.1:8080/v1/chat/completions",
+                _llm_url,
+                headers={"X-AI-Profile": "embedded-assist"},
                 json=payload,
                 timeout=_aiohttp.ClientTimeout(total=30),
             ) as resp:
