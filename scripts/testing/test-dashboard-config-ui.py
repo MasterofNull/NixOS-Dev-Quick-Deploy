@@ -29,6 +29,7 @@ REQUIRED_SNIPPETS = [
     'task_lifecycle',
     'required_commands',
     'evidence_contract',
+    'compatibility_overrides',
 ]
 
 

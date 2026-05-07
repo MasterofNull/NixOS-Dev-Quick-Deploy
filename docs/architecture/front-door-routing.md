@@ -30,10 +30,19 @@ Current canonical mappings:
 | `default` | `default` |
 | `Explore` | `default` |
 | `Plan` | `default` |
-| `Implementation` | `remote-coding` |
-| `Reasoning` | `remote-reasoning` |
+| `Implementation` | `local-tool-calling` |
+| `Reasoning` | `local-tool-calling` |
 | `ToolCalling` | `local-tool-calling` |
 | `Continuation` | `default` |
+
+Explicit remote aliases remain available when the task really needs them:
+
+| Alias | Resolved profile |
+|-------|------------------|
+| `RemoteCoding` | `remote-coding` |
+| `RemoteReasoning` | `remote-reasoning` |
+| `RemoteFree` | `remote-free` |
+| `RemoteGemini` | `remote-gemini` |
 
 Unknown aliases fall back to `default`.
 
@@ -75,7 +84,9 @@ The local orchestrator exposes environment overrides for alias-to-profile mappin
 - `AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE`
 - `AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE`
 
-These are compatibility knobs for the CLI surface. The coordinator-side JSON config remains the source of truth for `/v1/orchestrate`.
+These are compatibility knobs for the CLI surface. The coordinator-side JSON
+config remains the source of truth for `/v1/orchestrate`, while the env vars
+act as local wrapper overrides for `local-orchestrator`.
 
 ## Rollback
 

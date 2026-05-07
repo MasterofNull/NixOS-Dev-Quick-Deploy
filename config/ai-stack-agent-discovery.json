@@ -221,10 +221,14 @@
       "default": "default",
       "Explore": "default",
       "Plan": "default",
-      "Implementation": "remote-coding",
-      "Reasoning": "remote-reasoning",
+      "Implementation": "local-tool-calling",
+      "Reasoning": "local-tool-calling",
       "ToolCalling": "local-tool-calling",
-      "Continuation": "default"
+      "Continuation": "default",
+      "RemoteCoding": "remote-coding",
+      "RemoteReasoning": "remote-reasoning",
+      "RemoteFree": "remote-free",
+      "RemoteGemini": "remote-gemini"
     }
   },
 
