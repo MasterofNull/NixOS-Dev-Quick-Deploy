@@ -1800,6 +1800,18 @@ let
             payload["cache_prompt"] = True
             body = json.dumps(payload).encode("utf-8")
 
+        # Force streaming for user-facing local chat so callers see progressive output
+        # instead of a blank screen during the 90-120s local inference window.
+        if (
+            target_type == "local"
+            and path == "chat/completions"
+            and profile in ("local-agent", "default")
+            and isinstance(payload, dict)
+            and not payload.get("stream")
+        ):
+            payload["stream"] = True
+            body = json.dumps(payload).encode("utf-8")
+
         is_stream = bool(isinstance(payload, dict) and payload.get("stream") is True)
         local_tool_execution_used = False
         local_tool_calls_used = 0
