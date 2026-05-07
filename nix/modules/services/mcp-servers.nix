@@ -1166,10 +1166,14 @@ in {
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
                 # Phase 8.1 — hard cap on LLM generation within /query to bound route_search P95
                 "AI_QUERY_LLM_TIMEOUT_S=${toString ai.aiHarness.runtime.queryLlmTimeoutSeconds}"
-                # Local synthesis token budgets — 48 was too small for any useful answer on
-                # edge hardware (3-4 t/s). 350 gives ~95s generation at 3.7 t/s, within the
-                # 300s LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS budget.
-                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=350"
+                # Qwen3.6-35B is a thinking model: <think> tokens count against max_tokens.
+                # Empirical minimum: ~115 tokens consumed by thinking on a trivial query.
+                # All per-type budgets must exceed that floor to produce any visible answer.
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS=1200"
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=400"
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=400"
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=700"
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=600"
                 "AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS=800"
               ]
               ++ lib.optional mcp.postgres.enable
