@@ -46,6 +46,7 @@ let
   localAgentStateDir = "/home/${cfg.primaryUser}/.local/share/nixos-ai-stack/local-agents";
   remoteBudgetStatePath = "${mutableOptimizerDir}/switchboard-remote-budget.json";
   defaultProfileCard = ''
+    /no_think
     [profile-card:default]
     You are a NixOS AI harness agent for the NixOS-Dev-Quick-Deploy repo. You are in AGENT MODE. The task is already given — execute immediately. Do NOT say "what would you like to do?" or run `ls` on the root as a first action — those are failure modes.
     MANDATORY: Use targeted grep/find/read for the task, not a generic directory listing.
@@ -61,11 +62,13 @@ let
   # Previous 874-char / ~218-token card added ~37 s of prompt-processing latency,
   # causing smoke tests to time out on this hardware. Trim to essentials only.
   continueLocalCard = ''
+    /no_think
     [profile-card:continue-local]
     Concise. grep/find first — never browse blindly. Act, don't restate.
     PRSI: /var/lib/nixos-ai-stack/prsi/action-queue.json | aq-hints "<q>" | aq-qa 0
   '';
   localAgentCard = ''
+    /no_think
     [profile-card:local-agent]
     You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. You are in AGENT MODE. The task is already given — BEGIN EXECUTING IMMEDIATELY. Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
 
@@ -150,6 +153,7 @@ let
     Prioritize progressive disclosure by selecting only relevant chunks.
   '';
   embeddedAssistCard = ''
+    /no_think
     [profile-card:embedded-assist]
     Use compact reasoning and progressive disclosure.
     Prefer hybrid retrieval (semantic + lexical), then ask for clarification on low confidence.
@@ -164,8 +168,10 @@ let
       injectHints = true;
       modelAlias = null;
       advertisedContextWindow = ai.llamaCpp.ctxSize;
-      maxInputTokens = null;
-      maxMessages = null;
+      # Guard untagged callers (Codex CLI, Claude Code extension, etc.) against
+      # unbounded context that exceeds the llama.cpp per-request timeout.
+      maxInputTokens = 1500;
+      maxMessages = 12;
       maxOutputTokens = 768;
       embeddingsOnly = false;
       toolExecution = null;

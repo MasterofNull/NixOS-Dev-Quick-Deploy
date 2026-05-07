@@ -29,10 +29,10 @@ in
       llamaCpp = {
         activeModel = lib.mkDefault "gemma4-e4b";
         extraArgs = lib.mkDefault [
-          "--timeout" "120"
+          "--timeout" "600"
           "--parallel" "1"
           "--batch-size" "512"
-          "--ubatch-size" "64"
+          "--ubatch-size" "256"
           "--threads" "8"
           "--threads-batch" "8"
           "--flash-attn" "on"
