@@ -42,10 +42,14 @@
                                           #   sudo aq-model-switch <key>
                                           llamaCpp.useSymlink = true;
                                           llamaCpp.extraArgs = [
-                                            "--timeout" "120"
+                                            # Qwen3.6-35B on this CPU needs up to 5 minutes for large prompts.
+                                            # 120s caused every meaningful editor request to be killed mid-flight.
+                                            "--timeout" "600"
                                             "--parallel" "1"
                                             "--batch-size" "512"
-                                            "--ubatch-size" "64"
+                                            # 64-token micro-batches drove prompt latency to 64ms/tok (8x slower
+                                            # than 256-token batches). 256 fits comfortably in 27GB RAM with mlock.
+                                            "--ubatch-size" "256"
                                             "--threads" "8"
                                             "--threads-batch" "8"
                                             # Full 41-layer Vulkan offload overruns this Renoir iGPU and ends in
