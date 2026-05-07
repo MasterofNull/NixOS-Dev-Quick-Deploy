@@ -240,7 +240,9 @@ class Config:
     REMOTE_LLM_FEEDBACK_ENABLED = os.getenv("REMOTE_LLM_FEEDBACK_ENABLED", "false").lower() == "true"
     MULTI_TURN_QUERY_EXPANSION = os.getenv("MULTI_TURN_QUERY_EXPANSION", "false").lower() == "true"
     DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "1000"))
-    LLAMA_CPP_INFERENCE_TIMEOUT = float(os.getenv("LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS", "30.0"))
+    # Local inference is slow on edge hardware (~3-4 t/s, 7s per 79 prompt tokens).
+    # Default 30s caused all synthesis to time out. 180s gives headroom for 500-token prompts.
+    LLAMA_CPP_INFERENCE_TIMEOUT = float(os.getenv("LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS", "180.0"))
     # Canonical name; CONTEXT_COMPRESSION_ENABLED kept as alias below for back-compat.
     AI_CONTEXT_COMPRESSION_ENABLED = os.getenv(
         "AI_CONTEXT_COMPRESSION_ENABLED",
@@ -330,11 +332,13 @@ class Config:
     AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS = int(
         os.getenv("AI_ROUTE_BOUNDED_REASONING_CONTEXT_CHARS", "480")
     )
+    # 48 was too small for any useful synthesis answer (model echoed retrieval results).
+    # 350 gives ~95s generation time at 3.7 t/s — fits within the 180s inference timeout.
     AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE = int(
-        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE", "48")
+        os.getenv("AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE", "350")
     )
     AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS = int(
-        os.getenv("AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS", "400")
+        os.getenv("AI_ROUTE_REMOTE_RESPONSE_MAX_TOKENS", "800")
     )
     AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS = float(
         os.getenv("AI_ROUTE_TIMEOUT_RETRIEVAL_KEYWORD_SECONDS", "4.0")

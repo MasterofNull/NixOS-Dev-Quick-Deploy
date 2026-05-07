@@ -9,11 +9,19 @@
     "Implementation": "remote-coding",
     "Reasoning": "remote-reasoning",
     "ToolCalling": "local-tool-calling",
-    "Continuation": "default"
+    "Continuation": "default",
+    "local-agent": "local-agent",
+    "LocalAgent": "local-agent",
+    "Agent": "local-agent",
+    "EmbeddedAssist": "embedded-assist",
+    "embedded-assist": "embedded-assist",
+    "RemoteCoding": "remote-coding",
+    "RemoteReasoning": "remote-reasoning"
   },
   "validation": {
     "allowed_profiles": [
       "default",
+      "local-agent",
       "local-tool-calling",
       "embedded-assist",
       "remote-gemini",

@@ -1415,11 +1415,19 @@ async def route_search(
                         ).inc()
                         _skip_synthesis = True
             elif not _skip_synthesis:
-                _inference_client = llama_cpp_client
+                # Prefer switchboard over direct llama.cpp — 900s timeout, profile routing,
+                # agent-agnostic (works with any model behind the switchboard).
+                _swb = _switchboard_client_ref() if _switchboard_client_ref else None
+                if _swb and Config.SWITCHBOARD_URL:
+                    _inference_client = _swb
+                    _inference_path = "/v1/chat/completions"
+                    _inference_headers = {"X-AI-Profile": "embedded-assist", "X-AI-Route": "local"}
+                else:
+                    _inference_client = llama_cpp_client
+                    _inference_path = "/chat/completions"
+                    _inference_headers = {}
                 local_inference_lane = "default"
                 local_inference_lane_reason = "default_local_lane"
-                _inference_path = "/chat/completions"
-                _inference_headers = {}
                 response_max_tokens = _local_response_budget("synthesize")
             if not _skip_synthesis:
                 prompt_context = _prompt_context_for_lane_reason(
@@ -1568,6 +1576,11 @@ async def route_search(
                     if exc is not None:
                         _is_timeout = isinstance(exc, asyncio.TimeoutError) or "timeout" in type(exc).__name__.lower()
                         logger.warning("route_search_llm_failed error=%s timeout=%s", exc, _is_timeout)
+                        results["synthesis_fallback"] = {
+                            "reason": "llm_timeout" if _is_timeout else "llm_error",
+                            "original_backend": selected_backend,
+                            "error": str(exc)[:200],
+                        }
                         LLM_BACKEND_SELECTIONS.labels(
                             backend=selected_backend,
                             reason_class="error",
