@@ -29,12 +29,24 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 import time
 from collections import defaultdict, deque, OrderedDict
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_think(text: str) -> str:
+    """Remove Qwen3 <think>…</think> blocks — only the visible answer goes downstream.
+
+    Strips before AIDB storage, context injection, and user-facing response so
+    thinking tokens never pollute the knowledge base or waste context window space.
+    """
+    return _THINK_RE.sub("", str(text or "")).strip()
 
 import capability_discovery
 from config import Config, routing_config
@@ -163,6 +175,7 @@ async def _distill_and_store(query: str, response: str, interaction_id: str) -> 
     """Fire-and-forget: archive synthesis output to AIDB so future queries retrieve it."""
     if not Config.AIDB_URL:
         return
+    response = _strip_think(response)
     words = str(response or "").split()
     if len(words) < _DISTILL_MIN_WORDS:
         return
@@ -1356,8 +1369,8 @@ async def route_search(
                     Config.AI_CONTEXT_COMPRESSION_ENABLED
                     and context_compressor
                     and combined_context
-                    and tokens_before > task_context_budget
                     and task_context_budget != context_budget_applied
+                    and tokens_before > 60
                 ):
                     compressed_context, _, compressed_tokens = context_compressor.compress_to_budget(
                         contexts=[{"id": "route-results", "text": combined_context, "score": 1.0}],
@@ -1723,6 +1736,10 @@ async def route_search(
 
     # Batch 2.2: Track collection search latency for profiling
     track_collection_search_latency(target_collections, latency_ms)
+
+    # Strip thinking tokens here — single choke-point so no path leaks <think> into
+    # the caller response, AIDB, or multi-turn session history.
+    response_text = _strip_think(response_text)
 
     return {
         "route": route, "backend": selected_backend, "response": response_text,

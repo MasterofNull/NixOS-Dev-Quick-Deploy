@@ -482,11 +482,14 @@ class Config:
     )
     AI_SPECULATIVE_DECODING_ENABLED = os.getenv("AI_SPECULATIVE_DECODING_ENABLED", "false").lower() == "true"
     AI_SPECULATIVE_DECODING_MODE = os.getenv("AI_SPECULATIVE_DECODING_MODE", "draft-model")
-    AI_CONTEXT_MAX_TOKENS = int(os.getenv("AI_CONTEXT_MAX_TOKENS", "3000"))
-    AI_CONTEXT_MAX_TOKENS_LOOKUP = int(os.getenv("AI_CONTEXT_MAX_TOKENS_LOOKUP", "700"))
-    AI_CONTEXT_MAX_TOKENS_FORMAT = int(os.getenv("AI_CONTEXT_MAX_TOKENS_FORMAT", "900"))
-    AI_CONTEXT_MAX_TOKENS_REASONING = int(os.getenv("AI_CONTEXT_MAX_TOKENS_REASONING", "1000"))
-    AI_CONTEXT_MAX_TOKENS_SYNTHESIZE = int(os.getenv("AI_CONTEXT_MAX_TOKENS_SYNTHESIZE", "1200"))
+    # Context budgets scale with generation budgets: synthesis generates 2000 tokens,
+    # so it needs proportional context to avoid under-informed responses.
+    # Compressor always runs (unconditional) — these are density targets, not just ceilings.
+    AI_CONTEXT_MAX_TOKENS = int(os.getenv("AI_CONTEXT_MAX_TOKENS", "4000"))
+    AI_CONTEXT_MAX_TOKENS_LOOKUP = int(os.getenv("AI_CONTEXT_MAX_TOKENS_LOOKUP", "1200"))
+    AI_CONTEXT_MAX_TOKENS_FORMAT = int(os.getenv("AI_CONTEXT_MAX_TOKENS_FORMAT", "1200"))
+    AI_CONTEXT_MAX_TOKENS_REASONING = int(os.getenv("AI_CONTEXT_MAX_TOKENS_REASONING", "2000"))
+    AI_CONTEXT_MAX_TOKENS_SYNTHESIZE = int(os.getenv("AI_CONTEXT_MAX_TOKENS_SYNTHESIZE", "2500"))
     AI_TASK_CLASSIFICATION_ENABLED = os.getenv("AI_TASK_CLASSIFICATION_ENABLED", "true").lower() == "true"
     LOCAL_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_MAX_INPUT_TOKENS", "600"))
     LOCAL_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_MAX_OUTPUT_TOKENS", "300"))
