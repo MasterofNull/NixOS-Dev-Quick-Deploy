@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# aq - Unified AI Quality Switchboard
+# 
+# Purpose: Single entry point for all aq-* tools to reduce process spawning
+#          overhead and provide consistent interface.
+#
+# Usage:
+#   aq <command> [args...]
+#   aq --list              # Show all available commands
+#   aq --help              # Show this help
+#
+# Examples:
+#   aq qa 0                # Run aq-qa 0
+#   aq hints "task"        # Run aq-hints "task"
+#   aq autonomous-improve  # Run aq-autonomous-improve
+#
+# Architecture:
+#   - Fast routing using bash case statement (minimal overhead)
+#   - Direct exec to target binary (no subprocess nesting)
+#   - Maintains compatibility with existing aq-* tools
+#   - Tiered inference support via AQ_REASONING_PROFILE env var
+# ===========================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Tiered inference profile (can be overridden via environment)
+# Profiles: simple, standard, deep
+AQ_REASONING_PROFILE="${AQ_REASONING_PROFILE:-standard}"
+
+# Map commands to their implementation
+# Format: command:script_path:reasoning_profile
+declare -A COMMAND_MAP=(
+  # High-frequency simple commands (simple profile - no retries)
+  ["help"]="builtin:help:simple"
+  ["list"]="builtin:list:simple"
+  ["version"]="builtin:version:simple"
+  ["completions"]="aq-completions.sh:simple"
+  
+  # Status and monitoring (simple profile)
+  ["qa"]="aq-qa:simple"
+  ["health"]="aq-health:simple"
+  ["status"]="aq-status:simple"
+  ["llama-debug"]="aq-llama-debug:simple"
+  ["llm-monitor"]="aq-llm-monitor:simple"
+  
+  # Context and hints (standard profile)
+  ["hints"]="aq-hints:standard"
+  ["context-bootstrap"]="aq-context-bootstrap:standard"
+  ["context-card"]="aq-context-card:standard"
+  ["context-manage"]="aq-context-manage:standard"
+  ["memory"]="aq-memory:standard"
+  ["session-zero"]="aq-session-zero:standard"
+  
+  # Capability management (standard profile)
+  ["capability-gap"]="aq-capability-gap:standard"
+  ["capability-plan"]="aq-capability-plan:standard"
+  ["capability-remediate"]="aq-capability-remediate:standard"
+  ["capability-patch-prep"]="aq-capability-patch-prep:standard"
+  ["capability-patch-apply"]="aq-capability-patch-apply:standard"
+  ["capability-promote"]="aq-capability-promote:standard"
+  ["capability-catalog-append"]="aq-capability-catalog-append:standard"
+  ["gaps"]="aq-gaps:standard"
+  ["gap-import"]="aq-gap-import:standard"
+  
+  # Runtime operations (standard profile)
+  ["runtime-diagnose"]="aq-runtime-diagnose:standard"
+  ["runtime-plan"]="aq-runtime-plan:standard"
+  ["runtime-remediate"]="aq-runtime-remediate:standard"
+  ["runtime-act"]="aq-runtime-act:standard"
+  
+  # Research and optimization (deep profile - full retry logic)
+  ["autoresearch"]="aq-autoresearch:deep"
+  ["autonomous-improve"]="aq-autonomous-improve:deep"
+  ["meta-optimize"]="aq-meta-optimize:deep"
+  ["patterns"]="aq-patterns:deep"
+  ["collaborate"]="aq-collaborate:deep"
+  
+  # Knowledge and RAG (standard profile)
+  ["rag-prewarm"]="aq-rag-prewarm:standard"
+  ["knowledge-import"]="aq-knowledge-import.sh:standard"
+  ["index"]="aq-index:standard"
+  
+  # Specialized tools (standard profile)
+  ["optimizer"]="aq-optimizer:standard"
+  ["report"]="aq-report:standard"
+  ["rate"]="aq-rate:standard"
+  ["prompt-eval"]="aq-prompt-eval:standard"
+  ["model-switch"]="aq-model-switch:standard"
+  ["prime"]="aq-prime:standard"
+  ["trading"]="aq-trading:standard"
+  
+  # Benchmarking (simple profile)
+  ["llama-benchmark-observe"]="aq-llama-benchmark-observe.py:simple"
+  ["bitnet-feasibility"]="aq-bitnet-feasibility.py:simple"
+  
+  # Sync operations (simple profile)
+  ["sync-shared-skills"]="aq-sync-shared-skills.py:simple"
+)
+
+show_help() {
+  cat <<EOF
+${BLUE}aq - Unified AI Quality Switchboard${NC}
+
+${GREEN}USAGE:${NC}
+  aq <command> [args...]
+
+${GREEN}COMMON COMMANDS:${NC}
+  ${YELLOW}Status & Health:${NC}
+    qa [phase]              Run QA validation suite
+    health                  Check AI stack health
+    status                  Show service status
+    llama-debug             Debug LLM inference issues
+    
+  ${YELLOW}Context & Guidance:${NC}
+    hints <task>            Get task-specific hints
+    context-bootstrap       Bootstrap task context
+    context-card            Generate context cards
+    session-zero            Run session initialization
+    
+  ${YELLOW}Capability Management:${NC}
+    capability-gap          Detect missing capabilities
+    capability-plan         Generate remediation plans
+    capability-remediate    Auto-apply fixes
+    gaps                    List capability gaps
+    
+  ${YELLOW}Research & Optimization:${NC}
+    autoresearch            Self-directed research
+    autonomous-improve      Autonomous system optimization
+    meta-optimize           Parameter tuning
+    patterns                Extract reusable patterns
+    
+  ${YELLOW}Knowledge & RAG:${NC}
+    rag-prewarm             Pre-compute embeddings
+    knowledge-import        Import external docs
+    index                   Manage search indices
+
+${GREEN}OPTIONS:${NC}
+  --list                    Show all available commands
+  --help, -h                Show this help message
+  --version, -v             Show version information
+
+${GREEN}ENVIRONMENT:${NC}
+  AQ_REASONING_PROFILE      Inference profile: simple, standard, deep
+                            (default: standard)
+
+${GREEN}EXAMPLES:${NC}
+  aq qa 0                   # Quick health check
+  aq hints "add new feature" # Get task guidance
+  aq autonomous-improve     # Run optimization cycle
+  
+  AQ_REASONING_PROFILE=simple aq qa 0  # Use simple profile
+
+${GREEN}REASONING PROFILES:${NC}
+  ${YELLOW}simple:${NC}   Fast, no retries (status checks, health)
+  ${YELLOW}standard:${NC} Balanced, single retry (most operations)
+  ${YELLOW}deep:${NC}     Full quality loop, multiple retries (architecture changes)
+
+For more information, see: docs/operations/aq-switchboard.md
+EOF
+}
+
+list_commands() {
+  echo -e "${BLUE}Available aq commands:${NC}\n"
+  echo -e "${YELLOW}Simple Profile (no retries):${NC}"
+  for cmd in "${!COMMAND_MAP[@]}"; do
+    IFS=':' read -r script profile <<< "${COMMAND_MAP[$cmd]}"
+    if [[ "$profile" == "simple" ]]; then
+      printf "  %-25s %s\n" "$cmd" "$script"
+    fi
+  done
+  
+  echo -e "\n${YELLOW}Standard Profile (balanced):${NC}"
+  for cmd in "${!COMMAND_MAP[@]}"; do
+    IFS=':' read -r script profile <<< "${COMMAND_MAP[$cmd]}"
+    if [[ "$profile" == "standard" ]]; then
+      printf "  %-25s %s\n" "$cmd" "$script"
+    fi
+  done
+  
+  echo -e "\n${YELLOW}Deep Profile (full quality loop):${NC}"
+  for cmd in "${!COMMAND_MAP[@]}"; do
+    IFS=':' read -r script profile <<< "${COMMAND_MAP[$cmd]}"
+    if [[ "$profile" == "deep" ]]; then
+      printf "  %-25s %s\n" "$cmd" "$script"
+    fi
+  done
+}
+
+show_version() {
+  echo "aq version 1.0.0"
+  echo "Unified AI Quality Switchboard"
+  echo "Repository: $REPO_ROOT"
+}
+
+# Parse command
+COMMAND="${1:-help}"
+shift || true
+
+# Handle built-in commands
+case "$COMMAND" in
+  --help|-h|help)
+    show_help
+    exit 0
+    ;;
+  --list|list)
+    list_commands
+    exit 0
+    ;;
+  --version|-v|version)
+    show_version
+    exit 0
+    ;;
+esac
+
+# Look up command in map
+if [[ -v "COMMAND_MAP[$COMMAND]" ]]; then
+  IFS=':' read -r script profile <<< "${COMMAND_MAP[$COMMAND]}"
+  
+  # Set reasoning profile for this command (can be overridden by environment)
+  if [[ -z "${AQ_REASONING_PROFILE_OVERRIDE:-}" ]]; then
+    export AQ_REASONING_PROFILE="$profile"
+  fi
+  
+  # Execute the target script
+  TARGET="$SCRIPT_DIR/$script"
+  
+  if [[ ! -x "$TARGET" ]]; then
+    echo -e "${RED}Error: Command script not found or not executable: $TARGET${NC}" >&2
+    echo -e "Run ${YELLOW}aq --list${NC} to see available commands" >&2
+    exit 1
+  fi
+  
+  # Direct exec to avoid subprocess overhead
+  exec "$TARGET" "$@"
+else
+  echo -e "${RED}Error: Unknown command: $COMMAND${NC}" >&2
+  echo -e "Run ${YELLOW}aq --list${NC} to see available commands" >&2
+  echo -e "Run ${YELLOW}aq --help${NC} for usage information" >&2
+  exit 1
+fi

@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 AUTO_IMPROVE_QUALITY_THRESHOLD = 75.0  # Minimum acceptable quality score
 AUTO_IMPROVE_MAX_ATTEMPTS = 2  # Maximum improvement attempts
 AUTO_IMPROVE_ENABLED_DEFAULT = False  # Opt-in by default (can be expensive)
+AUTO_IMPROVE_EDGE_MODE = True  # If true, optimizes for latency over depth
+TOKEN_BUDGET_PER_TURN = 512  # Limit feedback size on edge
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +118,7 @@ async def auto_improve_response(
     response_generator: Callable,  # async function(feedback: str) -> str
     critic_evaluator: Callable,  # function(task, response) -> CriticEvaluation
     quality_threshold: float = AUTO_IMPROVE_QUALITY_THRESHOLD,
+    edge_mode: bool = AUTO_IMPROVE_EDGE_MODE,
     max_attempts: int = AUTO_IMPROVE_MAX_ATTEMPTS,
 ) -> ImprovementResult:
     """
@@ -186,11 +189,14 @@ async def auto_improve_response(
             f"Issues identified:\n"
         )
 
-        for issue in critique.overall_issues[:5]:  # Top 5 issues
+        # Edge optimization: Reduce issue count to save context tokens
+        max_issues = 2 if edge_mode else 5
+        for issue in critique.overall_issues[:max_issues]:
             feedback_prompt += f"- {issue}\n"
 
         feedback_prompt += (
             f"\nOriginal task: {task}\n\n"
+            f"CRITICAL: Be concise. This is attempt {attempt} on edge hardware.\n"
             f"Please provide an improved response addressing these issues."
         )
 

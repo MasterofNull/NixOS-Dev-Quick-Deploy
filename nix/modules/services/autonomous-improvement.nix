@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Autonomous Improvement Service — local LLM-driven system optimization
 #
@@ -36,26 +41,29 @@ let
   dataDir = "${mcp.dataDir}/autonomous-improvement";
 
   # Python environment with dependencies for autonomous improvement
-  autonomousPython = pkgs.python3.withPackages (ps: with ps; [
-    # Core dependencies
-    psycopg2
-    aiohttp
+  # Note: In nixpkgs, psycopg2 is already the compiled version (equivalent to psycopg2-binary in pip)
+  autonomousPython = pkgs.python3.withPackages (ps:
+    with ps; [
+      # Core dependencies
 
-    # Utilities
-    python-dotenv
-    pyyaml
-  ]);
+      psycopg2 # PostgreSQL adapter (pre-compiled in nixpkgs)
+      aiohttp # Async HTTP for API interactions
+
+      # Utilities
+
+      python-dotenv # Environment variable loading
+      pyyaml # YAML parsing
+    ]);
 
   # Common hardening base (tier-aware)
-  mkHardenedService = import ../../lib/hardened-service.nix { inherit lib; };
-  hardenedBase = mkHardenedService { tier = cfg.hardwareTier; };
+  mkHardenedService = import ../../lib/hardened-service.nix {inherit lib;};
+  hardenedBase = mkHardenedService {tier = cfg.hardwareTier;};
 
   svcUser = cfg.primaryUser;
-  svcGroup = lib.attrByPath [ "users" "users" svcUser "group" ] "users" config;
+  svcGroup = lib.attrByPath ["users" "users" svcUser "group"] "users" config;
 
   secretPath = name: config.sops.secrets.${name}.path;
   postgresPasswordSecret = sec.names.postgresPassword;
-
 in {
   options.mySystem.aiStack.autonomousImprovement = {
     enable = lib.mkEnableOption "autonomous improvement system (local LLM-driven optimization)";
@@ -79,7 +87,7 @@ in {
     };
 
     autoApplyBlastRadiusMax = lib.mkOption {
-      type = lib.types.enum [ "low" "medium" ];
+      type = lib.types.enum ["low" "medium"];
       default = "low";
       description = "Maximum blast_radius allowed for auto-apply. Anything above this threshold is routed to the PRSI queue.";
     };
@@ -96,7 +104,7 @@ in {
       # Autonomous improvement service (one-shot cycle)
       systemd.services.ai-autonomous-improvement = {
         description = "Autonomous Improvement - Local LLM-driven system optimization";
-        partOf = [ "ai-stack.target" ];
+        partOf = ["ai-stack.target"];
         after = [
           "network-online.target"
           "postgresql.service"
@@ -106,7 +114,7 @@ in {
           "postgresql.service"
           "llama-cpp.service"
         ];
-        wants = [ "network-online.target" ];
+        wants = ["network-online.target"];
 
         environment = {
           PYTHONPATH = autonomousDir;
@@ -124,7 +132,7 @@ in {
 
         script = ''
           ${lib.optionalString sec.enable ''
-          export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < ${secretPath postgresPasswordSecret})"
+            export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < ${secretPath postgresPasswordSecret})"
           ''}
 
           exec ${autonomousPython}/bin/python3 \
@@ -132,33 +140,35 @@ in {
             ${lib.optionalString autonomous.dryRun "--dry-run"}
         '';
 
-        serviceConfig = hardenedBase // {
-          Type = "oneshot";
-          User = svcUser;
-          Group = svcGroup;
-          WorkingDirectory = autonomousDir;
+        serviceConfig =
+          hardenedBase
+          // {
+            Type = "oneshot";
+            User = svcUser;
+            Group = svcGroup;
+            WorkingDirectory = autonomousDir;
 
-          # Security hardening
-          ProtectHome = "read-only";
-          ReadWritePaths = [ dataDir mcp.dataDir ];
-          ReadOnlyPaths = [ repoPath ];
-          RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
-          SystemCallFilter = [ "@system-service" ];
-          SystemCallErrorNumber = "EPERM";
-        };
+            # Security hardening
+            ProtectHome = "read-only";
+            ReadWritePaths = [dataDir mcp.dataDir];
+            ReadOnlyPaths = [repoPath];
+            RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6"];
+            SystemCallFilter = ["@system-service"];
+            SystemCallErrorNumber = "EPERM";
+          };
       };
 
       # Timer to trigger autonomous improvement periodically
       systemd.timers.ai-autonomous-improvement = {
         description = "Autonomous Improvement Timer";
-        wantedBy = [ "timers.target" ];
-        partOf = [ "ai-stack.target" ];
+        wantedBy = ["timers.target"];
+        partOf = ["ai-stack.target"];
 
         timerConfig = {
-          OnBootSec = "10min";  # First run 10 minutes after boot
-          OnUnitActiveSec = "${toString autonomous.interval}min";  # Subsequent runs
+          OnBootSec = "10min"; # First run 10 minutes after boot
+          OnUnitActiveSec = "${toString autonomous.interval}min"; # Subsequent runs
           Unit = "ai-autonomous-improvement.service";
-          Persistent = true;  # Run missed timers on boot
+          Persistent = true; # Run missed timers on boot
         };
       };
 
@@ -174,9 +184,9 @@ in {
           export LLM_URL="http://localhost:${toString ai.llamaCpp.port}/v1/chat/completions"
 
           ${lib.optionalString sec.enable ''
-          if [[ -r "${secretPath postgresPasswordSecret}" ]]; then
-            export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < "${secretPath postgresPasswordSecret}")"
-          fi
+            if [[ -r "${secretPath postgresPasswordSecret}" ]]; then
+              export POSTGRES_PASSWORD="$(${pkgs.coreutils}/bin/tr -d '\n' < "${secretPath postgresPasswordSecret}")"
+            fi
           ''}
 
           # Parse command and options

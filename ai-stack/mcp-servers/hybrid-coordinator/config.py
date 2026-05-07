@@ -88,6 +88,107 @@ def _json_str_list_env(name: str, default: Optional[list[str]] = None) -> list[s
     return [str(item).strip() for item in data if str(item).strip()]
 
 
+def _load_reasoning_profiles() -> Dict[str, Dict[str, Any]]:
+    """Load reasoning profiles from JSON configuration file.
+
+    Search order (first found wins):
+    1. $REASONING_PROFILES_PATH env var
+    2. ~/.local/share/nixos-ai-stack/reasoning-profiles.json (user override)
+    3. <repo>/ai-stack/mcp-servers/shared/config/reasoning-profiles.json (repo canonical)
+    4. <repo>/config/reasoning-profiles.json (legacy location)
+    Falls back to built-in defaults if none found or invalid.
+    """
+    default_profiles = {
+        "default": {
+            "name": "default",
+            "description": "General purpose reasoning",
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.9,
+            "stop_sequences": [],
+        },
+        "precise": {
+            "name": "precise",
+            "description": "High precision, deterministic outputs",
+            "temperature": 0.1,
+            "max_tokens": 2048,
+            "top_p": 0.95,
+            "stop_sequences": [],
+        },
+        "creative": {
+            "name": "creative",
+            "description": "Creative exploration and ideation",
+            "temperature": 1.0,
+            "max_tokens": 8192,
+            "top_p": 0.85,
+            "stop_sequences": [],
+        },
+        "deep-reasoning": {
+            "name": "deep-reasoning",
+            "description": "Extended reasoning with chain-of-thought",
+            "temperature": 0.3,
+            "max_tokens": 16384,
+            "top_p": 0.92,
+            "stop_sequences": ["\n\nFinal Answer:"],
+            "system_suffix": "Think step-by-step. Show your reasoning before the final answer.",
+        },
+    }
+
+    _this_dir = Path(__file__).parent
+    _repo_root = _this_dir.parent.parent.parent
+
+    _env_override = os.getenv("REASONING_PROFILES_PATH", "").strip()
+    candidate_paths: list[Path] = []
+    if _env_override:
+        candidate_paths.append(Path(_env_override))
+    candidate_paths += [
+        Path.home() / ".local" / "share" / "nixos-ai-stack" / "reasoning-profiles.json",
+        _repo_root / "ai-stack" / "mcp-servers" / "shared" / "config" / "reasoning-profiles.json",
+        _repo_root / "config" / "reasoning-profiles.json",
+    ]
+
+    config_path: Optional[Path] = None
+    for p in candidate_paths:
+        if p.exists() and p.is_file():
+            config_path = p
+            break
+
+    if config_path is None:
+        logger.debug("No reasoning-profiles.json found in search path; using built-in defaults")
+        return default_profiles
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+
+        # Support both flat dict {"name": {...}} and wrapped {"profiles": {"name": {...}}}
+        profiles: Dict[str, Any] = raw.get("profiles", raw) if isinstance(raw, dict) else {}
+
+        if not isinstance(profiles, dict):
+            logger.warning("Invalid reasoning profiles format in %s, using defaults", config_path)
+            return default_profiles
+
+        for profile_name, profile_data in profiles.items():
+            if not isinstance(profile_data, dict):
+                continue
+            profile_data.setdefault("name", profile_name)
+            profile_data.setdefault("description", "")
+            profile_data.setdefault("temperature", 0.7)
+            profile_data.setdefault("max_tokens", 4096)
+            profile_data.setdefault("top_p", 0.9)
+            profile_data.setdefault("stop_sequences", [])
+
+        logger.info("Loaded %d reasoning profiles from %s", len(profiles), config_path)
+        return profiles
+
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse reasoning profiles from %s: %s", config_path, e)
+        return default_profiles
+    except Exception as e:
+        logger.error("Error loading reasoning profiles from %s: %s", config_path, e)
+        return default_profiles
+
+
 # ============================================================================
 # Configuration
 # ============================================================================
@@ -374,6 +475,12 @@ class Config:
     LOCAL_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_MAX_INPUT_TOKENS", "600"))
     LOCAL_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_MAX_OUTPUT_TOKENS", "300"))
 
+    # Reasoning Profiles Configuration
+    # Hot-reloadable profiles for different reasoning tasks
+    # Profiles include: default, precise, creative, deep-reasoning
+    # Can be overridden via ~/.local/share/nixos-ai-stack/reasoning-profiles.json
+    REASONING_PROFILES = _load_reasoning_profiles()
+
     @classmethod
     def build_local_system_prompt(cls) -> str:
         """
@@ -412,6 +519,46 @@ class Config:
             lines.append("Output sections:")
             lines.extend(f"- {section}" for section in output_sections[:5])
         return "\n".join(lines)
+
+    @classmethod
+    def get_reasoning_profile(cls, profile_name: str = "default") -> Dict[str, Any]:
+        """
+        Get a reasoning profile by name.
+
+        Args:
+            profile_name: Name of the profile to retrieve (default, precise, creative, deep-reasoning)
+
+        Returns:
+            Dictionary containing profile configuration with keys:
+            - name: Profile name
+            - description: Human-readable description
+            - temperature: Sampling temperature (0.0-2.0)
+            - max_tokens: Maximum tokens to generate
+            - top_p: Nucleus sampling parameter
+            - stop_sequences: List of stop sequences
+            - system_suffix: Optional additional system prompt text
+
+        Raises:
+            ValueError: If profile_name is not found
+        """
+        profile = cls.REASONING_PROFILES.get(profile_name)
+        if profile is None:
+            available = ", ".join(cls.REASONING_PROFILES.keys())
+            raise ValueError(
+                f"Reasoning profile '{profile_name}' not found. "
+                f"Available profiles: {available}"
+            )
+        return profile
+
+    @classmethod
+    def reload_reasoning_profiles(cls) -> None:
+        """
+        Hot-reload reasoning profiles from configuration file.
+
+        This allows updating profiles without restarting the server.
+        """
+        cls.REASONING_PROFILES = _load_reasoning_profiles()
+        logger.info(f"Reloaded {len(cls.REASONING_PROFILES)} reasoning profiles")
 
 
 def _read_secret(path: str) -> str:

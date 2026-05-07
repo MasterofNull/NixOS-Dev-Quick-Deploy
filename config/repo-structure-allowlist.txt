@@ -3,14 +3,12 @@
 
 # Root markdown exceptions
 .aider.md
-.claude.md
 AGENTS.md
 docs/archive/root-docs/AGENT_BOOTSTRAP_COMMAND.md
 docs/archive/root-docs/AI-STACK-IMPROVEMENT-PLAN.md
 docs/archive/root-docs/AI-STACK-QA-PLAN.md
 docs/archive/root-docs/AI-STACK-STATUS-REPORT.md
 docs/archive/root-docs/AIDB_SCHEMA_GUARANTEES.md
-CLAUDE.md
 docs/archive/root-docs/DEPLOY-OPTIMIZATIONS.md
 docs/archive/root-docs/KNOWN_ISSUES_TROUBLESHOOTING.md
 docs/archive/root-docs/LLAMA-CPP-OPTIMIZATION-CHANGES.md
