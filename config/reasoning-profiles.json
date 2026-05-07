@@ -1,0 +1,150 @@
+{
+  "$schema": "./schemas/reasoning-profiles.schema.json",
+  "version": "1.0.0",
+  "description": "Tiered inference profiles for the hybrid coordinator to optimize CPU usage and response time",
+  "profiles": {
+    "simple": {
+      "description": "Fast path for simple queries - no quality loop, no retries",
+      "use_cases": [
+        "CLI help commands",
+        "Status checks",
+        "Health monitoring",
+        "Version information",
+        "List operations",
+        "Quick diagnostics"
+      ],
+      "settings": {
+        "max_retries": 0,
+        "enable_quality_improver": false,
+        "enable_embeddings": false,
+        "max_tokens": 512,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "timeout_seconds": 10,
+        "cache_ttl_seconds": 300
+      },
+      "routing": {
+        "llm_backend": "llama-cpp",
+        "skip_coordinator": false,
+        "direct_inference": true
+      },
+      "quality_gates": {
+        "grammar_check": false,
+        "hallucination_check": false,
+        "consistency_check": false
+      }
+    },
+    "standard": {
+      "description": "Balanced profile for most operations - single retry on failure",
+      "use_cases": [
+        "Code generation",
+        "Context analysis",
+        "Capability detection",
+        "Runtime diagnostics",
+        "Knowledge queries",
+        "Pattern extraction"
+      ],
+      "settings": {
+        "max_retries": 1,
+        "enable_quality_improver": true,
+        "enable_embeddings": true,
+        "max_tokens": 2048,
+        "temperature": 0.5,
+        "top_p": 0.92,
+        "timeout_seconds": 30,
+        "cache_ttl_seconds": 600
+      },
+      "routing": {
+        "llm_backend": "hybrid-coordinator",
+        "skip_coordinator": false,
+        "direct_inference": false
+      },
+      "quality_gates": {
+        "grammar_check": true,
+        "hallucination_check": true,
+        "consistency_check": false,
+        "auto_improve_threshold": 0.7
+      }
+    },
+    "deep": {
+      "description": "Full quality loop for critical operations - multiple retries, comprehensive validation",
+      "use_cases": [
+        "Architectural changes",
+        "Autonomous optimization",
+        "Meta-optimization",
+        "Self-modification",
+        "Research synthesis",
+        "Multi-agent collaboration"
+      ],
+      "settings": {
+        "max_retries": 3,
+        "enable_quality_improver": true,
+        "enable_embeddings": true,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "timeout_seconds": 120,
+        "cache_ttl_seconds": 1800
+      },
+      "routing": {
+        "llm_backend": "hybrid-coordinator",
+        "skip_coordinator": false,
+        "direct_inference": false,
+        "enable_multi_pass": true
+      },
+      "quality_gates": {
+        "grammar_check": true,
+        "hallucination_check": true,
+        "consistency_check": true,
+        "auto_improve_threshold": 0.85,
+        "require_validation": true,
+        "enable_self_critique": true
+      }
+    }
+  },
+  "auto_detection": {
+    "description": "Automatically detect appropriate profile based on query characteristics",
+    "enabled": true,
+    "rules": [
+      {
+        "pattern": "^(help|--help|-h|version|--version|-v|list|--list)$",
+        "profile": "simple"
+      },
+      {
+        "pattern": "^(status|health|check|show|get|display)",
+        "profile": "simple"
+      },
+      {
+        "pattern": "(autonomous|meta|optimize|research|architect|design|plan)",
+        "profile": "deep"
+      },
+      {
+        "pattern": ".*",
+        "profile": "standard"
+      }
+    ]
+  },
+  "performance_hints": {
+    "simple": {
+      "expected_latency_ms": 500,
+      "expected_cpu_percent": 15,
+      "expected_memory_mb": 100
+    },
+    "standard": {
+      "expected_latency_ms": 2000,
+      "expected_cpu_percent": 40,
+      "expected_memory_mb": 300
+    },
+    "deep": {
+      "expected_latency_ms": 10000,
+      "expected_cpu_percent": 80,
+      "expected_memory_mb": 800
+    }
+  },
+  "telemetry": {
+    "track_profile_usage": true,
+    "track_latency": true,
+    "track_quality_metrics": true,
+    "log_profile_switches": true
+  }
+}

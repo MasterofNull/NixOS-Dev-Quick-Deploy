@@ -334,12 +334,39 @@ class WorkflowExecutor:
             if "execute" in safety_mode:
                 tools = PromptBuilder.build_tool_definitions()
 
+            # Get reasoning profile settings
+            profile_name = session.get("reasoning_profile", "default")
+            try:
+                from config import Config
+                profile = Config.get_reasoning_profile(profile_name)
+                logger.debug(f"Using reasoning profile: {profile_name} - {profile.get('description', '')}")
+
+                # Extract profile settings
+                temperature = profile.get("temperature", 0.7)
+                max_tokens = profile.get("max_tokens", 4096)
+
+                # Budget limit can override profile max_tokens
+                budget_limit = session.get("budget", {}).get("token_limit", 0)
+                if budget_limit > 0:
+                    max_tokens = min(max_tokens, budget_limit)
+
+                # Append system_suffix to system prompt if present
+                system_suffix = profile.get("system_suffix", "")
+                if system_suffix:
+                    system_prompt = f"{system_prompt}\n\n{system_suffix}"
+
+            except (ValueError, ImportError) as e:
+                logger.warning(f"Failed to load reasoning profile '{profile_name}': {e}. Using defaults.")
+                temperature = 0.7
+                max_tokens = session.get("budget", {}).get("token_limit", 4096)
+
             # Call LLM
             logger.debug(f"Calling LLM for objective: {objective[:60]}...")
             response = await self.llm_client.create_message(
                 prompt=user_prompt,
                 system=system_prompt,
-                max_tokens=session.get("budget", {}).get("token_limit", 4096),
+                max_tokens=max_tokens,
+                temperature=temperature,
                 tools=tools,
             )
 
