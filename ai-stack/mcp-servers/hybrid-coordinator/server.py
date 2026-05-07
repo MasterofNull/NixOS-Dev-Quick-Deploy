@@ -476,12 +476,13 @@ async def route_search(
     keyword_limit: int = 5,
     score_threshold: float = 0.7,
     generate_response: bool = False,
+    max_tokens_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Delegate to route_handler.route_search."""
     return await route_handler.route_search(
         query=query, mode=mode, prefer_local=prefer_local, context=context,
         limit=limit, keyword_limit=keyword_limit, score_threshold=score_threshold,
-        generate_response=generate_response,
+        generate_response=generate_response, max_tokens_override=max_tokens_override,
     )
 
 
