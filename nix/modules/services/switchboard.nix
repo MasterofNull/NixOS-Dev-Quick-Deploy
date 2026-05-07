@@ -196,7 +196,7 @@ let
       advertisedContextWindow = ai.llamaCpp.ctxSize;
       maxInputTokens = 8000;
       maxMessages = 16;
-      maxOutputTokens = 1024;
+      maxOutputTokens = 4096;
       embeddingsOnly = false;
       toolExecution = null;
       profileCard = localAgentCard;
@@ -692,7 +692,7 @@ let
     def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str) -> dict:
         if not isinstance(payload, dict) or target_type != "local":
             return payload
-        if profile not in ("continue-local", "embedded-assist"):
+        if profile not in ("continue-local", "embedded-assist", "local-agent"):
             return payload
         kwargs = payload.get("chat_template_kwargs")
         if not isinstance(kwargs, dict):
