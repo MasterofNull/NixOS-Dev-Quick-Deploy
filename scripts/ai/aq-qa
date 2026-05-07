@@ -192,7 +192,7 @@ switchboard_url = sys.argv[2].rstrip("/")
 with open(cfg_path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-if str(data.get("__configVersion") or "") not in {"23.0", "24.0", "25.0", "26.0"}:
+if str(data.get("__configVersion") or "") not in {"23.0", "24.0", "25.0", "26.0", "27.0"}:
     raise SystemExit(1)
 
 with urlopen(f"{switchboard_url}/health", timeout=5) as response:
@@ -202,12 +202,11 @@ profiles = health.get("profiles") or {}
 continue_profile = profiles.get("continue-local") or {}
 default_profile = profiles.get("default") or {}
 
-# Use maxInputTokens (actual switchboard trim limit) as the reference for contextLength checks.
-# advertisedContextWindow is the model ceiling; maxInputTokens is what the switchboard enforces.
-expected_context = continue_profile.get("maxInputTokens") or continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
-expected_chat_max_tokens = continue_profile.get("maxOutputTokens") or default_profile.get("maxOutputTokens")
+# Interactive Continue chat should honor the model-sized editor context, while
+# compact switchboard response budgets stay reserved for agent-style lanes.
+expected_context = continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
 expected_context = int(expected_context) if expected_context is not None else None
-expected_chat_max_tokens = int(expected_chat_max_tokens) if expected_chat_max_tokens is not None else None
+expected_chat_max_tokens = min(4096, expected_context) if expected_context is not None else 4096
 expected_tab_max_tokens = max(32, min(96, expected_chat_max_tokens)) if expected_chat_max_tokens is not None else None
 
 models = data.get("models") or []

@@ -31,6 +31,10 @@ def main() -> int:
         "aq-qa should derive Continue context and token expectations from live switchboard profile health instead of hardcoded floors",
     )
     assert_true(
+        'min(4096, expected_context)' in script,
+        "aq-qa should treat interactive Continue chat budgets separately from compact agent-profile defaults",
+    )
+    assert_true(
         '"continue-local"' in script,
         "aq-qa should keep the continue-local lane requirement in the config validator",
     )
@@ -47,11 +51,11 @@ def main() -> int:
         "aq-qa should run Continue/editor smoke checks against the primary-user environment instead of the ambient HOME",
     )
     assert_true(
-        'localAgentProfile = lib.attrByPath [ "local-agent" ] { } switchboardProfiles;' in home_base,
+        'localAgentProfile =' in home_base and '"local-agent"' in home_base and 'switchboardProfiles;' in home_base,
         "Continue config generation should derive a dedicated local-agent profile view from switchboard config",
     )
     assert_true(
-        "localAgentContextLength =" in home_base and 'lib.attrByPath [ "maxInputTokens" ] null localAgentProfile' in home_base,
+        "localAgentContextLength =" in home_base and 'lib.attrByPath ["maxInputTokens"] null localAgentProfile' in home_base,
         "Continue config generation should cap the harness-aware editor model context to the local-agent input budget",
     )
     assert_true(

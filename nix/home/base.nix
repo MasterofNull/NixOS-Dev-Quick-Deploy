@@ -59,10 +59,13 @@ let
     lib.attrByPath ["advertisedContextWindow"]
     (lib.attrByPath ["advertisedContextWindow"] aiLlamaCtxSize defaultSwitchboardProfile)
     continueLocalProfile;
+  # Keep interactive editor replies decoupled from switchboard's compact
+  # agent-profile defaults. Agent-to-agent budgets still live in workflow
+  # sessions and switchboard profile metadata.
   continueChatMaxTokens =
-    lib.attrByPath ["maxOutputTokens"]
-    (lib.attrByPath ["maxOutputTokens"] 768 defaultSwitchboardProfile)
-    continueLocalProfile;
+    if continueContextLength > 4096
+    then 4096
+    else continueContextLength;
   continueTabMaxTokens = lib.min 96 (lib.max 32 continueChatMaxTokens);
   localAgentContextLength = let
     advertised = lib.attrByPath ["advertisedContextWindow"] aiLlamaCtxSize localAgentProfile;
@@ -73,6 +76,8 @@ let
     else advertised;
   localAgentChatMaxTokens =
     lib.attrByPath ["maxOutputTokens"] 1024 localAgentProfile;
+  continueRemoteContextLength = 16000;
+  continueRemoteMaxTokens = 4096;
   aiOpenAIBaseUrl = "http://127.0.0.1:${toString aiSwitchboardPort}/v1";
   vscodeLinuxTarget =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux"
@@ -1240,7 +1245,7 @@ in {
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        _config_version="26.0"
+        _config_version="27.0"
         _cfg="$HOME/.continue/config.json"
         _needs_write=false
 
@@ -1258,7 +1263,7 @@ in {
           mkdir -p "$HOME/.continue"
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
-      "__configVersion": "26.0",
+      "__configVersion": "27.0",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
         "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
@@ -1311,60 +1316,60 @@ in {
           "maxTokens": ${toString localAgentChatMaxTokens}
         },
         {
-          "title": "Remote Claude Sonnet (OpenRouter)",
-          "provider": "openrouter",
-          "apiKey": "REDACTED_OPENROUTER_KEY",
-          "model": "anthropic/claude-sonnet-4-5",
-          "contextLength": 16000,
-          "maxTokens": 4096,
+          "title": "Remote Coding (Switchboard)",
+          "provider": "openai",
+          "apiKey": "dummy",
+          "apiBase": "${continueApiBase}",
+          "model": "AUTODETECT",
           "requestOptions": {
             "headers": {
-              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
-              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+              "X-AI-Profile": "remote-coding"
             }
-          }
+          },
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
         },
         {
-          "title": "Remote Deepseek R1 Free (OpenRouter)",
-          "provider": "openrouter",
-          "apiKey": "REDACTED_OPENROUTER_KEY",
-          "model": "deepseek/deepseek-r1:free",
-          "contextLength": 8000,
-          "maxTokens": 2048,
+          "title": "Remote Reasoning (Switchboard)",
+          "provider": "openai",
+          "apiKey": "dummy",
+          "apiBase": "${continueApiBase}",
+          "model": "AUTODETECT",
           "requestOptions": {
             "headers": {
-              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
-              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+              "X-AI-Profile": "remote-reasoning"
             }
-          }
+          },
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
         },
         {
-          "title": "Remote Gemini 2.0 Flash Free (OpenRouter)",
-          "provider": "openrouter",
-          "apiKey": "REDACTED_OPENROUTER_KEY",
-          "model": "google/gemini-2.0-flash-exp:free",
-          "contextLength": 8000,
-          "maxTokens": 2048,
+          "title": "Remote Free (Switchboard)",
+          "provider": "openai",
+          "apiKey": "dummy",
+          "apiBase": "${continueApiBase}",
+          "model": "AUTODETECT",
           "requestOptions": {
             "headers": {
-              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
-              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+              "X-AI-Profile": "remote-free"
             }
-          }
+          },
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
         },
         {
-          "title": "Remote Llama 70B Free (OpenRouter)",
-          "provider": "openrouter",
-          "apiKey": "REDACTED_OPENROUTER_KEY",
-          "model": "meta-llama/llama-3.3-70b-instruct:free",
-          "contextLength": 8000,
-          "maxTokens": 2048,
+          "title": "Remote Gemini (Switchboard)",
+          "provider": "openai",
+          "apiKey": "dummy",
+          "apiBase": "${continueApiBase}",
+          "model": "AUTODETECT",
           "requestOptions": {
             "headers": {
-              "HTTP-Referer": "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy",
-              "X-Title": "NixOS-Dev-Quick-Deploy AI Harness"
+              "X-AI-Profile": "remote-gemini"
             }
-          }
+          },
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
         }
       ],
       "tabAutocompleteModel": {

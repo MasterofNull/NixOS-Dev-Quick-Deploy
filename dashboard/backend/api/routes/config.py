@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 from fastapi import APIRouter, HTTPException
@@ -53,6 +53,144 @@ def _harness_runbook_path() -> Path:
 
 def _harness_evidence_template_path() -> Path:
     return _repo_root() / "docs" / "harness-first" / "HARNESS-FIRST-EVIDENCE-TEMPLATE.md"
+
+
+def _repo_graph_surfaces() -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": "repo-structure",
+            "label": "Relational File and Folder Graph",
+            "endpoint": "/api/config/graphs/repo-structure",
+            "description": "Bounded command-center graph of key repo folders, files, and operational ownership edges.",
+        },
+        {
+            "id": "workflow-blueprints",
+            "label": "System Workflow Diagram",
+            "endpoint": "/api/config/graphs/workflow-blueprints",
+            "description": "Blueprint-level workflow graph showing lanes, phases, and reviewer/escalation routing.",
+        },
+        {
+            "id": "deployment-context",
+            "label": "Deployment Relationship Graph",
+            "endpoint": "/api/deployments/graph",
+            "description": "Live deployment and causality graph for recent command-center events.",
+        },
+    ]
+
+
+def _build_repo_structure_graph() -> Dict[str, Any]:
+    repo_root = _repo_root()
+    nodes: List[Dict[str, Any]] = [
+        {"id": "repo", "type": "root", "label": repo_root.name, "path": str(repo_root)},
+        {"id": "agents", "type": "file", "label": "AGENTS.md", "path": str(repo_root / "AGENTS.md")},
+        {"id": "readme", "type": "file", "label": "README.md", "path": str(repo_root / "README.md")},
+    ]
+    edges: List[Dict[str, Any]] = [
+        {"source": "repo", "target": "agents", "relation": "governed_by"},
+        {"source": "repo", "target": "readme", "relation": "described_by"},
+    ]
+    top_level = [
+        ("config", "configuration"),
+        ("nix", "declarative-system"),
+        ("scripts", "operations"),
+        ("ai-stack", "runtime"),
+        ("dashboard", "command-center"),
+        ("docs", "documentation"),
+    ]
+    key_children = {
+        "config": ["service-endpoints.sh", "workflow-blueprints.json", "ai-stack-agent-discovery.json"],
+        "nix": ["modules", "home"],
+        "scripts": ["ai", "governance", "testing"],
+        "ai-stack": ["mcp-servers", "workflows", "local-orchestrator"],
+        "dashboard": ["backend"],
+        "docs": ["agent-guides", "harness-first", "operations"],
+    }
+    for name, role in top_level:
+        node_id = f"dir:{name}"
+        path = repo_root / name
+        nodes.append({"id": node_id, "type": "directory", "label": name, "path": str(path), "role": role})
+        edges.append({"source": "repo", "target": node_id, "relation": "contains"})
+        for child in key_children.get(name, []):
+            child_id = f"{node_id}:{child}"
+            child_path = path / child
+            child_type = "directory" if child_path.is_dir() else "file"
+            nodes.append(
+                {
+                    "id": child_id,
+                    "type": child_type,
+                    "label": child,
+                    "path": str(child_path),
+                }
+            )
+            edges.append({"source": node_id, "target": child_id, "relation": "contains"})
+    return {
+        "graph_id": "repo-structure",
+        "title": "Relational File and Folder Graph",
+        "nodes": nodes,
+        "edges": edges,
+        "focus_areas": ["nix", "scripts/ai", "ai-stack/mcp-servers", "dashboard/backend", "config"],
+    }
+
+
+def _build_workflow_blueprint_graph() -> Dict[str, Any]:
+    blueprints = _load_workflow_blueprints()
+    raw_blueprints = []
+    try:
+        raw_blueprints = json.loads(_workflow_blueprints_path().read_text(encoding="utf-8")).get("blueprints") or []
+    except (OSError, json.JSONDecodeError):
+        raw_blueprints = []
+
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    lane_nodes: set[str] = set()
+
+    for blueprint in raw_blueprints:
+        if not isinstance(blueprint, dict):
+            continue
+        blueprint_id = str(blueprint.get("id") or "")
+        if not blueprint_id:
+            continue
+        title = str(blueprint.get("title") or blueprint_id)
+        nodes.append({"id": f"blueprint:{blueprint_id}", "type": "blueprint", "label": title})
+
+        policy = blueprint.get("orchestration_policy") or {}
+        for lane_key in ("primary_lane", "reviewer_lane", "escalation_lane"):
+            lane = str(policy.get(lane_key) or "").strip()
+            if not lane:
+                continue
+            lane_id = f"lane:{lane}"
+            if lane_id not in lane_nodes:
+                lane_nodes.add(lane_id)
+                nodes.append({"id": lane_id, "type": "lane", "label": lane})
+            edges.append({"source": f"blueprint:{blueprint_id}", "target": lane_id, "relation": lane_key})
+
+        previous_phase_id: Optional[str] = None
+        for phase in blueprint.get("phases") or []:
+            if not isinstance(phase, dict):
+                continue
+            phase_name = str(phase.get("id") or "phase")
+            phase_id = f"phase:{blueprint_id}:{phase_name}"
+            nodes.append(
+                {
+                    "id": phase_id,
+                    "type": "phase",
+                    "label": phase_name,
+                    "requires_approval": bool(phase.get("requires_approval", False)),
+                    "tools": list(phase.get("tools") or []),
+                }
+            )
+            edges.append({"source": f"blueprint:{blueprint_id}", "target": phase_id, "relation": "has_phase"})
+            if previous_phase_id is not None:
+                edges.append({"source": previous_phase_id, "target": phase_id, "relation": "precedes"})
+            previous_phase_id = phase_id
+
+    return {
+        "graph_id": "workflow-blueprints",
+        "title": "System Workflow Diagram",
+        "blueprints": blueprints,
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 def _load_secret_from_file(env_var: str) -> str:
@@ -268,6 +406,7 @@ async def _build_config_snapshot() -> Dict[str, Any]:
             "source": str(_harness_first_policy_path()),
         },
         "documentation_sources": docs_sources,
+        "command_center_graphs": _repo_graph_surfaces(),
         "workflow_blueprints": workflow_blueprints,
         "control_plane_inventory": {
             "dashboard_runtime_controls": [
@@ -348,6 +487,18 @@ async def _build_config_snapshot() -> Dict[str, Any]:
 async def get_runtime_config() -> Dict[str, Any]:
     """Return dashboard runtime config plus live harness control-plane inventory."""
     return await _build_config_snapshot()
+
+
+@router.get("/graphs/repo-structure")
+async def get_repo_structure_graph() -> Dict[str, Any]:
+    """Return a bounded repo topology graph for command-center consumption."""
+    return _build_repo_structure_graph()
+
+
+@router.get("/graphs/workflow-blueprints")
+async def get_workflow_blueprint_graph() -> Dict[str, Any]:
+    """Return a blueprint-level workflow graph for command-center consumption."""
+    return _build_workflow_blueprint_graph()
 
 
 @router.post("")
