@@ -2613,6 +2613,7 @@
             <a class="action-link" href="#section-deployments">Deployments</a>
             <a class="action-link" href="#section-testing">Testing</a>
             <a class="action-link" href="#section-security">Security</a>
+            <a class="action-link" href="#section-graphs">Graphs 3D</a>
             <a class="action-link" id="apiHealthLink" href="/api/health" target="_blank" rel="noreferrer">API Health</a>
             <a class="action-link" id="prometheusLink" href="/metrics" target="_blank" rel="noreferrer">Prometheus</a>
         </div>
@@ -5362,6 +5363,59 @@
             </div>
         </div>
     </div>
+
+    <!-- ================================================================ -->
+    <!-- 3-D Graphs Section                                                -->
+    <!-- ================================================================ -->
+    <div style="padding: 0 1.5rem 2rem; max-width: 1600px; margin: 0 auto;" id="section-graphs">
+        <h2 style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-primary);">3-D System Graphs</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+
+            <!-- Vector Knowledge Graph -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Vector Knowledge Graph</h2>
+                    <span class="card-badge" id="vectorGraphBadge">loading...</span>
+                </div>
+                <div style="position: relative;">
+                    <div id="vectorGraph3D" style="width: 100%; height: 500px; background: #0a0a0a; border-radius: 0.375rem;"></div>
+                    <div id="vectorGraphOverlay" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; color: var(--text-secondary);">
+                        Drag to rotate · Scroll to zoom · Click node for details
+                    </div>
+                    <div id="vectorGraphTooltip" style="position: absolute; background: rgba(20,20,20,0.95); border: 1px solid var(--border-primary); border-radius: 4px; padding: 6px 10px; font-size: 0.78rem; pointer-events: none; display: none; max-width: 220px; word-break: break-all;"></div>
+                </div>
+                <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem;" id="vectorGraphLegend"></div>
+            </div>
+
+            <!-- Agent Harness Workflow Graph -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Agent Harness Topology</h2>
+                    <span class="card-badge" id="workflowGraphBadge">loading...</span>
+                </div>
+                <div style="position: relative;">
+                    <div id="workflowGraph3D" style="width: 100%; height: 500px; background: #0a0a0a; border-radius: 0.375rem;"></div>
+                    <div style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; color: var(--text-secondary);">
+                        Drag to rotate · Scroll to zoom · Click node for details
+                    </div>
+                    <div id="workflowGraphTooltip" style="position: absolute; background: rgba(20,20,20,0.95); border: 1px solid var(--border-primary); border-radius: 4px; padding: 6px 10px; font-size: 0.78rem; pointer-events: none; display: none; max-width: 220px;"></div>
+                </div>
+                <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem;" id="workflowGraphLegend">
+                    <span style="color: #f4a261;">■ Router</span>
+                    <span style="color: #2ec4b6;">■ Local LLM</span>
+                    <span style="color: #8ecae6;">■ CLI Bridge</span>
+                    <span style="color: #e76f51;">■ Remote</span>
+                    <span style="color: #a8dadc;">■ Services</span>
+                    <span style="color: #4e9af1;">■ Profile</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 3d-force-graph CDN -->
+    <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
+    <script src="https://unpkg.com/3d-force-graph@1.72.0/dist/3d-force-graph.min.js"></script>
 
     <script>
         // Global state
@@ -14309,12 +14363,137 @@
             // Initialize Execution History Browser (Phase B-E)
             initializeHistoryBrowser();
 
+            // Initialize 3D graphs (lazy — only when ForceGraph3D loaded)
+            setTimeout(init3DGraphs, 800);
+
             // Log performance report after initial load
             setTimeout(() => {
                 console.log('Initial page load completed - performance report:');
                 generatePerformanceReport();
             }, 5000);
         });
+
+        // ================================================================
+        // 3-D Force Graph Visualizations
+        // ================================================================
+        function init3DGraphs() {
+            if (typeof ForceGraph3D === 'undefined') {
+                console.warn('3d-force-graph not loaded yet, retrying...');
+                setTimeout(init3DGraphs, 1000);
+                return;
+            }
+            initVectorGraph();
+            initWorkflowGraph();
+        }
+
+        function _attachNodeTooltip(graph, containerId, tooltipId, labelFn) {
+            const container = document.getElementById(containerId);
+            const tooltip = document.getElementById(tooltipId);
+            if (!container || !tooltip) return;
+            graph.onNodeHover(node => {
+                if (node) {
+                    tooltip.innerHTML = labelFn(node);
+                    tooltip.style.display = 'block';
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            });
+            container.addEventListener('mousemove', e => {
+                const rect = container.getBoundingClientRect();
+                let left = e.clientX - rect.left + 12;
+                let top = e.clientY - rect.top - 10;
+                if (left + 230 > rect.width) left = e.clientX - rect.left - 240;
+                tooltip.style.left = left + 'px';
+                tooltip.style.top = top + 'px';
+            });
+            container.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+        }
+
+        function initVectorGraph() {
+            const el = document.getElementById('vectorGraph3D');
+            if (!el) return;
+            const badge = document.getElementById('vectorGraphBadge');
+            const legend = document.getElementById('vectorGraphLegend');
+
+            const graph = ForceGraph3D()(el)
+                .backgroundColor('#0a0a0a')
+                .nodeLabel(n => `<span style="font-size:0.8rem">${n.name}</span>`)
+                .nodeColor(n => n.color || '#4e9af1')
+                .nodeVal(n => n.val || 1)
+                .linkColor(() => '#333')
+                .linkWidth(0.5)
+                .linkOpacity(0.4)
+                .nodeOpacity(0.9)
+                .onNodeClick(node => {
+                    graph.centerAt(node.x, node.y, node.z, 600);
+                    graph.zoom(4, 600);
+                });
+
+            _attachNodeTooltip(graph, 'vectorGraph3D', 'vectorGraphTooltip',
+                n => `<strong>${n.group}</strong><br>${n.name}`);
+
+            fetch('/api/aistack/graph/vector')
+                .then(r => r.json())
+                .then(data => {
+                    graph.graphData({ nodes: data.nodes || [], links: data.links || [] });
+                    if (badge) badge.textContent = `${(data.nodes||[]).length} docs · ${(data.projects||[]).length} projects`;
+                    if (legend && data.projects) {
+                        const colors = ['#4e9af1','#f4a261','#2ec4b6','#e76f51','#8ecae6','#a8dadc','#f6bd60','#84a98c','#b5838d','#6d6875'];
+                        legend.innerHTML = data.projects.slice(0, 10).map((p, i) =>
+                            `<span style="color:${colors[i % colors.length]}">■ ${p}</span>`
+                        ).join(' ');
+                    }
+                })
+                .catch(e => { if (badge) badge.textContent = 'error'; console.error('vector graph error', e); });
+        }
+
+        function initWorkflowGraph() {
+            const el = document.getElementById('workflowGraph3D');
+            if (!el) return;
+            const badge = document.getElementById('workflowGraphBadge');
+
+            const GROUP_SPREAD = { input: 0, router: 0.5, profile: 1, local: 2, cli: 2, remote: 2, service: 1.5, output: 3 };
+
+            const graph = ForceGraph3D()(el)
+                .backgroundColor('#0a0a0a')
+                .nodeLabel(n => `<span style="font-size:0.8rem">${n.name}</span>`)
+                .nodeColor(n => n.color || '#4e9af1')
+                .nodeVal(n => (n.val || 2) * 1.5)
+                .linkColor(l => l.color || '#444')
+                .linkWidth(l => Math.max(0.5, (l.value || 1) * 0.6))
+                .linkDirectionalArrowLength(4)
+                .linkDirectionalArrowRelPos(1)
+                .linkOpacity(0.6)
+                .nodeOpacity(0.95)
+                .onNodeClick(node => {
+                    graph.centerAt(node.x, node.y, node.z, 600);
+                    graph.zoom(5, 600);
+                });
+
+            _attachNodeTooltip(graph, 'workflowGraph3D', 'workflowGraphTooltip',
+                n => `<strong>${n.name}</strong><br>group: ${n.group}`);
+
+            fetch('/api/aistack/graph/workflow')
+                .then(r => r.json())
+                .then(data => {
+                    graph.graphData({ nodes: data.nodes || [], links: data.links || [] });
+                    const nodeCount = (data.nodes || []).length;
+                    const linkCount = (data.links || []).length;
+                    if (badge) badge.textContent = `${nodeCount} nodes · ${linkCount} edges`;
+                    // Auto-rotate for visual effect
+                    let angle = 0;
+                    const autoRotate = setInterval(() => {
+                        graph.cameraPosition({
+                            x: 200 * Math.sin(angle),
+                            z: 200 * Math.cos(angle),
+                        });
+                        angle += Math.PI / 720;
+                    }, 33);
+                    // Stop auto-rotate on user interaction
+                    el.addEventListener('mousedown', () => clearInterval(autoRotate), { once: true });
+                })
+                .catch(e => { if (badge) badge.textContent = 'error'; console.error('workflow graph error', e); });
+        }
     </script>
 </body>
 </html>
