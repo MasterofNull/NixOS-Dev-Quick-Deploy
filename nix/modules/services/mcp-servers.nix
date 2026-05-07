@@ -1170,7 +1170,7 @@ in {
                 # Env vars below are FALLBACK DEFAULTS only — the probe overrides them
                 # when it successfully detects the loaded model. Set env vars to lock
                 # a specific value regardless of what the probe measures.
-                "AI_MODEL_PROFILE_PATH=/var/lib/nixos-ai-stack/model-profile.json"
+                "AI_MODEL_PROFILE_PATH=${dataDir}/model-profile.json"
                 # Fallback token budgets (probe will override these at runtime):
                 "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS=2000"
                 "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=400"

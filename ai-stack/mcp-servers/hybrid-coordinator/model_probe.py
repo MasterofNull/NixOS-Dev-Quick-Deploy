@@ -252,8 +252,8 @@ def _default_profile_path() -> Path:
     for candidate in [here, here.parent, here.parent.parent, here.parent.parent.parent, here.parent.parent.parent.parent]:
         if (candidate / "flake.nix").exists():
             return candidate / "config" / "model-profile.json"
-    # Fallback: writable runtime location
-    return Path("/var/lib/nixos-ai-stack/model-profile.json")
+    # Fallback: writable runtime location (dataDir from ai-stack.nix)
+    return Path("/var/lib/ai-stack/model-profile.json")
 
 
 def _load_cached(path: Path) -> Optional[ModelProfile]:
