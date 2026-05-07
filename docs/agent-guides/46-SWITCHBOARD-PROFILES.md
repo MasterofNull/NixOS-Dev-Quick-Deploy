@@ -6,7 +6,7 @@ or by targeting the right endpoint in your client config.
 
 ## Profile Matrix
 
-| Profile | Provider | Max Input | Max Output | Max Msgs | Hints | Use When |
+| Profile | Provider | Max Input | Default Max Output | Max Msgs | Hints | Use When |
 |---------|----------|-----------|------------|----------|-------|----------|
 | `default` | auto | unlimited | 768 tok | unlimited | yes | General-purpose; hints injected |
 | `continue-local` | local | 1200 tok | 768 tok | 8 | no | Continue.dev inline chat; quick edits |
@@ -20,6 +20,14 @@ or by targeting the right endpoint in your client config.
 | `remote-reasoning` | remote (large) | 6000 tok | 1800 tok | 20 | no | Architecture, policy, tradeoff analysis |
 | `remote-tool-calling` | remote (coder) | 3500 tok | 900 tok | 16 | no | Strict tool-schema execution via remote |
 | `remote-gemini` | remote (free) | 3500 tok | 1400 tok | 16 | no | Discovery, planning, synthesis front-door |
+
+Important:
+- `Default Max Output` values are switchboard profile defaults, not a universal
+  cap for every interactive client.
+- User-facing editor clients can request larger reply budgets when the client
+  surface is intentionally configured for interactive work.
+- Agent-to-agent traffic should be controlled primarily by workflow/session
+  `token_limit`, tool-call limits, and blueprint policy.
 
 ## Decision Tree
 
@@ -60,9 +68,9 @@ curl -s http://localhost:8085/v1/chat/completions \
   -d '{"model":"auto","messages":[{"role":"user","content":"Refactor this function..."}]}'
 ```
 
-**Continue.dev** — set `apiBase` to `http://localhost:8085/v1` and the profile
-is selected automatically from the `continue-local` profile card injected at
-startup.
+**Continue.dev** — set `apiBase` to `http://localhost:8085/v1` and select the
+intended model lane from the generated model list. The profile is chosen by the
+`X-AI-Profile` header associated with that model entry.
 
 **qwen CLI:**
 ```bash
@@ -105,6 +113,9 @@ Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
 - `SWB_REMOTE_DAILY_TOKEN_CAP` — hard daily remote token cap (0 = unlimited).
 - When cap is hit, `remote-*` profiles fall back to local unless `forceProvider=remote`.
 - Local profiles never fall back to remote.
+- For workflow runs and delegated sub-agents, treat switchboard profile budgets
+  as defaults only. The authoritative internal-traffic budget should come from
+  workflow/session policy such as `token_limit`.
 
 ## Loop Detection (added 2026-04-20)
 
