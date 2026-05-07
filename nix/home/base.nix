@@ -1265,9 +1265,9 @@ in {
               $models
               | any(
                   .[]?;
-                  .title == "Local Chat (continue-local)"
+                  .title == "Local (Harness-Aware)"
                   and .apiBase == $api_base
-                  and ((.requestOptions.headers["X-AI-Profile"] // "") == "continue-local")
+                  and ((.requestOptions.headers["X-AI-Profile"] // "") == "local-agent")
                 )
             )
             and (
@@ -1307,31 +1307,7 @@ in {
       ],
       "models": [
         {
-
-          "title": "Local Chat (continue-local)",
-          "provider": "openai",
-          "apiKey": "local-llama-cpp",
-          "apiBase": "${continueApiBase}",
-          "model": "${aiLlamaModel}",
-
-
-
-
-
-
-
-
-
-          "requestOptions": {
-            "headers": {
-              "X-AI-Profile": "continue-local"
-            }
-          },
-          "contextLength": ${toString continueContextLength},
-          "maxTokens": ${toString continueChatMaxTokens}
-        },
-        {
-          "title": "Local Agent (Harness-Aware)",
+          "title": "Local (Harness-Aware)",
           "provider": "openai",
           "apiKey": "local-llama-cpp",
           "apiBase": "${continueApiBase}",
@@ -1343,6 +1319,20 @@ in {
           },
           "contextLength": ${toString localAgentContextLength},
           "maxTokens": ${toString localAgentChatMaxTokens}
+        },
+        {
+          "title": "Continue Local (Compact)",
+          "provider": "openai",
+          "apiKey": "local-llama-cpp",
+          "apiBase": "${continueApiBase}",
+          "model": "${aiLlamaModel}",
+          "requestOptions": {
+            "headers": {
+              "X-AI-Profile": "continue-local"
+            }
+          },
+          "contextLength": ${toString continueContextLength},
+          "maxTokens": ${toString continueChatMaxTokens}
         },
         {
           "title": "Remote Coding (Switchboard)",

@@ -3416,6 +3416,25 @@ async def get_task_classification_stats() -> Dict[str, Any]:
     }
 
 
+def _recent_routing_decisions(
+    rows: List[Dict[str, Any]],
+    *,
+    remote_configured: bool,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    enriched: List[Dict[str, Any]] = []
+    for row in rows[-max(1, limit):]:
+        if not isinstance(row, dict):
+            continue
+        enriched.append(
+            {
+                **row,
+                "category": _classify_routing_failure(row, remote_configured),
+            }
+        )
+    return enriched
+
+
 def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
     if not value:
         return None
@@ -3548,6 +3567,11 @@ async def get_routing_summary() -> Dict[str, Any]:
         if category:
             category_mix[category] = category_mix.get(category, 0) + 1
     routing_windows = _routing_windows(recent_decisions, now=datetime.now(timezone.utc), remote_configured=remote_configured)
+    recent_decisions_enriched = _recent_routing_decisions(
+        recent_decisions,
+        remote_configured=remote_configured,
+        limit=8,
+    )
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -3584,8 +3608,46 @@ async def get_routing_summary() -> Dict[str, Any]:
             category_mix.items(),
             key=lambda item: (-item[1], item[0]),
         )[:5],
-        "recent_decisions": recent_decisions,
+        "recent_decisions": recent_decisions_enriched,
         "notes": operator_notes,
+    }
+
+
+@router.get("/routing/decisions")
+async def get_routing_decisions(
+    limit: Optional[int] = 25,
+    route_alias: Optional[str] = None,
+    routed_profile: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Operator-facing recent routing decision feed with lightweight filtering."""
+    task_stats = await get_task_classification_stats()
+    switchboard_health = await fetch_with_fallback(f"{SERVICES['switchboard']}/health", {})
+    remote_configured = bool(switchboard_health.get("remote_configured", False)) if isinstance(switchboard_health, dict) else False
+    decisions = _recent_routing_decisions(
+        list(task_stats.get("recent_decisions") or []),
+        remote_configured=remote_configured,
+        limit=max(1, min(int(limit or 25), 50)),
+    )
+
+    if route_alias:
+        wanted_alias = route_alias.strip().lower()
+        decisions = [row for row in decisions if str(row.get("route_alias") or "").strip().lower() == wanted_alias]
+    if routed_profile:
+        wanted_profile = routed_profile.strip().lower()
+        decisions = [row for row in decisions if str(row.get("routed_profile") or "").strip().lower() == wanted_profile]
+
+    audit_log = Path(os.getenv("TOOL_AUDIT_LOG", "/var/log/nixos-ai-stack/tool-audit.jsonl"))
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": str(audit_log),
+        "audit_log_exists": audit_log.exists(),
+        "filters": {
+            "limit": max(1, min(int(limit or 25), 50)),
+            "route_alias": route_alias,
+            "routed_profile": routed_profile,
+        },
+        "count": len(decisions),
+        "items": decisions,
     }
 
 

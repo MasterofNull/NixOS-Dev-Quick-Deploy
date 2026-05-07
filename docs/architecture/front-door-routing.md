@@ -11,6 +11,9 @@ Current front door surfaces:
 - `POST /v1/orchestrate` on the hybrid coordinator
 - `scripts/ai/local-orchestrator`
 - Continue/editor traffic routed through switchboard with the `continue-local` lane
+- command-center routing posture and recent decision feeds:
+  - `GET /api/aistack/routing/summary`
+  - `GET /api/aistack/routing/decisions?limit=25`
 
 Example CLI usage:
 
@@ -66,10 +69,13 @@ Use these checks when validating front-door routing after repo changes or deploy
 scripts/ai/aq-qa 0
 python3 -m pytest ai-stack/mcp-servers/hybrid-coordinator/tests/test_route_aliases.py
 python3 -m pytest ai-stack/mcp-servers/hybrid-coordinator/tests/test_orchestrate_routing.py
+python3 scripts/testing/test-dashboard-routing-posture-ui.py
 curl -sS -X POST http://127.0.0.1:8003/v1/orchestrate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $(tr -d '\n' < /run/secrets/hybrid_coordinator_api_key)" \
   -d '{"prompt":"what is nixos","route":"Explore"}' | jq
+curl -sS http://127.0.0.1:8889/api/aistack/routing/summary | jq
+curl -sS "http://127.0.0.1:8889/api/aistack/routing/decisions?limit=10" | jq
 ```
 
 ## Local Orchestrator Notes

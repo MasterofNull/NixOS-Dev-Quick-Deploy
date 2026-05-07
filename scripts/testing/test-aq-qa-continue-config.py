@@ -19,24 +19,24 @@ def main() -> int:
     home_base = HOME_BASE.read_text(encoding="utf-8")
 
     assert_true(
-        '0.5.2" "Continue config targets switchboard ingress with continue-local lane"' in script,
+        '0.5.2" "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane"' in script,
         "aq-qa phase 0 should describe the switchboard ingress contract for Continue config",
     )
     assert_true(
-        script.count('http://127.0.0.1:8085/v1') >= 3,
-        "aq-qa should validate switchboard ingress for at least the base model, lane-specific model, and tab autocomplete",
+        script.count('http://127.0.0.1:8085/v1') >= 2,
+        "aq-qa should validate switchboard ingress for the chat model, tab autocomplete, and related editor surfaces",
     )
     assert_true(
-        '/health' in script and 'expected_context' in script and 'expected_chat_max_tokens' in script,
+        '/health' in script and 'expected_chat_context' in script and 'expected_chat_max_tokens' in script and 'expected_tab_context' in script,
         "aq-qa should derive Continue context and token expectations from live switchboard profile health instead of hardcoded floors",
     )
     assert_true(
-        'min(4096, expected_context)' in script,
-        "aq-qa should treat interactive Continue chat budgets separately from compact agent-profile defaults",
+        'local_agent_profile' in script and 'continue_profile' in script and 'bounded_chat_context' in script,
+        "aq-qa should treat interactive Continue chat budgets separately from compact continue-local defaults",
     )
     assert_true(
-        '"continue-local"' in script,
-        "aq-qa should keep the continue-local lane requirement in the config validator",
+        '"local-agent"' in script and '"continue-local"' in script,
+        "aq-qa should validate the local-agent chat lane while keeping continue-local for compact editor traffic",
     )
     assert_true(
         'http://127.0.0.1:8003/hints' in script,

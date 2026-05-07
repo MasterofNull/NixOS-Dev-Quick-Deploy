@@ -200,40 +200,32 @@ with urlopen(f"{switchboard_url}/health", timeout=5) as response:
 
 profiles = health.get("profiles") or {}
 continue_profile = profiles.get("continue-local") or {}
+local_agent_profile = profiles.get("local-agent") or {}
 default_profile = profiles.get("default") or {}
 
-# Interactive Continue chat should honor the model-sized editor context, while
-# compact switchboard response budgets stay reserved for agent-style lanes.
-expected_context = continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
-expected_context = int(expected_context) if expected_context is not None else None
-expected_chat_max_tokens = min(4096, expected_context) if expected_context is not None else 4096
+# Interactive Continue chat should use the larger harness-aware local-agent
+# lane, while compact switchboard response budgets stay reserved for the
+# continue-local editor path and tab/autocomplete.
+expected_chat_context = local_agent_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
+expected_chat_context = int(expected_chat_context) if expected_chat_context is not None else None
+bounded_chat_context = local_agent_profile.get("maxInputTokens")
+bounded_chat_context = int(bounded_chat_context) if bounded_chat_context is not None else None
+if expected_chat_context is not None and bounded_chat_context is not None:
+    expected_chat_context = min(expected_chat_context, bounded_chat_context)
+expected_chat_max_tokens = int(local_agent_profile.get("maxOutputTokens") or 1024)
+
+expected_tab_context = continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
+expected_tab_context = int(expected_tab_context) if expected_tab_context is not None else None
 expected_tab_max_tokens = max(32, min(96, expected_chat_max_tokens)) if expected_chat_max_tokens is not None else None
 
 models = data.get("models") or []
 if not any(
     isinstance(model, dict)
     and model.get("apiBase") == "http://127.0.0.1:8085/v1"
+    and ((model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") == "local-agent"
     and (
-        int(model.get("contextLength") or 0) == expected_context
-        if expected_context is not None
-        else int(model.get("contextLength") or 0) >= 12000
-    )
-    and (
-        int(model.get("maxTokens") or 0) == expected_chat_max_tokens
-        if expected_chat_max_tokens is not None
-        else int(model.get("maxTokens") or 0) >= 512
-    )
-    for model in models
-):
-    raise SystemExit(1)
-
-if not any(
-    isinstance(model, dict)
-    and model.get("apiBase") == "http://127.0.0.1:8085/v1"
-    and ((model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") == "continue-local"
-    and (
-        int(model.get("contextLength") or 0) == expected_context
-        if expected_context is not None
+        int(model.get("contextLength") or 0) == expected_chat_context
+        if expected_chat_context is not None
         else int(model.get("contextLength") or 0) >= 12000
     )
     and (
@@ -250,7 +242,7 @@ if tab_model.get("apiBase") != "http://127.0.0.1:8085/v1":
     raise SystemExit(1)
 if ((tab_model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") != "continue-local":
     raise SystemExit(1)
-if expected_context is not None and int(tab_model.get("contextLength") or 0) != expected_context:
+if expected_tab_context is not None and int(tab_model.get("contextLength") or 0) != expected_tab_context:
     raise SystemExit(1)
 if (
     int(tab_model.get("maxTokens") or 0)
@@ -415,7 +407,7 @@ run_phase_0() {
 
   # 0.5 Continue/editor runtime basics
   _check "0.5.1" "Continue CLI help works" _continue_cli_help
-  _check "0.5.2" "Continue config targets switchboard ingress with continue-local lane" _continue_config_ok
+  _check "0.5.2" "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane" _continue_config_ok
   _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' _continue_extension_output
   _check "0.5.4" "continue-local switchboard profile ready" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke

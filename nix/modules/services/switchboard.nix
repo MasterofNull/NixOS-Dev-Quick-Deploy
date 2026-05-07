@@ -685,7 +685,7 @@ let
                 break
         if model.lower().startswith("local/"):
             payload["model"] = model[len("local/"):] or "local-model"
-        elif alias_model and not model:
+        elif alias_model and (not model or not any(model.lower().startswith(p) for p in REMOTE_MODEL_PREFIXES)):
             payload["model"] = alias_model
         return payload
 
