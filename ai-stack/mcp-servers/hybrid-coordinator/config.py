@@ -500,6 +500,54 @@ class Config:
     # Can be overridden via ~/.local/share/nixos-ai-stack/reasoning-profiles.json
     REASONING_PROFILES = _load_reasoning_profiles()
 
+    # Runtime model profile — populated by model_probe at startup.
+    # Env vars remain the override mechanism (Nix-level config wins).
+    _model_profile: dict = {}
+
+    @classmethod
+    def _apply_model_profile(cls, profile: "Any") -> None:
+        """
+        Apply detected model capabilities to Config.
+
+        Env vars always win — the probe only fills in values that have not been
+        explicitly overridden via environment. This means Nix options stay
+        authoritative while the system self-tunes for new models automatically.
+        """
+        cls._model_profile = profile.to_dict() if hasattr(profile, "to_dict") else {}
+
+        # Thinking mode: detected from /props chat_template, not model name.
+        # Only set if not already overridden by env var.
+        if os.getenv("AI_MODEL_HAS_THINKING") is None:
+            cls.AI_MODEL_HAS_THINKING = bool(getattr(profile, "has_thinking_mode", False))
+        if os.getenv("AI_MODEL_CAN_DISABLE_THINKING") is None:
+            cls.AI_MODEL_CAN_DISABLE_THINKING = bool(getattr(profile, "can_disable_thinking", False))
+
+        # Token budgets: only override the defaults (not env-var-set values).
+        _budget_map = {
+            "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS": "budget_interactive",
+            "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP": "budget_lookup",
+            "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT": "budget_lookup",
+            "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING": "budget_reasoning",
+            "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE": "budget_synthesis",
+            "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_HEAVY": "budget_heavy",
+            "AI_CONTEXT_MAX_TOKENS_LOOKUP": "ctx_budget_lookup",
+            "AI_CONTEXT_MAX_TOKENS_FORMAT": "ctx_budget_lookup",
+            "AI_CONTEXT_MAX_TOKENS_REASONING": "ctx_budget_reasoning",
+            "AI_CONTEXT_MAX_TOKENS_SYNTHESIZE": "ctx_budget_synthesis",
+        }
+        for config_key, profile_key in _budget_map.items():
+            if os.getenv(config_key) is None:
+                val = getattr(profile, profile_key, None)
+                if val is not None and int(val) > 0:
+                    setattr(cls, config_key, int(val))
+
+    # Model capability flags — defaults before probe runs.
+    # Env vars override; probe updates at startup if env vars are not set.
+    AI_MODEL_HAS_THINKING = os.getenv("AI_MODEL_HAS_THINKING", "").lower() in ("1", "true") \
+        if os.getenv("AI_MODEL_HAS_THINKING") is not None else False
+    AI_MODEL_CAN_DISABLE_THINKING = os.getenv("AI_MODEL_CAN_DISABLE_THINKING", "").lower() in ("1", "true") \
+        if os.getenv("AI_MODEL_CAN_DISABLE_THINKING") is not None else False
+
     @classmethod
     def build_local_system_prompt(cls) -> str:
         """

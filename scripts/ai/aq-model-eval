@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""
+aq-model-eval — Probe the loaded llama.cpp model and write a model-profile.json.
+
+Run this after loading a new model (or after nixos-rebuild) to generate
+hardware-accurate token budgets and detect model capabilities without any
+hardcoded model names.
+
+Usage:
+    aq-model-eval                     # probe current model, print profile
+    aq-model-eval --url http://...    # override llama.cpp URL
+    aq-model-eval --force             # re-probe even if cache exists
+    aq-model-eval --json              # output profile JSON only
+
+The profile is cached at $AI_MODEL_PROFILE_PATH (default: config/model-profile.json).
+The hybrid-coordinator reads this profile at startup to set token budgets.
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+from pathlib import Path
+
+# Add coordinator directory to path so we can import model_probe directly
+_COORD = Path(__file__).resolve().parent.parent.parent / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+sys.path.insert(0, str(_COORD))
+
+import model_probe
+
+
+async def _run(args: argparse.Namespace) -> None:
+    llama_url = args.url or os.getenv("LLAMA_CPP_URL", "http://127.0.0.1:8080")
+    profile_path = (
+        Path(args.profile_path)
+        if args.profile_path
+        else model_probe._default_profile_path()
+    )
+
+    if args.force and profile_path.exists():
+        profile_path.unlink()
+        if not args.json_only:
+            print(f"Cleared cached profile at {profile_path}", file=sys.stderr)
+
+    if not args.json_only:
+        print(f"Probing {llama_url} ...", file=sys.stderr)
+
+    profile = await model_probe.probe(llama_url, profile_path)
+    d = profile.to_dict()
+
+    if args.json_only:
+        print(json.dumps(d, indent=2))
+        return
+
+    print()
+    print("=" * 62)
+    print("  MODEL PROFILE")
+    print("=" * 62)
+    print(f"  Model ID        : {d['model_id']}")
+    print(f"  Context length  : {d['context_length']:,} tokens")
+    print(f"  Output speed    : {d['measured_tps_output']:.1f} t/s")
+    print(f"  Thinking mode   : {d['has_thinking_mode']}")
+    print(f"  Disable thinking: {d['can_disable_thinking']}")
+    print(f"  Tool calling    : {d['supports_tools']}")
+    print(f"  EOS token       : {repr(d['eos_token'])}")
+    print()
+    print("  TOKEN BUDGETS (computed from speed × timeout):")
+    print(f"    interactive  : {d['budget_interactive']:>5}  (direct, {180}s window)")
+    print(f"    lookup       : {d['budget_lookup']:>5}  (no-think fast path)")
+    print(f"    reasoning    : {d['budget_reasoning']:>5}  (switchboard, synthesis window)")
+    print(f"    synthesis    : {d['budget_synthesis']:>5}  (switchboard, {900}s window)")
+    print(f"    heavy        : {d['budget_heavy']:>5}  (switchboard, max generation)")
+    print()
+    print("  CONTEXT BUDGETS (retrieved content fed to LLM):")
+    print(f"    lookup       : {d['ctx_budget_lookup']:>5}")
+    print(f"    reasoning    : {d['ctx_budget_reasoning']:>5}")
+    print(f"    synthesis    : {d['ctx_budget_synthesis']:>5}")
+    print()
+    print(f"  Cached at: {profile_path}")
+    print("=" * 62)
+    print()
+    print("  Coordinator reads this profile at startup.")
+    print("  Run 'sudo nixos-rebuild switch' to apply a new model.")
+    print()
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--url", help="llama.cpp base URL (default: $LLAMA_CPP_URL or http://127.0.0.1:8080)")
+    p.add_argument("--force", action="store_true", help="Re-probe even if a cached profile exists")
+    p.add_argument("--profile-path", metavar="PATH", help="Output path for model-profile.json")
+    p.add_argument("--json", dest="json_only", action="store_true", help="Print raw JSON only")
+    args = p.parse_args()
+    asyncio.run(_run(args))
+
+
+if __name__ == "__main__":
+    main()

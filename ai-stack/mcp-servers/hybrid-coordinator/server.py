@@ -87,6 +87,7 @@ import interaction_tracker
 import memory_manager
 import mcp_handlers
 import model_loader
+import model_probe
 import route_handler
 import federated_integration
 import federated_mcp_handlers
@@ -576,6 +577,21 @@ async def initialize_server():
         embedding_client=embedding_client,
         embedding_cache_ref=lambda: embedding_cache,
     )
+
+    # Probe the loaded model to detect capabilities (thinking mode, t/s, context length)
+    # and compute hardware-accurate token budgets. Non-blocking: falls back to safe
+    # defaults if llama.cpp is not yet ready (model still loading).
+    try:
+        _profile = await model_probe.probe(Config.LLAMA_CPP_URL)
+        Config._apply_model_profile(_profile)
+        logger.info(
+            "model_probe applied: model=%s tps=%.1f thinking=%s "
+            "budgets interactive=%d synthesis=%d heavy=%d",
+            _profile.model_id, _profile.measured_tps_output, _profile.has_thinking_mode,
+            _profile.budget_interactive, _profile.budget_synthesis, _profile.budget_heavy,
+        )
+    except Exception as _probe_err:
+        logger.warning("model_probe failed (using defaults): %s", _probe_err)
 
     # Initialize AIDB client (system-configured loopback service; no SSRF check needed)
     aidb_client = httpx.AsyncClient(base_url=Config.AIDB_URL, timeout=30.0)
