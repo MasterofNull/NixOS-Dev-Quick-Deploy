@@ -11519,6 +11519,8 @@
                 const aliases = summary.frontdoor?.aliases || {};
                 const activeRequest = swb.active_request || {};
                 const recentDecisions = Array.isArray(summary.recent_decisions) ? summary.recent_decisions : [];
+                const routingWindows = summary.routing_windows?.windows || {};
+                const failureCategories = Array.isArray(summary.failure_categories) ? summary.failure_categories : [];
                 const notes = Array.isArray(summary.notes) ? summary.notes : [];
 
                 rows.push(`
@@ -11539,6 +11541,20 @@
                         <span class="data-meta">${escapeHtml(`total=${classification.total_classified ?? 0} | local=${classification.local_pct ?? '--'}% | remote=${classification.remote_pct ?? '--'}%`)}</span>
                     </div>
                 `);
+                rows.push(`
+                    <div class="data-item">
+                        <span>routing_windows</span>
+                        <span class="data-meta">${escapeHtml(`1h l=${routingWindows['1h']?.local_pct ?? '--'}% r=${routingWindows['1h']?.remote_pct ?? '--'}% | 24h l=${routingWindows['24h']?.local_pct ?? '--'}% r=${routingWindows['24h']?.remote_pct ?? '--'}% | 7d l=${routingWindows['7d']?.local_pct ?? '--'}% r=${routingWindows['7d']?.remote_pct ?? '--'}%`)}</span>
+                    </div>
+                `);
+                if (failureCategories.length) {
+                    rows.push(`
+                        <div class="data-item">
+                            <span>failure_categories</span>
+                            <span class="data-meta">${escapeHtml(failureCategories.map(([name, count]) => `${name}:${count}`).join(' | '))}</span>
+                        </div>
+                    `);
+                }
                 if (activeRequest.profile || activeRequest.path) {
                     rows.push(`
                         <div class="data-item">
@@ -11552,7 +11568,7 @@
                     rows.push(`
                         <div class="data-item">
                             <span>recent_decision</span>
-                            <span class="data-meta">${escapeHtml(`task=${top.task_type || '--'} | alias=${top.route_alias || '--'} | profile=${top.routed_profile || '--'} | local=${top.routed_local === null || top.routed_local === undefined ? '--' : top.routed_local}`)}</span>
+                            <span class="data-meta">${escapeHtml(`task=${top.task_type || '--'} | alias=${top.route_alias || '--'} | profile=${top.routed_profile || '--'} | local=${top.routed_local === null || top.routed_local === undefined ? '--' : top.routed_local} | why=${top.rationale || '--'}`)}</span>
                         </div>
                     `);
                 }
