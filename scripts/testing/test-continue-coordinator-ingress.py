@@ -69,8 +69,20 @@ def main() -> int:
         "repo Continue config should label the authoritative model path as switchboard-backed",
     )
     assert_true(
+        '"X-AI-Profile": "remote-coding"' in continue_config_text,
+        "repo Continue config should expose switchboard-backed remote coding lane",
+    )
+    assert_true(
+        '"X-AI-Profile": "remote-reasoning"' in continue_config_text,
+        "repo Continue config should expose switchboard-backed remote reasoning lane",
+    )
+    assert_true(
         '"X-AI-Profile": "continue-local"' in continue_config_text,
         "Continue tab autocomplete should remain pinned to the local continue lane",
+    )
+    assert_true(
+        'apiKey": "sk-or-v1-' not in home_base_text,
+        "Home Manager Continue config must not embed hardcoded remote API keys",
     )
 
     print("PASS: Continue authoritative coordinator ingress wiring is present")

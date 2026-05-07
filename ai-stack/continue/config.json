@@ -29,6 +29,30 @@
       "model": "AUTODETECT"
     },
     {
+      "title": "Remote Coding (Switchboard)",
+      "provider": "openai",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiKey": "dummy",
+      "model": "AUTODETECT",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "remote-coding"
+        }
+      }
+    },
+    {
+      "title": "Remote Reasoning (Switchboard)",
+      "provider": "openai",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiKey": "dummy",
+      "model": "AUTODETECT",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "remote-reasoning"
+        }
+      }
+    },
+    {
       "title": "Local llama.cpp (direct)",
       "provider": "openai",
       "apiBase": "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1",

@@ -3287,6 +3287,8 @@ async def get_switchboard_profiles() -> Dict[str, Any]:
     """
     Fetch switchboard /health and return profile configuration including
     maxInputTokens, maxMessages, profileCard presence, and per-profile routing metadata.
+    The returned token values are switchboard profile defaults, not universal
+    interactive-user caps; client surfaces may override them.
     """
     swb_url = SERVICES.get("switchboard", "")
     if not swb_url:
@@ -3307,6 +3309,12 @@ async def get_switchboard_profiles() -> Dict[str, Any]:
     for name, cfg in raw_profiles.items():
         if not isinstance(cfg, dict):
             continue
+        if name in {"continue-local", "embedded-assist"}:
+            intended_use = "interactive-user"
+        elif name == "default":
+            intended_use = "mixed-frontdoor"
+        else:
+            intended_use = "agent-or-lane-default"
         profiles_out[name] = {
             "maxInputTokens": cfg.get("maxInputTokens"),
             "maxMessages": cfg.get("maxMessages"),
@@ -3316,6 +3324,9 @@ async def get_switchboard_profiles() -> Dict[str, Any]:
             "profileCardLength": len(cfg.get("profileCard") or ""),
             "forceProvider": cfg.get("forceProvider"),
             "forceModel": cfg.get("forceModel"),
+            "intendedUse": intended_use,
+            "responseBudgetScope": "profile-default",
+            "interactiveClientOverrideAllowed": True,
         }
 
     return {
@@ -3323,6 +3334,11 @@ async def get_switchboard_profiles() -> Dict[str, Any]:
         "version": health.get("version"),
         "profiles": profiles_out,
         "profile_count": len(profiles_out),
+        "notes": [
+            "Profile maxOutputTokens values are switchboard defaults.",
+            "Interactive editor/user clients may set larger response budgets.",
+            "Workflow session token_limit remains the authoritative agent-to-agent budget control.",
+        ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
