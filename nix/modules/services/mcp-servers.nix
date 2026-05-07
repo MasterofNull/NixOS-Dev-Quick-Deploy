@@ -1166,14 +1166,15 @@ in {
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
                 # Phase 8.1 — hard cap on LLM generation within /query to bound route_search P95
                 "AI_QUERY_LLM_TIMEOUT_S=${toString ai.aiHarness.runtime.queryLlmTimeoutSeconds}"
-                # Aggressive token budgets: memory/distillation system (AIDB session-knowledge)
-                # handles continuity, so generation is intentionally large. The knowledge base
-                # compacts outputs; subsequent queries retrieve instead of re-generating.
-                # Ceiling=2000: ~540s @ 3.7 t/s, within the 900s switchboard window.
-                # Heavy=2700: reserved for explicit heavy=true tasks (~730s via switchboard).
+                # Model probe reads capabilities at startup and auto-computes budgets.
+                # Env vars below are FALLBACK DEFAULTS only — the probe overrides them
+                # when it successfully detects the loaded model. Set env vars to lock
+                # a specific value regardless of what the probe measures.
+                "AI_MODEL_PROFILE_PATH=/var/lib/nixos-ai-stack/model-profile.json"
+                # Fallback token budgets (probe will override these at runtime):
                 "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS=2000"
-                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=800"
-                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=800"
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_LOOKUP=400"
+                "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_FORMAT=400"
                 "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_REASONING=1500"
                 "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_SYNTHESIZE=2000"
                 "AI_ROUTE_LOCAL_RESPONSE_MAX_TOKENS_HEAVY=2700"

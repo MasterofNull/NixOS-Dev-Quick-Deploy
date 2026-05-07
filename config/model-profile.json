@@ -1,0 +1,22 @@
+{
+  "model_id": "active.gguf",
+  "model_path": "/var/lib/llama-cpp/models/active.gguf",
+  "context_length": 262144,
+  "measured_tps_output": 3.0,
+  "has_thinking_mode": true,
+  "can_disable_thinking": true,
+  "supports_tools": true,
+  "supports_system_prompt": true,
+  "eos_token": "<|im_end|>",
+  "budget_interactive": 351,
+  "budget_synthesis": 1755,
+  "budget_heavy": 2295,
+  "budget_lookup": 210,
+  "budget_reasoning": 1228,
+  "ctx_budget_lookup": 800,
+  "ctx_budget_synthesis": 2193,
+  "ctx_budget_reasoning": 1842,
+  "profile_version": 2,
+  "probed_at": "2026-05-07T17:41:53.741214Z",
+  "probe_model_id": "active.gguf"
+}

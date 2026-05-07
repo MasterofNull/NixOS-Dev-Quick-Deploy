@@ -39,14 +39,37 @@ from uuid import uuid4
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
+# Task types where thinking adds no value — disable it when the model supports it.
+# Lookup/format are factual retrieval; thinking wastes 100-300 tokens with no benefit.
+_NO_THINK_TASK_TYPES = frozenset({"lookup", "format"})
+
 
 def _strip_think(text: str) -> str:
-    """Remove Qwen3 <think>…</think> blocks — only the visible answer goes downstream.
+    """Remove <think>…</think> blocks from any model that emits them.
 
-    Strips before AIDB storage, context injection, and user-facing response so
-    thinking tokens never pollute the knowledge base or waste context window space.
+    Applied at the route_search() return boundary so thinking tokens never reach:
+    - the caller / user-facing response
+    - AIDB session-knowledge storage
+    - multi-turn session history
+
+    Safe no-op when Config.AI_MODEL_HAS_THINKING is False (no tags to strip).
     """
+    if not Config.AI_MODEL_HAS_THINKING:
+        return str(text or "").strip()
     return _THINK_RE.sub("", str(text or "")).strip()
+
+
+def _thinking_kwargs(task_type: Optional[str]) -> dict:
+    """
+    Return chat_template_kwargs to disable thinking for tasks that don't benefit.
+    Only used when the model declares can_disable_thinking (detected via /props).
+    Disabling thinking on lookup/format tasks saves 100-300 tokens per request.
+    """
+    if not Config.AI_MODEL_CAN_DISABLE_THINKING:
+        return {}
+    if str(task_type or "").lower() in _NO_THINK_TASK_TYPES:
+        return {"chat_template_kwargs": {"enable_thinking": False}}
+    return {}
 
 import capability_discovery
 from config import Config, routing_config
@@ -1543,11 +1566,20 @@ async def route_search(
                         messages.append({"role": "system", "content": local_system_prompt})
                 messages.append({"role": "user", "content": prompt})
                 _llm_start = time.perf_counter()
+                _task_type = str(getattr(_complexity, "task_type", None) or "")
+                _llm_payload: dict = {
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": response_max_tokens,
+                }
+                # Disable thinking for task types that don't benefit — saves 100-300
+                # tokens per request when the model supports it (detected via /props).
+                _llm_payload.update(_thinking_kwargs(_task_type))
                 try:
                     llm_resp = await _inference_client.post(
                         _inference_path,
                         headers=_inference_headers,
-                        json={"messages": messages, "temperature": 0.2, "max_tokens": response_max_tokens},
+                        json=_llm_payload,
                         timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                     )
                     llm_resp.raise_for_status()
