@@ -101,22 +101,31 @@ Examples:
 
 def check_harness_health() -> dict[str, Any]:
     """Check if AI harness is online and healthy."""
-    try:
-        result = subprocess.run(
-            ["curl", "-sf", "http://localhost:8003/discovery/capabilities?level=overview"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-        if result.returncode == 0:
-            capabilities = json.loads(result.stdout)
-            return {
-                "status": "online",
-                "capabilities": capabilities.get("capabilities", []),
-            }
-    except (subprocess.TimeoutExpired, json.JSONDecodeError):
-        pass
+    import time
+
+    for attempt in range(3):
+        try:
+            result = subprocess.run(
+                ["curl", "-sf", "http://localhost:8003/health"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    capabilities = data.get("capabilities", [])
+                except json.JSONDecodeError:
+                    capabilities = []
+                return {
+                    "status": "online",
+                    "capabilities": capabilities,
+                }
+        except subprocess.TimeoutExpired:
+            pass
+        if attempt < 2:
+            time.sleep(1)
 
     return {"status": "offline", "capabilities": []}
 

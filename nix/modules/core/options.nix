@@ -1444,6 +1444,41 @@
         '';
       };
 
+      # ── CLI Bridge: OAuth-backed Claude / Codex endpoint ────────────────────
+      cliBridge = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Enable the CLI bridge HTTP service.
+            Exposes an OpenAI-compatible /v1/chat/completions endpoint that
+            shells out to the claude or codex CLI binaries.  Authentication is
+            handled entirely by each CLI's own OAuth session (claude.ai Pro /
+            ChatGPT Plus) — no API keys are stored in the Nix config or secrets.
+          '';
+        };
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8089;
+          description = "TCP port for the CLI bridge service.";
+        };
+        claudeBin = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "Absolute path to the claude binary.  Empty string lets the service PATH resolve it.";
+        };
+        codexBin = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = "Absolute path to the codex binary.  Empty string lets the service PATH resolve it.";
+        };
+        timeoutSeconds = lib.mkOption {
+          type = lib.types.int;
+          default = 300;
+          description = "Seconds to wait for a CLI process before killing it and returning a timeout error.";
+        };
+      };
+
       # ── Switchboard: local/remote LLM routing proxy ─────────────────────────
       switchboard = {
         enable = lib.mkOption {
@@ -2940,6 +2975,12 @@
         type = lib.types.port;
         default = 8086;
         description = "Reserved BitNet sidecar HTTP port.";
+      };
+
+      cliBridge = lib.mkOption {
+        type = lib.types.port;
+        default = 8089;
+        description = "CLI bridge HTTP port (OAuth-backed Claude/Codex endpoint, no stored API keys).";
       };
 
       prometheus = lib.mkOption {

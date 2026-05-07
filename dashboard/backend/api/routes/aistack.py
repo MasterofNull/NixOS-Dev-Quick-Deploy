@@ -3651,6 +3651,84 @@ async def get_routing_decisions(
     }
 
 
+@router.get("/routing/lane-failures")
+async def get_routing_lane_failures() -> Dict[str, Any]:
+    """Per-lane (profile) failure trend breakdown for 1h and 24h windows."""
+    audit_log = Path(os.getenv("TOOL_AUDIT_LOG", "/var/log/nixos-ai-stack/tool-audit.jsonl"))
+    switchboard_health = await fetch_with_fallback(f"{SERVICES['switchboard']}/health", {})
+    remote_configured = bool(switchboard_health.get("remote_configured", False)) if isinstance(switchboard_health, dict) else False
+
+    rows: List[Dict[str, Any]] = []
+    if audit_log.exists():
+        try:
+            lines = audit_log.read_text(errors="replace").splitlines()
+            for raw in lines[-500:]:
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                meta = entry.get("metadata") or {}
+                routed_profile = meta.get("routed_profile") or meta.get("recommended_profile")
+                routed_local = meta.get("routed_local") or meta.get("local_suitable")
+                route_alias = meta.get("route_alias")
+                routing_decision = meta.get("routing_decision") or {}
+                rationale = (
+                    meta.get("rationale")
+                    or (routing_decision.get("rationale") if isinstance(routing_decision, dict) else None)
+                )
+                if routed_profile or route_alias or isinstance(routed_local, bool):
+                    rows.append({
+                        "timestamp": entry.get("timestamp"),
+                        "routed_profile": routed_profile,
+                        "route_alias": route_alias,
+                        "routed_local": routed_local if isinstance(routed_local, bool) else None,
+                        "rationale": rationale,
+                    })
+        except OSError:
+            pass
+
+    now = datetime.now(timezone.utc)
+    window_specs = {"window_1h": now - timedelta(hours=1), "window_24h": now - timedelta(hours=24)}
+    result: Dict[str, Any] = {}
+
+    for window_label, window_start in window_specs.items():
+        subset = [
+            row for row in rows
+            if _parse_iso_timestamp(row.get("timestamp")) is not None
+            and _parse_iso_timestamp(row.get("timestamp")) >= window_start
+        ]
+        by_profile: Dict[str, Dict[str, Any]] = {}
+        for row in subset:
+            lane = str(row.get("routed_profile") or row.get("route_alias") or "unknown").strip() or "unknown"
+            entry = by_profile.setdefault(lane, {"requests": 0, "failures": 0, "categories": {}, "last_failure_ts": None})
+            entry["requests"] += 1
+            category = _classify_routing_failure(row, remote_configured)
+            if category:
+                entry["failures"] += 1
+                entry["categories"][category] = entry["categories"].get(category, 0) + 1
+                ts = row.get("timestamp")
+                if ts and (entry["last_failure_ts"] is None or ts > entry["last_failure_ts"]):
+                    entry["last_failure_ts"] = ts
+        lane_summary: Dict[str, Any] = {}
+        for lane, data in sorted(by_profile.items()):
+            reqs = data["requests"]
+            fails = data["failures"]
+            cats = data["categories"]
+            most_common = max(cats, key=lambda k: cats[k]) if cats else None
+            lane_summary[lane] = {
+                "requests": reqs,
+                "failures": fails,
+                "rate_pct": round(100 * fails / reqs, 1) if reqs else 0.0,
+                "last_failure_ts": data["last_failure_ts"],
+                "most_common_failure": most_common,
+                "categories": cats,
+            }
+        result[window_label] = lane_summary
+
+    result["generated_at"] = now.isoformat()
+    return result
+
+
 @router.get("/verify-self/results")
 async def get_verify_self_results() -> Dict[str, Any]:
     """
