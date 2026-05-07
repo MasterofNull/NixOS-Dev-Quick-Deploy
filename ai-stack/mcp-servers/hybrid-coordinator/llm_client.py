@@ -331,7 +331,7 @@ class LLMClient:
             "temperature": temperature,
         }
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = self._normalize_tools_openai(tools)
 
         try:
             response = await self.client.chat.completions.create(**kwargs)
@@ -391,6 +391,33 @@ class LLMClient:
             model=str(body.get("model") or fallback_model),
         )
 
+    @staticmethod
+    def _normalize_tools_openai(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert tools from any format to OpenAI function-calling format.
+
+        Handles Anthropic format (input_schema) and already-normalized OpenAI format.
+        Agent-agnostic: all models backed by an OpenAI-compatible endpoint use this.
+        """
+        normalized = []
+        for t in tools:
+            if "function" in t:
+                # Already in OpenAI format
+                normalized.append(t)
+            elif "name" in t:
+                # Anthropic-style: {name, description, input_schema}
+                normalized.append({
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t.get("input_schema") or t.get("parameters") or {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                })
+        return normalized
+
     async def _local_create_message(
         self,
         prompt: str,
@@ -413,7 +440,7 @@ class LLMClient:
             "temperature": temperature,
         }
         if tools:
-            payload["tools"] = tools
+            payload["tools"] = self._normalize_tools_openai(tools)
 
         headers = {
             "Content-Type": "application/json",
