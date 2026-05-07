@@ -69,4 +69,4 @@ All tests validate the unified pattern.
 - [Strands-Agents SDK](https://github.com/strands-agents/sdk-python)
 - [Strands Agent-SOP](https://github.com/strands-agents/agent-sop)
 - [.agents/README.md](../../.agents/README.md) - Structure guide
-- [CLAUDE.md](../../.claude/CLAUDE.md) - Agent guidance
+- [AGENTS.md](../../AGENTS.md) - Agent guidance (all models)
