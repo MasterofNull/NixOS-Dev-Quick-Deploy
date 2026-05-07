@@ -3869,6 +3869,16 @@
                         </div>
 
                         <div style="margin-bottom: 1.5rem;">
+                            <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Live Routing Posture</div>
+                            <div id="routingPostureConfig" class="data-list">
+                                <div class="data-item">
+                                    <span>Loading live routing posture...</span>
+                                    <span class="data-meta">initializing</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
                             <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem;">Primary Human Contact Surfaces</div>
                             <div id="primaryContactConfig" class="data-list">
                                 <div class="data-item">
@@ -11489,9 +11499,83 @@
             renderRows(rows);
         }
 
+        async function renderRoutingPosture() {
+            const container = document.getElementById('routingPostureConfig');
+            if (!container) {
+                return;
+            }
+
+            container.innerHTML = '<div class="data-item"><span>Loading live routing posture...</span><span class="data-meta">refreshing</span></div>';
+
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/aistack/routing/summary`, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const summary = await response.json();
+                const rows = [];
+                const swb = summary.switchboard || {};
+                const classification = summary.classification || {};
+                const aliases = summary.frontdoor?.aliases || {};
+                const activeRequest = swb.active_request || {};
+                const recentDecisions = Array.isArray(summary.recent_decisions) ? summary.recent_decisions : [];
+                const notes = Array.isArray(summary.notes) ? summary.notes : [];
+
+                rows.push(`
+                    <div class="data-item">
+                        <span>switchboard</span>
+                        <span class="data-meta">${escapeHtml(`status=${swb.status || 'unknown'} | mode=${swb.routing_mode || 'unknown'} | default=${swb.default_provider || 'unknown'} | local_lane=${swb.local_lane_status || 'unknown'} | remote=${swb.remote_configured ? 'configured' : 'off'}`)}</span>
+                    </div>
+                `);
+                rows.push(`
+                    <div class="data-item">
+                        <span>frontdoor_aliases</span>
+                        <span class="data-meta">${escapeHtml(Object.entries(aliases).slice(0, 8).map(([route, profile]) => `${route}→${profile}`).join(' | ') || 'none')}</span>
+                    </div>
+                `);
+                rows.push(`
+                    <div class="data-item">
+                        <span>classified_mix</span>
+                        <span class="data-meta">${escapeHtml(`total=${classification.total_classified ?? 0} | local=${classification.local_pct ?? '--'}% | remote=${classification.remote_pct ?? '--'}%`)}</span>
+                    </div>
+                `);
+                if (activeRequest.profile || activeRequest.path) {
+                    rows.push(`
+                        <div class="data-item">
+                            <span>active_local_request</span>
+                            <span class="data-meta">${escapeHtml(`profile=${activeRequest.profile || '--'} | path=${activeRequest.path || '--'} | duration=${activeRequest.duration_s ?? '--'}s | tokens=${activeRequest.estimated_input_tokens ?? '--'}`)}</span>
+                        </div>
+                    `);
+                }
+                if (recentDecisions.length) {
+                    const top = recentDecisions[recentDecisions.length - 1] || {};
+                    rows.push(`
+                        <div class="data-item">
+                            <span>recent_decision</span>
+                            <span class="data-meta">${escapeHtml(`task=${top.task_type || '--'} | alias=${top.route_alias || '--'} | profile=${top.routed_profile || '--'} | local=${top.routed_local === null || top.routed_local === undefined ? '--' : top.routed_local}`)}</span>
+                        </div>
+                    `);
+                }
+                if (notes.length) {
+                    rows.push(...notes.slice(0, 3).map((note) => `
+                        <div class="data-item">
+                            <span>operator_note</span>
+                            <span class="data-meta">${escapeHtml(String(note))}</span>
+                        </div>
+                    `));
+                }
+
+                container.innerHTML = rows.join('');
+            } catch (error) {
+                console.error('Failed to load routing posture:', error);
+                container.innerHTML = `<div class="data-item"><span>Routing posture unavailable</span><span class="data-meta status-offline">${escapeHtml(error.message)}</span></div>`;
+            }
+        }
+
         function renderControlPlaneLists(snapshot) {
             const harnessContainer = document.getElementById('liveHarnessConfig');
             const frontdoorContainer = document.getElementById('frontdoorRoutingConfig');
+            const routingPostureContainer = document.getElementById('routingPostureConfig');
             const primaryContactContainer = document.getElementById('primaryContactConfig');
             const workflowContainer = document.getElementById('harnessWorkflowConfig');
             const docsContainer = document.getElementById('harnessDocsConfig');
@@ -11501,6 +11585,10 @@
 
             if (!snapshot) {
                 return;
+            }
+
+            if (routingPostureContainer) {
+                void renderRoutingPosture();
             }
 
             if (notice && snapshot.legacy_notice) {

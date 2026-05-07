@@ -1245,7 +1245,7 @@ in {
   # their changes on every switch (only rewrites when version bumps).
   # Bump _config_version below when making config structure changes.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        _config_version="27.0"
+        _config_version="28.0"
         _cfg="$HOME/.continue/config.json"
         _needs_write=false
 
@@ -1263,7 +1263,7 @@ in {
           mkdir -p "$HOME/.continue"
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
-      "__configVersion": "27.0",
+      "__configVersion": "28.0",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
         "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
