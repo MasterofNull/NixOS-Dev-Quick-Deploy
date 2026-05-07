@@ -3782,3 +3782,222 @@ async def get_verify_self_results() -> Dict[str, Any]:
         "exit_code": proc.returncode,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# 3-D Graph Data Endpoints
+# ---------------------------------------------------------------------------
+
+_VECTOR_GRAPH_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_VECTOR_GRAPH_TTL_S = 120.0
+
+@router.get("/graph/vector")
+async def get_vector_graph() -> Dict[str, Any]:
+    """
+    Return nodes + links for the repo knowledge vector graph.
+    Documents are fetched from AIDB, grouped by project, and linked
+    within the same project.  Limited to 300 nodes for browser performance.
+    Cached 2 minutes.
+    """
+    now = time.time()
+    if _VECTOR_GRAPH_CACHE["payload"] and now - _VECTOR_GRAPH_CACHE["ts"] < _VECTOR_GRAPH_TTL_S:
+        return _VECTOR_GRAPH_CACHE["payload"]
+
+    aidb_url = SERVICES.get("aidb", "")
+    if not aidb_url:
+        raise HTTPException(status_code=503, detail="AIDB URL not configured")
+
+    PROJECT_COLORS = [
+        "#4e9af1", "#f4a261", "#2ec4b6", "#e76f51", "#8ecae6",
+        "#a8dadc", "#f6bd60", "#84a98c", "#b5838d", "#6d6875",
+    ]
+
+    try:
+        aidb_key = ""
+        key_file = os.environ.get("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key")
+        try:
+            aidb_key = Path(key_file).read_text().strip()
+        except Exception:
+            pass
+        headers = {"X-API-Key": aidb_key} if aidb_key else {}
+
+        sess = await get_http_session()
+        async with sess.get(
+            f"{aidb_url}/documents",
+            params={"limit": 600},
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status != 200:
+                raise HTTPException(status_code=resp.status, detail="AIDB unavailable")
+            data = await resp.json()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"AIDB error: {exc}") from exc
+
+    docs = data.get("documents", []) if isinstance(data, dict) else []
+    # Limit and deduplicate by project
+    project_order: list[str] = []
+    project_docs: dict[str, list] = {}
+    for doc in docs:
+        proj = doc.get("project") or "unknown"
+        if proj not in project_docs:
+            project_docs[proj] = []
+            project_order.append(proj)
+        project_docs[proj].append(doc)
+
+    # Cap per-project to keep total ≤ 300
+    max_per_project = max(1, 300 // max(len(project_order), 1))
+    nodes: list[dict] = []
+    links: list[dict] = []
+    node_ids: set[str] = set()
+
+    for proj_idx, proj in enumerate(project_order):
+        color = PROJECT_COLORS[proj_idx % len(PROJECT_COLORS)]
+        pdocs = project_docs[proj][:max_per_project]
+        proj_node_ids: list[str] = []
+        for doc in pdocs:
+            nid = str(doc.get("id") or doc.get("relative_path") or doc.get("title") or f"{proj}-{len(nodes)}")
+            if nid in node_ids:
+                nid = f"{nid}-{len(nodes)}"
+            node_ids.add(nid)
+            proj_node_ids.append(nid)
+            nodes.append({
+                "id": nid,
+                "name": doc.get("title") or doc.get("relative_path") or nid,
+                "group": proj,
+                "color": color,
+                "val": 1,
+            })
+        # link sequential docs within project for graph coherence
+        for i in range(len(proj_node_ids) - 1):
+            links.append({"source": proj_node_ids[i], "target": proj_node_ids[i + 1], "value": 1})
+        if len(proj_node_ids) > 2:
+            links.append({"source": proj_node_ids[0], "target": proj_node_ids[-1], "value": 1})
+
+    payload = {
+        "nodes": nodes,
+        "links": links,
+        "projects": project_order,
+        "total_docs": len(docs),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _VECTOR_GRAPH_CACHE["payload"] = payload
+    _VECTOR_GRAPH_CACHE["ts"] = now
+    return payload
+
+
+_WORKFLOW_GRAPH_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_WORKFLOW_GRAPH_TTL_S = 30.0
+
+@router.get("/graph/workflow")
+async def get_workflow_graph() -> Dict[str, Any]:
+    """
+    Return nodes + links for the agent harness routing topology.
+    Derived from the last 200 tool_audit.jsonl entries — shows which
+    profiles route to which targets with traffic counts as link widths.
+    Cached 30 seconds.
+    """
+    now = time.time()
+    if _WORKFLOW_GRAPH_CACHE["payload"] and now - _WORKFLOW_GRAPH_CACHE["ts"] < _WORKFLOW_GRAPH_TTL_S:
+        return _WORKFLOW_GRAPH_CACHE["payload"]
+
+    repo_root = Path(__file__).resolve().parents[5]
+    audit_path = Path("/var/lib/nixos-ai-stack/audit/tool_audit.jsonl")
+    if not audit_path.exists():
+        audit_path = repo_root / "logs" / "tool_audit.jsonl"
+
+    # Traffic counters: (source, target) → count
+    traffic: dict[tuple[str, str], int] = {}
+    error_nodes: set[str] = set()
+
+    if audit_path.exists():
+        try:
+            lines = audit_path.read_text().splitlines()[-200:]
+            for line in lines:
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                profile = entry.get("routed_profile") or entry.get("route_alias") or "unknown"
+                target = entry.get("target_type") or entry.get("provider") or "local"
+                model = entry.get("model") or ""
+                status = entry.get("status_code") or entry.get("status") or 200
+                label = f"{target}:{model[:20]}" if model else target
+                key = (profile, label)
+                traffic[key] = traffic.get(key, 0) + 1
+                if int(status) >= 400:
+                    error_nodes.add(label)
+        except Exception:
+            pass
+
+    # Static topology nodes (always present)
+    static_nodes = [
+        {"id": "user",          "name": "User Request",          "group": "input",    "color": "#ffffff", "val": 6},
+        {"id": "switchboard",   "name": "Switchboard :8085",     "group": "router",   "color": "#f4a261", "val": 5},
+        {"id": "local",         "name": "llama.cpp :8080",       "group": "local",    "color": "#2ec4b6", "val": 4},
+        {"id": "cli-bridge",    "name": "CLI Bridge :8089",      "group": "cli",      "color": "#8ecae6", "val": 4},
+        {"id": "remote",        "name": "Remote LLM",            "group": "remote",   "color": "#e76f51", "val": 4},
+        {"id": "hybrid",        "name": "Hybrid Coord :8003",    "group": "service",  "color": "#a8dadc", "val": 4},
+        {"id": "aidb",          "name": "AIDB :8002",            "group": "service",  "color": "#84a98c", "val": 3},
+        {"id": "ralph",         "name": "Ralph :8004",           "group": "service",  "color": "#b5838d", "val": 3},
+        {"id": "response",      "name": "Response",              "group": "output",   "color": "#ffffff", "val": 6},
+    ]
+
+    static_links = [
+        {"source": "user",       "target": "switchboard", "value": 3, "color": "#666"},
+        {"source": "user",       "target": "hybrid",      "value": 2, "color": "#666"},
+        {"source": "switchboard","target": "local",       "value": 3, "color": "#2ec4b6"},
+        {"source": "switchboard","target": "cli-bridge",  "value": 2, "color": "#8ecae6"},
+        {"source": "switchboard","target": "remote",      "value": 1, "color": "#e76f51"},
+        {"source": "hybrid",     "target": "aidb",        "value": 2, "color": "#84a98c"},
+        {"source": "hybrid",     "target": "ralph",       "value": 2, "color": "#b5838d"},
+        {"source": "hybrid",     "target": "local",       "value": 2, "color": "#2ec4b6"},
+        {"source": "local",      "target": "response",    "value": 3, "color": "#666"},
+        {"source": "cli-bridge", "target": "response",    "value": 2, "color": "#666"},
+        {"source": "remote",     "target": "response",    "value": 1, "color": "#666"},
+    ]
+
+    # Profile nodes from audit traffic
+    profile_nodes: list[dict] = []
+    profile_links: list[dict] = []
+    seen_profiles: set[str] = set()
+    PROFILE_COLORS = {
+        "local-agent": "#4e9af1", "continue-local": "#6d6875",
+        "embedded-assist": "#f6bd60", "remote-coding": "#e76f51",
+        "remote-reasoning": "#e76f51", "default": "#aaaaaa",
+    }
+    for (profile, target_label), count in sorted(traffic.items(), key=lambda x: -x[1]):
+        if profile not in seen_profiles:
+            seen_profiles.add(profile)
+            profile_nodes.append({
+                "id": f"profile:{profile}",
+                "name": profile,
+                "group": "profile",
+                "color": PROFILE_COLORS.get(profile, "#cccccc"),
+                "val": 2 + min(count, 8),
+            })
+            profile_links.append({
+                "source": "switchboard",
+                "target": f"profile:{profile}",
+                "value": 1,
+                "color": "#555",
+            })
+        target_base = "remote" if "remote" in target_label else ("cli-bridge" if "cli" in target_label else "local")
+        profile_links.append({
+            "source": f"profile:{profile}",
+            "target": target_base,
+            "value": min(count, 5),
+            "color": "#e76f51" if target_label in error_nodes else "#2ec4b6",
+        })
+
+    payload = {
+        "nodes": static_nodes + profile_nodes,
+        "links": static_links + profile_links,
+        "traffic_summary": {k[0]: {k[1]: v} for k, v in traffic.items()},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _WORKFLOW_GRAPH_CACHE["payload"] = payload
+    _WORKFLOW_GRAPH_CACHE["ts"] = now
+    return payload
