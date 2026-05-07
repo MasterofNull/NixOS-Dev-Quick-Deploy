@@ -1242,12 +1242,13 @@ in {
   # ---- Continue.dev config — multi-model + aq-hints --------------------------
   # Written on first activation or when __configVersion is outdated.
   # Not managed as a symlink so the user can edit it without HM clobbering
-  # their changes on every switch (only rewrites when version bumps).
-  # Bump _config_version below when making config structure changes.
+  # their changes on every switch. We still rewrite when the generated schema
+  # changes or when the authoritative local chat lane/provider wiring drifts.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        _config_version="28.0"
+        _config_version="29.0"
         _cfg="$HOME/.continue/config.json"
         _needs_write=false
+        _config_contract_ok=false
 
         if [ ! -f "$_cfg" ]; then
           _needs_write=true
@@ -1256,14 +1257,42 @@ in {
           if [ "$_existing_ver" != "$_config_version" ]; then
             _needs_write=true
           fi
+          if jq -e --arg api_base "${continueApiBase}" '
+            (
+              .models // []
+            ) as $models
+            | (
+              $models
+              | any(
+                  .[]?;
+                  .title == "Local Chat (continue-local)"
+                  and .apiBase == $api_base
+                  and ((.requestOptions.headers["X-AI-Profile"] // "") == "continue-local")
+                )
+            )
+            and (
+              (.tabAutocompleteModel.apiBase // "") == $api_base
+              and ((.tabAutocompleteModel.requestOptions.headers["X-AI-Profile"] // "") == "continue-local")
+            )
+            and (
+              (.contextProviders // [])
+              | any(.[]?; .name == "aq-hints" and ((.params.endpoint // "") == "http://127.0.0.1:8003/hints"))
+            )
+          ' "$_cfg" >/dev/null 2>&1; then
+            _config_contract_ok=true
+          else
+            _needs_write=true
+          fi
           unset _existing_ver
+        else
+          _needs_write=true
         fi
 
         if [ "$_needs_write" = true ]; then
           mkdir -p "$HOME/.continue"
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
-      "__configVersion": "28.0",
+      "__configVersion": "29.0",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
         "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
@@ -1426,7 +1455,7 @@ in {
     CONTINUE_EOF
           echo "[createContinueConfig] Wrote Continue config v$_config_version"
         fi
-        unset _config_version _cfg _needs_write
+        unset _config_version _cfg _needs_write _config_contract_ok
   '';
 
   home.activation.migrateContinueConfigApiBase = lib.hm.dag.entryAfter ["createContinueConfig"] ''

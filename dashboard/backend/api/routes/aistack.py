@@ -10,7 +10,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -3416,6 +3416,83 @@ async def get_task_classification_stats() -> Dict[str, Any]:
     }
 
 
+def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _classify_routing_failure(row: Dict[str, Any], remote_configured: bool) -> Optional[str]:
+    profile = str(row.get("routed_profile") or "").strip().lower()
+    rationale = str(row.get("rationale") or "").strip().lower()
+    routed_local = row.get("routed_local")
+    alias = str(row.get("route_alias") or "").strip()
+
+    if "remote-not-configured" in rationale or ("remote" in profile and not remote_configured):
+        return "remote_unconfigured"
+    if "remote-cached-unavailable" in rationale:
+        return "remote_cache_unavailable"
+    if "continue-local-http" in rationale:
+        return "continue_fast_path"
+    if "bounded-timeout" in rationale:
+        return "bounded_local_preference"
+    if profile.startswith("remote") and routed_local is True:
+        return "remote_to_local_fallback"
+    if alias in {"RemoteCoding", "RemoteReasoning", "RemoteFree", "RemoteGemini"} and routed_local is not False:
+        return "explicit_remote_not_honored"
+    return None
+
+
+def _routing_windows(
+    rows: List[Dict[str, Any]],
+    *,
+    now: datetime,
+    remote_configured: bool,
+) -> Dict[str, Any]:
+    windows = {
+        "1h": now - timedelta(hours=1),
+        "24h": now - timedelta(hours=24),
+        "7d": now - timedelta(days=7),
+    }
+    payload: Dict[str, Any] = {}
+    for label, start in windows.items():
+        subset = [
+            row for row in rows
+            if isinstance(row, dict)
+            and _parse_iso_timestamp(row.get("timestamp")) is not None
+            and _parse_iso_timestamp(row.get("timestamp")) >= start
+        ]
+        local_n = sum(1 for row in subset if row.get("routed_local") is True)
+        remote_n = sum(1 for row in subset if row.get("routed_local") is False)
+        total = local_n + remote_n
+        categories: Dict[str, int] = {}
+        for row in subset:
+            category = _classify_routing_failure(row, remote_configured)
+            if category:
+                categories[category] = categories.get(category, 0) + 1
+        payload[label] = {
+            "count": len(subset),
+            "local_pct": round(100 * local_n / total, 1) if total else None,
+            "remote_pct": round(100 * remote_n / total, 1) if total else None,
+            "latest_failure_categories": sorted(
+                categories.items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:5],
+        }
+    return {"available": True, "windows": payload}
+
+
 @router.get("/routing/summary")
 async def get_routing_summary() -> Dict[str, Any]:
     """Operator-facing live routing summary across alias policy, switchboard, and audit signals."""
@@ -3465,6 +3542,12 @@ async def get_routing_summary() -> Dict[str, Any]:
         operator_notes.append("Local lane is currently busy; interactive local requests may queue behind the active slot.")
     if task_stats.get("local_pct") is not None:
         operator_notes.append(f"Recent classified routing skew: local={task_stats.get('local_pct')}% remote={task_stats.get('remote_pct')}%.")
+    category_mix: Dict[str, int] = {}
+    for row in recent_decisions:
+        category = _classify_routing_failure(row, remote_configured)
+        if category:
+            category_mix[category] = category_mix.get(category, 0) + 1
+    routing_windows = _routing_windows(recent_decisions, now=datetime.now(timezone.utc), remote_configured=remote_configured)
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -3496,6 +3579,11 @@ async def get_routing_summary() -> Dict[str, Any]:
             "remote_pct": task_stats.get("remote_pct"),
             "by_task_type": task_stats.get("by_task_type") or {},
         },
+        "routing_windows": routing_windows,
+        "failure_categories": sorted(
+            category_mix.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:5],
         "recent_decisions": recent_decisions,
         "notes": operator_notes,
     }
