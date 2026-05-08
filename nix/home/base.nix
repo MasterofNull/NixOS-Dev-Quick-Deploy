@@ -1257,7 +1257,7 @@ in {
           if [ "$_existing_ver" != "$_config_version" ]; then
             _needs_write=true
           fi
-          if jq -e --arg api_base "${continueApiBase}" '
+          if jq -e --arg api_base "${continueApiBase}" --arg cli_api_base "http://127.0.0.1:8089/v1" '
             (
               .models // []
             ) as $models
@@ -1265,9 +1265,27 @@ in {
               $models
               | any(
                   .[]?;
-                  .title == "Local (Harness-Aware)"
+                  .title == "Local Agent (Harness-Aware)"
                   and .apiBase == $api_base
                   and ((.requestOptions.headers["X-AI-Profile"] // "") == "local-agent")
+                )
+            )
+            and (
+              $models
+              | any(
+                  .[]?;
+                  .title == "Claude (OAuth — CLI Bridge)"
+                  and .apiBase == $cli_api_base
+                  and (.model == "claude-cli")
+                )
+            )
+            and (
+              $models
+              | any(
+                  .[]?;
+                  .title == "Codex (OAuth — CLI Bridge)"
+                  and .apiBase == $cli_api_base
+                  and (.model == "codex-cli")
                 )
             )
             and (
@@ -1293,6 +1311,7 @@ in {
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
       "__configVersion": "29.0",
+      "__frozen": "DO NOT MODIFY. contextLength=32000 and maxTokens=4096 for Local Agent are LOCKED. aq-hints remains required by the current harness Continue contract. Claude+Codex CLI Bridge models must remain.",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
         "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
@@ -1301,13 +1320,17 @@ in {
         "SESSION START: At the start of any agent session, call get_working_memory first, then harness_health.",
         "SEARCH-FIRST: Use get_hints MCP tool for ranked workflow guidance before implementing anything.",
         "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
-        "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>'",
+        "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
         "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
-        "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8006 grafana:3000 owui:3001"
+        "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
+        "CONFIG FREEZE — contextLength=32000 maxTokens=4096 for Local Agent are LOCKED. Do not reduce. Smaller values cause message-exceeds-context hangs in Continue.",
+        "CONFIG FREEZE — aq-hints remains pinned in contextProviders while the current Continue v29 harness contract and aq-qa checks require coordinator-backed hints.",
+        "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
+        "CONFIG FREEZE — Claude (OAuth — CLI Bridge) and Codex (OAuth — CLI Bridge) model entries are required. Do not remove them."
       ],
       "models": [
         {
-          "title": "Local (Harness-Aware)",
+          "title": "Local Agent (Harness-Aware)",
           "provider": "openai",
           "apiKey": "local-llama-cpp",
           "apiBase": "${continueApiBase}",
@@ -1333,6 +1356,24 @@ in {
           },
           "contextLength": ${toString continueContextLength},
           "maxTokens": ${toString continueChatMaxTokens}
+        },
+        {
+          "title": "Claude (OAuth — CLI Bridge)",
+          "provider": "openai",
+          "apiKey": "cli-oauth",
+          "apiBase": "http://127.0.0.1:8089/v1",
+          "model": "claude-cli",
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
+        },
+        {
+          "title": "Codex (OAuth — CLI Bridge)",
+          "provider": "openai",
+          "apiKey": "cli-oauth",
+          "apiBase": "http://127.0.0.1:8089/v1",
+          "model": "codex-cli",
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
         },
         {
           "title": "Remote Coding (Switchboard)",
@@ -1462,7 +1503,9 @@ in {
       tmp="$(mktemp)"
       if jq --arg newBase "$runtime_base" --arg model "$detected_model" '
         .models = ((.models // []) | map(
-          if ((.provider // "") == "openai") then
+          if ((.provider // "") == "openai")
+             and (((.requestOptions // {}).headers // {})["X-AI-Profile"] // "") != ""
+          then
             .apiBase = $newBase | .model = $model
           else
             .
