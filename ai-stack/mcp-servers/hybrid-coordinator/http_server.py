@@ -141,6 +141,9 @@ import affective_handlers  # Phase 19: values signals / affective engine
 import trading_handlers          # Phase 24: multi-agent trading framework (agent-agnostic HTTP API)
 import auto_tool_select_handlers  # Phase 24: autonomous tool auto-selection for all agents
 import context_summary_handlers   # Phase 25-007: agent context summarization + working memory
+import intake_gateway              # Phase 26: Unified Agent Orchestration Gateway (UAG)
+import agent_capability_registry   # Phase 26: dynamic agent capability registry
+import domain_router               # Phase 26: domain classifier + team routing
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
     _agent_pool_status_snapshot,
@@ -2021,6 +2024,19 @@ async def run_http_mode(port: int) -> None:
     trading_handlers.register_routes(http_app)          # Phase 24: trading analysis (all-agent API)
     auto_tool_select_handlers.register_routes(http_app)  # Phase 24: autonomous tool auto-selection
     context_summary_handlers.register_routes(http_app)   # Phase 25-007: /agent/summarize-context + working-memory
+
+    # Phase 26: Unified Agent Orchestration Gateway
+    _lifecycle_dir = Path(
+        os.environ.get("DATA_DIR", os.path.expanduser("~/.local/share/nixos-ai-stack/hybrid"))
+    ) / "lifecycle"
+    intake_gateway.init(
+        lifecycle_dir=_lifecycle_dir,
+        switchboard_url=os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085"),
+        cli_bridge_url=os.environ.get("CLI_BRIDGE_URL", "http://127.0.0.1:8089"),
+        hints_url=os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003"),
+        error_payload_fn=_error_payload,
+    )
+    intake_gateway.register_routes(http_app)
 
     # Phase 20: World Model — /world/forecast (inline handler)
     async def handle_world_forecast(request):

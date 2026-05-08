@@ -603,6 +603,172 @@
           "exit_criteria": "Remote output is locally reviewed and next action is chosen."
         }
       ]
+    },
+    {
+      "id": "lifecycle-aware-intake",
+      "title": "Unified Lifecycle Orchestration (Standard)",
+      "description": "Full 8-phase lifecycle for any user prompt: INTAKE→DISCOVER→PRD→PLAN→ASSIGN→DELEGATE→VALIDATE→COMMIT. Use for all standard and complex tasks. Entry via POST /agent/intake.",
+      "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "local-agent",
+        "reviewer_lane": "self",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
+        "selection_strategy": "orchestrator-first",
+        "allow_parallel_subagents": true,
+        "max_parallel_subagents": 3
+      },
+      "intent_contract": {
+        "user_intent": "Execute the task through the full lifecycle with appropriate discovery, planning, and validation.",
+        "definition_of_done": "All lifecycle phases passed, commit recorded, aq-qa 0 failures.",
+        "intent_depth": "standard",
+        "out_of_scope": ["skip validation gates", "commit without planning", "hardcode model IDs"]
+      },
+      "notes": [
+        "Use agent_intake MCP tool to start. Returns session_id for tracking.",
+        "Context pruning is automatic — each phase receives only relevant previous outputs.",
+        "Simple tasks (typo fixes, renames) auto-skip DISCOVER+PRD and enter at PLAN.",
+        "Domain routing is automatic after PLAN phase — no manual team selection required."
+      ],
+      "phases": [
+        {
+          "id": "intake",
+          "tools": ["agent_intake", "get_working_memory"],
+          "exit_criteria": "Session created, complexity detected, domain classified, caller normalized."
+        },
+        {
+          "id": "discover",
+          "tools": ["hybrid_search", "get_hints", "qa_check", "recall_memory"],
+          "exit_criteria": "codebase_summary, existing_plans, health_status recorded as structured outputs."
+        },
+        {
+          "id": "prd",
+          "tools": ["hybrid_search", "workflow_plan", "store_memory"],
+          "exit_criteria": "prd_scope and acceptance_checks defined and recorded."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan", "auto_select_tools", "get_hints"],
+          "exit_criteria": "Phased plan with tool_assignments per phase. domain_hints confirmed."
+        },
+        {
+          "id": "assign",
+          "tools": ["workflow_orchestrate", "auto_select_tools"],
+          "exit_criteria": "agent_assignments and team_routing resolved — no hardcoded model IDs."
+        },
+        {
+          "id": "delegate",
+          "tools": ["workflow_orchestrate", "hybrid_search", "lifecycle_advance"],
+          "exit_criteria": "sub_agent_summaries and artifacts_created recorded."
+        },
+        {
+          "id": "validate",
+          "tools": ["qa_check", "harness_eval", "lifecycle_advance"],
+          "exit_criteria": "validation_passed=true, qa_score >= threshold, no syntax errors."
+        },
+        {
+          "id": "commit",
+          "tools": ["lifecycle_advance", "save_working_memory"],
+          "exit_criteria": "commit_sha, files_changed, commit_message recorded. Session DONE."
+        }
+      ]
+    },
+    {
+      "id": "simple-task-direct",
+      "title": "Simple Task (Direct Execution)",
+      "description": "For trivial tasks (typo fix, rename, version bump). Skips DISCOVER+PRD and enters at PLAN. Full validation still required before commit.",
+      "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "local-agent",
+        "reviewer_lane": "self",
+        "selection_strategy": "orchestrator-first",
+        "allow_parallel_subagents": false,
+        "max_parallel_subagents": 1
+      },
+      "intent_contract": {
+        "user_intent": "Apply a minimal targeted change with full validation.",
+        "definition_of_done": "Change applied, syntax validated, commit recorded.",
+        "intent_depth": "minimum",
+        "out_of_scope": ["refactoring", "discovery", "PRD generation"]
+      },
+      "notes": [
+        "Pass complexity=simple to agent_intake to auto-select this sequence.",
+        "DISCOVER and PRD phases are skipped. Sequence: INTAKE→PLAN→ASSIGN→DELEGATE→VALIDATE→COMMIT."
+      ],
+      "phases": [
+        {
+          "id": "intake",
+          "tools": ["agent_intake"],
+          "exit_criteria": "Session created with complexity=simple."
+        },
+        {
+          "id": "plan",
+          "tools": ["workflow_plan"],
+          "exit_criteria": "Minimal plan with targeted change described."
+        },
+        {
+          "id": "delegate",
+          "tools": ["hybrid_search", "lifecycle_advance"],
+          "exit_criteria": "Change implemented and recorded."
+        },
+        {
+          "id": "validate",
+          "tools": ["qa_check"],
+          "exit_criteria": "Syntax and basic validation passed."
+        },
+        {
+          "id": "commit",
+          "tools": ["lifecycle_advance"],
+          "exit_criteria": "Commit recorded. Session DONE."
+        }
+      ]
+    },
+    {
+      "id": "domain-delegated-task",
+      "title": "Domain-Delegated Execution (Post-Planning)",
+      "description": "For tasks where PRD+planning are already complete. Enters at ASSIGN and routes to the domain-specific agent team. Used by the lifecycle FSM DELEGATE phase.",
+      "default_safety_mode": "plan-readonly",
+      "orchestration_policy": {
+        "primary_lane": "local-agent",
+        "reviewer_lane": "self",
+        "escalation_lane": "remote-reasoning",
+        "selection_strategy": "domain-first",
+        "allow_parallel_subagents": true,
+        "max_parallel_subagents": 3
+      },
+      "intent_contract": {
+        "user_intent": "Execute a domain-specific implementation slice with appropriate tools and validation.",
+        "definition_of_done": "Domain slice complete, artifacts created, validation passed.",
+        "intent_depth": "standard",
+        "out_of_scope": ["re-scoping the PRD", "routing other agents", "finalizing acceptance without reviewer gate"]
+      },
+      "notes": [
+        "Sub-agents must not re-scope goals, re-route other agents, or finalize acceptance.",
+        "Domain routing: nixos→nix-tools, python→implementer, security→auditor, trading→tradingagents, design→impeccable.",
+        "Context injected is PRUNED to domain-relevant outputs only."
+      ],
+      "phases": [
+        {
+          "id": "assign",
+          "tools": ["auto_select_tools", "tool_catalog"],
+          "exit_criteria": "agent_assignments confirmed from capability registry."
+        },
+        {
+          "id": "delegate",
+          "tools": ["workflow_orchestrate", "hybrid_search", "lifecycle_advance"],
+          "exit_criteria": "Domain slice executed, sub_agent_summaries recorded."
+        },
+        {
+          "id": "validate",
+          "tools": ["qa_check", "harness_eval"],
+          "exit_criteria": "Domain-specific validation gates passed."
+        },
+        {
+          "id": "commit",
+          "tools": ["lifecycle_advance", "save_working_memory"],
+          "exit_criteria": "Commit recorded."
+        }
+      ]
     }
   ]
 }

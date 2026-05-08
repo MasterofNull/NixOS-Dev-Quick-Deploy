@@ -868,6 +868,63 @@ TOOLS = [
         ),
         "inputSchema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "agent_intake",
+        "description": (
+            "Submit a user prompt to the Universal Agent Gateway (UAG). This is the SINGLE ENTRY POINT "
+            "for all orchestrated tasks. Returns a session_id and lifecycle phase sequence "
+            "(INTAKE→DISCOVER→PRD→PLAN→ASSIGN→DELEGATE→VALIDATE→COMMIT). "
+            "Call this first for any task that involves code changes, planning, or multi-step work. "
+            "Use lifecycle_status to track progress and lifecycle_advance to record phase completions."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt":     {"type": "string",  "description": "The user task description"},
+                "complexity": {"type": "string",  "description": "simple|standard|complex (auto-detected if omitted)"},
+                "domain":     {"type": "string",  "description": "nixos|python|security|trading|design|infra|general"},
+                "context":    {"type": "object",  "description": "Optional extra context: {file_path, selection, ...}"},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "lifecycle_status",
+        "description": (
+            "Get the current state of a lifecycle session started via agent_intake. "
+            "Shows phase history, current phase, pruned context (relevant outputs only — not full tool history), "
+            "and the next_action guidance. Check this before each phase to get the right context slice."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session ID returned by agent_intake"},
+            },
+            "required": ["session_id"],
+        },
+    },
+    {
+        "name": "lifecycle_advance",
+        "description": (
+            "Record phase completion and advance the lifecycle session to the next phase. "
+            "IMPORTANT: output_summary must be a SHORT STRUCTURED SUMMARY (not raw tool output). "
+            "context_updates must contain ONLY the key outputs from this phase (e.g., "
+            "{prd_scope: '...', acceptance_checks: [...]}) — not the full conversation or search results. "
+            "This ensures the next phase receives only relevant context, preventing context window bloat."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id":      {"type": "string", "description": "Session ID"},
+                "status":          {"type": "string", "description": "passed|failed|skipped"},
+                "output_summary":  {"type": "string", "description": "Brief summary of phase outcome (1-3 sentences)"},
+                "tools_used":      {"type": "array",  "items": {"type": "string"}, "description": "Tool names invoked"},
+                "context_updates": {"type": "object", "description": "Structured key outputs for this phase only"},
+                "error":           {"type": "string", "description": "Error message if status=failed"},
+            },
+            "required": ["session_id"],
+        },
+    },
 ]
 
 
@@ -1347,6 +1404,35 @@ def _call_tool(name: str, args: dict) -> str:
 
     if name == "get_working_memory":
         r = _get(f"{HYBRID_URL}/agent/working-memory", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "agent_intake":
+        body: dict = {"prompt": args.get("prompt", "")}
+        if args.get("complexity"):
+            body["complexity"] = args["complexity"]
+        if args.get("domain"):
+            body["domain"] = args["domain"]
+        if args.get("context"):
+            body["context"] = args["context"]
+        r = _post(f"{HYBRID_URL}/agent/intake", body, HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "lifecycle_status":
+        session_id = args.get("session_id", "")
+        r = _get(f"{HYBRID_URL}/agent/lifecycle/{session_id}", HYBRID_KEY)
+        return _format_result(r)
+
+    if name == "lifecycle_advance":
+        session_id = args.get("session_id", "")
+        body = {
+            "status":          args.get("status", "passed"),
+            "output_summary":  args.get("output_summary", ""),
+            "tools_used":      args.get("tools_used", []),
+            "context_updates": args.get("context_updates", {}),
+        }
+        if args.get("error"):
+            body["error"] = args["error"]
+        r = _post(f"{HYBRID_URL}/agent/lifecycle/{session_id}/advance", body, HYBRID_KEY)
         return _format_result(r)
 
     return _format_result({"error": f"unknown tool: {name}"})
