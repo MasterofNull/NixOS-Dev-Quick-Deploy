@@ -37,6 +37,17 @@ def main() -> int:
         "repair path should prune oversized Gemini and Qwen startup state",
     )
     assert_true(
+        "Archiving oversized Continue sessions" in base_text
+        and "state_5.sqlite.pre-vscodium-repair" in base_text,
+        "repair path should archive oversized Continue sessions and back up broken Codex state DBs",
+    )
+    assert_true(
+        "google.geminicodeassist-" in base_text
+        and "openai.chatgpt-" in base_text
+        and "anthropic.claude-code-" in base_text,
+        "repair path should clear stale obsolete markers for AI extensions beyond Continue",
+    )
+    assert_true(
         'HYBRID_HOST="${HYBRID_HOST:-127.0.0.1}"' in endpoint_text,
         "service endpoint defaults should prefer numeric loopback for the harness",
     )
