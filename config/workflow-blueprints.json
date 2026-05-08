@@ -621,7 +621,16 @@
       "intent_contract": {
         "user_intent": "Execute the task through the full lifecycle with appropriate discovery, planning, and validation.",
         "definition_of_done": "All lifecycle phases passed, commit recorded, aq-qa 0 failures.",
-        "intent_depth": "standard",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "All lifecycle phases must complete in order — never skip VALIDATE before COMMIT.",
+          "Context passed between phases must be pruned to phase-relevant keys only, never full session history."
+        ],
+        "no_early_exit_without": [
+          "session_id recorded",
+          "validation_passed=true",
+          "commit_sha recorded"
+        ],
         "out_of_scope": ["skip validation gates", "commit without planning", "hardcode model IDs"]
       },
       "notes": [
@@ -688,7 +697,15 @@
       "intent_contract": {
         "user_intent": "Apply a minimal targeted change with full validation.",
         "definition_of_done": "Change applied, syntax validated, commit recorded.",
-        "intent_depth": "minimum",
+        "depth_expectation": "minimum",
+        "spirit_constraints": [
+          "Apply the narrowest targeted change — do not expand scope into refactoring or discovery.",
+          "Validation is mandatory even for trivial tasks before commit."
+        ],
+        "no_early_exit_without": [
+          "syntax validation passed",
+          "commit recorded"
+        ],
         "out_of_scope": ["refactoring", "discovery", "PRD generation"]
       },
       "notes": [
@@ -739,7 +756,16 @@
       "intent_contract": {
         "user_intent": "Execute a domain-specific implementation slice with appropriate tools and validation.",
         "definition_of_done": "Domain slice complete, artifacts created, validation passed.",
-        "intent_depth": "standard",
+        "depth_expectation": "standard",
+        "spirit_constraints": [
+          "Sub-agents execute only their assigned domain slice — do not re-scope goals or route other agents.",
+          "Context injection is pruned to domain-relevant outputs only — never inject full session history."
+        ],
+        "no_early_exit_without": [
+          "domain artifacts created",
+          "validation gates passed",
+          "commit recorded"
+        ],
         "out_of_scope": ["re-scoping the PRD", "routing other agents", "finalizing acceptance without reviewer gate"]
       },
       "notes": [
