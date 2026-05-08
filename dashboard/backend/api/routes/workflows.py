@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, List, Optional, Any
+import aiohttp
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
@@ -19,6 +20,8 @@ from pathlib import Path
 # Add lib to path
 lib_path = Path(__file__).parent.parent.parent.parent.parent / "lib"
 sys.path.insert(0, str(lib_path))
+
+from ..config import service_endpoints
 
 from workflows import (
     WorkflowGenerator,
@@ -47,6 +50,74 @@ workflow_store = WorkflowStore()
 # Maps execution_id -> list of WebSocket connections
 log_connections: Dict[str, List[WebSocket]] = {}
 log_connections_lock = asyncio.Lock()
+
+
+def _normalize_yaml_graph_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Adapt canonical YAML workflow graph payloads to the dashboard shape."""
+    graph = payload.get("graph") or {}
+    nodes = []
+    for node in graph.get("nodes") or []:
+        nodes.append(
+            {
+                "id": node.get("id"),
+                "label": node.get("label") or node.get("id"),
+                "agent": node.get("agent", "unknown"),
+                "status": node.get("status", "pending"),
+                "progress": 100 if node.get("status") == "completed" else 0,
+                "duration": 0,
+                "retry_count": 0,
+                "outputs": None,
+                "prompt": node.get("prompt", ""),
+                "error": None,
+                "parallel": node.get("parallel", False),
+                "metadata": node.get("metadata") or {},
+            }
+        )
+
+    edges = []
+    for edge in graph.get("edges") or []:
+        edges.append(
+            {
+                "source": edge.get("source"),
+                "target": edge.get("target"),
+                "type": edge.get("relation", "dependency"),
+            }
+        )
+
+    return {
+        "execution_id": payload.get("execution_id"),
+        "workflow_name": payload.get("workflow_name"),
+        "workflow_id": payload.get("workflow_name"),
+        "status": payload.get("execution_status", payload.get("status", "unknown")),
+        "nodes": nodes,
+        "edges": edges,
+        "levels": graph.get("levels") or [],
+        "mermaid": payload.get("mermaid"),
+        "source": "yaml-workflow",
+        "stats": graph.get("stats") or {},
+    }
+
+
+async def _fetch_yaml_execution_graph(execution_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch canonical YAML execution graph from the hybrid coordinator."""
+    url = f"{service_endpoints.HYBRID_URL}/yaml-workflow/{execution_id}/graph"
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url) as response:
+            if response.status == 404:
+                return None
+            response.raise_for_status()
+            return await response.json()
+
+
+async def _fetch_yaml_workflow_graph(workflow_file: str) -> Dict[str, Any]:
+    """Fetch canonical YAML definition graph from the hybrid coordinator."""
+    url = f"{service_endpoints.HYBRID_URL}/yaml-workflow/graph"
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url, params={"workflow_file": workflow_file}) as response:
+            response.raise_for_status()
+            return await response.json()
 
 
 # Pydantic models for API
@@ -798,6 +869,10 @@ async def get_execution_graph(execution_id: str):
     try:
         logger.info(f"Fetching execution graph for {execution_id}")
 
+        yaml_graph = await _fetch_yaml_execution_graph(execution_id)
+        if yaml_graph:
+            return _normalize_yaml_graph_response(yaml_graph)
+
         # Fetch execution data
         execution = workflow_executor.get_execution(execution_id)
 
@@ -912,6 +987,22 @@ async def get_execution_graph(execution_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting execution graph: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/yaml/graph")
+async def get_yaml_workflow_graph(workflow_file: str = Query(..., description="Path to YAML workflow file")):
+    """Proxy canonical YAML workflow graph payloads through the dashboard API."""
+    try:
+        payload = await _fetch_yaml_workflow_graph(workflow_file)
+        normalized = _normalize_yaml_graph_response(payload)
+        normalized["workflow_file"] = workflow_file
+        normalized["source"] = "yaml-workflow-definition"
+        normalized["execution_id"] = None
+        normalized["status"] = "definition"
+        return normalized
+    except Exception as e:
+        logger.error(f"Error getting YAML workflow graph for {workflow_file}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
