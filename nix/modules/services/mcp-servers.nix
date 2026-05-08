@@ -1507,7 +1507,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${toString repoSource}/scripts/security/npm-security-monitor.sh"
+            "${mcp.repoPath}/scripts/security/npm-security-monitor.sh"
             "--repo-root"
             mcp.repoPath
             "--output-dir"
@@ -1584,7 +1584,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${toString repoSource}/scripts/automation/post-deploy-converge.sh"
+            "${mcp.repoPath}/scripts/automation/post-deploy-converge.sh"
           ];
           ReadOnlyPaths = ["/"];
           ReadWritePaths = ["${dataDir}"];
