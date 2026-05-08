@@ -1242,7 +1242,7 @@ Plan file: `.agents/plans/phase-24-external-framework-integration.md`
 
 ## Phase 25 — System Hardening + Brainstem
 
-Status: `in_progress`
+Status: `complete` (2026-05-07)
 Plan file: `.agents/plans/phase-25-system-hardening-brainstem.md`
 
 ---
