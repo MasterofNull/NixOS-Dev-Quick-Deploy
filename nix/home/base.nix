@@ -167,22 +167,6 @@ let
     };
   };
 
-  # Qwen Code VSCode IDE Companion — QwenLM's official AI coding assistant
-  # Not in nixpkgs 25.11; packaged from Open VSX for declarative install.
-  qwenCodeCompanion = pkgs.vscode-utils.buildVscodeExtension {
-    pname = "qwen-code-vscode-ide-companion";
-    version = "0.15.2";
-    vscodeExtPublisher = "qwenlm";
-    vscodeExtName = "qwen-code-vscode-ide-companion";
-    vscodeExtUniqueId = "qwenlm.qwen-code-vscode-ide-companion";
-    vscodeExtVersion = "0.15.2";
-    src = pkgs.fetchurl {
-      url = "https://open-vsx.org/api/qwenlm/qwen-code-vscode-ide-companion/0.15.2/file/qwenlm.qwen-code-vscode-ide-companion-0.15.2.vsix";
-      sha256 = "sha256-OMo+KEZ4+M3ncBqHQbTA7YYeVBHlswKzvMbrr9qEl/w=";
-      name = "qwen-code-vscode-ide-companion.zip";
-    };
-  };
-
   # Continue CLI — declarative npm packaging
   continueCli = pkgs.callPackage ../pkgs/continue-cli.nix {};
 
@@ -342,6 +326,9 @@ let
       "ozone-platform" = "x11";
     });
   vscodeMutableRuntimeExtensions = [
+    # Qwen updates its writable runtime tree in-place. Keep it mutable so we
+    # do not pin a stale immutable version that recreates .obsolete markers.
+    "qwenlm.qwen-code-vscode-ide-companion"
     "ms-python.debugpy"
     "ms-toolsai.jupyter"
     "ms-toolsai.jupyter-keymap"
@@ -869,7 +856,6 @@ in {
         ++ vsExt "Google" "gemini-cli-vscode-ide-companion" # Gemini CLI companion
         ++ [geminiCodeAssist] # Gemini Code Assist (Open VSX)
         ++ [openaiCodex] # Codex — OpenAI's coding agent (Open VSX)
-        ++ [qwenCodeCompanion] # Qwen Code VSCode IDE Companion v0.10.6
         ++ [cyberpunkThemeExtension] # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
         ++ vsExt "redhat" "vscode-yaml"
@@ -996,41 +982,63 @@ in {
     fi
   '';
 
-  # Remove stale .obsolete markers for extensions that no longer have a matching
-  # directory in the extensions folder.  Nix-managed extensions land as symlinks
-  # without version suffixes, so VSCodium's versioned entries (e.g.
-  # "google.geminicodeassist-2.79.0") never find a directory to delete and
-  # accumulate as permanent stale entries that slow down every startup.
-  home.activation.clearContinueObsoleteMarker = lib.hm.dag.entryAfter ["linkGeneration"] ''
-        obsolete_file="$HOME/.vscode-oss/extensions/.obsolete"
-        if [ -f "$obsolete_file" ] && command -v python3 >/dev/null 2>&1; then
-          python3 - "$obsolete_file" <<'PYEOF'
+  # Reconcile versioned extension aliases with the registry that VSCodium
+  # persists in the writable extension tree. Nix-managed extensions often land
+  # as unversioned symlinks, but VSCodium tracks them with versioned IDs and
+  # otherwise leaves stale .obsolete entries behind on every startup.
+  home.activation.reconcileVscodeExtensionAliases = lib.hm.dag.entryAfter ["linkGeneration"] ''
+        ext_root="$HOME/.vscode-oss/extensions"
+        registry_file="$ext_root/extensions.json"
+        obsolete_file="$ext_root/.obsolete"
+        if command -v python3 >/dev/null 2>&1; then
+          python3 - "$ext_root" "$registry_file" "$obsolete_file" <<'PYEOF'
     import json
     import pathlib
     import sys
 
-    path = pathlib.Path(sys.argv[1])
-    ext_dir = path.parent
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        sys.exit(0)
-    if not isinstance(data, dict):
-        sys.exit(0)
-    removed = False
-    for key in list(data.keys()):
-        # Keep entries only when the exact-named directory actually exists
-        # (i.e. VSCodium can still find something to delete).  Stale entries
-        # for nix-managed extensions that were never created at that path
-        # are safe to remove — VSCodium would skip them anyway.
-        if not (ext_dir / key).is_dir():
-            data.pop(key, None)
-            removed = True
-    if removed:
-        path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    ext_root = pathlib.Path(sys.argv[1])
+    registry = pathlib.Path(sys.argv[2])
+    obsolete = pathlib.Path(sys.argv[3])
+
+    def load_json(path, default):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return default
+
+    if registry.is_file():
+        entries = load_json(registry, [])
+        if isinstance(entries, list):
+            for entry in entries:
+                ident = str(((entry.get("identifier") or {}).get("id")) or "").strip()
+                version = str(entry.get("version") or "").strip()
+                location = str(((entry.get("location") or {}).get("path")) or "").strip()
+                if not ident or not version or not location:
+                    continue
+                target = pathlib.Path(location)
+                if target.parent != ext_root or not target.exists():
+                    continue
+                alias_name = f"{ident.lower()}-{version}"
+                alias_path = ext_root / alias_name
+                if alias_path.exists() or alias_path.is_symlink():
+                    continue
+                if alias_name == target.name:
+                    continue
+                alias_path.symlink_to(target.name)
+
+    if obsolete.is_file():
+        data = load_json(obsolete, {})
+        if isinstance(data, dict):
+            removed = False
+            for key in list(data.keys()):
+                if not (ext_root / key).exists():
+                    data.pop(key, None)
+                    removed = True
+            if removed:
+                obsolete.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
     PYEOF
         fi
-        unset obsolete_file
+        unset ext_root registry_file obsolete_file
   '';
 
   # Smart-prune AI-extension globalStorage caches to prevent extension-host freeze.
@@ -1269,7 +1277,90 @@ PYEOF
               sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" 2>/dev/null || true
             fi
 
-            # 7. Force Continue config version bump so createContinueConfig rewrites it
+            # 7. Prune oversized Gemini/Qwen extension state that blocks the
+            # extension host during startup.
+            if [ -f "$gdb" ] && command -v python3 >/dev/null 2>&1; then
+              echo "[vscodium-repair] Pruning heavy Gemini/Qwen global state..."
+              python3 - "$gdb" <<'PYEOF'
+      import json, pathlib, sqlite3, sys
+
+      db_path = pathlib.Path(sys.argv[1])
+      con = sqlite3.connect(str(db_path))
+      cur = con.cursor()
+      total_saved = 0
+
+      def prune_gemini(data):
+          changed = False
+          raw = data.get("geminiCodeAssist.chatThreads")
+          if not raw:
+              return data, changed
+          outer = json.loads(raw) if isinstance(raw, str) else raw
+          for account, acct_raw in outer.items():
+              inner = json.loads(acct_raw) if isinstance(acct_raw, str) else acct_raw
+              for tid in list(inner.keys()):
+                  t_raw = inner[tid]
+                  t = json.loads(t_raw) if isinstance(t_raw, str) else t_raw
+                  if not isinstance(t, dict):
+                      continue
+                  hist = t.get("history", [])
+                  last_idx = len(hist) - 1
+                  for i, msg in enumerate(hist):
+                      if not isinstance(msg, dict):
+                          continue
+                      ws = msg.get("workspaceChange")
+                      if ws and len(json.dumps(ws)) > 64:
+                          msg["workspaceChange"] = {}
+                          changed = True
+                      if i < last_idx:
+                          ctx = msg.get("ideContext")
+                          if ctx and len(json.dumps(ctx)) > 64:
+                              msg["ideContext"] = {}
+                              changed = True
+                  inner[tid] = json.dumps(t, separators=(",", ":"))
+              outer[account] = json.dumps(inner, separators=(",", ":"))
+          data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
+          return data, changed
+
+      def prune_qwen(data):
+          changed = False
+          convs = data.get("conversations", [])
+          if not convs:
+              return data, changed
+          before = len(convs)
+          convs = [c for c in convs if isinstance(c, dict) and c.get("messages")]
+          if len(convs) < before:
+              changed = True
+          if len(convs) > 30:
+              convs = sorted(convs, key=lambda c: c.get("updatedAt", 0), reverse=True)[:30]
+              changed = True
+          if changed:
+              data["conversations"] = convs
+          return data, changed
+
+      for ext_key, fn in [
+          ("google.geminicodeassist", prune_gemini),
+          ("qwenlm.qwen-code-vscode-ide-companion", prune_qwen),
+      ]:
+          cur.execute("SELECT value FROM ItemTable WHERE key=?", (ext_key,))
+          row = cur.fetchone()
+          if not row:
+              continue
+          before = len(row[0])
+          payload, changed = fn(json.loads(row[0]))
+          if changed:
+              value = json.dumps(payload, separators=(",", ":"))
+              cur.execute("UPDATE ItemTable SET value=? WHERE key=?", (value, ext_key))
+              saved = before - len(value)
+              total_saved += saved
+              print(f"  pruned {ext_key}: {before//1024}KB -> {len(value)//1024}KB")
+
+      if total_saved > 0:
+          con.commit()
+      con.close()
+      PYEOF
+            fi
+
+            # 8. Force Continue config version bump so createContinueConfig rewrites it
             cfg="$HOME/.continue/config.json"
             if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
               echo "[vscodium-repair] Resetting Continue config version (will regenerate on next hm switch)..."
