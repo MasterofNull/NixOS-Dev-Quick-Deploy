@@ -1,1 +1,2 @@
 from workflow.agent_registry import *
+from workflow.agent_registry import _INTENT_DEPTH_EXPECTATIONS, _active_lesson_refs, _agent_evaluations_lock, _agent_lessons_lock, _coerce_intent_contract, _default_intent_contract, _load_active_lesson_refs, _load_agent_evaluations_registry, _load_agent_lessons_registry, _normalize_agent_role, _record_agent_consensus_event, _record_agent_runtime_event, _save_agent_evaluations_registry, _save_agent_lessons_registry, _validate_intent_contract  # noqa: F401
