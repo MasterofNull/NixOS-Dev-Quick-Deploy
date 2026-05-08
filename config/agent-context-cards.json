@@ -627,6 +627,7 @@
         "aq-context-bootstrap --task \"<task>\" --scope context-offload --format json",
         "aq-context-card --card context-offload --level standard",
         "aq-context-manage check",
+        "aq-context-manage checkpoint --task \"<task>\" --decision \"<decision>\" --next-step \"<next step>\"",
         "aq-memory search \"<task or decision>\" --project ai-stack --limit 5",
         "harness-rpc.js run-start --query \"<task>\" --blueprint long-running-context-offload --intent-depth standard"
       ],

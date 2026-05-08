@@ -158,6 +158,9 @@ if offload.get("recommended_card_order", [None])[0] != "context-offload":
 if not any("aq-context-manage check" in cmd for cmd in offload.get("starter_commands", [])):
     print("ERROR: offload bootstrap did not expose compaction tooling", file=sys.stderr)
     raise SystemExit(1)
+if not any("aq-context-manage checkpoint" in cmd for cmd in offload.get("starter_commands", [])):
+    print("ERROR: offload bootstrap did not expose checkpoint tooling", file=sys.stderr)
+    raise SystemExit(1)
 if not any("long-running-context-offload" in cmd for cmd in offload.get("starter_commands", [])):
     print("ERROR: offload bootstrap did not expose the long-running context offload blueprint", file=sys.stderr)
     raise SystemExit(1)

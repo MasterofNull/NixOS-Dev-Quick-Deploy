@@ -42,6 +42,15 @@ If the task becomes implementation-heavy:
 aq-context-card --card task-execution --level standard
 ```
 
+If the task is long-running or the editor session is getting swollen:
+
+```bash
+aq-context-card --card context-offload --level standard
+aq-context-manage check
+aq-context-manage checkpoint --task "<task>" --decision "<decision>" --next-step "<next step>"
+aq-memory search "<task or decision>" --project ai-stack --limit 5
+```
+
 If the task becomes a runtime/service incident:
 
 ```bash
