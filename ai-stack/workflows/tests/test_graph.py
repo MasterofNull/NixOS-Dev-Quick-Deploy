@@ -224,6 +224,63 @@ class TestDependencyGraph:
         deps = graph.get_dependencies("task4")
         assert deps == {"task1", "task2", "task3"}
 
+    def test_to_mermaid(self):
+        """Test Mermaid export for workflow dependency graph."""
+        workflow = Workflow(
+            name="test-mermaid",
+            version="1.0",
+            nodes=[
+                WorkflowNode(id="task1", agent="qwen", prompt="Task 1"),
+                WorkflowNode(id="task2", agent="codex", prompt="Task 2", depends_on=["task1"]),
+            ],
+        )
+
+        graph = DependencyGraph(workflow)
+        mermaid = graph.to_mermaid()
+
+        assert "graph TD" in mermaid
+        assert 'task1["task1\\nqwen"]' in mermaid
+        assert 'task2["task2\\ncodex"]' in mermaid
+        assert "task1 --> task2" in mermaid
+
+    def test_to_visualization_payload(self):
+        """Test normalized visualization payload export."""
+        workflow = Workflow(
+            name="test-visualization",
+            version="1.0",
+            nodes=[
+                WorkflowNode(id="task1", agent="qwen", prompt="Task 1"),
+                WorkflowNode(id="task2", agent="codex", prompt="Task 2", depends_on=["task1"], parallel=True),
+                WorkflowNode(id="task3", agent="claude", prompt="Task 3", depends_on=["task1"], goto="task5"),
+                WorkflowNode(id="task4", agent="qwen", prompt="Task 4", depends_on=["task2", "task3"]),
+                WorkflowNode(id="task5", agent="qwen", prompt="Task 5"),
+            ],
+        )
+
+        graph = DependencyGraph(workflow)
+        payload = graph.to_visualization_payload(
+            execution_statuses={"task2": {"status": "completed"}}
+        )
+
+        assert payload["workflow"] == "test-visualization"
+        assert payload["stats"]["node_count"] == 5
+        assert payload["stats"]["edge_count"] == 5
+        assert payload["stats"]["level_count"] == 3
+        assert payload["stats"]["has_cycles"] is False
+
+        nodes = {node["id"]: node for node in payload["nodes"]}
+        assert nodes["task1"]["level"] == 0
+        assert nodes["task2"]["level"] == 1
+        assert nodes["task2"]["status"] == "completed"
+        assert nodes["task2"]["parallel"] is True
+        assert nodes["task3"]["metadata"]["has_retry"] is False
+        assert nodes["task5"]["level"] == 2
+
+        edges = {(edge["source"], edge["target"]): edge["relation"] for edge in payload["edges"]}
+        assert edges[("task1", "task2")] == "depends_on"
+        assert edges[("task3", "task4")] == "depends_on"
+        assert edges[("task3", "task5")] == "goto"
+
     def test_get_dependents_simple(self):
         """Test getting dependents of a node."""
         workflow = Workflow(

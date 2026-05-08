@@ -2,9 +2,11 @@
 Dependency graph analyzer.
 
 Analyzes workflow node dependencies and detects cycles.
+Provides export helpers so workflow topology can be rendered consistently
+across CLI, docs, and dashboard surfaces.
 """
 
-from typing import List, Set, Dict, Optional
+from typing import Any, List, Set, Dict, Optional
 from .models import Workflow, WorkflowNode
 
 
@@ -269,3 +271,95 @@ class DependencyGraph:
                     in_degree[neighbor] -= 1
 
         return levels
+
+    def to_mermaid(self) -> str:
+        """
+        Export the workflow dependency graph as a Mermaid DAG.
+
+        Returns:
+            Mermaid graph markup
+        """
+        lines = ["graph TD"]
+
+        for node in self.workflow.nodes:
+            label = f"{node.id}\\n{node.agent}"
+            lines.append(f'    {node.id}["{label}"]')
+
+        for source, targets in self.adjacency_list.items():
+            for target in sorted(targets):
+                lines.append(f"    {source} --> {target}")
+
+        return "\n".join(lines)
+
+    def to_visualization_payload(
+        self,
+        execution_statuses: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Export a normalized graph payload for visualization surfaces.
+
+        Args:
+            execution_statuses: Optional per-node execution metadata keyed by node ID
+
+        Returns:
+            Dict containing nodes, edges, levels, and summary stats
+        """
+        execution_statuses = execution_statuses or {}
+        levels = self.get_execution_levels()
+        level_by_node = {
+            node_id: level_index
+            for level_index, level_nodes in enumerate(levels)
+            for node_id in level_nodes
+        }
+
+        nodes = []
+        for node in self.workflow.nodes:
+            status = execution_statuses.get(node.id, {})
+            nodes.append(
+                {
+                    "id": node.id,
+                    "label": node.id,
+                    "agent": node.agent,
+                    "prompt": node.prompt,
+                    "parallel": node.parallel,
+                    "depends_on": list(node.depends_on or []),
+                    "goto": node.goto,
+                    "level": level_by_node.get(node.id, 0),
+                    "status": status.get("status", "pending"),
+                    "metadata": {
+                        "condition": node.condition,
+                        "outputs": list(node.outputs or []),
+                        "has_retry": node.retry is not None,
+                        "has_loop": node.loop is not None,
+                        "has_memory": node.memory is not None,
+                    },
+                }
+            )
+
+        edges = []
+        for source, targets in self.adjacency_list.items():
+            source_node = self.workflow.get_node(source)
+            for target in sorted(targets):
+                relation = "goto" if source_node and source_node.goto == target else "depends_on"
+                edges.append(
+                    {
+                        "source": source,
+                        "target": target,
+                        "relation": relation,
+                    }
+                )
+
+        return {
+            "workflow": self.workflow.name,
+            "version": self.workflow.version,
+            "description": self.workflow.description,
+            "levels": levels,
+            "nodes": nodes,
+            "edges": edges,
+            "stats": {
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "level_count": len(levels),
+                "has_cycles": self.has_cycle(),
+            },
+        }
