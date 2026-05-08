@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,38 @@ ROLE_GUIDANCE = {
         "workflow": "Check patterns, run tests, verify git discipline, approve or reject with specific feedback",
     },
 }
+
+DEFAULT_HARNESS_URL = "http://127.0.0.1:8003"
+
+
+def _resolve_harness_url() -> str:
+    """Resolve the harness URL from env or the canonical endpoints file."""
+    env_url = str(os.environ.get("HYBRID_URL", "")).strip()
+    if env_url:
+        return env_url.rstrip("/")
+
+    endpoints_file = REPO_ROOT / "config" / "service-endpoints.sh"
+    if endpoints_file.exists():
+        try:
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-lc",
+                    f'source "{endpoints_file}" >/dev/null 2>&1 && printf %s "${{HYBRID_URL:-{DEFAULT_HARNESS_URL}}}"',
+                ],
+                capture_output=True,
+                text=True,
+                cwd=REPO_ROOT,
+                timeout=3,
+                check=False,
+            )
+            url = result.stdout.strip()
+            if result.returncode == 0 and url:
+                return url.rstrip("/")
+        except Exception:
+            pass
+
+    return DEFAULT_HARNESS_URL
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,11 +135,13 @@ Examples:
 def check_harness_health() -> dict[str, Any]:
     """Check if AI harness is online and healthy."""
     import time
+    harness_url = _resolve_harness_url()
+    capabilities: list[Any] | None = None
 
     for attempt in range(3):
         try:
             result = subprocess.run(
-                ["curl", "-sf", "http://localhost:8003/health"],
+                ["curl", "-sf", f"{harness_url}/health"],
                 capture_output=True,
                 text=True,
                 timeout=2,
@@ -115,19 +150,22 @@ def check_harness_health() -> dict[str, Any]:
             if result.returncode == 0:
                 try:
                     data = json.loads(result.stdout)
-                    capabilities = data.get("capabilities", [])
+                    raw_capabilities = data.get("capabilities")
+                    if isinstance(raw_capabilities, list):
+                        capabilities = raw_capabilities
                 except json.JSONDecodeError:
-                    capabilities = []
+                    pass
                 return {
                     "status": "online",
                     "capabilities": capabilities,
+                    "url": harness_url,
                 }
         except subprocess.TimeoutExpired:
             pass
         if attempt < 2:
             time.sleep(1)
 
-    return {"status": "offline", "capabilities": []}
+    return {"status": "offline", "capabilities": capabilities, "url": harness_url}
 
 
 def get_project_identity() -> dict[str, Any]:
@@ -283,9 +321,12 @@ def format_text_output(data: dict[str, Any]) -> str:
     harness = data["harness"]
     lines.append("## AI Harness")
     lines.append(f"Status: {harness['status']}")
+    if harness.get("url"):
+        lines.append(f"Endpoint: {harness['url']}")
     if harness["status"] == "online":
-        cap_count = len(harness.get("capabilities", []))
-        lines.append(f"Capabilities: {cap_count} available")
+        capabilities = harness.get("capabilities")
+        if isinstance(capabilities, list):
+            lines.append(f"Capabilities: {len(capabilities)} available")
     lines.append("")
 
     # Active Plans (L1)

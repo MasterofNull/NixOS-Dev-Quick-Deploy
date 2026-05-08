@@ -15,6 +15,8 @@ Port: configured by CLI_BRIDGE_PORT env (default 8089)
 import asyncio
 import json
 import os
+from pathlib import Path
+import tempfile
 import time
 import uuid
 from fastapi import FastAPI, Request
@@ -25,6 +27,7 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude").strip()
 CODEX_BIN  = os.environ.get("CODEX_BIN", "codex").strip()
 PORT       = int(os.environ.get("CLI_BRIDGE_PORT", "8089"))
 HOST       = os.environ.get("CLI_BRIDGE_HOST", "127.0.0.1").strip()
+WORKSPACE_ROOT = os.environ.get("CLI_BRIDGE_WORKSPACE_ROOT", "").strip()
 # Hard cap: CLI processes can be slow; 300s matches llama.cpp timeout
 CLI_TIMEOUT_S = float(os.environ.get("CLI_BRIDGE_TIMEOUT_S", "300"))
 
@@ -85,6 +88,7 @@ async def _call_claude(messages: list) -> str:
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=WORKSPACE_ROOT or None,
     )
     try:
         stdout, stderr = await asyncio.wait_for(
@@ -107,20 +111,41 @@ async def _call_claude(messages: list) -> str:
 
 
 async def _call_codex(messages: list) -> str:
-    _, user_prompt = _messages_to_prompt(messages)
+    system_prompt, user_prompt = _messages_to_prompt(messages)
+    combined_prompt = user_prompt
+    if system_prompt:
+        combined_prompt = f"System instructions:\n{system_prompt}\n\n{user_prompt}".strip()
+
+    output_file = tempfile.NamedTemporaryFile(
+        prefix="codex-last-message-",
+        suffix=".txt",
+        delete=False,
+    )
+    output_path = Path(output_file.name)
+    output_file.close()
+
     cmd = [
         CODEX_BIN,
         "exec",
         "--dangerously-bypass-approvals-and-sandbox",
-        user_prompt,
     ]
+    if WORKSPACE_ROOT:
+        cmd.extend(["--cd", WORKSPACE_ROOT])
+    cmd.extend([
+        "--output-last-message",
+        str(output_path),
+        combined_prompt,
+    ])
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=WORKSPACE_ROOT or None,
     )
+    stdout = b""
+    stderr = b""
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
@@ -130,11 +155,19 @@ async def _call_codex(messages: list) -> str:
         proc.kill()
         raise RuntimeError(f"codex CLI timed out after {CLI_TIMEOUT_S}s")
 
-    if proc.returncode != 0:
-        err = stderr.decode(errors="replace")[:300]
-        raise RuntimeError(f"codex exited {proc.returncode}: {err}")
+    try:
+        stdout_text = stdout.decode(errors="replace").strip()
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace")[:300]
+            raise RuntimeError(f"codex exited {proc.returncode}: {err}")
 
-    return stdout.decode(errors="replace").strip()
+        file_text = output_path.read_text(encoding="utf-8", errors="replace").strip() if output_path.exists() else ""
+        content = file_text or stdout_text
+        if not content:
+            raise RuntimeError("codex exited 0 but produced no response text or artifact")
+        return content
+    finally:
+        output_path.unlink(missing_ok=True)
 
 
 @app.get("/health")

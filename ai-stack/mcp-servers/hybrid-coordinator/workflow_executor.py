@@ -485,6 +485,9 @@ class WorkflowPhaseExecutor:
         content = ""
         if isinstance(body, dict):
             content = str(body.get("result") or body.get("content") or body.get("response") or "").strip()
+            if not content and isinstance(body.get("instance"), dict):
+                nested = body["instance"]
+                content = str(nested.get("result") or nested.get("content") or nested.get("response") or "").strip()
         if not content:
             content = json.dumps(body)[:2000]
         return {
