@@ -57,7 +57,12 @@ run_upstream_sync_check() {
   upstream_branch="${upstream_ref#*/}"
 
   echo "Running pre-push upstream sync check..."
-  git fetch --quiet "${remote_name}"
+  # Fetch with a short timeout; skip the behind-check if the network is unavailable
+  # rather than blocking the push entirely.
+  if ! git fetch --quiet --depth=1 "${remote_name}" "${upstream_branch}" 2>/dev/null; then
+    echo "pre-push: fetch from '${remote_name}' failed or unavailable — skipping sync check"
+    return 0
+  fi
 
   read -r behind_count ahead_count < <(git rev-list --left-right --count "${upstream_ref}...HEAD")
   if [[ "${behind_count}" -gt 0 ]]; then

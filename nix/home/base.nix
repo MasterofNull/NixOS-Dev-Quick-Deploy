@@ -277,6 +277,10 @@ let
     "git.enableSmartCommit" = true;
     "git.confirmSync" = false;
     "git.autofetch" = true;
+    # Prevent VSCodium from injecting its own credential helper into
+    # .git/config — the global gh auth credential helper is authoritative.
+    "git.useIntegratedAskPass" = false;
+    "git.terminalAuthentication" = false;
     "gitlens.telemetry.enabled" = false;
     "shellcheck.enable" = true;
     "shellcheck.executablePath" = "shellcheck";
@@ -960,22 +964,35 @@ in {
     unset settings_file
   '';
 
-  # Reset stale Continue workspace/global state that can block client bootstrap
-  # after extension/config migrations.
+  # Reset stale Continue workspace/global state — guarded by a version stamp.
+  # This runs only when the Continue VSIX version changes, not on every switch,
+  # so normal user sessions retain their conversation history and config state.
   home.activation.resetContinueVscodeState = lib.hm.dag.entryAfter ["linkGeneration"] ''
-    gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
-    if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
-      sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" >/dev/null 2>&1 || true
+    _continue_version="1.3.38"
+    _stamp_file="$HOME/.config/VSCodium/.continue-reset-version"
+    _last_reset="$(cat "$_stamp_file" 2>/dev/null || true)"
+
+    if [[ "$_last_reset" == "$_continue_version" ]]; then
+      unset _continue_version _stamp_file _last_reset
+    else
+      echo "[vscodium] Continue version changed (''${_last_reset:-none} -> ''${_continue_version}), resetting stale state..."
+      gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
+      if [ -f "$gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$gdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" >/dev/null 2>&1 || true
+      fi
+      ws_root="$HOME/.config/VSCodium/User/workspaceStorage"
+      if [ -d "$ws_root" ] && command -v sqlite3 >/dev/null 2>&1; then
+        for wdb in "$ws_root"/*/state.vscdb; do
+          [ -f "$wdb" ] || continue
+          sqlite3 "$wdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%' or value like '%continue%';" >/dev/null 2>&1 || true
+        done
+        unset wdb
+      fi
+      mkdir -p "$(dirname "$_stamp_file")"
+      printf '%s' "$_continue_version" > "$_stamp_file"
+      unset gdb ws_root
+      unset _continue_version _stamp_file _last_reset
     fi
-    ws_root="$HOME/.config/VSCodium/User/workspaceStorage"
-    if [ -d "$ws_root" ] && command -v sqlite3 >/dev/null 2>&1; then
-      for wdb in "$ws_root"/*/state.vscdb; do
-        [ -f "$wdb" ] || continue
-        sqlite3 "$wdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%' or value like '%continue%';" >/dev/null 2>&1 || true
-      done
-      unset wdb
-    fi
-    unset gdb ws_root
   '';
 
   # Remove stale VSCodium obsolete markers that can hide declarative Continue
