@@ -15,6 +15,7 @@ import os
 import shlex
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +28,9 @@ REPAIR_CMD = os.getenv("AQ_EDITOR_RESCUE_REPAIR_CMD", "vscodium-repair")
 REGENERATE_CONTINUE_CONFIG_CMD = os.getenv(
     "AQ_EDITOR_RESCUE_REGENERATE_CONTINUE_CONFIG_CMD",
     "home-manager switch --flake .",
+)
+EDITOR_RESCUE_HISTORY_PATH = Path(
+    os.getenv("AQ_EDITOR_RESCUE_HISTORY_PATH", "/var/lib/ai-stack/hybrid/telemetry/editor-rescue-history.jsonl")
 )
 CHECKPOINT_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_CHECKPOINT_TIMEOUT_SECONDS", "20"))
 REPORT_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_REPORT_TIMEOUT_SECONDS", "180"))
@@ -323,6 +327,57 @@ def render_text(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _append_history_record(args: argparse.Namespace, payload: Dict[str, Any]) -> None:
+    summary = payload.get("summary") or {}
+    state_budget = summary.get("state_budget") or {}
+    qa_phase_0 = summary.get("qa_phase_0") or {}
+    qa_failures = summary.get("qa_failures") or []
+    repair = payload.get("repair") or {}
+    regenerate = payload.get("regenerate_continue_config") or {}
+    record = {
+        "timestamp": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+        "task": args.task,
+        "project": args.project,
+        "topic": args.topic,
+        "execute": bool(args.execute),
+        "skip_checkpoint": bool(args.skip_checkpoint),
+        "skip_qa": bool(args.skip_qa),
+        "checkpoint_ok": bool((payload.get("checkpoint") or {}).get("ok", False)),
+        "report_ok": bool((payload.get("report") or {}).get("ok", False)),
+        "state_budget_healthy": bool(state_budget.get("healthy", False)) if state_budget else None,
+        "state_budget_failed_ids": [
+            str(item.get("id", ""))
+            for item in (state_budget.get("checks") or [])
+            if str(item.get("status", "")).upper() == "FAIL"
+        ],
+        "qa_available": bool(qa_phase_0),
+        "qa_passed": qa_phase_0.get("passed"),
+        "qa_failed": qa_phase_0.get("failed"),
+        "qa_skipped": qa_phase_0.get("skipped"),
+        "qa_failure_ids": [str(item.get("id", "")) for item in qa_failures],
+        "repair_attempted": bool(args.execute),
+        "repair_ok": bool(repair.get("ok", False)) if not repair.get("skipped") else None,
+        "repair_timed_out": bool(repair.get("timed_out", False)),
+        "regenerate_requested": bool(args.regenerate_continue_config),
+        "regenerate_ok": bool(regenerate.get("ok", False)) if not regenerate.get("skipped") else None,
+        "regenerate_timed_out": bool(regenerate.get("timed_out", False)),
+        "next_actions": summary.get("next_actions") or [],
+        "final_ok": (
+            bool((payload.get("checkpoint") or {}).get("ok", True))
+            and bool((payload.get("report") or {}).get("ok", True))
+            and bool((payload.get("qa") or {}).get("ok", True))
+            and bool(repair.get("ok", True))
+            and bool(regenerate.get("ok", True))
+        ),
+    }
+    try:
+        EDITOR_RESCUE_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with EDITOR_RESCUE_HISTORY_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+    except OSError:
+        return
+
+
 def main() -> int:
     args = parse_args()
     checkpoint = checkpoint_state(args)
@@ -342,6 +397,7 @@ def main() -> int:
         "resume_commands": resume_commands(args.task, args.project),
     }
     payload["summary"] = summarize(report, qa, repair, regenerate_continue_config, args.regenerate_command)
+    _append_history_record(args, payload)
 
     if args.fmt == "json":
         print(json.dumps(payload, indent=2))

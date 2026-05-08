@@ -116,11 +116,13 @@ Adopt a **thin-editor / thick-harness** operating model.
 ### Track D: Observability
 - Add health/reporting for editor-local corpus size and extension-state drift.
 - Expose top offenders by extension and path in `aq-report` or `aq-qa`.
+- Persist compact rescue telemetry so repeated freeze/retry loops are measurable in `aq-report`.
 - Add detection for:
   - oversized Continue sessions
   - Gemini/Qwen state growth
   - stale versioned extension markers
   - broken Codex local state migrations
+  - repeated rescue attempts that end with the same QA failures
 
 ### Track E: Rescue Workflow
 - Provide a single bounded rescue entrypoint that:
@@ -138,6 +140,7 @@ Adopt a **thin-editor / thick-harness** operating model.
 - Codex extension no longer fails on a stale migration lineage after repair.
 - Repeated orchestration/retry flows checkpoint to harness memory instead of growing editor-local transcripts indefinitely.
 - `aq-qa` or equivalent reports editor-local corpus health explicitly.
+- `aq-report` exposes recent rescue frequency, repair/regeneration success, and top repeated QA failures.
 
 ## Risks
 - Over-aggressive pruning may remove user-visible chat history that is still wanted.

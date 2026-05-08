@@ -73,6 +73,7 @@ def main() -> int:
                 {},
                 health,
                 windows,
+                {"available": False, "windows": {}},
                 {},
                 {},
                 {},
