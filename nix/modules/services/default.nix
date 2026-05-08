@@ -18,5 +18,6 @@
     ./crowdsec.nix
     ./lore-sync.nix
     ./nvd-sync.nix
+    ./data-retention.nix
   ];
 }
