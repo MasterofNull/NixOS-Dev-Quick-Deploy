@@ -82,57 +82,114 @@ def _repo_graph_surfaces() -> List[Dict[str, Any]]:
     ]
 
 
+def _graph_stats(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> Dict[str, Any]:
+    node_types: Dict[str, int] = {}
+    relation_types: Dict[str, int] = {}
+    for node in nodes:
+        node_type = str(node.get("type") or "unknown")
+        node_types[node_type] = node_types.get(node_type, 0) + 1
+    for edge in edges:
+        relation = str(edge.get("relation") or "related_to")
+        relation_types[relation] = relation_types.get(relation, 0) + 1
+    return {
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "node_types": node_types,
+        "relation_types": relation_types,
+    }
+
+
 def _build_repo_structure_graph() -> Dict[str, Any]:
     repo_root = _repo_root()
-    nodes: List[Dict[str, Any]] = [
-        {"id": "repo", "type": "root", "label": repo_root.name, "path": str(repo_root)},
-        {"id": "agents", "type": "file", "label": "AGENTS.md", "path": str(repo_root / "AGENTS.md")},
-        {"id": "readme", "type": "file", "label": "README.md", "path": str(repo_root / "README.md")},
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+    def add_node(node_id: str, node_type: str, label: str, **extra: Any) -> None:
+        nodes.append({"id": node_id, "type": node_type, "label": label, **extra})
+
+    def add_edge(source: str, target: str, relation: str, **extra: Any) -> None:
+        edges.append({"source": source, "target": target, "relation": relation, **extra})
+
+    add_node("repo", "root", repo_root.name, path=str(repo_root), role="repository")
+    add_node("file:AGENTS.md", "file", "AGENTS.md", path=str(repo_root / "AGENTS.md"), role="policy")
+    add_node("file:README.md", "file", "README.md", path=str(repo_root / "README.md"), role="overview")
+    add_edge("repo", "file:AGENTS.md", "governed_by")
+    add_edge("repo", "file:README.md", "described_by")
+
+    domain_nodes = [
+        ("dir:config", "configuration", repo_root / "config"),
+        ("dir:nix", "declarative-system", repo_root / "nix"),
+        ("dir:scripts", "operations", repo_root / "scripts"),
+        ("dir:ai-stack", "runtime", repo_root / "ai-stack"),
+        ("dir:dashboard", "command-center", repo_root / "dashboard"),
+        ("dir:docs", "documentation", repo_root / "docs"),
     ]
-    edges: List[Dict[str, Any]] = [
-        {"source": "repo", "target": "agents", "relation": "governed_by"},
-        {"source": "repo", "target": "readme", "relation": "described_by"},
+    for node_id, role, path in domain_nodes:
+        add_node(node_id, "directory", Path(path).name, path=str(path), role=role)
+        add_edge("repo", node_id, "contains")
+
+    curated_children = [
+        ("file:config/service-endpoints.sh", "file", "service-endpoints.sh", repo_root / "config" / "service-endpoints.sh", "endpoint-ssot", "dir:config"),
+        ("file:config/workflow-blueprints.json", "file", "workflow-blueprints.json", repo_root / "config" / "workflow-blueprints.json", "workflow-contract", "dir:config"),
+        ("file:config/route-aliases.json", "file", "route-aliases.json", repo_root / "config" / "route-aliases.json", "routing-contract", "dir:config"),
+        ("file:config/ai-stack-agent-discovery.json", "file", "ai-stack-agent-discovery.json", repo_root / "config" / "ai-stack-agent-discovery.json", "agent-discovery", "dir:config"),
+        ("dir:nix/modules", "directory", "modules", repo_root / "nix" / "modules", "system-modules", "dir:nix"),
+        ("dir:nix/home", "directory", "home", repo_root / "nix" / "home", "editor-home", "dir:nix"),
+        ("dir:scripts/ai", "directory", "ai", repo_root / "scripts" / "ai", "harness-cli", "dir:scripts"),
+        ("dir:scripts/testing", "directory", "testing", repo_root / "scripts" / "testing", "validation", "dir:scripts"),
+        ("dir:scripts/governance", "directory", "governance", repo_root / "scripts" / "governance", "quality-gates", "dir:scripts"),
+        ("file:scripts/ai/aq-prime", "file", "aq-prime", repo_root / "scripts" / "ai" / "aq-prime", "bootstrap", "dir:scripts/ai"),
+        ("file:scripts/ai/aq-hints", "file", "aq-hints", repo_root / "scripts" / "ai" / "aq-hints", "hinting", "dir:scripts/ai"),
+        ("file:scripts/ai/aq-context-bootstrap", "file", "aq-context-bootstrap", repo_root / "scripts" / "ai" / "aq-context-bootstrap", "context-bootstrap", "dir:scripts/ai"),
+        ("file:scripts/ai/aq-qa", "file", "aq-qa", repo_root / "scripts" / "ai" / "aq-qa", "runtime-verification", "dir:scripts/ai"),
+        ("dir:ai-stack/mcp-servers", "directory", "mcp-servers", repo_root / "ai-stack" / "mcp-servers", "coordinator-runtime", "dir:ai-stack"),
+        ("dir:ai-stack/workflows", "directory", "workflows", repo_root / "ai-stack" / "workflows", "workflow-engine", "dir:ai-stack"),
+        ("file:ai-stack/mcp-servers/hybrid-coordinator/http_server.py", "file", "http_server.py", repo_root / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py", "front-door-ingress", "dir:ai-stack/mcp-servers"),
+        ("dir:dashboard/backend", "directory", "backend", repo_root / "dashboard" / "backend", "dashboard-api", "dir:dashboard"),
+        ("file:dashboard/backend/api/routes/config.py", "file", "config.py", repo_root / "dashboard" / "backend" / "api" / "routes" / "config.py", "graph-api", "dir:dashboard/backend"),
+        ("file:dashboard/backend/api/routes/aistack.py", "file", "aistack.py", repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py", "runtime-observability", "dir:dashboard/backend"),
+        ("file:dashboard.html", "file", "dashboard.html", repo_root / "dashboard.html", "operator-ui", "dir:dashboard"),
+        ("dir:docs/operations", "directory", "operations", repo_root / "docs" / "operations", "runbooks", "dir:docs"),
+        ("dir:docs/harness-first", "directory", "harness-first", repo_root / "docs" / "harness-first", "workflow-docs", "dir:docs"),
     ]
-    top_level = [
-        ("config", "configuration"),
-        ("nix", "declarative-system"),
-        ("scripts", "operations"),
-        ("ai-stack", "runtime"),
-        ("dashboard", "command-center"),
-        ("docs", "documentation"),
+    for node_id, node_type, label, path, role, parent in curated_children:
+        add_node(node_id, node_type, label, path=str(path), role=role)
+        add_edge(parent, node_id, "contains")
+
+    relational_edges = [
+        ("file:AGENTS.md", "dir:nix", "governs"),
+        ("file:AGENTS.md", "dir:scripts", "governs"),
+        ("file:AGENTS.md", "dir:ai-stack", "governs"),
+        ("file:AGENTS.md", "dir:dashboard", "governs"),
+        ("file:config/service-endpoints.sh", "file:dashboard/backend/api/routes/config.py", "configures"),
+        ("file:config/service-endpoints.sh", "file:dashboard/backend/api/routes/aistack.py", "configures"),
+        ("file:config/workflow-blueprints.json", "dir:ai-stack/workflows", "defines"),
+        ("file:config/workflow-blueprints.json", "file:dashboard/backend/api/routes/config.py", "published_by"),
+        ("file:config/route-aliases.json", "file:dashboard/backend/api/routes/aistack.py", "feeds"),
+        ("file:scripts/ai/aq-prime", "file:config/workflow-blueprints.json", "bootstraps_into"),
+        ("file:scripts/ai/aq-hints", "file:config/workflow-blueprints.json", "guides"),
+        ("file:scripts/ai/aq-context-bootstrap", "file:config/workflow-blueprints.json", "activates"),
+        ("file:scripts/ai/aq-qa", "file:dashboard/backend/api/routes/aistack.py", "verifies"),
+        ("file:ai-stack/mcp-servers/hybrid-coordinator/http_server.py", "file:config/route-aliases.json", "resolves"),
+        ("file:dashboard/backend/api/routes/config.py", "file:dashboard.html", "renders_into"),
+        ("file:dashboard/backend/api/routes/aistack.py", "file:dashboard.html", "streams_into"),
+        ("dir:docs/operations", "file:dashboard.html", "documents"),
+        ("dir:docs/harness-first", "file:scripts/ai/aq-prime", "documents"),
     ]
-    key_children = {
-        "config": ["service-endpoints.sh", "workflow-blueprints.json", "ai-stack-agent-discovery.json"],
-        "nix": ["modules", "home"],
-        "scripts": ["ai", "governance", "testing"],
-        "ai-stack": ["mcp-servers", "workflows", "local-orchestrator"],
-        "dashboard": ["backend"],
-        "docs": ["agent-guides", "harness-first", "operations"],
-    }
-    for name, role in top_level:
-        node_id = f"dir:{name}"
-        path = repo_root / name
-        nodes.append({"id": node_id, "type": "directory", "label": name, "path": str(path), "role": role})
-        edges.append({"source": "repo", "target": node_id, "relation": "contains"})
-        for child in key_children.get(name, []):
-            child_id = f"{node_id}:{child}"
-            child_path = path / child
-            child_type = "directory" if child_path.is_dir() else "file"
-            nodes.append(
-                {
-                    "id": child_id,
-                    "type": child_type,
-                    "label": child,
-                    "path": str(child_path),
-                }
-            )
-            edges.append({"source": node_id, "target": child_id, "relation": "contains"})
+    for source, target, relation in relational_edges:
+        add_edge(source, target, relation)
+
     return {
         "graph_id": "repo-structure",
         "title": "Relational File and Folder Graph",
         "nodes": nodes,
         "edges": edges,
         "focus_areas": ["nix", "scripts/ai", "ai-stack/mcp-servers", "dashboard/backend", "config"],
+        "stats": _graph_stats(nodes, edges),
+        "camera_presets": [
+            {"id": "repo-core", "label": "Repo Core", "focus": ["repo", "dir:config", "dir:dashboard", "dir:ai-stack"]},
+            {"id": "operator-loop", "label": "Operator Loop", "focus": ["file:scripts/ai/aq-prime", "file:config/workflow-blueprints.json", "file:dashboard.html"]},
+        ],
     }
 
 
@@ -147,6 +204,69 @@ def _build_workflow_blueprint_graph() -> Dict[str, Any]:
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
     lane_nodes: set[str] = set()
+    tool_nodes: set[str] = set()
+    surface_nodes: set[str] = set()
+    policy_nodes: set[str] = set()
+
+    def add_node(node_id: str, node_type: str, label: str, **extra: Any) -> None:
+        nodes.append({"id": node_id, "type": node_type, "label": label, **extra})
+
+    def add_edge(source: str, target: str, relation: str, **extra: Any) -> None:
+        edges.append({"source": source, "target": target, "relation": relation, **extra})
+
+    tool_surfaces: Dict[str, List[Dict[str, str]]] = {
+        "hints": [
+            {"id": "surface:aq-hints", "label": "aq-hints", "kind": "cli"},
+            {"id": "surface:/hints", "label": "GET /hints", "kind": "http"},
+        ],
+        "workflow_plan": [
+            {"id": "surface:/workflow/plan", "label": "POST /workflow/plan", "kind": "http"},
+        ],
+        "route_search": [
+            {"id": "surface:hybrid-search", "label": "hybrid_search / grep-first", "kind": "tooling"},
+        ],
+        "memory_recall": [
+            {"id": "surface:aq-memory", "label": "aq-memory search", "kind": "cli"},
+        ],
+        "feedback": [
+            {"id": "surface:/review/acceptance", "label": "POST /review/acceptance", "kind": "http"},
+        ],
+        "health": [
+            {"id": "surface:/health", "label": "GET /health", "kind": "http"},
+            {"id": "surface:aq-qa0", "label": "aq-qa 0 --json", "kind": "cli"},
+        ],
+        "harness_eval": [
+            {"id": "surface:aq-qa0", "label": "aq-qa 0 --json", "kind": "cli"},
+        ],
+        "qa_check": [
+            {"id": "surface:aq-qa0", "label": "aq-qa 0 --json", "kind": "cli"},
+        ],
+        "shared_skill_registry": [
+            {"id": "surface:skills", "label": "Skill Registry", "kind": "catalog"},
+        ],
+        "ai_coordinator_delegate": [
+            {"id": "surface:coordinator-delegate", "label": "coordinator-delegate", "kind": "rpc"},
+            {"id": "surface:remote-reasoning", "label": "remote-reasoning lane", "kind": "lane"},
+        ],
+        "check_boot_shutdown_integration": [
+            {"id": "surface:boot-check", "label": "boot/shutdown integration checks", "kind": "verification"},
+        ],
+    }
+
+    add_node("surface:aq-prime", "surface", "aq-prime", kind="cli", role="bootstrap")
+    add_node("surface:aq-context-bootstrap", "surface", "aq-context-bootstrap", kind="cli", role="bootstrap")
+    add_node("surface:/workflow/run/start", "surface", "POST /workflow/run/start", kind="http", role="persisted-run")
+    add_node("surface:/api/aistack/routing/summary", "surface", "GET /api/aistack/routing/summary", kind="dashboard", role="monitoring")
+    add_node("surface:/api/aistack/routing/decisions", "surface", "GET /api/aistack/routing/decisions", kind="dashboard", role="decision-log")
+    surface_nodes.update(
+        {
+            "surface:aq-prime",
+            "surface:aq-context-bootstrap",
+            "surface:/workflow/run/start",
+            "surface:/api/aistack/routing/summary",
+            "surface:/api/aistack/routing/decisions",
+        }
+    )
 
     for blueprint in raw_blueprints:
         if not isinstance(blueprint, dict):
@@ -155,9 +275,37 @@ def _build_workflow_blueprint_graph() -> Dict[str, Any]:
         if not blueprint_id:
             continue
         title = str(blueprint.get("title") or blueprint_id)
-        nodes.append({"id": f"blueprint:{blueprint_id}", "type": "blueprint", "label": title})
+        blueprint_node_id = f"blueprint:{blueprint_id}"
+        add_node(
+            blueprint_node_id,
+            "blueprint",
+            title,
+            default_safety_mode=str(blueprint.get("default_safety_mode") or "unknown"),
+            description=str(blueprint.get("description") or ""),
+        )
+        add_edge("surface:aq-prime", blueprint_node_id, "primes")
+        add_edge("surface:aq-context-bootstrap", blueprint_node_id, "selects")
+        add_edge(blueprint_node_id, "surface:/workflow/run/start", "starts")
+        add_edge(blueprint_node_id, "surface:/api/aistack/routing/summary", "observed_by")
+        add_edge(blueprint_node_id, "surface:/api/aistack/routing/decisions", "logged_by")
 
         policy = blueprint.get("orchestration_policy") or {}
+        consensus_mode = str(policy.get("consensus_mode") or "").strip()
+        if consensus_mode:
+            consensus_id = f"policy:consensus:{consensus_mode}"
+            if consensus_id not in policy_nodes:
+                policy_nodes.add(consensus_id)
+                add_node(consensus_id, "policy", consensus_mode, policy_kind="consensus_mode")
+            add_edge(blueprint_node_id, consensus_id, "uses_consensus")
+
+        selection_strategy = str(policy.get("selection_strategy") or "").strip()
+        if selection_strategy:
+            strategy_id = f"policy:selection:{selection_strategy}"
+            if strategy_id not in policy_nodes:
+                policy_nodes.add(strategy_id)
+                add_node(strategy_id, "policy", selection_strategy, policy_kind="selection_strategy")
+            add_edge(blueprint_node_id, strategy_id, "selects_via")
+
         for lane_key in ("primary_lane", "reviewer_lane", "escalation_lane"):
             lane = str(policy.get(lane_key) or "").strip()
             if not lane:
@@ -165,8 +313,8 @@ def _build_workflow_blueprint_graph() -> Dict[str, Any]:
             lane_id = f"lane:{lane}"
             if lane_id not in lane_nodes:
                 lane_nodes.add(lane_id)
-                nodes.append({"id": lane_id, "type": "lane", "label": lane})
-            edges.append({"source": f"blueprint:{blueprint_id}", "target": lane_id, "relation": lane_key})
+                add_node(lane_id, "lane", lane, lane_kind=lane_key)
+            add_edge(blueprint_node_id, lane_id, lane_key)
 
         previous_phase_id: Optional[str] = None
         for phase in blueprint.get("phases") or []:
@@ -174,19 +322,36 @@ def _build_workflow_blueprint_graph() -> Dict[str, Any]:
                 continue
             phase_name = str(phase.get("id") or "phase")
             phase_id = f"phase:{blueprint_id}:{phase_name}"
-            nodes.append(
-                {
-                    "id": phase_id,
-                    "type": "phase",
-                    "label": phase_name,
-                    "requires_approval": bool(phase.get("requires_approval", False)),
-                    "tools": list(phase.get("tools") or []),
-                }
+            phase_tools = list(phase.get("tools") or [])
+            add_node(
+                phase_id,
+                "phase",
+                phase_name,
+                requires_approval=bool(phase.get("requires_approval", False)),
+                tools=phase_tools,
+                exit_criteria=str(phase.get("exit_criteria") or ""),
             )
-            edges.append({"source": f"blueprint:{blueprint_id}", "target": phase_id, "relation": "has_phase"})
+            add_edge(blueprint_node_id, phase_id, "has_phase")
             if previous_phase_id is not None:
-                edges.append({"source": previous_phase_id, "target": phase_id, "relation": "precedes"})
+                add_edge(previous_phase_id, phase_id, "precedes")
             previous_phase_id = phase_id
+
+            if phase_tools:
+                for tool_name in phase_tools:
+                    tool_id = f"tool:{tool_name}"
+                    if tool_id not in tool_nodes:
+                        tool_nodes.add(tool_id)
+                        add_node(tool_id, "tool", tool_name)
+                    add_edge(phase_id, tool_id, "uses_tool")
+                    for surface in tool_surfaces.get(tool_name, []):
+                        surface_id = surface["id"]
+                        if surface_id not in surface_nodes:
+                            surface_nodes.add(surface_id)
+                            add_node(surface_id, "surface", surface["label"], kind=surface["kind"])
+                        add_edge(tool_id, surface_id, "invokes")
+
+            if bool(phase.get("requires_approval", False)):
+                add_edge(phase_id, "surface:/review/acceptance", "review_gate")
 
     return {
         "graph_id": "workflow-blueprints",
@@ -194,6 +359,18 @@ def _build_workflow_blueprint_graph() -> Dict[str, Any]:
         "blueprints": blueprints,
         "nodes": nodes,
         "edges": edges,
+        "focus_areas": [
+            "bootstrap",
+            "plan -> run/start",
+            "review gate",
+            "local vs remote lane selection",
+            "monitoring and decision logs",
+        ],
+        "stats": _graph_stats(nodes, edges),
+        "camera_presets": [
+            {"id": "workflow-loop", "label": "Workflow Loop", "focus": ["surface:aq-prime", "surface:/workflow/run/start", "surface:/review/acceptance"]},
+            {"id": "monitoring", "label": "Monitoring", "focus": ["surface:/api/aistack/routing/summary", "surface:/api/aistack/routing/decisions", "surface:aq-qa0"]},
+        ],
     }
 
 

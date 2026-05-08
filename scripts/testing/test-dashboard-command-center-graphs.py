@@ -25,6 +25,10 @@ def main() -> int:
         "expected workflow blueprint graph builder in dashboard config route",
     )
     assert_true(
+        'def _graph_stats(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> Dict[str, Any]:' in text,
+        "expected graph stats helper for command-center payloads",
+    )
+    assert_true(
         '@router.get("/graphs/repo-structure")' in text,
         "expected repo structure graph API route",
     )
@@ -39,6 +43,14 @@ def main() -> int:
     assert_true(
         '"label": "System Workflow Diagram"' in text,
         "expected command-center link label for workflow diagram",
+    )
+    assert_true(
+        '"surface:/workflow/run/start"' in text and '"surface:/review/acceptance"' in text,
+        "expected workflow graph to expose persisted-run and review-gate surfaces",
+    )
+    assert_true(
+        '"stats": _graph_stats(nodes, edges)' in text,
+        "expected graph payloads to include node/edge statistics",
     )
 
     print("PASS: dashboard command-center graph surfaces are wired")

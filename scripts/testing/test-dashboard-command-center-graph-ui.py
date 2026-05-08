@@ -32,6 +32,18 @@ def main() -> int:
         'void renderCommandCenterGraphSurfaces(snapshot);' in text,
         "expected control-plane render path to load graph surfaces",
     )
+    assert_true(
+        'Command Center 3D Graph Workspace' in text,
+        "expected dashboard workspace section for the command-center 3D graphs",
+    )
+    assert_true(
+        '/api/config/graphs/repo-structure' in text and '/api/config/graphs/workflow-blueprints' in text,
+        "expected dashboard 3D workspace to load command-center graph payloads",
+    )
+    assert_true(
+        'workflowGraphDetails' in text and 'vectorGraphDetails' in text,
+        "expected dashboard to expose detail panels for both 3D graphs",
+    )
 
     print("PASS: dashboard command-center graph UI wiring is present")
     return 0
