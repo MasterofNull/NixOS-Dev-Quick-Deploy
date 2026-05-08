@@ -10,9 +10,9 @@
 | A | VSCodium / MCP Bridge Fix | IMMEDIATE | ✅ DONE (92d7d510) | 1 |
 | B.1 | hybrid-coordinator audit + module map | HIGH | ✅ DONE (4e909111) | 1 |
 | B.2 | Resolve confirmed duplicates | HIGH | ✅ DONE (f80e59ec) | 1 |
-| B.3 | Domain subdirectory split | HIGH | ⬜ NOT STARTED | ~1 |
+| B.3 | Domain subdirectory split | HIGH | 🔄 IN PROGRESS (Codex writing migration script) | ~1 |
 | C.1 | Dead module import audit | MEDIUM | ✅ DONE (2026-05-08) | 0.5 |
-| C.2 | Archive confirmed dead modules | MEDIUM | ✅ DONE (pending commit) | 1 |
+| C.2 | Archive confirmed dead modules | MEDIUM | ✅ DONE (78a339db) | 1 |
 | C.3 | Gitignore __pycache__ | MEDIUM | ✅ NO-OP (already gitignored) | 0 |
 | D.1 | Data retention scripts | MEDIUM | ✅ DONE (41f82a55) | 0.5 |
 | D.2 | NixOS systemd timer | MEDIUM | ✅ DONE (aa9c79eb) | 0.5 |
@@ -110,6 +110,8 @@ At the start of each session working on this plan:
 | 2026-05-08 | A | VSCodium MCP bridge fix + hints cache | 92d7d510 |
 | 2026-05-08 | D.1 | Data retention scripts + fix temporal_facts | 41f82a55 |
 | 2026-05-08 | C.2 | Archive federated-learning | 62a86e63 |
+| 2026-05-08 | D.2 | NixOS data-retention.nix systemd timer | aa9c79eb |
+| 2026-05-08 | C.2 | Archive autonomous-orchestrator + agentic-patterns | 78a339db |
 | 2026-05-08 | B.2 | Archive garbage_collection.py; fix ops_handlers stale import | f80e59ec |
 | 2026-05-08 | B.1 | hybrid-coordinator module map | 4e909111 |
 | 2026-05-08 | — | Phase 27 staged work committed | f988b361 |
