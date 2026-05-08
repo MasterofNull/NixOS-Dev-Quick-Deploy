@@ -122,6 +122,15 @@ Adopt a **thin-editor / thick-harness** operating model.
   - stale versioned extension markers
   - broken Codex local state migrations
 
+### Track E: Rescue Workflow
+- Provide a single bounded rescue entrypoint that:
+  - checkpoints the current slice into harness memory
+  - captures `aq-report` editor-state budget health
+  - captures `aq-qa 0` editor/runtime health
+  - optionally runs `vscodium-repair`
+  - prints fresh-session resume commands
+- Make checkpoint-and-fresh-session recovery the default after repeated editor retries or context-limit transport failures.
+
 ## Acceptance Criteria
 - VSCodium launches without extension-host freeze on the standard development workspace.
 - Continue active session directory remains within bounded size after sustained use.

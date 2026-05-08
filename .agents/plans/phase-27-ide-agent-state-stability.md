@@ -55,6 +55,8 @@
    - Prefer fresh-session resume from harness memory after repeated failure.
 6. Add operator recovery guidance.
    - Write an editor-state recovery runbook covering repair, archive paths, validation, and rollback.
+7. Add a bounded rescue entrypoint.
+   - Create a one-command flow that checkpoints current slice state, captures `aq-report` / `aq-qa` evidence, optionally runs `vscodium-repair`, and prints fresh-session resume commands.
 
 ## Validation
 - Syntax:

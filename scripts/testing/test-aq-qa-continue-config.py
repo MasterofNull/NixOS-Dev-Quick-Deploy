@@ -71,6 +71,15 @@ def main() -> int:
         and '"maxTokens": ${toString localAgentChatMaxTokens}' in home_base,
         "Continue config should render the harness-aware editor model with profile-specific context and output bounds",
     )
+    assert_true(
+        '"__configVersion": "30.0"' in home_base,
+        "Continue config version should advance when the generated operator contract changes",
+    )
+    assert_true(
+        "RETRY BUDGET: After 2 failed retries" in home_base
+        and "TRANSCRIPT HYGIENE: Do not paste large logs" in home_base,
+        "Continue config should steer repeated editor failures toward checkpoint-and-fresh-session recovery",
+    )
 
     print("PASS: aq-qa Continue config validation stays pinned to switchboard ingress")
     return 0

@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""
+aq-editor-rescue — bounded rescue workflow for swollen Continue/VSCodium sessions.
+
+Usage:
+  aq-editor-rescue --task "Continue editor is freezing" --format json
+  aq-editor-rescue --task "Continue editor is freezing" --execute
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CONTEXT_MANAGE = Path(os.getenv("AQ_EDITOR_RESCUE_CONTEXT_MANAGE", str(REPO_ROOT / "scripts" / "ai" / "aq-context-manage")))
+AQ_REPORT = Path(os.getenv("AQ_EDITOR_RESCUE_AQ_REPORT", str(REPO_ROOT / "scripts" / "ai" / "aq-report")))
+AQ_QA = os.getenv("AQ_EDITOR_RESCUE_AQ_QA", "aq-qa")
+REPAIR_CMD = os.getenv("AQ_EDITOR_RESCUE_REPAIR_CMD", "vscodium-repair")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Checkpoint, diagnose, repair, and resume editor-facing AI surfaces.")
+    parser.add_argument("--task", required=True, help="Editor failure or recovery summary.")
+    parser.add_argument("--format", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    parser.add_argument("--execute", action="store_true", help="Run the repair step in addition to checkpointing and diagnostics.")
+    parser.add_argument("--skip-checkpoint", action="store_true", help="Skip the aq-context-manage checkpoint step.")
+    parser.add_argument("--skip-qa", action="store_true", help="Skip aq-qa phase 0 collection.")
+    parser.add_argument("--decision", action="append", help="Checkpoint decision. Repeatable.")
+    parser.add_argument("--next-step", dest="next_step", action="append", help="Checkpoint next step. Repeatable.")
+    parser.add_argument("--open-question", dest="open_question", action="append", help="Checkpoint open question. Repeatable.")
+    parser.add_argument("--fact", action="append", help="Checkpoint durable fact. Repeatable.")
+    parser.add_argument("--project", default="ai-stack", help="Checkpoint project.")
+    parser.add_argument("--topic", default="editor-rescue", help="Checkpoint topic.")
+    parser.add_argument("--repair-command", default=REPAIR_CMD, help="Repair command to run in execute mode.")
+    return parser.parse_args()
+
+
+def _run(command: List[str], *, parse_json: bool = False) -> Dict[str, Any]:
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    payload: Dict[str, Any] = {
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": (result.stdout or "").strip(),
+        "stderr": (result.stderr or "").strip(),
+        "ok": result.returncode == 0,
+    }
+    if parse_json and payload["stdout"]:
+        try:
+            payload["json"] = json.loads(payload["stdout"])
+        except json.JSONDecodeError as exc:
+            payload["ok"] = False
+            payload["parse_error"] = str(exc)
+    return payload
+
+
+def _default_decisions(args: argparse.Namespace) -> List[str]:
+    if args.decision:
+        return list(args.decision)
+    return [
+        "Checkpoint editor rescue state into aq-memory before replaying or clearing swollen transcripts.",
+        "Prefer fresh-session resume from harness memory after repeated editor failures instead of reopening the same transcript.",
+    ]
+
+
+def _default_next_steps(args: argparse.Namespace) -> List[str]:
+    if args.next_step:
+        return list(args.next_step)
+    return [
+        "Inspect aq-report continue_editor.state_budget and aq-qa 0.5.7 before relaunching VSCodium.",
+        "Start a fresh editor/agent session and resume from aq-memory recall after repair.",
+    ]
+
+
+def _default_open_questions(args: argparse.Namespace) -> List[str]:
+    if args.open_question:
+        return list(args.open_question)
+    return ["Which editor surface is still replaying raw transcripts or repeated bootstrap text?"]
+
+
+def _default_facts(args: argparse.Namespace) -> List[str]:
+    if args.fact:
+        return list(args.fact)
+    return ["Editor rescue run initiated because local AI surfaces are hanging or freezing."]
+
+
+def checkpoint_state(args: argparse.Namespace) -> Dict[str, Any]:
+    if args.skip_checkpoint:
+        return {"skipped": True, "reason": "skip_checkpoint"}
+    command = [
+        sys.executable,
+        str(CONTEXT_MANAGE),
+        "--json",
+        "checkpoint",
+        "--task",
+        args.task,
+        "--project",
+        args.project,
+        "--topic",
+        args.topic,
+    ]
+    for item in _default_decisions(args):
+        command.extend(["--decision", item])
+    for item in _default_next_steps(args):
+        command.extend(["--next-step", item])
+    for item in _default_open_questions(args):
+        command.extend(["--open-question", item])
+    for item in _default_facts(args):
+        command.extend(["--fact", item])
+    return _run(command, parse_json=True)
+
+
+def report_snapshot() -> Dict[str, Any]:
+    return _run([sys.executable, str(AQ_REPORT), "--format", "json"], parse_json=True)
+
+
+def qa_snapshot(args: argparse.Namespace) -> Dict[str, Any]:
+    if args.skip_qa:
+        return {"skipped": True, "reason": "skip_qa"}
+    return _run([AQ_QA, "0", "--json"], parse_json=True)
+
+
+def maybe_repair(args: argparse.Namespace) -> Dict[str, Any]:
+    if not args.execute:
+        return {"skipped": True, "reason": "plan_mode"}
+    return _run([args.repair_command])
+
+
+def resume_commands(task: str, project: str) -> List[str]:
+    return [
+        f'aq-memory search "{task}" --project {project} --limit 5',
+        f'aq-context-bootstrap --task "resume {task}" --scope context-offload --format json',
+        'aq-context-card --card context-offload --level standard',
+        "aq-qa 0 --json",
+        "codium",
+    ]
+
+
+def summarize(report: Dict[str, Any], qa: Dict[str, Any], repair: Dict[str, Any]) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {
+        "state_budget": None,
+        "qa_phase_0": None,
+        "repair": {
+            "ran": bool(repair and not repair.get("skipped")),
+            "ok": bool(repair.get("ok", False)) if repair else False,
+        },
+    }
+    report_json = report.get("json") if isinstance(report, dict) else None
+    if isinstance(report_json, dict):
+        summary["state_budget"] = (((report_json.get("continue_editor") or {}).get("state_budget")) or None)
+    qa_json = qa.get("json") if isinstance(qa, dict) else None
+    if isinstance(qa_json, dict):
+        summary["qa_phase_0"] = {
+            "passed": qa_json.get("passed"),
+            "failed": qa_json.get("failed"),
+            "skipped": qa_json.get("skipped"),
+        }
+    return summary
+
+
+def render_text(payload: Dict[str, Any]) -> str:
+    lines = ["Editor Rescue", "=" * 60]
+    checkpoint = payload.get("checkpoint") or {}
+    report = payload.get("report") or {}
+    qa = payload.get("qa") or {}
+    repair = payload.get("repair") or {}
+    summary = payload.get("summary") or {}
+    if checkpoint.get("skipped"):
+        lines.append("Checkpoint: skipped")
+    else:
+        lines.append(f"Checkpoint: {'ok' if checkpoint.get('ok') else 'failed'}")
+    state_budget = summary.get("state_budget") or {}
+    if state_budget:
+        lines.append(
+            f"Editor budget: {'healthy' if state_budget.get('healthy') else 'degraded'} "
+            f"({state_budget.get('passed_n', 0)}/{state_budget.get('total_checks', 0)} checks passed)"
+        )
+    else:
+        lines.append(f"aq-report: {'ok' if report.get('ok') else 'failed'}")
+    qa_phase_0 = summary.get("qa_phase_0") or {}
+    if qa_phase_0:
+        lines.append(
+            f"aq-qa phase 0: {qa_phase_0.get('passed', 0)} passed, "
+            f"{qa_phase_0.get('failed', 0)} failed, {qa_phase_0.get('skipped', 0)} skipped"
+        )
+    else:
+        lines.append(f"aq-qa phase 0: {'skipped' if qa.get('skipped') else ('ok' if qa.get('ok') else 'failed')}")
+    if repair.get("skipped"):
+        lines.append("Repair: plan mode only (not executed)")
+    else:
+        lines.append(f"Repair: {'ok' if repair.get('ok') else 'failed'}")
+    lines.append("")
+    lines.append("Fresh-session resume:")
+    for command in payload.get("resume_commands") or []:
+        lines.append(f"  {command}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    checkpoint = checkpoint_state(args)
+    report = report_snapshot()
+    qa = qa_snapshot(args)
+    repair = maybe_repair(args)
+    payload = {
+        "task": args.task,
+        "checkpoint": checkpoint,
+        "report": report,
+        "qa": qa,
+        "repair": repair,
+        "resume_commands": resume_commands(args.task, args.project),
+    }
+    payload["summary"] = summarize(report, qa, repair)
+
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(render_text(payload))
+
+    if (checkpoint.get("ok", True) and report.get("ok", True) and qa.get("ok", True) and repair.get("ok", True)) or repair.get("skipped"):
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
