@@ -48,7 +48,7 @@ def _default_content_security_policy() -> str:
             "img-src 'self' data:",
             "font-src 'self' data:",
             "connect-src 'self' ws: wss:",
-            "script-src 'self' 'unsafe-inline'",
+            "script-src 'self' 'unsafe-inline' https://unpkg.com",
             "style-src 'self' 'unsafe-inline'",
         ]
     )
