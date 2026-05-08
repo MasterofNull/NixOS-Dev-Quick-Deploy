@@ -7,8 +7,8 @@
 
 | Phase | Name | Priority | Status | Sessions |
 |---|---|---|---|---|
-| A | VSCodium / MCP Bridge Fix | IMMEDIATE | ⬜ NOT STARTED | ~1 |
-| B.1 | hybrid-coordinator audit + module map | HIGH | ⬜ NOT STARTED | ~1 |
+| A | VSCodium / MCP Bridge Fix | IMMEDIATE | ✅ DONE (92d7d510) | 1 |
+| B.1 | hybrid-coordinator audit + module map | HIGH | 🔄 IN PROGRESS | ~1 |
 | B.2 | Remove confirmed duplicates | HIGH | ⬜ NOT STARTED | ~1 |
 | B.3 | Domain subdirectory split | HIGH | ⬜ NOT STARTED | ~1 |
 | C.1 | Dead module import audit | MEDIUM | ⬜ NOT STARTED | ~0.5 |
