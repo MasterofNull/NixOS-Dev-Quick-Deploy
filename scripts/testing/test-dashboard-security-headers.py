@@ -20,7 +20,7 @@ EXPECTED_CSP_PARTS = [
     "object-src 'none'",
     "frame-ancestors 'none'",
     "connect-src 'self' ws: wss:",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://unpkg.com",
     "style-src 'self' 'unsafe-inline'",
 ]
 
