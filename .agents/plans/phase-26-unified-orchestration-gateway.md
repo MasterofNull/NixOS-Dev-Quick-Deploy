@@ -141,16 +141,16 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 ## Task Checklist
 
 - [x] P26-001 Phase plan written
-- [ ] P26-002 `lifecycle_fsm.py` — 8-state FSM + session persistence
-- [ ] P26-003 `agent_capability_registry.py` — dynamic agent discovery
-- [ ] P26-004 `domain_router.py` — domain classifier + team routing
-- [ ] P26-005 `intake_gateway.py` — UAG HTTP handlers
-- [ ] P26-006 Wire into `http_server.py`
-- [ ] P26-007 Add MCP tools to `mcp-bridge-hybrid.py`
-- [ ] P26-008 Update `config/workflow-blueprints.json`
-- [ ] P26-009 Update `config/agent-routing-policy.json`
-- [ ] P26-010 Update `docs/agent-guides/40-HYBRID-WORKFLOW.md`
-- [ ] P26-011 Validation + commit
+- [x] P26-002 `lifecycle_fsm.py` — 8-state FSM + session persistence
+- [x] P26-003 `agent_capability_registry.py` — dynamic agent discovery
+- [x] P26-004 `domain_router.py` — domain classifier + team routing
+- [x] P26-005 `intake_gateway.py` — UAG HTTP handlers
+- [x] P26-006 Wire into `http_server.py`
+- [x] P26-007 Add MCP tools to `mcp-bridge-hybrid.py`
+- [x] P26-008 Update `config/workflow-blueprints.json`
+- [x] P26-009 Update `config/agent-routing-policy.json`
+- [x] P26-010 Update `docs/agent-guides/40-HYBRID-WORKFLOW.md`
+- [x] P26-011 Validation + commit (tier0: 8/8 gates PASS, aq-qa: 39/0)
 
 ---
 
