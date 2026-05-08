@@ -244,7 +244,7 @@ Environment overrides:
   POST_FLIGHT_SEED_TIMEOUT_SECONDS=120
                             Timeout for inline routing seed task
   POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS=90
-                            Timeout for mutable repo-backed AI service restarts
+                            Per-service timeout for mutable repo-backed AI restarts
   POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS=45
                             Timeout for each mutable repo-backed capability probe
   POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT=2
@@ -1265,27 +1265,46 @@ restart_repo_backed_ai_services_if_needed() {
     return 0
   fi
 
-  log "Restarting mutable repo-backed AI services so live processes pick up checkout changes"
-  if has_timeout_cmd && [[ "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] && \
-     (( POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS > 0 )); then
-    if sudo_passwordless_ready && sudo_passwordless_command_allowed systemctl; then
-      if timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
-          sudo -n systemctl restart "${restart_units[@]}"; then
-        log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
+  _log_repo_backed_ai_service_restart_failure() {
+    local failed_unit="$1"
+    log_warn "Mutable repo-backed AI service restart failed for ${failed_unit}; collecting systemd diagnostics"
+    run_privileged systemctl show \
+      "${failed_unit}" \
+      -p Id \
+      -p ActiveState \
+      -p SubState \
+      -p Result \
+      -p ExecMainStatus >&2 || true
+    run_privileged journalctl -u "${failed_unit}" -n 60 --no-pager >&2 || true
+  }
+
+  _restart_repo_backed_ai_service_one() {
+    local restart_unit="$1"
+    if has_timeout_cmd && [[ "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] && \
+       (( POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS > 0 )); then
+      if sudo_passwordless_ready && sudo_passwordless_command_allowed systemctl; then
+        timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
+          sudo -n systemctl restart "${restart_unit}"
       else
-        die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
+        run_privileged timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
+          systemctl restart "${restart_unit}"
       fi
-    elif run_privileged timeout "${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS}" \
-        systemctl restart "${restart_units[@]}"; then
-      log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
     else
-      die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
+      run_privileged systemctl restart "${restart_unit}"
     fi
-  elif run_privileged systemctl restart "${restart_units[@]}"; then
-    log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
-  else
-    die "Mutable repo-backed AI service restart failed: ${restart_units[*]}"
-  fi
+  }
+
+  log "Restarting mutable repo-backed AI services so live processes pick up checkout changes"
+  for unit in "${restart_units[@]}"; do
+    log "Restarting mutable repo-backed AI service: ${unit}"
+    if _restart_repo_backed_ai_service_one "${unit}"; then
+      log "Mutable repo-backed AI service restarted: ${unit}"
+      continue
+    fi
+    _log_repo_backed_ai_service_restart_failure "${unit}"
+    die "Mutable repo-backed AI service restart failed: ${unit}"
+  done
+  log "Mutable repo-backed AI services restarted: ${restart_units[*]}"
 }
 
 verify_repo_backed_ai_services_are_live_if_needed() {
