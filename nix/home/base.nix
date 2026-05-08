@@ -984,7 +984,7 @@ in {
       if [ -d "$ws_root" ] && command -v sqlite3 >/dev/null 2>&1; then
         for wdb in "$ws_root"/*/state.vscdb; do
           [ -f "$wdb" ] || continue
-          sqlite3 "$wdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%' or value like '%continue%';" >/dev/null 2>&1 || true
+          sqlite3 "$wdb" "delete from ItemTable where key like '%continue%' or key like 'Continue.%';" >/dev/null 2>&1 || true
         done
         unset wdb
       fi
@@ -995,8 +995,11 @@ in {
     fi
   '';
 
-  # Remove stale VSCodium obsolete markers that can hide declarative Continue
-  # installs after extension source/migration changes.
+  # Remove stale .obsolete markers for extensions that no longer have a matching
+  # directory in the extensions folder.  Nix-managed extensions land as symlinks
+  # without version suffixes, so VSCodium's versioned entries (e.g.
+  # "google.geminicodeassist-2.79.0") never find a directory to delete and
+  # accumulate as permanent stale entries that slow down every startup.
   home.activation.clearContinueObsoleteMarker = lib.hm.dag.entryAfter ["linkGeneration"] ''
         obsolete_file="$HOME/.vscode-oss/extensions/.obsolete"
         if [ -f "$obsolete_file" ] && command -v python3 >/dev/null 2>&1; then
@@ -1006,6 +1009,7 @@ in {
     import sys
 
     path = pathlib.Path(sys.argv[1])
+    ext_dir = path.parent
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -1014,7 +1018,11 @@ in {
         sys.exit(0)
     removed = False
     for key in list(data.keys()):
-        if key.lower().startswith("continue.continue"):
+        # Keep entries only when the exact-named directory actually exists
+        # (i.e. VSCodium can still find something to delete).  Stale entries
+        # for nix-managed extensions that were never created at that path
+        # are safe to remove — VSCodium would skip them anyway.
+        if not (ext_dir / key).is_dir():
             data.pop(key, None)
             removed = True
     if removed:
@@ -1022,6 +1030,27 @@ in {
     PYEOF
         fi
         unset obsolete_file
+  '';
+
+  # Evict oversized AI-extension state from globalStorage.
+  # Several AI extensions (Gemini, Qwen Code) cache 1-2 MB of model context or
+  # conversation history in state.vscdb, causing the extension host to be
+  # unresponsive for several seconds on every startup.  Evicting entries >1 MB
+  # is safe — the caches re-warm from remote/local state automatically.
+  # Skip when VSCodium is running to avoid corrupting the live WAL journal.
+  home.activation.pruneHeavyExtensionGlobalState = lib.hm.dag.entryAfter ["linkGeneration"] ''
+    if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+      echo "[vscodium] codium running — skipping heavy-state pruning (runs on next switch after closing)"
+    else
+      _gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
+      if [ -f "$_gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$_gdb" "
+          DELETE FROM ItemTable WHERE key='google.geminicodeassist' AND length(value) > 1048576;
+          DELETE FROM ItemTable WHERE key='qwenlm.qwen-code-vscode-ide-companion' AND length(value) > 1048576;
+        " 2>/dev/null || true
+      fi
+      unset _gdb
+    fi
   '';
 
   # Install runtime-mutable extensions that write inside their own install dir.
