@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,15 @@ CONTEXT_MANAGE = Path(os.getenv("AQ_EDITOR_RESCUE_CONTEXT_MANAGE", str(REPO_ROOT
 AQ_REPORT = Path(os.getenv("AQ_EDITOR_RESCUE_AQ_REPORT", str(REPO_ROOT / "scripts" / "ai" / "aq-report")))
 AQ_QA = os.getenv("AQ_EDITOR_RESCUE_AQ_QA", "aq-qa")
 REPAIR_CMD = os.getenv("AQ_EDITOR_RESCUE_REPAIR_CMD", "vscodium-repair")
+REGENERATE_CONTINUE_CONFIG_CMD = os.getenv(
+    "AQ_EDITOR_RESCUE_REGENERATE_CONTINUE_CONFIG_CMD",
+    "home-manager switch --flake .",
+)
+CHECKPOINT_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_CHECKPOINT_TIMEOUT_SECONDS", "20"))
+REPORT_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_REPORT_TIMEOUT_SECONDS", "180"))
+QA_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_QA_TIMEOUT_SECONDS", "150"))
+REPAIR_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_REPAIR_TIMEOUT_SECONDS", "120"))
+REGENERATE_TIMEOUT_SECONDS = int(os.getenv("AQ_EDITOR_RESCUE_REGENERATE_TIMEOUT_SECONDS", "900"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,11 +49,45 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project", default="ai-stack", help="Checkpoint project.")
     parser.add_argument("--topic", default="editor-rescue", help="Checkpoint topic.")
     parser.add_argument("--repair-command", default=REPAIR_CMD, help="Repair command to run in execute mode.")
+    parser.add_argument(
+        "--regenerate-continue-config",
+        action="store_true",
+        help="Run home-manager to regenerate ~/.continue/config.json after repair when needed.",
+    )
+    parser.add_argument(
+        "--regenerate-command",
+        default=REGENERATE_CONTINUE_CONFIG_CMD,
+        help="Command to regenerate the Continue config after repair.",
+    )
     return parser.parse_args()
 
 
-def _run(command: List[str], *, parse_json: bool = False) -> Dict[str, Any]:
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+def _run(command: List[str], *, parse_json: bool = False, timeout: Optional[int] = None) -> Dict[str, Any]:
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        stdout = (exc.stdout or "").strip() if isinstance(exc.stdout, str) else ""
+        stderr = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
+        return {
+            "command": command,
+            "returncode": None,
+            "stdout": stdout,
+            "stderr": stderr,
+            "ok": False,
+            "timed_out": True,
+            "timeout_seconds": timeout,
+            "error": f"timed out after {timeout}s",
+        }
+    except OSError as exc:
+        return {
+            "command": command,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "",
+            "ok": False,
+            "os_error": str(exc),
+            "errno": getattr(exc, "errno", None),
+        }
     payload: Dict[str, Any] = {
         "command": command,
         "returncode": result.returncode,
@@ -113,23 +157,41 @@ def checkpoint_state(args: argparse.Namespace) -> Dict[str, Any]:
         command.extend(["--open-question", item])
     for item in _default_facts(args):
         command.extend(["--fact", item])
-    return _run(command, parse_json=True)
+    return _run(command, parse_json=True, timeout=CHECKPOINT_TIMEOUT_SECONDS)
 
 
 def report_snapshot() -> Dict[str, Any]:
-    return _run([sys.executable, str(AQ_REPORT), "--format", "json"], parse_json=True)
+    return _run([sys.executable, str(AQ_REPORT), "--format", "json"], parse_json=True, timeout=REPORT_TIMEOUT_SECONDS)
 
 
 def qa_snapshot(args: argparse.Namespace) -> Dict[str, Any]:
     if args.skip_qa:
         return {"skipped": True, "reason": "skip_qa"}
-    return _run([AQ_QA, "0", "--json"], parse_json=True)
+    return _run([AQ_QA, "0", "--json"], parse_json=True, timeout=QA_TIMEOUT_SECONDS)
 
 
 def maybe_repair(args: argparse.Namespace) -> Dict[str, Any]:
     if not args.execute:
         return {"skipped": True, "reason": "plan_mode"}
-    return _run([args.repair_command])
+    command = shlex.split(args.repair_command)
+    result = _run(command, timeout=REPAIR_TIMEOUT_SECONDS)
+    if result.get("errno") == 8 and len(command) == 1:
+        return _run(["bash", "-lc", command[0]], timeout=REPAIR_TIMEOUT_SECONDS)
+    return result
+
+
+def maybe_regenerate_continue_config(args: argparse.Namespace, repair: Dict[str, Any], qa: Dict[str, Any]) -> Dict[str, Any]:
+    if not args.regenerate_continue_config:
+        return {"skipped": True, "reason": "not_requested"}
+    if not args.execute:
+        return {"skipped": True, "reason": "plan_mode"}
+    if not repair.get("ok"):
+        return {"skipped": True, "reason": "repair_failed"}
+    command = shlex.split(args.regenerate_command)
+    result = _run(command, timeout=REGENERATE_TIMEOUT_SECONDS)
+    if result.get("errno") == 8 and len(command) == 1:
+        return _run(["bash", "-lc", command[0]], timeout=REGENERATE_TIMEOUT_SECONDS)
+    return result
 
 
 def resume_commands(task: str, project: str) -> List[str]:
@@ -142,13 +204,26 @@ def resume_commands(task: str, project: str) -> List[str]:
     ]
 
 
-def summarize(report: Dict[str, Any], qa: Dict[str, Any], repair: Dict[str, Any]) -> Dict[str, Any]:
+def summarize(
+    report: Dict[str, Any],
+    qa: Dict[str, Any],
+    repair: Dict[str, Any],
+    regenerate_continue_config: Dict[str, Any],
+    regenerate_command: str,
+) -> Dict[str, Any]:
     summary: Dict[str, Any] = {
         "state_budget": None,
         "qa_phase_0": None,
+        "qa_failures": [],
+        "next_actions": [],
         "repair": {
             "ran": bool(repair and not repair.get("skipped")),
             "ok": bool(repair.get("ok", False)) if repair else False,
+        },
+        "regenerate_continue_config": {
+            "ran": bool(regenerate_continue_config and not regenerate_continue_config.get("skipped")),
+            "ok": bool(regenerate_continue_config.get("ok", False)) if regenerate_continue_config else False,
+            "command": regenerate_command,
         },
     }
     report_json = report.get("json") if isinstance(report, dict) else None
@@ -156,11 +231,32 @@ def summarize(report: Dict[str, Any], qa: Dict[str, Any], repair: Dict[str, Any]
         summary["state_budget"] = (((report_json.get("continue_editor") or {}).get("state_budget")) or None)
     qa_json = qa.get("json") if isinstance(qa, dict) else None
     if isinstance(qa_json, dict):
+        qa_failures = [
+            {
+                "id": item.get("id"),
+                "description": item.get("description"),
+            }
+            for item in (qa_json.get("tests") or [])
+            if str(item.get("status", "")).upper() == "FAIL"
+        ]
         summary["qa_phase_0"] = {
             "passed": qa_json.get("passed"),
             "failed": qa_json.get("failed"),
             "skipped": qa_json.get("skipped"),
         }
+        summary["qa_failures"] = qa_failures
+        failure_ids = {str(item.get("id", "")) for item in qa_failures}
+        if "0.5.2" in failure_ids:
+            if regenerate_continue_config.get("ok"):
+                summary["next_actions"].append("Continue config regeneration ran; rerun aq-qa 0 if 0.5.2 still appears stale before relaunching codium.")
+            else:
+                summary["next_actions"].append(
+                    f"Run `{regenerate_command}` to regenerate ~/.continue/config.json after vscodium-repair reset the config version."
+                )
+        if any(failure_id.startswith("0.5.") for failure_id in failure_ids):
+            summary["next_actions"].append("Relaunch codium only after the Continue config and editor-runtime checks pass again in aq-qa 0.")
+    if repair and repair.get("ok"):
+        summary["next_actions"].append("Use aq-memory recall and start a fresh editor session instead of reopening the previous swollen transcript.")
     return summary
 
 
@@ -170,6 +266,7 @@ def render_text(payload: Dict[str, Any]) -> str:
     report = payload.get("report") or {}
     qa = payload.get("qa") or {}
     repair = payload.get("repair") or {}
+    regenerate_continue_config = payload.get("regenerate_continue_config") or {}
     summary = payload.get("summary") or {}
     if checkpoint.get("skipped"):
         lines.append("Checkpoint: skipped")
@@ -182,7 +279,8 @@ def render_text(payload: Dict[str, Any]) -> str:
             f"({state_budget.get('passed_n', 0)}/{state_budget.get('total_checks', 0)} checks passed)"
         )
     else:
-        lines.append(f"aq-report: {'ok' if report.get('ok') else 'failed'}")
+        report_status = "timed out" if report.get("timed_out") else ("ok" if report.get("ok") else "failed")
+        lines.append(f"aq-report: {report_status}")
     qa_phase_0 = summary.get("qa_phase_0") or {}
     if qa_phase_0:
         lines.append(
@@ -190,11 +288,34 @@ def render_text(payload: Dict[str, Any]) -> str:
             f"{qa_phase_0.get('failed', 0)} failed, {qa_phase_0.get('skipped', 0)} skipped"
         )
     else:
-        lines.append(f"aq-qa phase 0: {'skipped' if qa.get('skipped') else ('ok' if qa.get('ok') else 'failed')}")
+        qa_status = "skipped" if qa.get("skipped") else ("timed out" if qa.get("timed_out") else ("ok" if qa.get("ok") else "failed"))
+        lines.append(f"aq-qa phase 0: {qa_status}")
     if repair.get("skipped"):
         lines.append("Repair: plan mode only (not executed)")
     else:
-        lines.append(f"Repair: {'ok' if repair.get('ok') else 'failed'}")
+        repair_status = "timed out" if repair.get("timed_out") else ("ok" if repair.get("ok") else "failed")
+        lines.append(f"Repair: {repair_status}")
+    if regenerate_continue_config.get("skipped"):
+        if regenerate_continue_config.get("reason") == "not_requested":
+            lines.append("Continue config regeneration: skipped")
+    else:
+        regenerate_status = (
+            "timed out"
+            if regenerate_continue_config.get("timed_out")
+            else ("ok" if regenerate_continue_config.get("ok") else "failed")
+        )
+        lines.append(f"Continue config regeneration: {regenerate_status}")
+    qa_failures = summary.get("qa_failures") or []
+    if qa_failures:
+        lines.append("QA failures:")
+        for item in qa_failures[:5]:
+            lines.append(f"  {item.get('id')}: {item.get('description')}")
+    next_actions = summary.get("next_actions") or []
+    if next_actions:
+        lines.append("")
+        lines.append("Next actions:")
+        for action in next_actions:
+            lines.append(f"  {action}")
     lines.append("")
     lines.append("Fresh-session resume:")
     for command in payload.get("resume_commands") or []:
@@ -208,22 +329,32 @@ def main() -> int:
     report = report_snapshot()
     qa = qa_snapshot(args)
     repair = maybe_repair(args)
+    regenerate_continue_config = maybe_regenerate_continue_config(args, repair, qa)
+    if regenerate_continue_config.get("ok") and not args.skip_qa:
+        qa = qa_snapshot(args)
     payload = {
         "task": args.task,
         "checkpoint": checkpoint,
         "report": report,
         "qa": qa,
         "repair": repair,
+        "regenerate_continue_config": regenerate_continue_config,
         "resume_commands": resume_commands(args.task, args.project),
     }
-    payload["summary"] = summarize(report, qa, repair)
+    payload["summary"] = summarize(report, qa, repair, regenerate_continue_config, args.regenerate_command)
 
     if args.fmt == "json":
         print(json.dumps(payload, indent=2))
     else:
         print(render_text(payload))
 
-    if (checkpoint.get("ok", True) and report.get("ok", True) and qa.get("ok", True) and repair.get("ok", True)) or repair.get("skipped"):
+    if (
+        checkpoint.get("ok", True)
+        and report.get("ok", True)
+        and qa.get("ok", True)
+        and repair.get("ok", True)
+        and regenerate_continue_config.get("ok", True)
+    ) or (repair.get("skipped") and regenerate_continue_config.get("skipped")):
         return 0
     return 1
 
