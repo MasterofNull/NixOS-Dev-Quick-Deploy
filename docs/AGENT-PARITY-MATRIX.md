@@ -296,7 +296,7 @@ Notes:
 | Capability cluster | External benchmark signal | This repo status | Gap classification |
 |---|---|---|---|
 | Workflow orchestration runtime | Code-agent leaders expose explicit run loops with retries/recovery | Session + phase APIs exist, but no single DAG executor | `P0 gap` |
-| Guarded tool execution | Mature agents gate risky actions and isolate execution context | Review endpoint exists; policy evaluator exists | `P0 gap` (runtime enforcement layer) |
+| Guarded tool execution | Mature agents gate risky actions and isolate execution context | blast_radius_classifier + safety_gate in DELEGATE phase; open/review/strict modes | `Near parity` (Phase 28) |
 | Trust distribution and key lifecycle | Production systems publish trust-root and rotation processes | Signed skill registry exists; remote trust rotation not automated | `P0 gap` |
 | Continuous quality benchmarking | Common use of repeatable eval/regression loops | Harness eval + regression scripts exist | `P1 gap` (external benchmark corpus integration) |
 | Agent memory/context quality controls | Strong projects add compaction and memory feedback loops | Semantic embeddings live (1024-dim, Phase 13.1); progressive disclosure + feedback loops operational | `Parity` |
@@ -398,7 +398,7 @@ Method:
 | Benchmark-grade SWE task integration | `SWE-Gym`, `SWE-bench_Pro-os`, `swe-agent` ecosystem | Partial (internal evals exist, limited external SWE corpus pipeline) | `P0 gap` |
 | Lightweight harness runner patterns | `claude-code-harness`, `bigcode-evaluation-harness`, `bridle` | Partial (parity scripts exist, but no unified harness runner contract) | `P1 gap` |
 | Multi-surface client adapters (IDE/CLI bridge quality) | `sweep`, `cody-public-snapshot`, `tabby` show strong IDE-centric integration | Partial (HTTP/SDK/RPC present, IDE adapter quality gate not explicit) | `P1 gap` |
-| Planner/executor separation with explicit safety modes | `opencode`, `cline`, `pi-mono` style role separation | Partial (plan/session present, runtime safety mode needs hard gate) | `P0 gap` |
+| Planner/executor separation with explicit safety modes | `opencode`, `cline`, `pi-mono` style role separation | safety_mode field on LifecycleSession; gate enforced at DELEGATE→VALIDATE | `Near parity` (Phase 28) |
 | Extensibility and plugin packaging | `pi-mono`, `goose`, `Qwen-Agent`, `TaskWeaver` | Implemented (skill bundle and MCP pathways) | `Parity` |
 | Multi-provider/runtime flexibility | `goose`, `pi-mono`, `Qwen-Agent`, `trae-agent` | Implemented | `Parity` |
 | Core observability and SLO gates | `TaskWeaver`/AgentOps style observability expectations | Implemented baseline (SLO + smoke + auth checks) | `Near parity` |

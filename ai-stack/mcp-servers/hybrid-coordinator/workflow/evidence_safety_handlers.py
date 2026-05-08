@@ -23,6 +23,10 @@ import time
 from typing import Any, Dict, List
 
 from aiohttp import web
+try:
+    import lifecycle_fsm as _lifecycle_fsm
+except ImportError:
+    _lifecycle_fsm = None  # type: ignore[assignment]
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -515,6 +519,70 @@ async def handle_rollback_status(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# Phase 28 — safety gate configuration endpoints
+# ---------------------------------------------------------------------------
+
+_VALID_SAFETY_MODES = frozenset({"open", "review", "strict"})
+
+
+async def handle_safety_gate_set(request: web.Request) -> web.Response:
+    """POST /control/safety/gate — set the safety mode for a UAG session.
+
+    Body: {"session_id": str, "safety_mode": "open"|"review"|"strict"}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+
+    session_id = body.get("session_id", "").strip()
+    mode = body.get("safety_mode", "").strip()
+
+    if not session_id:
+        return web.json_response({"error": "session_id required"}, status=400)
+    if mode not in _VALID_SAFETY_MODES:
+        return web.json_response(
+            {"error": f"safety_mode must be one of {sorted(_VALID_SAFETY_MODES)}"},
+            status=400,
+        )
+
+    # healthcheck probe — validate mode schema only, no session lookup required
+    if session_id == "healthcheck":
+        return web.json_response({"ok": True, "session_id": session_id, "safety_mode": mode})
+
+    if _lifecycle_fsm is None:
+        return web.json_response({"error": "lifecycle_fsm unavailable"}, status=503)
+
+    session = _lifecycle_fsm.get_session(session_id)
+    if not session:
+        return web.json_response({"error": "session not found"}, status=404)
+
+    session.safety_mode = mode
+    _lifecycle_fsm._write_session(session)
+    return web.json_response({"ok": True, "session_id": session_id, "safety_mode": mode})
+
+
+async def handle_safety_gate_get(request: web.Request) -> web.Response:
+    """GET /control/safety/gate/{session_id} — read gate state for a session."""
+    session_id = request.match_info.get("session_id", "")
+    if not session_id:
+        return web.json_response({"error": "session_id required"}, status=400)
+
+    if _lifecycle_fsm is None:
+        return web.json_response({"error": "lifecycle_fsm unavailable"}, status=503)
+
+    session = _lifecycle_fsm.get_session(session_id)
+    if not session:
+        return web.json_response({"error": "session not found"}, status=404)
+
+    return web.json_response({
+        "session_id": session_id,
+        "safety_mode": getattr(session, "safety_mode", "open"),
+        "gate_log": getattr(session, "safety_gate_log", []),
+    })
+
+
+# ---------------------------------------------------------------------------
 # Route registration
 # ---------------------------------------------------------------------------
 
@@ -531,3 +599,6 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/control/rollback/register", handle_rollback_register)
     http_app.router.add_post("/control/rollback/execute", handle_rollback_execute)
     http_app.router.add_get("/control/rollback/status", handle_rollback_status)
+    # Phase 28 — guarded execution safety gate
+    http_app.router.add_post("/control/safety/gate", handle_safety_gate_set)
+    http_app.router.add_get("/control/safety/gate/{session_id}", handle_safety_gate_get)

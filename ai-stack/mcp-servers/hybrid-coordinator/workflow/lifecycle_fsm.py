@@ -161,6 +161,9 @@ class LifecycleSession:
     context: Dict[str, Any] = field(default_factory=dict)
     delegations: List[Dict[str, Any]] = field(default_factory=list)
     validation_results: Dict[str, Any] = field(default_factory=dict)
+    # Phase 28 — guarded execution
+    safety_mode: str = "open"            # open | review | strict
+    safety_gate_log: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -169,6 +172,9 @@ class LifecycleSession:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LifecycleSession":
         phases_raw = data.pop("phases", [])
+        # Backward compat: sessions persisted before Phase 28 lack these fields
+        data.setdefault("safety_mode", "open")
+        data.setdefault("safety_gate_log", [])
         inst = cls(**data)
         inst.phases = [PhaseRecord(**p) for p in phases_raw]
         return inst

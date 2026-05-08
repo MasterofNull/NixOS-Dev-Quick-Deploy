@@ -33,6 +33,10 @@ import agent_capability_registry
 import domain_router
 import lifecycle_fsm
 from lifecycle_fsm import LifecyclePhase, detect_complexity
+try:
+    from workflow.safety_gate import evaluate as _gate_evaluate
+except ImportError:
+    from safety_gate import evaluate as _gate_evaluate  # flat-import fallback
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -244,6 +248,33 @@ async def handle_advance_phase(request: web.Request) -> web.Response:
     error = body.get("error")
 
     current_phase = session.current_phase
+
+    # Phase 28 — safety gate: check blast radius before leaving DELEGATE
+    if current_phase == LifecyclePhase.DELEGATE.value and status == "passed":
+        actions = body.get("delegation_actions") or list(
+            context_updates.get("delegation_actions", [])
+            or session.context.get("delegation_actions", [])
+        )
+        gate_result = _gate_evaluate(session, actions)
+        if not gate_result.allowed:
+            session = lifecycle_fsm.abort_session(
+                session,
+                reason=f"safety_gate blocked: {gate_result.reason}",
+            )
+            return web.json_response({
+                "session_id": session.session_id,
+                "previous_phase": current_phase,
+                "current_phase": session.current_phase,
+                "is_terminal": True,
+                "safety_gate": {
+                    "blocked": True,
+                    "reason": gate_result.reason,
+                    "blocked_actions": gate_result.blocked_actions,
+                    "queued_actions": gate_result.queued_actions,
+                },
+                "phases": session.phase_summary(),
+            }, status=403)
+
     session = lifecycle_fsm.complete_phase(
         session,
         current_phase,

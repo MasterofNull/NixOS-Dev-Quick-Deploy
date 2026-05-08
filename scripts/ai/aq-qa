@@ -574,6 +574,24 @@ PYEOF
       _fail "0.8.1" "delegate 1h success rate ≥50%" "got ${delegate_pct}% (${delegate_ok}/${delegate_total} calls)"
     fi
   fi
+
+  # 0.9.1 Safety gate endpoint (Phase 28)
+  local _hk09 gate_out gate_http
+  _hk09=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+  gate_out=$(curl -s --max-time 5 \
+    -X POST "${HYBRID_URL}/control/safety/gate" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${_hk09}" \
+    -d '{"session_id":"healthcheck","safety_mode":"open"}' \
+    -w "\n%{http_code}" 2>/dev/null || echo "ERROR")
+  gate_http=$(echo "$gate_out" | tail -1)
+  if [[ "$gate_http" == "200" ]] || [[ "$gate_out" == *'"ok": true'* ]] || [[ "$gate_out" == *'"ok":true'* ]]; then
+    _pass "0.9.1" "safety gate endpoint responds (POST /control/safety/gate)"
+  elif [[ "$gate_http" == "404" ]]; then
+    _skip "0.9.1" "safety gate endpoint" "Phase 28 not deployed (404)"
+  else
+    _fail "0.9.1" "safety gate endpoint reachable" "HTTP ${gate_http:-ERR}: ${gate_out:0:80}"
+  fi
 }
 
 # ---------------------------------------------------------------------------
