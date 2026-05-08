@@ -237,6 +237,66 @@ async def handle_yaml_workflow_stats(request: web.Request) -> web.Response:
         )
 
 
+async def handle_yaml_workflow_graph(request: web.Request) -> web.Response:
+    """
+    GET /yaml-workflow/graph?workflow_file=...
+    Return graph payload for a YAML workflow definition.
+    """
+    if not _workflow_coordinator:
+        return web.json_response(
+            {"error": "YAML workflows not initialized"},
+            status=503,
+        )
+
+    workflow_file = request.query.get("workflow_file")
+    if not workflow_file:
+        return web.json_response(
+            {"error": "workflow_file is required"},
+            status=400,
+        )
+
+    try:
+        graph = await _workflow_coordinator.get_workflow_graph(workflow_file)
+        return web.json_response(graph)
+    except Exception as e:
+        logger.error(f"Failed to build workflow graph: {e}", exc_info=True)
+        return web.json_response(
+            {"error": f"Graph generation failed: {e}"},
+            status=500,
+        )
+
+
+async def handle_yaml_execution_graph(request: web.Request) -> web.Response:
+    """
+    GET /yaml-workflow/{execution_id}/graph
+    Return graph payload for a persisted workflow execution.
+    """
+    if not _workflow_coordinator:
+        return web.json_response(
+            {"error": "YAML workflows not initialized"},
+            status=503,
+        )
+
+    execution_id = request.match_info.get("execution_id")
+    if not execution_id:
+        return web.json_response(
+            {"error": "execution_id is required"},
+            status=400,
+        )
+
+    try:
+        graph = await _workflow_coordinator.get_execution_graph(execution_id)
+        if graph.get("status") == "not_found":
+            return web.json_response(graph, status=404)
+        return web.json_response(graph)
+    except Exception as e:
+        logger.error(f"Failed to build execution graph: {e}", exc_info=True)
+        return web.json_response(
+            {"error": f"Execution graph generation failed: {e}"},
+            status=500,
+        )
+
+
 def register_routes(app: web.Application) -> None:
     """Register YAML workflow routes with the web application."""
     if not WORKFLOWS_AVAILABLE:
@@ -244,7 +304,9 @@ def register_routes(app: web.Application) -> None:
         return
 
     app.router.add_post("/yaml-workflow/execute", handle_yaml_workflow_execute)
+    app.router.add_get("/yaml-workflow/graph", handle_yaml_workflow_graph)
     app.router.add_get("/yaml-workflow/{execution_id}/status", handle_yaml_workflow_status)
+    app.router.add_get("/yaml-workflow/{execution_id}/graph", handle_yaml_execution_graph)
     app.router.add_get("/yaml-workflow/executions", handle_yaml_workflow_list)
     app.router.add_post("/yaml-workflow/{execution_id}/cancel", handle_yaml_workflow_cancel)
     app.router.add_get("/yaml-workflow/stats", handle_yaml_workflow_stats)

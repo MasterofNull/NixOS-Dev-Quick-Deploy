@@ -4,7 +4,7 @@ Tests for Workflow Coordinator
 Phase 2.4: Coordinator Integration
 """
 
-import asyncio
+import anyio
 import pytest
 import tempfile
 from pathlib import Path
@@ -91,7 +91,7 @@ class TestWorkflowCoordinator:
         assert result["async_mode"] is True
 
         # Wait a bit for async execution
-        await asyncio.sleep(2)
+        await anyio.sleep(2)
 
         # Check status
         status = await coordinator.get_execution_status(result["execution_id"])
@@ -133,6 +133,35 @@ class TestWorkflowCoordinator:
         status = await coordinator.get_execution_status("nonexistent-id")
 
         assert status["status"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_get_workflow_graph(self, coordinator, sample_workflow_file):
+        """Test graph export for workflow definition files."""
+        result = await coordinator.get_workflow_graph(sample_workflow_file)
+
+        assert result["workflow_file"] == sample_workflow_file
+        assert result["workflow_name"] == "test-workflow"
+        assert "graph TD" in result["mermaid"]
+        assert result["graph"]["workflow"] == "test-workflow"
+        assert result["graph"]["stats"]["node_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_execution_graph(self, coordinator, sample_workflow_file):
+        """Test graph export for persisted executions."""
+        result = await coordinator.execute_workflow(
+            workflow_file=sample_workflow_file,
+            inputs={"test_input": "graph-test"},
+            async_mode=False,
+        )
+
+        graph = await coordinator.get_execution_graph(result["execution_id"])
+
+        assert graph["execution_id"] == result["execution_id"]
+        assert graph["workflow_name"] == "test-workflow"
+        assert graph["execution_status"] == "completed"
+        assert "graph TD" in graph["mermaid"]
+        assert graph["graph"]["workflow"] == "test-workflow"
+        assert graph["graph"]["nodes"][0]["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_list_executions(self, coordinator, sample_workflow_file):
@@ -220,6 +249,24 @@ class TestWorkflowPersistence:
         assert status["execution_id"] == execution_id
         assert status["workflow"] == "test-workflow"
         assert status["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_execution_graph_after_reload(self, coordinator, sample_workflow_file):
+        """Test that serialized workflow state can be graphed after reload."""
+        result = await coordinator.execute_workflow(
+            workflow_file=sample_workflow_file,
+            inputs={"test_input": "persist_graph"},
+        )
+        execution_id = result["execution_id"]
+
+        new_coordinator = WorkflowCoordinator(
+            state_store=coordinator.state_store
+        )
+        graph = await new_coordinator.get_execution_graph(execution_id)
+
+        assert graph["execution_id"] == execution_id
+        assert graph["workflow_name"] == "test-workflow"
+        assert graph["graph"]["stats"]["node_count"] == 1
 
     @pytest.mark.asyncio
     async def test_execution_history(self, coordinator, sample_workflow_file, temp_storage_dir):

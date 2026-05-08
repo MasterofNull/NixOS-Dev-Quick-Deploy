@@ -9,6 +9,7 @@ Phase 2.4: Coordinator Integration
 
 import asyncio
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,7 @@ from .models import Workflow
 from .parser import WorkflowParser
 from .validator import WorkflowValidator, ValidationError
 from .persistence import WorkflowStateStore
+from .graph import DependencyGraph
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,14 @@ class WorkflowCoordinator:
 
         # Track active executions in memory
         self.active_executions: Dict[str, Dict[str, Any]] = {}
+
+    def _coerce_workflow(self, workflow_data: Any) -> Workflow:
+        """Normalize workflow object or serialized dict into a Workflow."""
+        if isinstance(workflow_data, Workflow):
+            return workflow_data
+        if isinstance(workflow_data, dict):
+            return Workflow.from_dict(workflow_data)
+        raise ValueError("Workflow data is missing or not deserializable")
 
     async def execute_workflow(
         self,
@@ -118,8 +128,13 @@ class WorkflowCoordinator:
 
         # Execute workflow
         if async_mode:
-            # Start background task
-            asyncio.create_task(self._execute_async(execution_id, workflow, inputs))
+            # Start background execution in a dedicated thread so async mode
+            # works under both asyncio and anyio/trio test backends.
+            threading.Thread(
+                target=lambda: asyncio.run(self._execute_async(execution_id, workflow, inputs)),
+                daemon=True,
+                name=f"workflow-{execution_id[:8]}",
+            ).start()
             return {
                 "status": "started",
                 "execution_id": execution_id,
@@ -238,6 +253,60 @@ class WorkflowCoordinator:
             "completed_at": state["completed_at"],
             "outputs": state.get("outputs"),
             "error": state.get("error"),
+        }
+
+    async def get_workflow_graph(self, workflow_file: str) -> Dict[str, Any]:
+        """
+        Get graph payload for a workflow definition file.
+
+        Args:
+            workflow_file: Path to workflow YAML file
+
+        Returns:
+            Graph export payload with Mermaid and normalized nodes/edges
+        """
+        workflow = self.parser.parse_file(workflow_file)
+        graph = DependencyGraph(workflow)
+        return {
+            "workflow_file": workflow_file,
+            "workflow_name": workflow.name,
+            "mermaid": graph.to_mermaid(),
+            "graph": graph.to_visualization_payload(),
+        }
+
+    async def get_execution_graph(self, execution_id: str) -> Dict[str, Any]:
+        """
+        Get graph payload for a persisted workflow execution.
+
+        Args:
+            execution_id: Execution ID
+
+        Returns:
+            Graph export payload enriched with execution-level status
+        """
+        execution_state = self.active_executions.get(execution_id)
+        if not execution_state:
+            execution_state = await self.state_store.load(execution_id)
+        if not execution_state:
+            return {
+                "status": "not_found",
+                "execution_id": execution_id,
+            }
+
+        workflow = self._coerce_workflow(execution_state.get("workflow"))
+        graph = DependencyGraph(workflow)
+        execution_status = str(execution_state.get("status") or "pending")
+        node_statuses = {
+            node.id: {"status": execution_status}
+            for node in workflow.nodes
+        }
+
+        return {
+            "execution_id": execution_id,
+            "workflow_name": workflow.name,
+            "execution_status": execution_status,
+            "mermaid": graph.to_mermaid(),
+            "graph": graph.to_visualization_payload(node_statuses),
         }
 
     async def list_executions(
