@@ -54,6 +54,7 @@ let
     };
 
   repoMcp = "${toString repoSource}/ai-stack/mcp-servers";
+  repoAiStack = "${toString repoSource}/ai-stack";
 
   # ── Phase 2.4: YAML workflow handlers + workflows package (Nix store) ───
   # Packages the workflows engine and YAML workflow HTTP handlers into the
@@ -1160,7 +1161,7 @@ in {
                 "AI_LOCAL_FRONTDOOR_REASONING_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.reasoningProfile}"
                 "AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.toolCallingProfile}"
                 "AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.continuationProfile}"
-                "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator"
+                "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator:${repoAiStack}:${repoAiStack}/efficiency:${repoAiStack}/offloading:${repoAiStack}/observability:${repoAiStack}/world-model:${repoAiStack}/progressive-disclosure:${repoAiStack}/affective-engine"
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
