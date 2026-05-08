@@ -1521,7 +1521,7 @@ PYEOF
   # their changes on every switch. We still rewrite when the generated schema
   # changes or when the authoritative local chat lane/provider wiring drifts.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        _config_version="29.0"
+        _config_version="30.0"
         _cfg="$HOME/.continue/config.json"
         _needs_write=false
         _config_contract_ok=false
@@ -1586,7 +1586,7 @@ PYEOF
           mkdir -p "$HOME/.continue"
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
-      "__configVersion": "29.0",
+      "__configVersion": "30.0",
       "__frozen": "DO NOT MODIFY. contextLength=32000 and maxTokens=4096 for Local Agent are LOCKED. aq-hints remains required by the current harness Continue contract. Claude+Codex CLI Bridge models must remain.",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
@@ -1598,6 +1598,8 @@ PYEOF
         "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
         "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
         "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
+        "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from get_working_memory or aq-memory recall.",
+        "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
         "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
         "CONFIG FREEZE — contextLength=32000 maxTokens=4096 for Local Agent are LOCKED. Do not reduce. Smaller values cause message-exceeds-context hangs in Continue.",
         "CONFIG FREEZE — aq-hints remains pinned in contextProviders while the current Continue v29 harness contract and aq-qa checks require coordinator-backed hints.",
