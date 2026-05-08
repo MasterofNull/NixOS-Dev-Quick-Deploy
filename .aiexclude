@@ -1,0 +1,13 @@
+# Exclude large generated/binary/secrets from Gemini Code Assist context
+.git/
+result/
+result-*/
+.reports/
+*.gguf
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+/run/secrets/
+**/__pycache__/
+**/*.pyc
+**/node_modules/
