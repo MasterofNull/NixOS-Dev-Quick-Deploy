@@ -1161,7 +1161,7 @@ in {
                 "AI_LOCAL_FRONTDOOR_REASONING_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.reasoningProfile}"
                 "AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.toolCallingProfile}"
                 "AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.continuationProfile}"
-                "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator:${repoAiStack}:${repoAiStack}/efficiency:${repoAiStack}/offloading:${repoAiStack}/observability:${repoAiStack}/world-model:${repoAiStack}/progressive-disclosure:${repoAiStack}/affective-engine"
+                "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator:${repoAiStack}:${repoAiStack}/capability-gap:${repoAiStack}/efficiency:${repoAiStack}/offloading:${repoAiStack}/observability:${repoAiStack}/world-model:${repoAiStack}/progressive-disclosure:${repoAiStack}/affective-engine:${repoAiStack}/autoresearch:${repoAiStack}/identity-kernel:${repoAiStack}/local-agents:${repoAiStack}/model-optimization:${repoAiStack}/real-time-learning"
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
