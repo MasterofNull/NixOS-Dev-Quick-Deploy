@@ -531,6 +531,7 @@ in {
     usbutils
     nvme-cli
     smartmontools
+    bubblewrap
     eza
     bat
     dust
