@@ -5365,48 +5365,60 @@
     </div>
 
     <!-- ================================================================ -->
-    <!-- 3-D Graphs Section                                                -->
+    <!-- Command Center Graph Workspace                                    -->
     <!-- ================================================================ -->
     <div style="padding: 0 1.5rem 2rem; max-width: 1600px; margin: 0 auto;" id="section-graphs">
-        <h2 style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-primary);">3-D System Graphs</h2>
+        <h2 style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-primary);">Command Center 3D Graph Workspace</h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
 
-            <!-- Vector Knowledge Graph -->
+            <!-- Relational Repo Graph -->
             <div class="card">
                 <div class="card-header">
-                    <h2 class="card-title">Vector Knowledge Graph</h2>
+                    <h2 class="card-title">Relational Repo File / Folder Graph</h2>
                     <span class="card-badge" id="vectorGraphBadge">loading...</span>
                 </div>
                 <div style="position: relative;">
                     <div id="vectorGraph3D" style="width: 100%; height: 500px; background: #0a0a0a; border-radius: 0.375rem;"></div>
                     <div id="vectorGraphOverlay" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; color: var(--text-secondary);">
-                        Drag to rotate · Scroll to zoom · Click node for details
+                        Drag to rotate · Scroll to zoom · Click a node to inspect ownership and repo relationships
                     </div>
                     <div id="vectorGraphTooltip" style="position: absolute; background: rgba(20,20,20,0.95); border: 1px solid var(--border-primary); border-radius: 4px; padding: 6px 10px; font-size: 0.78rem; pointer-events: none; display: none; max-width: 220px; word-break: break-all;"></div>
                 </div>
                 <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem;" id="vectorGraphLegend"></div>
+                <div id="vectorGraphDetails" class="data-list" style="margin-top: 0.9rem;">
+                    <div class="data-item">
+                        <span>workspace</span>
+                        <span class="data-meta">loading repo graph payload...</span>
+                    </div>
+                </div>
             </div>
 
-            <!-- Agent Harness Workflow Graph -->
+            <!-- Agentic Harness Workflow Graph -->
             <div class="card">
                 <div class="card-header">
-                    <h2 class="card-title">Agent Harness Topology</h2>
+                    <h2 class="card-title">Agentic Harness Workflow Logic</h2>
                     <span class="card-badge" id="workflowGraphBadge">loading...</span>
                 </div>
                 <div style="position: relative;">
                     <div id="workflowGraph3D" style="width: 100%; height: 500px; background: #0a0a0a; border-radius: 0.375rem;"></div>
                     <div style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; color: var(--text-secondary);">
-                        Drag to rotate · Scroll to zoom · Click node for details
+                        Follow aq-prime → hints → plan → run/start → review/acceptance, with lane and escalation logic in one space
                     </div>
                     <div id="workflowGraphTooltip" style="position: absolute; background: rgba(20,20,20,0.95); border: 1px solid var(--border-primary); border-radius: 4px; padding: 6px 10px; font-size: 0.78rem; pointer-events: none; display: none; max-width: 220px;"></div>
                 </div>
                 <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem;" id="workflowGraphLegend">
-                    <span style="color: #f4a261;">■ Router</span>
-                    <span style="color: #2ec4b6;">■ Local LLM</span>
-                    <span style="color: #8ecae6;">■ CLI Bridge</span>
-                    <span style="color: #e76f51;">■ Remote</span>
-                    <span style="color: #a8dadc;">■ Services</span>
-                    <span style="color: #4e9af1;">■ Profile</span>
+                    <span style="color: #5eead4;">■ Blueprint</span>
+                    <span style="color: #f59e0b;">■ Phase</span>
+                    <span style="color: #60a5fa;">■ Lane</span>
+                    <span style="color: #f97316;">■ Tool</span>
+                    <span style="color: #e879f9;">■ Surface</span>
+                    <span style="color: #94a3b8;">■ Policy</span>
+                </div>
+                <div id="workflowGraphDetails" class="data-list" style="margin-top: 0.9rem;">
+                    <div class="data-item">
+                        <span>workspace</span>
+                        <span class="data-meta">loading workflow graph payload...</span>
+                    </div>
                 </div>
             </div>
 
@@ -11476,8 +11488,9 @@
         };
 
         function summarizeGraphSurfacePayload(surface, payload) {
-            const nodes = Array.isArray(payload?.nodes) ? payload.nodes.length : 0;
-            const edges = Array.isArray(payload?.edges) ? payload.edges.length : 0;
+            const stats = payload?.stats || {};
+            const nodes = Number(stats.node_count || (Array.isArray(payload?.nodes) ? payload.nodes.length : 0));
+            const edges = Number(stats.edge_count || (Array.isArray(payload?.edges) ? payload.edges.length : 0));
             const focusAreas = Array.isArray(payload?.focus_areas) ? payload.focus_areas.length : 0;
             const blueprints = Array.isArray(payload?.blueprints) ? payload.blueprints.length : 0;
             const parts = [];
@@ -11515,6 +11528,8 @@
                         <div style="display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-end; margin-left: auto;">
                             <a href="${escapeHtml(String(row.href || '#'))}" target="_blank" rel="noopener noreferrer"
                                style="color: var(--accent-cyan); text-decoration: none; font-size: 0.8rem;">Open JSON</a>
+                            <a href="#section-graphs"
+                               style="color: var(--accent-magenta); text-decoration: none; font-size: 0.8rem;">Open 3D</a>
                             <span class="data-meta" style="text-align: right;">${escapeHtml(String(row.summary || row.endpoint || ''))}</span>
                         </div>
                     </div>
@@ -14409,90 +14424,225 @@
             container.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
         }
 
+        const COMMAND_CENTER_GRAPH_COLORS = {
+            root: '#e2e8f0',
+            directory: '#60a5fa',
+            file: '#34d399',
+            blueprint: '#5eead4',
+            phase: '#f59e0b',
+            lane: '#60a5fa',
+            tool: '#f97316',
+            surface: '#e879f9',
+            policy: '#94a3b8'
+        };
+
+        function commandCenterNodeSize(node) {
+            const type = String(node?.type || '');
+            if (type === 'root') return 10;
+            if (type === 'blueprint') return 8;
+            if (type === 'directory' || type === 'lane') return 6;
+            if (type === 'surface') return 5.5;
+            return 4.5;
+        }
+
+        function commandCenterRelationColor(relation) {
+            const text = String(relation || '').toLowerCase();
+            if (text.includes('review') || text.includes('gate')) return '#f97316';
+            if (text.includes('lane') || text.includes('select')) return '#60a5fa';
+            if (text.includes('monitor') || text.includes('log')) return '#e879f9';
+            if (text.includes('govern') || text.includes('define')) return '#34d399';
+            return '#475569';
+        }
+
+        function normalizeCommandCenterGraphPayload(payload) {
+            const nodes = Array.isArray(payload?.nodes) ? payload.nodes.map((node) => ({
+                ...node,
+                name: node.label || node.name || node.id,
+                group: node.type || 'unknown',
+                color: node.color || COMMAND_CENTER_GRAPH_COLORS[node.type] || '#94a3b8',
+                val: node.val || commandCenterNodeSize(node)
+            })) : [];
+            const links = Array.isArray(payload?.edges) ? payload.edges.map((edge) => ({
+                ...edge,
+                source: edge.source,
+                target: edge.target,
+                value: edge.value || 1,
+                color: edge.color || commandCenterRelationColor(edge.relation)
+            })) : [];
+            return { nodes, links };
+        }
+
+        function renderGraphDetails(containerId, rows) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const entries = Array.isArray(rows) ? rows.filter(Boolean) : [];
+            container.innerHTML = entries.length ? entries.map((row) => `
+                <div class="data-item">
+                    <span>${escapeHtml(String(row.label || 'detail'))}</span>
+                    <span class="data-meta">${escapeHtml(String(row.value || '--'))}</span>
+                </div>
+            `).join('') : `
+                <div class="data-item">
+                    <span>workspace</span>
+                    <span class="data-meta">no details available</span>
+                </div>
+            `;
+        }
+
+        function repoGraphOverviewRows(payload) {
+            const stats = payload?.stats || {};
+            const focusAreas = Array.isArray(payload?.focus_areas) ? payload.focus_areas : [];
+            const presets = Array.isArray(payload?.camera_presets) ? payload.camera_presets : [];
+            return [
+                { label: 'scope', value: `${stats.node_count || 0} nodes · ${stats.edge_count || 0} edges` },
+                { label: 'focus_areas', value: focusAreas.join(' | ') || '--' },
+                { label: 'presets', value: presets.map((preset) => preset.label || preset.id).join(' | ') || '--' },
+                { label: 'usage', value: 'Click a file or folder node to inspect ownership, contracts, and downstream surfaces.' }
+            ];
+        }
+
+        function workflowGraphOverviewRows(payload, routingSummary, decisionsPayload) {
+            const stats = payload?.stats || {};
+            const blueprints = Array.isArray(payload?.blueprints) ? payload.blueprints : [];
+            const routing = routingSummary?.classification || {};
+            const decisions = Array.isArray(decisionsPayload?.items) ? decisionsPayload.items : [];
+            return [
+                { label: 'workflow_scope', value: `${blueprints.length} blueprints · ${stats.node_count || 0} nodes · ${stats.edge_count || 0} edges` },
+                { label: 'runtime_mix', value: `local=${routing.local_pct ?? '--'}% · remote=${routing.remote_pct ?? '--'}% · classified=${routing.total_classified ?? 0}` },
+                { label: 'decision_log', value: decisions.slice(0, 3).map((item) => `${item.route_alias || '--'}→${item.routed_profile || '--'} [${item.category || 'ok'}]`).join(' | ') || '--' },
+                { label: 'usage', value: 'Click a blueprint, phase, lane, or surface node to inspect the harness logic path and reviewer gates.' }
+            ];
+        }
+
+        function graphNodeDetails(node) {
+            const rows = [
+                { label: 'node', value: node?.name || node?.label || node?.id || '--' },
+                { label: 'type', value: node?.type || node?.group || '--' }
+            ];
+            if (node?.role) rows.push({ label: 'role', value: node.role });
+            if (node?.kind) rows.push({ label: 'kind', value: node.kind });
+            if (node?.path) rows.push({ label: 'path', value: node.path });
+            if (node?.default_safety_mode) rows.push({ label: 'safety_mode', value: node.default_safety_mode });
+            if (node?.exit_criteria) rows.push({ label: 'exit_criteria', value: node.exit_criteria });
+            if (Array.isArray(node?.tools) && node.tools.length) rows.push({ label: 'tools', value: node.tools.join(' | ') });
+            if (node?.description) rows.push({ label: 'description', value: node.description });
+            return rows;
+        }
+
+        function configureCommandCenterGraph(graph, options) {
+            const { containerId, tooltipId, detailsId, payload } = options;
+            const data = normalizeCommandCenterGraphPayload(payload);
+
+            graph
+                .backgroundColor('#070b14')
+                .nodeLabel((node) => `<span style="font-size:0.82rem">${escapeHtml(node.name || node.id)}</span>`)
+                .nodeColor((node) => node.color || '#94a3b8')
+                .nodeVal((node) => node.val || 4)
+                .linkColor((link) => link.color || '#475569')
+                .linkWidth((link) => Math.max(0.5, Number(link.value || 1) * 0.7))
+                .linkOpacity(0.52)
+                .linkDirectionalArrowLength(3)
+                .linkDirectionalArrowRelPos(1)
+                .nodeOpacity(0.96)
+                .graphData(data)
+                .onNodeClick((node) => {
+                    graph.centerAt(node.x, node.y, node.z, 650);
+                    graph.zoom(5, 650);
+                    renderGraphDetails(detailsId, graphNodeDetails(node));
+                });
+
+            _attachNodeTooltip(
+                graph,
+                containerId,
+                tooltipId,
+                (node) => `<strong>${escapeHtml(node.name || node.id)}</strong><br>${escapeHtml(String(node.type || node.group || '--'))}`
+            );
+
+            const container = document.getElementById(containerId);
+            if (container) {
+                let angle = 0;
+                const autoRotate = setInterval(() => {
+                    graph.cameraPosition({
+                        x: 220 * Math.sin(angle),
+                        z: 220 * Math.cos(angle),
+                    });
+                    angle += Math.PI / 960;
+                }, 33);
+                container.addEventListener('mousedown', () => clearInterval(autoRotate), { once: true });
+            }
+        }
+
         function initVectorGraph() {
             const el = document.getElementById('vectorGraph3D');
             if (!el) return;
             const badge = document.getElementById('vectorGraphBadge');
             const legend = document.getElementById('vectorGraphLegend');
+            const detailsId = 'vectorGraphDetails';
 
             const graph = ForceGraph3D()(el)
-                .backgroundColor('#0a0a0a')
-                .nodeLabel(n => `<span style="font-size:0.8rem">${n.name}</span>`)
-                .nodeColor(n => n.color || '#4e9af1')
-                .nodeVal(n => n.val || 1)
-                .linkColor(() => '#333')
-                .linkWidth(0.5)
-                .linkOpacity(0.4)
-                .nodeOpacity(0.9)
-                .onNodeClick(node => {
-                    graph.centerAt(node.x, node.y, node.z, 600);
-                    graph.zoom(4, 600);
-                });
+                .cooldownTicks(120)
+                .d3AlphaDecay(0.03)
+                .d3VelocityDecay(0.2);
 
-            _attachNodeTooltip(graph, 'vectorGraph3D', 'vectorGraphTooltip',
-                n => `<strong>${n.group}</strong><br>${n.name}`);
-
-            fetch('/api/aistack/graph/vector')
+            fetch('/api/config/graphs/repo-structure')
                 .then(r => r.json())
                 .then(data => {
-                    graph.graphData({ nodes: data.nodes || [], links: data.links || [] });
-                    if (badge) badge.textContent = `${(data.nodes||[]).length} docs · ${(data.projects||[]).length} projects`;
-                    if (legend && data.projects) {
-                        const colors = ['#4e9af1','#f4a261','#2ec4b6','#e76f51','#8ecae6','#a8dadc','#f6bd60','#84a98c','#b5838d','#6d6875'];
-                        legend.innerHTML = data.projects.slice(0, 10).map((p, i) =>
-                            `<span style="color:${colors[i % colors.length]}">■ ${p}</span>`
-                        ).join(' ');
+                    configureCommandCenterGraph(graph, {
+                        containerId: 'vectorGraph3D',
+                        tooltipId: 'vectorGraphTooltip',
+                        detailsId,
+                        payload: data
+                    });
+                    const stats = data?.stats || {};
+                    if (badge) badge.textContent = `${stats.node_count || 0} nodes · ${stats.edge_count || 0} relations`;
+                    if (legend) {
+                        legend.innerHTML = Object.entries(COMMAND_CENTER_GRAPH_COLORS)
+                            .filter(([type]) => ['root', 'directory', 'file'].includes(type))
+                            .map(([type, color]) => `<span style="color:${color}">■ ${type}</span>`)
+                            .join(' ');
                     }
+                    renderGraphDetails(detailsId, repoGraphOverviewRows(data));
                 })
-                .catch(e => { if (badge) badge.textContent = 'error'; console.error('vector graph error', e); });
+                .catch(e => {
+                    if (badge) badge.textContent = 'error';
+                    renderGraphDetails(detailsId, [{ label: 'error', value: e.message }]);
+                    console.error('repo graph error', e);
+                });
         }
 
         function initWorkflowGraph() {
             const el = document.getElementById('workflowGraph3D');
             if (!el) return;
             const badge = document.getElementById('workflowGraphBadge');
-
-            const GROUP_SPREAD = { input: 0, router: 0.5, profile: 1, local: 2, cli: 2, remote: 2, service: 1.5, output: 3 };
+            const detailsId = 'workflowGraphDetails';
 
             const graph = ForceGraph3D()(el)
-                .backgroundColor('#0a0a0a')
-                .nodeLabel(n => `<span style="font-size:0.8rem">${n.name}</span>`)
-                .nodeColor(n => n.color || '#4e9af1')
-                .nodeVal(n => (n.val || 2) * 1.5)
-                .linkColor(l => l.color || '#444')
-                .linkWidth(l => Math.max(0.5, (l.value || 1) * 0.6))
-                .linkDirectionalArrowLength(4)
-                .linkDirectionalArrowRelPos(1)
-                .linkOpacity(0.6)
-                .nodeOpacity(0.95)
-                .onNodeClick(node => {
-                    graph.centerAt(node.x, node.y, node.z, 600);
-                    graph.zoom(5, 600);
-                });
+                .cooldownTicks(140)
+                .d3AlphaDecay(0.028)
+                .d3VelocityDecay(0.18);
 
-            _attachNodeTooltip(graph, 'workflowGraph3D', 'workflowGraphTooltip',
-                n => `<strong>${n.name}</strong><br>group: ${n.group}`);
-
-            fetch('/api/aistack/graph/workflow')
-                .then(r => r.json())
-                .then(data => {
-                    graph.graphData({ nodes: data.nodes || [], links: data.links || [] });
-                    const nodeCount = (data.nodes || []).length;
-                    const linkCount = (data.links || []).length;
-                    if (badge) badge.textContent = `${nodeCount} nodes · ${linkCount} edges`;
-                    // Auto-rotate for visual effect
-                    let angle = 0;
-                    const autoRotate = setInterval(() => {
-                        graph.cameraPosition({
-                            x: 200 * Math.sin(angle),
-                            z: 200 * Math.cos(angle),
-                        });
-                        angle += Math.PI / 720;
-                    }, 33);
-                    // Stop auto-rotate on user interaction
-                    el.addEventListener('mousedown', () => clearInterval(autoRotate), { once: true });
+            Promise.all([
+                fetch('/api/config/graphs/workflow-blueprints').then((r) => r.json()),
+                fetch('/api/aistack/routing/summary').then((r) => r.json()).catch(() => ({})),
+                fetch('/api/aistack/routing/decisions?limit=10').then((r) => r.json()).catch(() => ({}))
+            ])
+                .then(([data, routingSummary, decisionsPayload]) => {
+                    configureCommandCenterGraph(graph, {
+                        containerId: 'workflowGraph3D',
+                        tooltipId: 'workflowGraphTooltip',
+                        detailsId,
+                        payload: data
+                    });
+                    const stats = data?.stats || {};
+                    const blueprintCount = Array.isArray(data?.blueprints) ? data.blueprints.length : 0;
+                    if (badge) badge.textContent = `${blueprintCount} blueprints · ${stats.node_count || 0} nodes`;
+                    renderGraphDetails(detailsId, workflowGraphOverviewRows(data, routingSummary, decisionsPayload));
                 })
-                .catch(e => { if (badge) badge.textContent = 'error'; console.error('workflow graph error', e); });
+                .catch(e => {
+                    if (badge) badge.textContent = 'error';
+                    renderGraphDetails(detailsId, [{ label: 'error', value: e.message }]);
+                    console.error('workflow graph error', e);
+                });
         }
     </script>
 </body>

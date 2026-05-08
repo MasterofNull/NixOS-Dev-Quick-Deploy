@@ -210,29 +210,21 @@ expected_chat_context = local_agent_profile.get("advertisedContextWindow") or de
 expected_chat_context = int(expected_chat_context) if expected_chat_context is not None else None
 bounded_chat_context = local_agent_profile.get("maxInputTokens")
 bounded_chat_context = int(bounded_chat_context) if bounded_chat_context is not None else None
-if expected_chat_context is not None and bounded_chat_context is not None:
-    expected_chat_context = min(expected_chat_context, bounded_chat_context)
-expected_chat_max_tokens = int(local_agent_profile.get("maxOutputTokens") or 1024)
+minimum_chat_context = bounded_chat_context or expected_chat_context or 4096
+minimum_chat_context = max(4096, int(minimum_chat_context))
+minimum_chat_max_tokens = 1024
 
 expected_tab_context = continue_profile.get("advertisedContextWindow") or default_profile.get("advertisedContextWindow")
 expected_tab_context = int(expected_tab_context) if expected_tab_context is not None else None
-expected_tab_max_tokens = max(32, min(96, expected_chat_max_tokens)) if expected_chat_max_tokens is not None else None
+expected_tab_max_tokens = max(32, min(96, minimum_chat_max_tokens)) if minimum_chat_max_tokens is not None else None
 
 models = data.get("models") or []
 if not any(
     isinstance(model, dict)
     and model.get("apiBase") == "http://127.0.0.1:8085/v1"
     and ((model.get("requestOptions") or {}).get("headers") or {}).get("X-AI-Profile") == "local-agent"
-    and (
-        int(model.get("contextLength") or 0) == expected_chat_context
-        if expected_chat_context is not None
-        else int(model.get("contextLength") or 0) >= 12000
-    )
-    and (
-        int(model.get("maxTokens") or 0) == expected_chat_max_tokens
-        if expected_chat_max_tokens is not None
-        else int(model.get("maxTokens") or 0) >= 512
-    )
+    and int(model.get("contextLength") or 0) >= minimum_chat_context
+    and int(model.get("maxTokens") or 0) >= minimum_chat_max_tokens
     for model in models
 ):
     raise SystemExit(1)

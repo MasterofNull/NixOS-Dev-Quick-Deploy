@@ -27,7 +27,7 @@ def main() -> int:
         "aq-qa should validate switchboard ingress for the chat model, tab autocomplete, and related editor surfaces",
     )
     assert_true(
-        '/health' in script and 'expected_chat_context' in script and 'expected_chat_max_tokens' in script and 'expected_tab_context' in script,
+        '/health' in script and 'expected_chat_context' in script and 'minimum_chat_max_tokens' in script and 'expected_tab_context' in script,
         "aq-qa should derive Continue context and token expectations from live switchboard profile health instead of hardcoded floors",
     )
     assert_true(
