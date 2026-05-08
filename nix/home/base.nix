@@ -1515,7 +1515,7 @@ PYEOF
     ${pkgs.fontconfig}/bin/fc-cache -f "$HOME/.fonts" >/dev/null 2>&1 || true
   '';
 
-  # ---- Continue.dev config — multi-model + aq-hints --------------------------
+  # ---- Continue.dev config — multi-model + harness --------------------------
   # Written on first activation or when __configVersion is outdated.
   # Not managed as a symlink so the user can edit it without HM clobbering
   # their changes on every switch. We still rewrite when the generated schema
@@ -1568,10 +1568,6 @@ PYEOF
               (.tabAutocompleteModel.apiBase // "") == $api_base
               and ((.tabAutocompleteModel.requestOptions.headers["X-AI-Profile"] // "") == "continue-local")
             )
-            and (
-              (.contextProviders // [])
-              | any(.[]?; .name == "aq-hints" and ((.params.endpoint // "") == "http://127.0.0.1:8003/hints"))
-            )
           ' "$_cfg" >/dev/null 2>&1; then
             _config_contract_ok=true
           else
@@ -1587,7 +1583,7 @@ PYEOF
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
       "__configVersion": "30.0",
-      "__frozen": "DO NOT MODIFY. contextLength=32000 and maxTokens=4096 for Local Agent are LOCKED. aq-hints remains required by the current harness Continue contract. Claude+Codex CLI Bridge models must remain.",
+      "__frozen": "DO NOT MODIFY. Claude+Codex CLI Bridge models must remain. contextLength/maxTokens for Local Agent tuned for v1.3.38. aq-hints removed — not supported in Continue v1.3.38 (AGENTS.md profile card provides context instead).",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
         "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
@@ -1601,8 +1597,6 @@ PYEOF
         "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from get_working_memory or aq-memory recall.",
         "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
         "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
-        "CONFIG FREEZE — contextLength=32000 maxTokens=4096 for Local Agent are LOCKED. Do not reduce. Smaller values cause message-exceeds-context hangs in Continue.",
-        "CONFIG FREEZE — aq-hints remains pinned in contextProviders while the current Continue v29 harness contract and aq-qa checks require coordinator-backed hints.",
         "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
         "CONFIG FREEZE — Claude (OAuth — CLI Bridge) and Codex (OAuth — CLI Bridge) model entries are required. Do not remove them."
       ],
@@ -1614,6 +1608,7 @@ PYEOF
           "apiBase": "${continueApiBase}",
           "model": "${aiLlamaModel}",
           "requestOptions": {
+            "timeout": 300000,
             "headers": {
               "X-AI-Profile": "local-agent"
             }
@@ -1725,14 +1720,7 @@ PYEOF
         "maxTokens": ${toString continueTabMaxTokens}
       },
       "contextProviders": [
-        {
-          "name": "aq-hints",
-          "params": {
-            "endpoint": "http://127.0.0.1:8003/hints"
-          }
-        },
         { "name": "file", "params": {} },
-
         { "name": "diff", "params": {} },
         { "name": "codebase", "params": {} },
         { "name": "terminal", "params": {} },
