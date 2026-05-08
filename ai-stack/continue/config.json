@@ -1,6 +1,6 @@
 {
-  "__configVersion": "29.0",
-  "__frozen": "DO NOT MODIFY. contextLength=32000 and maxTokens=4096 for Local Agent are LOCKED. aq-hints remains required by the current harness Continue contract. Claude+Codex CLI Bridge models must remain.",
+  "__configVersion": "30.0",
+  "__frozen": "DO NOT MODIFY. Claude+Codex CLI Bridge models must remain. contextLength/maxTokens for Local Agent tuned for v1.3.38. aq-hints removed — not supported in Continue v1.3.38 (AGENTS.md profile card provides context instead).",
   "rules": [
     "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
     "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
@@ -11,10 +11,10 @@
     "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
     "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
     "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
+    "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from get_working_memory or aq-memory recall.",
+    "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
     "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
-    "CONFIG FREEZE — contextLength=32000 maxTokens=4096 for Local Agent are LOCKED. Do not reduce. Smaller values cause message-exceeds-context hang in Continue.",
-    "CONFIG FREEZE — aq-hints remains pinned in contextProviders while the current Continue v29 harness contract and aq-qa checks require coordinator-backed hints.",
-    "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models (Claude OAuth, Codex OAuth, GPT).",
+    "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
     "CONFIG FREEZE — Claude (OAuth — CLI Bridge) and Codex (OAuth — CLI Bridge) model entries are required. Do not remove them."
   ],
   "models": [
@@ -25,12 +25,13 @@
       "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
       "model": "active.gguf",
       "requestOptions": {
+        "timeout": 300000,
         "headers": {
           "X-AI-Profile": "local-agent"
         }
       },
-      "contextLength": 32000,
-      "maxTokens": 4096
+      "contextLength": 16384,
+      "maxTokens": 1024
     },
     {
       "title": "Continue Local (Compact)",
@@ -44,7 +45,7 @@
         }
       },
       "contextLength": 16384,
-      "maxTokens": 2048
+      "maxTokens": 4096
     },
     {
       "title": "Claude (OAuth — CLI Bridge)",
@@ -136,12 +137,6 @@
     "maxTokens": 96
   },
   "contextProviders": [
-    {
-      "name": "aq-hints",
-      "params": {
-        "endpoint": "http://127.0.0.1:8003/hints"
-      }
-    },
     { "name": "file", "params": {} },
     { "name": "diff", "params": {} },
     { "name": "codebase", "params": {} },
