@@ -236,14 +236,16 @@ All agent work MUST follow this complete workflow:
    git add <modified-files>
    git commit -m "type(scope): description
 
-   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+   Co-Authored-By: <active-agent-name> <noreply@anthropic.com>"
    ```
+   Replace `<active-agent-name>` with the model/agent generating the work.
+   Never hardcode a specific model version — the active model may vary per session.
 
 **Commit Format Requirements:**
 - Use conventional commit types: feat/fix/docs/chore/test/refactor
 - One logical task per commit
 - Include validation evidence in commit body or linked notes
-- ALWAYS include Co-Authored-By trailer for agent work
+- ALWAYS include Co-Authored-By trailer identifying the active agent
 - Run `scripts/governance/tier0-validation-gate.sh --pre-commit` before commit
 - Do not push if mandatory gates fail
 
