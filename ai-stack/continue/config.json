@@ -1,89 +1,168 @@
 {
-  "$schema": "https://raw.githubusercontent.com/continuedev/continue/main/extensions/vscode/config_schema.json",
-  "contextProviders": [
-    {
-      "name": "http",
-      "params": {
-        "url": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/hints",
-        "title": "aq-hints",
-        "description": "Ranked AI workflow hints from registry.yaml, query gaps, and CLAUDE.md rules",
-        "displayTitle": "AI Stack Hints"
-      }
-    },
-    {
-      "name": "http",
-      "params": {
-        "url": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}/discovery/capabilities",
-        "title": "ai-tools",
-        "description": "Live catalog of all AI stack tools, MCP endpoints, CLI scripts, and agents",
-        "displayTitle": "AI Stack Tools"
-      }
-    }
+  "__configVersion": "29.0",
+  "__frozen": "DO NOT MODIFY. contextLength=32000 and maxTokens=4096 for Local Agent are LOCKED. aq-hints is NOT valid in Continue v29. Claude+Codex CLI Bridge models must remain. See docs/agent-guides/CONTINUE-CONFIG-FREEZE.md",
+  "rules": [
+    "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
+    "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
+    "TOOL DISCIPLINE: Use MCP tools for harness ops: harness_health, get_hints, hybrid_search, get_working_memory, store_memory, query_aidb, workflow_plan, get_prsi_pending, prsi_orchestrate.",
+    "AGENT MODE: In agent mode, issue tool calls directly — do not announce them. Do not say 'I will now call...' just call the tool.",
+    "SESSION START: At the start of any agent session, call get_working_memory first, then harness_health.",
+    "SEARCH-FIRST: Use get_hints MCP tool for ranked workflow guidance before implementing anything.",
+    "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
+    "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
+    "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
+    "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
+    "CONFIG FREEZE — contextLength=32000 maxTokens=4096 for Local Agent are LOCKED. Do not reduce. Smaller values cause message-exceeds-context hang in Continue.",
+    "CONFIG FREEZE — contextProviders: file, diff, codebase, terminal, problems ONLY. Do NOT add aq-hints (invalid in Continue v29). Use get_hints MCP tool instead.",
+    "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models (Claude OAuth, Codex OAuth, GPT).",
+    "CONFIG FREEZE — Claude (OAuth — CLI Bridge) and Codex (OAuth — CLI Bridge) model entries are required. Do not remove them."
   ],
   "models": [
     {
-      "title": "Switchboard Router (Authoritative)",
+      "title": "Local Agent (Harness-Aware)",
       "provider": "openai",
+      "apiKey": "local-llama-cpp",
       "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
-      "apiKey": "dummy",
-      "model": "AUTODETECT"
+      "model": "active.gguf",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "local-agent"
+        }
+      },
+      "contextLength": 32000,
+      "maxTokens": 4096
+    },
+    {
+      "title": "Continue Local (Compact)",
+      "provider": "openai",
+      "apiKey": "local-llama-cpp",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "model": "active.gguf",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "continue-local"
+        }
+      },
+      "contextLength": 16384,
+      "maxTokens": 2048
+    },
+    {
+      "title": "Claude (OAuth — CLI Bridge)",
+      "provider": "openai",
+      "apiKey": "cli-oauth",
+      "apiBase": "http://127.0.0.1:8089/v1",
+      "model": "claude-cli",
+      "contextLength": 16000,
+      "maxTokens": 4096
+    },
+    {
+      "title": "Codex (OAuth — CLI Bridge)",
+      "provider": "openai",
+      "apiKey": "cli-oauth",
+      "apiBase": "http://127.0.0.1:8089/v1",
+      "model": "codex-cli",
+      "contextLength": 16000,
+      "maxTokens": 4096
     },
     {
       "title": "Remote Coding (Switchboard)",
       "provider": "openai",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
       "apiKey": "dummy",
-      "model": "AUTODETECT",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "model": "active.gguf",
       "requestOptions": {
         "headers": {
           "X-AI-Profile": "remote-coding"
         }
-      }
+      },
+      "contextLength": 16000,
+      "maxTokens": 4096
     },
     {
       "title": "Remote Reasoning (Switchboard)",
       "provider": "openai",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
       "apiKey": "dummy",
-      "model": "AUTODETECT",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "model": "active.gguf",
       "requestOptions": {
         "headers": {
           "X-AI-Profile": "remote-reasoning"
         }
-      }
+      },
+      "contextLength": 16000,
+      "maxTokens": 4096
     },
     {
-      "title": "Local llama.cpp (direct)",
+      "title": "Remote Free (Switchboard)",
       "provider": "openai",
-      "apiBase": "http://127.0.0.1:${LLAMA_CPP_PORT:-8080}/v1",
       "apiKey": "dummy",
-      "model": "AUTODETECT"
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "model": "active.gguf",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "remote-free"
+        }
+      },
+      "contextLength": 16000,
+      "maxTokens": 4096
     },
     {
-      "title": "Ollama (local)",
-      "provider": "ollama",
-      "model": "AUTODETECT"
+      "title": "Remote Gemini (Switchboard)",
+      "provider": "openai",
+      "apiKey": "dummy",
+      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "model": "active.gguf",
+      "requestOptions": {
+        "headers": {
+          "X-AI-Profile": "remote-gemini"
+        }
+      },
+      "contextLength": 16000,
+      "maxTokens": 4096
     }
   ],
   "tabAutocompleteModel": {
-    "title": "Local Autocomplete",
+    "title": "Tab Autocomplete (Continue Local)",
     "provider": "openai",
+    "apiKey": "local-llama-cpp",
     "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
-    "apiKey": "dummy",
-    "model": "AUTODETECT",
+    "model": "active.gguf",
     "requestOptions": {
       "headers": {
         "X-AI-Profile": "continue-local"
       }
-    }
+    },
+    "contextLength": 16384,
+    "maxTokens": 96
   },
-  "mcpServers": {
-    "hybrid-coordinator": {
-      "command": "bash",
+  "contextProviders": [
+    { "name": "file", "params": {} },
+    { "name": "diff", "params": {} },
+    { "name": "codebase", "params": {} },
+    { "name": "terminal", "params": {} },
+    { "name": "problems", "params": {} }
+  ],
+  "slashCommands": [
+    { "name": "edit", "description": "Edit highlighted code" },
+    { "name": "comment", "description": "Add comments" },
+    { "name": "share", "description": "Export chat session to markdown" },
+    { "name": "cmd", "description": "Generate a shell command" },
+    { "name": "commit", "description": "Generate a git commit message" }
+  ],
+  "mcpServers": [
+    {
+      "name": "Harness MCP",
+      "command": "python3",
       "args": [
-        "-c",
-        "exec python3 /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"
-      ]
+        "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"
+      ],
+      "env": {
+        "HYBRID_URL": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}",
+        "AIDB_URL": "http://127.0.0.1:8002",
+        "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
+        "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
+      }
     }
-  }
+  ],
+  "allowAnonymousTelemetry": false
 }
