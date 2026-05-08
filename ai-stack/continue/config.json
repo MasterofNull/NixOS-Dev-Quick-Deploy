@@ -6,7 +6,7 @@
     "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
     "TOOL DISCIPLINE: Use MCP tools for harness ops: harness_health, get_hints, hybrid_search, get_working_memory, store_memory, query_aidb, workflow_plan, get_prsi_pending, prsi_orchestrate.",
     "AGENT MODE: In agent mode, issue tool calls directly — do not announce them. Do not say 'I will now call...' just call the tool.",
-    "SESSION START: At the start of any agent session, call get_working_memory first, then harness_health.",
+    "SESSION START: Only call get_working_memory + harness_health when beginning a technical harness task. For conversational messages, respond directly. NEVER call aq-prime — it is a terminal CLI for the human operator, not an MCP tool.",
     "SEARCH-FIRST: Use get_hints MCP tool for ranked workflow guidance before implementing anything.",
     "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
     "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
