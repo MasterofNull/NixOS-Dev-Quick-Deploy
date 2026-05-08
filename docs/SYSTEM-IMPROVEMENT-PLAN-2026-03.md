@@ -1215,3 +1215,60 @@ the AGI scaffold deployment. Key metrics from aq-report (2026-05-01):
 
 Owner agents: Claude (architect/implement), qwen (test slices)
 Plan file: `.agents/plans/phase-21-operational-hardening.md` (TBD)
+
+---
+
+## Phase 22 — Eval + Recovery + Fleet Resilience
+
+Status: `complete` (2026-05-01)
+Plan file: `.agents/plans/phase-22-eval-recovery-fleet-resilience.md`
+
+---
+
+## Phase 23 — System Polish and Coverage
+
+Status: `complete` (2026-05-01)
+Plan file: `.agents/plans/phase-23-system-polish-and-coverage.md`
+
+---
+
+## Phase 24 — External Framework Integration
+
+Status: `complete` (2026-05-01)
+Deliverables: impeccable (design) + tradingagents (finance) integrated as agent-agnostic HTTP APIs.
+Plan file: `.agents/plans/phase-24-external-framework-integration.md`
+
+---
+
+## Phase 25 — System Hardening + Brainstem
+
+Status: `in_progress`
+Plan file: `.agents/plans/phase-25-system-hardening-brainstem.md`
+
+---
+
+## Phase 26 — Unified Agent Orchestration Gateway (UAG)
+
+Status: `complete` (2026-05-07)
+Plan file: `.agents/plans/phase-26-unified-orchestration-gateway.md`
+
+Replaced scattered multi-entry-point agent workflows with a single, subscription-agnostic
+intake gateway driving every prompt through an 8-phase deterministic lifecycle:
+`INTAKE → DISCOVER → PRD → PLAN → ASSIGN → DELEGATE → VALIDATE → COMMIT`
+
+Key deliverables:
+- `ai-stack/mcp-servers/hybrid-coordinator/intake_gateway.py` — UAG HTTP handlers (POST /agent/intake)
+- `ai-stack/mcp-servers/hybrid-coordinator/lifecycle_fsm.py` — 8-state FSM + JSONL session persistence
+- `ai-stack/mcp-servers/hybrid-coordinator/agent_capability_registry.py` — dynamic agent discovery
+- `ai-stack/mcp-servers/hybrid-coordinator/domain_router.py` — domain classifier + team routing
+- `http_server.py` wired: import + init + register_routes
+- MCP tools added to `scripts/ai/mcp-bridge-hybrid.py`: agent_intake, lifecycle_status, lifecycle_advance
+- `config/workflow-blueprints.json`: lifecycle-aware-intake, domain-delegated-task, simple-task-direct blueprints
+- `config/agent-routing-policy.json`: agent-intake + lifecycle-delegate profiles
+- `docs/agent-guides/40-HYBRID-WORKFLOW.md` updated with UAG lifecycle docs
+
+Validation (2026-05-07):
+- python3 -m py_compile: all 4 modules PASS
+- tier0-validation-gate.sh: 8/8 gates PASS (597 roadmap checks)
+- aq-qa 0: 39 passed / 0 failed
+- /agent/intake + /agent/lifecycle endpoints live at :8003
