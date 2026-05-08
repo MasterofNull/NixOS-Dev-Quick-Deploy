@@ -95,6 +95,22 @@ aq-context-bootstrap --task "<task>"                   # minimal context + workf
 - Declarative-first rule: implement via Nix options/modules first; use scripts/runtime fallback only when declarative is not viable.
 - Never exit on planning alone when execution is feasible in the current session.
 
+## Agent Cost Policy (Non-Negotiable)
+
+Remote/paid agents (Claude OAuth, Codex OAuth, GPT, Gemini paid) MUST NOT be used for:
+- Autonomous background tasks, monitoring loops, polling, or health checks
+- Long-horizon unattended sessions (running hours without user interaction)
+- Context warming, cache priming, or periodic sync tasks
+
+These tasks MUST route to local switchboard profiles:
+- `local-agent` — Qwen via switchboard, full context, harness-aware
+- `continue-local` — compact local for IDE autocomplete/short tasks
+- `embedded-assist` — in-process fallback
+
+Remote/paid agents are reserved for: **on-demand, user-initiated coding and synthesis tasks only.**
+
+Burning remote quota on background tasks limits available budget for actual development work.
+
 ## Delegation-First Policy (System Priority)
 - Mandatory routing model:
   - `codex`: orchestration, planning, reviewer gate, integration quality, final acceptance.
