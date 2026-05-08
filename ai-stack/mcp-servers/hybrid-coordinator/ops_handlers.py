@@ -141,16 +141,14 @@ def _internal_error(exc: Exception) -> web.Response:
 
 async def handle_health(_request: web.Request) -> web.Response:
     try:
-        from continuous_learning import learning_pipeline
-
-        if learning_pipeline and hasattr(learning_pipeline, "circuit_breakers"):
+        if _learning_pipeline and hasattr(_learning_pipeline, "circuit_breakers"):
             breakers = {
                 name: breaker.state.name
-                for name, breaker in learning_pipeline.circuit_breakers._breakers.items()
+                for name, breaker in _learning_pipeline.circuit_breakers._breakers.items()
             }
         else:
             breakers = {}
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.debug("Circuit breaker state unavailable: %s", exc)
         breakers = {}
 
