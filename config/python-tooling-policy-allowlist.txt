@@ -9,3 +9,4 @@ scripts/ai/aqd
 scripts/data/import-tool-recommendations.py
 scripts/data/sync-knowledge-sources
 scripts/testing/run-a2a-tck.sh
+scripts/testing/test-blast-radius-classifier.py
