@@ -105,6 +105,7 @@ def main() -> int:
                 {},
                 {"available": True, "healthy": True, "total_checks": 6, "passed_n": 6, "failed_n": 0, "skipped_n": 0, "checks": [], "failure_categories": [], "state_budget": budget},
                 {"available": False, "windows": {}},
+                {"available": False, "windows": {}},
                 {},
                 {},
                 {},

@@ -82,6 +82,32 @@ Key fields in `.summary`:
 - `repair.ok`: whether vscodium-repair succeeded
 - `regenerate_continue_config.ok`: whether home-manager regeneration succeeded
 
+### Inspect recent rescue loops
+
+`aq-editor-rescue` now writes compact JSONL telemetry to
+`/var/lib/ai-stack/hybrid/telemetry/editor-rescue-history.jsonl`. `aq-report`
+surfaces that as `editor_rescue_windows`.
+
+Quick inspection:
+```bash
+aq-report --format json | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for label, summary in ((d.get('editor_rescue_windows') or {}).get('windows') or {}).items():
+    if not summary.get('available'):
+        continue
+    print(label, 'runs=', summary.get('samples'),
+          'final_ok_pct=', summary.get('final_ok_pct'),
+          'qa_healthy_pct=', summary.get('qa_healthy_pct'),
+          'top_qa_failures=', summary.get('top_qa_failures'))
+"
+```
+
+Use this when freezes keep recurring and you need to distinguish:
+- state-budget drift (`continue_hot_corpus`, stale markers)
+- stale Continue config after repair (`0.5.2`)
+- repeated rescue attempts against the same task signature
+
 ---
 
 ## Extension State Overflow

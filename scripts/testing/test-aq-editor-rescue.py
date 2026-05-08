@@ -32,6 +32,7 @@ def main() -> int:
         qa_cmd = root / "aq-qa"
         repair_cmd = root / "repair.sh"
         regenerate_cmd = root / "hm-switch.sh"
+        history_path = root / "editor-rescue-history.jsonl"
         marker = root / "repair-ran.txt"
         regenerate_marker = root / "home-manager-ran.txt"
 
@@ -107,6 +108,7 @@ echo '[home-manager] ok'
         env["AQ_EDITOR_RESCUE_AQ_QA"] = str(qa_cmd)
         env["AQ_EDITOR_RESCUE_REPAIR_CMD"] = str(repair_cmd)
         env["AQ_EDITOR_RESCUE_REGENERATE_CONTINUE_CONFIG_CMD"] = str(regenerate_cmd)
+        env["AQ_EDITOR_RESCUE_HISTORY_PATH"] = str(history_path)
 
         plan = subprocess.run(
             ["python3", str(SCRIPT), "--task", "Continue editor is freezing", "--format", "json"],
@@ -173,6 +175,12 @@ echo '[home-manager] ok'
             regen_payload["summary"]["qa_phase_0"] == {"passed": 40, "failed": 0, "skipped": 1},
             "expected aq-qa to be re-run after Continue regeneration",
         )
+        history_lines = [line for line in history_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert_true(len(history_lines) >= 4, "expected aq-editor-rescue to persist telemetry for each run")
+        latest_history = json.loads(history_lines[-1])
+        assert_true(latest_history.get("regenerate_requested") is True, "expected rescue telemetry to record regeneration intent")
+        assert_true(latest_history.get("regenerate_ok") is True, "expected rescue telemetry to record regeneration success")
+        assert_true(latest_history.get("qa_failed") == 0, "expected rescue telemetry to record post-regeneration QA success")
 
     print("PASS: aq-editor-rescue checkpoints, diagnoses, and repairs in bounded phases")
     return 0
