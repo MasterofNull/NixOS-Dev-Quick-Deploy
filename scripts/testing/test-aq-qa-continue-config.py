@@ -76,6 +76,10 @@ def main() -> int:
         "Continue config version should advance when the generated operator contract changes",
     )
     assert_true(
+        '"30.0"' in script,
+        "aq-qa should accept the current Continue config schema version",
+    )
+    assert_true(
         "RETRY BUDGET: After 2 failed retries" in home_base
         and "TRANSCRIPT HYGIENE: Do not paste large logs" in home_base,
         "Continue config should steer repeated editor failures toward checkpoint-and-fresh-session recovery",

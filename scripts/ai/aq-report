@@ -258,7 +258,7 @@ def continue_editor_health() -> Dict[str, Any]:
 
     labels = {
         "0.5.1": "Continue CLI help works",
-        "0.5.2": "Continue config targets continue-local via switchboard",
+        "0.5.2": "Continue config targets local-agent chat and continue-local tab lanes via switchboard",
         "0.5.3": "VSCodium has Continue extension installed",
         "0.5.4": "continue-local switchboard smoke",
         "0.5.5": "continue-local trims oversized dense prompts",

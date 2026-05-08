@@ -31,7 +31,9 @@ def main() -> int:
         report_cmd = root / "aq-report.py"
         qa_cmd = root / "aq-qa"
         repair_cmd = root / "repair.sh"
+        regenerate_cmd = root / "hm-switch.sh"
         marker = root / "repair-ran.txt"
+        regenerate_marker = root / "home-manager-ran.txt"
 
         write_executable(
             checkpoint_cmd,
@@ -60,9 +62,23 @@ print(json.dumps({
         )
         write_executable(
             qa_cmd,
-            """#!/usr/bin/env python3
+            f"""#!/usr/bin/env python3
 import json
-print(json.dumps({"passed": 39, "failed": 1, "skipped": 1}))
+from pathlib import Path
+marker = Path({str(regenerate_marker)!r})
+if marker.exists():
+    print(json.dumps({{"passed": 40, "failed": 0, "skipped": 1, "tests": []}}))
+else:
+    print(json.dumps({{
+        "passed": 39,
+        "failed": 1,
+        "skipped": 1,
+        "tests": [{{
+            "id": "0.5.2",
+            "status": "FAIL",
+            "description": "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane"
+        }}]
+    }}))
 """,
         )
         write_executable(
@@ -73,12 +89,24 @@ printf 'ran' > "{marker}"
 echo '[repair] ok'
 """,
         )
+        write_executable(
+            regenerate_cmd,
+            f"""#!/usr/bin/env bash
+set -euo pipefail
+printf 'ran' > "{regenerate_marker}"
+echo '[home-manager] ok'
+""",
+        )
+        repair_fallback = root / "repair-fallback"
+        repair_fallback.write_text(f"printf 'fallback' > \"{root / 'repair-fallback-ran.txt'}\"\n", encoding="utf-8")
+        repair_fallback.chmod(repair_fallback.stat().st_mode | stat.S_IXUSR)
 
         env = dict(os.environ)
         env["AQ_EDITOR_RESCUE_CONTEXT_MANAGE"] = str(checkpoint_cmd)
         env["AQ_EDITOR_RESCUE_AQ_REPORT"] = str(report_cmd)
         env["AQ_EDITOR_RESCUE_AQ_QA"] = str(qa_cmd)
         env["AQ_EDITOR_RESCUE_REPAIR_CMD"] = str(repair_cmd)
+        env["AQ_EDITOR_RESCUE_REGENERATE_CONTINUE_CONFIG_CMD"] = str(regenerate_cmd)
 
         plan = subprocess.run(
             ["python3", str(SCRIPT), "--task", "Continue editor is freezing", "--format", "json"],
@@ -104,6 +132,47 @@ echo '[repair] ok'
         execute_payload = json.loads(execute.stdout)
         assert_true(execute_payload["repair"].get("ok"), "expected repair command to run successfully")
         assert_true(marker.exists(), "expected execute mode to run the repair command")
+        assert_true(execute_payload["regenerate_continue_config"].get("skipped"), "expected regeneration to stay skipped unless requested")
+
+        env_fallback = dict(env)
+        env_fallback["AQ_EDITOR_RESCUE_REPAIR_CMD"] = str(repair_fallback)
+        fallback = subprocess.run(
+            ["python3", str(SCRIPT), "--task", "Continue editor is freezing", "--format", "json", "--execute"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env_fallback,
+        )
+        assert_true(fallback.returncode == 0, f"fallback repair mode failed: {(fallback.stderr or fallback.stdout).strip()}")
+        fallback_payload = json.loads(fallback.stdout)
+        assert_true(fallback_payload["repair"].get("ok"), "expected bash fallback repair execution to succeed")
+        assert_true((root / "repair-fallback-ran.txt").exists(), "expected bash fallback repair command to run")
+
+        regen = subprocess.run(
+            [
+                "python3",
+                str(SCRIPT),
+                "--task",
+                "Continue editor is freezing",
+                "--format",
+                "json",
+                "--execute",
+                "--regenerate-continue-config",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        assert_true(regen.returncode == 0, f"regen mode failed: {(regen.stderr or regen.stdout).strip()}")
+        regen_payload = json.loads(regen.stdout)
+        assert_true(regen_payload["repair"].get("ok"), "expected repair to succeed before regeneration")
+        assert_true(regen_payload["regenerate_continue_config"].get("ok"), "expected Continue config regeneration to succeed")
+        assert_true(regenerate_marker.exists(), "expected regeneration command to run")
+        assert_true(
+            regen_payload["summary"]["qa_phase_0"] == {"passed": 40, "failed": 0, "skipped": 1},
+            "expected aq-qa to be re-run after Continue regeneration",
+        )
 
     print("PASS: aq-editor-rescue checkpoints, diagnoses, and repairs in bounded phases")
     return 0
