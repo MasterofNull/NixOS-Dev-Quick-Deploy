@@ -17,7 +17,7 @@ log() {
 
 # Verify security policy is enforced
 verify_security_policy() {
-    local policy_file="ai-stack/autonomous-orchestrator/security_policy.json"
+    local policy_file="config/autonomous-coordinator-security-policy.json"
     if [[ ! -f "$policy_file" ]]; then
         log "ERROR: Security policy not found: $policy_file"
         return 1

@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Security policy for autonomous agent operations",
+  "version": "1.0.0",
+  "updated": "2026-03-15",
+
+  "modes": {
+    "autonomous": {
+      "description": "Restricted mode for long-running autonomous workflows",
+      "enabled": true,
+      "restrictions": {
+        "computer_use": {
+          "enabled": false,
+          "reason": "No mouse/keyboard control in autonomous mode - security risk"
+        },
+        "code_execution": {
+          "enabled": true,
+          "sandbox_required": true,
+          "max_timeout_seconds": 30,
+          "max_memory_mb": 256,
+          "reason": "Allow sandboxed code for testing, but with strict limits"
+        },
+        "file_operations": {
+          "enabled": true,
+          "allowed_paths": [
+            ".agents/",
+            ".claude/",
+            "ai-stack/",
+            "scripts/ai/",
+            "docs/",
+            "nix/modules/"
+          ],
+          "blocked_paths": [
+            "/etc/",
+            "/var/",
+            "/run/secrets/",
+            "~/.ssh/",
+            "~/.gnupg/"
+          ],
+          "reason": "Allow file ops in repo only, block system paths"
+        },
+        "shell_commands": {
+          "enabled": true,
+          "allowlist": [
+            "git",
+            "grep", "find", "ls", "cat", "head", "tail",
+            "python3", "bash", "node",
+            "systemctl status",
+            "journalctl",
+            "aq-hints", "aq-qa", "aq-report",
+            "ralph-orchestrator"
+          ],
+          "blocklist": [
+            "rm -rf",
+            "sudo",
+            "chmod",
+            "chown",
+            "systemctl restart",
+            "systemctl stop",
+            "systemctl start",
+            "reboot",
+            "shutdown",
+            "dd",
+            "mkfs"
+          ],
+          "reason": "Allow read/analysis commands, block destructive ops"
+        },
+        "network": {
+          "enabled": true,
+          "allowed_hosts": [
+            "127.0.0.1",
+            "localhost",
+            "api.anthropic.com",
+            "openrouter.ai"
+          ],
+          "blocked_ports": [
+            22,
+            3389,
+            5900
+          ],
+          "reason": "Allow API calls and local services, block remote access"
+        }
+      },
+      "approval_requirements": {
+        "destructive_operations": "human_required",
+        "system_modifications": "human_required",
+        "new_dependencies": "agent_verify",
+        "file_changes": "auto_if_safe",
+        "read_operations": "auto"
+      }
+    },
+
+    "interactive": {
+      "description": "Full mode for interactive human-supervised sessions",
+      "enabled": true,
+      "restrictions": {
+        "computer_use": {
+          "enabled": true,
+          "requires_confirmation": true,
+          "max_calls_per_minute": 10,
+          "reason": "Allow with confirmation in interactive mode"
+        },
+        "code_execution": {
+          "enabled": true,
+          "sandbox_required": false
+        },
+        "file_operations": {
+          "enabled": true,
+          "allowed_paths": ["*"],
+          "blocked_paths": []
+        },
+        "shell_commands": {
+          "enabled": true,
+          "allowlist": ["*"],
+          "blocklist": []
+        },
+        "network": {
+          "enabled": true,
+          "allowed_hosts": ["*"],
+          "blocked_ports": []
+        }
+      },
+      "approval_requirements": {
+        "destructive_operations": "agent_verify",
+        "system_modifications": "agent_verify",
+        "new_dependencies": "auto",
+        "file_changes": "auto",
+        "read_operations": "auto"
+      }
+    }
+  },
+
+  "tool_policies": {
+    "blocklist_in_autonomous_mode": [
+      "mouse_move",
+      "mouse_click",
+      "keyboard_type",
+      "keyboard_press",
+      "screenshot"
+    ],
+    "allowlist_in_autonomous_mode": [
+      "read_file",
+      "write_file",
+      "search_files",
+      "list_directory",
+      "run_python",
+      "run_bash",
+      "run_javascript",
+      "validate_code",
+      "run_command",
+      "get_system_info",
+      "check_service",
+      "git_status",
+      "git_commit",
+      "git_diff",
+      "query_hints",
+      "run_qa",
+      "plan_workflow",
+      "execute_workflow",
+      "delegate_task"
+    ],
+    "always_require_confirmation": [
+      "git_push",
+      "run_command",
+      "run_bash",
+      "delegate_task"
+    ]
+  },
+
+  "circuit_breakers": {
+    "max_consecutive_failures": 3,
+    "max_tool_calls_per_hour": 500,
+    "max_api_cost_per_hour_usd": 10.0,
+    "max_file_changes_per_batch": 20,
+    "halt_on_security_violation": true
+  },
+
+  "audit": {
+    "log_all_tool_calls": true,
+    "log_all_file_changes": true,
+    "log_all_network_requests": true,
+    "log_all_approvals": true,
+    "audit_log_path": ".agents/audit/autonomous-agent.log"
+  }
+}

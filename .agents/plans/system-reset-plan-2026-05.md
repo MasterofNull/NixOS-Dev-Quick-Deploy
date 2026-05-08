@@ -12,10 +12,10 @@
 | B.2 | Resolve confirmed duplicates | HIGH | ✅ DONE (f80e59ec) | 1 |
 | B.3 | Domain subdirectory split | HIGH | ⬜ NOT STARTED | ~1 |
 | C.1 | Dead module import audit | MEDIUM | ✅ DONE (2026-05-08) | 0.5 |
-| C.2 | Archive confirmed dead modules | MEDIUM | 🔄 PARTIAL (federated-learning: 62a86e63) | ~0.5 |
+| C.2 | Archive confirmed dead modules | MEDIUM | ✅ DONE (pending commit) | 1 |
 | C.3 | Gitignore __pycache__ | MEDIUM | ✅ NO-OP (already gitignored) | 0 |
 | D.1 | Data retention scripts | MEDIUM | ✅ DONE (41f82a55) | 0.5 |
-| D.2 | NixOS systemd timer | MEDIUM | ✅ DONE (pending commit) | 0.5 |
+| D.2 | NixOS systemd timer | MEDIUM | ✅ DONE (aa9c79eb) | 0.5 |
 | E | Script/test consolidation | LOW | ⬜ NOT STARTED | ~2 |
 
 ## Phase A Detail — VSCodium Fix
