@@ -1,6 +1,6 @@
 # System Improvement Plan and Working Document (March 2026)
 
-Last updated: 2026-03-04
+Last updated: 2026-05-08
 Primary tracking doc for multi-agent execution across Codex/Claude/Qwen/Continue workflows.
 
 ## Implemented Slice (2026-03-04)
@@ -1272,3 +1272,35 @@ Validation (2026-05-07):
 - tier0-validation-gate.sh: 8/8 gates PASS (597 roadmap checks)
 - aq-qa 0: 39 passed / 0 failed
 - /agent/intake + /agent/lifecycle endpoints live at :8003
+
+---
+
+## Phase 27 — IDE Agent State Stability
+
+Status: `complete` (2026-05-08)
+Plan file: `.agents/plans/phase-27-ide-agent-state-stability.md`
+
+Eliminated IDE-gating freezes caused by oversized editor-local agent state. Turned reactive
+repair work into bounded retention, observability, and workflow discipline.
+
+Key deliverables:
+- `scripts/ai/aq-editor-rescue` — one-command bounded rescue (checkpoint + diagnose + repair + resume)
+  - Timeouts on all subprocess phases (checkpoint 20s, report 180s, qa 150s, repair 120s, regen 900s)
+  - `--regenerate-continue-config` flag for home-manager regeneration after config version staleness
+  - `qa_failures` + `next_actions` in summary output for operator-readable remediation guidance
+- `scripts/ai/aq-report` — extended with editor corpus size reporting
+- `scripts/ai/aq-qa` — check `0.5.7` (editor corpus budget health) + `0.5.2` coverage improvement
+- `scripts/testing/test-aq-editor-rescue.py` — full test suite including regen loop
+- `scripts/testing/test-aq-qa-continue-config.py` — 0.5.2 edge-case coverage
+- `scripts/testing/test-vscodium-extension-runtime-guards.py` — extension lifecycle tests
+- `docs/operations/EDITOR-STATE-RECOVERY-RUNBOOK.md` — operator runbook: triage, rescue, rollback
+- `docs/operations/CONTEXT-LIMIT-HANDLING.md` — Slice Boundary Checkpoint Rule section
+- `scripts/ai/vscodium-repair` — harden: multi-ext obsolete cleanup, session archive, Codex DB reset
+- `ai-stack/local-agents/context_checkpoint_resume.py` — harness checkpoint resume workflow
+- `docs/development/IDE-AGENT-STATE-STABILITY-PDR-2026-05-08.md` — PDR with 5 tracks
+
+Validation (2026-05-08):
+- aq-qa 0: 40 passed / 0 failed / 1 skipped
+- tier0-validation-gate.sh: 8/8 gates PASS
+- python3 scripts/testing/test-aq-editor-rescue.py: PASS
+- home-manager switch confirmed: Continue config version 30.0 valid, 0.5.2 PASS
