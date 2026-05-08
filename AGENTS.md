@@ -9,7 +9,7 @@ Full policy: `docs/AGENTS.md` · Quick start: `docs/agent-guides/01-QUICK-START.
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
 - Commit format: `type(scope): msg\n\nCo-Authored-By: <agent> <noreply@anthropic.com>`
 
-## Session Start
+## Operator Terminal CLIs (human-run, not AI tool calls)
 ```bash
 aq-prime                    # onboard / orient
 aq-qa 0                     # health check (41 checks)
