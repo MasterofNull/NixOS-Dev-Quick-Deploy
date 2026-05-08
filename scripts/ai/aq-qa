@@ -241,14 +241,8 @@ if (
     != (expected_tab_max_tokens if expected_tab_max_tokens is not None else max(32, int(tab_model.get("maxTokens") or 0)))
 ):
     raise SystemExit(1)
-providers = data.get("contextProviders") or []
-if not any(
-    isinstance(provider, dict)
-    and provider.get("name") == "aq-hints"
-        and ((provider.get("params") or {}).get("endpoint") == "http://127.0.0.1:8003/hints")
-    for provider in providers
-):
-    raise SystemExit(1)
+# aq-hints context provider was removed in Continue v1.3.38+ (not a supported provider type);
+# harness context is now delivered via the local-agent switchboard profile card instead.
 PY
 }
 
