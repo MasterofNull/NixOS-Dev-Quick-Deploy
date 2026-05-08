@@ -96,6 +96,17 @@ Adopt a **thin-editor / thick-harness** operating model.
   - max retries per resumed session
 - Surface those budgets in docs and validation.
 
+### Initial Budget Baseline
+- Continue active session corpus: `16 MiB` total hot-path budget
+- Continue largest hot session file: `8 MiB`
+- Continue active hot sessions: `12`
+- Gemini VSCodium global state payload: `1 MiB`
+- Qwen VSCodium global state payload: `768 KiB`
+- Stale AI `.obsolete` markers: `0`
+- These are surfaced by:
+  - `python3 scripts/ai/aq-report --format json`
+  - `aq-qa 0 --json` via check `0.5.7`
+
 ### Track C: Workflow Contract Changes
 - Require harness working-memory checkpointing after major slices.
 - Prefer `summarize_context` plus memory save/recall over replaying full session history.

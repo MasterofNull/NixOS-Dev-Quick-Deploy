@@ -103,6 +103,45 @@ AQ_QA_SCRIPT = Path(__file__).with_name("aq-qa")
 CONTINUE_EDITOR_HISTORY_PATH = Path(
     os.getenv("CONTINUE_EDITOR_HISTORY_PATH", "/var/lib/ai-stack/hybrid/telemetry/continue-editor-history.jsonl")
 )
+EDITOR_STATE_PRIMARY_HOME = Path(os.getenv("AQ_PRIMARY_HOME", str(Path.home()))).expanduser()
+CONTINUE_SESSIONS_DIR = Path(
+    os.getenv("AQ_CONTINUE_SESSIONS_DIR", str(EDITOR_STATE_PRIMARY_HOME / ".continue" / "sessions"))
+).expanduser()
+CONTINUE_ARCHIVE_ROOT = Path(
+    os.getenv("AQ_CONTINUE_ARCHIVE_ROOT", str(EDITOR_STATE_PRIMARY_HOME / ".continue"))
+).expanduser()
+VSCODIUM_GLOBAL_STATE_DB = Path(
+    os.getenv(
+        "AQ_VSCODIUM_GLOBAL_STATE_DB",
+        str(EDITOR_STATE_PRIMARY_HOME / ".config" / "VSCodium" / "User" / "globalStorage" / "state.vscdb"),
+    )
+).expanduser()
+VSCODIUM_OBSOLETE_PATH = Path(
+    os.getenv(
+        "AQ_VSCODIUM_OBSOLETE_PATH",
+        str(EDITOR_STATE_PRIMARY_HOME / ".vscode-oss" / "extensions" / ".obsolete"),
+    )
+).expanduser()
+CODEX_STATE_DB = Path(
+    os.getenv("AQ_CODEX_STATE_DB", str(EDITOR_STATE_PRIMARY_HOME / ".codex" / "state_5.sqlite"))
+).expanduser()
+EDITOR_STATE_AI_OBSOLETE_PREFIXES = (
+    "continue.continue-",
+    "google.geminicodeassist-",
+    "google.gemini-cli-vscode-ide-companion-",
+    "qwenlm.qwen-code-vscode-ide-companion-",
+    "openai.chatgpt-",
+    "openai.codex-",
+    "anthropic.claude-code-",
+)
+EDITOR_STATE_BUDGETS = {
+    "continue_active_bytes": int(os.getenv("AQ_EDITOR_CONTINUE_ACTIVE_BYTES_BUDGET", str(16 * 1024 * 1024))),
+    "continue_largest_session_bytes": int(os.getenv("AQ_EDITOR_CONTINUE_SESSION_FILE_BYTES_BUDGET", str(8 * 1024 * 1024))),
+    "continue_session_count": int(os.getenv("AQ_EDITOR_CONTINUE_SESSION_COUNT_BUDGET", "12")),
+    "gemini_state_bytes": int(os.getenv("AQ_EDITOR_GEMINI_STATE_BYTES_BUDGET", str(1024 * 1024))),
+    "qwen_state_bytes": int(os.getenv("AQ_EDITOR_QWEN_STATE_BYTES_BUDGET", str(768 * 1024))),
+    "obsolete_ai_markers": int(os.getenv("AQ_EDITOR_OBSOLETE_MARKER_BUDGET", "0")),
+}
 LOCAL_SHARED_SKILLS_DIR = Path(
     os.getenv("AQ_SHARED_SKILLS_DIR", str(Path(__file__).resolve().parents[2] / ".agent" / "skills"))
 )
@@ -181,6 +220,8 @@ def continue_editor_health() -> Dict[str, Any]:
     if not AQ_QA_SCRIPT.exists():
         return {"available": False, "source": str(AQ_QA_SCRIPT)}
     timeout_seconds = int(os.getenv("AQ_REPORT_CONTINUE_EDITOR_TIMEOUT_SECONDS", "75"))
+    qa_env = dict(os.environ)
+    qa_env["AQ_QA_SKIP_REPORT_BACKED_CHECKS"] = "1"
     try:
         result = subprocess.run(
             [str(AQ_QA_SCRIPT), "0", "--json"],
@@ -188,6 +229,7 @@ def continue_editor_health() -> Dict[str, Any]:
             text=True,
             timeout=timeout_seconds,
             check=False,
+            env=qa_env,
         )
     except subprocess.TimeoutExpired as exc:
         fallback = _continue_editor_health_from_history()
@@ -269,6 +311,7 @@ def continue_editor_health() -> Dict[str, Any]:
         "checks": checks,
         "failure_categories": failure_categories,
         "top_failure_category": failure_categories[0][0] if failure_categories else None,
+        "state_budget": editor_state_budget_health(),
     }
 
 
@@ -399,6 +442,299 @@ def continue_editor_windows(*, now: datetime, report_since: datetime) -> Dict[st
             "latest_failure_categories": latest.get("failure_categories") or [],
         }
     return {"available": True, "source": str(CONTINUE_EDITOR_HISTORY_PATH), "windows": summaries}
+
+
+def _human_bytes(value: Optional[int]) -> str:
+    if value is None:
+        return "n/a"
+    size = float(value)
+    unit = "B"
+    for candidate in ("B", "KiB", "MiB", "GiB", "TiB"):
+        unit = candidate
+        if abs(size) < 1024.0 or candidate == "TiB":
+            break
+        size /= 1024.0
+    if unit == "B":
+        return f"{int(size)} {unit}"
+    return f"{size:.1f} {unit}"
+
+
+def _safe_file_size(path: Path) -> Optional[int]:
+    try:
+        if path.exists():
+            return int(path.stat().st_size)
+    except OSError:
+        return None
+    return None
+
+
+def _json_bytes(value: Any) -> int:
+    if isinstance(value, str):
+        return len(value.encode("utf-8"))
+    return len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+
+
+def _read_extension_state_rows(db_path: Path) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
+    if not db_path.exists():
+        return None, "missing"
+    try:
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            rows = connection.execute(
+                "SELECT key, value FROM ItemTable WHERE key IN (?, ?)",
+                ("google.geminicodeassist", "qwenlm.qwen-code-vscode-ide-companion"),
+            ).fetchall()
+        finally:
+            connection.close()
+    except Exception as exc:
+        return None, str(exc)
+    return {str(key): str(value) for key, value in rows}, None
+
+
+def _read_obsolete_markers(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    if not path.exists():
+        return {}, None
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def editor_state_budget_health() -> Dict[str, Any]:
+    budgets = dict(EDITOR_STATE_BUDGETS)
+    checks: List[Dict[str, Any]] = []
+    overview: Dict[str, Any] = {
+        "primary_home": str(EDITOR_STATE_PRIMARY_HOME),
+        "continue_sessions_dir": str(CONTINUE_SESSIONS_DIR),
+        "continue_archive_root": str(CONTINUE_ARCHIVE_ROOT),
+        "vscodium_state_db": str(VSCODIUM_GLOBAL_STATE_DB),
+        "vscodium_obsolete_path": str(VSCODIUM_OBSOLETE_PATH),
+        "codex_state_db": str(CODEX_STATE_DB),
+    }
+
+    continue_files: List[Dict[str, Any]] = []
+    active_session_bytes = 0
+    if CONTINUE_SESSIONS_DIR.exists():
+        for candidate in sorted(CONTINUE_SESSIONS_DIR.glob("*.json")):
+            size_bytes = _safe_file_size(candidate)
+            if size_bytes is None:
+                continue
+            active_session_bytes += size_bytes
+            continue_files.append({"path": str(candidate), "name": candidate.name, "bytes": size_bytes})
+    continue_files.sort(key=lambda item: (-int(item.get("bytes", 0) or 0), str(item.get("name", ""))))
+    largest_continue = continue_files[0] if continue_files else None
+    archive_dirs = []
+    if CONTINUE_ARCHIVE_ROOT.exists():
+        try:
+            archive_dirs = [path for path in sorted(CONTINUE_ARCHIVE_ROOT.glob("sessions-backup-*")) if path.is_dir()]
+        except OSError:
+            archive_dirs = []
+    archived_sessions = 0
+    for archive_dir in archive_dirs:
+        try:
+            archived_sessions += sum(1 for _ in archive_dir.glob("*.json"))
+        except OSError:
+            continue
+    overview["continue"] = {
+        "active_session_count": len(continue_files),
+        "active_session_bytes": active_session_bytes,
+        "largest_session": largest_continue,
+        "archive_dir_count": len(archive_dirs),
+        "archived_session_count": archived_sessions,
+    }
+    continue_failures: List[str] = []
+    if active_session_bytes > budgets["continue_active_bytes"]:
+        continue_failures.append(
+            f"active corpus {_human_bytes(active_session_bytes)} exceeds budget {_human_bytes(budgets['continue_active_bytes'])}"
+        )
+    if len(continue_files) > budgets["continue_session_count"]:
+        continue_failures.append(
+            f"{len(continue_files)} active sessions exceed budget {budgets['continue_session_count']}"
+        )
+    if largest_continue and int(largest_continue.get("bytes", 0) or 0) > budgets["continue_largest_session_bytes"]:
+        continue_failures.append(
+            f"largest session {largest_continue.get('name')} at {_human_bytes(int(largest_continue.get('bytes', 0) or 0))} exceeds budget {_human_bytes(budgets['continue_largest_session_bytes'])}"
+        )
+    checks.append(
+        {
+            "id": "continue_hot_corpus",
+            "description": "Continue hot-path session corpus stays within active size and count budgets",
+            "status": "FAIL" if continue_failures else "PASS",
+            "details": "; ".join(continue_failures) if continue_failures else (
+                f"{len(continue_files)} active session(s), {_human_bytes(active_session_bytes)} total, largest "
+                f"{largest_continue.get('name') if largest_continue else 'n/a'} "
+                f"({_human_bytes(int(largest_continue.get('bytes', 0) or 0)) if largest_continue else 'n/a'})"
+            ),
+        }
+    )
+
+    extension_rows, extension_error = _read_extension_state_rows(VSCODIUM_GLOBAL_STATE_DB)
+    extension_details: Dict[str, Any] = {}
+    if extension_rows is None:
+        checks.extend(
+            [
+                {
+                    "id": "gemini_global_state",
+                    "description": "Gemini extension state stays within payload budget",
+                    "status": "SKIP",
+                    "details": f"VSCodium state DB unavailable: {extension_error}",
+                },
+                {
+                    "id": "qwen_global_state",
+                    "description": "Qwen extension state stays within payload budget",
+                    "status": "SKIP",
+                    "details": f"VSCodium state DB unavailable: {extension_error}",
+                },
+            ]
+        )
+    else:
+        for key, budget_key, check_id, description in (
+            ("google.geminicodeassist", "gemini_state_bytes", "gemini_global_state", "Gemini extension state stays within payload budget"),
+            ("qwenlm.qwen-code-vscode-ide-companion", "qwen_state_bytes", "qwen_global_state", "Qwen extension state stays within payload budget"),
+        ):
+            raw_value = extension_rows.get(key)
+            if raw_value is None:
+                extension_details[key] = {"available": False}
+                checks.append(
+                    {
+                        "id": check_id,
+                        "description": description,
+                        "status": "SKIP",
+                        "details": "extension key not present in VSCodium global state",
+                    }
+                )
+                continue
+            raw_bytes = _json_bytes(raw_value)
+            parsed: Any = None
+            try:
+                parsed = json.loads(raw_value)
+            except Exception:
+                parsed = None
+            detail: Dict[str, Any] = {
+                "available": True,
+                "bytes": raw_bytes,
+                "budget_bytes": budgets[budget_key],
+            }
+            if key == "google.geminicodeassist" and isinstance(parsed, dict):
+                workspace_change = parsed.get("workspaceChange")
+                ide_context = parsed.get("ideContext")
+                detail["workspace_change_bytes"] = _json_bytes(workspace_change) if workspace_change is not None else 0
+                detail["ide_context_bytes"] = _json_bytes(ide_context) if ide_context is not None else 0
+            if key == "qwenlm.qwen-code-vscode-ide-companion":
+                conversations = None
+                if isinstance(parsed, dict):
+                    for candidate_key in ("conversations", "conversationList", "sessions"):
+                        candidate = parsed.get(candidate_key)
+                        if isinstance(candidate, list):
+                            conversations = candidate
+                            break
+                if conversations is not None:
+                    detail["conversation_count"] = len(conversations)
+                    detail["empty_conversation_count"] = sum(
+                        1
+                        for conversation in conversations
+                        if not conversation or (
+                            isinstance(conversation, dict)
+                            and not (conversation.get("messages") or conversation.get("title") or conversation.get("updatedAt"))
+                        )
+                    )
+            extension_details[key] = detail
+            checks.append(
+                {
+                    "id": check_id,
+                    "description": description,
+                    "status": "PASS" if raw_bytes <= budgets[budget_key] else "FAIL",
+                    "details": f"{_human_bytes(raw_bytes)} used vs budget {_human_bytes(budgets[budget_key])}",
+                }
+            )
+    overview["extensions"] = extension_details
+
+    obsolete_markers, obsolete_error = _read_obsolete_markers(VSCODIUM_OBSOLETE_PATH)
+    if obsolete_markers is None:
+        checks.append(
+            {
+                "id": "obsolete_ai_markers",
+                "description": "AI extension obsolete markers are cleared",
+                "status": "SKIP",
+                "details": f"unable to read obsolete marker file: {obsolete_error}",
+            }
+        )
+    else:
+        all_markers = sorted(str(key) for key in obsolete_markers.keys())
+        ai_markers = [key for key in all_markers if any(key.startswith(prefix) for prefix in EDITOR_STATE_AI_OBSOLETE_PREFIXES)]
+        overview["obsolete_markers"] = {
+            "total_count": len(all_markers),
+            "ai_count": len(ai_markers),
+            "markers": all_markers[:20],
+            "ai_markers": ai_markers[:20],
+        }
+        checks.append(
+            {
+                "id": "obsolete_ai_markers",
+                "description": "AI extension obsolete markers are cleared",
+                "status": "PASS" if len(ai_markers) <= budgets["obsolete_ai_markers"] else "FAIL",
+                "details": f"{len(ai_markers)} AI marker(s) present" if ai_markers else "no stale AI obsolete markers",
+            }
+        )
+
+    codex_backups: List[Path] = []
+    try:
+        codex_backups = sorted(CODEX_STATE_DB.parent.glob("state_5.sqlite.pre-vscodium-repair-*"))
+    except OSError:
+        codex_backups = []
+    codex_detail: Dict[str, Any] = {
+        "available": CODEX_STATE_DB.exists() or bool(codex_backups),
+        "backup_count": len(codex_backups),
+        "db_exists": CODEX_STATE_DB.exists(),
+        "wal_exists": CODEX_STATE_DB.with_name(CODEX_STATE_DB.name + "-wal").exists(),
+        "shm_exists": CODEX_STATE_DB.with_name(CODEX_STATE_DB.name + "-shm").exists(),
+    }
+    if CODEX_STATE_DB.exists():
+        try:
+            connection = sqlite3.connect(f"file:{CODEX_STATE_DB}?mode=ro", uri=True)
+            try:
+                integrity = connection.execute("PRAGMA integrity_check").fetchone()
+            finally:
+                connection.close()
+            integrity_value = str(integrity[0] if integrity else "unknown")
+            codex_detail["integrity_check"] = integrity_value
+            codex_status = "PASS" if integrity_value.lower() == "ok" else "FAIL"
+            codex_message = f"integrity_check={integrity_value}"
+        except Exception as exc:
+            codex_detail["error"] = str(exc)
+            codex_status = "FAIL"
+            codex_message = f"unable to open state DB: {exc}"
+    elif codex_backups:
+        codex_detail["status"] = "reset_backed_up"
+        codex_status = "PASS"
+        codex_message = f"live DB absent; {len(codex_backups)} repair backup(s) retained"
+    else:
+        codex_detail["status"] = "not_present"
+        codex_status = "SKIP"
+        codex_message = "Codex local state DB not present"
+    overview["codex"] = codex_detail
+    checks.append(
+        {
+            "id": "codex_state_db",
+            "description": "Codex local state DB is readable or cleanly reset",
+            "status": codex_status,
+            "details": codex_message,
+        }
+    )
+
+    failed = [item for item in checks if item.get("status") == "FAIL"]
+    return {
+        "available": True,
+        "healthy": len(failed) == 0,
+        "total_checks": len(checks),
+        "passed_n": sum(1 for item in checks if item.get("status") == "PASS"),
+        "failed_n": len(failed),
+        "skipped_n": sum(1 for item in checks if item.get("status") == "SKIP"),
+        "budgets": budgets,
+        "checks": checks,
+        "overview": overview,
+        "top_failures": [str(item.get("id")) for item in failed[:5]],
+    }
 
 
 def shared_skill_registry_health() -> Dict[str, Any]:
@@ -3997,6 +4333,86 @@ def _na(val: Optional[float], fmt: str = ".1f", suffix: str = "") -> str:
     return f"{val:{fmt}}{suffix}"
 
 
+def _editor_state_budget_lines_md(state_budget: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(state_budget, dict) or not state_budget.get("available"):
+        return ["- Editor state budget: unavailable"]
+    overview = state_budget.get("overview") if isinstance(state_budget.get("overview"), dict) else {}
+    continue_overview = overview.get("continue") if isinstance(overview.get("continue"), dict) else {}
+    extension_overview = overview.get("extensions") if isinstance(overview.get("extensions"), dict) else {}
+    obsolete_overview = overview.get("obsolete_markers") if isinstance(overview.get("obsolete_markers"), dict) else {}
+    codex_overview = overview.get("codex") if isinstance(overview.get("codex"), dict) else {}
+    budgets = state_budget.get("budgets") if isinstance(state_budget.get("budgets"), dict) else {}
+    lines = [
+        f"- Editor state budget: **{'healthy' if state_budget.get('healthy') else 'degraded'}** "
+        f"({state_budget.get('passed_n', 0)}/{state_budget.get('total_checks', 0)} checks passed)"
+    ]
+    lines.append(
+        f"- Continue hot corpus: **{_human_bytes(continue_overview.get('active_session_bytes'))}** across "
+        f"{continue_overview.get('active_session_count', 0)} active session(s); largest "
+        f"`{((continue_overview.get('largest_session') or {}).get('name') or 'n/a')}` "
+        f"({_human_bytes(((continue_overview.get('largest_session') or {}).get('bytes')))}), budget "
+        f"{_human_bytes(budgets.get('continue_active_bytes'))} total / {_human_bytes(budgets.get('continue_largest_session_bytes'))} per session"
+    )
+    lines.append(
+        f"- Continue archives: **{continue_overview.get('archive_dir_count', 0)}** archive dir(s), "
+        f"**{continue_overview.get('archived_session_count', 0)}** archived session file(s)"
+    )
+    gemini = extension_overview.get("google.geminicodeassist") if isinstance(extension_overview.get("google.geminicodeassist"), dict) else {}
+    qwen = extension_overview.get("qwenlm.qwen-code-vscode-ide-companion") if isinstance(extension_overview.get("qwenlm.qwen-code-vscode-ide-companion"), dict) else {}
+    lines.append(
+        f"- Extension payloads: Gemini **{_human_bytes(gemini.get('bytes'))}**, "
+        f"Qwen **{_human_bytes(qwen.get('bytes'))}**, stale AI markers **{obsolete_overview.get('ai_count', 0)}**"
+    )
+    lines.append(
+        f"- Codex local state DB: **{'present' if codex_overview.get('db_exists') else codex_overview.get('status', 'not_present')}**; "
+        f"repair backups **{codex_overview.get('backup_count', 0)}**"
+    )
+    failed_checks = [item for item in (state_budget.get("checks") or []) if item.get("status") == "FAIL"]
+    for item in failed_checks[:4]:
+        lines.append(f"  - `{item.get('id')}` — {item.get('details') or item.get('description')}")
+    return lines
+
+
+def _editor_state_budget_lines_text(state_budget: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(state_budget, dict) or not state_budget.get("available"):
+        return ["  Editor state budget: unavailable."]
+    overview = state_budget.get("overview") if isinstance(state_budget.get("overview"), dict) else {}
+    continue_overview = overview.get("continue") if isinstance(overview.get("continue"), dict) else {}
+    extension_overview = overview.get("extensions") if isinstance(overview.get("extensions"), dict) else {}
+    obsolete_overview = overview.get("obsolete_markers") if isinstance(overview.get("obsolete_markers"), dict) else {}
+    codex_overview = overview.get("codex") if isinstance(overview.get("codex"), dict) else {}
+    budgets = state_budget.get("budgets") if isinstance(state_budget.get("budgets"), dict) else {}
+    lines = [
+        f"  Editor state budget: {'healthy' if state_budget.get('healthy') else 'degraded'} "
+        f"({state_budget.get('passed_n', 0)}/{state_budget.get('total_checks', 0)} checks passed)",
+        (
+            f"  Continue hot corpus: {_human_bytes(continue_overview.get('active_session_bytes'))} across "
+            f"{continue_overview.get('active_session_count', 0)} active session(s); largest "
+            f"{((continue_overview.get('largest_session') or {}).get('name') or 'n/a')} "
+            f"({_human_bytes(((continue_overview.get('largest_session') or {}).get('bytes')))}), budget "
+            f"{_human_bytes(budgets.get('continue_active_bytes'))} total / {_human_bytes(budgets.get('continue_largest_session_bytes'))} per session"
+        ),
+        (
+            f"  Continue archives: {continue_overview.get('archive_dir_count', 0)} dir(s), "
+            f"{continue_overview.get('archived_session_count', 0)} archived session file(s)"
+        ),
+    ]
+    gemini = extension_overview.get("google.geminicodeassist") if isinstance(extension_overview.get("google.geminicodeassist"), dict) else {}
+    qwen = extension_overview.get("qwenlm.qwen-code-vscode-ide-companion") if isinstance(extension_overview.get("qwenlm.qwen-code-vscode-ide-companion"), dict) else {}
+    lines.append(
+        f"  Extension payloads: Gemini {_human_bytes(gemini.get('bytes'))}, "
+        f"Qwen {_human_bytes(qwen.get('bytes'))}, stale AI markers {obsolete_overview.get('ai_count', 0)}"
+    )
+    lines.append(
+        f"  Codex local state DB: {'present' if codex_overview.get('db_exists') else codex_overview.get('status', 'not_present')}; "
+        f"repair backups {codex_overview.get('backup_count', 0)}"
+    )
+    failed_checks = [item for item in (state_budget.get("checks") or []) if item.get("status") == "FAIL"]
+    for item in failed_checks[:4]:
+        lines.append(f"    {item.get('id')}: {item.get('details') or item.get('description')}")
+    return lines
+
+
 def _tool_reliability_context(stats: Dict[str, Any], fresh: Optional[Dict[str, Any]] = None) -> str:
     parts: List[str] = []
     server_errors = int(stats.get("error_count", 0) or 0)
@@ -4814,6 +5230,7 @@ def format_md(
             if latest_failure_categories and not summary.get("latest_healthy"):
                 rendered = ", ".join(f"{name}({count})" for name, count in latest_failure_categories)
                 lines.append(f"  latest failure categories: {rendered}")
+    lines.extend(_editor_state_budget_lines_md(continue_editor.get("state_budget")))
     lines.append("")
 
     lines += ["## 8ab. Shared Skill Registry", ""]
@@ -5634,6 +6051,7 @@ def format_text(
             if latest_failure_categories and not summary.get("latest_healthy"):
                 rendered = ", ".join(f"{name}({count})" for name, count in latest_failure_categories)
                 lines.append(f"    latest failure categories: {rendered}")
+    lines.extend(_editor_state_budget_lines_text(continue_editor.get("state_budget")))
     lines.append("")
 
     lines += ["[ 8ab. Shared Skill Registry ]"]

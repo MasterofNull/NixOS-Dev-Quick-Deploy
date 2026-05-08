@@ -51,6 +51,14 @@ def main() -> int:
         "aq-qa should run Continue/editor smoke checks against the primary-user environment instead of the ambient HOME",
     )
     assert_true(
+        '0.5.7" "Editor-local agent corpus stays within bounded budgets"' in script,
+        "aq-qa phase 0 should expose an explicit editor-state budget gate",
+    )
+    assert_true(
+        '_editor_state_budget_ok()' in script and 'AQ_QA_SKIP_REPORT_BACKED_CHECKS' in script,
+        "aq-qa should validate editor-state budgets through aq-report while avoiding recursive self-invocation",
+    )
+    assert_true(
         'localAgentProfile =' in home_base and '"local-agent"' in home_base and 'switchboardProfiles;' in home_base,
         "Continue config generation should derive a dedicated local-agent profile view from switchboard config",
     )

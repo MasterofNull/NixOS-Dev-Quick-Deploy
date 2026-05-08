@@ -303,10 +303,68 @@ _aq_report_snapshot() {
     return 0
   fi
   AQ_QA_AQ_REPORT_JSON="$(
-    cd "${REPO_ROOT}" && python3 "${SCRIPT_DIR}/aq-report" --format json 2>/dev/null || true
+    cd "${REPO_ROOT}" && AQ_PRIMARY_HOME="$(_primary_home)" python3 "${SCRIPT_DIR}/aq-report" --format json 2>/dev/null || true
   )"
   [[ -n "${AQ_QA_AQ_REPORT_JSON}" ]] || return 1
   printf '%s' "${AQ_QA_AQ_REPORT_JSON}"
+}
+
+_editor_state_budget_ok() {
+  local report_json budget_summary
+  report_json="$(_aq_report_snapshot)" || report_json=""
+  budget_summary="$(python3 - <<'PY' "${report_json}"
+import json
+import sys
+
+raw = sys.argv[1]
+if not raw:
+    print("error|aq-report unavailable")
+    raise SystemExit(0)
+
+try:
+    data = json.loads(raw)
+except Exception:
+    print("error|aq-report parse failed")
+    raise SystemExit(0)
+
+budget = ((data.get("continue_editor") or {}).get("state_budget") or {})
+if not budget.get("available"):
+    print("error|editor state budget unavailable")
+    raise SystemExit(0)
+
+checks = budget.get("checks") or []
+failing = [
+    f"{item.get('id')}={item.get('details') or item.get('description')}"
+    for item in checks
+    if str(item.get("status", "")).upper() == "FAIL"
+]
+
+if failing:
+    print("error|" + "; ".join(failing[:4]))
+    raise SystemExit(0)
+
+overview = budget.get("overview") or {}
+continue_overview = overview.get("continue") or {}
+obsolete_overview = overview.get("obsolete_markers") or {}
+codex_overview = overview.get("codex") or {}
+print(
+    "ok|"
+    f"active_bytes={continue_overview.get('active_session_bytes', 0)},"
+    f"active_sessions={continue_overview.get('active_session_count', 0)},"
+    f"stale_ai_markers={obsolete_overview.get('ai_count', 0)},"
+    f"codex_backups={codex_overview.get('backup_count', 0)}"
+)
+PY
+)"
+  case "${budget_summary%%|*}" in
+    ok)
+      return 0
+      ;;
+    *)
+      printf '%s\n' "${budget_summary#*|}" >&2
+      return 1
+      ;;
+  esac
 }
 
 # Port binding check.
@@ -404,6 +462,11 @@ run_phase_0() {
   _check "0.5.4" "continue-local switchboard profile ready" _continue_local_smoke
   _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
   _check "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
+  if [[ "${AQ_QA_SKIP_REPORT_BACKED_CHECKS:-0}" == "1" ]]; then
+    _skip "0.5.7" "Editor-local agent corpus stays within bounded budgets" "skipped to avoid aq-report recursion"
+  else
+    _check "0.5.7" "Editor-local agent corpus stays within bounded budgets" _editor_state_budget_ok
+  fi
 
   # 0.6 Flagship agent CLI surface basics
   _check "0.6.1" "flagship agent CLI help smokes" _flagship_cli_surface_smoke
