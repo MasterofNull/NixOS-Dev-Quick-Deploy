@@ -14584,7 +14584,7 @@
                 .d3AlphaDecay(0.03)
                 .d3VelocityDecay(0.2);
 
-            fetch('/api/config/graphs/repo-structure')
+            fetch(`${FASTAPI_BASE}/api/config/graphs/repo-structure`)
                 .then(r => r.json())
                 .then(data => {
                     configureCommandCenterGraph(graph, {
@@ -14622,9 +14622,9 @@
                 .d3VelocityDecay(0.18);
 
             Promise.all([
-                fetch('/api/config/graphs/workflow-blueprints').then((r) => r.json()),
-                fetch('/api/aistack/routing/summary').then((r) => r.json()).catch(() => ({})),
-                fetch('/api/aistack/routing/decisions?limit=10').then((r) => r.json()).catch(() => ({}))
+                fetch(`${FASTAPI_BASE}/api/config/graphs/workflow-blueprints`).then((r) => r.json()),
+                fetch(`${FASTAPI_BASE}/api/aistack/routing/summary`).then((r) => r.json()).catch(() => ({})),
+                fetch(`${FASTAPI_BASE}/api/aistack/routing/decisions?limit=10`).then((r) => r.json()).catch(() => ({}))
             ])
                 .then(([data, routingSummary, decisionsPayload]) => {
                     configureCommandCenterGraph(graph, {
