@@ -1219,10 +1219,10 @@ PYEOF
             settings_file="$HOME/.config/VSCodium/User/settings.json"
             mkdir -p "$ext_root"
 
-            # 2. Clear stale Continue obsolete markers
+            # 2. Clear stale AI extension obsolete markers
             obsolete="$ext_root/.obsolete"
             if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
-              echo "[vscodium-repair] Clearing Continue obsolete markers..."
+              echo "[vscodium-repair] Clearing stale AI extension obsolete markers..."
               python3 - "$obsolete" <<'PYEOF'
       import json, pathlib, sys
       path = pathlib.Path(sys.argv[1])
@@ -1232,7 +1232,15 @@ PYEOF
           sys.exit(0)
       if not isinstance(data, dict):
           sys.exit(0)
-      removed = [k for k in list(data.keys()) if "continue" in k.lower()]
+      prefixes = (
+          "continue.",
+          "google.geminicodeassist-",
+          "google.gemini-cli-vscode-ide-companion-",
+          "qwenlm.qwen-code-vscode-ide-companion-",
+          "openai.chatgpt-",
+          "anthropic.claude-code-",
+      )
+      removed = [k for k in list(data.keys()) if k.lower().startswith(prefixes)]
       for k in removed:
           data.pop(k, None)
       if removed:
@@ -1360,7 +1368,51 @@ PYEOF
       PYEOF
             fi
 
-            # 8. Force Continue config version bump so createContinueConfig rewrites it
+            # 8. Archive oversized Continue session transcripts. Large
+            # session JSON payloads can stall Continue startup and resume.
+            continue_sessions="$HOME/.continue/sessions"
+            if [ -d "$continue_sessions" ] && command -v python3 >/dev/null 2>&1; then
+              echo "[vscodium-repair] Archiving oversized Continue sessions..."
+              python3 - "$continue_sessions" <<'PYEOF'
+      import pathlib, shutil, sys, time
+
+      sessions_dir = pathlib.Path(sys.argv[1])
+      archive_dir = sessions_dir.parent / f"sessions-backup-{time.strftime('%Y%m%d-%H%M%S')}"
+      candidates = sorted(
+          (p for p in sessions_dir.glob("*.json") if p.is_file()),
+          key=lambda p: p.stat().st_mtime,
+          reverse=True,
+      )
+      keep_names = {p.name for p in candidates[:12]}
+      moved = []
+      for path in candidates:
+          size_mb = path.stat().st_size / (1024 * 1024)
+          if path.name in keep_names and size_mb <= 8:
+              continue
+          if size_mb < 8 and path.name in keep_names:
+              continue
+          archive_dir.mkdir(parents=True, exist_ok=True)
+          target = archive_dir / path.name
+          shutil.move(str(path), str(target))
+          moved.append((path.name, round(size_mb, 1)))
+      if moved:
+          print(f"  archived {len(moved)} Continue session(s) to {archive_dir}")
+          for name, size_mb in moved[:10]:
+              print(f"    - {name} ({size_mb} MB)")
+      PYEOF
+            fi
+
+            # 9. Reset the Codex extension state DB when the current on-disk
+            # migration lineage no longer matches the installed extension.
+            codex_state="$HOME/.codex/state_5.sqlite"
+            if [ -f "$codex_state" ]; then
+              stamp="$(date +%Y%m%d-%H%M%S)"
+              backup="$HOME/.codex/state_5.sqlite.pre-vscodium-repair-$stamp"
+              echo "[vscodium-repair] Backing up Codex state DB to $backup"
+              mv "$codex_state" "$backup"
+            fi
+
+            # 10. Force Continue config version bump so createContinueConfig rewrites it
             cfg="$HOME/.continue/config.json"
             if [ -f "$cfg" ] && command -v jq >/dev/null 2>&1; then
               echo "[vscodium-repair] Resetting Continue config version (will regenerate on next hm switch)..."
