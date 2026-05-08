@@ -315,12 +315,44 @@ aq-autonomous-improve hypotheses --filter=context
 2. Manual intervention may be required
 3. Report to improvement_recommendations table for tracking
 
+## Slice Boundary Checkpoint Rule
+
+After every implementation slice — before swapping sessions or handing off to a new agent —
+run `aq-editor-rescue` to checkpoint the current state into harness memory and capture a
+diagnostic snapshot. This prevents editor-local transcript growth from accumulating across
+session boundaries and gives the next session a clean resume point.
+
+```bash
+# Checkpoint at every slice boundary (plan mode — no repair, no side effects)
+aq-editor-rescue --task "<slice-name or brief description>" --project ai-stack
+
+# If the editor is also showing symptoms, add --execute to repair in the same step
+aq-editor-rescue --task "<slice-name>" --project ai-stack --execute
+```
+
+The checkpoint is persisted in harness memory (via `aq-context-manage`) so a fresh
+Continue or Claude session can recover the slice state with:
+```bash
+aq-memory recall --topic editor-rescue --project ai-stack
+```
+
+**When this rule applies:**
+- Before `/clear` or starting a new Continue chat session
+- After completing a self-contained implementation or test slice
+- Before delegating the next slice to a different agent or model
+- After any context-limit error, before retrying
+
+**What NOT to do:**
+- Do not replay full session history in the new session — use the checkpoint recall instead
+- Do not inject full repo maps, bootstrap banners, or large tool output into editor transcripts; use compact references or harness search
+
 ## Related Documentation
 
 - [Progressive Disclosure Guide](../agent-guides/01-QUICK-START.md#progressive-disclosure)
 - [Autonomous Improvement System](../AGENTS.md#autonomous-improvement)
 - [Hybrid Workflow Model](../agent-guides/40-HYBRID-WORKFLOW.md)
 - [Agent Quick Start](../agent-guides/01-QUICK-START.md)
+- [Editor State Recovery Runbook](./EDITOR-STATE-RECOVERY-RUNBOOK.md)
 
 ## Summary: Quick Reference
 
