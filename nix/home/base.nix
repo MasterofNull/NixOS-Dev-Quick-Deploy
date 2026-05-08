@@ -1032,22 +1032,108 @@ in {
         unset obsolete_file
   '';
 
-  # Evict oversized AI-extension state from globalStorage.
-  # Several AI extensions (Gemini, Qwen Code) cache 1-2 MB of model context or
-  # conversation history in state.vscdb, causing the extension host to be
-  # unresponsive for several seconds on every startup.  Evicting entries >1 MB
-  # is safe — the caches re-warm from remote/local state automatically.
+  # Smart-prune AI-extension globalStorage caches to prevent extension-host freeze.
+  #
+  # Root cause: Gemini and Qwen Code write unbounded state into state.vscdb via
+  # VSCode's globalState API instead of globalStorageUri (disk files).  Loading
+  # 2+ MB on startup blocks the extension host for several seconds.
+  #
+  # What we strip (preserves all conversation text):
+  #   google.geminicodeassist:
+  #     - workspaceChange per message  — stale file snapshots from agent mode,
+  #       already applied/discarded; fully recoverable from git. (68% of size)
+  #     - ideContext on non-final messages — file content at send-time; stale.
+  #   qwenlm.qwen-code-vscode-ide-companion:
+  #     - Conversations with zero messages (empty "New Chat" sessions)
+  #     - Oldest conversations beyond the 30 most-recent
+  #
   # Skip when VSCodium is running to avoid corrupting the live WAL journal.
   home.activation.pruneHeavyExtensionGlobalState = lib.hm.dag.entryAfter ["linkGeneration"] ''
     if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
-      echo "[vscodium] codium running — skipping heavy-state pruning (runs on next switch after closing)"
+      echo "[vscodium] codium running — skipping globalStorage pruning (runs on next switch after closing)"
     else
       _gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
-      if [ -f "$_gdb" ] && command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 "$_gdb" "
-          DELETE FROM ItemTable WHERE key='google.geminicodeassist' AND length(value) > 1048576;
-          DELETE FROM ItemTable WHERE key='qwenlm.qwen-code-vscode-ide-companion' AND length(value) > 1048576;
-        " 2>/dev/null || true
+      if [ -f "$_gdb" ] && command -v python3 >/dev/null 2>&1; then
+        python3 - "$_gdb" <<'PYEOF'
+import json, sqlite3, sys, pathlib
+
+db_path = pathlib.Path(sys.argv[1])
+con = sqlite3.connect(str(db_path))
+cur = con.cursor()
+total_saved = 0
+
+def prune_gemini(data):
+    changed = False
+    raw = data.get("geminiCodeAssist.chatThreads")
+    if not raw:
+        return data, changed
+    outer = json.loads(raw) if isinstance(raw, str) else raw
+    for account, acct_raw in outer.items():
+        inner = json.loads(acct_raw) if isinstance(acct_raw, str) else acct_raw
+        for tid in list(inner.keys()):
+            t_raw = inner[tid]
+            t = json.loads(t_raw) if isinstance(t_raw, str) else t_raw
+            if not isinstance(t, dict):
+                continue
+            hist = t.get("history", [])
+            last_idx = len(hist) - 1
+            for i, msg in enumerate(hist):
+                if not isinstance(msg, dict):
+                    continue
+                # workspaceChange: stale agent file snapshot — strip from all messages
+                ws = msg.get("workspaceChange")
+                if ws and len(json.dumps(ws)) > 64:
+                    msg["workspaceChange"] = {}
+                    changed = True
+                # ideContext: stale file content — strip from all but the final message
+                if i < last_idx:
+                    ctx = msg.get("ideContext")
+                    if ctx and len(json.dumps(ctx)) > 64:
+                        msg["ideContext"] = {}
+                        changed = True
+            inner[tid] = json.dumps(t, separators=(",", ":"))
+        outer[account] = json.dumps(inner, separators=(",", ":"))
+    data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
+    return data, changed
+
+def prune_qwen(data):
+    changed = False
+    convs = data.get("conversations", [])
+    if not convs:
+        return data, changed
+    before = len(convs)
+    convs = [c for c in convs if isinstance(c, dict) and c.get("messages")]
+    if len(convs) < before:
+        changed = True
+    if len(convs) > 30:
+        convs = sorted(convs, key=lambda c: c.get("updatedAt", 0), reverse=True)[:30]
+        changed = True
+    if changed:
+        data["conversations"] = convs
+    return data, changed
+
+for ext_key, fn in [
+    ("google.geminicodeassist",              prune_gemini),
+    ("qwenlm.qwen-code-vscode-ide-companion", prune_qwen),
+]:
+    cur.execute("SELECT value FROM ItemTable WHERE key=?", (ext_key,))
+    row = cur.fetchone()
+    if not row:
+        continue
+    before = len(row[0])
+    d, changed = fn(json.loads(row[0]))
+    if changed:
+        v = json.dumps(d, separators=(",", ":"))
+        cur.execute("UPDATE ItemTable SET value=? WHERE key=?", (v, ext_key))
+        saved = before - len(v)
+        total_saved += saved
+        print(f"[vscodium] pruned {ext_key}: {before//1024}KB -> {len(v)//1024}KB (saved {saved//1024}KB)")
+
+if total_saved > 0:
+    con.commit()
+    print(f"[vscodium] globalStorage reclaimed: {total_saved//1024}KB total")
+con.close()
+PYEOF
       fi
       unset _gdb
     fi
