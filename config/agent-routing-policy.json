@@ -25,6 +25,20 @@
       "deny_tools": [],
       "reasoning_mode": "tree-hybrid",
       "max_external_calls": 4
+    },
+    "agent-intake": {
+      "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree", "lifecycle", "agent", "registry", "domain"],
+      "deny_tools": ["reload-model"],
+      "reasoning_mode": "tree-hybrid",
+      "max_external_calls": 6,
+      "notes": "Full lifecycle gateway profile — all orchestration tools allowed. Used by agent_intake entry point."
+    },
+    "lifecycle-delegate": {
+      "allow_tools": ["hints", "query", "workflow", "review", "memory", "lifecycle"],
+      "deny_tools": ["reload-model", "proposals/apply"],
+      "reasoning_mode": "hybrid",
+      "max_external_calls": 4,
+      "notes": "Sub-agent delegation profile — validate + delegate but no model management. Context is pruned before injection."
     }
   },
   "task_overrides": [
