@@ -22,10 +22,12 @@ Tools exposed:
   - query_aidb: search AIDB knowledge base
 """
 import asyncio
+import concurrent.futures
 import json
 import os
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -62,15 +64,56 @@ def _read_key(path_env: str, key_env: str) -> str:
 HYBRID_KEY = _read_key("HYBRID_API_KEY_FILE", "HYBRID_API_KEY")
 AIDB_KEY   = _read_key("AIDB_API_KEY_FILE",   "AIDB_API_KEY")
 
+# Per-tool HTTP timeouts (seconds). Fast endpoints get short timeouts so
+# VSCodium / Continue.dev don't hang when hybrid-coordinator is under load.
+_TOOL_TIMEOUTS: dict[str, int] = {
+    "get_hints":          5,
+    "harness_health":     5,
+    "qa_check":           5,
+    "coordinator_status": 5,
+    "coordinator_lessons":5,
+    "hints_feedback":     5,
+    "workflow_blueprints":8,
+    "hybrid_search":      15,
+    "recall_memory":      10,
+    "store_memory":       10,
+    "query_aidb":         15,
+    "augment_query":      15,
+    "get_working_memory": 8,
+    "save_working_memory":10,
+    "list_skills":        10,
+    "get_skill_content":  10,
+    "auto_select_tools":  12,
+    "tool_catalog":       10,
+    "trading_analyze":    90,
+    "trading_forecast":   30,
+    "workflow_plan":      45,
+    "workflow_run_start": 60,
+    "workflow_orchestrate":60,
+    "agent_intake":       30,
+    "lifecycle_status":   8,
+    "lifecycle_advance":  8,
+}
+_DEFAULT_TIMEOUT_POST = 30
+_DEFAULT_TIMEOUT_GET  = 10
 
-def _post(url: str, payload: dict, key: str) -> dict:
+# Client-side hints cache — avoids repeated calls to /hints on every keystroke.
+# Entries expire after _HINTS_CACHE_TTL seconds.
+_hints_cache: dict[str, tuple[dict, float]] = {}
+_HINTS_CACHE_TTL = 30.0
+
+# Thread pool for non-blocking local subprocess calls.
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="mcp-bridge")
+
+
+def _post(url: str, payload: dict, key: str, timeout: int = _DEFAULT_TIMEOUT_POST) -> dict:
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
         url, data=body,
         headers={"Content-Type": "application/json", "X-API-Key": key},
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         return {"error": e.reason, "status": e.code}
@@ -78,15 +121,31 @@ def _post(url: str, payload: dict, key: str) -> dict:
         return {"error": str(e)}
 
 
-def _get(url: str, key: str) -> dict:
+def _get(url: str, key: str, timeout: int = _DEFAULT_TIMEOUT_GET) -> dict:
     req = urllib.request.Request(url, headers={"X-API-Key": key})
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except Exception as e:
         return {"error": str(e)}
 
-def _run_local(argv: list[str], cwd: str | None = None) -> dict:
+
+def _get_hints_cached(url: str, key: str) -> dict:
+    now = time.monotonic()
+    entry = _hints_cache.get(url)
+    if entry is not None:
+        result, ts = entry
+        if now - ts < _HINTS_CACHE_TTL:
+            cached = dict(result)
+            cached["_bridge_cached"] = True
+            return cached
+    result = _get(url, key, timeout=_TOOL_TIMEOUTS["get_hints"])
+    if "error" not in result:
+        _hints_cache[url] = (result, now)
+    return result
+
+
+def _run_local(argv: list[str], cwd: str | None = None, timeout: int = 30) -> dict:
     # Safety gate — block destructive commands before execution
     _cmd_str = " ".join(str(a) for a in argv)
     _allowed, _reason = _sce_check(_cmd_str)
@@ -99,7 +158,10 @@ def _run_local(argv: list[str], cwd: str | None = None) -> dict:
             check=False,
             capture_output=True,
             text=True,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"local command timed out after {timeout}s", "argv": argv}
     except Exception as exc:
         return {"ok": False, "error": str(exc), "argv": argv}
     return {
@@ -929,6 +991,9 @@ TOOLS = [
 
 
 def _call_tool(name: str, args: dict) -> str:
+    _timeout_post = _TOOL_TIMEOUTS.get(name, _DEFAULT_TIMEOUT_POST)
+    _timeout_get  = _TOOL_TIMEOUTS.get(name, _DEFAULT_TIMEOUT_GET)
+
     if name == "hybrid_search":
         r = _post(f"{HYBRID_URL}/query", {
             "query":             args.get("query", ""),
@@ -936,7 +1001,7 @@ def _call_tool(name: str, args: dict) -> str:
             "prefer_local":      True,
             "limit":             args.get("limit", 5),
             "generate_response": args.get("generate_response", False),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "get_hints":
@@ -944,13 +1009,13 @@ def _call_tool(name: str, args: dict) -> str:
         q = args.get("q", "")
         if q:
             params += f"&q={urllib.parse.quote(q)}"
-        r = _get(f"{HYBRID_URL}/hints{params}", HYBRID_KEY)
+        r = _get_hints_cached(f"{HYBRID_URL}/hints{params}", HYBRID_KEY)
         return _format_result(r)
 
     if name == "workflow_plan":
         r = _post(f"{HYBRID_URL}/workflow/plan", {
             "query": args.get("query", ""),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "tooling_manifest":
@@ -959,7 +1024,7 @@ def _call_tool(name: str, args: dict) -> str:
             "runtime": args.get("runtime", "python"),
             "max_tools": int(args.get("max_tools", 6)),
             "max_result_chars": int(args.get("max_result_chars", BRIDGE_MAX_RESULT_CHARS)),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "workflow_run_start":
@@ -971,11 +1036,11 @@ def _call_tool(name: str, args: dict) -> str:
             "token_limit": int(args.get("token_limit", 8000)),
             "tool_call_limit": int(args.get("tool_call_limit", 40)),
             "intent_contract": intent_contract,
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "workflow_blueprints":
-        r = _get(f"{HYBRID_URL}/workflow/blueprints", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/workflow/blueprints", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "aqd_workflows_list":
@@ -1086,7 +1151,7 @@ def _call_tool(name: str, args: dict) -> str:
             "content":     args.get("content", ""),
             "agent_id":    args.get("agent_id", "continue"),
             "memory_type": _normalize_memory_type(args.get("memory_type", "semantic")),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "recall_memory":
@@ -1094,26 +1159,26 @@ def _call_tool(name: str, args: dict) -> str:
             "query":    args.get("query", ""),
             "agent_id": args.get("agent_id", "continue"),
             "limit":    args.get("limit", 5),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "query_aidb":
         r = _post(f"{AIDB_URL}/query", {
             "query": args.get("query", ""),
             "limit": args.get("limit", 5),
-        }, AIDB_KEY)
+        }, AIDB_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "augment_query":
         r = _post(f"{HYBRID_URL}/augment_query", {
             "query":   args.get("query", ""),
             "context": args.get("context", {}),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "qa_check":
         phase = int(args.get("phase", 0))
-        r = _post(f"{HYBRID_URL}/qa/check", {"phase": phase}, HYBRID_KEY)
+        r = _post(f"{HYBRID_URL}/qa/check", {"phase": phase}, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "hints_feedback":
@@ -1121,20 +1186,20 @@ def _call_tool(name: str, args: dict) -> str:
             "hint_id":  args.get("hint_id", ""),
             "accepted": bool(args.get("accepted", False)),
             "comment":  args.get("comment", ""),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "coordinator_status":
-        r = _get(f"{HYBRID_URL}/control/ai-coordinator/status", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/control/ai-coordinator/status", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "coordinator_lessons":
         limit = int(args.get("limit", 10))
-        r = _get(f"{HYBRID_URL}/control/ai-coordinator/lessons?limit={limit}", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/control/ai-coordinator/lessons?limit={limit}", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "get_prsi_pending":
-        r = _get(f"{HYBRID_URL}/control/prsi/pending", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/control/prsi/pending", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "prsi_orchestrate":
@@ -1161,14 +1226,14 @@ def _call_tool(name: str, args: dict) -> str:
 
     if name == "harness_health":
         phase = int(args.get("phase", 0))
-        r = _post(f"{HYBRID_URL}/qa/check", {"phase": phase}, HYBRID_KEY)
+        r = _post(f"{HYBRID_URL}/qa/check", {"phase": phase}, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "web_fetch":
         r = _post(f"{HYBRID_URL}/research/web/fetch", {
             "url":       args.get("url", ""),
             "max_chars": int(args.get("max_chars", 4000)),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "workflow_orchestrate":
@@ -1180,7 +1245,7 @@ def _call_tool(name: str, args: dict) -> str:
             "token_limit":     int(args.get("token_limit", 8000)),
             "tool_call_limit": int(args.get("tool_call_limit", 40)),
             "intent_contract": intent_contract,
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "list_sops":
@@ -1284,7 +1349,7 @@ def _call_tool(name: str, args: dict) -> str:
         domain = args.get("domain", "")
         limit = int(args.get("limit", 50))
         params = f"?include_pending=true&limit={limit}"
-        r = _get(f"{AIDB_URL}/skills{params}", AIDB_KEY)
+        r = _get(f"{AIDB_URL}/skills{params}", AIDB_KEY, timeout=_timeout_get)
         if isinstance(r, list):
             skills = [
                 {
@@ -1308,21 +1373,21 @@ def _call_tool(name: str, args: dict) -> str:
         slug = args.get("slug", "").strip()
         if not slug:
             return _format_result({"error": "slug is required"})
-        r = _get(f"{HYBRID_URL}/skills/{slug}/content", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/skills/{slug}/content", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "auto_select_tools":
         task = args.get("task", "")
         limit = int(args.get("limit", 8))
         params = f"?task={urllib.parse.quote(task)}&limit={limit}"
-        r = _get(f"{HYBRID_URL}/tools/auto-select{params}", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/tools/auto-select{params}", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "tool_catalog":
         domain = args.get("domain", "all")
         fmt = args.get("format", "compact")
         params = f"?domain={domain}&format={fmt}"
-        r = _get(f"{HYBRID_URL}/tools/catalog{params}", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/tools/catalog{params}", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "trading_analyze":
@@ -1331,17 +1396,17 @@ def _call_tool(name: str, args: dict) -> str:
         analysts = args.get("analysts", "market,fundamentals,news,sentiment")
         rounds = int(args.get("debate_rounds", 1))
         params = f"?ticker={ticker}&date={date}&analysts={analysts}&debate_rounds={rounds}"
-        r = _get(f"{HYBRID_URL}/trading/analyze{params}", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/trading/analyze{params}", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "trading_forecast":
         ticker = args.get("ticker", "").upper()
         date = args.get("date", "")
-        r = _get(f"{HYBRID_URL}/trading/forecast?ticker={ticker}&date={date}", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/trading/forecast?ticker={ticker}&date={date}", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "trading_tools":
-        r = _get(f"{HYBRID_URL}/trading/tools", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/trading/tools", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "impeccable_design":
@@ -1353,9 +1418,9 @@ def _call_tool(name: str, args: dict) -> str:
             "query": ref_query,
             "project": "impeccable-design",
             "limit": 3,
-        }, AIDB_KEY)
+        }, AIDB_KEY, timeout=15)
         # Get skill content
-        skill = _get(f"{HYBRID_URL}/skills/impeccable/content", HYBRID_KEY)
+        skill = _get(f"{HYBRID_URL}/skills/impeccable/content", HYBRID_KEY, timeout=10)
         return _format_result({
             "command": command,
             "context": context,
@@ -1388,7 +1453,7 @@ def _call_tool(name: str, args: dict) -> str:
             "history":    args.get("history", []),
             "max_tokens": args.get("max_tokens", 2000),
             "focus":      args.get("focus", "all"),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "save_working_memory":
@@ -1399,11 +1464,11 @@ def _call_tool(name: str, args: dict) -> str:
             "next_steps":     args.get("next_steps", []),
             "open_questions": args.get("open_questions", []),
             "metadata":       args.get("metadata", {}),
-        }, HYBRID_KEY)
+        }, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "get_working_memory":
-        r = _get(f"{HYBRID_URL}/agent/working-memory", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/agent/working-memory", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "agent_intake":
@@ -1414,12 +1479,12 @@ def _call_tool(name: str, args: dict) -> str:
             body["domain"] = args["domain"]
         if args.get("context"):
             body["context"] = args["context"]
-        r = _post(f"{HYBRID_URL}/agent/intake", body, HYBRID_KEY)
+        r = _post(f"{HYBRID_URL}/agent/intake", body, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     if name == "lifecycle_status":
         session_id = args.get("session_id", "")
-        r = _get(f"{HYBRID_URL}/agent/lifecycle/{session_id}", HYBRID_KEY)
+        r = _get(f"{HYBRID_URL}/agent/lifecycle/{session_id}", HYBRID_KEY, timeout=_timeout_get)
         return _format_result(r)
 
     if name == "lifecycle_advance":
@@ -1432,7 +1497,7 @@ def _call_tool(name: str, args: dict) -> str:
         }
         if args.get("error"):
             body["error"] = args["error"]
-        r = _post(f"{HYBRID_URL}/agent/lifecycle/{session_id}/advance", body, HYBRID_KEY)
+        r = _post(f"{HYBRID_URL}/agent/lifecycle/{session_id}/advance", body, HYBRID_KEY, timeout=_timeout_post)
         return _format_result(r)
 
     return _format_result({"error": f"unknown tool: {name}"})

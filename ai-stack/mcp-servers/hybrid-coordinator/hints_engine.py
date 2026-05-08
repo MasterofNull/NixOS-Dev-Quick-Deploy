@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,6 +27,10 @@ try:
     import psycopg  # type: ignore[import-untyped]
 except Exception:
     psycopg = None  # type: ignore[assignment]
+
+
+_hints_cache: dict = {}
+_HINTS_CACHE_TTL = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -1730,6 +1735,12 @@ class HintsEngine:
         Escalation (Phase 10.4):
         - force_escalation: Override detected escalation, suspend token limits
         """
+        cache_key = (query, max_hints)
+        cached_entry = _hints_cache.get(cache_key)
+        now = time.time()
+        if cached_entry and now - cached_entry["timestamp"] < _HINTS_CACHE_TTL:
+            return {**cached_entry["result"], "cache_hit": True}
+
         hints = self.rank(query, context=context, max_hints=max_hints, agent_type=agent_type)
         profile = self._load_agent_preference_profile(agent_type)
         usage_counts, usage_total = self._load_recent_hint_usage()
@@ -1901,6 +1912,10 @@ class HintsEngine:
                     ],
                 },
             }
+        _hints_cache[cache_key] = {
+            "timestamp": now,
+            "result": dict(result),
+        }
         return result
 
     def prompt_coaching_as_dict(self, query: str, agent_type: str = "unknown") -> Dict[str, object]:
