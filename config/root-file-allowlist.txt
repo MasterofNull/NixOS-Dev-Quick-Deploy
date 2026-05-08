@@ -9,6 +9,8 @@
 .sops.yaml
 .vscode.configs.import.cspell.config.json
 AGENTS.md
+CLAUDE.md
+.claude.md
 LICENSE
 Makefile
 README.md

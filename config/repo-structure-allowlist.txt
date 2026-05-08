@@ -4,6 +4,7 @@
 # Root markdown exceptions
 .aider.md
 AGENTS.md
+CLAUDE.md
 docs/archive/root-docs/AGENT_BOOTSTRAP_COMMAND.md
 docs/archive/root-docs/AI-STACK-IMPROVEMENT-PLAN.md
 docs/archive/root-docs/AI-STACK-QA-PLAN.md
