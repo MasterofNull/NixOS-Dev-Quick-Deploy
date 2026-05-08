@@ -109,6 +109,9 @@ offload_card = offload_card_payload["cards"][0]
 if "aq-context-manage check" not in offload_card.get("commands", []):
     print("ERROR: context-offload card did not expose compaction tooling", file=sys.stderr)
     raise SystemExit(1)
+if "aq-context-manage checkpoint --task \"<task>\" --decision \"<decision>\" --next-step \"<next step>\"" not in offload_card.get("commands", []):
+    print("ERROR: context-offload card did not expose checkpoint persistence guidance", file=sys.stderr)
+    raise SystemExit(1)
 if "aq-memory search \"<task or decision>\" --project ai-stack --limit 5" not in offload_card.get("commands", []):
     print("ERROR: context-offload card did not expose harness memory recall guidance", file=sys.stderr)
     raise SystemExit(1)

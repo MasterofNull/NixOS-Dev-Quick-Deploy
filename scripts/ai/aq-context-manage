@@ -14,6 +14,8 @@ Part of Context Rot and Recall system.
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,6 +23,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack" / "context_memory"))
 
 from context_manager import ContextMemoryManager
+
+
+AQ_MEMORY_SCRIPT = Path(__file__).with_name("aq-memory")
 
 
 def format_bytes(bytes_count: int) -> str:
@@ -189,6 +194,134 @@ def cmd_compact(manager: ContextMemoryManager, force: bool = False):
     print()
 
 
+def _checkpoint_entries(args) -> list[tuple[str, str, list[str]]]:
+    entries: list[tuple[str, str, list[str]]] = []
+    for item in args.fact or []:
+        entries.append((item, "fact", ["checkpoint", "fact"]))
+    for item in args.decision or []:
+        entries.append((item, "decision", ["checkpoint", "decision"]))
+    for item in args.next_step or []:
+        entries.append((item, "advice", ["checkpoint", "next-step"]))
+    for item in args.open_question or []:
+        entries.append((item, "discovery", ["checkpoint", "open-question"]))
+    return entries
+
+
+def cmd_checkpoint(args):
+    """Persist a structured checkpoint to aq-memory and print fresh-session resume steps."""
+    entries = _checkpoint_entries(args)
+    if not entries:
+        raise SystemExit("checkpoint requires at least one of --fact, --decision, --next-step, or --open-question")
+    if not AQ_MEMORY_SCRIPT.exists():
+        raise SystemExit(f"aq-memory not found at {AQ_MEMORY_SCRIPT}")
+
+    created_by = args.created_by or os.getenv("AQ_ACTIVE_AGENT") or os.getenv("USER") or "unknown"
+    shared_tags = [tag.strip() for tag in (args.tags or "").split(",") if tag.strip()]
+    created_fact_ids: list[dict[str, str]] = []
+
+    event_content = (
+        f"Checkpoint saved for task '{args.task}'. Resume from harness memory instead of replaying full editor transcript."
+    )
+    event_command = [
+        sys.executable,
+        str(AQ_MEMORY_SCRIPT),
+        "--storage",
+        args.memory_storage,
+        "--json",
+        "add",
+        event_content,
+        "--project",
+        args.project,
+        "--topic",
+        args.topic,
+        "--type",
+        "event",
+        "--tags",
+        ",".join(shared_tags + ["checkpoint", "resume", "task-state"]),
+        "--source",
+        "aq-context-manage",
+        "--created-by",
+        created_by,
+    ]
+    if args.agent_owner:
+        event_command.extend(["--agent-owner", args.agent_owner])
+    event_result = subprocess.run(event_command, capture_output=True, text=True, check=False)
+    if event_result.returncode != 0:
+        raise SystemExit((event_result.stderr or event_result.stdout or "aq-memory add failed").strip())
+    try:
+        event_payload = json.loads((event_result.stdout or "").strip())
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"unable to parse aq-memory event result: {exc}") from exc
+    created_fact_ids.append({"category": "event", "fact_id": str(event_payload.get("fact_id", ""))})
+
+    for content, fact_type, extra_tags in entries:
+        command = [
+            sys.executable,
+            str(AQ_MEMORY_SCRIPT),
+            "--storage",
+            args.memory_storage,
+            "--json",
+            "add",
+            content,
+            "--project",
+            args.project,
+            "--topic",
+            args.topic,
+            "--type",
+            fact_type,
+            "--tags",
+            ",".join(shared_tags + extra_tags + [args.topic]),
+            "--source",
+            "aq-context-manage",
+            "--created-by",
+            created_by,
+        ]
+        if args.agent_owner:
+            command.extend(["--agent-owner", args.agent_owner])
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise SystemExit((result.stderr or result.stdout or "aq-memory add failed").strip())
+        try:
+            payload = json.loads((result.stdout or "").strip())
+        except json.JSONDecodeError as exc:
+            raise SystemExit(f"unable to parse aq-memory result: {exc}") from exc
+        created_fact_ids.append({"category": fact_type, "fact_id": str(payload.get("fact_id", ""))})
+
+    resume_query = args.resume_query or args.task
+    resume_commands = [
+        f'aq-memory search "{resume_query}" --project {args.project} --limit 5',
+        f'aq-context-bootstrap --task "resume {args.task}" --scope context-offload --format json',
+        'aq-context-card --card context-offload --level standard',
+        f'aq-hints "resume {args.task}" --format=json --agent=codex',
+    ]
+    response = {
+        "task": args.task,
+        "project": args.project,
+        "topic": args.topic,
+        "created_by": created_by,
+        "fact_count": len(created_fact_ids),
+        "facts": created_fact_ids,
+        "resume_commands": resume_commands,
+        "guidance": "Start a fresh editor/agent session and recall this checkpoint from aq-memory before replaying transcript history.",
+    }
+
+    if args.json:
+        print(json.dumps(response, indent=2))
+        return
+
+    print("Checkpoint stored")
+    print("=" * 60)
+    print(f"Task: {args.task}")
+    print(f"Project/topic: {args.project}/{args.topic}")
+    print(f"Stored facts: {len(created_fact_ids)}")
+    print()
+    print("Fresh-session resume:")
+    for command in resume_commands:
+        print(f"  {command}")
+    print()
+    print(response["guidance"])
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Context Memory Management CLI",
@@ -200,13 +333,14 @@ Examples:
   aq-context-manage plan                  # Show compaction plan
   aq-context-manage update                # Update lifecycle states
   aq-context-manage compact               # Trigger compaction
+  aq-context-manage checkpoint --task "resume slice" --decision "bounded retries to 2" --next-step "start fresh session"
   aq-context-manage stats --json          # JSON output
         """
     )
 
     parser.add_argument(
         "command",
-        choices=["stats", "check", "plan", "update", "compact"],
+        choices=["stats", "check", "plan", "update", "compact", "checkpoint"],
         help="Command to execute"
     )
 
@@ -227,13 +361,29 @@ Examples:
         type=Path,
         help="Path to context memory database (default: DATA_DIR/context_memory.db)"
     )
+    parser.add_argument("--task", help="Checkpoint task summary.")
+    parser.add_argument("--project", default="ai-stack", help="Memory project for checkpoint entries.")
+    parser.add_argument("--topic", default="context-offload", help="Memory topic for checkpoint entries.")
+    parser.add_argument("--fact", action="append", help="Durable fact to store. Repeatable.")
+    parser.add_argument("--decision", action="append", help="Decision to store. Repeatable.")
+    parser.add_argument("--next-step", dest="next_step", action="append", help="Next step to store. Repeatable.")
+    parser.add_argument("--open-question", dest="open_question", action="append", help="Open question to store. Repeatable.")
+    parser.add_argument("--resume-query", help="Override query string used in printed resume commands.")
+    parser.add_argument("--agent-owner", help="Optional memory owner for checkpoint entries.")
+    parser.add_argument("--created-by", help="Creator identifier for checkpoint entries.")
+    parser.add_argument("--tags", default="checkpoint,resume", help="Shared comma-separated tags for checkpoint entries.")
+    parser.add_argument("--memory-storage", default=".aidb/temporal_facts.json", help="aq-memory storage path for checkpoint writes.")
 
     args = parser.parse_args()
 
-    # Initialize manager
-    manager = ContextMemoryManager(db_path=args.db)
-
     # Execute command
+    if args.command == "checkpoint":
+        if not args.task:
+            parser.error("--task is required for checkpoint")
+        cmd_checkpoint(args)
+        return
+
+    manager = ContextMemoryManager(db_path=args.db)
     if args.command == "stats":
         cmd_stats(manager, json_output=args.json)
     elif args.command == "check":

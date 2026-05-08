@@ -125,13 +125,22 @@ For long-running tasks:
 Save progress and continue in fresh session:
 
 ```bash
-# Save state to file
-echo "Current progress: ..." > /tmp/session-state.md
+# Persist a structured checkpoint to harness memory
+aq-context-manage checkpoint \
+  --task "stabilize VSCodium agent state" \
+  --decision "editor-local corpus must stay within bounded budgets" \
+  --next-step "start a fresh session and resume from aq-memory" \
+  --open-question "which editor surfaces still replay raw transcripts?"
 
-# New session: load state
-Read /tmp/session-state.md
-# Continue from checkpoint
+# New session: recall only the compact checkpoint
+aq-memory search "stabilize VSCodium agent state" --project ai-stack --limit 5
+aq-context-bootstrap --task "resume stabilize VSCodium agent state" --scope context-offload --format json
 ```
+
+Checkpointing rule:
+- checkpoint at slice boundaries, after retries, or before clearing a swollen editor session
+- store decisions, blockers, evidence, and next actions, not raw transcript prose
+- prefer starting fresh from `aq-memory` recall over reopening the same failing editor conversation
 
 ## Autonomous System Integration
 
