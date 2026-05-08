@@ -198,5 +198,51 @@ def test_workflow_phase_executor_uses_delegate_helper():
     asyncio.run(run_test())
 
 
+def test_workflow_phase_executor_reads_nested_spawn_instance_result(monkeypatch):
+    """Spawn responses wrapped under instance.result should still surface delegated output."""
+    async def run_test():
+        executor = WorkflowPhaseExecutor(coordinator_url="http://127.0.0.1:8003")
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "status": "ok",
+                    "instance": {
+                        "id": "abc12345",
+                        "status": "completed",
+                        "result": "nested delegated output",
+                    },
+                }
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                self.post_calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, url, json):
+                self.post_calls.append({"url": url, "json": json})
+                return FakeResponse()
+
+        monkeypatch.setattr("workflow_executor.httpx.AsyncClient", FakeClient)
+        result = await executor._delegate_phase_execution(
+            {"id": "discover", "title": "Discover"},
+            "Investigate current runtime status",
+            {"safety_mode": "plan-readonly", "budget": {"token_limit": 128}},
+        )
+
+        assert result["output"] == "nested delegated output"
+        assert "nested delegated output" in result["summary"]
+
+    asyncio.run(run_test())
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

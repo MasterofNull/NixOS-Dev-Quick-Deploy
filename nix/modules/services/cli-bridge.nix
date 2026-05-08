@@ -51,10 +51,13 @@ in
           "CLI_BRIDGE_PORT=${toString bridge.port}"
           "CLI_BRIDGE_HOST=127.0.0.1"
           "CLI_BRIDGE_TIMEOUT_S=${toString bridge.timeoutSeconds}"
+          "CLI_BRIDGE_WORKSPACE_ROOT=${cfg.mcpServers.repoPath}"
           "HOME=/home/${primaryUser}"
           "PATH=/home/${primaryUser}/.local/bin:/home/${primaryUser}/.npm-global/bin:/run/current-system/sw/bin:/usr/bin:/bin"
         ] ++ lib.optional (bridge.claudeBin != "") "CLAUDE_BIN=${bridge.claudeBin}"
           ++ lib.optional (bridge.codexBin  != "") "CODEX_BIN=${bridge.codexBin}";
+
+        WorkingDirectory = cfg.mcpServers.repoPath;
 
         Restart = "on-failure";
         RestartSec = "10s";

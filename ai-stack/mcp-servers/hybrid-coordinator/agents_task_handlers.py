@@ -211,7 +211,17 @@ async def handle_agents_spawn(request: web.Request) -> web.Response:
         temperature=float(data.get("temperature", 0.3)),
         timeout_sec=float(data.get("timeout", 120)),
     )
-    return web.json_response({"status": "ok", "instance": instance}, status=status_code)
+    result_text = str(instance.get("result", "") or "").strip()
+    return web.json_response(
+        {
+            "status": "ok",
+            "instance": instance,
+            "agent_id": instance.get("id"),
+            "result": result_text,
+            "content": result_text,
+        },
+        status=status_code,
+    )
 
 
 async def handle_agents_team(request: web.Request) -> web.Response:
