@@ -1586,6 +1586,7 @@ PYEOF
       "__frozen": "DO NOT MODIFY. Claude+Codex CLI Bridge models must remain. contextLength/maxTokens for Local Agent tuned for v1.3.38. aq-hints removed — not supported in Continue v1.3.38 (AGENTS.md profile card provides context instead).",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
+        "CONVERSATIONAL GUARD: For greetings, casual chat, or questions not about code or the harness, respond directly in plain text. Do NOT search the codebase, invoke MCP tools, or run any commands. Example: 'how are you today?' gets a plain text reply, no tool calls.",
         "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
         "TOOL DISCIPLINE: Use MCP tools for harness ops: harness_health, get_hints, hybrid_search, get_working_memory, store_memory, query_aidb, workflow_plan, get_prsi_pending, prsi_orchestrate.",
         "AGENT MODE: In agent mode, issue tool calls directly — do not announce them. Do not say 'I will now call...' just call the tool.",
@@ -1722,7 +1723,6 @@ PYEOF
       "contextProviders": [
         { "name": "file", "params": {} },
         { "name": "diff", "params": {} },
-        { "name": "codebase", "params": {} },
         { "name": "terminal", "params": {} },
         { "name": "problems", "params": {} }
       ],
