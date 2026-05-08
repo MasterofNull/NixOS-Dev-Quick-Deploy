@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
 # Sync validated user configs to templates
-# Auto-sync mechanism for template propagation
-# Author: Claude Code (Vibe Coding System)
-# Date: 2025-12-31
+# MANUAL USE ONLY — do NOT call from automated pipelines, post-deploy, or cron.
+#
+# Canonical sources of truth (do not sync these — edit source directly):
+#   VSCodium settings → nix/home/base.nix (vscodiumSettings attrset)
+#   Continue config   → nix/home/base.nix + declarative home-manager
+#   Git config        → nix/hosts/hyperd/home-deploy-options.nix
+#
+# Automated sync creates a feedback loop: stale runtime settings overwrite
+# Nix-managed templates which then reintroduce old bugs after home-manager switch.
+# Run this manually ONLY when deliberately capturing new settings as a baseline.
 
 set -euo pipefail
+
+# Safety guard: refuse to run non-interactively (e.g. from cron, CI, or post-deploy)
+if [[ ! -t 1 ]] && [[ "${FORCE_SYNC:-0}" != "1" ]]; then
+  echo "sync-configs-to-templates: refusing to run non-interactively." >&2
+  echo "This script must be run manually. Use FORCE_SYNC=1 to override." >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -118,17 +132,10 @@ main() {
         ((errors++))
     fi
 
-    # Continue config
-    if sync_config \
-        "~/.continue/config.json" \
-        "${TEMPLATES_DIR}/vscode/continue/config.json"; then
-        ((synced++))
-        if check_secrets "${TEMPLATES_DIR}/vscode/continue/config.json"; then
-            ((warnings++))
-        fi
-    else
-        ((errors++))
-    fi
+    # Continue config — SKIP: managed declaratively by nix/home/base.nix.
+    # Syncing it back here would overwrite the Nix-managed template with live
+    # runtime state and reintroduce stale configs on the next home-manager switch.
+    log_info "Skipping ~/.continue/config.json (managed by nix/home/base.nix — edit source there)"
 
     # Claude Code MCP config
     if sync_config \
