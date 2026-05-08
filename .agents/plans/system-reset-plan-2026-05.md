@@ -10,7 +10,7 @@
 | A | VSCodium / MCP Bridge Fix | IMMEDIATE | ✅ DONE (92d7d510) | 1 |
 | B.1 | hybrid-coordinator audit + module map | HIGH | ✅ DONE (4e909111) | 1 |
 | B.2 | Resolve confirmed duplicates | HIGH | ✅ DONE (f80e59ec) | 1 |
-| B.3 | Domain subdirectory split | HIGH | 🔄 IN PROGRESS (Codex writing migration script) | ~1 |
+| B.3 | Domain subdirectory split | HIGH | ✅ DONE (882e9808) | ~1 |
 | C.1 | Dead module import audit | MEDIUM | ✅ DONE (2026-05-08) | 0.5 |
 | C.2 | Archive confirmed dead modules | MEDIUM | ✅ DONE (78a339db) | 1 |
 | C.3 | Gitignore __pycache__ | MEDIUM | ✅ NO-OP (already gitignored) | 0 |
@@ -116,3 +116,4 @@ At the start of each session working on this plan:
 | 2026-05-08 | B.1 | hybrid-coordinator module map | 4e909111 |
 | 2026-05-08 | — | Phase 27 staged work committed | f988b361 |
 | 2026-05-08 | — | PDR written, plan created | c24213a3 |
+| 2026-05-08 | B.3 | hybrid-coordinator domain split (108 modules) | 882e9808 |
