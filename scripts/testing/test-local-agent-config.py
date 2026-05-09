@@ -82,7 +82,7 @@ def main() -> int:
         "local agent runtime should expose a bounded harness CLI execution tool",
     )
     assert_true(
-        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-feedback-loop"', '"aq-runtime"')),
+        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-operational-perspective"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-feedback-loop"', '"aq-runtime"')),
         "local agent runtime should bound harness CLI execution to the sanctioned aq-* tool surface",
     )
 

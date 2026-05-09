@@ -35,6 +35,7 @@ qwen -y "<task>"                            # ← known failure mode
 - ✅ `aq-hints` - Query hints for context
 - ✅ `aq-qa` - Run QA checks (`aq-qa 0` for phase-0 health)
 - ✅ `aq-report` - Full AI stack health digest
+- ✅ `aq-operational-perspective` - Compact operational diagnostics bundle
 - ✅ `aq-context-bootstrap --task "<task>"` - Load minimal context + workflow entrypoint
 - ✅ `git` - Git operations
 - ✅ Standard Unix tools (grep, find, cat, etc.)
@@ -73,7 +74,7 @@ Choose the narrowest lane that matches the task, but do not force remote-capable
 - For workflow/bootstrap state, prefer `aq-context-bootstrap --task "<task>"` and existing workflow sessions.
 - For operational-perspective or introspection prompts, start with `aq-feedback-loop --task "<prompt>" --format json` or `aq-context-bootstrap --task "<prompt>" --format json` before broad analysis.
 - If that startup packet selects `context-offload`, run its `preflight_commands` or `continuation_startup_commands` first so memory recall and `aq-qa 0 --json` happen before you answer.
-- Execute sanctioned `aq-*` CLI steps directly when they are the selected preflight or validation path; do not merely recommend `aq-qa`, `aq-report`, `aq-memory`, `aq-context-bootstrap`, `aq-feedback-loop`, or `aq-runtime`.
+- Execute sanctioned `aq-*` CLI steps directly when they are the selected preflight or validation path; do not merely recommend `aq-qa`, `aq-report`, `aq-operational-perspective`, `aq-memory`, `aq-context-bootstrap`, `aq-feedback-loop`, or `aq-runtime`.
 - Only use raw `curl` when there is no harness wrapper, and quote the entire URL in shell commands.
 
 ---

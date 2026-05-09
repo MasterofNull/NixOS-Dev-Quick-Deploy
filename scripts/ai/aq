@@ -57,6 +57,7 @@ declare -A COMMAND_MAP=(
   ["hints"]="aq-hints:standard"
   ["context-bootstrap"]="aq-context-bootstrap:standard"
   ["feedback-loop"]="aq-feedback-loop:standard"
+  ["operational-perspective"]="aq-operational-perspective:standard"
   ["context-card"]="aq-context-card:standard"
   ["context-manage"]="aq-context-manage:standard"
   ["memory"]="aq-memory:standard"
