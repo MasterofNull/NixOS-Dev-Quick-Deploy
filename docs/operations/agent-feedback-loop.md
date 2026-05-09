@@ -26,7 +26,8 @@ aq-feedback-loop \
 
 1. recommended scope from `aq-context-bootstrap`
 2. PRD and plan artifact paths
-3. starter commands
+3. explicit preflight commands
+4. starter commands
 4. workstreams
 5. validation commands
 6. commit suggestions
@@ -34,11 +35,12 @@ aq-feedback-loop \
 ## Default Loop
 
 1. Run `aq-feedback-loop --task "<task>"`
-2. Create or update the recommended PRD and plan files
-3. Run the memory checkpoint command it suggests
-4. Implement one reversible slice
-5. Run the validation commands
-6. Stage only the slice files and commit
+2. Run the emitted preflight commands first, especially `aq-qa 0 --json`
+3. Create or update the recommended PRD and plan files
+4. Run the memory checkpoint command it suggests
+5. Implement one reversible slice
+6. Run the validation commands
+7. Stage only the slice files and commit
 
 ## Relationship To Existing Tools
 
@@ -56,6 +58,10 @@ aq-feedback-loop \
 
 `aq-report`
 - gives recent routing, memory, and reliability posture
+
+If `aq-context-bootstrap` classifies the task as `context-offload`, the feedback
+loop promotes its continuation startup packet into `preflight_commands` so
+memory recall and compact context checks happen before deeper planning.
 
 ## Validation
 
