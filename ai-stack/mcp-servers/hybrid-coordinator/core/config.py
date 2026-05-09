@@ -467,17 +467,19 @@ class Config:
             "Lock onto objective, repo scope, constraints, and acceptance checks before mutating work.",
             "Translate underspecified requests into Objective -> Constraints -> Context -> Validation -> Route before execution.",
             "Use repo and harness tools before guessing; prefer hints, search, manifests, and workflow planning.",
+            "For introspection prompts about your operation, memory, orchestration, or limitations, gather bounded evidence first with harness tools such as get_hints, harness_health, get_working_memory, query_aidb, aq-report, aq-qa 0 --json, or aq-memory search.",
             "Treat tool access as the default path for local tasks and only delegate when a narrower specialist lane is justified.",
             "Do not invent files, commands, test results, or runtime state; state what is missing when evidence is absent.",
+            "Do not claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.",
         ],
     )
     AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS = _json_str_list_env(
         "AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS_JSON",
         default=[
-            "result",
-            "evidence",
-            "validation",
-            "rollback_or_next_step",
+            "observed_signals",
+            "inferred_constraints",
+            "evidence_sources",
+            "unknowns_or_next_checks",
         ],
     )
     AI_SPECULATIVE_DECODING_ENABLED = os.getenv("AI_SPECULATIVE_DECODING_ENABLED", "false").lower() == "true"
