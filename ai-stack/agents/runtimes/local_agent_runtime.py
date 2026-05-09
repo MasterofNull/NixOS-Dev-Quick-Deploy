@@ -73,6 +73,7 @@ _ALLOWED_HARNESS_CLI_TOOLS = {
     "aq-qa": REPO_ROOT / "scripts" / "ai" / "aq-qa",
     "aq-report": REPO_ROOT / "scripts" / "ai" / "aq-report",
     "aq-operational-perspective": REPO_ROOT / "scripts" / "ai" / "aq-operational-perspective",
+    "aq-introspection-validate": REPO_ROOT / "scripts" / "ai" / "aq-introspection-validate",
     "aq-memory": REPO_ROOT / "scripts" / "ai" / "aq-memory",
     "aq-context-bootstrap": REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap",
     "aq-context-manage": REPO_ROOT / "scripts" / "ai" / "aq-context-manage",
@@ -291,6 +292,25 @@ def _validate_harness_cli(tool: str, args: list[str]) -> tuple[list[str], float]
                 continue
             raise ValueError(f"unsupported aq-operational-perspective argument: {token}")
         return normalized, 120.0
+    if tool == "aq-introspection-validate":
+        if not normalized:
+            raise ValueError("aq-introspection-validate requires --file <path> or --text <text>")
+        i = 0
+        saw_source = False
+        while i < len(normalized):
+            token = normalized[i]
+            if token in {"--file", "--text", "--format"} and i + 1 < len(normalized):
+                if token in {"--file", "--text"}:
+                    saw_source = True
+                i += 2
+                continue
+            if token.startswith("--format="):
+                i += 1
+                continue
+            raise ValueError(f"unsupported aq-introspection-validate argument: {token}")
+        if not saw_source:
+            raise ValueError("aq-introspection-validate requires --file <path> or --text <text>")
+        return normalized, 30.0
     if tool == "aq-memory":
         if len(normalized) < 2 or normalized[0] != "search":
             raise ValueError("aq-memory currently only supports: search <query> [--project <name>] [--limit <n>]")

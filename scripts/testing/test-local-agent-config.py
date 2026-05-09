@@ -73,6 +73,10 @@ def main() -> int:
         "switchboard local-agent card should expose embedded-assist as the compact search/context helper lane",
     )
     assert_true(
+        "aq-introspection-validate --file <response-file>" in switchboard_text,
+        "switchboard local-agent card should expose the introspection contract validator",
+    )
+    assert_true(
         "Observed signals" in switchboard_text and "Evidence sources" in switchboard_text,
         "switchboard local-agent card should require evidence-oriented introspection output buckets",
     )
@@ -90,7 +94,7 @@ def main() -> int:
         "local agent runtime should expose a bounded harness CLI execution tool",
     )
     assert_true(
-        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-operational-perspective"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-context-manage"', '"aq-feedback-loop"', '"aq-hints"', '"aq-runtime"')),
+        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-operational-perspective"', '"aq-introspection-validate"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-context-manage"', '"aq-feedback-loop"', '"aq-hints"', '"aq-runtime"')),
         "local agent runtime should bound harness CLI execution to the sanctioned aq-* tool surface",
     )
 

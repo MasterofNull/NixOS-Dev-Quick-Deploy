@@ -76,6 +76,7 @@ Choose the narrowest lane that matches the task, but do not force remote-capable
 - For operational-perspective or introspection prompts, start with `aq-feedback-loop --task "<prompt>" --format json` or `aq-context-bootstrap --task "<prompt>" --format json` before broad analysis.
 - If that startup packet selects `context-offload`, run its `preflight_commands` or `continuation_startup_commands` first so session summaries, memory recall, and `aq-qa 0 --json` happen before you answer.
 - Prefer `embedded-assist` as the compact search/context helper lane before broader local or remote synthesis when recall is thin.
+- After drafting an introspection answer, use `aq-introspection-validate --file <response-file>` or `--text <response>` when you need a quick contract check for missing evidence buckets or unsupported claims.
 - Execute sanctioned `aq-*` CLI steps directly when they are the selected preflight or validation path; do not merely recommend `aq-qa`, `aq-report`, `aq-operational-perspective`, `aq-memory`, `aq-context-bootstrap`, `aq-context-manage`, `aq-feedback-loop`, `aq-hints`, or `aq-runtime`.
 - Only use raw `curl` when there is no harness wrapper, and quote the entire URL in shell commands.
 
