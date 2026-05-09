@@ -84,6 +84,16 @@ def _top_tool_latencies(tool_perf: dict[str, Any], limit: int = 3) -> list[dict[
     return ranked[:limit]
 
 
+def _top_pairs(items: Any, limit: int = 3) -> list[dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+    results: list[dict[str, Any]] = []
+    for item in items[:limit]:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            results.append({"name": item[0], "count": item[1]})
+    return results
+
+
 def _build_observed_signals(
     qa_payload: dict[str, Any] | None,
     report_payload: dict[str, Any] | None,
@@ -102,6 +112,10 @@ def _build_observed_signals(
     rag_posture = (report_payload or {}).get("rag_posture") or {}
     route_latency = (report_payload or {}).get("route_search_latency_decomposition") or {}
     remote_profiles = (report_payload or {}).get("remote_profile_utilization") or {}
+    remote_profile_windows = (report_payload or {}).get("remote_profile_utilization_windows") or {}
+    delegated_failures = (report_payload or {}).get("delegated_prompt_failures") or {}
+    delegated_failure_windows = (report_payload or {}).get("delegated_prompt_failure_windows") or {}
+    provider_fallbacks = (report_payload or {}).get("provider_fallback_recovery") or {}
     benchmark = (report_payload or {}).get("llama_benchmark_summary") or {}
     latest_run = (benchmark.get("latest_run") if isinstance(benchmark, dict) else None) or {}
     return {
@@ -130,8 +144,40 @@ def _build_observed_signals(
         "remote_profiles": {
             "available": remote_profiles.get("available"),
             "total_calls": remote_profiles.get("total_calls"),
+            "success_pct": remote_profiles.get("success_pct"),
+            "fallback_applied": remote_profiles.get("fallback_applied"),
             "top_profiles": remote_profiles.get("top_profiles"),
             "top_backend_reason_classes": remote_profiles.get("top_backend_reason_classes"),
+        },
+        "remote_collaboration": {
+            "success_pct": remote_profiles.get("success_pct"),
+            "total_calls": remote_profiles.get("total_calls"),
+            "fallback_applied": remote_profiles.get("fallback_applied"),
+            "top_profiles": _top_pairs(remote_profiles.get("top_profiles")),
+            "top_backend_reason_classes": _top_pairs(remote_profiles.get("top_backend_reason_classes")),
+            "delegated_failures": {
+                "available": delegated_failures.get("available"),
+                "total_failures": delegated_failures.get("total_failures"),
+                "salvageable_pct": delegated_failures.get("salvageable_pct"),
+                "recovered_failures": delegated_failures.get("recovered_failures"),
+                "top_failure_classes": _top_pairs(delegated_failures.get("top_failure_classes")),
+            },
+            "failure_trend": {
+                "status": delegated_failure_windows.get("trend", {}).get("status"),
+                "summary": delegated_failure_windows.get("trend", {}).get("summary"),
+            },
+            "provider_fallback_recovery": {
+                "recovered_count": provider_fallbacks.get("recovered_count"),
+                "recovered_pct": provider_fallbacks.get("recovered_pct"),
+                "diagnosis": provider_fallbacks.get("diagnosis"),
+                "actions": provider_fallbacks.get("actions") or [],
+            },
+            "memory_sync_policy": "checkpoint-first shared memory; no automatic strong-consistency sync across remote lanes",
+            "fallback_guidance": [
+                "keep objective, constraints, expected_output, timeout_seconds, and validation explicit in remote_task_contract",
+                "prefer embedded-assist or local-tool-calling for compact search/context recovery before widening remote context",
+                "checkpoint accepted decisions locally before re-delegating after remote fallback or rejection",
+            ],
         },
         "local_resource_observations": {
             "latest_run_id": latest_run.get("run_id"),
@@ -165,6 +211,13 @@ def _build_inferred_constraints(observed: dict[str, Any]) -> list[str]:
     remote = observed.get("remote_profiles") or {}
     if remote.get("available") is False or not remote.get("total_calls"):
         constraints.append("Recent remote-collaboration telemetry is sparse; remote behavior should not be overstated from this window.")
+    remote_collaboration = observed.get("remote_collaboration") or {}
+    delegated_failures = remote_collaboration.get("delegated_failures") or {}
+    if int(delegated_failures.get("total_failures") or 0) > 0:
+        constraints.append("Delegated remote failures are present in the current window; keep task contracts narrow and salvage evidence before retrying.")
+    provider_fallbacks = remote_collaboration.get("provider_fallback_recovery") or {}
+    if int(provider_fallbacks.get("recovered_count") or 0) > 0:
+        constraints.append("Remote-provider fallback recovery is active; local fallback paths should stay explicit instead of assuming remote stability.")
     resources = observed.get("local_resource_observations") or {}
     if resources.get("peak_rss_mb") is not None:
         constraints.append("Edge-device resource observations exist for benchmark runs, but not for every live task start.")
