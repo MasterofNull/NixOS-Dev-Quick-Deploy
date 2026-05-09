@@ -44,6 +44,7 @@ posture and states the current memory-sync policy explicitly.
 ## Validation
 
 ```bash
+python3 scripts/ai/aq-introspection-validate --file /tmp/local-agent-response.txt --format json
 python3 scripts/testing/test-operational-perspective.py
 python3 -m py_compile scripts/ai/aq-operational-perspective
 scripts/governance/tier0-validation-gate.sh --pre-commit

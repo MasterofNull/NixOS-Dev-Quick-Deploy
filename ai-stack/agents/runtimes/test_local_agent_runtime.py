@@ -321,3 +321,7 @@ def test_validate_harness_cli_accepts_hints_and_context_summary():
     args, timeout_seconds = module._validate_harness_cli("aq-context-manage", ["summary", "--task", "resume local agent state", "--json"])
     assert args == ["summary", "--task", "resume local agent state", "--json"]
     assert timeout_seconds == 90.0
+
+    args, timeout_seconds = module._validate_harness_cli("aq-introspection-validate", ["--text", "Observed signals qa green and evidence sources aq qa 0 json", "--format=json"])
+    assert args == ["--text", "Observed signals qa green and evidence sources aq qa 0 json", "--format=json"]
+    assert timeout_seconds == 30.0

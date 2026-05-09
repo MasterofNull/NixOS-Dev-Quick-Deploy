@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""
+aq-introspection-validate - validate local-agent operational introspection output.
+
+Checks that a response contains the required evidence-oriented sections and
+flags unsupported internal-behavior claims that should be backed by tool output.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REQUIRED_JSON_KEYS = [
+    "observed_signals",
+    "inferred_constraints",
+    "evidence_sources",
+    "unknowns_or_next_checks",
+]
+
+REQUIRED_TEXT_SECTIONS = [
+    "observed signals",
+    "inferred constraints",
+    "evidence sources",
+    "unknowns",
+]
+
+UNSUPPORTED_CLAIM_PATTERNS = [
+    re.compile(r"\bi write after every significant action\b", re.IGNORECASE),
+    re.compile(r"\bi interact with the coordinator via mcp\b", re.IGNORECASE),
+    re.compile(r"\bi am the local orchestrator\b", re.IGNORECASE),
+    re.compile(r"\bremote agents may have their own memory\b", re.IGNORECASE),
+    re.compile(r"\bi need a sync protocol\b", re.IGNORECASE),
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate evidence-first introspection output.")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--file", help="Path to a saved response file.")
+    source.add_argument("--text", help="Inline response text to validate.")
+    parser.add_argument("--format", dest="fmt", choices=["json", "text"], default="json")
+    return parser.parse_args()
+
+
+def _load_text(args: argparse.Namespace) -> str:
+    if args.text is not None:
+        return args.text
+    return Path(args.file).read_text(encoding="utf-8")
+
+
+def _validate_json_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    missing = [key for key in REQUIRED_JSON_KEYS if key not in payload]
+    evidence_sources = payload.get("evidence_sources")
+    empty_evidence = not isinstance(evidence_sources, list) or len(evidence_sources) == 0
+    findings: list[str] = []
+    if empty_evidence:
+        findings.append("evidence_sources is empty or missing command evidence")
+    return {
+        "mode": "json",
+        "valid": not missing and not findings,
+        "missing_sections": missing,
+        "unsupported_claims": [],
+        "findings": findings,
+        "suggestions": [
+            "emit all four evidence buckets",
+            "include at least one concrete evidence source entry",
+        ],
+    }
+
+
+def _has_section(text: str, section: str) -> bool:
+    normalized = text.lower()
+    patterns = [
+        rf"(^|\n)\s*(?:\d+\.\s*)?{re.escape(section)}\s*:?",
+        rf'"{re.escape(section.replace(" ", "_"))}"\s*:',
+    ]
+    return any(re.search(pattern, normalized, re.MULTILINE) for pattern in patterns)
+
+
+def _validate_text_payload(text: str) -> dict[str, Any]:
+    missing = [section for section in REQUIRED_TEXT_SECTIONS if not _has_section(text, section)]
+    unsupported_claims = [pattern.pattern for pattern in UNSUPPORTED_CLAIM_PATTERNS if pattern.search(text)]
+    findings: list[str] = []
+    if unsupported_claims:
+        findings.append("response includes unsupported internal-behavior claims that should be backed by evidence")
+    return {
+        "mode": "text",
+        "valid": not missing and not unsupported_claims,
+        "missing_sections": missing,
+        "unsupported_claims": unsupported_claims,
+        "findings": findings,
+        "suggestions": [
+            "use explicit section headers for observed signals, inferred constraints, evidence sources, and unknowns",
+            "replace unsupported internal-behavior claims with observed evidence or mark them as unknown",
+        ],
+    }
+
+
+def _render_text(result: dict[str, Any]) -> str:
+    lines = [
+        f"valid: {str(result['valid']).lower()}",
+        f"mode: {result['mode']}",
+        "missing_sections:",
+    ]
+    for item in result["missing_sections"]:
+        lines.append(f"- {item}")
+    lines.append("unsupported_claims:")
+    for item in result["unsupported_claims"]:
+        lines.append(f"- {item}")
+    lines.append("findings:")
+    for item in result["findings"]:
+        lines.append(f"- {item}")
+    lines.append("suggestions:")
+    for item in result["suggestions"]:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    text = _load_text(args)
+    stripped = text.strip()
+
+    result: dict[str, Any]
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            result = _validate_text_payload(text)
+        else:
+            result = _validate_json_payload(payload) if isinstance(payload, dict) else _validate_text_payload(text)
+    else:
+        result = _validate_text_payload(text)
+
+    if args.fmt == "json":
+        print(json.dumps(result, indent=2))
+    else:
+        print(_render_text(result))
+    return 0 if result["valid"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

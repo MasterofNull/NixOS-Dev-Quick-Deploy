@@ -115,7 +115,8 @@ let
          Inferred constraints
          Evidence sources
          Unknowns / next checks
-      5. Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.
+      5. Use `aq-introspection-validate --file <response-file>` or `--text <response>` when you need to verify the answer still satisfies the evidence contract.
+      6. Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.
 
     === KEY PATHS ===
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
