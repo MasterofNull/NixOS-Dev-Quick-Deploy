@@ -163,6 +163,7 @@ def _build_workflow_run_session(
     reasoning_pattern = (
         ((plan.get("metadata") or {}) if isinstance(plan.get("metadata"), dict) else {}).get("reasoning_pattern", {})
     )
+    remote_task_contract = data.get("remote_task_contract") if isinstance(data.get("remote_task_contract"), dict) else None
     session = {
         "session_id": session_id,
         "objective": query,
@@ -181,6 +182,7 @@ def _build_workflow_run_session(
         ) or None,
         "blueprint_selection": blueprint_selection or None,
         "intent_contract": validation["normalized"],
+        "remote_task_contract": remote_task_contract,
         "orchestration": orchestration_payload,
         "orchestration_policy": policy_validation["normalized"],
         "consensus": seeded_consensus,

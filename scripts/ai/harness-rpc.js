@@ -133,24 +133,103 @@ function buildOrchestrationPolicy(args) {
 }
 
 function defaultIntentContract(query) {
-  const normalized = String(query || "").trim() || "workflow run";
+  return intentContractFromRemoteTaskContract(
+    defaultRemoteTaskContract(query, {
+      expectedOutput: `Complete requested workflow task: ${String(query || "")
+        .trim()
+        .slice(0, 120)}`,
+      validation: [
+        "all requested checks complete",
+        "context strategy or blocker documented when the task is long-running",
+      ],
+      depthExpectation: "minimum",
+      constraints: [
+        "follow declarative-first policy",
+        "capture validation evidence",
+        "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
+      ],
+    }),
+  );
+}
+
+function defaultRemoteTaskContract(
+  objective,
+  {
+    constraints = [],
+    expectedOutput = "",
+    timeoutSeconds = 300,
+    validation = [],
+    depthExpectation = "standard",
+  } = {}
+) {
+  const normalized = String(objective || "").trim() || "workflow run";
   return {
-    user_intent: normalized,
-    definition_of_done: `Complete requested workflow task: ${normalized.slice(
-      0,
-      120
-    )}`,
-    depth_expectation: "minimum",
-    spirit_constraints: [
-      "follow declarative-first policy",
-      "capture validation evidence",
-      "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
-    ],
-    no_early_exit_without: [
-      "all requested checks complete",
-      "context strategy or blocker documented when the task is long-running",
-    ],
+    objective: normalized,
+    constraints:
+      constraints.length > 0
+        ? constraints
+        : ["favor declarative-first changes", "capture validation evidence"],
+    expected_output:
+      expectedOutput || `Validated result for: ${normalized.slice(0, 120)}`,
+    timeout_seconds: Math.max(30, Number(timeoutSeconds) || 300),
+    validation:
+      validation.length > 0
+        ? validation
+        : ["all requested checks complete", "blockers or rollback path documented"],
+    depth_expectation: depthExpectation,
   };
+}
+
+function intentContractFromRemoteTaskContract(remoteTaskContract = {}) {
+  const objective = String(remoteTaskContract.objective || "").trim() || "workflow run";
+  const constraints = Array.isArray(remoteTaskContract.constraints)
+    ? remoteTaskContract.constraints.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  const validation = Array.isArray(remoteTaskContract.validation)
+    ? remoteTaskContract.validation.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  const depthExpectation = ["minimum", "standard", "deep"].includes(
+    String(remoteTaskContract.depth_expectation || "standard").trim().toLowerCase()
+  )
+    ? String(remoteTaskContract.depth_expectation || "standard").trim().toLowerCase()
+    : "standard";
+  return {
+    user_intent: objective,
+    definition_of_done:
+      String(remoteTaskContract.expected_output || "").trim() ||
+      `Validated result for: ${objective.slice(0, 120)}`,
+    depth_expectation: depthExpectation,
+    spirit_constraints:
+      constraints.length > 0
+        ? constraints
+        : defaultRemoteTaskContract(objective).constraints,
+    no_early_exit_without:
+      validation.length > 0
+        ? validation
+        : defaultRemoteTaskContract(objective).validation,
+  };
+}
+
+function buildRemoteTaskContract(args, query) {
+  const fromJson = parseJsonArg(args["remote-task-contract"], null);
+  if (fromJson && typeof fromJson === "object" && !Array.isArray(fromJson)) {
+    return fromJson;
+  }
+  const hasExplicitFields =
+    args["task-objective"] ||
+    args["task-constraints"] ||
+    args["task-output"] ||
+    args["task-timeout"] ||
+    args["task-validation"] ||
+    args["task-depth"];
+  if (!hasExplicitFields) return defaultRemoteTaskContract(query);
+  return defaultRemoteTaskContract(args["task-objective"] || query, {
+    constraints: csv(args["task-constraints"]),
+    expectedOutput: args["task-output"] || "",
+    timeoutSeconds: args["task-timeout"] ? Number(args["task-timeout"]) : 300,
+    validation: csv(args["task-validation"]),
+    depthExpectation: args["task-depth"] || "standard",
+  });
 }
 
 async function main() {
@@ -213,7 +292,8 @@ async function main() {
       });
     case "run-start": {
       const query = args.query || args.q || "";
-      const intentContract = defaultIntentContract(query);
+      const remoteTaskContract = buildRemoteTaskContract(args, query);
+      const intentContract = intentContractFromRemoteTaskContract(remoteTaskContract);
       if (args["intent-user"])
         intentContract.user_intent = String(args["intent-user"]);
       if (args["intent-dod"])
@@ -235,6 +315,7 @@ async function main() {
           : 40,
         requesting_agent: args.agent || "human",
         requester_role: args["requester-role"] || "orchestrator",
+        remote_task_contract: remoteTaskContract,
         intent_contract: intentContract,
         orchestration_policy: orchestrationPolicy,
         isolation_profile: args["isolation-profile"] || "",

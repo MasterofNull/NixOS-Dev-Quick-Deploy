@@ -150,6 +150,21 @@ curl -s http://127.0.0.1:8003/workflow/orchestrate \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"orchestrate a multi-agent repo remediation workflow"}'
 
+# Start a persisted workflow run with an explicit remote task contract
+curl -s http://127.0.0.1:8003/workflow/run/start \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query":"summarize remote routing tradeoffs for this NixOS harness change",
+    "remote_task_contract":{
+      "objective":"summarize remote routing tradeoffs for this NixOS harness change",
+      "constraints":["stay declarative-first","capture validation evidence"],
+      "expected_output":"compact tradeoff memo with next action",
+      "timeout_seconds":120,
+      "validation":["aq-qa 0","tier0 gate"],
+      "depth_expectation":"standard"
+    }
+  }'
+
 # Inspect coordinator runtime lanes and delegate a bounded remote task
 curl -s http://127.0.0.1:8003/control/ai-coordinator/status
 curl -s http://127.0.0.1:8003/control/ai-coordinator/delegate \
@@ -177,6 +192,7 @@ The local harness should be the first contact point for humans and local agents:
 - `aq-session-zero` is the required bootstrap before deeper task execution
 - `aq-hints` provides the first ranked workflow steer before mutation
 - `POST /workflow/plan` and `POST /workflow/run/start` are the persisted orchestration entry points
+- prefer `remote_task_contract` for delegated/remote work so objective, constraints, expected output, timeout, and validation remain explicit
 
 The current compatibility alias map is:
 
