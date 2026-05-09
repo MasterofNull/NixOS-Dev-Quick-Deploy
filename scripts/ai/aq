@@ -74,6 +74,7 @@ declare -A COMMAND_MAP=(
   ["gap-import"]="aq-gap-import:standard"
   
   # Runtime operations (standard profile)
+  ["runtime"]="aq-runtime:standard"
   ["runtime-diagnose"]="aq-runtime-diagnose:standard"
   ["runtime-plan"]="aq-runtime-plan:standard"
   ["runtime-remediate"]="aq-runtime-remediate:standard"

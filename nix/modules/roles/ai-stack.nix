@@ -265,6 +265,9 @@ let
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-manage" "$@"
       '')
       # --- Runtime diagnosis & remediation ---
+      (pkgs.writeShellScriptBin "aq-runtime" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-runtime" "$@"
+      '')
       (pkgs.writeShellScriptBin "aq-runtime-diagnose" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-runtime-diagnose" "$@"
       '')
@@ -1548,6 +1551,7 @@ in {
             aq-capability-patch-apply   - Apply bounded capability patches
 
             --- Runtime diagnosis ---
+            aq-runtime           - Unified runtime dispatcher (diagnose|plan|act|remediate)
             aq-runtime-diagnose  - Generic service/runtime diagnosis
             aq-runtime-plan      - Multi-preset runtime incident planner
             aq-runtime-act       - Plan + select recommended runtime action
