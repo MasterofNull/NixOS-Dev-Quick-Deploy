@@ -1304,3 +1304,43 @@ Validation (2026-05-08):
 - tier0-validation-gate.sh: 8/8 gates PASS
 - python3 scripts/testing/test-aq-editor-rescue.py: PASS
 - home-manager switch confirmed: Continue config version 30.0 valid, 0.5.2 PASS
+
+---
+
+## Phase 28 — Guarded Execution & Runtime Safety Gating
+
+Status: `complete` (2026-05-08)
+Plan file: `.agents/plans/phase-28-guarded-execution-safety-gating.md`
+
+Closed the P0 parity gap: "Guarded tool execution — runtime enforcement layer" and
+"Planner/executor separation with explicit safety modes." Every delegation through the
+DELEGATE phase now passes a blast-radius gate before execution proceeds. High-blast-radius
+operations are queued for approval (review mode) or blocked outright (strict mode).
+
+Key deliverables:
+- `ai-stack/mcp-servers/hybrid-coordinator/extensions/blast_radius_classifier.py` — pattern-based
+  classifier (critical/high/medium/low tiers); classify() + batch_classify() + max_tier()
+- `ai-stack/mcp-servers/hybrid-coordinator/workflow/safety_gate.py` — evaluate() + GateResult;
+  open/review/strict mode enforcement; gate log per session
+- `ai-stack/mcp-servers/hybrid-coordinator/workflow/lifecycle_fsm.py` — extended LifecycleSession
+  with safety_mode (default "open") + safety_gate_log fields; backward compatible via setdefault
+- `ai-stack/mcp-servers/hybrid-coordinator/workflow/evidence_safety_handlers.py` — 2 new routes:
+  POST /control/safety/gate (set mode) + GET /control/safety/gate/{session_id} (read state)
+- `ai-stack/mcp-servers/hybrid-coordinator/workflow/intake_gateway.py` — gate call wired at
+  DELEGATE → VALIDATE transition; blocked sessions advance to ABORTED with gate reason
+- `scripts/testing/test-blast-radius-classifier.py` — 49 pattern tests (all pass)
+- `scripts/testing/test-safety-gate.py` — 28 gate policy tests per safety_mode (all pass)
+- `scripts/ai/aq-qa` — check 0.9.1 (POST /control/safety/gate health check)
+- `docs/operations/SAFETY-GATE-GUIDE.md` — blast radius table, safety mode guide, gate log reading
+
+Parity matrix updates:
+- "Guarded tool execution" → Near parity (Phase 28)
+- "Planner/executor separation with explicit safety modes" → Near parity (Phase 28)
+
+Validation (2026-05-08):
+- python3 -m py_compile: blast_radius_classifier.py, safety_gate.py, lifecycle_fsm.py,
+  evidence_safety_handlers.py, intake_gateway.py — all PASS
+- python3 scripts/testing/test-blast-radius-classifier.py: 49 passed / 0 failed
+- python3 scripts/testing/test-safety-gate.py: 28 passed / 0 failed
+- aq-qa 0: 41 passed / 0 failed / 1 skipped (check 0.9.1 green)
+- tier0-validation-gate.sh: 8/8 gates PASS (599 roadmap checks)
