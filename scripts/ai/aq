@@ -56,6 +56,7 @@ declare -A COMMAND_MAP=(
   # Context and hints (standard profile)
   ["hints"]="aq-hints:standard"
   ["context-bootstrap"]="aq-context-bootstrap:standard"
+  ["feedback-loop"]="aq-feedback-loop:standard"
   ["context-card"]="aq-context-card:standard"
   ["context-manage"]="aq-context-manage:standard"
   ["memory"]="aq-memory:standard"
