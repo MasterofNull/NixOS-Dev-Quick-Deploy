@@ -77,9 +77,15 @@ def main() -> int:
         "Continue config should steer repeated editor failures toward checkpoint-and-fresh-session recovery",
     )
     assert_true(
-        "WRAPPER-FIRST: Prefer harness MCP tools and aq-* wrappers over raw curl" in home_base
+        "WRAPPER-FIRST: Prefer Continue MCP tools and aq-* wrappers over raw curl" in home_base
         and "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ]" in home_base,
         "Continue config should prevent direct raw HTTP misuse and unquoted shell URL failures",
+    )
+    assert_true(
+        "CONTINUE MCP NAMING: In Continue, Harness MCP tools are exposed with an `mcp_server_` prefix." in home_base
+        and "mcp_server_recall_memory" in home_base
+        and "aq-operational-perspective --task" in home_base,
+        "Continue config should document the real Continue MCP naming surface, fallback memory tool, and operational introspection CLI path",
     )
     assert_true(
         "LANE SELECTION: Use local-agent for bounded repo/runtime checks" in home_base
@@ -87,11 +93,11 @@ def main() -> int:
         "Continue config should distinguish constrained local lanes from larger-context remote lanes",
     )
     assert_true(
-        '"__configVersion": "31.0"' in home_base,
+        '"__configVersion": "33.0"' in home_base,
         "Continue config version should advance when the generated operator contract changes",
     )
     assert_true(
-        '"31.0"' in script,
+        '"33.0"' in script,
         "aq-qa should accept the current Continue config schema version",
     )
 

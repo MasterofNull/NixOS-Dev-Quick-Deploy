@@ -192,7 +192,7 @@ switchboard_url = sys.argv[2].rstrip("/")
 with open(cfg_path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-if str(data.get("__configVersion") or "") not in {"23.0", "24.0", "25.0", "26.0", "27.0", "28.0", "29.0", "30.0", "31.0"}:
+if str(data.get("__configVersion") or "") not in {"23.0", "24.0", "25.0", "26.0", "27.0", "28.0", "29.0", "30.0", "31.0", "32.0", "33.0"}:
     raise SystemExit(1)
 
 with urlopen(f"{switchboard_url}/health", timeout=5) as response:
