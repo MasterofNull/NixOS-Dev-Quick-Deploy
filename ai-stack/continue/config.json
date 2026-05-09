@@ -1,23 +1,24 @@
 {
-  "__configVersion": "31.0",
+  "__configVersion": "33.0",
   "__frozen": "DO NOT MODIFY. Claude+Codex CLI Bridge models must remain. contextLength/maxTokens for Local Agent tuned for v1.3.38. aq-hints removed — not supported in Continue v1.3.38 (AGENTS.md profile card provides context instead).",
   "rules": [
     "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
     "CONVERSATIONAL GUARD: For greetings, casual chat, or questions not about code or the harness, respond directly in plain text. Do NOT search the codebase, invoke MCP tools, or run any commands. Example: 'how are you today?' gets a plain text reply, no tool calls.",
     "HARNESS-FIRST: Before answering questions about files or services, use tools (read_file, run_terminal_command, grep_search) to search first. Never guess.",
-    "TOOL DISCIPLINE: Use MCP tools for harness ops: harness_health, get_hints, hybrid_search, get_working_memory, store_memory, query_aidb, workflow_plan, get_prsi_pending, prsi_orchestrate.",
-    "WRAPPER-FIRST: Prefer harness MCP tools and aq-* wrappers over raw curl or handwritten HTTP calls. If aq-memory, get_working_memory, query_aidb, or workflow_plan can answer the task, use them instead of direct endpoint probing.",
+    "CONTINUE MCP NAMING: In Continue, Harness MCP tools are exposed with an `mcp_server_` prefix. Use the exact surfaced names from the current client session, such as `mcp_server_get_working_memory`, `mcp_server_recall_memory`, `mcp_server_harness_health`, `mcp_server_get_hints`, `mcp_server_hybrid_search`, `mcp_server_query_aidb`, `mcp_server_workflow_plan`, `mcp_server_get_prsi_pending`, and `mcp_server_prsi_orchestrate`.",
+    "TOOL DISCIPLINE: Use Continue MCP tools for harness ops: `mcp_server_harness_health`, `mcp_server_get_hints`, `mcp_server_hybrid_search`, `mcp_server_get_working_memory`, `mcp_server_recall_memory`, `mcp_server_store_memory`, `mcp_server_query_aidb`, `mcp_server_workflow_plan`, `mcp_server_get_prsi_pending`, `mcp_server_prsi_orchestrate`.",
+    "WRAPPER-FIRST: Prefer Continue MCP tools and aq-* wrappers over raw curl or handwritten HTTP calls. If `mcp_server_get_working_memory`, `mcp_server_recall_memory`, `mcp_server_query_aidb`, `mcp_server_workflow_plan`, or `aq-memory` can answer the task, use them instead of direct endpoint probing.",
     "AGENT MODE: In agent mode, issue tool calls directly — do not announce them. Do not say 'I will now call...' just call the tool.",
-    "SESSION START: Only call get_working_memory + harness_health when beginning a technical harness task. For conversational messages, respond directly. NEVER call aq-prime — it is a terminal CLI for the human operator, not an MCP tool.",
-    "SEARCH-FIRST: Use get_hints MCP tool for ranked workflow guidance before implementing anything.",
-    "INTROSPECTION MODE: For questions about your operation, capabilities, limitations, memory, orchestration, or collaboration, start with aq-feedback-loop --task \"<prompt>\" --format json or aq-context-bootstrap --task \"<prompt>\" --format json; prefer aq-context-manage summary --task \"<prompt>\" --json and embedded-assist as compact search/context helpers, and if they select context-offload, execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering. Prefer get_hints, harness_health, get_working_memory, and query_aidb before shell fallbacks like aq-report --format=json, aq-qa 0 --json, or aq-memory search.",
+    "SESSION START: Only call `mcp_server_get_working_memory` + `mcp_server_harness_health` when beginning a technical harness task. If `mcp_server_get_working_memory` is unavailable in the current session, fall back to `mcp_server_recall_memory` with a bounded continuation query. If `mcp_server_harness_health` is unavailable, run `aq-qa 0 --json` via terminal. For conversational messages, respond directly. NEVER call aq-prime — it is a terminal CLI for the human operator, not an MCP tool.",
+    "SEARCH-FIRST: Use `mcp_server_get_hints` for ranked workflow guidance before implementing anything.",
+    "INTROSPECTION MODE: For questions about your operation, capabilities, limitations, memory, orchestration, or collaboration, start with `aq-operational-perspective --task \"<prompt>\" --format json` when terminal execution is available. Otherwise use aq-feedback-loop --task \"<prompt>\" --format json or aq-context-bootstrap --task \"<prompt>\" --format json; prefer aq-context-manage summary --task \"<prompt>\" --json and embedded-assist as compact search/context helpers, and if they select context-offload, execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering. Prefer `mcp_server_get_hints`, `mcp_server_harness_health`, `mcp_server_get_working_memory`, `mcp_server_recall_memory`, and `mcp_server_query_aidb` before broader shell fallbacks.",
     "INTROSPECTION OUTPUT: Separate observed signals, inferred constraints, evidence sources, and unknowns. Do not present unverified behavior as fact.",
     "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
     "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
     "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
     "LANE SELECTION: Use local-agent for bounded repo/runtime checks, health, monitoring, and background-safe harness work. Use continue-local for compact editor help. Use remote-free for lightweight synthesis, remote-reasoning for architecture/policy or larger-context judgment, remote-coding for implementation, and remote-tool-calling only for strict tool schemas.",
     "CONTEXT STRATEGY: Local lanes must aggressively offload to harness memory and compact often. Remote lanes may use their larger context windows when justified, but should still prefer retrieval-first handoffs over replaying long transcripts.",
-    "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from get_working_memory or aq-memory recall.",
+    "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from `mcp_server_get_working_memory`, `mcp_server_recall_memory`, or aq-memory recall.",
     "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
     "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ] before running shell commands. Never issue an unquoted AIDB or coordinator query URL.",
     "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
@@ -29,7 +30,7 @@
       "title": "Local Agent (Harness-Aware)",
       "provider": "openai",
       "apiKey": "local-llama-cpp",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:8085/v1",
       "model": "active.gguf",
       "requestOptions": {
         "timeout": 300000,
@@ -44,7 +45,7 @@
       "title": "Continue Local (Compact)",
       "provider": "openai",
       "apiKey": "local-llama-cpp",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:8085/v1",
       "model": "active.gguf",
       "requestOptions": {
         "headers": {
@@ -76,7 +77,7 @@
       "title": "Remote Coding (Switchboard)",
       "provider": "openai",
       "apiKey": "dummy",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:8085/v1",
       "model": "active.gguf",
       "requestOptions": {
         "headers": {
@@ -90,7 +91,7 @@
       "title": "Remote Reasoning (Switchboard)",
       "provider": "openai",
       "apiKey": "dummy",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:8085/v1",
       "model": "active.gguf",
       "requestOptions": {
         "headers": {
@@ -104,7 +105,7 @@
       "title": "Remote Free (Switchboard)",
       "provider": "openai",
       "apiKey": "dummy",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:8085/v1",
       "model": "active.gguf",
       "requestOptions": {
         "headers": {
@@ -118,7 +119,7 @@
       "title": "Remote Gemini (Switchboard)",
       "provider": "openai",
       "apiKey": "dummy",
-      "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+      "apiBase": "http://127.0.0.1:8085/v1",
       "model": "active.gguf",
       "requestOptions": {
         "headers": {
@@ -133,7 +134,7 @@
     "title": "Tab Autocomplete (Continue Local)",
     "provider": "openai",
     "apiKey": "local-llama-cpp",
-    "apiBase": "http://127.0.0.1:${SWITCHBOARD_PORT:-8085}/v1",
+    "apiBase": "http://127.0.0.1:8085/v1",
     "model": "active.gguf",
     "requestOptions": {
       "headers": {
