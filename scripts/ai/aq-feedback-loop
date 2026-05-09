@@ -142,11 +142,25 @@ def build_loop(args: argparse.Namespace, bootstrap: dict, feedback_text: str) ->
             if card in recommended_cards:
                 recommended_cards.remove(card)
             recommended_cards.insert(0, card)
-    starter_commands = [
-        f"aq-context-bootstrap --task {json.dumps(task)} --format json",
-        f"aq-hints {json.dumps(task)} --format=json --agent=codex",
+    continuation_commands = list(bootstrap.get("continuation_startup_commands", []))
+    if recommended_scope == "context-offload" and not continuation_commands:
+        continuation_commands = [
+            f"aq-memory search {json.dumps(task)} --project ai-stack --limit 5",
+            "aq-context-card --card context-offload --level standard",
+            "aq-context-manage check",
+            f"harness-rpc.js run-start --query {json.dumps(task)} --blueprint long-running-context-offload --intent-depth standard",
+        ]
+    preflight_commands = list(continuation_commands)
+    if not continuation_commands:
+        preflight_commands.append(f"aq-context-bootstrap --task {json.dumps(task)} --format json")
+    preflight_commands.extend([
         "aq-qa 0 --json",
         "aq-report --since=1h --format=json",
+    ])
+    starter_commands = [
+        *preflight_commands,
+        f"aq-context-bootstrap --task {json.dumps(task)} --format json",
+        f"aq-hints {json.dumps(task)} --format=json --agent=codex",
         (
             "aq-context-manage checkpoint "
             f"--task {json.dumps(task)} "
@@ -162,6 +176,11 @@ def build_loop(args: argparse.Namespace, bootstrap: dict, feedback_text: str) ->
         "scripts/governance/tier0-validation-gate.sh --pre-commit",
     ]
     execution_loop = [
+        {
+            "phase": "preflight",
+            "summary": "Recall compact context and verify harness health before planning or execution.",
+            "commands": preflight_commands,
+        },
         {
             "phase": "prd",
             "summary": "Capture objective, constraints, and success criteria in a durable design note.",
@@ -221,6 +240,7 @@ def build_loop(args: argparse.Namespace, bootstrap: dict, feedback_text: str) ->
             "prd": args.prd_path,
             "plan": args.plan_path,
         },
+        "preflight_commands": preflight_commands,
         "starter_commands": starter_commands,
         "workstreams": WORKSTREAMS,
         "execution_loop": execution_loop,
@@ -239,8 +259,12 @@ def render_text(payload: dict) -> str:
         "Artifacts:",
         f"  PRD:  {payload['artifact_paths']['prd']}",
         f"  Plan: {payload['artifact_paths']['plan']}",
-        "Starter commands:",
+        "Preflight commands:",
     ]
+    lines.extend(f"  - {command}" for command in payload["preflight_commands"])
+    lines.extend([
+        "Starter commands:",
+    ])
     lines.extend(f"  - {command}" for command in payload["starter_commands"])
     lines.append("Workstreams:")
     for item in payload["workstreams"]:
