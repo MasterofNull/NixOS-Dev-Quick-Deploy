@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 
-_CONFIG_PATH = Path(__file__).with_name("config.py")
+_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.py"
 os.environ["AI_STRICT_ENV"] = "false"
 sys.path.insert(0, str(_CONFIG_PATH.parent))
 sys.path.insert(0, str(_CONFIG_PATH.parent.parent))
@@ -53,3 +53,30 @@ def test_default_local_prompt_workflow_includes_structured_request_scaffold():
         "Objective -> Constraints -> Context -> Validation -> Route" in step
         for step in workflow
     )
+    assert any(
+        "gather bounded evidence first with harness tools" in step
+        for step in workflow
+    )
+    assert any(
+        "Do not claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it." in step
+        for step in workflow
+    )
+
+
+def test_default_local_prompt_output_sections_require_evidence_buckets():
+    output_sections = Config.AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS
+
+    assert output_sections == [
+        "observed_signals",
+        "inferred_constraints",
+        "evidence_sources",
+        "unknowns_or_next_checks",
+    ]
+
+
+def test_built_local_system_prompt_mentions_evidence_contract():
+    prompt = Config.build_local_system_prompt()
+
+    assert "Keep answers grounded in observed repo state and captured command evidence." in prompt
+    assert "- observed_signals" in prompt
+    assert "- evidence_sources" in prompt
