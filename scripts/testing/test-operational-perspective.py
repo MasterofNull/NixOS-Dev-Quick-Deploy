@@ -46,7 +46,10 @@ def main() -> int:
                 "qa_check": {"p95_ms": 9500, "ok_pct": 100.0, "calls": 3, "client_error_count": 0, "server_error_count": 0, "unknown_count": 0},
             },
             "route_search_latency_decomposition": {"overall_p95_ms": 8200, "actionable_p95_ms": 6100, "client_error_count": 1, "backend_unclassified_count": 0},
-            "remote_profile_utilization": {"available": False, "total_calls": 0, "top_profiles": []},
+            "remote_profile_utilization": {"available": True, "total_calls": 4, "success_pct": 50.0, "fallback_applied": 2, "top_profiles": [["remote-coding", 3]], "top_backend_reason_classes": [["rate_limit", 2]]},
+            "delegated_prompt_failures": {"available": True, "total_failures": 2, "salvageable_pct": 50.0, "recovered_failures": 1, "top_failure_classes": [["schema_mismatch", 2]]},
+            "delegated_prompt_failure_windows": {"trend": {"status": "warn", "summary": "failures rising"}},
+            "provider_fallback_recovery": {"recovered_count": 2, "recovered_pct": 25.0, "diagnosis": "provider_fallback_pressure", "actions": ["tighten retries"]},
             "llama_benchmark_summary": {"latest_run": {"run_id": "bench-1", "avg_warm_latency_s": 2.4, "peak_rss_mb": 24500, "avg_gpu_busy_percent": 61}},
         },
         {"recommended_scope": "context-offload", "preflight_commands": ["aq-qa 0 --json"]},
@@ -58,8 +61,10 @@ def main() -> int:
 
     assert_true(any("Phase-0 harness health" in item for item in constraints), "expected QA constraint")
     assert_true(any("Memory recall remains a bottleneck" in item for item in constraints), "expected memory recall constraint")
-    assert_true(any("remote-collaboration telemetry is sparse" in item for item in constraints), "expected remote telemetry constraint")
+    assert_true(any("Delegated remote failures are present" in item for item in constraints), "expected delegated failure constraint")
+    assert_true(any("Remote-provider fallback recovery is active" in item for item in constraints), "expected provider fallback constraint")
     assert_true(any("Exact context-window usage" in item for item in unknowns), "expected context usage unknown")
+    assert_true(observed["remote_collaboration"]["memory_sync_policy"].startswith("checkpoint-first"), "expected explicit memory sync policy")
 
     fake_payload = {
         "observed_signals": observed,
@@ -81,7 +86,14 @@ def main() -> int:
             if "aq-qa" in joined:
                 return {"passed": 41, "failed": 0, "skipped": 0}, {"command": cmd, "status": "ok"}
             if "aq-report" in joined:
-                return {"tool_performance": {}, "rag_posture": {}, "remote_profile_utilization": {"available": False, "total_calls": 0}}, {"command": cmd, "status": "ok"}
+                return {
+                    "tool_performance": {},
+                    "rag_posture": {},
+                    "remote_profile_utilization": {"available": True, "total_calls": 2, "success_pct": 50.0, "fallback_applied": 1, "top_profiles": [["remote-gemini", 2]], "top_backend_reason_classes": [["cooldown", 1]]},
+                    "delegated_prompt_failures": {"available": True, "total_failures": 1, "salvageable_pct": 100.0, "recovered_failures": 1, "top_failure_classes": [["schema_mismatch", 1]]},
+                    "delegated_prompt_failure_windows": {"trend": {"status": "warn", "summary": "recent failures above baseline"}},
+                    "provider_fallback_recovery": {"recovered_count": 1, "recovered_pct": 50.0, "diagnosis": "provider_fallback_pressure", "actions": ["tighten retries"]},
+                }, {"command": cmd, "status": "ok"}
             if "aq-feedback-loop" in joined:
                 return {"recommended_scope": "harness-first", "preflight_commands": ["aq-qa 0 --json"], "context_assist_profiles": ["embedded-assist"]}, {"command": cmd, "status": "ok"}
             if "aq-context-manage" in joined:
@@ -101,6 +113,7 @@ def main() -> int:
         assert_true(payload["observed_signals"]["preflight"]["context_assist_profiles"] == ["embedded-assist"], "expected embedded assist helper lane")
         assert_true(payload["observed_signals"]["recent_session_summary"]["summary_lines"][0].startswith("Latest checkpoint event:"), "expected compact session summary inclusion")
         assert_true(payload["observed_signals"]["memory_recall_hits"]["items"][0]["fact_id"] == "1", "expected memory recall inclusion")
+        assert_true(payload["observed_signals"]["remote_collaboration"]["provider_fallback_recovery"]["recovered_count"] == 1, "expected remote fallback recovery inclusion")
     finally:
         module.parse_args = original_parse_args
         module._run_json = original_run_json

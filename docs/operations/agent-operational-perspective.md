@@ -38,6 +38,8 @@ The command is intentionally explicit about what is not currently measurable.
 It should label unsupported metrics as unknown instead of fabricating them.
 If the evidence bundle includes `context_assist_profiles: ["embedded-assist"]`,
 use that lane as the compact search/context helper before broader synthesis.
+The `remote_collaboration` block summarizes current remote success/fallback
+posture and states the current memory-sync policy explicitly.
 
 ## Validation
 

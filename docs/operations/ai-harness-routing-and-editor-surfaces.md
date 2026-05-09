@@ -167,6 +167,24 @@ The command center now exposes the requested graph surfaces:
 The dashboard configuration panel links to those graph surfaces and summarizes
 their current node/edge counts so operators can discover them from the main UI.
 
+## Remote Collaboration Observability
+
+Use existing harness telemetry instead of ad hoc remote-agent narratives:
+
+- `aq-report --since=1h --format=json`
+- `aq-operational-perspective --task "<task>" --format json`
+
+Current posture:
+
+- remote latency/success/fallback telemetry comes from delegated profile usage,
+  delegated failure windows, and provider fallback recovery
+- remote task safety remains contract-first: objective, constraints,
+  expected output, timeout, and validation stay explicit
+- memory consistency is checkpoint-first shared memory, not automatic
+  strong-consistency sync across remote lanes
+- if remote fallback or rejection occurs, checkpoint accepted local decisions
+  before re-delegating or widening context
+
 ## Rebuild and Switch Note
 
 If `nixos-rebuild switch --flake .#hyperd-ai-dev` fails with:
