@@ -54,7 +54,7 @@ def test_default_local_prompt_workflow_includes_structured_request_scaffold():
         for step in workflow
     )
     assert any(
-        "gather bounded evidence first with harness tools" in step
+        "aq-feedback-loop --task" in step and "aq-context-bootstrap --task" in step and "continuation_startup_commands" in step
         for step in workflow
     )
     assert any(
@@ -78,5 +78,7 @@ def test_built_local_system_prompt_mentions_evidence_contract():
     prompt = Config.build_local_system_prompt()
 
     assert "Keep answers grounded in observed repo state and captured command evidence." in prompt
+    assert "aq-feedback-loop --task" in prompt
+    assert "continuation_startup_commands" in prompt
     assert "- observed_signals" in prompt
     assert "- evidence_sources" in prompt

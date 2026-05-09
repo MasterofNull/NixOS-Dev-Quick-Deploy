@@ -53,6 +53,14 @@ def main() -> int:
         "switchboard local-agent card should document evidence-first introspection guidance",
     )
     assert_true(
+        'aq-feedback-loop --task "<prompt>" --format json' in switchboard_text,
+        "switchboard local-agent card should route introspection prompts through the feedback loop first",
+    )
+    assert_true(
+        "preflight_commands or continuation_startup_commands" in switchboard_text,
+        "switchboard local-agent card should require following context-offload startup packets before analysis",
+    )
+    assert_true(
         "Observed signals" in switchboard_text and "Evidence sources" in switchboard_text,
         "switchboard local-agent card should require evidence-oriented introspection output buckets",
     )
