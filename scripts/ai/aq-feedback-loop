@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""
+aq-feedback-loop - Turn agent feedback into a bounded harness execution loop.
+
+This tool packages the existing harness primitives into one operator-facing loop:
+PRD -> plan -> memory checkpoint -> execution -> validation -> commit.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import textwrap
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CONTEXT_BOOTSTRAP = REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap"
+DEFAULT_PRD_PATH = "docs/development/LOCAL-AGENT-FEEDBACK-EXECUTION-LOOP-PRD-2026-05.md"
+DEFAULT_PLAN_PATH = ".agents/plans/phase-29-feedback-driven-agent-loop.md"
+
+WORKSTREAMS = [
+    {
+        "id": "context-injection-preflight",
+        "goal": "Start long-running and continuation tasks with compact recalled context instead of transcript replay.",
+        "repo_paths": [
+            "scripts/ai/aq-context-bootstrap",
+            "scripts/ai/aq-context-manage",
+            "docs/operations/agent-context-bootstrap.md",
+            "config/workflow-blueprints.json",
+        ],
+        "acceptance": [
+            "Feedback loop recommends aq-context-bootstrap and memory recall before broad exploration.",
+            "Long-running work has an explicit checkpoint command and run-start blueprint.",
+        ],
+    },
+    {
+        "id": "health-gated-execution",
+        "goal": "Require a bounded health check before multi-step runtime or service work.",
+        "repo_paths": [
+            "scripts/ai/aq-qa",
+            "scripts/governance/tier0-validation-gate.sh",
+            "nix/modules/services/switchboard.nix",
+        ],
+        "acceptance": [
+            "Execution loop surfaces aq-qa 0 --json before runtime-heavy work.",
+            "Validation loop keeps tier0 gate and qa explicit before commit.",
+        ],
+    },
+    {
+        "id": "remote-task-schema",
+        "goal": "Make remote delegation requests use a compact, explicit task contract.",
+        "repo_paths": [
+            "ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_session_handlers.py",
+            "ai-stack/mcp-servers/hybrid-coordinator/extensions/harness_sdk.py",
+            "docs/operations/ai-stack-tooling-exposure.md",
+        ],
+        "acceptance": [
+            "Remote task requests name objective, constraints, expected output, timeout, and validation.",
+            "Delegation and orchestration use one documented contract instead of ad hoc prose.",
+        ],
+    },
+    {
+        "id": "evidence-first-introspection",
+        "goal": "Make local-agent self-reporting separate observed evidence from inference and unknowns.",
+        "repo_paths": [
+            "nix/modules/core/options.nix",
+            "ai-stack/mcp-servers/hybrid-coordinator/core/config.py",
+            "nix/modules/services/switchboard.nix",
+        ],
+        "acceptance": [
+            "Introspection prompts use observed_signals, inferred_constraints, evidence_sources, and unknowns_or_next_checks.",
+            "Unsupported claims about memory writes or remote-sync behavior are rejected by policy/tests.",
+        ],
+    },
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Convert agent feedback into a bounded harness execution loop.")
+    parser.add_argument("--task", required=True, help="Primary engineering objective.")
+    parser.add_argument("--feedback-file", help="Optional file containing the feedback text to ground the loop.")
+    parser.add_argument("--prd-path", default=DEFAULT_PRD_PATH, help="Target PRD path to recommend.")
+    parser.add_argument("--plan-path", default=DEFAULT_PLAN_PATH, help="Target plan path to recommend.")
+    parser.add_argument("--format", dest="fmt", default="text", choices=["text", "json"], help="Output format.")
+    return parser.parse_args()
+
+
+def load_feedback(args: argparse.Namespace) -> str:
+    if not args.feedback_file:
+        return ""
+    return Path(args.feedback_file).read_text(encoding="utf-8")
+
+
+def bootstrap_task(task: str) -> dict:
+    command = [
+        "python3",
+        str(CONTEXT_BOOTSTRAP),
+        "--task",
+        task,
+        "--format",
+        "json",
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
+def feedback_signals(feedback_text: str) -> list[str]:
+    lowered = feedback_text.lower()
+    signals: list[str] = []
+    checks = [
+        ("context-pressure", ["context pressure", "context window", "attention dilution", "context saturation"]),
+        ("tool-latency", ["latency", "round-trip", "tool call", "integration latency"]),
+        ("health-gating", ["health check", "aq-qa 0", "broken foundation", "health gate", "health-gate"]),
+        ("memory-discipline", ["aidb", "memory", "write after every significant action", "memory write"]),
+        ("remote-contracts", ["json schema", "remote agent", "timeout", "standardized task schema"]),
+    ]
+    for signal_id, tokens in checks:
+        if any(token in lowered for token in tokens):
+            signals.append(signal_id)
+    return signals
+
+
+def prefer_context_offload(task: str, signal_ids: list[str]) -> bool:
+    lowered = task.lower()
+    if "context-injection" in lowered or "context injection" in lowered:
+        return True
+    if "evidence-first introspection" in lowered:
+        return True
+    return "context-pressure" in signal_ids or "memory-discipline" in signal_ids
+
+
+def build_loop(args: argparse.Namespace, bootstrap: dict, feedback_text: str) -> dict:
+    task = args.task.strip()
+    signal_ids = feedback_signals(feedback_text)
+    recommended_scope = "context-offload" if prefer_context_offload(task, signal_ids) else bootstrap.get("scope", "")
+    recommended_cards = list(bootstrap.get("recommended_card_order", []))
+    if recommended_scope == "context-offload":
+        preferred = ["context-offload", "token-discipline", "harness-first"]
+        for card in reversed(preferred):
+            if card in recommended_cards:
+                recommended_cards.remove(card)
+            recommended_cards.insert(0, card)
+    starter_commands = [
+        f"aq-context-bootstrap --task {json.dumps(task)} --format json",
+        f"aq-hints {json.dumps(task)} --format=json --agent=codex",
+        "aq-qa 0 --json",
+        "aq-report --since=1h --format=json",
+        (
+            "aq-context-manage checkpoint "
+            f"--task {json.dumps(task)} "
+            "--decision \"PRD and slice plan captured\" "
+            "--next-step \"implement the highest-value validated slice\""
+        ),
+        "git status --short",
+    ]
+    validation_commands = [
+        "python3 scripts/testing/check-feedback-loop.sh",
+        "python3 scripts/testing/test-local-agent-config.py",
+        "python3 scripts/testing/test-aq-qa-continue-config.py",
+        "scripts/governance/tier0-validation-gate.sh --pre-commit",
+    ]
+    execution_loop = [
+        {
+            "phase": "prd",
+            "summary": "Capture objective, constraints, and success criteria in a durable design note.",
+            "commands": [
+                f"edit {args.prd_path}",
+            ],
+        },
+        {
+            "phase": "plan",
+            "summary": "Translate the feedback into bounded workstreams and acceptance checks.",
+            "commands": [
+                f"edit {args.plan_path}",
+                f"aq-context-bootstrap --task {json.dumps(task)} --format json",
+            ],
+        },
+        {
+            "phase": "memory",
+            "summary": "Checkpoint the decision and next step before deeper implementation work.",
+            "commands": [
+                (
+                    "aq-context-manage checkpoint "
+                    f"--task {json.dumps(task)} "
+                    "--decision \"feedback loop prepared\" "
+                    "--next-step \"execute the next validated slice\""
+                ),
+                f"aq-memory search {json.dumps(task)} --project ai-stack --limit 5",
+            ],
+        },
+        {
+            "phase": "execute",
+            "summary": "Apply one reversible slice at a time.",
+            "commands": [
+                "git diff --stat",
+                "python3 -m py_compile <changed-python-files>",
+            ],
+        },
+        {
+            "phase": "validate",
+            "summary": "Re-run explicit validation before commit.",
+            "commands": validation_commands,
+        },
+        {
+            "phase": "commit",
+            "summary": "Stage only the slice files and commit with a scoped message.",
+            "commands": [
+                "git add <slice-files>",
+                "git commit -m \"feat(agent-workflow): add feedback execution loop\"",
+            ],
+        },
+    ]
+    return {
+        "objective": task,
+        "recommended_scope": recommended_scope,
+        "recommended_cards": recommended_cards,
+        "feedback_signals": signal_ids,
+        "artifact_paths": {
+            "prd": args.prd_path,
+            "plan": args.plan_path,
+        },
+        "starter_commands": starter_commands,
+        "workstreams": WORKSTREAMS,
+        "execution_loop": execution_loop,
+        "validation_commands": validation_commands,
+        "commit_messages": [
+            "feat(agent-workflow): add feedback execution loop",
+            "docs(agent-workflow): capture local-agent feedback PRD",
+        ],
+    }
+
+
+def render_text(payload: dict) -> str:
+    lines = [
+        f"Objective: {payload['objective']}",
+        f"Scope: {payload['recommended_scope']}",
+        "Artifacts:",
+        f"  PRD:  {payload['artifact_paths']['prd']}",
+        f"  Plan: {payload['artifact_paths']['plan']}",
+        "Starter commands:",
+    ]
+    lines.extend(f"  - {command}" for command in payload["starter_commands"])
+    lines.append("Workstreams:")
+    for item in payload["workstreams"]:
+        lines.append(f"  - {item['id']}: {item['goal']}")
+    lines.append("Execution loop:")
+    for phase in payload["execution_loop"]:
+        lines.append(f"  - {phase['phase']}: {phase['summary']}")
+    lines.append("Validation:")
+    lines.extend(f"  - {command}" for command in payload["validation_commands"])
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    feedback_text = load_feedback(args)
+    bootstrap = bootstrap_task(args.task)
+    payload = build_loop(args, bootstrap, feedback_text)
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(render_text(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

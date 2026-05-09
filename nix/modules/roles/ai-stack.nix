@@ -255,6 +255,9 @@ let
       (pkgs.writeShellScriptBin "aq-context-bootstrap" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-bootstrap" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-feedback-loop" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-feedback-loop" "$@"
+      '')
       (pkgs.writeShellScriptBin "aq-context-card" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-card" "$@"
       '')
@@ -1521,6 +1524,7 @@ in {
             aqd              - Main workflow CLI (aqd workflows list)
             aq-prime         - Progressive disclosure agent onboarding
             aq-context-bootstrap - Recommend minimal context for a task
+            aq-feedback-loop - Convert agent feedback into a PRD/plan/checkpoint loop
             aq-context-card  - Progressive-disclosure context cards
             aq-context-manage - Context lifecycle management
             workflow-primer  - Read-only session priming
