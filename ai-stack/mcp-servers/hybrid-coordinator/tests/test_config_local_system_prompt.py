@@ -58,6 +58,10 @@ def test_default_local_prompt_workflow_includes_structured_request_scaffold():
         for step in workflow
     )
     assert any(
+        "execute sanctioned aq-*" in step
+        for step in workflow
+    )
+    assert any(
         "Do not claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it." in step
         for step in workflow
     )
@@ -80,5 +84,6 @@ def test_built_local_system_prompt_mentions_evidence_contract():
     assert "Keep answers grounded in observed repo state and captured command evidence." in prompt
     assert "aq-feedback-loop --task" in prompt
     assert "continuation_startup_commands" in prompt
+    assert "execute sanctioned aq-*" in prompt
     assert "- observed_signals" in prompt
     assert "- evidence_sources" in prompt
