@@ -31,6 +31,7 @@ import asyncio
 import json
 import os
 import pathlib
+import shutil
 import sys
 import time
 
@@ -65,6 +66,17 @@ MAX_TOOL_ROUNDS = int(os.environ.get("AGENT_MAX_TOOL_ROUNDS", "3"))
 STREAMING_MODE = (
     os.environ.get("AGENT_STREAMING", "false").lower() == "true" and not TOOLS_ENABLED
 )
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+_ARG_BLOCKLIST_CHARS = set(";&|><`\n\r")
+_AQ_QA_PHASES = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all", "phase0", "phase1", "phase2", "phase3"}
+_ALLOWED_HARNESS_CLI_TOOLS = {
+    "aq-qa": REPO_ROOT / "scripts" / "ai" / "aq-qa",
+    "aq-report": REPO_ROOT / "scripts" / "ai" / "aq-report",
+    "aq-memory": REPO_ROOT / "scripts" / "ai" / "aq-memory",
+    "aq-context-bootstrap": REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap",
+    "aq-feedback-loop": REPO_ROOT / "scripts" / "ai" / "aq-feedback-loop",
+    "aq-runtime": REPO_ROOT / "scripts" / "ai" / "aq-runtime",
+}
 
 # OpenAI-compatible tool schemas for harness endpoints (loopback auth bypass applies)
 TOOL_SCHEMAS = [
@@ -101,6 +113,33 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_harness_cli",
+            "description": (
+                "Run a sanctioned local harness CLI command for bounded health, memory, "
+                "bootstrap, feedback-loop, report, or runtime workflows."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "enum": sorted(_ALLOWED_HARNESS_CLI_TOOLS.keys()),
+                        "description": "Sanctioned aq-* CLI entrypoint to run.",
+                    },
+                    "args": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact argv tokens after the tool name. No shell metacharacters.",
+                        "default": [],
+                    },
+                },
+                "required": ["tool"],
+            },
+        },
+    },
 ]
 
 
@@ -134,6 +173,185 @@ def _build_inference_payload(messages: list[dict]) -> dict:
         payload["tools"] = TOOL_SCHEMAS
         payload["tool_choice"] = "auto"
     return payload
+
+
+def _resolve_bash_binary() -> str:
+    candidates = [
+        os.environ.get("BASH"),
+        shutil.which("bash"),
+        "/run/current-system/sw/bin/bash",
+        "/bin/bash",
+    ]
+    for candidate in candidates:
+        if candidate and pathlib.Path(candidate).exists():
+            return str(candidate)
+    raise FileNotFoundError("bash binary not found for local harness CLI execution")
+
+
+def _resolve_python3_binary() -> str:
+    candidates = [
+        os.environ.get("PYTHON3"),
+        shutil.which("python3"),
+        "/run/current-system/sw/bin/python3",
+        "/usr/bin/python3",
+        "/bin/python3",
+    ]
+    for candidate in candidates:
+        if candidate and pathlib.Path(candidate).exists():
+            return str(candidate)
+    raise FileNotFoundError("python3 binary not found for local harness CLI execution")
+
+
+def _build_cli_exec_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    home = pathlib.Path(env.get("HOME") or str(REPO_ROOT))
+    bash_bin = _resolve_bash_binary()
+    python3_bin = _resolve_python3_binary()
+    path_entries = [
+        str(pathlib.Path(bash_bin).parent),
+        str(pathlib.Path(python3_bin).parent),
+        str(home / ".nix-profile" / "bin"),
+        str(home / ".npm-global" / "bin"),
+        str(home / ".local" / "bin"),
+        str(home / ".cargo" / "bin"),
+        "/run/current-system/sw/bin",
+        "/usr/bin",
+        "/bin",
+    ]
+    existing_path = env.get("PATH", "")
+    if existing_path:
+        path_entries.extend(segment for segment in existing_path.split(":") if segment)
+    env["PATH"] = ":".join(dict.fromkeys(path_entries))
+    env.setdefault("BASH", bash_bin)
+    env.setdefault("PYTHON3", python3_bin)
+    return env
+
+
+def _validate_arg_tokens(args: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for raw in args:
+        value = str(raw)
+        if not value:
+            continue
+        if len(value) > 512:
+            raise ValueError("harness CLI argument too long")
+        if any(ch in value for ch in _ARG_BLOCKLIST_CHARS):
+            raise ValueError(f"unsafe harness CLI argument: {value}")
+        normalized.append(value)
+    return normalized
+
+
+def _validate_harness_cli(tool: str, args: list[str]) -> tuple[list[str], float]:
+    normalized = _validate_arg_tokens(args)
+    if tool == "aq-qa":
+        if not normalized:
+            return ["0", "--json"], 90.0
+        phase = normalized[0]
+        if phase not in _AQ_QA_PHASES:
+            raise ValueError(f"unsupported aq-qa phase: {phase}")
+        for flag in normalized[1:]:
+            if flag not in {"--json", "--sudo"}:
+                raise ValueError(f"unsupported aq-qa flag: {flag}")
+        return normalized, 180.0 if phase in {"2", "3", "all"} else 90.0
+    if tool == "aq-report":
+        if not normalized:
+            return ["--format=json"], 90.0
+        i = 0
+        while i < len(normalized):
+            token = normalized[i]
+            if token.startswith("--since="):
+                i += 1
+                continue
+            if token == "--since":
+                if i + 1 >= len(normalized):
+                    raise ValueError("aq-report --since requires a value")
+                i += 2
+                continue
+            if token in {"--format=json", "--format=text"}:
+                i += 1
+                continue
+            raise ValueError(f"unsupported aq-report argument: {token}")
+        return normalized, 90.0
+    if tool == "aq-memory":
+        if len(normalized) < 2 or normalized[0] != "search":
+            raise ValueError("aq-memory currently only supports: search <query> [--project <name>] [--limit <n>]")
+        i = 2
+        while i < len(normalized):
+            token = normalized[i]
+            if token == "--project" and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token == "--limit" and i + 1 < len(normalized):
+                i += 2
+                continue
+            raise ValueError(f"unsupported aq-memory argument: {token}")
+        return normalized, 60.0
+    if tool in {"aq-context-bootstrap", "aq-feedback-loop"}:
+        if "--task" not in normalized:
+            raise ValueError(f"{tool} requires --task <value>")
+        i = 0
+        while i < len(normalized):
+            token = normalized[i]
+            if token == "--task" and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token in {"--format", "--prd-path", "--plan-path", "--feedback-file"} and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token.startswith("--format="):
+                i += 1
+                continue
+            raise ValueError(f"unsupported {tool} argument: {token}")
+        return normalized, 90.0
+    if tool == "aq-runtime":
+        if not normalized or normalized[0] not in {"diagnose", "plan", "act", "remediate"}:
+            raise ValueError("aq-runtime requires one of: diagnose, plan, act, remediate")
+        return normalized, 180.0
+    raise ValueError(f"unsupported harness CLI tool: {tool}")
+
+
+async def _run_harness_cli(tool: str, args: list[str]) -> str:
+    script = _ALLOWED_HARNESS_CLI_TOOLS.get(tool)
+    if script is None or not script.exists():
+        raise FileNotFoundError(f"sanctioned harness CLI not found: {tool}")
+    validated_args, timeout_seconds = _validate_harness_cli(tool, args)
+    proc = await asyncio.create_subprocess_exec(
+        str(script),
+        *validated_args,
+        cwd=str(REPO_ROOT),
+        env=_build_cli_exec_env(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        return json.dumps({
+            "tool": tool,
+            "args": validated_args,
+            "status": "error",
+            "error": f"timeout after {timeout_seconds}s",
+        })
+    stdout_text = stdout.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr.decode("utf-8", errors="replace").strip()
+    payload: dict[str, object] = {
+        "tool": tool,
+        "args": validated_args,
+        "status": "ok" if proc.returncode == 0 else "failed",
+        "exit_code": int(proc.returncode),
+        "stdout": stdout_text,
+    }
+    if stderr_text:
+        payload["stderr"] = stderr_text
+    if stdout_text.startswith("{") or stdout_text.startswith("["):
+        try:
+            payload["parsed"] = json.loads(stdout_text)
+        except Exception:
+            pass
+    return json.dumps(payload)
 
 
 def _payload_for_direct_llama(payload: dict) -> dict:
@@ -218,6 +436,16 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
                     )
                 return "No memories found."
             return f"recall_memory error: HTTP {r.status_code}"
+        elif name == "run_harness_cli":
+            tool = str(args.get("tool", "")).strip()
+            tool_args = args.get("args") or []
+            if not isinstance(tool_args, list):
+                return json.dumps({
+                    "tool": tool,
+                    "status": "error",
+                    "error": "args must be a list of strings",
+                })
+            return await _run_harness_cli(tool, [str(item) for item in tool_args])
         return f"unknown_tool: {name}"
     except Exception as exc:
         return f"tool_error({name}): {exc}"

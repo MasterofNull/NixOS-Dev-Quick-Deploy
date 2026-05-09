@@ -129,6 +129,20 @@ class _FakeAsyncClient:
         return _FakeStreamContext(action)
 
 
+class _FakeProcess:
+    def __init__(self, stdout=b"", stderr=b"", returncode=0):
+        self._stdout = stdout
+        self._stderr = stderr
+        self.returncode = returncode
+        self.killed = False
+
+    async def communicate(self):
+        return self._stdout, self._stderr
+
+    def kill(self):
+        self.killed = True
+
+
 def test_post_completion_falls_back_to_llama_and_strips_tool_payload():
     module = _load_runtime(AGENT_TOOLS_ENABLED="true")
     fake_client = _FakeAsyncClient(
@@ -222,3 +236,55 @@ def test_run_reports_named_timeout_for_empty_timeout_exceptions():
 
     payload = json.loads(stderr.getvalue().strip())
     assert payload["error"] == "local_agent_timeout"
+
+
+def test_run_harness_cli_executes_aq_qa_with_json_default():
+    module = _load_runtime(AGENT_TOOLS_ENABLED="true")
+    calls = []
+
+    async def _fake_create_subprocess_exec(*cmd, **kwargs):
+        calls.append({"cmd": list(cmd), "kwargs": kwargs})
+        return _FakeProcess(stdout=b'{"status":"ok","passed":41}', stderr=b"", returncode=0)
+
+    module.asyncio.create_subprocess_exec = _fake_create_subprocess_exec
+    module._build_cli_exec_env = lambda: {"PATH": "/test/bin"}
+
+    result = asyncio.run(module._run_harness_cli("aq-qa", []))
+    payload = json.loads(result)
+
+    assert payload["tool"] == "aq-qa"
+    assert payload["status"] == "ok"
+    assert payload["parsed"]["passed"] == 41
+    assert calls[0]["cmd"][1:] == ["0", "--json"]
+
+
+def test_dispatch_tool_supports_feedback_loop_cli():
+    module = _load_runtime(AGENT_TOOLS_ENABLED="true")
+
+    async def _fake_run_harness_cli(tool, args):
+        return json.dumps({"tool": tool, "args": args, "status": "ok"})
+
+    module._run_harness_cli = _fake_run_harness_cli
+
+    result = asyncio.run(
+        module._dispatch_tool(
+            _FakeAsyncClient(),
+            "run_harness_cli",
+            {"tool": "aq-feedback-loop", "args": ["--task", "inspect local agent state", "--format", "json"]},
+        )
+    )
+    payload = json.loads(result)
+
+    assert payload["tool"] == "aq-feedback-loop"
+    assert payload["args"] == ["--task", "inspect local agent state", "--format", "json"]
+
+
+def test_run_harness_cli_rejects_unsafe_arguments():
+    module = _load_runtime(AGENT_TOOLS_ENABLED="true")
+
+    try:
+        asyncio.run(module._run_harness_cli("aq-qa", ["0;rm -rf /"]))
+    except ValueError as exc:
+        assert "unsafe harness CLI argument" in str(exc) or "unsupported aq-qa phase" in str(exc)
+    else:
+        raise AssertionError("expected unsafe aq-qa argument to be rejected")

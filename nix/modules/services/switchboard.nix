@@ -106,7 +106,7 @@ let
          aq-qa 0 --json
          aq-memory search "<topic>" --project ai-stack --limit 5
       3. If the bootstrap or feedback loop selects context-offload:
-         follow preflight_commands or continuation_startup_commands before answering
+         execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering
       4. Structure the answer with:
          Observed signals
          Inferred constraints

@@ -61,6 +61,10 @@ def main() -> int:
         "switchboard local-agent card should require following context-offload startup packets before analysis",
     )
     assert_true(
+        "execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering" in switchboard_text,
+        "switchboard local-agent card should require direct execution of sanctioned aq-* startup packets",
+    )
+    assert_true(
         "Observed signals" in switchboard_text and "Evidence sources" in switchboard_text,
         "switchboard local-agent card should require evidence-oriented introspection output buckets",
     )
@@ -72,6 +76,14 @@ def main() -> int:
     assert_true(
         'payload["chat_template_kwargs"] = {"enable_thinking": False}' in runtime_text,
         "local agent runtime should disable thinking explicitly when routed in no-think mode",
+    )
+    assert_true(
+        '"name": "run_harness_cli"' in runtime_text,
+        "local agent runtime should expose a bounded harness CLI execution tool",
+    )
+    assert_true(
+        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-feedback-loop"', '"aq-runtime"')),
+        "local agent runtime should bound harness CLI execution to the sanctioned aq-* tool surface",
     )
 
     sys.path.insert(0, str(HYBRID_DIR))
