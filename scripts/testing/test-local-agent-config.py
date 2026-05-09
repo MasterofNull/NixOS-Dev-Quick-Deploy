@@ -57,12 +57,20 @@ def main() -> int:
         "switchboard local-agent card should route introspection prompts through the feedback loop first",
     )
     assert_true(
+        'aq-context-manage summary --task "<prompt>" --json' in switchboard_text,
+        "switchboard local-agent card should request compact recent-session summaries before broad introspection",
+    )
+    assert_true(
         "preflight_commands or continuation_startup_commands" in switchboard_text,
         "switchboard local-agent card should require following context-offload startup packets before analysis",
     )
     assert_true(
         "execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering" in switchboard_text,
         "switchboard local-agent card should require direct execution of sanctioned aq-* startup packets",
+    )
+    assert_true(
+        "embedded-assist as the compact search/context helper lane" in switchboard_text,
+        "switchboard local-agent card should expose embedded-assist as the compact search/context helper lane",
     )
     assert_true(
         "Observed signals" in switchboard_text and "Evidence sources" in switchboard_text,
@@ -82,7 +90,7 @@ def main() -> int:
         "local agent runtime should expose a bounded harness CLI execution tool",
     )
     assert_true(
-        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-operational-perspective"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-feedback-loop"', '"aq-runtime"')),
+        all(token in runtime_text for token in ('"aq-qa"', '"aq-report"', '"aq-operational-perspective"', '"aq-memory"', '"aq-context-bootstrap"', '"aq-context-manage"', '"aq-feedback-loop"', '"aq-hints"', '"aq-runtime"')),
         "local agent runtime should bound harness CLI execution to the sanctioned aq-* tool surface",
     )
 

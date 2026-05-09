@@ -142,9 +142,11 @@ def build_loop(args: argparse.Namespace, bootstrap: dict, feedback_text: str) ->
             if card in recommended_cards:
                 recommended_cards.remove(card)
             recommended_cards.insert(0, card)
+    context_assist_profiles = ["embedded-assist"] if recommended_scope in {"context-offload", "harness-first"} else list(bootstrap.get("context_assist_profiles", []))
     continuation_commands = list(bootstrap.get("continuation_startup_commands", []))
     if recommended_scope == "context-offload" and not continuation_commands:
         continuation_commands = [
+            f"aq-context-manage summary --task {json.dumps(task)} --json",
             f"aq-memory search {json.dumps(task)} --project ai-stack --limit 5",
             "aq-context-card --card context-offload --level standard",
             "aq-context-manage check",
@@ -235,6 +237,7 @@ def build_loop(args: argparse.Namespace, bootstrap: dict, feedback_text: str) ->
         "objective": task,
         "recommended_scope": recommended_scope,
         "recommended_cards": recommended_cards,
+        "context_assist_profiles": context_assist_profiles,
         "feedback_signals": signal_ids,
         "artifact_paths": {
             "prd": args.prd_path,

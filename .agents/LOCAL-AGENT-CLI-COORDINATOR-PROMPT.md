@@ -72,9 +72,11 @@ Choose the narrowest lane that matches the task, but do not force remote-capable
 - If a harness CLI or MCP tool exists, use it before falling back to raw HTTP.
 - For memory recall, prefer `aq-memory search "<query>" --project ai-stack --limit 5`.
 - For workflow/bootstrap state, prefer `aq-context-bootstrap --task "<task>"` and existing workflow sessions.
+- For compact prior-session state, prefer `aq-context-manage summary --task "<task>" --json` before replaying broader transcript history.
 - For operational-perspective or introspection prompts, start with `aq-feedback-loop --task "<prompt>" --format json` or `aq-context-bootstrap --task "<prompt>" --format json` before broad analysis.
-- If that startup packet selects `context-offload`, run its `preflight_commands` or `continuation_startup_commands` first so memory recall and `aq-qa 0 --json` happen before you answer.
-- Execute sanctioned `aq-*` CLI steps directly when they are the selected preflight or validation path; do not merely recommend `aq-qa`, `aq-report`, `aq-operational-perspective`, `aq-memory`, `aq-context-bootstrap`, `aq-feedback-loop`, or `aq-runtime`.
+- If that startup packet selects `context-offload`, run its `preflight_commands` or `continuation_startup_commands` first so session summaries, memory recall, and `aq-qa 0 --json` happen before you answer.
+- Prefer `embedded-assist` as the compact search/context helper lane before broader local or remote synthesis when recall is thin.
+- Execute sanctioned `aq-*` CLI steps directly when they are the selected preflight or validation path; do not merely recommend `aq-qa`, `aq-report`, `aq-operational-perspective`, `aq-memory`, `aq-context-bootstrap`, `aq-context-manage`, `aq-feedback-loop`, `aq-hints`, or `aq-runtime`.
 - Only use raw `curl` when there is no harness wrapper, and quote the entire URL in shell commands.
 
 ---

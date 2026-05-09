@@ -341,6 +341,7 @@ def continuation_startup_commands(task: str, scope: str) -> list[str]:
         return []
     hints_query = task if any(lowered.startswith(marker) for marker in CONTINUATION_MARKERS) else f"resume {task}"
     return [
+        f'aq-context-manage summary --task "{task}" --json',
         f'aq-memory search "{task}" --project ai-stack --limit 5',
         'aq-context-card --card context-offload --level standard',
         'aq-context-manage check',
@@ -385,6 +386,7 @@ def format_text(payload: dict) -> str:
         f"task: {payload['task']}",
         f"recommended_next_mode: {payload.get('recommended_next_mode', '')}",
         f"recommended_scope: {payload.get('recommended_scope', '')}",
+        f"context_assist_profiles: {', '.join(payload.get('context_assist_profiles', []))}",
         "recommended_card_order:",
     ]
     for card_id in payload.get("recommended_card_order", []):
@@ -433,6 +435,7 @@ def main() -> int:
         "fallback_reason": fallback_reason,
         "recommended_next_mode": recommended_next_mode,
         "recommended_scope": recommended_scope,
+        "context_assist_profiles": ["embedded-assist"] if scope in {"context-offload", "harness-first"} else [],
         "context": context,
         "scope_summary": scope_cfg["summary"],
         "level": args.level,

@@ -23,6 +23,7 @@ AQ_QA = REPO_ROOT / "scripts" / "ai" / "aq-qa"
 AQ_REPORT = REPO_ROOT / "scripts" / "ai" / "aq-report"
 AQ_MEMORY = REPO_ROOT / "scripts" / "ai" / "aq-memory"
 AQ_FEEDBACK_LOOP = REPO_ROOT / "scripts" / "ai" / "aq-feedback-loop"
+AQ_CONTEXT_MANAGE = REPO_ROOT / "scripts" / "ai" / "aq-context-manage"
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,6 +89,7 @@ def _build_observed_signals(
     report_payload: dict[str, Any] | None,
     feedback_payload: dict[str, Any] | None,
     memory_payload: dict[str, Any] | None,
+    summary_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
     qa_summary = None
     if isinstance(qa_payload, dict):
@@ -140,7 +142,9 @@ def _build_observed_signals(
         "preflight": {
             "recommended_scope": (feedback_payload or {}).get("recommended_scope"),
             "preflight_commands": (feedback_payload or {}).get("preflight_commands"),
+            "context_assist_profiles": (feedback_payload or {}).get("context_assist_profiles"),
         } if feedback_payload else None,
+        "recent_session_summary": summary_payload,
         "memory_recall_hits": memory_payload,
     }
 
@@ -204,10 +208,16 @@ def main() -> int:
     feedback_meta = None
     memory_payload = None
     memory_meta = None
+    summary_payload = None
+    summary_meta = None
     if args.task:
         feedback_payload, feedback_meta = _run_json(
             [sys.executable, str(AQ_FEEDBACK_LOOP), "--task", args.task, "--format", "json"],
             timeout=120,
+        )
+        summary_payload, summary_meta = _run_json(
+            [sys.executable, str(AQ_CONTEXT_MANAGE), "summary", "--task", args.task, "--json"],
+            timeout=90,
         )
         memory_json, memory_meta = _run_json(
             [str(AQ_MEMORY), "--json", "search", args.task, "--project", "ai-stack", "--limit", str(args.memory_limit)],
@@ -218,7 +228,7 @@ def main() -> int:
         else:
             memory_payload = memory_json
 
-    observed = _build_observed_signals(qa_payload, report_payload, feedback_payload, memory_payload)
+    observed = _build_observed_signals(qa_payload, report_payload, feedback_payload, memory_payload, summary_payload)
     payload = {
         "observed_signals": observed,
         "inferred_constraints": _build_inferred_constraints(observed),
@@ -226,6 +236,7 @@ def main() -> int:
             qa_meta,
             report_meta,
             feedback_meta,
+            summary_meta,
             memory_meta,
         ],
         "unknowns_or_next_checks": _build_unknowns(observed),

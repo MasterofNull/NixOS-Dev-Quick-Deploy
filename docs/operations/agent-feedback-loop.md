@@ -62,6 +62,10 @@ aq-feedback-loop \
 If `aq-context-bootstrap` classifies the task as `context-offload`, the feedback
 loop promotes its continuation startup packet into `preflight_commands` so
 memory recall and compact context checks happen before deeper planning.
+That preflight now starts with `aq-context-manage summary --task "<task>" --json`
+so fresh sessions load a compact checkpoint summary before broad transcript or
+memory replay. When the loop surfaces `embedded-assist` in
+`context_assist_profiles`, use it as the compact search/context helper lane.
 
 ## Validation
 
