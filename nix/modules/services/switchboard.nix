@@ -96,6 +96,20 @@ let
       MCP tool: hybrid_search {query:"<question>"}
       MCP tool: query_aidb {query:"<question>"}
 
+    Agent introspection / operator perspective:
+      1. Gather bounded evidence first:
+         MCP tools: get_hints {q:"<prompt>"}, harness_health, get_working_memory, query_aidb
+      2. Use shell fallback only if needed:
+         aq-report --format=json
+         aq-qa 0 --json
+         aq-memory search "<topic>" --project ai-stack --limit 5
+      3. Structure the answer with:
+         Observed signals
+         Inferred constraints
+         Evidence sources
+         Unknowns / next checks
+      4. Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.
+
     === KEY PATHS ===
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
     PRSI policy: config/runtime-prsi-policy.json
