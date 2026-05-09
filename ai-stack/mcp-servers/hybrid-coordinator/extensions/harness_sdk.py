@@ -303,6 +303,58 @@ class HarnessClient:
             r.raise_for_status()
             return r.json()
 
+    @staticmethod
+    def default_remote_task_contract(
+        objective: str,
+        *,
+        constraints: Optional[List[str]] = None,
+        expected_output: str = "",
+        timeout_seconds: int = 300,
+        validation: Optional[List[str]] = None,
+        depth_expectation: str = "standard",
+    ) -> Dict[str, Any]:
+        normalized = str(objective or "").strip() or "workflow run"
+        return {
+            "objective": normalized,
+            "constraints": constraints or [
+                "favor declarative-first changes",
+                "capture validation evidence",
+            ],
+            "expected_output": expected_output or f"Validated result for: {normalized[:120]}",
+            "timeout_seconds": max(30, int(timeout_seconds)),
+            "validation": validation or [
+                "all requested checks complete",
+                "blockers or rollback path documented",
+            ],
+            "depth_expectation": depth_expectation,
+        }
+
+    @classmethod
+    def intent_contract_from_remote_task_contract(cls, remote_task_contract: Dict[str, Any]) -> Dict[str, Any]:
+        contract = dict(remote_task_contract or {})
+        objective = str(contract.get("objective", "") or "").strip() or "workflow run"
+        constraints = [
+            str(item).strip()
+            for item in (contract.get("constraints") or [])
+            if str(item).strip()
+        ]
+        validation = [
+            str(item).strip()
+            for item in (contract.get("validation") or [])
+            if str(item).strip()
+        ]
+        depth_expectation = str(contract.get("depth_expectation", "standard") or "standard").strip().lower()
+        if depth_expectation not in {"minimum", "standard", "deep"}:
+            depth_expectation = "standard"
+        expected_output = str(contract.get("expected_output", "") or "").strip()
+        return {
+            "user_intent": objective,
+            "definition_of_done": expected_output or f"Validated result for: {objective[:120]}",
+            "depth_expectation": depth_expectation,
+            "spirit_constraints": constraints or cls.default_remote_task_contract(objective)["constraints"],
+            "no_early_exit_without": validation or cls.default_remote_task_contract(objective)["validation"],
+        }
+
     def run_start(
         self,
         query: str,
@@ -310,28 +362,26 @@ class HarnessClient:
         token_limit: int = 8000,
         tool_call_limit: int = 40,
         intent_contract: Optional[Dict[str, Any]] = None,
+        remote_task_contract: Optional[Dict[str, Any]] = None,
         requesting_agent: str = "human",
         requester_role: str = "orchestrator",
     ) -> Dict[str, Any]:
-        contract = intent_contract or {
-            "user_intent": query,
-            "definition_of_done": "Workflow plan is created and execution can proceed safely.",
-            "depth_expectation": "standard",
-            "spirit_constraints": [
-                "Favor declarative changes over ad-hoc imperative mutations.",
-                "Preserve safety guardrails and explicit rollback paths.",
-            ],
-            "no_early_exit_without": [
+        task_contract = remote_task_contract or self.default_remote_task_contract(
+            query,
+            expected_output="Workflow plan is created and execution can proceed safely.",
+            validation=[
                 "Validation evidence is captured.",
                 "Critical blockers are reported with next action.",
             ],
-        }
+        )
+        contract = intent_contract or self.intent_contract_from_remote_task_contract(task_contract)
         payload = {
             "query": query,
             "safety_mode": safety_mode,
             "token_limit": token_limit,
             "tool_call_limit": tool_call_limit,
             "intent_contract": contract,
+            "remote_task_contract": task_contract,
             "requesting_agent": requesting_agent,
             "requester_role": requester_role,
         }

@@ -272,10 +272,74 @@ export class HarnessClient {
     });
   }
 
+  defaultRemoteTaskContract(
+    objective,
+    { constraints = [], expectedOutput = "", timeoutSeconds = 300, validation = [], depthExpectation = "standard" } = {},
+  ) {
+    const normalized = String(objective || "").trim() || "workflow run";
+    return {
+      objective: normalized,
+      constraints:
+        constraints.length > 0
+          ? constraints
+          : ["favor declarative-first changes", "capture validation evidence"],
+      expected_output:
+        expectedOutput || `Validated result for: ${normalized.slice(0, 120)}`,
+      timeout_seconds: Math.max(30, Number(timeoutSeconds) || 300),
+      validation:
+        validation.length > 0
+          ? validation
+          : ["all requested checks complete", "blockers or rollback path documented"],
+      depth_expectation: depthExpectation,
+    };
+  }
+
+  intentContractFromRemoteTaskContract(remoteTaskContract = {}) {
+    const contract = remoteTaskContract || {};
+    const objective = String(contract.objective || "").trim() || "workflow run";
+    const constraints = Array.isArray(contract.constraints)
+      ? contract.constraints.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    const validation = Array.isArray(contract.validation)
+      ? contract.validation.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    const depthExpectation = ["minimum", "standard", "deep"].includes(
+      String(contract.depth_expectation || "standard").trim().toLowerCase(),
+    )
+      ? String(contract.depth_expectation || "standard").trim().toLowerCase()
+      : "standard";
+    return {
+      user_intent: objective,
+      definition_of_done:
+        String(contract.expected_output || "").trim() ||
+        `Validated result for: ${objective.slice(0, 120)}`,
+      depth_expectation: depthExpectation,
+      spirit_constraints:
+        constraints.length > 0
+          ? constraints
+          : this.defaultRemoteTaskContract(objective).constraints,
+      no_early_exit_without:
+        validation.length > 0
+          ? validation
+          : this.defaultRemoteTaskContract(objective).validation,
+    };
+  }
+
   runStart(payload) {
+    const remoteTaskContract =
+      payload.remote_task_contract ||
+      this.defaultRemoteTaskContract(payload.query, {
+        expectedOutput: "Workflow plan is created and execution can proceed safely.",
+        validation: [
+          "Validation evidence is captured.",
+          "Critical blockers are reported with next action.",
+        ],
+      });
     const body = {
       ...payload,
-      intent_contract: payload.intent_contract || this.defaultIntentContract(payload.query),
+      remote_task_contract: remoteTaskContract,
+      intent_contract:
+        payload.intent_contract || this.intentContractFromRemoteTaskContract(remoteTaskContract),
     };
     return this.request("/workflow/run/start", {
       method: "POST",
@@ -284,21 +348,21 @@ export class HarnessClient {
   }
 
   defaultIntentContract(query) {
-    const normalized = String(query || "").trim() || "workflow run";
-    return {
-      user_intent: normalized,
-      definition_of_done: `Complete requested workflow task: ${normalized.slice(0, 120)}`,
-      depth_expectation: "minimum",
-      spirit_constraints: [
-        "follow declarative-first policy",
-        "capture validation evidence",
-        "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
-      ],
-      no_early_exit_without: [
-        "all requested checks complete",
-        "context strategy or blocker documented when the task is long-running",
-      ],
-    };
+    return this.intentContractFromRemoteTaskContract(
+      this.defaultRemoteTaskContract(query, {
+        expectedOutput: `Complete requested workflow task: ${String(query || "").trim().slice(0, 120)}`,
+        validation: [
+          "all requested checks complete",
+          "context strategy or blocker documented when the task is long-running",
+        ],
+        depthExpectation: "minimum",
+        constraints: [
+          "follow declarative-first policy",
+          "capture validation evidence",
+          "prefer harness retrieval, memory recall, and periodic compaction over resending long prompt history",
+        ],
+      }),
+    );
   }
 
   runGet(sessionId, replay = false) {

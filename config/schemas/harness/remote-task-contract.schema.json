@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy/config/schemas/harness/remote-task-contract.schema.json",
+  "title": "Remote Task Contract",
+  "description": "Compact operator-facing contract for guarded remote or delegated workflow runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "objective",
+    "constraints",
+    "expected_output",
+    "timeout_seconds",
+    "validation"
+  ],
+  "properties": {
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "expected_output": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 30
+    },
+    "validation": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "depth_expectation": {
+      "type": "string",
+      "enum": ["minimum", "standard", "deep"]
+    }
+  }
+}

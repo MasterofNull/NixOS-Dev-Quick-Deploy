@@ -41,6 +41,14 @@ export interface RunStartRequest {
   safety_mode?: "plan-readonly" | "execute-mutating";
   token_limit?: number;
   tool_call_limit?: number;
+  remote_task_contract?: {
+    objective: string;
+    constraints: string[];
+    expected_output: string;
+    timeout_seconds: number;
+    validation: string[];
+    depth_expectation?: "minimum" | "standard" | "deep";
+  };
   intent_contract?: {
     user_intent: string;
     definition_of_done: string;
@@ -107,6 +115,19 @@ export declare class HarnessClient {
     timeoutSeconds?: number,
     includeSudo?: boolean,
   ): Promise<Json>;
+  defaultRemoteTaskContract(
+    objective: string,
+    opts?: {
+      constraints?: string[];
+      expectedOutput?: string;
+      timeoutSeconds?: number;
+      validation?: string[];
+      depthExpectation?: "minimum" | "standard" | "deep";
+    },
+  ): RunStartRequest["remote_task_contract"];
+  intentContractFromRemoteTaskContract(
+    remoteTaskContract?: RunStartRequest["remote_task_contract"],
+  ): NonNullable<RunStartRequest["intent_contract"]>;
   runStart(payload: RunStartRequest): Promise<Json>;
   runGet(sessionId: string, replay?: boolean): Promise<Json>;
   runGetTeam(sessionId: string): Promise<Json>;
