@@ -12,7 +12,8 @@ tmp_gap="$(mktemp)"
 tmp_system_ctx="$(mktemp)"
 tmp_rust_ctx="$(mktemp)"
 tmp_offload="$(mktemp)"
-trap 'rm -f "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" "${tmp_offload}"' EXIT
+tmp_resume="$(mktemp)"
+trap 'rm -f "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" "${tmp_offload}" "${tmp_resume}"' EXIT
 
 python3 "${TOOL}" --task "debug a nixos rebuild activation failure and rollback safely" --format json > "${tmp_system}"
 python3 "${TOOL}" --task "implement a new feature in the brownfield AI workflow" --format json > "${tmp_feature}"
@@ -21,8 +22,9 @@ python3 "${TOOL}" --task "tool not available: aq-context-bootstrap" --format jso
 python3 "${TOOL}" --task "restore missing capability mm" --context-language nix --context-application nixos --context-file nix/modules/core/options.nix --format json > "${tmp_system_ctx}"
 python3 "${TOOL}" --task "restore missing rust build helper" --context-language rust --context-file Cargo.toml --format json > "${tmp_rust_ctx}"
 python3 "${TOOL}" --task "offload long-running agent prompt history into the local harness with frequent compaction and memory recall" --format json > "${tmp_offload}"
+python3 "${TOOL}" --task "resume the last validated patch and continue from prior context without replaying the full transcript" --format json > "${tmp_resume}"
 
-python3 - "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" "${tmp_offload}" <<'PY'
+python3 - "${tmp_system}" "${tmp_feature}" "${tmp_prsi}" "${tmp_gap}" "${tmp_system_ctx}" "${tmp_rust_ctx}" "${tmp_offload}" "${tmp_resume}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -34,6 +36,7 @@ gap = json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
 system_ctx = json.loads(Path(sys.argv[5]).read_text(encoding="utf-8"))
 rust_ctx = json.loads(Path(sys.argv[6]).read_text(encoding="utf-8"))
 offload = json.loads(Path(sys.argv[7]).read_text(encoding="utf-8"))
+resume = json.loads(Path(sys.argv[8]).read_text(encoding="utf-8"))
 
 if system.get("scope") != "system-fix":
     print("ERROR: system bootstrap did not classify as system-fix", file=sys.stderr)
@@ -166,6 +169,28 @@ if not any("long-running-context-offload" in cmd for cmd in offload.get("starter
     raise SystemExit(1)
 if "scripts/ai/aq-memory" not in offload.get("source_hints", []):
     print("ERROR: offload bootstrap did not emit harness memory source hints", file=sys.stderr)
+    raise SystemExit(1)
+if resume.get("scope") != "context-offload":
+    print("ERROR: resume bootstrap did not classify continuation work as context-offload", file=sys.stderr)
+    raise SystemExit(1)
+if "task:continuation_signal" not in resume.get("scope_diagnostics", {}).get("reasons", {}).get("context-offload", []):
+    print("ERROR: resume bootstrap did not record continuation detection in scope diagnostics", file=sys.stderr)
+    raise SystemExit(1)
+resume_cmds = resume.get("continuation_startup_commands", [])
+if not resume_cmds:
+    print("ERROR: resume bootstrap did not emit continuation startup commands", file=sys.stderr)
+    raise SystemExit(1)
+if not any(cmd.startswith('aq-memory search "') for cmd in resume_cmds):
+    print("ERROR: resume bootstrap did not start with memory recall", file=sys.stderr)
+    raise SystemExit(1)
+if not any("aq-context-manage check" in cmd for cmd in resume_cmds):
+    print("ERROR: resume bootstrap did not include context state check", file=sys.stderr)
+    raise SystemExit(1)
+if not any("long-running-context-offload" in cmd for cmd in resume_cmds):
+    print("ERROR: resume bootstrap did not include persisted run bootstrap", file=sys.stderr)
+    raise SystemExit(1)
+if resume.get("starter_commands", [])[: len(resume_cmds)] != resume_cmds:
+    print("ERROR: resume bootstrap did not prioritize continuation startup commands at the top of starter commands", file=sys.stderr)
     raise SystemExit(1)
 
 print("PASS: context bootstrap validated")
