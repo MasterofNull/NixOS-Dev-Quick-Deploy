@@ -46,6 +46,32 @@ qwen -y "<task>"                            # ← known failure mode
 - ❌ Store or read credentials
 - ❌ Call `qwen -y "<task>"` without `aq-delegate` wrapper
 - ❌ Describe what you will do without first searching for the relevant files
+- ❌ Use raw `curl` against AIDB or hybrid endpoints when an `aq-*` CLI or harness wrapper already exists
+- ❌ Paste unquoted URLs containing `?`, `&`, `*`, `[` or `]` into `zsh`
+
+## Routing Matrix
+
+Choose the narrowest lane that matches the task, but do not force remote-capable models into local-model limits.
+
+### Local / constrained lanes
+
+- Use local CLI-first execution for health checks, monitoring, polling, bounded repo inspection, and background automation.
+- Keep prompts compact and rely on `aq-memory search`, `aq-context-bootstrap`, and existing workflow/session state instead of replaying transcripts.
+- Prefer `aq-qa`, `aq-report`, `aq-hints`, `aq-context-bootstrap`, and `aq-delegate` over direct service calls.
+
+### Remote / larger-context lanes
+
+- Use remote discovery/reasoning lanes for architecture, policy, synthesis, and larger-context review when broader context is actually useful.
+- Use remote coding lanes for implementation help with explicit file scope and validation requirements.
+- Larger-context remote models may consume more context than local models, but still prefer retrieval-first handoffs over dumping full transcripts.
+- Remote lanes should return compact, actionable outputs that local orchestration can verify and execute.
+
+### Memory and tool policy
+
+- If a harness CLI or MCP tool exists, use it before falling back to raw HTTP.
+- For memory recall, prefer `aq-memory search "<query>" --project ai-stack --limit 5`.
+- For workflow/bootstrap state, prefer `aq-context-bootstrap --task "<task>"` and existing workflow sessions.
+- Only use raw `curl` when there is no harness wrapper, and quote the entire URL in shell commands.
 
 ---
 

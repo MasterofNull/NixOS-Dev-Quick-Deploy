@@ -22,6 +22,11 @@ aq-hints "<task>"           # ranked workflow hints
 ## Key CLIs
 `aq-prime` · `aq-qa 0` · `aq-hints "<task>"` · `aq-report` · `aq-context-bootstrap`
 
+## Routing Discipline
+- Keep local-agent and `continue-local` prompts compact; use memory/context offload early.
+- Do not impose local-model context limits on `remote-*` lanes. Remote lanes should use the narrowest matching profile, then spend context according to task value and workflow policy.
+- Profile matrix SSOT: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
+
 ## Port SSOT
 `nix/modules/core/options.nix` — never hardcode port values
 

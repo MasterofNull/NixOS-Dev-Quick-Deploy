@@ -1,5 +1,8 @@
 # AI Agent Onboarding Guide
 
+> Archived reference only. Do not use this file as active agent policy for routing, ports, or token discipline.
+> Active SSOT: `AGENTS.md`, `docs/AGENTS.md`, and `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`.
+
 **Version:** 1.0.0
 **Purpose:** Universal agent training for professional software development
 **Audience:** AI agents, LLMs, and autonomous coding systems

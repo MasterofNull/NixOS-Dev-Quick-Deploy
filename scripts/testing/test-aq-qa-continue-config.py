@@ -39,7 +39,7 @@ def main() -> int:
         "aq-qa should validate the local-agent chat lane while keeping continue-local for compact editor traffic",
     )
     assert_true(
-        'http://127.0.0.1:8003/hints' in script,
+        'HYBRID_URL}/hints?q=test' in script or "/hints?q=test" in script,
         "aq-qa should require the aq-hints provider to stay on coordinator ingress",
     )
     assert_true(
@@ -72,17 +72,27 @@ def main() -> int:
         "Continue config should render the harness-aware editor model with profile-specific context and output bounds",
     )
     assert_true(
-        '"__configVersion": "30.0"' in home_base,
-        "Continue config version should advance when the generated operator contract changes",
-    )
-    assert_true(
-        '"30.0"' in script,
-        "aq-qa should accept the current Continue config schema version",
-    )
-    assert_true(
         "RETRY BUDGET: After 2 failed retries" in home_base
         and "TRANSCRIPT HYGIENE: Do not paste large logs" in home_base,
         "Continue config should steer repeated editor failures toward checkpoint-and-fresh-session recovery",
+    )
+    assert_true(
+        "WRAPPER-FIRST: Prefer harness MCP tools and aq-* wrappers over raw curl" in home_base
+        and "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ]" in home_base,
+        "Continue config should prevent direct raw HTTP misuse and unquoted shell URL failures",
+    )
+    assert_true(
+        "LANE SELECTION: Use local-agent for bounded repo/runtime checks" in home_base
+        and "CONTEXT STRATEGY: Local lanes must aggressively offload to harness memory" in home_base,
+        "Continue config should distinguish constrained local lanes from larger-context remote lanes",
+    )
+    assert_true(
+        '"__configVersion": "31.0"' in home_base,
+        "Continue config version should advance when the generated operator contract changes",
+    )
+    assert_true(
+        '"31.0"' in script,
+        "aq-qa should accept the current Continue config schema version",
     )
 
     print("PASS: aq-qa Continue config validation stays pinned to switchboard ingress")
