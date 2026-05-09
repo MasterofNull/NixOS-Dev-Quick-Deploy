@@ -279,7 +279,8 @@ aq-hints "<task summary>"                      # ranked workflow hints
 **Capability & diagnosis — run when something is missing or broken:**
 ```bash
 aq-capability-gap --query "<task>"    # classify missing tools/skills
-aq-runtime-diagnose                   # service/package/runtime diagnosis loop
+aq-runtime diagnose                   # service/package/runtime diagnosis loop (unified entry)
+aq-runtime-diagnose                   # direct sub-script (also callable standalone)
 aq-system-act --query "<task>"        # unified: capability gap + runtime in one call
 aq-qa 0                               # 29-check phase-0 service health
 ```
@@ -291,7 +292,7 @@ aq-qa 0                               # 29-check phase-0 service health
 | Onboarding        | `aq-prime`, `aq-context-bootstrap`, `aq-context-card`, `aq-context-manage`                                                                                                                                   |
 | Hints & search    | `aq-hints`, `aq-index`, `aq-patterns`, `aq-autoresearch`                                                                                                                                                     |
 | Capability mgmt   | `aq-capability-gap`, `aq-capability-plan`, `aq-capability-remediate`, `aq-capability-promote`, `aq-capability-stub`, `aq-capability-catalog-append`, `aq-capability-patch-prep`, `aq-capability-patch-apply` |
-| Runtime diagnosis | `aq-runtime-diagnose`, `aq-runtime-plan`, `aq-runtime-act`, `aq-runtime-remediate`, `aq-llama-debug`                                                                                                         |
+| Runtime diagnosis | `aq-runtime diagnose\|plan\|act\|remediate` (unified), `aq-runtime-diagnose`, `aq-runtime-plan`, `aq-runtime-act`, `aq-runtime-remediate`, `aq-llama-debug`                                                  |
 | Unified entry     | `aq-system-act --query "<task>"`                                                                                                                                                                             |
 | Knowledge         | `aq-gaps`, `aq-gap-import`, `aq-gap-auto-remediate`, `aq-index`                                                                                                                                              |
 | Cache / RAG       | `aq-cache-warm`, `aq-cache-prewarm`, `aq-rag-prewarm`                                                                                                                                                        |
@@ -326,6 +327,11 @@ aq-qa 0                               # 29-check phase-0 service health
 `continue-local` · `embedded-assist` · `local-tool-calling` · `remote-coding` ·
 `remote-reasoning` · `remote-free` · `remote-tool-calling` · `default`
 → Full decision matrix: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
+
+Routing rule:
+- Compactness is lane-specific, not universal. Keep local lanes lean and memory-first; do not downsize remote-capable lanes just because local models are constrained.
+- Choose the narrowest remote lane that matches the task, then let workflow/session policy govern token spend, review gates, and fallback behavior.
+- Prefer retrieval-first handoffs for every lane, but allow `remote-coding` and `remote-reasoning` to use their larger context budgets when the task genuinely benefits.
 
 **Local inference endpoint:** `http://localhost:8085/v1` (OpenAI-compatible, routes to llama.cpp :8080)
 **Embedding endpoint:** `http://localhost:8085/v1/embeddings` (profile: `embedding-local`)
