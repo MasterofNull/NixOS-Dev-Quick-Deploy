@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# aq-runtime — unified runtime tooling dispatcher
+#
+# Provides a single entry point for the four runtime sub-tools:
+#   diagnose   service/package/runtime diagnosis loop
+#   plan       multi-preset incident planner (wraps diagnose output)
+#   act        plan + recommended action selection in one step
+#   remediate  execute or preview next actions from a plan payload
+#
+# Usage:
+#   aq-runtime diagnose [--preset <name>] [--json] [OPTIONS...]
+#   aq-runtime plan     [--preset <name>] [--json] [OPTIONS...]
+#   aq-runtime act      [--preset <name>] [OPTIONS...]
+#   aq-runtime remediate [--plan <file>]  [--execute] [OPTIONS...]
+#   aq-runtime --help
+#
+# All flags after the subcommand are forwarded verbatim to the backing script.
+# Run `aq-runtime <subcommand> --help` for per-subcommand options.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  grep '^# ' "$0" | sed 's/^# //'
+  exit 0
+}
+
+if [[ $# -eq 0 || "$1" == "--help" || "$1" == "-h" ]]; then
+  usage
+fi
+
+SUBCOMMAND="$1"
+shift
+
+case "$SUBCOMMAND" in
+  diagnose)
+    exec "${SCRIPT_DIR}/aq-runtime-diagnose" "$@"
+    ;;
+  plan)
+    exec "${SCRIPT_DIR}/aq-runtime-plan" "$@"
+    ;;
+  act)
+    exec "${SCRIPT_DIR}/aq-runtime-act" "$@"
+    ;;
+  remediate)
+    exec "${SCRIPT_DIR}/aq-runtime-remediate" "$@"
+    ;;
+  *)
+    echo "aq-runtime: unknown subcommand '${SUBCOMMAND}'" >&2
+    echo "Valid subcommands: diagnose, plan, act, remediate" >&2
+    echo "Run 'aq-runtime --help' for usage." >&2
+    exit 1
+    ;;
+esac
