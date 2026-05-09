@@ -258,6 +258,9 @@ let
       (pkgs.writeShellScriptBin "aq-feedback-loop" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-feedback-loop" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-operational-perspective" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-operational-perspective" "$@"
+      '')
       (pkgs.writeShellScriptBin "aq-context-card" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-context-card" "$@"
       '')

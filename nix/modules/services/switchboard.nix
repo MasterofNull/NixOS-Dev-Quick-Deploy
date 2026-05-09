@@ -56,7 +56,7 @@ let
     Key dirs: scripts/ai/ (aq-*), scripts/automation/ (prsi-orchestrator.py), ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
     Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
-    Harness: aq-qa 0 | aq-report | aq-hints "<task>" | aq-context-bootstrap --task "<task>"
+    Harness: aq-qa 0 | aq-report | aq-operational-perspective | aq-hints "<task>" | aq-context-bootstrap --task "<task>"
   '';
   # Compact card: ~50 tokens (~8 s prompt on Qwen3.6-35B w/ 12 GPU layers).
   # Previous 874-char / ~218-token card added ~37 s of prompt-processing latency,
@@ -103,6 +103,7 @@ let
          MCP tools: get_hints {q:"<prompt>"}, harness_health, get_working_memory, query_aidb
       2. Use shell fallback only if needed:
          aq-report --format=json
+         aq-operational-perspective --task "<prompt>" --format json
          aq-qa 0 --json
          aq-memory search "<topic>" --project ai-stack --limit 5
       3. If the bootstrap or feedback loop selects context-offload:
@@ -118,7 +119,7 @@ let
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
     PRSI policy: config/runtime-prsi-policy.json
     PRSI orchestrator: scripts/automation/prsi-orchestrator.py
-    Harness CLIs: scripts/ai/ (aq-qa, aq-report, aq-hints, aq-system-act, aq-context-bootstrap, aq-runtime-diagnose)
+    Harness CLIs: scripts/ai/ (aq-qa, aq-report, aq-operational-perspective, aq-hints, aq-system-act, aq-context-bootstrap, aq-runtime-diagnose)
     MCP servers: ai-stack/mcp-servers/ (coordinator:8003, aidb:8002, ralph:8004)
     NixOS modules: nix/modules/ | Dashboard: dashboard/backend/
 

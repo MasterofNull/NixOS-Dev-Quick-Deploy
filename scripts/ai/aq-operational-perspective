@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""
+aq-operational-perspective — compact evidence bundle for local-agent operational introspection.
+
+Builds a bounded view from existing harness tools instead of transcript replay:
+  - aq-qa 0 --json
+  - aq-report --since=<window> --format=json
+  - optional aq-feedback-loop / aq-memory recall when a task prompt is provided
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+AQ_QA = REPO_ROOT / "scripts" / "ai" / "aq-qa"
+AQ_REPORT = REPO_ROOT / "scripts" / "ai" / "aq-report"
+AQ_MEMORY = REPO_ROOT / "scripts" / "ai" / "aq-memory"
+AQ_FEEDBACK_LOOP = REPO_ROOT / "scripts" / "ai" / "aq-feedback-loop"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build a bounded operational-perspective evidence bundle.")
+    parser.add_argument("--task", help="Optional operational-perspective prompt or task to ground memory/preflight.")
+    parser.add_argument("--since", default="1h", help="aq-report window (default: 1h).")
+    parser.add_argument("--memory-limit", type=int, default=5, help="Memory recall limit when --task is set.")
+    parser.add_argument("--format", dest="fmt", choices=["json", "text"], default="json")
+    return parser.parse_args()
+
+
+def _run_json(cmd: list[str], timeout: int = 120) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    meta: dict[str, Any] = {"command": cmd, "timeout_seconds": timeout}
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        meta["status"] = "timeout"
+        return None, meta
+    meta["status"] = "ok" if result.returncode == 0 else "failed"
+    meta["exit_code"] = int(result.returncode)
+    if result.stderr.strip():
+        meta["stderr"] = result.stderr.strip()
+    stdout = result.stdout.strip()
+    if not stdout:
+        return None, meta
+    try:
+        return json.loads(stdout), meta
+    except json.JSONDecodeError as exc:
+        meta["parse_error"] = str(exc)
+        meta["stdout_preview"] = stdout[:400]
+        return None, meta
+
+
+def _top_tool_latencies(tool_perf: dict[str, Any], limit: int = 3) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+    for name, stats in (tool_perf or {}).items():
+        if not isinstance(stats, dict):
+            continue
+        ranked.append(
+            {
+                "tool": name,
+                "p95_ms": stats.get("p95_ms"),
+                "ok_pct": stats.get("ok_pct"),
+                "calls": stats.get("calls"),
+                "client_error_count": stats.get("client_error_count"),
+                "server_error_count": stats.get("server_error_count"),
+                "unknown_count": stats.get("unknown_count"),
+            }
+        )
+    ranked.sort(key=lambda item: float(item.get("p95_ms") or 0.0), reverse=True)
+    return ranked[:limit]
+
+
+def _build_observed_signals(
+    qa_payload: dict[str, Any] | None,
+    report_payload: dict[str, Any] | None,
+    feedback_payload: dict[str, Any] | None,
+    memory_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    qa_summary = None
+    if isinstance(qa_payload, dict):
+        qa_summary = {
+            "passed": qa_payload.get("passed") or qa_payload.get("pass"),
+            "failed": qa_payload.get("failed") or qa_payload.get("fail"),
+            "skipped": qa_payload.get("skipped") or qa_payload.get("skip"),
+        }
+    continue_editor = (report_payload or {}).get("continue_editor") or {}
+    rag_posture = (report_payload or {}).get("rag_posture") or {}
+    route_latency = (report_payload or {}).get("route_search_latency_decomposition") or {}
+    remote_profiles = (report_payload or {}).get("remote_profile_utilization") or {}
+    benchmark = (report_payload or {}).get("llama_benchmark_summary") or {}
+    latest_run = (benchmark.get("latest_run") if isinstance(benchmark, dict) else None) or {}
+    return {
+        "qa_phase_0": qa_summary,
+        "continue_editor": {
+            "available": continue_editor.get("available"),
+            "healthy": continue_editor.get("healthy"),
+            "failure_categories": continue_editor.get("failure_categories"),
+            "state_budget": continue_editor.get("state_budget"),
+        },
+        "memory_recall": {
+            "share_pct": rag_posture.get("memory_recall_share_pct"),
+            "miss_pct": rag_posture.get("memory_recall_miss_pct"),
+            "diagnosis": rag_posture.get("memory_recall_diagnosis"),
+            "actions": rag_posture.get("memory_recall_actions"),
+        },
+        "tool_latency": {
+            "top_p95_tools": _top_tool_latencies((report_payload or {}).get("tool_performance") or {}),
+        },
+        "route_search_latency": {
+            "overall_p95_ms": route_latency.get("overall_p95_ms"),
+            "actionable_p95_ms": route_latency.get("actionable_p95_ms"),
+            "client_error_count": route_latency.get("client_error_count"),
+            "backend_unclassified_count": route_latency.get("backend_unclassified_count"),
+        },
+        "remote_profiles": {
+            "available": remote_profiles.get("available"),
+            "total_calls": remote_profiles.get("total_calls"),
+            "top_profiles": remote_profiles.get("top_profiles"),
+            "top_backend_reason_classes": remote_profiles.get("top_backend_reason_classes"),
+        },
+        "local_resource_observations": {
+            "latest_run_id": latest_run.get("run_id"),
+            "avg_warm_latency_s": latest_run.get("avg_warm_latency_s"),
+            "peak_rss_mb": latest_run.get("peak_rss_mb"),
+            "avg_gpu_busy_percent": latest_run.get("avg_gpu_busy_percent"),
+        },
+        "preflight": {
+            "recommended_scope": (feedback_payload or {}).get("recommended_scope"),
+            "preflight_commands": (feedback_payload or {}).get("preflight_commands"),
+        } if feedback_payload else None,
+        "memory_recall_hits": memory_payload,
+    }
+
+
+def _build_inferred_constraints(observed: dict[str, Any]) -> list[str]:
+    constraints: list[str] = []
+    qa_phase_0 = observed.get("qa_phase_0") or {}
+    if qa_phase_0 and int(qa_phase_0.get("failed") or 0) > 0:
+        constraints.append("Phase-0 harness health is not fully green; multi-step work should stay behind qa gating.")
+    memory = observed.get("memory_recall") or {}
+    if str(memory.get("diagnosis") or "") in {"unused", "weak"}:
+        constraints.append("Memory recall remains a bottleneck for continuation-style work; prefer recall before broad synthesis.")
+    top_tools = ((observed.get("tool_latency") or {}).get("top_p95_tools") or [])
+    if top_tools:
+        tool = top_tools[0]
+        if float(tool.get("p95_ms") or 0.0) >= 5000:
+            constraints.append(f"Tool latency remains material; `{tool.get('tool')}` dominates recent P95 tail behavior.")
+    remote = observed.get("remote_profiles") or {}
+    if remote.get("available") is False or not remote.get("total_calls"):
+        constraints.append("Recent remote-collaboration telemetry is sparse; remote behavior should not be overstated from this window.")
+    resources = observed.get("local_resource_observations") or {}
+    if resources.get("peak_rss_mb") is not None:
+        constraints.append("Edge-device resource observations exist for benchmark runs, but not for every live task start.")
+    return constraints
+
+
+def _build_unknowns(observed: dict[str, Any]) -> list[str]:
+    unknowns = [
+        "Exact context-window usage at task start is not currently exposed as a first-class metric in this bundle.",
+        "Session continuity across the last 3 sessions is not yet summarized as a dedicated metric surface.",
+        "MCP malformed-response rate is not explicitly measured here.",
+        "Remote-memory sync overhead is not currently measured as a dedicated metric.",
+        "Network availability for remote collaboration is not currently measured as a dedicated metric.",
+    ]
+    if not (observed.get("memory_recall_hits") or {}).get("items"):
+        unknowns.append("No memory recall hits were returned for the provided task/prompt in this run.")
+    return unknowns
+
+
+def _render_text(payload: dict[str, Any]) -> str:
+    lines = ["observed_signals:"]
+    lines.append(json.dumps(payload["observed_signals"], indent=2))
+    lines.append("inferred_constraints:")
+    for item in payload["inferred_constraints"]:
+        lines.append(f"- {item}")
+    lines.append("evidence_sources:")
+    for item in payload["evidence_sources"]:
+        lines.append(f"- {json.dumps(item)}")
+    lines.append("unknowns_or_next_checks:")
+    for item in payload["unknowns_or_next_checks"]:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    args = parse_args()
+    qa_payload, qa_meta = _run_json([str(AQ_QA), "0", "--json"], timeout=120)
+    report_payload, report_meta = _run_json([sys.executable, str(AQ_REPORT), f"--since={args.since}", "--format=json"], timeout=180)
+
+    feedback_payload = None
+    feedback_meta = None
+    memory_payload = None
+    memory_meta = None
+    if args.task:
+        feedback_payload, feedback_meta = _run_json(
+            [sys.executable, str(AQ_FEEDBACK_LOOP), "--task", args.task, "--format", "json"],
+            timeout=120,
+        )
+        memory_json, memory_meta = _run_json(
+            [str(AQ_MEMORY), "--json", "search", args.task, "--project", "ai-stack", "--limit", str(args.memory_limit)],
+            timeout=90,
+        )
+        if isinstance(memory_json, list):
+            memory_payload = {"items": memory_json}
+        else:
+            memory_payload = memory_json
+
+    observed = _build_observed_signals(qa_payload, report_payload, feedback_payload, memory_payload)
+    payload = {
+        "observed_signals": observed,
+        "inferred_constraints": _build_inferred_constraints(observed),
+        "evidence_sources": [
+            qa_meta,
+            report_meta,
+            feedback_meta,
+            memory_meta,
+        ],
+        "unknowns_or_next_checks": _build_unknowns(observed),
+    }
+    payload["evidence_sources"] = [item for item in payload["evidence_sources"] if item]
+
+    if args.fmt == "json":
+        print(json.dumps(payload, indent=2))
+    else:
+        print(_render_text(payload))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

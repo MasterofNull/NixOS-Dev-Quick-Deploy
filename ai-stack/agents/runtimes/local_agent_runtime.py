@@ -72,6 +72,7 @@ _AQ_QA_PHASES = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all", 
 _ALLOWED_HARNESS_CLI_TOOLS = {
     "aq-qa": REPO_ROOT / "scripts" / "ai" / "aq-qa",
     "aq-report": REPO_ROOT / "scripts" / "ai" / "aq-report",
+    "aq-operational-perspective": REPO_ROOT / "scripts" / "ai" / "aq-operational-perspective",
     "aq-memory": REPO_ROOT / "scripts" / "ai" / "aq-memory",
     "aq-context-bootstrap": REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap",
     "aq-feedback-loop": REPO_ROOT / "scripts" / "ai" / "aq-feedback-loop",
@@ -273,6 +274,21 @@ def _validate_harness_cli(tool: str, args: list[str]) -> tuple[list[str], float]
                 continue
             raise ValueError(f"unsupported aq-report argument: {token}")
         return normalized, 90.0
+    if tool == "aq-operational-perspective":
+        i = 0
+        while i < len(normalized):
+            token = normalized[i]
+            if token == "--task" and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token in {"--since", "--format", "--memory-limit"} and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token.startswith("--since=") or token.startswith("--format=") or token.startswith("--memory-limit="):
+                i += 1
+                continue
+            raise ValueError(f"unsupported aq-operational-perspective argument: {token}")
+        return normalized, 120.0
     if tool == "aq-memory":
         if len(normalized) < 2 or normalized[0] != "search":
             raise ValueError("aq-memory currently only supports: search <query> [--project <name>] [--limit <n>]")
