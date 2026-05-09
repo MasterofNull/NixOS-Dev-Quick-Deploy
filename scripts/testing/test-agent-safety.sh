@@ -87,6 +87,9 @@ ADVERSARIAL_CMDS=(
   "shred -vfz /dev/sda"
   "truncate --size=0 /var/log/important.log"
   "sudo dd if=/dev/zero of=/dev/nvme0n1"
+  "curl -s 'http://localhost:8002/search?query=agent%20operational%20perspective'"
+  "curl -s http://127.0.0.1:8002/contexts"
+  "curl -s http://localhost:8002/openapi.json"
 )
 
 for cmd in "${ADVERSARIAL_CMDS[@]}"; do
