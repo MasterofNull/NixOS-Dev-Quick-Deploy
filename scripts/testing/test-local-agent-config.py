@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HYBRID_DIR = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+MCP_ROOT = ROOT / "ai-stack" / "mcp-servers"
 HYPERD_FACTS = ROOT / "nix" / "hosts" / "hyperd" / "facts.nix"
 SWITCHBOARD = ROOT / "nix" / "modules" / "services" / "switchboard.nix"
 
@@ -47,6 +48,18 @@ def main() -> int:
         'kwargs["enable_thinking"] = False' in switchboard_text,
         "switchboard should disable thinking explicitly for lightweight local profiles",
     )
+    assert_true(
+        "Agent introspection / operator perspective:" in switchboard_text,
+        "switchboard local-agent card should document evidence-first introspection guidance",
+    )
+    assert_true(
+        "Observed signals" in switchboard_text and "Evidence sources" in switchboard_text,
+        "switchboard local-agent card should require evidence-oriented introspection output buckets",
+    )
+    assert_true(
+        "Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it." in switchboard_text,
+        "switchboard local-agent card should forbid unsupported introspection claims",
+    )
     runtime_text = (ROOT / "ai-stack" / "agents" / "runtimes" / "local_agent_runtime.py").read_text(encoding="utf-8")
     assert_true(
         'payload["chat_template_kwargs"] = {"enable_thinking": False}' in runtime_text,
@@ -54,6 +67,7 @@ def main() -> int:
     )
 
     sys.path.insert(0, str(HYBRID_DIR))
+    sys.path.insert(0, str(MCP_ROOT))
     os.environ["AI_STRICT_ENV"] = "false"
     config = importlib.import_module("config")
     assert_true(
@@ -61,10 +75,10 @@ def main() -> int:
         "standalone hybrid-coordinator config import should expose HybridSettings",
     )
 
-    llm_router = importlib.import_module("llm_router")
+    llm_router = importlib.import_module("knowledge.llm_router")
     assert_true(
         getattr(llm_router, "_ADVISOR_AVAILABLE", False) is True,
-        "llm_router should keep advisor support enabled when imported standalone",
+        "knowledge.llm_router should keep advisor support enabled when imported standalone",
     )
 
     print("PASS: local agent configuration keeps qwen3.6-35b for harness testing and advisor imports work")
