@@ -98,17 +98,21 @@ let
 
     Agent introspection / operator perspective:
       1. Gather bounded evidence first:
+         aq-feedback-loop --task "<prompt>" --format json
+         aq-context-bootstrap --task "<prompt>" --format json
          MCP tools: get_hints {q:"<prompt>"}, harness_health, get_working_memory, query_aidb
       2. Use shell fallback only if needed:
          aq-report --format=json
          aq-qa 0 --json
          aq-memory search "<topic>" --project ai-stack --limit 5
-      3. Structure the answer with:
+      3. If the bootstrap or feedback loop selects context-offload:
+         follow preflight_commands or continuation_startup_commands before answering
+      4. Structure the answer with:
          Observed signals
          Inferred constraints
          Evidence sources
          Unknowns / next checks
-      4. Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.
+      5. Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.
 
     === KEY PATHS ===
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
