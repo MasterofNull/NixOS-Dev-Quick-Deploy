@@ -279,6 +279,27 @@ def test_dispatch_tool_supports_feedback_loop_cli():
     assert payload["args"] == ["--task", "inspect local agent state", "--format", "json"]
 
 
+def test_dispatch_tool_supports_context_manage_summary_cli():
+    module = _load_runtime(AGENT_TOOLS_ENABLED="true")
+
+    async def _fake_run_harness_cli(tool, args):
+        return json.dumps({"tool": tool, "args": args, "status": "ok"})
+
+    module._run_harness_cli = _fake_run_harness_cli
+
+    result = asyncio.run(
+        module._dispatch_tool(
+            _FakeAsyncClient(),
+            "run_harness_cli",
+            {"tool": "aq-context-manage", "args": ["summary", "--task", "resume current slice", "--json"]},
+        )
+    )
+    payload = json.loads(result)
+
+    assert payload["tool"] == "aq-context-manage"
+    assert payload["args"] == ["summary", "--task", "resume current slice", "--json"]
+
+
 def test_run_harness_cli_rejects_unsafe_arguments():
     module = _load_runtime(AGENT_TOOLS_ENABLED="true")
 
@@ -288,3 +309,15 @@ def test_run_harness_cli_rejects_unsafe_arguments():
         assert "unsafe harness CLI argument" in str(exc) or "unsupported aq-qa phase" in str(exc)
     else:
         raise AssertionError("expected unsafe aq-qa argument to be rejected")
+
+
+def test_validate_harness_cli_accepts_hints_and_context_summary():
+    module = _load_runtime(AGENT_TOOLS_ENABLED="true")
+
+    args, timeout_seconds = module._validate_harness_cli("aq-hints", ["resume local agent state", "--format=json", "--agent=codex"])
+    assert args == ["resume local agent state", "--format=json", "--agent=codex"]
+    assert timeout_seconds == 60.0
+
+    args, timeout_seconds = module._validate_harness_cli("aq-context-manage", ["summary", "--task", "resume local agent state", "--json"])
+    assert args == ["summary", "--task", "resume local agent state", "--json"]
+    assert timeout_seconds == 90.0

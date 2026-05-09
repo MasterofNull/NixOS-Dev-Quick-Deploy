@@ -72,12 +72,16 @@ For continuation or resume-style tasks, `aq-context-bootstrap` now emits
 That packet should be treated as the default startup sequence:
 
 ```bash
+aq-context-manage summary --task "<task>" --json
 aq-memory search "<task>" --project ai-stack --limit 5
 aq-context-card --card context-offload --level standard
 aq-context-manage check
 aq-hints "resume <task>" --format=json --agent=codex
 harness-rpc.js run-start --query "<task>" --blueprint long-running-context-offload --intent-depth standard
 ```
+
+When `context_assist_profiles` includes `embedded-assist`, prefer that compact
+lane as the search/context helper before spending larger local or remote context.
 
 ## Relationship To Other Tools
 

@@ -59,6 +59,10 @@ for command in ("aq-context-bootstrap", "aq-qa 0 --json", "aq-report --since=1h 
     if not any(command in item for item in starter_commands):
         print(f"ERROR: starter command missing: {command}", file=sys.stderr)
         raise SystemExit(1)
+assist_profiles = payload.get("context_assist_profiles", [])
+if assist_profiles != ["embedded-assist"]:
+    print("ERROR: feedback loop did not surface embedded-assist as the compact helper lane", file=sys.stderr)
+    raise SystemExit(1)
 
 preflight = payload.get("preflight_commands", [])
 if not preflight:
@@ -67,7 +71,7 @@ if not preflight:
 if preflight[0].startswith("aq-context-bootstrap"):
     print("ERROR: feedback loop did not prioritize continuation recall ahead of generic bootstrap", file=sys.stderr)
     raise SystemExit(1)
-for command in ("aq-qa 0 --json", "aq-report --since=1h --format=json", "aq-memory search", "aq-context-manage check"):
+for command in ("aq-qa 0 --json", "aq-report --since=1h --format=json", "aq-memory search", "aq-context-manage summary", "aq-context-manage check"):
     if not any(command in item for item in preflight):
         print(f"ERROR: preflight command missing: {command}", file=sys.stderr)
         raise SystemExit(1)

@@ -27,6 +27,14 @@ from context_manager import ContextMemoryManager
 
 AQ_MEMORY_SCRIPT = Path(__file__).with_name("aq-memory")
 
+SUMMARY_TYPE_LABELS = {
+    "decision": "decisions",
+    "fact": "facts",
+    "advice": "next_steps",
+    "discovery": "open_questions",
+    "event": "events",
+}
+
 
 def format_bytes(bytes_count: int) -> str:
     """Format bytes as human-readable string."""
@@ -207,6 +215,119 @@ def _checkpoint_entries(args) -> list[tuple[str, str, list[str]]]:
     return entries
 
 
+def _run_memory_json(command: list[str]) -> list[dict] | dict:
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit((result.stderr or result.stdout or "aq-memory command failed").strip())
+    try:
+        payload = json.loads((result.stdout or "").strip() or "[]")
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"unable to parse aq-memory output: {exc}") from exc
+    return payload
+
+
+def _fact_preview(fact: dict) -> dict:
+    return {
+        "fact_id": fact.get("fact_id"),
+        "type": fact.get("type"),
+        "content": fact.get("content"),
+        "created_at": fact.get("created_at"),
+        "tags": fact.get("tags") or [],
+        "source": fact.get("source"),
+    }
+
+
+def _build_summary_payload(args) -> dict:
+    resume_query = args.resume_query or args.task
+    search_payload = _run_memory_json([
+        sys.executable,
+        str(AQ_MEMORY_SCRIPT),
+        "--storage",
+        args.memory_storage,
+        "--json",
+        "search",
+        resume_query,
+        "--project",
+        args.project,
+        "--tags",
+        "checkpoint,resume",
+        "--limit",
+        str(args.limit),
+    ])
+    list_payload = _run_memory_json([
+        sys.executable,
+        str(AQ_MEMORY_SCRIPT),
+        "--storage",
+        args.memory_storage,
+        "--json",
+        "list",
+        "--project",
+        args.project,
+        "--topic",
+        args.topic,
+        "--limit",
+        str(args.limit),
+    ])
+
+    matched_items = search_payload if isinstance(search_payload, list) else []
+    recent_items = list_payload if isinstance(list_payload, list) else []
+
+    combined: list[dict] = []
+    seen: set[str] = set()
+    for fact in matched_items + recent_items:
+        fact_id = str(fact.get("fact_id") or "")
+        if not fact_id or fact_id in seen:
+            continue
+        tags = set(fact.get("tags") or [])
+        if "checkpoint" not in tags and str(fact.get("source") or "") != "aq-context-manage":
+            continue
+        combined.append(fact)
+        seen.add(fact_id)
+
+    sections: dict[str, list[dict]] = {label: [] for label in SUMMARY_TYPE_LABELS.values()}
+    for fact in combined:
+        bucket = SUMMARY_TYPE_LABELS.get(str(fact.get("type") or ""), "facts")
+        sections.setdefault(bucket, []).append(_fact_preview(fact))
+
+    summary_lines: list[str] = []
+    latest_event = sections["events"][0]["content"] if sections["events"] else ""
+    if latest_event:
+        summary_lines.append(f"Latest checkpoint event: {latest_event}")
+    for label, title in (
+        ("decisions", "Decisions"),
+        ("next_steps", "Next steps"),
+        ("facts", "Facts"),
+        ("open_questions", "Open questions"),
+    ):
+        for item in sections.get(label, [])[:2]:
+            summary_lines.append(f"{title}: {item['content']}")
+
+    resume_commands = [
+        f'aq-context-manage summary --task "{args.task}" --project {args.project} --topic {args.topic} --json',
+        f'aq-memory search "{resume_query}" --project {args.project} --limit 5',
+        f'aq-context-bootstrap --task "resume {args.task}" --scope context-offload --format json',
+        'aq-context-card --card context-offload --level standard',
+        f'aq-hints "resume {args.task}" --format=json --agent=codex',
+    ]
+    return {
+        "task": args.task,
+        "resume_query": resume_query,
+        "project": args.project,
+        "topic": args.topic,
+        "context_assist_profiles": ["embedded-assist"],
+        "matched_items": [_fact_preview(item) for item in matched_items[: args.limit]],
+        "recent_checkpoint_items": [_fact_preview(item) for item in recent_items[: args.limit]],
+        "summary_lines": summary_lines,
+        "latest_event": latest_event,
+        "decisions": sections["decisions"],
+        "facts": sections["facts"],
+        "next_steps": sections["next_steps"],
+        "open_questions": sections["open_questions"],
+        "resume_commands": resume_commands,
+        "guidance": "Prefer this compact summary before replaying broader transcript history in a fresh session.",
+    }
+
+
 def cmd_checkpoint(args):
     """Persist a structured checkpoint to aq-memory and print fresh-session resume steps."""
     entries = _checkpoint_entries(args)
@@ -289,6 +410,7 @@ def cmd_checkpoint(args):
 
     resume_query = args.resume_query or args.task
     resume_commands = [
+        f'aq-context-manage summary --task "{args.task}" --project {args.project} --topic {args.topic} --json',
         f'aq-memory search "{resume_query}" --project {args.project} --limit 5',
         f'aq-context-bootstrap --task "resume {args.task}" --scope context-offload --format json',
         'aq-context-card --card context-offload --level standard',
@@ -322,6 +444,31 @@ def cmd_checkpoint(args):
     print(response["guidance"])
 
 
+def cmd_summary(args):
+    """Build a compact prior-session summary from recent checkpoint facts."""
+    payload = _build_summary_payload(args)
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return
+
+    print("Recent Session Summary")
+    print("=" * 60)
+    print(f"Task: {payload['task']}")
+    print(f"Query: {payload['resume_query']}")
+    print()
+    if payload["summary_lines"]:
+        for line in payload["summary_lines"]:
+            print(f"- {line}")
+    else:
+        print("No matching checkpoint summary lines found.")
+    print()
+    print("Fresh-session resume:")
+    for command in payload["resume_commands"]:
+        print(f"  {command}")
+    print()
+    print(payload["guidance"])
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Context Memory Management CLI",
@@ -334,13 +481,14 @@ Examples:
   aq-context-manage update                # Update lifecycle states
   aq-context-manage compact               # Trigger compaction
   aq-context-manage checkpoint --task "resume slice" --decision "bounded retries to 2" --next-step "start fresh session"
+  aq-context-manage summary --task "resume slice" --json
   aq-context-manage stats --json          # JSON output
         """
     )
 
     parser.add_argument(
         "command",
-        choices=["stats", "check", "plan", "update", "compact", "checkpoint"],
+        choices=["stats", "check", "plan", "update", "compact", "checkpoint", "summary"],
         help="Command to execute"
     )
 
@@ -369,6 +517,7 @@ Examples:
     parser.add_argument("--next-step", dest="next_step", action="append", help="Next step to store. Repeatable.")
     parser.add_argument("--open-question", dest="open_question", action="append", help="Open question to store. Repeatable.")
     parser.add_argument("--resume-query", help="Override query string used in printed resume commands.")
+    parser.add_argument("--limit", type=int, default=6, help="Maximum checkpoint facts to summarize.")
     parser.add_argument("--agent-owner", help="Optional memory owner for checkpoint entries.")
     parser.add_argument("--created-by", help="Creator identifier for checkpoint entries.")
     parser.add_argument("--tags", default="checkpoint,resume", help="Shared comma-separated tags for checkpoint entries.")
@@ -381,6 +530,11 @@ Examples:
         if not args.task:
             parser.error("--task is required for checkpoint")
         cmd_checkpoint(args)
+        return
+    if args.command == "summary":
+        if not args.task:
+            parser.error("--task is required for summary")
+        cmd_summary(args)
         return
 
     manager = ContextMemoryManager(db_path=args.db)

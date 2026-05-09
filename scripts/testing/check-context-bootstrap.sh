@@ -183,6 +183,9 @@ if not resume_cmds:
 if not any(cmd.startswith('aq-memory search "') for cmd in resume_cmds):
     print("ERROR: resume bootstrap did not start with memory recall", file=sys.stderr)
     raise SystemExit(1)
+if not any(cmd.startswith('aq-context-manage summary --task "') for cmd in resume_cmds):
+    print("ERROR: resume bootstrap did not include a compact session summary command", file=sys.stderr)
+    raise SystemExit(1)
 if not any("aq-context-manage check" in cmd for cmd in resume_cmds):
     print("ERROR: resume bootstrap did not include context state check", file=sys.stderr)
     raise SystemExit(1)
@@ -191,6 +194,9 @@ if not any("long-running-context-offload" in cmd for cmd in resume_cmds):
     raise SystemExit(1)
 if resume.get("starter_commands", [])[: len(resume_cmds)] != resume_cmds:
     print("ERROR: resume bootstrap did not prioritize continuation startup commands at the top of starter commands", file=sys.stderr)
+    raise SystemExit(1)
+if resume.get("context_assist_profiles") != ["embedded-assist"]:
+    print("ERROR: resume bootstrap did not expose embedded-assist as the context helper lane", file=sys.stderr)
     raise SystemExit(1)
 
 print("PASS: context bootstrap validated")

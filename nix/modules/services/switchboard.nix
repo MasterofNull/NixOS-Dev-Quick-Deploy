@@ -100,6 +100,7 @@ let
       1. Gather bounded evidence first:
          aq-feedback-loop --task "<prompt>" --format json
          aq-context-bootstrap --task "<prompt>" --format json
+         aq-context-manage summary --task "<prompt>" --json
          MCP tools: get_hints {q:"<prompt>"}, harness_health, get_working_memory, query_aidb
       2. Use shell fallback only if needed:
          aq-report --format=json
@@ -108,6 +109,7 @@ let
          aq-memory search "<topic>" --project ai-stack --limit 5
       3. If the bootstrap or feedback loop selects context-offload:
          execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering
+         prefer embedded-assist as the compact search/context helper lane before broader local or remote synthesis
       4. Structure the answer with:
          Observed signals
          Inferred constraints

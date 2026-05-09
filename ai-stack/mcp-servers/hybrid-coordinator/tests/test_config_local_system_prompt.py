@@ -54,11 +54,15 @@ def test_default_local_prompt_workflow_includes_structured_request_scaffold():
         for step in workflow
     )
     assert any(
-        "aq-feedback-loop --task" in step and "aq-context-bootstrap --task" in step and "continuation_startup_commands" in step
+        "aq-feedback-loop --task" in step and "aq-context-bootstrap --task" in step and "aq-context-manage summary --task" in step and "continuation_startup_commands" in step
         for step in workflow
     )
     assert any(
         "execute sanctioned aq-*" in step
+        for step in workflow
+    )
+    assert any(
+        "embedded-assist as compact search/context helpers" in step
         for step in workflow
     )
     assert any(
@@ -83,7 +87,9 @@ def test_built_local_system_prompt_mentions_evidence_contract():
 
     assert "Keep answers grounded in observed repo state and captured command evidence." in prompt
     assert "aq-feedback-loop --task" in prompt
+    assert "aq-context-manage summary --task" in prompt
     assert "continuation_startup_commands" in prompt
+    assert "embedded-assist as compact search/context helpers" in prompt
     assert "execute sanctioned aq-*" in prompt
     assert "- observed_signals" in prompt
     assert "- evidence_sources" in prompt

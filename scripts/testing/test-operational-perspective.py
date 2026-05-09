@@ -51,6 +51,7 @@ def main() -> int:
         },
         {"recommended_scope": "context-offload", "preflight_commands": ["aq-qa 0 --json"]},
         {"items": [{"fact_id": "abc", "content": "resume checkpoint"}]},
+        {"summary_lines": ["Latest checkpoint event: resume checkpoint"]},
     )
     constraints = module._build_inferred_constraints(observed)
     unknowns = module._build_unknowns(observed)
@@ -82,7 +83,9 @@ def main() -> int:
             if "aq-report" in joined:
                 return {"tool_performance": {}, "rag_posture": {}, "remote_profile_utilization": {"available": False, "total_calls": 0}}, {"command": cmd, "status": "ok"}
             if "aq-feedback-loop" in joined:
-                return {"recommended_scope": "harness-first", "preflight_commands": ["aq-qa 0 --json"]}, {"command": cmd, "status": "ok"}
+                return {"recommended_scope": "harness-first", "preflight_commands": ["aq-qa 0 --json"], "context_assist_profiles": ["embedded-assist"]}, {"command": cmd, "status": "ok"}
+            if "aq-context-manage" in joined:
+                return {"summary_lines": ["Latest checkpoint event: prior context"], "resume_commands": ["aq-context-manage summary --task \"inspect local agent state\" --json"]}, {"command": cmd, "status": "ok"}
             if "aq-memory" in joined:
                 return [{"fact_id": "1", "content": "prior context"}], {"command": cmd, "status": "ok"}
             raise AssertionError(f"unexpected command: {cmd}")
@@ -95,6 +98,8 @@ def main() -> int:
         payload = json.loads(buf.getvalue())
         assert_true("observed_signals" in payload, "expected observed_signals payload")
         assert_true(payload["observed_signals"]["preflight"]["recommended_scope"] == "harness-first", "expected feedback loop preflight inclusion")
+        assert_true(payload["observed_signals"]["preflight"]["context_assist_profiles"] == ["embedded-assist"], "expected embedded assist helper lane")
+        assert_true(payload["observed_signals"]["recent_session_summary"]["summary_lines"][0].startswith("Latest checkpoint event:"), "expected compact session summary inclusion")
         assert_true(payload["observed_signals"]["memory_recall_hits"]["items"][0]["fact_id"] == "1", "expected memory recall inclusion")
     finally:
         module.parse_args = original_parse_args

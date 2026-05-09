@@ -75,7 +75,9 @@ _ALLOWED_HARNESS_CLI_TOOLS = {
     "aq-operational-perspective": REPO_ROOT / "scripts" / "ai" / "aq-operational-perspective",
     "aq-memory": REPO_ROOT / "scripts" / "ai" / "aq-memory",
     "aq-context-bootstrap": REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap",
+    "aq-context-manage": REPO_ROOT / "scripts" / "ai" / "aq-context-manage",
     "aq-feedback-loop": REPO_ROOT / "scripts" / "ai" / "aq-feedback-loop",
+    "aq-hints": REPO_ROOT / "scripts" / "ai" / "aq-hints",
     "aq-runtime": REPO_ROOT / "scripts" / "ai" / "aq-runtime",
 }
 
@@ -303,6 +305,34 @@ def _validate_harness_cli(tool: str, args: list[str]) -> tuple[list[str], float]
                 continue
             raise ValueError(f"unsupported aq-memory argument: {token}")
         return normalized, 60.0
+    if tool == "aq-context-manage":
+        if not normalized or normalized[0] not in {"check", "summary", "checkpoint"}:
+            raise ValueError("aq-context-manage requires one of: check, summary, checkpoint")
+        command = normalized[0]
+        if command == "check":
+            for token in normalized[1:]:
+                if token != "--json":
+                    raise ValueError(f"unsupported aq-context-manage check argument: {token}")
+            return normalized, 60.0
+        if "--task" not in normalized:
+            raise ValueError(f"aq-context-manage {command} requires --task <value>")
+        i = 1
+        while i < len(normalized):
+            token = normalized[i]
+            if token == "--task" and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token in {"--json", "--force"}:
+                i += 1
+                continue
+            if token in {"--project", "--topic", "--resume-query", "--limit", "--created-by", "--agent-owner", "--memory-storage"} and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token in {"--fact", "--decision", "--next-step", "--open-question", "--tags"} and i + 1 < len(normalized):
+                i += 2
+                continue
+            raise ValueError(f"unsupported aq-context-manage argument: {token}")
+        return normalized, 90.0
     if tool in {"aq-context-bootstrap", "aq-feedback-loop"}:
         if "--task" not in normalized:
             raise ValueError(f"{tool} requires --task <value>")
@@ -320,6 +350,21 @@ def _validate_harness_cli(tool: str, args: list[str]) -> tuple[list[str], float]
                 continue
             raise ValueError(f"unsupported {tool} argument: {token}")
         return normalized, 90.0
+    if tool == "aq-hints":
+        i = 0
+        while i < len(normalized):
+            token = normalized[i]
+            if not token.startswith("--") and i == 0:
+                i += 1
+                continue
+            if token in {"--format", "--context", "--max", "--agent"} and i + 1 < len(normalized):
+                i += 2
+                continue
+            if token.startswith("--format=") or token.startswith("--context=") or token.startswith("--max=") or token.startswith("--agent="):
+                i += 1
+                continue
+            raise ValueError(f"unsupported aq-hints argument: {token}")
+        return normalized, 60.0
     if tool == "aq-runtime":
         if not normalized or normalized[0] not in {"diagnose", "plan", "act", "remediate"}:
             raise ValueError("aq-runtime requires one of: diagnose, plan, act, remediate")
