@@ -130,6 +130,50 @@ def _get(url: str, key: str, timeout: int = _DEFAULT_TIMEOUT_GET) -> dict:
         return {"error": str(e)}
 
 
+def _query_aidb_knowledge(query: str, limit: int = 5, project: str | None = None, timeout: int = _DEFAULT_TIMEOUT_POST) -> dict:
+    payload = {"query": query, "limit": limit}
+    if project:
+        payload["project"] = project
+
+    legacy = _post(f"{AIDB_URL}/query", payload, AIDB_KEY, timeout=timeout)
+    if "error" not in legacy or legacy.get("status") != 404:
+        return legacy
+
+    params = {"search": query, "limit": str(limit)}
+    if project:
+        params["project"] = project
+    docs_url = f"{AIDB_URL}/documents?{urllib.parse.urlencode(params)}"
+    docs = _get(docs_url, AIDB_KEY, timeout=_DEFAULT_TIMEOUT_GET)
+    if "error" in docs:
+        return docs
+
+    documents = docs.get("documents") if isinstance(docs, dict) else None
+    if not isinstance(documents, list):
+        return {"error": "AIDB documents search returned unexpected shape", "raw": docs}
+
+    normalized = []
+    for item in documents[:limit]:
+        if not isinstance(item, dict):
+            continue
+        normalized.append({
+            "title": item.get("title"),
+            "project": item.get("project"),
+            "relative_path": item.get("relative_path"),
+            "content": item.get("content"),
+            "content_type": item.get("content_type"),
+            "status": item.get("status"),
+            "imported_at": item.get("imported_at"),
+        })
+    return {
+        "query": query,
+        "project": project,
+        "limit": limit,
+        "results": normalized,
+        "documents_count": len(documents),
+        "source": "documents_search_fallback",
+    }
+
+
 def _get_hints_cached(url: str, key: str) -> dict:
     now = time.monotonic()
     entry = _hints_cache.get(url)
@@ -1163,10 +1207,12 @@ def _call_tool(name: str, args: dict) -> str:
         return _format_result(r)
 
     if name == "query_aidb":
-        r = _post(f"{AIDB_URL}/query", {
-            "query": args.get("query", ""),
-            "limit": args.get("limit", 5),
-        }, AIDB_KEY, timeout=_timeout_post)
+        r = _query_aidb_knowledge(
+            args.get("query", ""),
+            limit=int(args.get("limit", 5)),
+            project=args.get("project"),
+            timeout=_timeout_post,
+        )
         return _format_result(r)
 
     if name == "augment_query":
@@ -1414,11 +1460,12 @@ def _call_tool(name: str, args: dict) -> str:
         context = args.get("context", "")
         ref_query = args.get("reference_query", f"{command} design reference")
         # Retrieve reference docs from AIDB
-        ref = _post(f"{AIDB_URL}/query", {
-            "query": ref_query,
-            "project": "impeccable-design",
-            "limit": 3,
-        }, AIDB_KEY, timeout=15)
+        ref = _query_aidb_knowledge(
+            ref_query,
+            limit=3,
+            project="impeccable-design",
+            timeout=15,
+        )
         # Get skill content
         skill = _get(f"{HYBRID_URL}/skills/impeccable/content", HYBRID_KEY, timeout=10)
         return _format_result({

@@ -48,6 +48,8 @@ BLOCKLIST: list[tuple[str, str]] = [
     # NixOS system mutations (must go through proper nix tools)
     (r"\bnixos-rebuild\s+switch\b", "nixos-rebuild-switch-direct"),
     (r"\bhome-manager\s+switch\b", "home-manager-switch-direct"),
+    # Wrapper-first AIDB policy for agent-initiated terminal commands.
+    (r"\bcurl\b[^\n]*https?://(?:localhost|127\.0\.0\.1):8002(?:/|\b)", "aidb-loopback-raw-curl"),
 ]
 
 AUDIT_LOG = Path("/var/log/nixos-ai-stack/agent-commands.jsonl")
@@ -68,14 +70,24 @@ def check_command(command: str) -> Tuple[bool, str]:
     for pattern, tag in BLOCKLIST:
         if re.search(pattern, command_stripped, re.IGNORECASE):
             _log(command_stripped, allowed=False, blocked_by=tag, pattern=pattern)
-            return (
-                False,
-                f"Command blocked by agent safety policy (rule: {tag}). "
-                f"If this action is required, perform it manually outside the agent.",
-            )
+            return (False, _blocked_reason(tag))
 
     _log(command_stripped, allowed=True, blocked_by=None, pattern=None)
     return True, "ok"
+
+
+def _blocked_reason(tag: str) -> str:
+    if tag == "aidb-loopback-raw-curl":
+        return (
+            "Command blocked by agent safety policy (rule: aidb-loopback-raw-curl). "
+            "Use harness wrappers first: MCP `query_aidb`, `get_working_memory`, "
+            "`aq-memory search`, or documented AIDB endpoints such as "
+            "`GET /documents?search=...` instead of raw curl probing."
+        )
+    return (
+        f"Command blocked by agent safety policy (rule: {tag}). "
+        f"If this action is required, perform it manually outside the agent."
+    )
 
 
 def _log(
@@ -116,6 +128,8 @@ if __name__ == "__main__":
         ("iptables -F", False),
         ("nixos-rebuild switch", False),
         ("home-manager switch", False),
+        ("curl -s 'http://localhost:8002/search?query=test'", False),
+        ("curl -s http://127.0.0.1:8002/openapi.json", False),
     ]
 
     all_ok = True
