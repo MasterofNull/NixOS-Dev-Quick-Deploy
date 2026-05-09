@@ -106,6 +106,21 @@ SCOPE_PRIORITY = [
     "harness-first",
 ]
 
+CONTINUATION_MARKERS = [
+    "resume",
+    "continue",
+    "continued",
+    "continuation",
+    "pick up where",
+    "left off",
+    "last session",
+    "previous session",
+    "prior context",
+    "follow-up",
+    "follow up",
+    "ongoing",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Recommend minimal context cards and workflow entrypoints for a task.")
@@ -265,7 +280,8 @@ def detect_scope(task: str, context: dict) -> tuple[str, dict]:
     if any(token in lowered for token in ["driver", "probe", "apparmor", "service"]):
         scores["runtime-incident"] += 2
         reasons["runtime-incident"].append("task:runtime_signal")
-    if any(token in lowered for token in ["implement", "build", "develop", "integration", "resume"]):
+    continuation = any(token in lowered for token in CONTINUATION_MARKERS)
+    if any(token in lowered for token in ["implement", "build", "develop", "integration"]):
         scores["feature-development"] += 2
         reasons["feature-development"].append("task:development_signal")
     if any(token in lowered for token in ["offload", "compact", "compaction", "history", "context window", "token usage"]):
@@ -274,6 +290,12 @@ def detect_scope(task: str, context: dict) -> tuple[str, dict]:
     if any(token in lowered for token in ["memory", "prompt history", "long running", "long-running"]):
         scores["context-offload"] += 3
         reasons["context-offload"].append("task:memory_signal")
+    if continuation:
+        scores["context-offload"] += 7
+        reasons["context-offload"].append("task:continuation_signal")
+        if any(token in lowered for token in ["patch", "deploy", "debug", "fix", "implementation", "feature", "task", "work"]):
+            scores["context-offload"] += 2
+            reasons["context-offload"].append("task:continuation_work_state")
 
     best_scope = "harness-first"
     best_score = 0
@@ -311,6 +333,20 @@ def detect_scope(task: str, context: dict) -> tuple[str, dict]:
         "confidence": confidence,
         "alternatives": top_alternatives,
     }
+
+
+def continuation_startup_commands(task: str, scope: str) -> list[str]:
+    lowered = task.lower()
+    if scope != "context-offload" and not any(token in lowered for token in CONTINUATION_MARKERS):
+        return []
+    hints_query = task if any(lowered.startswith(marker) for marker in CONTINUATION_MARKERS) else f"resume {task}"
+    return [
+        f'aq-memory search "{task}" --project ai-stack --limit 5',
+        'aq-context-card --card context-offload --level standard',
+        'aq-context-manage check',
+        f'aq-hints "{hints_query}" --format=json --agent=codex',
+        f'harness-rpc.js run-start --query "{task}" --blueprint long-running-context-offload --intent-depth standard',
+    ]
 
 
 def load_cards(task: str, level: str, preferred_cards: list[str], context: dict) -> dict:
@@ -356,6 +392,10 @@ def format_text(payload: dict) -> str:
     lines.append("starter_commands:")
     for cmd in payload.get("starter_commands", []):
         lines.append(f"- {cmd}")
+    if payload.get("continuation_startup_commands"):
+        lines.append("continuation_startup_commands:")
+        for cmd in payload.get("continuation_startup_commands", []):
+            lines.append(f"- {cmd}")
     lines.append("cards:")
     for card in payload.get("cards", []):
         lines.append(f"- [{card['id']}] {card['summary']}")
@@ -377,6 +417,13 @@ def main() -> int:
     fallback_reason = "low_scope_confidence" if fallback_scope else ""
     recommended_next_mode = "use_fallback_scope" if fallback_scope else "proceed_primary"
     recommended_scope = fallback_scope or scope
+    continuation_commands = continuation_startup_commands(args.task, scope)
+    starter_commands = list(scope_cfg.get("starter_commands", []))
+    if continuation_commands:
+        starter_commands = continuation_commands + [
+            cmd for cmd in starter_commands
+            if cmd not in continuation_commands
+        ]
     output = {
         "task": args.task,
         "scope": scope,
@@ -389,7 +436,8 @@ def main() -> int:
         "context": context,
         "scope_summary": scope_cfg["summary"],
         "level": args.level,
-        "starter_commands": scope_cfg.get("starter_commands", []),
+        "starter_commands": starter_commands,
+        "continuation_startup_commands": continuation_commands,
         "ecosystem_hints": hint_bundle.get("ecosystem_hints", []),
         "package_hints": hint_bundle.get("package_hints", []),
         "stack_matchers_applied": hint_bundle.get("stack_matchers_applied", []),

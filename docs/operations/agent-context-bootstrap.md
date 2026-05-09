@@ -50,6 +50,9 @@ aq-context-bootstrap --task "diagnose a runtime/appamor mismatch" --format json
 `harness-first`
 - hints/primer/brownfield-first startup for tasks that are complex but not yet classified
 
+`context-offload`
+- continuation tasks, long-running work, memory-first resume, and transcript compaction
+
 ## Default Use
 
 For any non-trivial task where the scope is not already obvious:
@@ -63,6 +66,18 @@ Then:
 1. load only the first recommended card
 2. run only the first starter command that matches the real task
 3. expand to additional cards only if the next step is still blocked
+
+For continuation or resume-style tasks, `aq-context-bootstrap` now emits
+`continuation_startup_commands` and moves them to the top of `starter_commands`.
+That packet should be treated as the default startup sequence:
+
+```bash
+aq-memory search "<task>" --project ai-stack --limit 5
+aq-context-card --card context-offload --level standard
+aq-context-manage check
+aq-hints "resume <task>" --format=json --agent=codex
+harness-rpc.js run-start --query "<task>" --blueprint long-running-context-offload --intent-depth standard
+```
 
 ## Relationship To Other Tools
 
