@@ -1,0 +1,11 @@
+{
+  "command": "git",
+  "args": [
+    "commit",
+    "-m",
+    "fix(verify): update continue config version check to 33.0",
+    "scripts/testing/verify-flake-first-roadmap-completion.sh"
+  ],
+  "cwd": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy",
+  "timeout": 60
+}

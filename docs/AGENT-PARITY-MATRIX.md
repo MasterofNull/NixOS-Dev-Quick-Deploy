@@ -783,7 +783,7 @@ Report remediation slice (2026-03-03, pre-deploy hardening):
 | claude | npm global | `~/.local/bin/claude` | Partial (external orchestrator) | PASS |
 | codex | npm global | `~/.npm-global/bin/codex` | Partial (external, OpenAI API) | PASS |
 | qwen | npm global | `~/.npm-global/bin/qwen` | Partial (external, Alibaba API) | PASS |
-| gemini | npm global | `~/.npm-global/bin/gemini` | Partial (external, Google API) | PASS |
+| gemini | npm global | `~/.npm-global/bin/gemini` | Full (MCP bridge, hints, workflows) | PASS |
 | pi | npm global | `~/.npm-global/bin/pi` | Partial (external CLI) | PASS |
 
 ### Harness Integration Levels
@@ -800,7 +800,6 @@ These CLIs connect directly to external APIs and do not integrate with the local
 
 1. **codex** - OpenAI Codex CLI, requires `OPENAI_API_KEY`
 2. **qwen** - Alibaba Qwen CLI, requires `DASHSCOPE_API_KEY`
-3. **gemini** - Google Gemini CLI, requires `GOOGLE_API_KEY`
 
 ### Upgrade Path Documentation
 
@@ -810,7 +809,7 @@ These CLIs connect directly to external APIs and do not integrate with the local
 | claude | npm global, partial integration | Add MCP server config for harness tools |
 | codex | npm global, external-only | Consider local proxy for cost/latency |
 | qwen | npm global, external-only | Consider switchboard integration |
-| gemini | npm global, external-only | Consider switchboard integration |
+| gemini | npm global, full integration | Maintain via project MCP config |
 | pi | npm global, partial | Evaluate skill extension for harness |
 
 ### Validation

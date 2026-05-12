@@ -7,7 +7,7 @@ Full policy: `docs/AGENTS.md` · Quick start: `docs/agent-guides/01-QUICK-START.
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
 - Search first: `grep -r "<keyword>" . --include="*.py" -l` before editing
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
-- Commit format: `type(scope): msg\n\nCo-Authored-By: <agent> <noreply@anthropic.com>`
+- Commit format: `type(scope): msg\n\nCo-Authored-By: <agent-name> <noreply@harness.local>`
 
 ## Operator Terminal CLIs (human-run, not AI tool calls)
 ```bash

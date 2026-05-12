@@ -1,0 +1,4 @@
+{
+  "status": "error",
+  "error": "Error decoding command.json: Expecting ',' delimiter: line 8 column 5 (char 190). Content: '{\n  \"command\": \"git\",\n  \"args\": [\n    \"commit\",\n    \"-m\",\n    \"fix(verify): update continue config version check to 33.0\",\n    \"scripts/testing/verify-flake-first-roadmap-completion.sh\"\n    \"add\",\n    \".gitignore\",\n    \"scripts/bridge/local-harness-proxy.py\"\n  ],\n  \"cwd\": \"/home/hyperd/Documents/NixOS-Dev-Quick-Deploy\",\n  \"timeout\": 60\n}\n'"
+}

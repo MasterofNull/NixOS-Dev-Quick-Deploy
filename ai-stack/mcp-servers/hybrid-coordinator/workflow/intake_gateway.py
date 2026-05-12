@@ -78,6 +78,7 @@ _PROFILE_SOURCE_MAP = [
     ("continue",           "continue"),
     ("codex",              "codex-ext"),
     ("claude",             "claude-ext"),
+    ("gemini",             "gemini-ext"),
     ("local-agent",        "local-agent"),
     ("embedded-assist",    "embedded-assist"),
     ("remote-reasoning",   "remote-reasoning"),
@@ -88,6 +89,7 @@ _USERAGENT_SOURCE_MAP = [
     ("continue",  "continue"),
     ("codex",     "codex-ext"),
     ("claude",    "claude-ext"),
+    ("gemini",    "gemini-ext"),
     ("cursor",    "cursor"),
 ]
 

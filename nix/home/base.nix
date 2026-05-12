@@ -1302,19 +1302,39 @@ PYEOF
           raw = data.get("geminiCodeAssist.chatThreads")
           if not raw:
               return data, changed
-          outer = json.loads(raw) if isinstance(raw, str) else raw
+          
+          def _safe_load(val):
+              if not val: return {}
+              if isinstance(val, dict):
+                  # Detect character-mapped corruption: {"0": "{", "1": "\"", ...}
+                  if "0" in val and all(k.isdigit() for k in val.keys() if len(k) < 8):
+                      try:
+                          keys = sorted([int(k) for k in val.keys() if k.isdigit()])
+                          return json.loads("".join([val[str(k)] for k in keys]))
+                      except: return {}
+                  return val
+              try: return json.loads(val)
+              except: return {}
+
+          outer = _safe_load(raw)
+          if not isinstance(outer, dict): return data, changed
+
+          # If the entire chatThreads payload is still huge, clear it aggressively
+          if len(json.dumps(outer)) > 1024 * 1024:
+              data["geminiCodeAssist.chatThreads"] = "{}"
+              return data, True
+
           for account, acct_raw in outer.items():
-              inner = json.loads(acct_raw) if isinstance(acct_raw, str) else acct_raw
+              inner = _safe_load(acct_raw)
+              if not isinstance(inner, dict): continue
               for tid in list(inner.keys()):
-                  t_raw = inner[tid]
-                  t = json.loads(t_raw) if isinstance(t_raw, str) else t_raw
-                  if not isinstance(t, dict):
-                      continue
+                  t = _safe_load(inner[tid])
+                  if not isinstance(t, dict): continue
+                  
                   hist = t.get("history", [])
                   last_idx = len(hist) - 1
                   for i, msg in enumerate(hist):
-                      if not isinstance(msg, dict):
-                          continue
+                      if not isinstance(msg, dict): continue
                       ws = msg.get("workspaceChange")
                       if ws and len(json.dumps(ws)) > 64:
                           msg["workspaceChange"] = {}
@@ -1326,7 +1346,9 @@ PYEOF
                               changed = True
                   inner[tid] = json.dumps(t, separators=(",", ":"))
               outer[account] = json.dumps(inner, separators=(",", ":"))
-          data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
+          
+          if changed:
+              data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
           return data, changed
 
       def prune_qwen(data):

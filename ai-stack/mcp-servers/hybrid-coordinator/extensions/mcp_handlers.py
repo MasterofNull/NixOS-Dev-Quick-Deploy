@@ -36,7 +36,7 @@ from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type, validate_memory_content
 
 logger = logging.getLogger("hybrid-coordinator")
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 _AQ_QA_SCRIPT = _REPO_ROOT / "scripts" / "ai" / "aq-qa"
 _FLAGSHIP_CLI_SMOKE_SCRIPT = _REPO_ROOT / "scripts" / "testing" / "smoke-flagship-cli-surfaces.sh"
 _QA_PHASE_ALIASES = {

@@ -68,7 +68,7 @@
         "parameters": {
           "query": "Search query string",
           "max": "Maximum hints to return (default: 5)",
-          "agent": "Agent type: human|claude|codex|qwen|aider"
+          "agent": "Agent type: human|claude|codex|qwen|aider|gemini"
         },
         "example": "curl -s 'http://127.0.0.1:8003/hints?query=nix+modules&max=3'"
       },
@@ -199,9 +199,9 @@
       "notes": "Uses shell commands via PATH"
     },
     "gemini": {
-      "config_path": null,
-      "type": "shell",
-      "notes": "Uses shell commands via PATH"
+      "config_path": ".gemini/settings.json",
+      "type": "mcp",
+      "notes": "Uses project-local MCP server configuration for full harness integration"
     }
   },
 
