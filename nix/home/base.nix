@@ -1619,7 +1619,7 @@ PYEOF
         "INTROSPECTION MODE: For questions about your operation, capabilities, limitations, memory, orchestration, or collaboration, start with `aq-operational-perspective --task \"<prompt>\" --format json` when terminal execution is available. Otherwise use aq-feedback-loop --task \"<prompt>\" --format json or aq-context-bootstrap --task \"<prompt>\" --format json; prefer aq-context-manage summary --task \"<prompt>\" --json and embedded-assist as compact search/context helpers, and if they select context-offload, execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering. Prefer `mcp_server_get_hints`, `mcp_server_harness_health`, `mcp_server_get_working_memory`, `mcp_server_recall_memory`, and `mcp_server_query_aidb` before broader shell fallbacks.",
         "INTROSPECTION OUTPUT: Separate observed signals, inferred constraints, evidence sources, and unknowns. Do not present unverified behavior as fact.",
         "NO ls-FIRST: Never run ls on repo root as the first action. Use targeted grep or read specific files.",
-        "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@anthropic.com>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
+        "COMMIT DISCIPLINE: git add <files> && git commit -m 'type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@harness.local>' — replace <active-agent-name> with the model generating the work. Never hardcode a specific model version.",
         "CONTEXT LIMITS: For local models, keep messages short. Use summarize_context MCP tool if conversation grows long.",
         "LANE SELECTION: Use local-agent for bounded repo/runtime checks, health, monitoring, and background-safe harness work. Use continue-local for compact editor help. Use remote-free for lightweight synthesis, remote-reasoning for architecture/policy or larger-context judgment, remote-coding for implementation, and remote-tool-calling only for strict tool schemas.",
         "CONTEXT STRATEGY: Local lanes must aggressively offload to harness memory and compact often. Remote lanes may use their larger context windows when justified, but should still prefer retrieval-first handoffs over replaying long transcripts.",
@@ -1628,7 +1628,7 @@ PYEOF
         "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ] before running shell commands. Never issue an unquoted AIDB or coordinator query URL.",
         "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
         "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
-        "CONFIG FREEZE — Claude (OAuth — CLI Bridge) and Codex (OAuth — CLI Bridge) model entries are required. Do not remove them."
+        "CONFIG FREEZE — Claude (OAuth — CLI Bridge), Codex (OAuth — CLI Bridge), and Gemini model entries are required. Do not remove them."
       ],
       "models": [
         {
@@ -1675,6 +1675,15 @@ PYEOF
           "apiKey": "cli-oauth",
           "apiBase": "http://127.0.0.1:8089/v1",
           "model": "codex-cli",
+          "contextLength": ${toString continueRemoteContextLength},
+          "maxTokens": ${toString continueRemoteMaxTokens}
+        },
+        {
+          "title": "Gemini (OAuth — CLI Bridge)",
+          "provider": "openai",
+          "apiKey": "cli-oauth",
+          "apiBase": "http://127.0.0.1:8089/v1",
+          "model": "gemini-cli",
           "contextLength": ${toString continueRemoteContextLength},
           "maxTokens": ${toString continueRemoteMaxTokens}
         },
