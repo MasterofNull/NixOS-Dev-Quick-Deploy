@@ -127,6 +127,7 @@ def _seed_from_env() -> None:
         ("local-tool-calling","http://127.0.0.1:8085", "local"),
         ("remote-reasoning",  "http://127.0.0.1:8085", "remote"),
         ("remote-coding",     "http://127.0.0.1:8085", "remote"),
+        ("remote-gemini",     "http://127.0.0.1:8085", "remote"),
         ("remote-default",    "http://127.0.0.1:8085", "remote"),
     ]
     for profile, endpoint, source in local_profiles:
@@ -162,6 +163,19 @@ def _seed_from_env() -> None:
                 capabilities=_infer_capabilities(cli_profile),
                 endpoint=_cli_bridge_url,
                 source="cli-bridge",
+            )
+
+    # 4. Global NPM/system CLIs (gemini, pi)
+    import shutil
+    for cli_bin in ("gemini", "pi"):
+        if shutil.which(cli_bin):
+            agent_id = f"system:{cli_bin}"
+            _agents[agent_id] = AgentCapability(
+                agent_id=agent_id,
+                profile=cli_bin,
+                capabilities=_infer_capabilities(cli_bin),
+                endpoint="stdio", # Placeholder
+                source="system-cli",
             )
 
     logger.info("agent_capability_registry: seeded %d agents from env", len(_agents))
