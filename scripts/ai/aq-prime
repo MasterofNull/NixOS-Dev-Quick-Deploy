@@ -381,7 +381,7 @@ def format_text_output(data: dict[str, Any]) -> str:
     lines.append("   - git add <files>")
     lines.append("   - git commit -m \"type(scope): msg")
     lines.append("")
-    lines.append("     Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\"")
+    lines.append("     Co-Authored-By: <active-agent-name> <noreply@harness.local>\"")
     lines.append("   - Update todo list to reflect completion")
     lines.append("")
 

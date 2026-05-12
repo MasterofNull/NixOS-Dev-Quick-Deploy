@@ -46,7 +46,7 @@
     "research_and_implementation_can_run_concurrently",
     "work_can_be_split_into_architecture_patch_review_tracks"
   ],
-  "$version": 4,
+  "$version": 3,
   "permissions": {
     "allow": [
       "Bash(mv *)",
