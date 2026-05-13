@@ -151,6 +151,22 @@ let
     };
   };
 
+  # Google.geminicodeassist — "Gemini Code Assist" — bumped to 2.81.0
+  # to fix preview channel bugs and support paid subscriptions properly.
+  geminiCodeAssist = pkgs.vscode-utils.buildVscodeExtension {
+    pname = "Google-geminicodeassist";
+    version = "2.81.0";
+    vscodeExtPublisher = "Google";
+    vscodeExtName = "geminicodeassist";
+    vscodeExtUniqueId = "Google.geminicodeassist";
+    vscodeExtVersion = "2.81.0";
+    src = pkgs.fetchurl {
+      url = "https://open-vsx.org/api/Google/geminicodeassist/2.81.0/file/Google.geminicodeassist-2.81.0.vsix";
+      hash = "sha256-QX0YPHPQPYl2LRHGmXTL146Kxty/YMlvRo503eWEMpg=";
+      name = "Google-geminicodeassist.zip";
+    };
+  };
+
   # Continue CLI — declarative npm packaging
   continueCli = pkgs.callPackage ../pkgs/continue-cli.nix {};
 
@@ -239,6 +255,7 @@ let
     "continue.telemetryEnabled" = false;
     "continue.enableTabAutocomplete" = true;
     "continue.showInlineTip" = true;
+    "geminicodeassist.updateChannel" = "Default"; # Prevent preview channel lock-in
     "cSpell.import" = [];
     "extensions.autoUpdate" = false;
     "extensions.autoCheckUpdates" = false;
@@ -838,6 +855,7 @@ in {
         # Note: Google scope uses capital G (pkgs.vscode-extensions."Google").
         ++ vsExt "anthropic" "claude-code" # Claude Code
         ++ vsExt "Google" "gemini-cli-vscode-ide-companion" # Gemini CLI companion
+        ++ [geminiCodeAssist] # Gemini Code Assist (Open VSX)
         ++ [openaiCodex] # Codex — OpenAI's coding agent (Open VSX)
         ++ [cyberpunkThemeExtension] # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
