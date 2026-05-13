@@ -1419,6 +1419,7 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
         "/alerts",
         "/stats",
         "/learning/stats",
+        "/control/safety/",    # Phase 28: local agents set session safety mode
     )
     return any(req.path.startswith(pfx) for pfx in agent_prefixes)
 
