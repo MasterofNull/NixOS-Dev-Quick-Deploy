@@ -878,13 +878,13 @@ PY
 # ---------------------------------------------------------------------------
 run_phase_4() {
   # 4.1 aq-hints CLI
-  _check_output "4.1.1" "aq-hints responds to query" "." \
+  _check_output 6 "4.1.1" "aq-hints responds to query" "." \
     bash -c "\"${SCRIPT_DIR}/aq-hints\" 'nixos module help' --format text 2>/dev/null | head -5"
 
   # 4.2 Hybrid coordinator /hints endpoint
   local _hk4
   _hk4=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
-  _check_output "4.2.1" "hybrid /hints returns hints for test query" "." \
+  _check_output 6 "4.2.1" "hybrid /hints returns hints for test query" "." \
     bash -c "curl -sf -H 'X-API-Key: ${_hk4}' '${HYBRID_URL}/hints?q=test' 2>/dev/null"
 
   # 4.3 Switchboard continue-local context trimming configured
@@ -892,14 +892,14 @@ run_phase_4() {
   max_input=$(curl -sf --max-time 5 "${SWITCHBOARD_URL}/health" 2>/dev/null | \
     python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('profiles',{}).get('continue-local',{}).get('maxInputTokens',''))" 2>/dev/null || true)
   if [[ -n "$max_input" && "$max_input" =~ ^[0-9]+$ && "$max_input" -lt 8192 ]]; then
-    _pass 4 "4.3.1" "switchboard continue-local maxInputTokens=${max_input} (trimming active)"
+    _pass 6 "4.3.1" "switchboard continue-local maxInputTokens=${max_input} (trimming active)"
   else
-    _fail 4 "4.3.1" "switchboard continue-local maxInputTokens configured" "got='$max_input'"
+    _fail 6 "4.3.1" "switchboard continue-local maxInputTokens configured" "got='$max_input'"
   fi
 
   # 4.4 Core agent policy files present
-  _check "4.4.1" "CLAUDE.md present and non-empty" test -s "${REPO_ROOT}/CLAUDE.md"
-  _check "4.4.2" "AGENTS.md present and non-empty" test -s "${REPO_ROOT}/AGENTS.md"
+  _check 7 "4.4.1" "CLAUDE.md present and non-empty" test -s "${REPO_ROOT}/CLAUDE.md"
+  _check 7 "4.4.2" "AGENTS.md present and non-empty" test -s "${REPO_ROOT}/AGENTS.md"
 }
 
 # ---------------------------------------------------------------------------
@@ -912,31 +912,31 @@ run_phase_5() {
     local aa_mode
     aa_mode=$(grep -o '(enforce)\|(complain)' /sys/kernel/security/apparmor/profiles 2>/dev/null | grep -c 'enforce' || true)
     if [[ "$aa_mode" -ge 1 ]]; then
-      _pass 5 "5.1.1" "AppArmor has enforce-mode profiles active"
+      _pass 3 "5.1.1" "AppArmor has enforce-mode profiles active"
     else
-      _skip 5 "5.1.1" "AppArmor enforce mode" "no enforce-mode profiles (may need --sudo)"
+      _skip 3 "5.1.1" "AppArmor enforce mode" "no enforce-mode profiles (may need --sudo)"
     fi
   else
-    _skip 5 "5.1.1" "AppArmor ai-llama-cpp profile" "profile file absent"
+    _skip 3 "5.1.1" "AppArmor ai-llama-cpp profile" "profile file absent"
   fi
 
   # 5.2 SSRF protection module
-  _check "5.2.1" "ssrf_protection.py present" \
+  _check 3 "5.2.1" "ssrf_protection.py present" \
     test -f "${REPO_ROOT}/ai-stack/mcp-servers/shared/ssrf_protection.py"
-  _check "5.2.2" "ssrf_protection importable" \
+  _check 3 "5.2.2" "ssrf_protection importable" \
     python3 -c "import sys, types; sys.modules.setdefault('structlog', types.SimpleNamespace(get_logger=lambda *a, **k: types.SimpleNamespace(info=lambda *x, **y: None, warning=lambda *x, **y: None, error=lambda *x, **y: None))); sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/shared'); import ssrf_protection"
 
   # 5.3 Prompt injection scanner
-  _check "5.3.1" "prompt_injection.py present" \
+  _check 3 "5.3.1" "prompt_injection.py present" \
     test -f "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/prompt_injection.py"
-  _check "5.3.2" "prompt_injection importable" \
+  _check 3 "5.3.2" "prompt_injection importable" \
     python3 -c "import sys, types; sys.modules.setdefault('structlog', types.SimpleNamespace(get_logger=lambda *a, **k: types.SimpleNamespace(info=lambda *x, **y: None, warning=lambda *x, **y: None, error=lambda *x, **y: None))); sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); import prompt_injection"
 
   # 5.5 Network isolation
   if nft list table ip ai_localhost_isolation >/dev/null 2>&1; then
-    _pass 5 "5.5.1" "nftables AI localhost isolation table active"
+    _pass 3 "5.5.1" "nftables AI localhost isolation table active"
   else
-    _skip 5 "5.5.1" "nftables AI localhost isolation" "table not loaded (may need sudo)"
+    _skip 3 "5.5.1" "nftables AI localhost isolation" "table not loaded (may need sudo)"
   fi
 
   # 5.6 Bubblewrap sandbox
@@ -946,25 +946,25 @@ run_phase_5() {
     bwrap_path="$(systemctl show ai-aider-wrapper.service -p Environment --value 2>/dev/null | tr ' ' '\n' | sed -n 's/^BWRAP_PATH=//p' | head -1)"
   fi
   if command -v bwrap >/dev/null 2>&1; then
-    _pass 5 "5.6.1" "bwrap (bubblewrap) available for aider sandbox"
+    _pass 3 "5.6.1" "bwrap (bubblewrap) available for aider sandbox"
   elif [[ -n "$bwrap_path" && -x "$bwrap_path" ]]; then
-    _pass 5 "5.6.1" "bwrap (bubblewrap) available for aider sandbox via BWRAP_PATH"
+    _pass 3 "5.6.1" "bwrap (bubblewrap) available for aider sandbox via BWRAP_PATH"
   else
-    _fail 5 "5.6.1" "bwrap (bubblewrap) available" "not in PATH and BWRAP_PATH missing"
+    _fail 3 "5.6.1" "bwrap (bubblewrap) available" "not in PATH and BWRAP_PATH missing"
   fi
 
   # 5.7 SafeCommandExecutor — agent immune system
   local _sce_dir="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator"
-  _check "5.7.1" "safe_command_executor importable" \
+  _check 3 "5.7.1" "safe_command_executor importable" \
     python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); from safe_command_executor import check_command; ok,_=check_command('ls /tmp'); assert ok"
-  _check "5.7.2" "safe_command_executor blocks rm -rf" \
+  _check 3 "5.7.2" "safe_command_executor blocks rm -rf" \
     python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); from safe_command_executor import check_command; allowed,reason=check_command('rm -rf /critical'); assert not allowed and 'safety' in reason.lower()"
-  _check "5.7.3" "mcp-bridge-hybrid wires safe_command_executor" \
+  _check 3 "5.7.3" "mcp-bridge-hybrid wires safe_command_executor" \
     python3 -c "src=open('${REPO_ROOT}/scripts/ai/mcp-bridge-hybrid.py').read(); assert 'safe_command_executor' in src and '_sce_check' in src and 'blocked' in src"
   # 5.8 Agent safety smoke test suite
-  _check "5.8.1" "test-agent-safety.sh exists and is executable" \
+  _check 3 "5.8.1" "test-agent-safety.sh exists and is executable" \
     test -x "${REPO_ROOT}/scripts/testing/test-agent-safety.sh"
-  _check "5.8.2" "agent safety smoke: all adversarial commands blocked" \
+  _check 3 "5.8.2" "agent safety smoke: all adversarial commands blocked" \
     bash "${REPO_ROOT}/scripts/testing/test-agent-safety.sh"
 }
 
@@ -974,9 +974,9 @@ run_phase_5() {
 # ---------------------------------------------------------------------------
 run_phase_6() {
   # 6.1 Prometheus
-  _check_output "6.1.1" "Prometheus /metrics responds" "^# HELP" \
+  _check_output 6 "6.1.1" "Prometheus /metrics responds" "^# HELP" \
     bash -c "curl -sf --max-time 5 '${PROMETHEUS_URL}/metrics' 2>/dev/null | head -5"
-  _check_output "6.1.2" "AI metrics exported" "." \
+  _check_output 6 "6.1.2" "AI metrics exported" "." \
     bash -c "{ curl -sf --max-time 5 '${HYBRID_URL}/metrics' 2>/dev/null; printf '\n'; curl -sf --max-time 5 '${EMBEDDINGS_URL}/metrics' 2>/dev/null; } | grep -m1 -E '^hybrid_requests_total|^llamacpp:requests_processing|^embeddings_requests_total'"
 
   # 6.3 Tool audit log
@@ -994,11 +994,11 @@ run_phase_6() {
   fi
 
   # 6.4 aq-report runs without error
-  _check "6.4.1" "aq-report produces JSON output" \
+  _check 6 "6.4.1" "aq-report produces JSON output" \
     bash -c "cd '${REPO_ROOT}' && python3 '${SCRIPT_DIR}/aq-report' --format json >/dev/null 2>&1"
 
   # 6.5 MCP integrity check script
-  _check "6.5.1" "check-mcp-integrity.sh present and executable" \
+  _check 4 "6.5.1" "check-mcp-integrity.sh present and executable" \
     test -x "${REPO_ROOT}/scripts/testing/check-mcp-integrity.sh"
 }
 
@@ -1007,12 +1007,12 @@ run_phase_6() {
 # ---------------------------------------------------------------------------
 run_phase_7() {
   # 7.1 aq-prompt-eval
-  _check "7.1.1" "aq-prompt-eval script executable" \
+  _check 7 "7.1.1" "aq-prompt-eval script executable" \
     test -x "${SCRIPT_DIR}/aq-prompt-eval"
 
   # 7.2 Prompt registry
   local registry="${REPO_ROOT}/ai-stack/prompts/registry.yaml"
-  _check "7.2.1" "prompt registry.yaml present" test -f "$registry"
+  _check 7 "7.2.1" "prompt registry.yaml present" test -f "$registry"
   local prompt_count
   prompt_count=$(python3 -c "
 import re, sys
@@ -1032,9 +1032,9 @@ print(len(re.findall(r'^\s*-\s+id:', txt, re.MULTILINE)))
   gap_count=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -t \
     -c "SELECT COUNT(*) FROM query_gaps;" 2>/dev/null | tr -d ' \n' || echo "err")
   if [[ "$gap_count" =~ ^[0-9]+$ ]]; then
-    _pass 7 "7.3.1" "query_gaps table accessible (${gap_count} rows)"
+    _pass 6 "7.3.1" "query_gaps table accessible (${gap_count} rows)"
   else
-    _fail 7 "7.3.1" "query_gaps table accessible" "got: $gap_count"
+    _fail 6 "7.3.1" "query_gaps table accessible" "got: $gap_count"
   fi
 }
 
@@ -1046,16 +1046,16 @@ run_phase_8() {
   _hk8=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
 
   # 8.1 hints for NixOS queries
-  _check_output "8.1.1" "/hints returns results for 'nixos' query" "." \
+  _check_output 7 "8.1.1" "/hints returns results for 'nixos' query" "." \
     bash -c "curl -sf -H 'X-API-Key: ${_hk8}' '${HYBRID_URL}/hints?q=nixos+module' 2>/dev/null"
 
   # 8.2 aider-wrapper available
   if command -v aider-wrapper >/dev/null 2>&1 || \
      test -f "${REPO_ROOT}/scripts/aider-wrapper.sh" || \
      systemctl is-active --quiet ai-aider-wrapper.service; then
-    _pass 8 "8.2.1" "aider-wrapper available"
+    _pass 7 "8.2.1" "aider-wrapper available"
   else
-    _skip 8 "8.2.1" "aider-wrapper" "not found (deploy pending?)"
+    _skip 7 "8.2.1" "aider-wrapper" "not found (deploy pending?)"
   fi
 
   # 8.3 /query smoke (retrieval mode, no LLM)
@@ -1067,16 +1067,16 @@ run_phase_8() {
     "${HYBRID_URL}/query" 2>/dev/null || echo "err")
   if [[ "$q_out" != "err" ]] && \
      python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d else 1)" "$q_out" 2>/dev/null; then
-    _pass 8 "8.3.1" "hybrid /query retrieval E2E smoke"
+    _pass 7 "8.3.1" "hybrid /query retrieval E2E smoke"
   else
-    _fail 8 "8.3.1" "hybrid /query retrieval E2E smoke" "out: ${q_out:0:80}"
+    _fail 7 "8.3.1" "hybrid /query retrieval E2E smoke" "out: ${q_out:0:80}"
   fi
 
   # 8.4 Weekly report timer
   if _output_contains "ai-weekly-report" systemctl list-timers ai-weekly-report.timer --no-legend 2>/dev/null; then
-    _pass 8 "8.4.1" "ai-weekly-report.timer scheduled"
+    _pass 7 "8.4.1" "ai-weekly-report.timer scheduled"
   else
-    _skip 8 "8.4.1" "ai-weekly-report.timer" "not active (deploy pending?)"
+    _skip 7 "8.4.1" "ai-weekly-report.timer" "not active (deploy pending?)"
   fi
 }
 
@@ -1085,19 +1085,19 @@ run_phase_8() {
 # ---------------------------------------------------------------------------
 run_phase_9() {
   # 9.1 llama-cpp health
-  _http_health "9.1.1" "llama-cpp /health" "${LLAMA_URL}/health"
+  _http_health 2 "9.1.1" "llama-cpp /health" "${LLAMA_URL}/health"
 
   # 9.2 Redis semantic cache store
   local key_count
   key_count=$(redis-cli DBSIZE 2>/dev/null || echo "err")
   if [[ "$key_count" =~ ^[0-9]+$ ]]; then
-    _pass 9 "9.2.1" "Redis accessible for semantic cache (${key_count} keys)"
+    _pass 5 "9.2.1" "Redis accessible for semantic cache (${key_count} keys)"
   else
-    _fail 9 "9.2.1" "Redis semantic cache store" "DBSIZE failed: $key_count"
+    _fail 5 "9.2.1" "Redis semantic cache store" "DBSIZE failed: $key_count"
   fi
 
   # 9.3 Embeddings service health
-  _http_health "9.3.1" "embeddings /health" "${EMBEDDINGS_URL}/health"
+  _http_health 2 "9.3.1" "embeddings /health" "${EMBEDDINGS_URL}/health"
 }
 
 # ---------------------------------------------------------------------------
@@ -1109,35 +1109,35 @@ run_phase_10() {
   hooks_path=$(git -C "${REPO_ROOT}" config core.hookspath 2>/dev/null || true)
   if [[ "$hooks_path" == ".githooks" || "$hooks_path" == "${REPO_ROOT}/.githooks" ]] && \
      [[ -d "${REPO_ROOT}/.githooks" ]]; then
-    _pass 10 "10.1.1" "git hooks configured (.githooks/)"
+    _pass 7 "10.1.1" "git hooks configured (.githooks/)"
   else
-    _fail 10 "10.1.1" "git hooks configured" "core.hookspath='${hooks_path}'"
+    _fail 7 "10.1.1" "git hooks configured" "core.hookspath='${hooks_path}'"
   fi
 
   # 10.1.2 Roadmap verifier self-consistency
   if python3 "${REPO_ROOT}/scripts/testing/verify-self-consistency.py" >/dev/null 2>&1; then
-    _pass 10 "10.1.2" "roadmap verifier patterns all match target files"
+    _pass 7 "10.1.2" "roadmap verifier patterns all match target files"
   else
     local sc_out
     sc_out=$(python3 "${REPO_ROOT}/scripts/testing/verify-self-consistency.py" 2>&1 | head -5)
-    _fail 10 "10.1.2" "roadmap verifier self-consistency" "${sc_out}"
+    _fail 7 "10.1.2" "roadmap verifier self-consistency" "${sc_out}"
   fi
 
   # 10.1.3 Verify-flake script present and executable
-  _check "10.1.3" "verify-flake-first-roadmap-completion.sh executable" \
+  _check 7 "10.1.3" "verify-flake-first-roadmap-completion.sh executable" \
     test -x "${REPO_ROOT}/scripts/testing/verify-flake-first-roadmap-completion.sh"
 
   # 10.2 No failed AI units (regression)
   local failed_count
   failed_count=$(systemctl list-units 'ai-*' 'llama-*' --state=failed --no-legend 2>/dev/null | wc -l | tr -d ' ')
   if [[ "$failed_count" -eq 0 ]]; then
-    _pass 10 "10.2.1" "zero AI units in failed state"
+    _pass 1 "10.2.1" "zero AI units in failed state"
   else
-    _fail 10 "10.2.1" "zero AI units in failed state" "${failed_count} failed"
+    _fail 1 "10.2.1" "zero AI units in failed state" "${failed_count} failed"
   fi
 
   # 10.2.2 aq-qa itself is executable
-  _check "10.2.2" "aq-qa runner is executable" test -x "${SCRIPT_DIR}/aq-qa"
+  _check 7 "10.2.2" "aq-qa runner is executable" test -x "${SCRIPT_DIR}/aq-qa"
 }
 
 # ---------------------------------------------------------------------------
@@ -1148,16 +1148,30 @@ _render_results() {
   local duration=$((end_ts - START_TS))
 
   if [[ "$JSON_OUTPUT" -eq 1 ]]; then
-    python3 - "$PHASE" "$PASS" "$FAIL" "$SKIP" "$duration" "${RESULTS[@]}" <<'PYEOF'
+    python3 - "$PHASE" "$PASS" "$FAIL" "$SKIP" "$duration" "$LAYER_FILTER" "$CAUSALITY_MODE" "${RESULTS[@]}" <<'PYEOF'
 import sys, json
-phase, passed, failed, skipped, duration = sys.argv[1:6]
+phase, passed, failed, skipped, duration, layer_filter, causality_mode = sys.argv[1:8]
+layer_filter, causality_mode = int(layer_filter), int(causality_mode)
 items = []
-for entry in sys.argv[6:]:
+layers = {}
+for entry in sys.argv[8:]:
     status, layer, id_, desc = entry.split('|', 3)
-    items.append({"layer": int(layer), "id": id_, "status": status, "description": desc})
+    item = {"layer": int(layer), "id": id_, "status": status, "description": desc}
+    items.append(item)
+    layers.setdefault(int(layer), []).append(item)
+# degraded_confidence: causality mode active and a dependency layer has failures
+degraded_confidence = False
+if causality_mode and layer_filter > 0:
+    degraded_confidence = any(
+        any(i["status"] == "FAIL" for i in layers[l])
+        for l in layers if l < layer_filter
+    )
 print(json.dumps({
     "phase": phase, "passed": int(passed), "failed": int(failed),
-    "skipped": int(skipped), "duration_s": int(duration), "tests": items
+    "skipped": int(skipped), "duration_s": int(duration),
+    "degraded_confidence": degraded_confidence,
+    "tests": items,
+    "layers": {str(k): v for k, v in sorted(layers.items())}
 }, indent=2))
 PYEOF
     return
@@ -1165,14 +1179,23 @@ PYEOF
 
   local GREEN='\033[0;32m' RED='\033[0;31m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
   printf '\n%b━━━ aq-qa phase %s ━━━%b\n' "${BLUE}" "${PHASE}" "${NC}"
+  local prev_layer=""
   for entry in "${RESULTS[@]}"; do
     IFS='|' read -r status layer id_ desc <<< "$entry"
+    if [[ "$layer" != "$prev_layer" ]]; then
+      printf '%b  [L%s]%b\n' "${BLUE}" "$layer" "${NC}"
+      prev_layer="$layer"
+    fi
     case "$status" in
-      PASS) printf '%b✓%b %-2s %-16s %s\n' "${GREEN}" "${NC}" "$layer" "$id_" "$desc" ;;
-      FAIL) printf '%b✗%b %-2s %-16s %s\n' "${RED}" "${NC}" "$layer" "$id_" "$desc" ;;
-      SKIP) printf '%b–%b %-2s %-16s %s\n' "${YELLOW}" "${NC}" "$layer" "$id_" "$desc" ;;
+      PASS) printf '  %b✓%b %-16s %s\n' "${GREEN}" "${NC}" "$id_" "$desc" ;;
+      FAIL) printf '  %b✗%b %-16s %s\n' "${RED}" "${NC}" "$id_" "$desc" ;;
+      SKIP) printf '  %b–%b %-16s %s\n' "${YELLOW}" "${NC}" "$id_" "$desc" ;;
     esac
   done
+  if [[ "$CAUSALITY_MODE" -eq 1 && "$LAYER_FILTER" -gt 0 && "$FAIL" -gt 0 ]]; then
+    printf '\n%b⚠ DEGRADED CONFIDENCE — lower-layer failures may invalidate L%s results%b\n' \
+      "${YELLOW}" "${LAYER_FILTER}" "${NC}"
+  fi
   printf '\n%b%d passed%b · %b%d failed%b · %d skipped · %ds\n\n' \
     "${GREEN}" "${PASS}" "${NC}" "${RED}" "${FAIL}" "${NC}" "${SKIP}" "${duration}"
 }
