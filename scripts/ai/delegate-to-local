@@ -157,7 +157,8 @@ PYEOF
 
 run_agent() {
     local prompt="$1" output_file="$2" timeout_secs="$3"
-    local agent_loop; agent_loop="$(dirname "$0")/aq-agent-loop"
+    # Use $SCRIPT_DIR (set at source time) — $0 is 'bash' in nohup subshells
+    local agent_loop; agent_loop="$SCRIPT_DIR/aq-agent-loop"
     [[ -x "$agent_loop" ]] || die "aq-agent-loop not found at $agent_loop"
     check_service "$LLAMA_PORT" "llama.cpp"
 
