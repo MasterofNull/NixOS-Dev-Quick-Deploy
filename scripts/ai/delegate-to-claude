@@ -1,149 +1,346 @@
 #!/usr/bin/env bash
-#
-# delegate-to-claude - CLI wrapper for delegating tasks to Claude
-#
-# Uses environment ANTHROPIC_API_KEY (from system secrets)
-# Local agent calls this CLI - never touches credentials directly
+# delegate-to-claude — Delegate a task to Claude CLI (headless, persistent)
 #
 # Usage:
-#   delegate-to-claude --task-file task.json
-#   delegate-to-claude --description "Add tests" --type implementation
+#   delegate-to-claude --prompt "implement X in file Y"  # delegate in background
+#   delegate-to-claude --prompt "..." --wait             # block until done
+#   delegate-to-claude --check <task-id>                 # read output
+#   delegate-to-claude --list                            # list all tasks
+#   delegate-to-claude --status <task-id>                # check status
 #
+# Options:
+#   --prompt TEXT      Task prompt to send to Claude
+#   --prompt-file FILE Read prompt from file
+#   --role ROLE        Role: plan|implement|review|research  [default: implement]
+#   --wait             Block until task completes (default: background)
+#   --check ID         Print output of a completed task
+#   --status ID        Show status of a task
+#   --list             List all registered tasks
+#   --help             Show this help
+#
+# Claude CLI invoked as: claude -p "prompt" --output-format text
+# REPO_ROOT is resolved from BASH_SOURCE — no external env var required.
 
 set -euo pipefail
 
+# Guard: sourcing this script directly (e.g. in nohup subshell) should not
+# re-execute the arg parser.
+[[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
+OUTPUTS_DIR="$DELEGATION_DIR/outputs"
+REGISTRY="$DELEGATION_DIR/registry.jsonl"
+CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 
-# Default values
-TASK_FILE=""
-DESCRIPTION=""
-TASK_TYPE="implementation"
-OUTPUT_FORMAT="json"
-MAX_COST="1.0"
-AGENT="claude-sonnet-4-5"
+# ── helpers ──────────────────────────────────────────────────────────────────
 
-# Parse arguments
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "[delegate-to-claude] $*"; }
+
+require_claude() {
+    [[ -x "$CLAUDE_BIN" ]] || die "Claude CLI not found at $CLAUDE_BIN
+  Or set: export CLAUDE_BIN=/path/to/claude"
+}
+
+ensure_dirs() {
+    mkdir -p "$OUTPUTS_DIR"
+    touch "$REGISTRY"
+}
+
+task_id() {
+    # Use subshell with pipefail disabled — tr exits SIGPIPE when head closes
+    # the pipe, which with set -o pipefail would trigger the fallback.
+    local rand; rand="$(set +o pipefail; tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6)" || rand="xxxxxx"
+    echo "claude-$(date +%Y%m%d-%H%M%S)-${rand}"
+}
+
+registry_append() {
+    local id="$1" description="$2" output_file="$3" pid="${4:-}" role="${5:-implement}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"id":"%s","agent":"claude","role":"%s","description":%s,"output_file":"%s","pid":%s,"status":"running","tokens_in":null,"tokens_out":null,"created":"%s"}\n' \
+        "$id" "$role" \
+        "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+        "$output_file" \
+        "${pid:-null}" \
+        "$ts" >> "$REGISTRY"
+}
+
+registry_update_status() {
+    local id="$1" new_status="$2"
+    python3 - "$REGISTRY" "$id" "$new_status" <<'PYEOF'
+import sys, json
+registry_file, task_id, new_status = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            if entry.get("id") == task_id:
+                entry["status"] = new_status
+            lines.append(json.dumps(entry))
+        except json.JSONDecodeError:
+            lines.append(line)
+with open(registry_file, "w") as f:
+    f.write("\n".join(lines) + ("\n" if lines else ""))
+PYEOF
+}
+
+check_pid_alive() {
+    local pid="$1"
+    [[ -n "$pid" ]] && [[ "$pid" != "null" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+# ── subcommands ───────────────────────────────────────────────────────────────
+
+cmd_list() {
+    [[ -f "$REGISTRY" ]] || { info "No delegated tasks yet."; return; }
+    printf "%-35s  %-10s  %-10s  %-10s  %6s  %6s  %s\n" \
+        "TASK ID" "STATUS" "AGENT" "ROLE" "TOK_IN" "TOK_OUT" "DESCRIPTION"
+    printf "%-35s  %-10s  %-10s  %-10s  %6s  %6s  %s\n" \
+        "-----------------------------------" "----------" "----------" \
+        "----------" "------" "-------" "-----------"
+    python3 - "$REGISTRY" <<'PYEOF'
+import sys, json
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            desc = e.get("description", "")[:50]
+            ti = str(e.get("tokens_in") or "-")
+            to = str(e.get("tokens_out") or "-")
+            print(f"{e['id']:<35}  {e.get('status','?'):<10}  {e.get('agent','?'):<10}  {e.get('role','?'):<10}  {ti:>6}  {to:>7}  {desc}")
+        except Exception:
+            pass
+PYEOF
+}
+
+cmd_status() {
+    local id="$1"
+    [[ -f "$REGISTRY" ]] || die "No registry found at $REGISTRY"
+    python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+found = False
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                found = True
+                print(json.dumps(e, indent=2))
+        except Exception:
+            pass
+if not found:
+    print(f"Task not found: {task_id}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+
+    local pid; pid=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                print(e.get("pid", ""))
+        except Exception:
+            pass
+PYEOF
+)
+    if check_pid_alive "$pid"; then
+        info "Process $pid is still running."
+    else
+        info "Process no longer running."
+    fi
+}
+
+cmd_check() {
+    local id="$1"
+    local output_file; output_file=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                print(e.get("output_file", ""))
+        except Exception:
+            pass
+PYEOF
+)
+    [[ -n "$output_file" ]] || die "Task not found in registry: $id"
+    [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
+    [[ -f "$output_file" ]] || die "Output file not found: $output_file (task may still be running)"
+    cat "$output_file"
+}
+
+cmd_delegate() {
+    local prompt="$1" wait_mode="${2:-false}" role="${3:-implement}"
+
+    require_claude
+    ensure_dirs
+
+    local id; id="$(task_id)"
+    local output_file="$OUTPUTS_DIR/${id}.log"
+    local rel_output=".agents/delegation/outputs/${id}.log"
+
+    # Phase 33.5: prepend role tag so Claude knows its specialization
+    local full_prompt="[ROLE: ${role}]
+
+${prompt}"
+
+    info "Delegating task: $id"
+    info "Role:            $role"
+    info "Output file:     $output_file"
+
+    local cmd=("$CLAUDE_BIN" "-p" "$full_prompt" "--output-format" "text")
+
+    # Register before launching so the task is findable even if we die
+    registry_append "$id" "$prompt" "$rel_output" "" "$role"
+
+    if [[ "$wait_mode" == "true" ]]; then
+        info "Running in blocking mode..."
+        "${cmd[@]}" 2>&1 | tee "$output_file"
+        local exit_code="${PIPESTATUS[0]}"
+        if [[ "$exit_code" -eq 0 ]]; then
+            registry_update_status "$id" "done"
+            info "Task $id completed successfully."
+        else
+            registry_update_status "$id" "failed"
+            info "Task $id failed (exit $exit_code)."
+        fi
+    else
+        # Background mode: fully detach so it survives session eviction.
+        # printf '%q ' pre-quotes each cmd element to safely embed in bash -c string.
+        local cmd_q; cmd_q="$(printf '%q ' "${cmd[@]}")"
+        nohup bash -c "
+            $cmd_q > \"$output_file\" 2>&1
+            exit_code=\$?
+            if [[ \$exit_code -eq 0 ]]; then
+                python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+            else
+                python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+            fi
+        " > /dev/null 2>&1 &
+        local pid=$!
+        disown "$pid"
+
+        # Update registry with PID
+        python3 - "$REGISTRY" "$id" "$pid" <<'PYEOF'
+import sys, json
+registry_file, task_id, pid = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                try:
+                    e["pid"] = int(pid)
+                except ValueError:
+                    e["pid"] = pid
+            lines.append(json.dumps(e))
+        except Exception:
+            lines.append(line)
+with open(registry_file, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PYEOF
+
+        info "Task $id started in background (pid $pid)"
+        info "Check output:  delegate-to-claude --check $id"
+        info "Check status:  delegate-to-claude --status $id"
+        echo "$id"
+    fi
+}
+
+# ── argument parsing ──────────────────────────────────────────────────────────
+
+PROMPT=""
+PROMPT_FILE=""
+ROLE="implement"
+WAIT=false
+SUBCMD=""
+SUBCMD_ARG=""
+
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --task-file)
-            TASK_FILE="$2"
-            shift 2
-            ;;
-        --description)
-            DESCRIPTION="$2"
-            shift 2
-            ;;
-        --type)
-            TASK_TYPE="$2"
-            shift 2
-            ;;
-        --output)
-            OUTPUT_FORMAT="$2"
-            shift 2
-            ;;
-        --max-cost)
-            MAX_COST="$2"
-            shift 2
-            ;;
-        --agent)
-            AGENT="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            exit 1
-            ;;
+    case "$1" in
+        --prompt)      PROMPT="$2";      shift 2 ;;
+        --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
+        --role)        ROLE="$2";        shift 2 ;;
+        --wait)        WAIT=true;        shift   ;;
+        --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
+        --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
+        --list)        SUBCMD="list";    shift   ;;
+        --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
+        *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
 done
 
-# Check for API key (but don't expose it)
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-    # Try to read from secrets
-    if [[ -f /run/secrets/anthropic_api_key ]]; then
-        export ANTHROPIC_API_KEY="$(cat /run/secrets/anthropic_api_key | tr -d '\n')"
-    elif [[ -f "$HOME/.anthropic_api_key" ]]; then
-        export ANTHROPIC_API_KEY="$(cat "$HOME/.anthropic_api_key" | tr -d '\n')"
-    else
-        echo "ERROR: ANTHROPIC_API_KEY not found" >&2
-        echo "  Set via: export ANTHROPIC_API_KEY=..." >&2
-        echo "  Or create: /run/secrets/anthropic_api_key" >&2
-        exit 1
-    fi
-fi
+case "$ROLE" in
+    plan|implement|review|research) ;;
+    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
+esac
 
-# Call Python delegation protocol
-python3 - <<'PYTHON_DELEGATE'
-import asyncio
-import json
-import sys
-import os
-
-# Add repo to path
-sys.path.insert(0, os.environ['REPO_ROOT'])
-
-from ai_stack.autonomous_orchestrator import (
-    DelegatedTask,
-    TaskType,
-    AgentPreference,
-    TaskContext,
-    get_delegation_protocol,
-)
-
-async def delegate():
-    task_file = os.environ.get('TASK_FILE', '')
-    description = os.environ.get('DESCRIPTION', '')
-    task_type = os.environ.get('TASK_TYPE', 'implementation')
-
-    if task_file:
-        # Read task from file
-        with open(task_file, 'r') as f:
-            task_data = json.load(f)
-
-        task = DelegatedTask(
-            task_id=task_data['task_id'],
-            task_type=TaskType(task_data['type']),
-            description=task_data['description'],
-            # ... other fields from JSON
-        )
-    elif description:
-        # Create simple task
-        task = DelegatedTask(
-            task_id=f"cli-task-{int(asyncio.get_event_loop().time())}",
-            task_type=TaskType(task_type),
-            description=description,
-            agent_preference=AgentPreference.CLAUDE,
-        )
-    else:
-        print(json.dumps({"error": "Must provide --task-file or --description"}))
-        sys.exit(1)
-
-    # Delegate
-    protocol = get_delegation_protocol()
-    result = await protocol.delegate(task)
-
-    # Output result
-    output = {
-        "task_id": result.task_id,
-        "status": result.status.value,
-        "success": result.status.name == "COMPLETED",
-        "output": result.output,
-        "changes": [
-            {
-                "file": c.file_path,
-                "action": c.action,
-                "lines_added": c.lines_added,
-                "lines_removed": c.lines_removed,
-            }
-            for c in result.changes
-        ],
-        "cost_usd": result.cost_usd,
-        "execution_time": result.execution_time_seconds,
-    }
-
-    print(json.dumps(output, indent=2))
-
-asyncio.run(delegate())
-PYTHON_DELEGATE
-
-exit 0
+case "${SUBCMD:-}" in
+    list)   ensure_dirs; cmd_list ;;
+    status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
+    check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    "")
+        if [[ -n "$PROMPT_FILE" ]]; then
+            [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
+            PROMPT="$(cat "$PROMPT_FILE")"
+        fi
+        [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
+        cmd_delegate "$PROMPT" "$WAIT" "$ROLE"
+        ;;
+esac
