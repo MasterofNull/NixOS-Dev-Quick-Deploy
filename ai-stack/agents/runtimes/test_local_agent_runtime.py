@@ -338,3 +338,17 @@ def test_phase_30_6_bootstrap_injection_constants_and_helper():
     # Verify helper does not raise and returns a string (likely empty in test env)
     res = module._run_bootstrap_preamble("test task")
     assert isinstance(res, str)
+
+
+def test_compress_tool_output_truncates_long_output():
+    module = _load_runtime()
+    long = "x" * 2000
+    compressed = module._compress_tool_output(long, max_chars=100)
+    assert len(compressed) < 200  # allows for truncation notice overhead
+    assert "truncated" in compressed
+
+
+def test_compress_tool_output_passes_short_output():
+    module = _load_runtime()
+    short = "hello world"
+    assert module._compress_tool_output(short, max_chars=100) == short

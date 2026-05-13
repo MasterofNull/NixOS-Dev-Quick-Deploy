@@ -1,3 +1,10 @@
+<!--
+Skill: prime
+Role: orchestrator
+Inputs: none
+Outputs: summarized project state and suggested next steps
+Example: /prime
+-->
 ---
 description: Prime agent with project context using progressive disclosure
 ---

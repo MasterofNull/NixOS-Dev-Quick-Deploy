@@ -1,3 +1,10 @@
+<!--
+Skill: explore-harness
+Role: orchestrator
+Inputs: none
+Outputs: summary of workflows, artifacts, and next steps
+Example: /explore-harness
+-->
 ---
 description: Explore AI stack harness capabilities quickly
 ---

@@ -1,3 +1,10 @@
+<!--
+Skill: impeccable
+Role: implementer
+Inputs: command, target path, design brief
+Outputs: design audit, critique, or implementation
+Example: /impeccable polish src/components/Button.tsx
+-->
 # /impeccable — Frontend Design Intelligence Command
 
 ## Trigger

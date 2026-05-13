@@ -1,3 +1,10 @@
+<!--
+Skill: primer
+Role: orchestrator
+Inputs: none
+Outputs: session primer summary
+Example: /primer
+-->
 ---
 description: Read-only session primer with progressive disclosure
 ---

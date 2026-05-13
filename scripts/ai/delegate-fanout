@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+# delegate-fanout — Fan-out a task to N agents in parallel, arbitrate winner.
+#
+# Tokenmaxxing pattern: "N of each, running in parallel against the same problem,
+# with the harness routing tasks and arbitrating which agent produces superior results."
+#
+# Usage:
+#   delegate-fanout --prompt "task" --agents gemini,local [--wait] [--role implement]
+#   delegate-fanout --list
+#
+# Options:
+#   --prompt TEXT      Task to fan out
+#   --prompt-file FILE Read prompt from file
+#   --agents LIST      Comma-separated agents: gemini,local,codex  [default: gemini,local]
+#   --role ROLE        plan|implement|review|research               [default: implement]
+#   --wait             Block until all agents complete
+#   --list             List all fanout runs
+#   --help             Show this help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
+FANOUT_DIR="$DELEGATION_DIR/fanout"
+REGISTRY="$DELEGATION_DIR/registry.jsonl"
+
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "[delegate-fanout] $*"; }
+
+ensure_dirs() {
+    mkdir -p "$FANOUT_DIR"
+    touch "$REGISTRY"
+}
+
+fanout_id() {
+    local rand; rand="$(set +o pipefail; tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6)" || rand="xxxxxx"
+    echo "fanout-$(date +%Y%m%d-%H%M%S)-${rand}"
+}
+
+# Select best result: prefer longest non-error output from fastest agent
+_pick_winner() {
+    local ids=("$@")
+    local best_id="" best_score=0
+
+    for id in "${ids[@]}"; do
+        local output_file; output_file=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+rf, tid = sys.argv[1], sys.argv[2]
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid:
+                print(e.get("output_file",""))
+        except: pass
+PYEOF
+)
+        [[ -z "$output_file" ]] && continue
+        [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
+        [[ -f "$output_file" ]] || continue
+
+        local status; status=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+rf, tid = sys.argv[1], sys.argv[2]
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid: print(e.get("status",""))
+        except: pass
+PYEOF
+)
+        [[ "$status" != "done" ]] && continue
+
+        # Score: length of output (prefer substantive responses, penalise errors)
+        local size; size=$(wc -c < "$output_file" 2>/dev/null || echo 0)
+        grep -qi "error\|failed\|exception\|traceback" "$output_file" 2>/dev/null && size=$((size / 4))
+
+        if [[ "$size" -gt "$best_score" ]]; then
+            best_score=$size
+            best_id=$id
+        fi
+    done
+    echo "$best_id"
+}
+
+cmd_fanout() {
+    local prompt="$1" agents_str="${2:-gemini,local}" role="${3:-implement}" wait_mode="${4:-false}"
+    ensure_dirs
+
+    local fid; fid="$(fanout_id)"
+    local child_ids=()
+
+    info "Fanout run: $fid"
+    info "Agents:     $agents_str"
+    info "Role:       $role"
+
+    IFS=',' read -ra agents <<< "$agents_str"
+    for agent in "${agents[@]}"; do
+        agent="${agent// /}"  # trim spaces
+        local delegate_script="$SCRIPT_DIR/delegate-to-${agent}"
+        [[ -x "$delegate_script" ]] || { info "SKIP: $delegate_script not found"; continue; }
+
+        local child_id
+        child_id=$("$delegate_script" --prompt "$prompt" 2>/dev/null | tail -1)
+        [[ -z "$child_id" ]] && continue
+        child_ids+=("$child_id")
+        info "  Spawned $agent → $child_id"
+
+        # Tag role in registry
+        python3 - "$REGISTRY" "$child_id" "$role" <<'PYEOF'
+import sys, json
+rf, tid, role = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid: e["role"] = role
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, "w") as f: f.write("\n".join(lines) + "\n")
+PYEOF
+    done
+
+    [[ ${#child_ids[@]} -eq 0 ]] && die "No agents spawned"
+
+    # Write fanout manifest
+    local manifest="$FANOUT_DIR/${fid}.json"
+    python3 -c "
+import json, sys
+data = {'id': sys.argv[1], 'role': sys.argv[2], 'agents': sys.argv[3].split(','), 'child_ids': sys.argv[4:]}
+print(json.dumps(data, indent=2))
+" "$fid" "$role" "$agents_str" "${child_ids[@]}" > "$manifest"
+
+    if [[ "$wait_mode" == "true" ]]; then
+        info "Waiting for all agents to complete..."
+        local max_wait=600 elapsed=0
+        while [[ $elapsed -lt $max_wait ]]; do
+            local all_done=true
+            for cid in "${child_ids[@]}"; do
+                local st; st=$(python3 - "$REGISTRY" "$cid" <<'PYEOF'
+import sys, json
+rf, tid = sys.argv[1], sys.argv[2]
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid: print(e.get("status",""))
+        except: pass
+PYEOF
+)
+                [[ "$st" == "running" ]] && all_done=false && break
+            done
+            [[ "$all_done" == "true" ]] && break
+            sleep 15
+            elapsed=$((elapsed + 15))
+        done
+
+        local winner; winner=$(_pick_winner "${child_ids[@]}")
+        if [[ -n "$winner" ]]; then
+            info "Winner: $winner"
+            python3 -c "
+import json
+with open('$manifest') as f: d = json.load(f)
+d['winner'] = '$winner'
+with open('$manifest', 'w') as f: json.dump(d, f, indent=2)
+print('$winner')
+"
+        else
+            info "No winner determined (all agents failed or still running)"
+        fi
+    else
+        info "Fanout $fid running in background."
+        info "Child IDs: ${child_ids[*]}"
+        info "Check status: cat $manifest"
+        echo "$fid"
+    fi
+}
+
+cmd_list() {
+    [[ -d "$FANOUT_DIR" ]] || { info "No fanout runs yet."; return; }
+    printf "%-30s  %-10s  %-20s  %s\n" "FANOUT ID" "ROLE" "AGENTS" "WINNER"
+    printf "%-30s  %-10s  %-20s  %s\n" "------------------------------" "----------" "--------------------" "------"
+    for f in "$FANOUT_DIR"/*.json; do
+        [[ -f "$f" ]] || continue
+        python3 -c "
+import json, sys
+with open(sys.argv[1]) as f: d = json.load(f)
+print(f\"{d.get('id','?'):<30}  {d.get('role','?'):<10}  {','.join(d.get('agents',[])):<20}  {d.get('winner','(pending)')}\")
+" "$f" 2>/dev/null || true
+    done
+}
+
+# ── argument parsing ──────────────────────────────────────────────────────────
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
+
+PROMPT=""
+PROMPT_FILE=""
+AGENTS="gemini,local"
+ROLE="implement"
+WAIT=false
+SUBCMD=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --prompt)      PROMPT="$2";      shift 2 ;;
+        --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
+        --agents)      AGENTS="$2";      shift 2 ;;
+        --role)        ROLE="$2";        shift 2 ;;
+        --wait)        WAIT=true;        shift   ;;
+        --list)        SUBCMD="list";    shift   ;;
+        --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
+        *) die "Unknown option: $1" ;;
+    esac
+done
+
+case "$ROLE" in
+    plan|implement|review|research) ;;
+    *) die "Invalid --role '$ROLE'. Valid: plan|implement|review|research" ;;
+esac
+
+case "${SUBCMD:-}" in
+    list) ensure_dirs; cmd_list ;;
+    "")
+        if [[ -n "$PROMPT_FILE" ]]; then
+            [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
+            PROMPT="$(cat "$PROMPT_FILE")"
+        fi
+        [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
+        cmd_fanout "$PROMPT" "$AGENTS" "$ROLE" "$WAIT"
+        ;;
+esac

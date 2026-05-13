@@ -1,3 +1,10 @@
+<!--
+Skill: brownfield
+Role: architect
+Inputs: objective, target path
+Outputs: brownfield PDR, slice plans
+Example: /brownfield "map existing auth system"
+-->
 ---
 description: Guided existing-system planning workflow
 ---
