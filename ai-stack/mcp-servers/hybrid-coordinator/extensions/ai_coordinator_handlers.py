@@ -1036,6 +1036,8 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
                 "LLAMA_CPP_URL": Config.LLAMA_CPP_URL,  # Phase 12.1: direct fallback URL
                 "PYTHONUNBUFFERED": "1",
+                # Phase 30.6: auto-inject aq-context-bootstrap preamble at startup
+                "AGENT_INJECT_BOOTSTRAP": "true",
             })
             # Phase 8.9 — streaming mode overrides: force stream, disable tools
             if sse_request is not None:
