@@ -325,3 +325,16 @@ def test_validate_harness_cli_accepts_hints_and_context_summary():
     args, timeout_seconds = module._validate_harness_cli("aq-introspection-validate", ["--text", "Observed signals qa green and evidence sources aq qa 0 json", "--format=json"])
     assert args == ["--text", "Observed signals qa green and evidence sources aq qa 0 json", "--format=json"]
     assert timeout_seconds == 30.0
+
+
+def test_phase_30_6_bootstrap_injection_constants_and_helper():
+    module = _load_runtime(AGENT_INJECT_BOOTSTRAP="true", AGENT_BOOTSTRAP_TIMEOUT="20")
+    
+    assert isinstance(module.AGENT_INJECT_BOOTSTRAP, bool)
+    assert module.AGENT_INJECT_BOOTSTRAP is True
+    assert isinstance(module.BOOTSTRAP_TIMEOUT, float)
+    assert module.BOOTSTRAP_TIMEOUT == 20.0
+    
+    # Verify helper does not raise and returns a string (likely empty in test env)
+    res = module._run_bootstrap_preamble("test task")
+    assert isinstance(res, str)

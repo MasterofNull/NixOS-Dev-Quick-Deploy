@@ -49,6 +49,10 @@ MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
 TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
 AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "240"))
 
+# Phase 30.6: auto-inject context-bootstrap preamble at startup
+AGENT_INJECT_BOOTSTRAP = os.environ.get("AGENT_INJECT_BOOTSTRAP", "false").lower() == "true"
+BOOTSTRAP_TIMEOUT = float(os.environ.get("AGENT_BOOTSTRAP_TIMEOUT", "15"))
+
 _thinking_on = os.environ.get("AGENT_THINKING_MODE", "off") == "on"
 NO_THINK_PREFIX_STR = os.environ.get("AGENT_NO_THINK_PREFIX", "")
 NO_THINK_PREFIX = (not _thinking_on) and bool(NO_THINK_PREFIX_STR)
@@ -532,6 +536,35 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
         return f"tool_error({name}): {exc}"
 
 
+def _run_bootstrap_preamble(task: str) -> str:
+    """Run aq-context-bootstrap and return a compact preamble, or '' on any failure."""
+    script = REPO_ROOT / "scripts" / "ai" / "aq-context-bootstrap"
+    if not script.exists():
+        return ""
+    try:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(script), "--task", task, "--format", "json"],
+            capture_output=True, text=True, timeout=BOOTSTRAP_TIMEOUT,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return ""
+        data = json.loads(result.stdout)
+        scope = data.get("scope", "")
+        cards = (data.get("recommended_cards") or [])[:3]
+        preflight = (data.get("preflight_commands") or data.get("continuation_startup_commands") or [])[:1]
+        parts = []
+        if scope:
+            parts.append(f"scope={scope}")
+        if cards:
+            parts.append(f"cards={','.join(cards)}")
+        if preflight:
+            parts.append(f"preflight={preflight[0]}")
+        return "[bootstrap] " + " | ".join(parts) if parts else ""
+    except Exception:
+        return ""
+
+
 async def run() -> None:
     state: dict = {
         "id": AGENT_ID,
@@ -545,8 +578,14 @@ async def run() -> None:
         task_content = AGENT_TASK
         if NO_THINK_PREFIX and not task_content.startswith(NO_THINK_PREFIX_STR):
             task_content = NO_THINK_PREFIX_STR + " " + task_content
+        
+        if AGENT_INJECT_BOOTSTRAP:
+            _preamble = _run_bootstrap_preamble(AGENT_TASK)
+            _sys = SYSTEM_PROMPT + ("\n\n[STARTUP CONTEXT] " + _preamble if _preamble else "")
+        else:
+            _sys = SYSTEM_PROMPT
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _sys},
             {"role": "user", "content": task_content},
         ]
         profile = "local-tool-calling" if TOOLS_ENABLED else _profile_for_role(AGENT_ROLE)
