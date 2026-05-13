@@ -50,7 +50,7 @@ class WorkflowExecutor:
         sessions_file: str = ".workflow-sessions.json",
         poll_interval: float = 2.0,
         max_concurrent: int = 3,
-        llm_provider: str = "anthropic",
+        llm_provider: str = None,
         use_llm: bool = True,
     ):
         """
@@ -70,11 +70,21 @@ class WorkflowExecutor:
         self.should_stop = False
         self.coordinator_url = os.getenv("WORKFLOW_EXECUTOR_COORDINATOR_URL", "http://127.0.0.1:8003").rstrip("/")
 
+        # Use environment variables for configuration
+        if llm_provider is None:
+            llm_provider = os.getenv("WORKFLOW_EXECUTOR_PROVIDER", "anthropic")
+        
+        self.llm_model = os.getenv("WORKFLOW_EXECUTOR_MODEL")
+        llm_base_url = os.getenv("WORKFLOW_EXECUTOR_BASE_URL")
+
         # Initialize LLM client
         self.use_llm = use_llm and LLM_AVAILABLE
         if self.use_llm:
             try:
-                self.llm_client = LLMClient(provider=llm_provider)
+                self.llm_client = LLMClient(
+                    provider=llm_provider,
+                    base_url=llm_base_url,
+                )
                 logger.info(f"LLM client initialized (provider: {llm_provider})")
             except Exception as e:
                 logger.warning(f"Failed to initialize LLM client: {e}. Using mock execution.")
@@ -364,6 +374,7 @@ class WorkflowExecutor:
             logger.debug(f"Calling LLM for objective: {objective[:60]}...")
             response = await self.llm_client.create_message(
                 prompt=user_prompt,
+                model=self.llm_model,
                 system=system_prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
