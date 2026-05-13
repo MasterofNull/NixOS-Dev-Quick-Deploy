@@ -46,7 +46,7 @@ for ((i=0; i<${#args[@]}; i++)); do
   case "${args[i]}" in
     --json) JSON_OUTPUT=1 ;;
     --sudo) USE_SUDO=1 ;;
-    --layer) LAYER_FILTER="${args[i+1]}"; ((i++)) ;;
+    --layer) LAYER_FILTER="${args[i+1]}"; (( i += 1 )) ;;
     --causality) CAUSALITY_MODE=1 ;;
     --help|-h) PHASE="help" ;;
   esac
