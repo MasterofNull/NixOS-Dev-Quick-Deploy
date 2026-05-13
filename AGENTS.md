@@ -3,6 +3,26 @@
 Project: NixOS AI harness (Qwen3-35B local · hybrid-coordinator · switchboard · AIDB)
 Full policy: `docs/AGENTS.md` · Quick start: `docs/agent-guides/01-QUICK-START.md`
 
+## Canonical Workflow Contract
+
+**Full contract → `.agent/WORKFLOW-CANON.md`** (SSOT for all agents)
+
+Every non-trivial task follows this 7-step sequence:
+```
+ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VALIDATE → COMMIT
+```
+- **ORIENT**: `aq-prime` · `aq-hints "<task>"` · recall memory (`mcp_server_get_working_memory`)
+- **RESEARCH**: `grep` codebase + web search for cutting-edge practices + OWASP if security-sensitive
+- **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
+- **MEMORY-CHECKPOINT**: `mcp_server_store_memory` / `aq-memory store` before executing
+- **EXECUTE**: one slice at a time; read before editing; no hallucinated deps
+- **VALIDATE**: `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist
+- **COMMIT**: `git add <specific files>` + atomic commit with validation evidence + `Co-Authored-By`
+
+**Security checklist (OWASP Agentic Top 10)**: no hardcoded secrets/ports; verify all new deps exist;
+no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
+`bash -n` on shell, `py_compile` on Python; privilege minimization. Never use `--no-verify`.
+
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
 - Search first: `grep -r "<keyword>" . --include="*.py" -l` before editing
