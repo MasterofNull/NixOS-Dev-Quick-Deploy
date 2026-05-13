@@ -12,12 +12,10 @@ Full policy: `docs/AGENTS.md` · Quick start: `docs/agent-guides/01-QUICK-START.
 ## Operator Terminal CLIs (human-run, not AI tool calls)
 ```bash
 aq-prime                    # onboard / orient
-aq-qa 0                     # health check (41 checks)
-aq-hints "<task>"           # ranked workflow hints
 ```
 
 ## Ports
-`llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889`
+`llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889`
 
 ## Key CLIs
 `aq-prime` · `aq-qa 0` · `aq-hints "<task>"` · `aq-report` · `aq-context-bootstrap`

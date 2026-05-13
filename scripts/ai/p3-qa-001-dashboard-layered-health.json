@@ -1,0 +1,15 @@
+{
+  "description": "Integrate OSI Layered Health into Command Center Dashboard",
+  "backend": "aider",
+  "max_iterations": 10,
+  "require_approval": false,
+  "context": {
+    "goal": "Refactor the Command Center Dashboard to display the 7-Layer OSI health metrics using the enriched aq-qa JSON output.",
+    "files_to_modify": ["scripts/deploy/serve-dashboard.sh", "dashboard.html"],
+    "instructions": "1. Add a new GET /api/health/layered endpoint to serve-dashboard.sh that executes 'aq-qa 0 --json' and groups the output by 'layer'.\n2. Update dashboard.html to include a 7-block status grid representing the OSI layers.\n3. Ensure the UI gracefully handles missing or offline layers.",
+    "validation_commands": [
+      "curl -s http://127.0.0.1:8889/api/health/layered | jq '.'",
+      "scripts/governance/quick-deploy-lint.sh --mode fast"
+    ]
+  }
+}

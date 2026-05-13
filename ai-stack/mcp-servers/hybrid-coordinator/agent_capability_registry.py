@@ -30,8 +30,4 @@ def discover_agents() -> Dict[str, Any]:
                 "model": value
             }
 
-    # 3. Check CLI Bridge
-    if os.environ.get("CLI_BRIDGE_URL"):
-        registry["cli-bridge"] = {"profiles": ["implementer"], "source": "cli"}
-
     return registry

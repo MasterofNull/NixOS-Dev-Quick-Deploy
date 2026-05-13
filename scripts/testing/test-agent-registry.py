@@ -19,7 +19,6 @@ def test_agent_registry():
     # Mock dynamic environment discovery
     os.environ["SWITCHBOARD_REMOTE_ALIAS_CLAUDE"] = "claude-3-sonnet"
     os.environ["SWITCHBOARD_REMOTE_ALIAS_GPT"] = "gpt-4o"
-    os.environ["CLI_BRIDGE_URL"] = "http://localhost:8089"
 
     agents = discover_agents()
 
@@ -34,9 +33,6 @@ def test_agent_registry():
 
     # Validate remote agents do NOT have the 'cli' profile
     assert "cli" not in agents["claude"]["profiles"]
-
-    # Validate cli-bridge is created
-    assert "cli-bridge" in agents
 
     print("✅ Agent capability registry tests passed!")
 

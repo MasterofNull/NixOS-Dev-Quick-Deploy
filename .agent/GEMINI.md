@@ -135,7 +135,7 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 
 Port options are the single source of truth at `nix/modules/core/options.nix`.
 Current defaults: llama.cpp=8080, llama-embed=8081, AIDB=8002, hybrid-coordinator=8003,
-switchboard=8085, cli-bridge=8089, dashboard=8889.
+switchboard=8085, dashboard=8889.
 Never hardcode these values in Python or shell — always read from injected env vars.
 
 ## On-Demand Context

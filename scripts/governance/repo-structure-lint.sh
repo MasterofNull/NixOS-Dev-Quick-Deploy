@@ -11,9 +11,14 @@ DOC_ALLOWED_DIRS=(
   agent-guides api archive development generated harness-first prsi sql
   operations architecture security testing roadmap memory-system configuration user-guides
 )
+# Approved scripts subdirs map to OSI roles: AI (L4/L6), Data (L5), Health (L7), etc.
 SCRIPT_ALLOWED_DIRS=(
   lib governance ai data deploy health security testing utils services
   reliability performance observability automation
+)
+OSI_LAYERS=(
+  l1-infra l2-runtime l3-conn l4-coord l5-state l6-cog l7-interaction
+  cross-cutting
 )
 
 usage() {
@@ -147,6 +152,23 @@ while IFS= read -r path; do
       fi
     fi
     continue
+  fi
+
+  # Rule 5: Library files must align with OSI layers in lib/ (ADR-007)
+  if [[ "$path" == lib/* ]]; then
+    rel="${path#lib/}"
+    if [[ "$rel" != */* ]]; then
+      if ! is_allowlisted "$path"; then
+        echo "[repo-structure] FAIL lib root file disallowed: $path (Use lib/<l1-l7-tier>/...)"
+        ((violations+=1))
+      fi
+      continue
+    fi
+    tier="${rel%%/*}"
+    if ! in_array "$tier" "${OSI_LAYERS[@]}"; then
+      echo "[repo-structure] FAIL lib tier not in policy: $path (tier=$tier)"
+      ((violations+=1))
+    fi
   fi
 
 done < <(collect_paths)
