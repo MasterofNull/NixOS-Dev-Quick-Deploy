@@ -477,10 +477,10 @@ class LocalAgentExecutor:
                 f"{self.llama_endpoint}/v1/chat/completions",
                 json={
                     "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 2000,
+                    "temperature": 0.2,   # deterministic for code generation
+                    "max_tokens": 4096,   # coding tasks need more tokens
                 },
-                timeout=30.0,
+                timeout=300.0,  # Qwen3.6-35B: 90-120s/response; 30s caused false failures
             )
 
             if response.status_code != 200:
