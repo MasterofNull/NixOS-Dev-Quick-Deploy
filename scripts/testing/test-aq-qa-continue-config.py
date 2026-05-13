@@ -93,11 +93,11 @@ def main() -> int:
         "Continue config should distinguish constrained local lanes from larger-context remote lanes",
     )
     assert_true(
-        '"__configVersion": "33.0"' in home_base,
+        '"__configVersion": "34.0"' in home_base,
         "Continue config version should advance when the generated operator contract changes",
     )
     assert_true(
-        '"33.0"' in script,
+        '"34.0"' in script,
         "aq-qa should accept the current Continue config schema version",
     )
 
