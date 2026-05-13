@@ -549,6 +549,36 @@ Deep Dives
 
 ---
 
+## ADR-007: OSI-Style Layered AI Harness Architecture
+
+**Status**: Accepted
+**Date**: 2026-05-12
+**Owner**: Architecture Team
+
+### Context
+As the AI harness expands, features are becoming blurred between system-level execution and agentic-level reasoning. We need a formal layering system to delegate domains properly.
+
+### Decision
+Adopt a 7-Layer Stack model for all AI Harness features:
+1. **Infrastructure**: NixOS declarative modules and hardware profiles.
+2. **Runtime**: Containerization (Podman/KVM) and execution environments.
+3. **Connectivity**: MCP bridge and service discovery.
+4. **Coordination**: Hybrid Coordinator and agent delegation.
+5. **Session/State**: Persistent memory (AIDB) and workflow tracking.
+6. **Cognitive**: Context synthesis, RAG, and prompt presentation.
+7. **Interaction**: CLI (`aq-*`), Dashboard, and Agent personas.
+
+### Rationale
+- **Modularization**: Changes to Layer 2 (e.g., switching Docker for Podman) shouldn't affect Layer 6 (Context synthesis).
+- **Specialization**: Specialist agents can be assigned to specific layers (e.g., `nixos-systems-architect` owns L1-L2).
+- **Clarity**: Features like "Memory" are now clearly L5/L6 concerns, while "Testing" can be applied at every layer boundary.
+
+### Consequences
+- **Strict Interface Enforcement**: Layers must communicate via defined APIs or CLIs.
+- **Registry Mapping**: The repository structure (`lib/`, `phases/`, `scripts/`) must align with these layers.
+
+---
+
 ## Cross-Cutting Decisions
 
 ### Error Handling Philosophy
@@ -589,14 +619,15 @@ Deep Dives
 
 ## Decision Record Index
 
-| ADR | Title | Status | Date |
-|-----|-------|--------|------|
-| 001 | Multi-Agent Orchestration Architecture | Accepted | 2026-02-15 |
-| 002 | Knowledge Graph for Deployment Causality | Accepted | 2026-02-20 |
-| 003 | Route Search Performance Optimization | Accepted | 2026-02-25 |
-| 004 | Dashboard Performance Strategy | Accepted | 2026-03-05 |
-| 005 | Test Coverage Strategy | Accepted | 2026-03-10 |
-| 006 | Documentation Structure | Accepted | 2026-03-15 |
+| ADR | Title                                     | Status   | Date       |
+| --- | ----------------------------------------- | -------- | ---------- |
+| 001 | Multi-Agent Orchestration Architecture    | Accepted | 2026-02-15 |
+| 002 | Knowledge Graph for Deployment Causality  | Accepted | 2026-02-20 |
+| 003 | Route Search Performance Optimization     | Accepted | 2026-02-25 |
+| 004 | Dashboard Performance Strategy            | Accepted | 2026-03-05 |
+| 005 | Test Coverage Strategy                    | Accepted | 2026-03-10 |
+| 006 | Documentation Structure                   | Accepted | 2026-03-15 |
+| 007 | OSI-Style Layered AI Harness Architecture | Accepted | 2026-05-12 |
 
 ---
 

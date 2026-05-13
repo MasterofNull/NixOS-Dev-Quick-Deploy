@@ -8,7 +8,6 @@
     ./ingress.nix
     ./capability-registry.nix
     ./switchboard.nix
-    ./cli-bridge.nix
     ./autonomous-improvement.nix
     ./identity-kernel.nix
     ./affective-engine.nix

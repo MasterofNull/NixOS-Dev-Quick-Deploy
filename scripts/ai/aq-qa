@@ -12,6 +12,8 @@
 #   aq-qa all             Run all implemented phases
 #   aq-qa 0 --json        Machine-readable JSON output
 #   aq-qa 0 --sudo        Enable checks that require sudo (AppArmor)
+#   aq-qa --layer 5       Run only Session/Persistence checks (Postgres, AIDB)
+#   aq-qa --layer 4 --causality  Check L4 + all dependencies (L1-L3)
 #
 # Exit codes: 0 = all pass, 1 = one or more failed, 2 = usage error
 
@@ -29,12 +31,24 @@ source "${REPO_ROOT}/config/service-endpoints.sh"
 PHASE="${1:-help}"
 JSON_OUTPUT=0
 USE_SUDO=0
-shift 2>/dev/null || true
-for arg in "$@"; do
-  case "$arg" in
-    --json)  JSON_OUTPUT=1 ;;
-    --sudo)  USE_SUDO=1 ;;
-    --help|-h) PHASE=help ;;
+LAYER_FILTER=0
+CAUSALITY_MODE=0
+
+# Filter out phase arg if it's a number, otherwise default to all
+if [[ "$PHASE" =~ ^[0-9]+$ || "$PHASE" == "all" ]]; then
+    shift 2>/dev/null || true
+else
+    PHASE="all"
+fi
+
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+  case "${args[i]}" in
+    --json) JSON_OUTPUT=1 ;;
+    --sudo) USE_SUDO=1 ;;
+    --layer) LAYER_FILTER="${args[i+1]}"; ((i++)) ;;
+    --causality) CAUSALITY_MODE=1 ;;
+    --help|-h) PHASE="help" ;;
   esac
 done
 
@@ -52,29 +66,40 @@ SKIP=0
 RESULTS=()  # "PASS|FAIL|SKIP id description"
 START_TS=$(date +%s)
 
-_pass() { local id="$1" desc="$2"; PASS=$((PASS+1)); RESULTS+=("PASS|$id|$desc"); }
-_fail() { local id="$1" desc="$2" reason="${3:-}"; FAIL=$((FAIL+1)); RESULTS+=("FAIL|$id|$desc${reason:+ ($reason)}"); }
-_skip() { local id="$1" desc="$2" reason="${3:-}"; SKIP=$((SKIP+1)); RESULTS+=("SKIP|$id|$desc${reason:+ ($reason)}"); }
+_pass() { local layer="$1" id="$2" desc="$3"; ((PASS++)); RESULTS+=("PASS|$layer|$id|$desc"); }
+_fail() { local layer="$1" id="$2" desc="$3" reason="${4:-}"; ((FAIL++)); RESULTS+=("FAIL|$layer|$id|$desc${reason:+ ($reason)}"); }
+_skip() { local layer="$1" id="$2" desc="$3" reason="${4:-}"; ((SKIP++)); RESULTS+=("SKIP|$layer|$id|$desc${reason:+ ($reason)}"); }
+
+# OSI Layer Enforcement
+_should_run() {
+    local layer="$1"
+    [[ "$LAYER_FILTER" -eq 0 ]] && return 0
+    [[ "$LAYER_FILTER" -eq "$layer" ]] && return 0
+    [[ "$CAUSALITY_MODE" -eq 1 && "$LAYER_FILTER" -gt "$layer" ]] && return 0
+    return 1
+}
 
 # Run a command silently; pass/fail based on exit code.
 _check() {
-  local id="$1" desc="$2"; shift 2
+  local layer="$1" id="$2" desc="$3"; shift 3
+  if ! _should_run "$layer"; then return 0; fi
   if "$@" >/dev/null 2>&1; then
-    _pass "$id" "$desc"
+    _pass "$layer" "$id" "$desc"
   else
-    _fail "$id" "$desc"
+    _fail "$layer" "$id" "$desc"
   fi
 }
 
 # Run a command and check output matches a pattern.
 _check_output() {
-  local id="$1" desc="$2" pattern="$3"; shift 3
+  local layer="$1" id="$2" desc="$3" pattern="$4"; shift 4
+  if ! _should_run "$layer"; then return 0; fi
   local out
-  out=$("$@" 2>&1) || { _fail "$id" "$desc" "command failed"; return; }
+  out=$("$@" 2>&1) || { _fail "$layer" "$id" "$desc" "command failed"; return; }
   if printf '%s' "$out" | grep -qE "$pattern"; then
-    _pass "$id" "$desc"
+    _pass "$layer" "$id" "$desc"
   else
-    _fail "$id" "$desc" "output: ${out:0:80}"
+    _fail "$layer" "$id" "$desc" "output: ${out:0:80}"
   fi
 }
 
@@ -170,13 +195,14 @@ _continue_cli_help() {
 
 # HTTP health check: curl URL, expect JSON with status=ok.
 _http_health() {
-  local id="$1" desc="$2" url="$3"
+  local layer="$1" id="$2" desc="$3" url="$4"
+  if ! _should_run "$layer"; then return 0; fi
   local status
   status=$(curl -sf --max-time 5 "$url" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
   if [[ "$status" == "ok" ]]; then
-    _pass "$id" "$desc"
+    _pass "$layer" "$id" "$desc"
   else
-    _fail "$id" "$desc" "status='$status' url=$url"
+    _fail "$layer" "$id" "$desc" "status='$status' url=$url"
   fi
 }
 
@@ -363,18 +389,18 @@ PY
 
 # Port binding check.
 _port() {
-  local id="$1" desc="$2" port="$3"
+  local layer="$1" id="$2" desc="$3" port="$4"
   local attempts="${AQ_QA_PORT_RETRY_ATTEMPTS:-4}"
   local delay="${AQ_QA_PORT_RETRY_DELAY_SECONDS:-1}"
   local i
   for ((i=1; i<=attempts; i++)); do
     if _output_contains ":${port} " ss -tlnp; then
-      _pass "$id" "$desc"
+      _pass "$layer" "$id" "$desc"
       return 0
     fi
     (( i < attempts )) && sleep "${delay}"
   done
-  _fail "$id" "$desc" "port $port not bound"
+  _fail "$layer" "$id" "$desc" "port $port not bound"
 }
 
 # ---------------------------------------------------------------------------
@@ -386,29 +412,33 @@ run_phase_0() {
                ai-ralph-wiggum.service llama-cpp-embed.service ai-switchboard.service \
                redis-mcp.service qdrant.service postgresql.service; do
     local short="${unit%.service}"
+    if ! _should_run 1; then continue; fi
     if systemctl is-active --quiet "$unit" 2>/dev/null; then
-      _pass "0.1.1:$short" "unit $unit active"
+      _pass 1 "0.1.1:$short" "unit $unit active"
     else
-      _fail "0.1.1:$short" "unit $unit active" "not active"
+      _fail 1 "0.1.1:$short" "unit $unit active" "not active"
     fi
   done
 
   # 0.1.2 No failed AI units
   local failed_units
-  failed_units=$(systemctl list-units 'ai-*' 'llama-*' --state=failed --no-legend 2>/dev/null || true)
-  if [[ -z "$failed_units" ]]; then
-    _pass "0.1.2" "no AI units in failed state"
+  if _should_run 1; then
+    failed_units=$(systemctl list-units 'ai-*' 'llama-*' --state=failed --no-legend 2>/dev/null || true)
+    if [[ -z "$failed_units" ]]; then
+    _pass 1 "0.1.2" "no AI units in failed state"
   else
-    _fail "0.1.2" "no AI units in failed state" "$failed_units"
+    _fail 1 "0.1.2" "no AI units in failed state" "$failed_units"
+    fi
   fi
 
   # 0.1.3 Timers scheduled
   for timer in ai-mcp-integrity-check.timer ai-mcp-process-watch.timer \
                 ai-weekly-report.timer; do
+    if ! _should_run 1; then continue; fi
     if _output_contains "$timer" systemctl list-timers "$timer" --no-legend; then
-      _pass "0.1.3:$timer" "timer $timer scheduled"
+      _pass 1 "0.1.3:$timer" "timer $timer scheduled"
     else
-      _fail "0.1.3:$timer" "timer $timer scheduled" "not found in timers list"
+      _fail 1 "0.1.3:$timer" "timer $timer scheduled" "not found in timers list"
     fi
   done
 
@@ -418,85 +448,96 @@ run_phase_0() {
                        [8003]="hybrid-coordinator" [8004]="ralph-wiggum"
                        [8085]="switchboard" [3001]="open-webui" [9090]="prometheus")
   for port in "${!port_names[@]}"; do
-    _port "0.2.1:${port_names[$port]}" "port ${port} (${port_names[$port]}) bound" "$port"
+    if ! _should_run 3; then continue; fi
+    _port 3 "0.2.1:${port_names[$port]}" "port ${port} (${port_names[$port]}) bound" "$port"
   done
 
   # 0.2.2 Port 3000 belongs to Grafana (Open-WebUI must be on 3001, not 3000)
-  # Use systemctl instead of ss process-name (requires no sudo)
-  local ss_listeners
-  ss_listeners="$(ss -tlnp 2>/dev/null || true)"
-  if systemctl is-active --quiet grafana.service 2>/dev/null && \
-     grep -q ':3000 ' <<<"${ss_listeners}"; then
-    _pass "0.2.2" "port 3000 = Grafana (no Open-WebUI regression)"
-  elif ! grep -q ':3000 ' <<<"${ss_listeners}"; then
-    _skip "0.2.2" "port 3000 Grafana check" "port 3000 not bound (Grafana disabled?)"
-  else
-    _fail "0.2.2" "port 3000 Grafana check" "Grafana inactive but port 3000 is bound"
+  if _should_run 3; then
+    local ss_listeners
+    ss_listeners="$(ss -tlnp 2>/dev/null || true)"
+    if systemctl is-active --quiet grafana.service 2>/dev/null && \
+       grep -q ':3000 ' <<<"${ss_listeners}"; then
+      _pass 3 "0.2.2" "port 3000 = Grafana (no Open-WebUI regression)"
+    elif ! grep -q ':3000 ' <<<"${ss_listeners}"; then
+      _skip 3 "0.2.2" "port 3000 Grafana check" "port 3000 not bound (Grafana disabled?)"
+    else
+      _fail 3 "0.2.2" "port 3000 Grafana check" "Grafana inactive but port 3000 is bound"
+    fi
   fi
 
   # 0.3 AppArmor — check profile files (no sudo needed) + service active
   local aa_dir="/etc/apparmor.d"
-  if [[ -f "$aa_dir/ai-llama-cpp" && -f "$aa_dir/ai-mcp-base" ]]; then
-    _pass "0.3.1" "AppArmor profiles on disk ($aa_dir/ai-llama-cpp, ai-mcp-base)"
-  else
-    local found
-    found=$(ls "$aa_dir"/ai-* 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ' || echo "none")
-    _fail "0.3.1" "AppArmor profiles on disk" "found: $found"
+  if _should_run 1; then
+    if [[ -f "$aa_dir/ai-llama-cpp" && -f "$aa_dir/ai-mcp-base" ]]; then
+      _pass 1 "0.3.1" "AppArmor profiles on disk ($aa_dir/ai-llama-cpp, ai-mcp-base)"
+    else
+      local found
+      found=$(ls "$aa_dir"/ai-* 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ' || echo "none")
+      _fail 1 "0.3.1" "AppArmor profiles on disk" "found: $found"
+    fi
+    _check 1 "0.3.2" "AppArmor service active" systemctl is-active apparmor
   fi
-  _check "0.3.2" "AppArmor service active" systemctl is-active apparmor
 
   # 0.4 Quick inference pings
-  _http_health "0.4.1" "llama-server /health" "${LLAMA_URL}/health"
-  _http_health "0.4.2" "embedding server /health" "http://127.0.0.1:8081/health"
+  if _should_run 2; then
+    _http_health 2 "0.4.1" "llama-server /health" "${LLAMA_URL}/health"
+    _http_health 2 "0.4.2" "embedding server /health" "http://127.0.0.1:8081/health"
+  fi
 
   # 0.5 Continue/editor runtime basics
-  _check "0.5.1" "Continue CLI help works" _continue_cli_help
-  _check "0.5.2" "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane" _continue_config_ok
-  _check_output "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' _continue_extension_output
-  _check "0.5.4" "continue-local switchboard profile ready" _continue_local_smoke
-  _check "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
-  _check "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
-  if [[ "${AQ_QA_SKIP_REPORT_BACKED_CHECKS:-0}" == "1" ]]; then
-    _skip "0.5.7" "Editor-local agent corpus stays within bounded budgets" "skipped to avoid aq-report recursion"
-  else
-    _check "0.5.7" "Editor-local agent corpus stays within bounded budgets" _editor_state_budget_ok
+  if _should_run 7; then
+    _check 7 "0.5.1" "Continue CLI help works" _continue_cli_help
+    _check 7 "0.5.2" "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane" _continue_config_ok
+    _check_output 7 "0.5.3" "VSCodium has Continue extension installed" '^continue\.continue$' _continue_extension_output
+    _check 7 "0.5.4" "continue-local switchboard profile ready" _continue_local_smoke
+    _check 7 "0.5.5" "continue-local trims oversized dense prompts" _continue_local_large_context_smoke
+    _check 7 "0.5.6" "Continue/editor prompt to feedback smoke" _continue_editor_flow_smoke
+    if [[ "${AQ_QA_SKIP_REPORT_BACKED_CHECKS:-0}" == "1" ]]; then
+      _skip 7 "0.5.7" "Editor-local agent corpus stays within bounded budgets" "skipped to avoid aq-report recursion"
+    else
+      _check 7 "0.5.7" "Editor-local agent corpus stays within bounded budgets" _editor_state_budget_ok
+    fi
   fi
 
   # 0.6 Flagship agent CLI surface basics
-  _check "0.6.1" "flagship agent CLI help smokes" _flagship_cli_surface_smoke
-  _check "0.6.2" "gemini CLI live-state health check" _gemini_cli_health_check
+  if _should_run 7; then
+    _check 7 "0.6.1" "flagship agent CLI help smokes" _flagship_cli_surface_smoke
+    _check 7 "0.6.2" "gemini CLI live-state health check" _gemini_cli_health_check
+  fi
 
   # 0.7 Front-door routing (Phase 0 Slice 0.2)
-  local _hk_07
-  _hk_07=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
-  local orch_http orch_body orch_out
-  # Use -w to capture HTTP status separately; -s only (no -f) to read body on error
-  orch_body=$(curl -s --max-time 10 -w '\n%{http_code}' \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: ${_hk_07}" \
-    -d '{"prompt":"what is nixos","route":"Explore"}' \
-    "${HYBRID_URL}/v1/orchestrate" 2>/dev/null || true)
-  orch_http=$(printf '%s' "$orch_body" | tail -1)
-  orch_out=$(printf '%s' "$orch_body" | head -n -1)
-  if [[ "$orch_http" =~ ^2 ]] && \
-     python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' not in d else 1)" "$orch_out" 2>/dev/null; then
-    _pass "0.7.1" "/v1/orchestrate front-door smoke (route=Explore)"
-  elif [[ "$orch_http" =~ ^5 ]]; then
-    _skip "0.7.1" "/v1/orchestrate front-door smoke" "HTTP ${orch_http} — server error, nixos-rebuild needed to apply fix"
-  else
-    _fail "0.7.1" "/v1/orchestrate front-door smoke" "HTTP ${orch_http:-conn-err} out: ${orch_out:0:60}"
-  fi
-  local query_out
-  query_out=$(curl -sf --max-time 10 \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: ${_hk_07}" \
-    -d '{"query":"what is nixos","mode":"retrieval","prefer_local":true,"limit":1}' \
-    "${HYBRID_URL}/query" 2>/dev/null || echo "err")
-  if [[ "$query_out" != "err" ]] && \
-     python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d else 1)" "$query_out" 2>/dev/null; then
-    _pass "0.7.2" "hybrid /query retrieval smoke"
-  else
-    _fail "0.7.2" "hybrid /query retrieval smoke" "out: ${query_out:0:80}"
+  if _should_run 4; then
+    local _hk_07
+    _hk_07=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+    local orch_http orch_body orch_out
+    orch_body=$(curl -s --max-time 10 -w '\n%{http_code}' \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: ${_hk_07}" \
+      -d '{"prompt":"what is nixos","route":"Explore"}' \
+      "${HYBRID_URL}/v1/orchestrate" 2>/dev/null || true)
+    orch_http=$(printf '%s' "$orch_body" | tail -1)
+    orch_out=$(printf '%s' "$orch_body" | head -n -1)
+    if [[ "$orch_http" =~ ^2 ]] && \
+       python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' not in d else 1)" "$orch_out" 2>/dev/null; then
+      _pass 4 "0.7.1" "/v1/orchestrate front-door smoke (route=Explore)"
+    elif [[ "$orch_http" =~ ^5 ]]; then
+      _skip 4 "0.7.1" "/v1/orchestrate front-door smoke" "HTTP ${orch_http} — server error, nixos-rebuild needed to apply fix"
+    else
+      _fail 4 "0.7.1" "/v1/orchestrate front-door smoke" "HTTP ${orch_http:-conn-err} out: ${orch_out:0:60}"
+    fi
+    local query_out
+    query_out=$(curl -sf --max-time 10 \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: ${_hk_07}" \
+      -d '{"query":"what is nixos","mode":"retrieval","prefer_local":true,"limit":1}' \
+      "${HYBRID_URL}/query" 2>/dev/null || echo "err")
+    if [[ "$query_out" != "err" ]] && \
+       python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d else 1)" "$query_out" 2>/dev/null; then
+      _pass 4 "0.7.2" "hybrid /query retrieval smoke"
+    else
+      _fail 4 "0.7.2" "hybrid /query retrieval smoke" "out: ${query_out:0:80}"
+    fi
   fi
 
   # 0.8.1 ai_coordinator_delegate success rate (last 1h) — Phase 9.3 gate
@@ -557,15 +598,15 @@ PYEOF
   delegate_total=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('total',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
   delegate_ok=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('ok',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
   if python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' in d else 1)" "$delegate_rate_out" 2>/dev/null; then
-    _skip "0.8.1" "delegate 1h success rate" "DB query failed: $(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error','?')[:60])" "$delegate_rate_out" 2>/dev/null)"
+    _skip 4 "0.8.1" "delegate 1h success rate" "DB query failed: $(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error','?')[:60])" "$delegate_rate_out" 2>/dev/null)"
   elif [[ "$delegate_total" -lt 3 ]]; then
-    _skip "0.8.1" "delegate 1h success rate" "insufficient sample (${delegate_total} calls in last 1h, need ≥3)"
+    _skip 4 "0.8.1" "delegate 1h success rate" "insufficient sample (${delegate_total} calls in last 1h, need ≥3)"
   else
     delegate_pct=$(python3 -c "print(round(100*${delegate_ok}/${delegate_total}))" 2>/dev/null || echo 0)
     if [[ "$delegate_pct" -ge 50 ]]; then
-      _pass "0.8.1" "delegate 1h success rate ${delegate_pct}% (${delegate_ok}/${delegate_total})"
+      _pass 4 "0.8.1" "delegate 1h success rate ${delegate_pct}% (${delegate_ok}/${delegate_total})"
     else
-      _fail "0.8.1" "delegate 1h success rate ≥50%" "got ${delegate_pct}% (${delegate_ok}/${delegate_total} calls)"
+      _fail 4 "0.8.1" "delegate 1h success rate ≥50%" "got ${delegate_pct}% (${delegate_ok}/${delegate_total} calls)"
     fi
   fi
 
@@ -580,11 +621,11 @@ PYEOF
     -w "\n%{http_code}" 2>/dev/null || echo "ERROR")
   gate_http=$(echo "$gate_out" | tail -1)
   if [[ "$gate_http" == "200" ]] || [[ "$gate_out" == *'"ok": true'* ]] || [[ "$gate_out" == *'"ok":true'* ]]; then
-    _pass "0.9.1" "safety gate endpoint responds (POST /control/safety/gate)"
+    _pass 4 "0.9.1" "safety gate endpoint responds (POST /control/safety/gate)"
   elif [[ "$gate_http" == "404" ]]; then
-    _skip "0.9.1" "safety gate endpoint" "Phase 28 not deployed (404)"
+    _skip 4 "0.9.1" "safety gate endpoint" "Phase 28 not deployed (404)"
   else
-    _fail "0.9.1" "safety gate endpoint reachable" "HTTP ${gate_http:-ERR}: ${gate_out:0:80}"
+    _fail 4 "0.9.1" "safety gate endpoint reachable" "HTTP ${gate_http:-ERR}: ${gate_out:0:80}"
   fi
 }
 
@@ -593,66 +634,93 @@ PYEOF
 # ---------------------------------------------------------------------------
 run_phase_1() {
   # 1.1 Redis
-  _check_output "1.1.1" "redis ping" "PONG" redis-cli ping
+  if _should_run 2; then
+    _check_output 2 "1.1.1" "redis ping" "PONG" redis-cli ping
+  fi
   # redis-cli --latency output: "min max avg samples" on one line
   local redis_latency redis_raw
-  redis_raw=$(timeout 4 redis-cli --latency 2>/dev/null | tr -d '\n\r' | awk '{print $3}' || echo "")
-  redis_latency=$(printf '%.0f' "${redis_raw:-999}" 2>/dev/null || echo 999)
-  if [[ "$redis_latency" -le 5 ]]; then
-    _pass "1.1.2" "redis latency <= 5ms (got ${redis_raw}ms avg)"
-  else
-    _fail "1.1.2" "redis latency <= 5ms" "got ${redis_raw}ms avg"
+  if _should_run 2; then
+    redis_raw=$(timeout 4 redis-cli --latency 2>/dev/null | tr -d '\n\r' | awk '{print $3}' || echo "")
+    redis_latency=$(printf '%.0f' "${redis_raw:-999}" 2>/dev/null || echo 999)
+    if [[ "$redis_latency" -le 5 ]]; then
+      _pass 2 "1.1.2" "redis latency <= 5ms (got ${redis_raw}ms avg)"
+    else
+      _fail 2 "1.1.2" "redis latency <= 5ms" "got ${redis_raw}ms avg"
+    fi
   fi
 
   # 1.2 PostgreSQL — user=aidb, password from secrets
   local pg_pass pg_out
-  pg_pass=$(cat /run/secrets/postgres_password 2>/dev/null | tr -d '\n' || true)
-  pg_out=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || true)
-  if [[ "$pg_out" -ge 1 ]]; then
-    _pass "1.2.1" "postgres responds (user=aidb)"
-  else
-    _fail "1.2.1" "postgres responds (user=aidb)"
+  if _should_run 5; then
+    pg_pass=$(cat /run/secrets/postgres_password 2>/dev/null | tr -d '\n' || true)
+    pg_out=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -c "SELECT 1;" 2>&1 | grep -c "1 row" || true)
+    if [[ "$pg_out" -ge 1 ]]; then
+      _pass 5 "1.2.1" "postgres responds (user=aidb)"
+    else
+      _fail 5 "1.2.1" "postgres responds (user=aidb)"
+    fi
+    _check_output 5 "1.2.2" "AIDB schema tables present" \
+      "imported_documents|query_gaps|telemetry_events|learning_feedback" \
+      bash -c "PGPASSWORD='$pg_pass' psql -h 127.0.0.1 -U aidb -d aidb -c '\dt' 2>&1"
+
+    # 1.2.3 pgvector index health
+    local vector_idx_out
+    vector_idx_out=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -tAc "SELECT indexname FROM pg_indexes WHERE tablename = 'document_embeddings' AND indexdef LIKE '%hnsw%';" 2>/dev/null || true)
+    if [[ -n "$vector_idx_out" ]]; then
+      _pass 5 "1.2.3" "pgvector hnsw index present on document_embeddings"
+    else
+      _fail 5 "1.2.3" "pgvector hnsw index present on document_embeddings" "index not found or table missing"
+    fi
   fi
-  _check_output "1.2.2" "AIDB schema tables present" \
-    "imported_documents|query_gaps|telemetry_events|learning_feedback" \
-    bash -c "PGPASSWORD='$pg_pass' psql -h 127.0.0.1 -U aidb -d aidb -c '\dt' 2>&1"
 
   # 1.3 Qdrant
-  _check_output "1.3.1" "qdrant cluster info" "qdrant" \
-    bash -c "curl -sf '${QDRANT_URL}/' | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d.get('title',''))\" 2>/dev/null"
+  if _should_run 5; then
+    _check_output 5 "1.3.1" "qdrant cluster info" "qdrant" \
+      bash -c "curl -sf '${QDRANT_URL}/' | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d.get('title',''))\" 2>/dev/null"
+  fi
 
   # 1.4 AIDB
-  _http_health "1.4.1" "AIDB /health" "${AIDB_URL}/health"
+  if _should_run 5; then
+    _http_health 5 "1.4.1" "AIDB /health" "${AIDB_URL}/health"
+  fi
   local doc_count
-  doc_count=$(curl -sf "${AIDB_URL}/documents?limit=1" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total',0))" 2>/dev/null || echo "err")
-  if [[ "$doc_count" != "err" ]]; then
-    _pass "1.4.2" "AIDB /documents returns (count=${doc_count})"
+  if _should_run 5; then
+    doc_count=$(curl -sf "${AIDB_URL}/documents?limit=1" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total',0))" 2>/dev/null || echo "err")
+    if [[ "$doc_count" != "err" ]]; then
+    _pass 5 "1.4.2" "AIDB /documents returns (count=${doc_count})"
   else
-    _fail "1.4.2" "AIDB /documents returns"
+    _fail 5 "1.4.2" "AIDB /documents returns"
+    fi
   fi
 
   # 1.5 Hybrid coordinator — status is 'healthy', not 'ok'
   local hybrid_key hybrid_status
-  hybrid_key=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
-  hybrid_status=$(curl -sf --max-time 5 "${HYBRID_URL}/health" 2>/dev/null | \
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
-  if [[ "$hybrid_status" == "ok" || "$hybrid_status" == "healthy" ]]; then
-    _pass "1.5.1" "hybrid-coordinator /health (${hybrid_status})"
-  else
-    _fail "1.5.1" "hybrid-coordinator /health" "status='$hybrid_status'"
+  if _should_run 4; then
+    hybrid_key=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+    hybrid_status=$(curl -sf --max-time 5 "${HYBRID_URL}/health" 2>/dev/null | \
+      python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
+    if [[ "$hybrid_status" == "ok" || "$hybrid_status" == "healthy" ]]; then
+      _pass 4 "1.5.1" "hybrid-coordinator /health (${hybrid_status})"
+    else
+      _fail 4 "1.5.1" "hybrid-coordinator /health" "status='$hybrid_status'"
+    fi
   fi
+
   local hints_count
-  hints_count=$(curl -sf -H "X-API-Key: ${hybrid_key}" "${HYBRID_URL}/hints?q=test" 2>/dev/null | \
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('hints',d) if isinstance(d,dict) else d))" 2>/dev/null || echo "err")
-  if [[ "$hints_count" != "err" ]]; then
-    _pass "1.5.2" "hybrid-coordinator GET /hints returns hints (count=${hints_count})"
-  else
-    _fail "1.5.2" "hybrid-coordinator GET /hints" "no response or auth failed"
+  if _should_run 6; then
+    hints_count=$(curl -sf -H "X-API-Key: ${hybrid_key}" "${HYBRID_URL}/hints?q=test" 2>/dev/null | \
+      python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('hints',d) if isinstance(d,dict) else d))" 2>/dev/null || echo "err")
+    if [[ "$hints_count" != "err" ]]; then
+      _pass 6 "1.5.2" "hybrid-coordinator GET /hints returns hints (count=${hints_count})"
+    else
+      _fail 6 "1.5.2" "hybrid-coordinator GET /hints" "no response or auth failed"
+    fi
   fi
 
   local report_json retrieval_summary
-  report_json="$(_aq_report_snapshot)" || report_json=""
-  retrieval_summary="$(python3 - <<'PY' "${report_json}"
+  if _should_run 6; then
+    report_json="$(_aq_report_snapshot)" || report_json=""
+    retrieval_summary="$(python3 - <<'PY' "${report_json}"
 import json, sys
 
 raw = sys.argv[1]
@@ -699,15 +767,16 @@ PY
 )"
   case "${retrieval_summary%%|*}" in
     ok)
-      _pass "1.5.3" "aq-report exposes retrieval acceptance metrics (${retrieval_summary#*|})"
+      _pass 6 "1.5.3" "aq-report exposes retrieval acceptance metrics (${retrieval_summary#*|})"
       ;;
     skip)
-      _skip "1.5.3" "aq-report exposes retrieval acceptance metrics" "${retrieval_summary#*|}"
+      _skip 6 "1.5.3" "aq-report exposes retrieval acceptance metrics" "${retrieval_summary#*|}"
       ;;
     *)
-      _fail "1.5.3" "aq-report exposes retrieval acceptance metrics" "${retrieval_summary#*|}"
+      _fail 6 "1.5.3" "aq-report exposes retrieval acceptance metrics" "${retrieval_summary#*|}"
       ;;
   esac
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -1084,8 +1153,8 @@ import sys, json
 phase, passed, failed, skipped, duration = sys.argv[1:6]
 items = []
 for entry in sys.argv[6:]:
-    status, id_, desc = entry.split('|', 2)
-    items.append({"id": id_, "status": status, "description": desc})
+    status, layer, id_, desc = entry.split('|', 3)
+    items.append({"layer": int(layer), "id": id_, "status": status, "description": desc})
 print(json.dumps({
     "phase": phase, "passed": int(passed), "failed": int(failed),
     "skipped": int(skipped), "duration_s": int(duration), "tests": items

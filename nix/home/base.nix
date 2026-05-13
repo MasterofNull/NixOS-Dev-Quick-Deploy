@@ -151,22 +151,6 @@ let
     };
   };
 
-  # Google.geminicodeassist — "Gemini Code Assist" — not in nixpkgs 25.11;
-  # packaged inline from Open VSX so it installs declaratively.
-  geminiCodeAssist = pkgs.vscode-utils.buildVscodeExtension {
-    pname = "Google-geminicodeassist";
-    version = "2.79.0";
-    vscodeExtPublisher = "Google";
-    vscodeExtName = "geminicodeassist";
-    vscodeExtUniqueId = "Google.geminicodeassist";
-    vscodeExtVersion = "2.79.0";
-    src = pkgs.fetchurl {
-      url = "https://open-vsx.org/api/Google/geminicodeassist/2.79.0/file/Google.geminicodeassist-2.79.0.vsix";
-      sha256 = "sha256-/8QmCFtD7f/RNkNuZexvoevpLa9FqrZfxqmPo2Ss4zk=";
-      name = "Google-geminicodeassist.zip";
-    };
-  };
-
   # Continue CLI — declarative npm packaging
   continueCli = pkgs.callPackage ../pkgs/continue-cli.nix {};
 
@@ -854,7 +838,6 @@ in {
         # Note: Google scope uses capital G (pkgs.vscode-extensions."Google").
         ++ vsExt "anthropic" "claude-code" # Claude Code
         ++ vsExt "Google" "gemini-cli-vscode-ide-companion" # Gemini CLI companion
-        ++ [geminiCodeAssist] # Gemini Code Assist (Open VSX)
         ++ [openaiCodex] # Codex — OpenAI's coding agent (Open VSX)
         ++ [cyberpunkThemeExtension] # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
@@ -1071,40 +1054,6 @@ con = sqlite3.connect(str(db_path))
 cur = con.cursor()
 total_saved = 0
 
-def prune_gemini(data):
-    changed = False
-    raw = data.get("geminiCodeAssist.chatThreads")
-    if not raw:
-        return data, changed
-    outer = json.loads(raw) if isinstance(raw, str) else raw
-    for account, acct_raw in outer.items():
-        inner = json.loads(acct_raw) if isinstance(acct_raw, str) else acct_raw
-        for tid in list(inner.keys()):
-            t_raw = inner[tid]
-            t = json.loads(t_raw) if isinstance(t_raw, str) else t_raw
-            if not isinstance(t, dict):
-                continue
-            hist = t.get("history", [])
-            last_idx = len(hist) - 1
-            for i, msg in enumerate(hist):
-                if not isinstance(msg, dict):
-                    continue
-                # workspaceChange: stale agent file snapshot — strip from all messages
-                ws = msg.get("workspaceChange")
-                if ws and len(json.dumps(ws)) > 64:
-                    msg["workspaceChange"] = {}
-                    changed = True
-                # ideContext: stale file content — strip from all but the final message
-                if i < last_idx:
-                    ctx = msg.get("ideContext")
-                    if ctx and len(json.dumps(ctx)) > 64:
-                        msg["ideContext"] = {}
-                        changed = True
-            inner[tid] = json.dumps(t, separators=(",", ":"))
-        outer[account] = json.dumps(inner, separators=(",", ":"))
-    data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
-    return data, changed
-
 def prune_qwen(data):
     changed = False
     convs = data.get("conversations", [])
@@ -1122,7 +1071,6 @@ def prune_qwen(data):
     return data, changed
 
 for ext_key, fn in [
-    ("google.geminicodeassist",              prune_gemini),
     ("qwenlm.qwen-code-vscode-ide-companion", prune_qwen),
 ]:
     cur.execute("SELECT value FROM ItemTable WHERE key=?", (ext_key,))
@@ -1626,9 +1574,8 @@ PYEOF
         "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from `mcp_server_get_working_memory`, `mcp_server_recall_memory`, or aq-memory recall.",
         "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
         "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ] before running shell commands. Never issue an unquoted AIDB or coordinator query URL.",
-        "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
-        "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
-        "CONFIG FREEZE — Claude (OAuth — CLI Bridge), Codex (OAuth — CLI Bridge), and Gemini model entries are required. Do not remove them."
+        "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889 grafana:3000 owui:3001",
+        "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models."
       ],
       "models": [
         {
@@ -1659,33 +1606,6 @@ PYEOF
           },
           "contextLength": ${toString continueContextLength},
           "maxTokens": ${toString continueChatMaxTokens}
-        },
-        {
-          "title": "Claude (OAuth — CLI Bridge)",
-          "provider": "openai",
-          "apiKey": "cli-oauth",
-          "apiBase": "http://127.0.0.1:8089/v1",
-          "model": "claude-cli",
-          "contextLength": ${toString continueRemoteContextLength},
-          "maxTokens": ${toString continueRemoteMaxTokens}
-        },
-        {
-          "title": "Codex (OAuth — CLI Bridge)",
-          "provider": "openai",
-          "apiKey": "cli-oauth",
-          "apiBase": "http://127.0.0.1:8089/v1",
-          "model": "codex-cli",
-          "contextLength": ${toString continueRemoteContextLength},
-          "maxTokens": ${toString continueRemoteMaxTokens}
-        },
-        {
-          "title": "Gemini (OAuth — CLI Bridge)",
-          "provider": "openai",
-          "apiKey": "cli-oauth",
-          "apiBase": "http://127.0.0.1:8089/v1",
-          "model": "gemini-cli",
-          "contextLength": ${toString continueRemoteContextLength},
-          "maxTokens": ${toString continueRemoteMaxTokens}
         },
         {
           "title": "Remote Coding (Switchboard)",

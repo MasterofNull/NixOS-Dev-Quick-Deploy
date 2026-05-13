@@ -1,11 +1,11 @@
 # NixOS System Implementation Progress Tracker
 
-> Central, persistent log for system improvements across sessions and agents.  
+> Central, persistent log for system improvements across sessions and agents.
 > Architecture and rules: see `docs/ARCHITECTURE.md` and `docs/DEVELOPMENT-ROADMAP.md`.
 
-**Session ID:** dec-3-2025-implementation  
-**Started:** 2025-12-03T20:30:00Z  
-**Agent:** Claude (Sonnet 4.5)  
+**Session ID:** dec-3-2025-implementation
+**Started:** 2025-12-03T20:30:00Z
+**Agent:** Claude (Sonnet 4.5)
 **Project:** NixOS-Dev-Quick-Deploy System Upgrades
 
 ---
@@ -181,7 +181,7 @@
 
 ## 🔁 Session: 2025-12-05 – Architecture & Roadmap Integration
 
-**Agent:** GPT-5.1 (Codex CLI)  
+**Agent:** GPT-5.1 (Codex CLI)
 **Scope:** Crosslink architecture docs, create roadmap, and begin implementation.
 
 ### Tasks
@@ -212,6 +212,31 @@
 - Continue aligning `config/variables.sh` with the “data-only config” rule in the roadmap in small, incremental refactors (e.g., gradually moving procedural Flatpak logic into focused `lib/flatpak.sh` helper functions, with call sites in `lib/tools.sh`).
 
 ---
+
+## 🔄 Session: 2026-05-12 – OSI Layering Formalization
+
+**Agent:** Gemini Code Assist
+**Scope:** Implementing OSI-style abstraction for the AI Harness.
+
+### Tasks
+- [x] Draft **ADR-007** defining the 7-Layer AI Harness Stack.
+- [x] Map existing `lib/` and `scripts/` to the 7-layer hierarchy.
+- [x] Align `AGENTS.md` onboarding to introduce users to the layer domains.
+- [x] Update `scripts/governance/repo-structure-lint.sh` to enforce OSI layer boundaries.
+- [x] Unified `aq-prime.py` to integrate role guidance with OSI layering.
+- [x] Create `lib/cross-cutting/harness.sh` for tiered library loading.
+- [x] Map runtime health checks to OSI layers in `aq-prime`.
+- [ ] Integrate OSI layer status into the Command Center Dashboard UI.
+- [ ] Implement `aq-qa --layer <N>` to run layer-specific health validation.
+
+---
+
+## 🔄 Session: 2026-05-13 – Layer-Aware Validation & Causality
+
+**Agent:** Gemini Code Assist
+**Status:** Planning & Memory Sync
+**Next Action:** Refactor `aq-qa` logic to support tiered execution.
+
 
 ## 🌐 Domain-Specific Reports (Dec 2025)
 

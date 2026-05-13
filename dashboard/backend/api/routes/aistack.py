@@ -3937,7 +3937,6 @@ async def get_workflow_graph() -> Dict[str, Any]:
         {"id": "user",          "name": "User Request",          "group": "input",    "color": "#ffffff", "val": 6},
         {"id": "switchboard",   "name": "Switchboard :8085",     "group": "router",   "color": "#f4a261", "val": 5},
         {"id": "local",         "name": "llama.cpp :8080",       "group": "local",    "color": "#2ec4b6", "val": 4},
-        {"id": "cli-bridge",    "name": "CLI Bridge :8089",      "group": "cli",      "color": "#8ecae6", "val": 4},
         {"id": "remote",        "name": "Remote LLM",            "group": "remote",   "color": "#e76f51", "val": 4},
         {"id": "hybrid",        "name": "Hybrid Coord :8003",    "group": "service",  "color": "#a8dadc", "val": 4},
         {"id": "aidb",          "name": "AIDB :8002",            "group": "service",  "color": "#84a98c", "val": 3},
@@ -3949,13 +3948,11 @@ async def get_workflow_graph() -> Dict[str, Any]:
         {"source": "user",       "target": "switchboard", "value": 3, "color": "#666"},
         {"source": "user",       "target": "hybrid",      "value": 2, "color": "#666"},
         {"source": "switchboard","target": "local",       "value": 3, "color": "#2ec4b6"},
-        {"source": "switchboard","target": "cli-bridge",  "value": 2, "color": "#8ecae6"},
         {"source": "switchboard","target": "remote",      "value": 1, "color": "#e76f51"},
         {"source": "hybrid",     "target": "aidb",        "value": 2, "color": "#84a98c"},
         {"source": "hybrid",     "target": "ralph",       "value": 2, "color": "#b5838d"},
         {"source": "hybrid",     "target": "local",       "value": 2, "color": "#2ec4b6"},
         {"source": "local",      "target": "response",    "value": 3, "color": "#666"},
-        {"source": "cli-bridge", "target": "response",    "value": 2, "color": "#666"},
         {"source": "remote",     "target": "response",    "value": 1, "color": "#666"},
     ]
 
@@ -3984,7 +3981,7 @@ async def get_workflow_graph() -> Dict[str, Any]:
                 "value": 1,
                 "color": "#555",
             })
-        target_base = "remote" if "remote" in target_label else ("cli-bridge" if "cli" in target_label else "local")
+        target_base = "remote" if "remote" in target_label else "local"
         profile_links.append({
             "source": f"profile:{profile}",
             "target": target_base,

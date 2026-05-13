@@ -10,6 +10,7 @@ Usage:
     aq-prime --objective "..."    # Onboard for specific task
     aq-prime --role orchestrator  # Role-specific guidance
     aq-prime --deep              # Load extended context (L2-L3)
+    aq-prime 5                    # Deep dive into OSI Layer 5 (State)
 """
 
 from __future__ import annotations
@@ -26,6 +27,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENT_DIR = REPO_ROOT / ".agent"
 AGENTS_DIR = REPO_ROOT / ".agents"
 PLANS_DIR = AGENTS_DIR / "plans"
+
+# 7-Layer AI Harness Stack (ADR-007)
+OSI_LAYERS = {
+    1: {"name": "Infrastructure (Physical/Declarative)", "scope": "System configuration, hardware tuning, flake inputs", "path": "nix/, templates/, phases/"},
+    2: {"name": "Runtime (Execution)", "scope": "Container lifecycle, Podman/KVM isolation, resource constraints", "path": "ai-stack/compose/, lib/l2-runtime/tools.sh"},
+    3: {"name": "Connectivity (Network/Service)", "scope": "MCP bridges, service discovery, port registry, internal networking", "path": "scripts/ai/mcp-bridge-hybrid.py"},
+    4: {"name": "Coordination (Transport/Routing)", "scope": "Agent delegation, routing logic, intent normalization", "path": "ai-stack/mcp-servers/hybrid-coordinator/, ai-stack/mcp-servers/ralph-wiggum/"},
+    5: {"name": "Session & Persistence (State)", "scope": "AIDB temporal facts, interaction history, telemetry storage", "path": "ai-stack/database/, ai-stack/postgres/, scripts/data/"},
+    6: {"name": "Cognitive/Semantic (Presentation/Context)", "scope": "RAG pipeline, context synthesis, prompt presentation, hint injection", "path": "ai-stack/aidb/, ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py"},
+    7: {"name": "Interaction (Application/UX)", "scope": "User CLI tools, operator dashboard, agent personas", "path": "scripts/ai/aq-*, dashboard/"},
+}
 
 # Progressive disclosure levels (token budgets)
 DISCLOSURE_LEVELS = {
@@ -129,6 +141,12 @@ Examples:
         default="text",
         help="Output format",
     )
+    parser.add_argument(
+        "tier",
+        nargs="?",
+        type=int,
+        help="OSI Layer Tier (1-7) for deep dive exploration",
+    )
     return parser.parse_args()
 
 
@@ -166,6 +184,27 @@ def check_harness_health() -> dict[str, Any]:
             time.sleep(1)
 
     return {"status": "offline", "capabilities": capabilities, "url": harness_url}
+
+def map_health_to_layers(harness_data: dict[str, Any]) -> dict[int, str]:
+    """Map live harness health status to OSI layers."""
+    is_online = harness_data.get("status") == "online"
+    caps = harness_data.get("capabilities") or []
+
+    # Default all to UNKNOWN (-)
+    health_map = {i: "-" for i in range(1, 8)}
+
+    # Simple logic: if coordinator is up, layers 3, 4, 6 are generally reachable
+    if is_online:
+        health_map[3] = "✓" # Connectivity (API responds)
+        health_map[4] = "✓" # Coordination (Coordinator responds)
+
+        if any("aidb" in str(c).lower() for i, c in enumerate(caps)):
+            health_map[6] = "✓" # Cognitive (AIDB found)
+
+        # Layer 5 (State) is usually a dependency for the API to be "online"
+        health_map[5] = "✓"
+
+    return health_map
 
 
 def get_project_identity() -> dict[str, Any]:
@@ -298,6 +337,17 @@ def format_text_output(data: dict[str, Any]) -> str:
     lines.append(f"Name: {identity['name']}")
     lines.append(f"Goal: {identity['goal']}")
     lines.append(f"Stack: {identity['stack']}")
+    lines.append("")
+
+    # 7-Layer AI Stack Map (L1)
+    lines.append("## 🏗️ 7-Layer AI Stack Health")
+    layer_health = map_health_to_layers(data["harness"])
+
+    for num, info in OSI_LAYERS.items():
+        status = layer_health.get(num, "-")
+        lines.append(f"  [{status}] L{num}: {info['name']}")
+    lines.append("")
+    lines.append(f"Hint: Run 'aq-prime <1-7>' for path-specific details on a layer.")
     lines.append("")
 
     # Role Guidance
@@ -433,8 +483,35 @@ def format_text_output(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_tier_output(tier: int) -> str:
+    """Format deep-dive output for a specific OSI layer."""
+    if tier not in OSI_LAYERS:
+        return f"Error: Layer {tier} is undefined. Valid tiers are 1-7."
+
+    info = OSI_LAYERS[tier]
+    lines = []
+    lines.append("=" * 60)
+    lines.append(f"LAYER {tier}: {info['name'].upper()}")
+    lines.append("=" * 60)
+    lines.append(f"Scope: {info['scope']}")
+    lines.append(f"Primary Paths: {info['path']}")
+    lines.append("")
+    lines.append("### Integration Context")
+    if tier == 1: lines.append("- Enforce declarative changes in 'templates/' before patching 'phases/'.")
+    if tier == 4: lines.append("- Coordinator logic lives in 'ai-stack/mcp-servers/hybrid-coordinator/'.")
+    if tier == 5: lines.append("- AIDB temporal facts are stored in Layer 5 (State).")
+    if tier == 7: lines.append("- All 'aq-*' tools in 'scripts/ai/' are Layer 7 entry points.")
+    lines.append("")
+    lines.append(f"Use 'source lib/cross-cutting/harness.sh' then 'source_tier l{tier}-...' for tiered automation.")
+    return "\n".join(lines)
+
+
 def main() -> int:
     args = parse_args()
+
+    if args.tier:
+        print(format_tier_output(args.tier))
+        return 0
 
     # Override level if --deep flag used
     level = "deep" if args.deep else args.level

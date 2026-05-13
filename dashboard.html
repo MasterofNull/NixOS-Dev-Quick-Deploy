@@ -2875,6 +2875,24 @@
                 </div>
             </div>
 
+            <!-- OSI Layer Health -->
+            <div class="dashboard-section" id="section-osi-health">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">OSI Layer Health</h2>
+                        </div>
+                        <span class="card-badge" id="osiHealthBadge">aq-qa</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="osiLayerGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                            <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- AIDB Health Monitoring (P1/P2 Features) -->
             <div class="dashboard-section" id="section-ai-services">
                 <div class="card">
@@ -5865,6 +5883,8 @@
             detectHostMetrics();
             loadStackHealth();
             loadAIInsights(); // Load AI insights and analytics
+            loadOsiLayerHealth();
+            setInterval(loadOsiLayerHealth, 30000); // Refresh every 30 seconds
             lazyLoadManager.registerCard('deployment-ops', 'loadDeploymentOps');
 
             // Connect WebSocket for real-time metrics (2-second updates)

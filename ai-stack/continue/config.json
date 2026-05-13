@@ -21,9 +21,8 @@
     "RETRY BUDGET: After 2 failed retries, transport hangs, or repeated 'message exceeds context limit', stop replaying the same transcript. Checkpoint decisions and next steps to harness memory, then start a fresh session from `mcp_server_get_working_memory`, `mcp_server_recall_memory`, or aq-memory recall.",
     "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
     "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ] before running shell commands. Never issue an unquoted AIDB or coordinator query URL.",
-    "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 cli-bridge:8089 dash:8889 grafana:3000 owui:3001",
-    "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
-    "CONFIG FREEZE — Claude (OAuth — CLI Bridge) and Codex (OAuth — CLI Bridge) model entries are required. Do not remove them."
+    "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889 grafana:3000 owui:3001",
+    "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models."
   ],
   "models": [
     {
@@ -53,24 +52,6 @@
         }
       },
       "contextLength": 16384,
-      "maxTokens": 4096
-    },
-    {
-      "title": "Claude (OAuth — CLI Bridge)",
-      "provider": "openai",
-      "apiKey": "cli-oauth",
-      "apiBase": "http://127.0.0.1:8089/v1",
-      "model": "claude-cli",
-      "contextLength": 16000,
-      "maxTokens": 4096
-    },
-    {
-      "title": "Codex (OAuth — CLI Bridge)",
-      "provider": "openai",
-      "apiKey": "cli-oauth",
-      "apiBase": "http://127.0.0.1:8089/v1",
-      "model": "codex-cli",
-      "contextLength": 16000,
       "maxTokens": 4096
     },
     {

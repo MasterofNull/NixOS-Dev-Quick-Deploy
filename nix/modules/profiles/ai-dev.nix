@@ -117,11 +117,6 @@ in
     mySystem.aiStack.affectiveEngine.enable = lib.mkDefault true;
     mySystem.aiStack.worldModel.enable      = lib.mkDefault true;
 
-    # ── CLI Bridge — OAuth-backed Claude / Codex ─────────────────────────────
-    # Routes to claude --print / codex exec via each CLI's own OAuth session.
-    # No API keys stored anywhere in Nix config or secrets.
-    mySystem.aiStack.cliBridge.enable = lib.mkDefault true;
-
     # ── Touchpad defaults for modern laptops ────────────────────────────────────
     # clickfinger eliminates accidental middle-click on ClickPads
     services.libinput.touchpad = {

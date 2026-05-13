@@ -7,8 +7,7 @@ No model IDs, no client names, and no subscription names are hardcoded here.
 Agent sources:
   1. SWITCHBOARD_REMOTE_ALIAS_* env vars (set by Nix, operator-controlled)
   2. Local switchboard profiles at :8085 (Qwen, continue-local, embedded-assist, etc.)
-  3. CLI bridge probe at CLI_BRIDGE_URL (Claude/Codex OAuth CLIs if active)
-  4. Direct env overrides via AGENT_CAPABILITY_OVERRIDE_* (optional, advanced)
+  3. Direct env overrides via AGENT_CAPABILITY_OVERRIDE_* (optional, advanced)
 
 Capability tags (assigned based on profile name patterns, not model names):
   architect     — architecture, policy, long-form synthesis
@@ -39,8 +38,8 @@ class AgentCapability:
     agent_id: str             # stable opaque ID (not a model name)
     profile: str              # switchboard profile name or alias key
     capabilities: List[str]   # tags: architect, implementer, reviewer, domain:*
-    endpoint: str             # base URL (switchboard, cli-bridge, etc.)
-    source: str               # "local" | "remote" | "cli-bridge"
+    endpoint: str             # base URL (switchboard, etc.)
+    source: str               # "local" | "remote"
     last_health_ms: Optional[float] = None   # None = not yet checked
     available: bool = True
 
@@ -102,18 +101,15 @@ _last_refresh: float = 0.0
 _REFRESH_TTL = 120.0  # re-probe every 2 minutes
 
 _switchboard_url: str = "http://127.0.0.1:8085"
-_cli_bridge_url: str = ""
 
 
 def init(
     switchboard_url: Optional[str] = None,
-    cli_bridge_url: Optional[str] = None,
 ) -> None:
-    global _switchboard_url, _cli_bridge_url
+    global _switchboard_url
     _switchboard_url = switchboard_url or os.environ.get(
         "SWITCHBOARD_URL", "http://127.0.0.1:8085"
     )
-    _cli_bridge_url = cli_bridge_url or os.environ.get("CLI_BRIDGE_URL", "http://127.0.0.1:8089")
     _seed_from_env()
 
 
@@ -150,20 +146,8 @@ def _seed_from_env() -> None:
                 profile=alias_name,
                 capabilities=_infer_capabilities(alias_name),
                 endpoint=_switchboard_url,
-                source="remote",
-            )
-
-    # CLI bridge agents (codex-cli, claude-cli)
-    if _cli_bridge_url:
-        for cli_profile in ("claude-cli", "codex-cli"):
-            agent_id = f"cli-bridge:{cli_profile}"
-            _agents[agent_id] = AgentCapability(
-                agent_id=agent_id,
-                profile=cli_profile,
-                capabilities=_infer_capabilities(cli_profile),
-                endpoint=_cli_bridge_url,
-                source="cli-bridge",
-            )
+            source="remote",
+        )
 
     # 4. Global NPM/system CLIs (gemini, pi)
     import shutil
