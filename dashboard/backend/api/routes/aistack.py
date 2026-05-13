@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -2594,7 +2595,11 @@ async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
     if cached and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
         return cached
 
+    # Resolve aq-report: prefer repo-relative path; fall back to PATH (Nix store installs)
     report_script = _script_path("aq-report")
+    if not report_script.exists():
+        _which = shutil.which("aq-report")
+        report_script = Path(_which) if _which else report_script
     if not report_script.exists():
         payload = {}
     else:
@@ -2605,7 +2610,7 @@ async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=12,
+                timeout=30,
                 cwd=str(_repo_root()),
             )
             if proc.returncode == 0:
@@ -2613,6 +2618,7 @@ async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
                 if not isinstance(payload, dict):
                     payload = {}
             else:
+                logger.warning("aq-report exited %s: %s", proc.returncode, proc.stderr[:200])
                 payload = {}
         except Exception:  # noqa: BLE001
             payload = {}
