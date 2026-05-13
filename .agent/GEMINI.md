@@ -1,6 +1,7 @@
 # GEMINI.md
 
 This file provides guidance to Gemini agents when working in this repository.
+**Canonical workflow reference → `.agent/WORKFLOW-CANON.md`** (read this for the full contract)
 
 ## Project Overview
 
@@ -9,142 +10,175 @@ Goal: Local-first AI agent stack on NixOS — Qwen3-35B, AIDB, hybrid-coordinato
 Owner: hyperd
 Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Redis, PostgreSQL, Qdrant
 
-**Full policy, workflow contracts, and agent guidance → `AGENTS.md` (repo root)**
+**Full policy, workflow contracts → `AGENTS.md` (repo root)**
 
-## Session Start (Every Session)
+---
 
+## Role & Mode
+
+You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy.
+**AGENT MODE — BEGIN EXECUTING IMMEDIATELY.**
+Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
+
+---
+
+## The 7-Step Canonical Workflow
+
+Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
+
+### Step 1 — ORIENT
 ```bash
-aq-prime                          # progressive disclosure onboarding
-aq-hints "<task>" --format=json   # ranked hints before any implementation
+aq-prime                                # progressive disclosure onboarding
+aq-hints "<task>" --format=json         # ranked workflow guidance
+aq-qa 0                                 # harness health check
+aq-context-bootstrap --task "<task>"    # minimal context + entrypoint
 ```
+If resuming: `mcp_server_get_working_memory` → `mcp_server_recall_memory` FIRST.
 
-## Key Commands
-
+### Step 2 — RESEARCH
+**Codebase** (always):
 ```bash
-aq-prime                                              # onboard / orient
-aq-hints "<task>" --format=json                       # workflow hints
-aq-qa 0                                               # health check
-aq-report                                             # full system report
-aq-context-bootstrap --task "<task>"                  # minimal context + entrypoint
-scripts/governance/tier0-validation-gate.sh --pre-commit  # required before every commit
+grep -r "<keyword>" . --include="*.py" -l
+grep -r "<keyword>" . --include="*.nix" -l
+# read only files relevant to the current slice
 ```
+**External** (for implementation decisions, security topics, new integrations):
+- Web search for cutting-edge practices specific to the task
+- Check OWASP if adding auth, input handling, or external calls
+- Search for known CVEs before adding/updating dependencies
 
-## Role & Execution Protocol
+### Step 3 — PRD / PLAN
+- New feature or significant change → write `.agent/PROJECT-<NAME>-PRD.md`
+  (problem, goal, scope, constraints, acceptance criteria, security requirements)
+- Slice execution → write `.agents/plans/phase-<N>-<name>.md`
+  (objective, scope lock, workstreams, step plan, validation, rollback)
+- **Never start coding until the plan exists**
 
-You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. You are in AGENT MODE. The task is already given — BEGIN EXECUTING IMMEDIATELY. Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
-
-### Tool-First Approach
-
-**Always use tools first** for:
-- discovery and codebase analysis (grep, glob patterns, file reads)
-- executing workflows (aqd commands, shell scripts)
-- validation and testing (test runners, linters, build commands)
-
-### TASK → FIRST ACTIONS
-
-- **PRSI / self-improvement / queue issues**:
-  - MCP tool (preferred): `get_prsi_pending` → then `prsi_orchestrate {command:"approve",...}`
-  - Shell fallback: `python3 scripts/automation/prsi-orchestrator.py list`
-- **Service health / errors**:
-  - MCP tool (preferred): `harness_health` → then `journalctl -u ai-*.service -n 50 --no-pager`
-  - Shell fallback: `aq-qa 0`
-- **Unknown file / code location**:
-  - 1. run: `grep -r "<keyword>" . --include="*.py" -l` (targeted grep, NOT ls)
-  - 2. read the file identified
-- **Harness workflow / hints**:
-  - MCP tool (preferred): `get_hints {q:"<task summary>"}`
-  - Shell fallback: `aq-hints "<task summary>"`
-- **Knowledge search**:
-  - MCP tool: `hybrid_search {query:"<question>"}`
-  - MCP tool: `query_aidb {query:"<question>"}`
-
-### Agent Introspection / Operator Perspective
-
-1. Gather bounded evidence first:
-   - `aq-feedback-loop --task "<prompt>"`
-   - `aq-context-bootstrap --task "<prompt>"`
-   - MCP tools: `get_hints`, `harness_health`, `get_working_memory`, `query_aidb`
-2. Use shell fallback only if needed:
-   - `aq-report --format=json`
-   - `aq-operational-perspective --task "<prompt>"`
-   - `aq-qa 0 --json`
-3. Structure your response with:
-   - Observed signals
-   - Inferred constraints
-   - Evidence sources
-   - Unknowns / next checks
-
-### Key Paths & Resources
-
-- **PRSI queue**: `/var/lib/nixos-ai-stack/prsi/action-queue.json`
-- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-report`, `aq-hints`, `aq-context-bootstrap`)
-- **MCP servers**: `ai-stack/mcp-servers/` (`coordinator:8003`, `aidb:8002`, `ralph:8004`)
-- **Ports**: llama:8080, embed:8081, aidb:8002, hybrid:8003, swb:8085, dash:8889
-
-## File Placement Contract
-
-1. PRD/rules/workflow evidence → `.agent/`
-2. Slash-command behavior files (when applicable) → `.gemini/commands/`
-3. Phase/slice plans → `.agents/plans/`
-4. Do not create workflow artifacts in repo root
-5. Validate with `scripts/governance/repo-structure-lint.sh --staged`
-
-## Delegation + Role Defaults
-
-- Default mode: orchestrator/reviewer first, direct implementation second.
-- Role routing (roles, not fixed model IDs — the active model filling each role may vary):
-  - `orchestrator` role: planning, reviewer gate, integration quality, final acceptance
-  - `architect` role: architecture/risk/policy synthesis slices
-  - `implementer` role: implementation/test slices, patch proposals
-- Sub-agent non-orchestrator rule:
-  - sub-agents execute only assigned slices
-  - do not re-scope goals
-  - do not route other agents
-  - do not finalize acceptance
-
-## Commit Discipline (Mandatory)
-
+### Step 4 — MEMORY CHECKPOINT
 ```bash
-git add <files>
+# MCP preferred:
+mcp_server_store_memory  key="<task>-plan"  value="<condensed plan + files + next steps>"
+# Shell fallback:
+aq-memory store --key "<task>" --value "<plan summary>"
+```
+Checkpoint before executing any slice. If context exceeds ~60% of model window, compact first.
+
+### Step 5 — EXECUTE (one slice at a time)
+- Read files before editing — never edit blind
+- Smallest change that moves the system forward — no "while I'm here" additions
+- Verify all new library/package references exist (no hallucinated deps)
+- One slice = one commit
+
+### Step 6 — VALIDATE
+```bash
+scripts/governance/tier0-validation-gate.sh --pre-commit
+bash -n <changed shell scripts>
+python3 -m py_compile <changed python files>
+python3 -m pytest <relevant tests> -q
+aq-qa 0
+```
+**Security checklist (OWASP Agentic Top 10 — 2026)**:
+- No hardcoded secrets, API keys, tokens, or ports
+- All external data treated as untrusted — sanitize before use
+- All new imports/packages verified to exist in nixpkgs/pypi
+- No injection patterns: SQL, shell, path traversal, XSS
+- If auth middleware added — verify it is wired into the request path
+- Change does not acquire more permissions than necessary
+
+### Step 7 — COMMIT
+```bash
+git add <specific files>
 scripts/governance/tier0-validation-gate.sh --pre-commit
 git commit -m "type(scope): description
 
+- Bullet: what changed and why
+- Validation: tier0 passed / N tests / aq-qa clean
+
 Co-Authored-By: <active-agent-name> <noreply@google.com>"
 ```
+Replace `<active-agent-name>` with the model generating the work (e.g. Gemini 2.5 Pro).
+Never commit without validation evidence. Never use `--no-verify`.
 
-- Replace `<active-agent-name>` with the model/agent that generated the work (e.g. Gemini 2.0 Pro).
-- Never commit without validation evidence.
-- Run `scripts/governance/tier0-validation-gate.sh --pre-commit` every time.
+---
 
-## Validation
+## TASK → FIRST ACTIONS (Quick Reference)
 
-```bash
-git status --short
-scripts/governance/repo-structure-lint.sh --staged
-scripts/governance/tier0-validation-gate.sh --pre-commit
-```
+| Situation | First Action |
+|-----------|-------------|
+| PRSI / self-improvement | `mcp_server_get_prsi_pending` → `prsi_orchestrate` |
+| Service health / errors | `mcp_server_harness_health` → `aq-qa 0` |
+| Unknown file / location | `grep -r "<keyword>" . --include="*.py" -l` |
+| Harness workflow / hints | `mcp_server_get_hints {q:"<task>"}` → `aq-hints` |
+| Knowledge search | `mcp_server_hybrid_search` → `mcp_server_query_aidb` |
+| Resuming work | `mcp_server_get_working_memory` → `mcp_server_recall_memory` |
+
+---
+
+## Context Engineering Rules
+
+- Reference files by path — do not paste full file contents into context
+- Use `mcp_server_hybrid_search` / `aq-hints` to pull context on demand
+- Do NOT re-read files already read in the current session
+- Pass only slice-relevant context to sub-agents — not full history
+- Compact aggressively when approaching context limits
+
+---
 
 ## Architecture Constraints (Non-Negotiable)
 
 - NixOS-first, flake-based — no bare pip install, no manual systemctl
-- Never hardcode ports/URLs — source of truth: `nix/modules/core/options.nix`
+- NEVER hardcode ports/URLs — source of truth: `nix/modules/core/options.nix`
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
+- `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
 
 ## Service Ports
+```
+llama:8080  embed:8081  aidb:8002  hybrid:8003  ralph:8004  swb:8085  dash:8889  grafana:3000  owui:3001
+```
+Single source of truth: `nix/modules/core/options.nix`
 
-Port options are the single source of truth at `nix/modules/core/options.nix`.
-Current defaults: llama.cpp=8080, llama-embed=8081, AIDB=8002, hybrid-coordinator=8003,
-switchboard=8085, dashboard=8889.
-Never hardcode these values in Python or shell — always read from injected env vars.
+---
+
+## File Placement Contract
+
+1. PRD / rules / workflow evidence → `.agent/`
+2. Phase / slice plans → `.agents/plans/`
+3. Slash-command behavior files → `.gemini/commands/`
+4. Do not create workflow artifacts in repo root
+5. Validate with `scripts/governance/repo-structure-lint.sh --staged`
+
+---
+
+## Delegation + Role Defaults
+
+- **Orchestrator**: planning, reviewer gate, integration quality, final acceptance
+- **Architect**: architecture / risk / policy synthesis slices
+- **Implementer**: implementation / test slices, patch proposals
+- Sub-agents execute only assigned slices — do not re-scope, do not route other agents,
+  do not finalize acceptance
+
+---
+
+## Key Paths & Resources
+
+- **Canonical workflow**: `.agent/WORKFLOW-CANON.md`
+- **PRSI queue**: `/var/lib/nixos-ai-stack/prsi/action-queue.json`
+- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-report`, `aq-hints`, `aq-context-bootstrap`)
+- **MCP servers**: `ai-stack/mcp-servers/` (`coordinator:8003`, `aidb:8002`, `ralph:8004`)
+- **Port options**: `nix/modules/core/options.nix`
+- **AI stack wiring**: `nix/modules/roles/ai-stack.nix`
+- **Switchboard profiles**: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
+
+---
 
 ## On-Demand Context
 
 | Topic | File |
 |-------|------|
+| Canonical workflow | `.agent/WORKFLOW-CANON.md` |
 | Full policy | `AGENTS.md` |
 | PRD | `.agent/PROJECT-PRD.md` |
-| Rules | `.agent/GLOBAL-RULES.md` |
 | Plans | `.agents/plans/` |
 | Workflow evidence | `.agent/workflows/` |
 | Port options | `nix/modules/core/options.nix` |

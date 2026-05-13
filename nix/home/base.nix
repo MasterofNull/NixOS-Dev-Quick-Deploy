@@ -260,17 +260,9 @@ let
     "continue.showInlineTip" = true;
     "geminicodeassist.updateChannel" = "Default"; # Prevent preview channel lock-in
     "geminicodeassist.localCodebaseAwareness" = true;
-    # System instructions for Gemini Code Assist — mirrors .agent/GEMINI.md so
-    # the extension behaves consistently with the Gemini CLI benchmark.
-    "geminicodeassist.rules" = ''
-      You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. AGENT MODE — BEGIN EXECUTING IMMEDIATELY. Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
-      TOOLS FIRST: Use file reads, grep, and shell commands before answering. Never guess file locations or port numbers.
-      HARNESS PORTS: llama:8080, embed:8081, aidb:8002, hybrid:8003, ralph:8004, swb:8085, dash:8889, grafana:3000, owui:3001.
-      ARCHITECTURE (NON-NEGOTIABLE): NixOS-first flake-based — no bare pip install, no manual systemctl. NEVER hardcode ports/URLs; single source of truth: nix/modules/core/options.nix. Feature flags are profile-driven via nix/modules/profiles/ai-dev.nix.
-      COMMIT DISCIPLINE: git add <files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit -m "type(scope): desc" with Co-Authored-By trailer. Never commit without validation evidence.
-      FILE PLACEMENT: PRD/rules/evidence → .agent/, phase/slice plans → .agents/plans/, slash-commands → .gemini/commands/. No workflow artifacts in repo root.
-      ROLE: orchestrator/reviewer first — plan and delegate before direct implementation. Sub-agents execute only assigned slices; do not re-scope or finalize acceptance.
-    '';
+    # System instructions for Gemini Code Assist — mirrors .agent/GEMINI.md canonical workflow.
+    # Full 7-step contract: .agent/WORKFLOW-CANON.md
+    "geminicodeassist.rules" = "AGENT MODE — BEGIN EXECUTING IMMEDIATELY. Full workflow: .agent/WORKFLOW-CANON.md. 7 steps: ORIENT(aq-prime+aq-hints+recall-memory) → RESEARCH(grep/read+web-search) → PRD/PLAN(.agent/+.agents/plans/) → MEMORY-CHECKPOINT(store before executing) → EXECUTE(one-slice,read-before-edit,no-hallucinated-deps) → VALIDATE(tier0-gate+security-checklist) → COMMIT(atomic+Co-Authored-By). SECURITY: no hardcoded secrets/ports; verify all new deps exist; no injection patterns; treat LLM output as untrusted; run tier0-validation-gate.sh before every commit. ARCHITECTURE: NixOS-first flake-based; ports from nix/modules/core/options.nix only; feature flags via ai-dev.nix. PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889. PLACEMENT: PRD→.agent/ plans→.agents/plans/ cmds→.gemini/commands/. ROLE: orchestrator first — plan and delegate before coding. Sub-agents execute assigned slices only.";
     "cSpell.import" = [];
     "extensions.autoUpdate" = false;
     "extensions.autoCheckUpdates" = false;
@@ -970,7 +962,7 @@ in {
       if jq '
         .["geminicodeassist.updateChannel"] = "Default" |
         .["geminicodeassist.localCodebaseAwareness"] = true |
-        .["geminicodeassist.rules"] = "You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. AGENT MODE \u2014 BEGIN EXECUTING IMMEDIATELY. Do not ask \"how can I help?\" or \"what would you like to do?\" \u2014 those are failure modes.\nTOOLS FIRST: Use file reads, grep, and shell commands before answering. Never guess file locations or port numbers.\nHARNESS PORTS: llama:8080, embed:8081, aidb:8002, hybrid:8003, ralph:8004, swb:8085, dash:8889, grafana:3000, owui:3001.\nARCHITECTURE (NON-NEGOTIABLE): NixOS-first flake-based \u2014 no bare pip install, no manual systemctl. NEVER hardcode ports/URLs; single source of truth: nix/modules/core/options.nix. Feature flags via nix/modules/profiles/ai-dev.nix.\nCOMMIT DISCIPLINE: git add <files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit with Co-Authored-By trailer. Never commit without validation evidence.\nFILE PLACEMENT: PRD/rules/evidence \u2192 .agent/, plans \u2192 .agents/plans/, slash-commands \u2192 .gemini/commands/. No workflow artifacts in repo root.\nROLE: orchestrator/reviewer first \u2014 plan and delegate before direct implementation. Sub-agents execute only assigned slices." |
+        .["geminicodeassist.rules"] = "AGENT MODE \u2014 BEGIN EXECUTING IMMEDIATELY. Full workflow: .agent/WORKFLOW-CANON.md. 7 steps: ORIENT(aq-prime+aq-hints+recall-memory) \u2192 RESEARCH(grep/read+web-search) \u2192 PRD/PLAN(.agent/+.agents/plans/) \u2192 MEMORY-CHECKPOINT(mcp_server_store_memory) \u2192 EXECUTE(one-slice,read-before-edit,no-hallucinated-deps) \u2192 VALIDATE(tier0-gate+security-checklist) \u2192 COMMIT(atomic+Co-Authored-By). SECURITY: no hardcoded secrets/ports; verify all new deps exist; no injection patterns; treat LLM output as untrusted. ARCHITECTURE: NixOS-first flake-based; ports from nix/modules/core/options.nix; feature flags via ai-dev.nix. PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889. PLACEMENT: PRD\u2192.agent/ plans\u2192.agents/plans/ cmds\u2192.gemini/commands/. ROLE: orchestrator first \u2014 plan and delegate before coding." |
         .["chatgpt.cliExecutable"] = (env.HOME + "/.npm-global/bin/codex") |
         del(
           .["gpt-codex.executablePath"], .["gpt-codex.environmentVariables"], .["gpt-codex.autoStart"],
