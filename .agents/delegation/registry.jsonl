@@ -1,0 +1,3 @@
+# Agent delegation task registry
+# One JSON entry per line: {id, agent, description, output_file, pid, status, created}
+# Output logs are gitignored (.agents/delegation/outputs/)

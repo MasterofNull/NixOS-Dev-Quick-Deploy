@@ -160,6 +160,8 @@ nix/hosts/*/.sops.yaml
 
 # Strands-style workflow artifacts (scratchpad is temporary working files)
 .agents/scratchpad/
+# Agent delegation task output logs (runtime; registry.jsonl is tracked)
+.agents/delegation/outputs/
 tmp/
 
 # Impeccable skill runtime cache (auto-populated from upstream skill definitions;
