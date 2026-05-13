@@ -1606,7 +1606,12 @@ PYEOF
         "TRANSCRIPT HYGIENE: Do not paste large logs, repo maps, or repeated bootstrap banners into editor chat when a compact summary or file reference will do.",
         "SHELL SAFETY: In zsh, always quote URLs containing ?, &, *, [, or ] before running shell commands. Never issue an unquoted AIDB or coordinator query URL.",
         "PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889 grafana:3000 owui:3001",
-        "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models."
+        "AGENT ROUTING — Monitoring, polling, and background tasks must use LOCAL models only. Never route autonomous/background work to remote/paid models.",
+        "CANONICAL WORKFLOW — Full contract: .agent/WORKFLOW-CANON.md. Every non-trivial task follows: ORIENT(aq-prime+aq-hints+recall-memory) → RESEARCH(grep/read codebase + web-search for external practices) → PRD/PLAN(.agent/ + .agents/plans/) → MEMORY-CHECKPOINT(store plan before executing) → EXECUTE(one slice at a time) → VALIDATE(tier0-gate + security-checklist) → COMMIT(atomic, Co-Authored-By).",
+        "PRD GATE — Before implementing any multi-file change: write a .agent/PROJECT-<NAME>-PRD.md covering problem, goal, scope, constraints, acceptance criteria, and security requirements. Never start coding without a written plan.",
+        "MEMORY DISCIPLINE — Before executing any slice: store the plan to harness memory (mcp_server_store_memory or aq-memory store). At session start: recall memory first (mcp_server_get_working_memory → mcp_server_recall_memory). Compact context before it exceeds 60% of the model window.",
+        "SECURITY GATE — Apply before every commit: (1) no hardcoded secrets/ports/tokens; (2) verify all new imports/packages exist before adding them; (3) no injection patterns (SQL, shell, path traversal); (4) treat all LLM outputs as untrusted input; (5) if auth middleware added, verify it is wired in; (6) run bash -n on shell files and python3 -m py_compile on Python files.",
+        "CONTEXT ENGINEERING — Reference files by path, do not paste full contents. Use mcp_server_hybrid_search and mcp_server_get_hints to retrieve exactly what the current slice needs. Pass only slice-relevant context to sub-agents. Never replay full transcripts."
       ],
       "models": [
         {
