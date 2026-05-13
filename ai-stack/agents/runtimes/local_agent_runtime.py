@@ -509,10 +509,10 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
             if r.status_code == 200:
                 results = r.json().get("results") or []
                 if results:
-                    return "\n".join(
+                    return _compress_tool_output("\n".join(
                         f"[{i+1}] {res.get('content', '')[:400]}"
                         for i, res in enumerate(results[:limit])
-                    )
+                    ))
                 return "No results found."
             return f"route_search error: HTTP {r.status_code}"
         elif name == "recall_memory":
@@ -525,10 +525,10 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
             if r.status_code == 200:
                 results = r.json().get("results") or []
                 if results:
-                    return "\n".join(
+                    return _compress_tool_output("\n".join(
                         f"[{i+1}] {res.get('content', '')[:400]}"
                         for i, res in enumerate(results[:5])
-                    )
+                    ))
                 return "No memories found."
             return f"recall_memory error: HTTP {r.status_code}"
         elif name == "run_harness_cli":
@@ -540,7 +540,7 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
                     "status": "error",
                     "error": "args must be a list of strings",
                 })
-            return await _run_harness_cli(tool, [str(item) for item in tool_args])
+            return _compress_tool_output(await _run_harness_cli(tool, [str(item) for item in tool_args]))
         return f"unknown_tool: {name}"
     except Exception as exc:
         return f"tool_error({name}): {exc}"
