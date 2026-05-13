@@ -1,0 +1,415 @@
+#!/usr/bin/env bash
+# delegate-to-local — Delegate a research/analysis/draft task to the local Qwen model
+#
+# Routes through the hybrid-coordinator (:8003) which applies harness routing policy.
+# Falls back to direct llama.cpp (:8080) if coordinator is unavailable.
+#
+# IMPORTANT: Local models produce TEXT output (plans, analysis, drafts, code suggestions).
+# They do NOT execute file changes autonomously. Claude/Gemini/Codex review and apply output.
+#
+# Usage:
+#   delegate-to-local --prompt "analyze X and output findings"  # background by default
+#   delegate-to-local --prompt "..." --wait                     # block until done
+#   delegate-to-local --check <task-id>                         # read completed output
+#   delegate-to-local --list                                     # list all tasks
+#   delegate-to-local --status <task-id>                        # task status
+#
+# Modes (--mode flag):
+#   hybrid    — route through hybrid-coordinator (preferred; uses harness routing policy)
+#   direct    — POST directly to llama.cpp /v1/chat/completions (bypass coordinator)
+#   ralph     — route through ralph-wiggum tool-calling agent (:8004)
+#
+# Options:
+#   --prompt TEXT      Task prompt
+#   --prompt-file FILE Read prompt from file
+#   --mode MODE        Routing: hybrid|direct|ralph  [default: hybrid]
+#   --timeout SECS     Request timeout in seconds  [default: 300]
+#   --check ID         Print output of a completed task
+#   --status ID        Show task status
+#   --list             List all registered tasks
+#   --help             Show this help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
+OUTPUTS_DIR="$DELEGATION_DIR/outputs"
+REGISTRY="$DELEGATION_DIR/registry.jsonl"
+
+# Ports — read from env, fall back to harness defaults (source of truth: options.nix)
+LLAMA_PORT="${LLAMA_PORT:-8080}"
+HYBRID_PORT="${HYBRID_PORT:-8003}"
+RALPH_PORT="${RALPH_PORT:-8004}"
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "[delegate-to-local] $*"; }
+
+ensure_dirs() {
+    mkdir -p "$OUTPUTS_DIR"
+    touch "$REGISTRY"
+}
+
+task_id() {
+    echo "local-$(date +%Y%m%d-%H%M%S)-$(tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6 || echo 'xxxxxx')"
+}
+
+registry_append() {
+    local id="$1" description="$2" output_file="$3" mode="$4"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"id":"%s","agent":"local-%s","description":%s,"output_file":"%s","pid":null,"status":"running","created":"%s"}\n' \
+        "$id" "$mode" \
+        "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+        "$output_file" \
+        "$ts" >> "$REGISTRY"
+}
+
+update_status() {
+    python3 - "$REGISTRY" "$1" "$2" <<'PYEOF'
+import sys, json
+rf, tid, new_status = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == tid: e["status"] = new_status
+            lines.append(json.dumps(e))
+        except Exception: lines.append(line)
+with open(rf, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PYEOF
+}
+
+check_service() {
+    local port="$1" name="$2"
+    curl -sf --max-time 3 "http://127.0.0.1:${port}/health" > /dev/null 2>&1 \
+        || die "$name is not reachable at :$port — start the harness first (aq-qa 0 to check)"
+}
+
+# ── subcommands ──────────────────────────────────────────────────────────────
+
+cmd_list() {
+    [[ -f "$REGISTRY" ]] || { info "No delegated tasks yet."; return; }
+    printf "%-32s  %-8s  %-12s  %s\n" "TASK ID" "STATUS" "AGENT" "DESCRIPTION"
+    printf "%-32s  %-8s  %-12s  %s\n" "--------------------------------" "--------" "------------" "-----------"
+    python3 - "$REGISTRY" <<'PYEOF'
+import sys, json
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            desc = e.get("description","")[:50]
+            print(f"{e['id']:<32}  {e.get('status','?'):<8}  {e.get('agent','?'):<12}  {desc}")
+        except Exception: pass
+PYEOF
+}
+
+cmd_status() {
+    local id="$1"
+    [[ -f "$REGISTRY" ]] || die "No registry found at $REGISTRY"
+    python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+found = False
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                found = True
+                print(json.dumps(e, indent=2))
+        except Exception: pass
+if not found:
+    print(f"Task not found: {task_id}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+}
+
+cmd_check() {
+    local id="$1"
+    local output_file; output_file=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                print(e.get("output_file",""))
+        except Exception: pass
+PYEOF
+)
+    [[ -n "$output_file" ]] || die "Task not found in registry: $id"
+    [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
+    [[ -f "$output_file" ]] || die "Output file not found: $output_file (task may still be running)"
+    cat "$output_file"
+}
+
+run_hybrid() {
+    local prompt="$1" output_file="$2" timeout_secs="$3"
+    check_service "$HYBRID_PORT" "hybrid-coordinator"
+    python3 - "$prompt" "http://127.0.0.1:${HYBRID_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
+import sys, json, urllib.request, urllib.error
+
+prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+
+payload = json.dumps({
+    "query": prompt,
+    "mode": "auto",
+    "prefer_local": True,
+    "limit": 1
+}).encode()
+
+req = urllib.request.Request(
+    f"{base_url}/query",
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST"
+)
+try:
+    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+        data = json.loads(resp.read().decode())
+        result = data.get("response") or data.get("answer") or data.get("result") or json.dumps(data, indent=2)
+        with open(output_file, "w") as f:
+            f.write(result)
+    sys.exit(0)
+except urllib.error.HTTPError as e:
+    body = e.read().decode()
+    with open(output_file, "w") as f:
+        f.write(f"HTTP {e.code}: {body}")
+    sys.exit(1)
+except Exception as e:
+    with open(output_file, "w") as f:
+        f.write(f"Error: {e}")
+    sys.exit(1)
+PYEOF
+}
+
+run_direct() {
+    local prompt="$1" output_file="$2" timeout_secs="$3"
+    check_service "$LLAMA_PORT" "llama.cpp"
+    python3 - "$prompt" "http://127.0.0.1:${LLAMA_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
+import sys, json, urllib.request, urllib.error
+
+prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+
+payload = json.dumps({
+    "model": "local",
+    "messages": [{"role": "user", "content": prompt}],
+    "stream": False
+}).encode()
+
+req = urllib.request.Request(
+    f"{base_url}/v1/chat/completions",
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST"
+)
+try:
+    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+        data = json.loads(resp.read().decode())
+        result = data["choices"][0]["message"]["content"]
+        with open(output_file, "w") as f:
+            f.write(result)
+    sys.exit(0)
+except urllib.error.HTTPError as e:
+    body = e.read().decode()
+    with open(output_file, "w") as f:
+        f.write(f"HTTP {e.code}: {body}")
+    sys.exit(1)
+except Exception as e:
+    with open(output_file, "w") as f:
+        f.write(f"Error: {e}")
+    sys.exit(1)
+PYEOF
+}
+
+run_ralph() {
+    local prompt="$1" output_file="$2" timeout_secs="$3"
+    check_service "$RALPH_PORT" "ralph-wiggum"
+    # ralph-wiggum TaskRequest field is 'prompt' (not 'task')
+    python3 - "$prompt" "http://127.0.0.1:${RALPH_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
+import sys, json, urllib.request, urllib.error
+
+prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+
+payload = json.dumps({"prompt": prompt}).encode()
+
+req = urllib.request.Request(
+    f"{base_url}/task",
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST"
+)
+try:
+    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+        data = json.loads(resp.read().decode())
+        result = data.get("response") or data.get("result") or json.dumps(data, indent=2)
+        with open(output_file, "w") as f:
+            f.write(result)
+    sys.exit(0)
+except urllib.error.HTTPError as e:
+    body = e.read().decode()
+    with open(output_file, "w") as f:
+        f.write(f"HTTP {e.code}: {body}")
+    sys.exit(1)
+except Exception as e:
+    with open(output_file, "w") as f:
+        f.write(f"Error: {e}")
+    sys.exit(1)
+PYEOF
+}
+
+cmd_delegate() {
+    local prompt="$1" mode="${2:-hybrid}" timeout_secs="${3:-300}" wait_mode="${4:-false}"
+
+    ensure_dirs
+
+    local id; id="$(task_id)"
+    local output_file="$OUTPUTS_DIR/${id}.log"
+    local rel_output=".agents/delegation/outputs/${id}.log"
+
+    info "Delegating task: $id"
+    info "Routing mode:    $mode"
+    info "Output file:     $output_file"
+
+    registry_append "$id" "$prompt" "$rel_output" "$mode"
+
+    # Build runner command
+    local runner_func="run_${mode}"
+
+    if [[ "$wait_mode" == "true" ]]; then
+        info "Running in blocking mode (timeout: ${timeout_secs}s)..."
+        if $runner_func "$prompt" "$output_file" "$timeout_secs"; then
+            update_status "$REGISTRY" "$id" "done"
+            info "Task $id completed."
+            cat "$output_file"
+        else
+            update_status "$REGISTRY" "$id" "failed"
+            info "Task $id failed. Output:"
+            cat "$output_file"
+            return 1
+        fi
+    else
+        # True background — nohup so it survives Claude session eviction
+        nohup bash -c "
+            source \"$SCRIPT_DIR/delegate-to-local\"
+            if $(printf '%q ' "$runner_func" "$prompt" "$output_file" "$timeout_secs") ; then
+                python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+            else
+                python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+            fi
+        " > /dev/null 2>&1 &
+        local pid=$!
+        disown "$pid"
+
+        # Update registry with pid
+        python3 - "$REGISTRY" "$id" "$pid" <<'PYEOF'
+import sys, json
+rf, tid, pid = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == tid:
+                try: e["pid"] = int(pid)
+                except (ValueError, TypeError): e["pid"] = pid
+            lines.append(json.dumps(e))
+        except Exception: lines.append(line)
+with open(rf, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PYEOF
+
+        info "Task $id started in background (pid $pid)"
+        info "Check output:  delegate-to-local --check $id"
+        info "Check status:  delegate-to-local --status $id"
+        info "NOTE: Local model tasks take 90-300s. Check back in a few minutes."
+        echo "$id"
+    fi
+}
+
+# ── argument parsing ─────────────────────────────────────────────────────────
+
+PROMPT=""
+PROMPT_FILE=""
+MODE="hybrid"
+TIMEOUT=300
+WAIT=false
+SUBCMD=""
+SUBCMD_ARG=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --prompt)      PROMPT="$2";       shift 2 ;;
+        --prompt-file) PROMPT_FILE="$2";  shift 2 ;;
+        --mode)        MODE="$2";         shift 2 ;;
+        --timeout)     TIMEOUT="$2";      shift 2 ;;
+        --wait)        WAIT=true;         shift   ;;
+        --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
+        --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
+        --list)        SUBCMD="list";    shift   ;;
+        --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
+        *) die "Unknown option: $1 (run with --help for usage)" ;;
+    esac
+done
+
+case "$MODE" in
+    hybrid|direct|ralph) ;;
+    *) die "Invalid --mode '$MODE'. Valid: hybrid | direct | ralph" ;;
+esac
+
+case "${SUBCMD:-}" in
+    list)   ensure_dirs; cmd_list ;;
+    status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
+    check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    "")
+        if [[ -n "$PROMPT_FILE" ]]; then
+            [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
+            PROMPT="$(cat "$PROMPT_FILE")"
+        fi
+        [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
+        cmd_delegate "$PROMPT" "$MODE" "$TIMEOUT" "$WAIT"
+        ;;
+esac

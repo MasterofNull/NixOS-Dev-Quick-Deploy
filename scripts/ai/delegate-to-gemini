@@ -1,0 +1,338 @@
+#!/usr/bin/env bash
+# delegate-to-gemini — Delegate a task to Gemini CLI (headless, persistent)
+#
+# Fixes:
+#   - Correct headless flag: -p/--prompt  (NOT 'gemini print ...')
+#   - Persistent output in .agents/delegation/outputs/ (survives session restarts)
+#   - Task registry in .agents/delegation/registry.jsonl (survives eviction)
+#
+# Usage:
+#   delegate-to-gemini --prompt "implement X in file Y"   # delegate in background
+#   delegate-to-gemini --check <task-id>                  # read output
+#   delegate-to-gemini --list                             # list all delegated tasks
+#   delegate-to-gemini --status <task-id>                 # check running/done/failed
+#
+# Approval modes (--mode flag):
+#   yolo       — approve all tool calls automatically (default for headless)
+#   auto_edit  — auto-approve file edits only; prompt for shell/network
+#   plan       — read-only planning pass; no side effects
+#
+# Options:
+#   --prompt TEXT      Task prompt to send to Gemini
+#   --prompt-file FILE Read prompt from file
+#   --mode MODE        Approval mode: yolo|auto_edit|plan  [default: auto_edit]
+#   --model MODEL      Gemini model override
+#   --wait             Block until task completes (default: background)
+#   --check ID         Print output of a completed task
+#   --status ID        Show status of a task
+#   --list             List all registered tasks
+#   --help             Show this help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
+OUTPUTS_DIR="$DELEGATION_DIR/outputs"
+REGISTRY="$DELEGATION_DIR/registry.jsonl"
+GEMINI_BIN="${GEMINI_BIN:-$HOME/.npm-global/bin/gemini}"
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "[delegate-to-gemini] $*"; }
+
+require_gemini() {
+    [[ -x "$GEMINI_BIN" ]] || die "Gemini CLI not found at $GEMINI_BIN
+  Install: npm install -g @google/gemini-cli
+  Or set:  export GEMINI_BIN=/path/to/gemini"
+}
+
+ensure_dirs() {
+    mkdir -p "$OUTPUTS_DIR"
+    touch "$REGISTRY"
+}
+
+task_id() {
+    # Format: gemini-YYYYMMDD-HHMMSS-XXXXXX
+    echo "gemini-$(date +%Y%m%d-%H%M%S)-$(tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6 || echo 'xxxxxx')"
+}
+
+registry_append() {
+    local id="$1" description="$2" output_file="$3" pid="${4:-}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"id":"%s","agent":"gemini","description":%s,"output_file":"%s","pid":%s,"status":"running","created":"%s"}\n' \
+        "$id" \
+        "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+        "$output_file" \
+        "${pid:-null}" \
+        "$ts" >> "$REGISTRY"
+}
+
+registry_update_status() {
+    local id="$1" new_status="$2"
+    # Rewrite registry with updated status for matching id
+    python3 - "$REGISTRY" "$id" "$new_status" <<'PYEOF'
+import sys, json
+registry_file, task_id, new_status = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            if entry.get("id") == task_id:
+                entry["status"] = new_status
+            lines.append(json.dumps(entry))
+        except json.JSONDecodeError:
+            lines.append(line)
+with open(registry_file, "w") as f:
+    f.write("\n".join(lines) + ("\n" if lines else ""))
+PYEOF
+}
+
+check_pid_alive() {
+    local pid="$1"
+    [[ -n "$pid" ]] && [[ "$pid" != "null" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+# ── subcommands ──────────────────────────────────────────────────────────────
+
+cmd_list() {
+    [[ -f "$REGISTRY" ]] || { info "No delegated tasks yet."; return; }
+    printf "%-30s  %-10s  %-10s  %s\n" "TASK ID" "STATUS" "AGENT" "DESCRIPTION"
+    printf "%-30s  %-10s  %-10s  %s\n" "------------------------------" "----------" "----------" "-----------"
+    python3 - "$REGISTRY" <<'PYEOF'
+import sys, json
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            e = json.loads(line)
+            desc = e.get("description","")[:60]
+            print(f"{e['id']:<30}  {e.get('status','?'):<10}  {e.get('agent','?'):<10}  {desc}")
+        except Exception:
+            pass
+PYEOF
+}
+
+cmd_status() {
+    local id="$1"
+    [[ -f "$REGISTRY" ]] || die "No registry found at $REGISTRY"
+    python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+found = False
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                found = True
+                print(json.dumps(e, indent=2))
+        except Exception:
+            pass
+if not found:
+    print(f"Task not found: {task_id}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+
+    # Live status: check if pid is still running
+    local pid; pid=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                print(e.get("pid",""))
+        except Exception:
+            pass
+PYEOF
+)
+    if check_pid_alive "$pid"; then
+        info "Process $pid is still running."
+    else
+        info "Process no longer running."
+    fi
+}
+
+cmd_check() {
+    local id="$1"
+    local output_file; output_file=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+registry_file, task_id = sys.argv[1], sys.argv[2]
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                print(e.get("output_file",""))
+        except Exception:
+            pass
+PYEOF
+)
+    [[ -n "$output_file" ]] || die "Task not found in registry: $id"
+    # Resolve relative paths
+    [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
+    [[ -f "$output_file" ]] || die "Output file not found: $output_file (task may still be running)"
+    cat "$output_file"
+}
+
+cmd_delegate() {
+    local prompt="$1" mode="${2:-auto_edit}" model_flag="${3:-}" wait_mode="${4:-false}"
+
+    require_gemini
+    ensure_dirs
+
+    local id; id="$(task_id)"
+    local output_file="$OUTPUTS_DIR/${id}.log"
+    local rel_output=".agents/delegation/outputs/${id}.log"
+
+    info "Delegating task: $id"
+    info "Approval mode:   $mode"
+    info "Output file:     $output_file"
+
+    # Build command — use -p for headless (NOT 'gemini print ...')
+    local cmd=("$GEMINI_BIN" "-p" "$prompt" "--approval-mode" "$mode")
+    [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
+
+    # Register before launching so the task is findable even if we die
+    registry_append "$id" "$prompt" "$rel_output" ""
+
+    if [[ "$wait_mode" == "true" ]]; then
+        # Blocking mode: run in foreground, tee to output file
+        info "Running in blocking mode..."
+        "${cmd[@]}" 2>&1 | tee "$output_file"
+        local exit_code="${PIPESTATUS[0]}"
+        if [[ "$exit_code" -eq 0 ]]; then
+            registry_update_status "$id" "done"
+            info "Task $id completed successfully."
+        else
+            registry_update_status "$id" "failed"
+            info "Task $id failed (exit $exit_code)."
+        fi
+    else
+        # Background mode: fully detach so it survives session eviction
+        nohup bash -c "
+            \"${cmd[@]}\" > \"$output_file\" 2>&1
+            exit_code=\$?
+            if [[ \$exit_code -eq 0 ]]; then
+                python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+            else
+                python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+            fi
+        " > /dev/null 2>&1 &
+        local pid=$!
+        disown "$pid"
+
+        # Update registry with PID
+        python3 - "$REGISTRY" "$id" "$pid" <<'PYEOF'
+import sys, json
+registry_file, task_id, pid = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(registry_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                try: e["pid"] = int(pid)
+                except ValueError: e["pid"] = pid
+            lines.append(json.dumps(e))
+        except Exception: lines.append(line)
+with open(registry_file, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PYEOF
+
+        info "Task $id started in background (pid $pid)"
+        info "Check output:  delegate-to-gemini --check $id"
+        info "Check status:  delegate-to-gemini --status $id"
+        echo "$id"
+    fi
+}
+
+# ── argument parsing ─────────────────────────────────────────────────────────
+
+PROMPT=""
+PROMPT_FILE=""
+MODE="auto_edit"
+MODEL=""
+WAIT=false
+SUBCMD=""
+SUBCMD_ARG=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --prompt)    PROMPT="$2";       shift 2 ;;
+        --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
+        --mode)      MODE="$2";         shift 2 ;;
+        --model)     MODEL="$2";        shift 2 ;;
+        --wait)      WAIT=true;         shift   ;;
+        --check)     SUBCMD="check";    SUBCMD_ARG="$2"; shift 2 ;;
+        --status)    SUBCMD="status";   SUBCMD_ARG="$2"; shift 2 ;;
+        --list)      SUBCMD="list";     shift   ;;
+        --help|-h)   grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
+        *) die "Unknown option: $1 (run with --help for usage)" ;;
+    esac
+done
+
+# Validate approval mode
+case "$MODE" in
+    yolo|auto_edit|plan) ;;
+    *) die "Invalid --mode '$MODE'. Valid: yolo | auto_edit | plan" ;;
+esac
+
+case "${SUBCMD:-}" in
+    list)   ensure_dirs; cmd_list ;;
+    status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
+    check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    "")
+        if [[ -n "$PROMPT_FILE" ]]; then
+            [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
+            PROMPT="$(cat "$PROMPT_FILE")"
+        fi
+        [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
+        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT"
+        ;;
+esac
