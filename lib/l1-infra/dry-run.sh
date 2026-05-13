@@ -11,7 +11,7 @@
 # Required Libraries:
 #   - lib/l7-interaction/logging.sh → log() function
 #   - lib/l7-interaction/user-interaction.sh → print_* functions
-#   - lib/l1-infra/validation.sh → Validation functions
+#   - lib/l7-interaction/validation.sh → Validation functions
 #
 # Exports:
 #   - dry_run_phase_validation() → Validate what a phase would do
@@ -34,16 +34,16 @@ dry_run_phase_validation() {
     local phase_num="${1:-}"
     local phase_name="${2:-}"
     local phase_script="${3:-}"
-
+    
     if [[ -z "$phase_num" || -z "$phase_name" || -z "$phase_script" ]]; then
         log WARNING "dry_run_phase_validation: missing required parameters"
         return 1
     fi
-
+    
     log INFO "[DRY RUN] Validating phase $phase_num: $phase_name"
-
+    
     local issues_found=0
-
+    
     # Check script exists and is readable
     if [[ ! -f "$phase_script" ]]; then
         print_warning "[DRY RUN] Phase script not found: $phase_script"
@@ -57,22 +57,22 @@ dry_run_phase_validation() {
         print_info "[DRY RUN] Phase script exists and is readable"
         log DEBUG "[DRY RUN] Phase $phase_num script validated"
     fi
-
+    
     # Check permissions based on phase requirements
     if ! dry_run_check_permissions "$phase_num"; then
         ((issues_found++))
     fi
-
+    
     # Check dependencies
     if ! dry_run_check_dependencies "$phase_num"; then
         ((issues_found++))
     fi
-
+    
     # Check for conflicts
     if ! dry_run_check_conflicts "$phase_num"; then
         ((issues_found++))
     fi
-
+    
     # Phase-specific validations
     case "$phase_num" in
         3)
@@ -94,7 +94,7 @@ dry_run_phase_validation() {
             fi
             ;;
     esac
-
+    
     if [[ $issues_found -eq 0 ]]; then
         print_success "[DRY RUN] Phase $phase_num validation passed"
         log INFO "[DRY RUN] Phase $phase_num validation complete - no issues"
@@ -117,7 +117,7 @@ dry_run_phase_validation() {
 dry_run_check_permissions() {
     local phase_num="${1:-}"
     local missing_perms=0
-
+    
     case "$phase_num" in
         5|6|7)
             # Phases that need sudo for system changes
@@ -128,14 +128,14 @@ dry_run_check_permissions() {
             fi
             ;;
     esac
-
+    
     # Check write permissions for common directories
     local -a check_dirs=(
         "${HOME}/.cache"
         "${HOME}/.local"
         "${LOG_DIR:-}"
     )
-
+    
     for dir in "${check_dirs[@]}"; do
         if [[ -n "$dir" && -d "$dir" && ! -w "$dir" ]]; then
             print_warning "[DRY RUN] Directory not writable: $dir"
@@ -143,7 +143,7 @@ dry_run_check_permissions() {
             ((missing_perms++))
         fi
     done
-
+    
     return $missing_perms
 }
 
@@ -158,10 +158,10 @@ dry_run_check_permissions() {
 dry_run_check_dependencies() {
     local phase_num="${1:-}"
     local missing_deps=0
-
+    
     # Common dependencies for all phases
     local -a common_deps=("bash" "jq")
-
+    
     # Phase-specific dependencies
     case "$phase_num" in
         1)
@@ -180,7 +180,7 @@ dry_run_check_dependencies() {
             local -a phase_deps=()
             ;;
     esac
-
+    
     # Check all dependencies
     local -a all_deps=("${common_deps[@]}" "${phase_deps[@]}")
     for dep in "${all_deps[@]}"; do
@@ -190,7 +190,7 @@ dry_run_check_dependencies() {
             ((missing_deps++))
         fi
     done
-
+    
     return $missing_deps
 }
 
@@ -205,7 +205,7 @@ dry_run_check_dependencies() {
 dry_run_check_conflicts() {
     local phase_num="${1:-}"
     local conflicts_found=0
-
+    
     case "$phase_num" in
         5)
             # Phase 5: Check for running nixos-rebuild
@@ -229,7 +229,7 @@ dry_run_check_conflicts() {
             fi
             ;;
     esac
-
+    
     return $conflicts_found
 }
 
@@ -239,19 +239,19 @@ dry_run_check_conflicts() {
 
 dry_run_validate_config_generation() {
     local issues=0
-
+    
     if [[ ! -d "${HM_CONFIG_DIR:-}" ]]; then
         print_info "[DRY RUN] Configuration directory will be created: ${HM_CONFIG_DIR:-<undefined>}"
     else
         print_info "[DRY RUN] Configuration directory exists: ${HM_CONFIG_DIR:-}"
     fi
-
+    
     return $issues
 }
 
 dry_run_validate_deployment() {
     local issues=0
-
+    
     if [[ ! -d "${HM_CONFIG_DIR:-}" ]]; then
         print_warning "[DRY RUN] Configuration directory missing - Phase 3 must complete first"
         log WARNING "[DRY RUN] Missing HM_CONFIG_DIR for deployment"
@@ -263,24 +263,25 @@ dry_run_validate_deployment() {
     else
         print_info "[DRY RUN] Configuration files validated"
     fi
-
+    
     return $issues
 }
 
 dry_run_validate_tooling() {
     local issues=0
-
+    
     if ! command -v npm >/dev/null 2>&1; then
         print_warning "[DRY RUN] npm not available - Phase 6 tooling may be limited"
         log WARNING "[DRY RUN] npm missing for tooling installation"
         ((issues++))
     fi
-
+    
     if ! command -v flatpak >/dev/null 2>&1; then
         print_warning "[DRY RUN] flatpak not available - Flatpak apps won't be installed"
         log WARNING "[DRY RUN] flatpak missing"
         ((issues++))
     fi
-
+    
     return $issues
 }
+

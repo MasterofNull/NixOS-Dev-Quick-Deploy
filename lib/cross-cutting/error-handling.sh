@@ -10,7 +10,7 @@
 #
 # Required Libraries:
 #   - lib/l7-interaction/logging.sh → log() function
-#   - lib/l7-interaction/colors.sh → Color codes for output
+#   - lib/cross-cutting/colors.sh → Color codes for output
 #
 # Required Variables:
 #   - STATE_FILE → Path to state file for error recording
@@ -300,7 +300,7 @@ cleanup_on_exit() {
     if [[ -n "${DEPLOY_LOCK_FILE:-}" && -f "$DEPLOY_LOCK_FILE" ]]; then
         rm -f "$DEPLOY_LOCK_FILE" 2>/dev/null || true
     elif [[ -n "${STATE_DIR:-}" && -d "$STATE_DIR" ]]; then
-        # Fallback: if we don't have the specific lock file path,
+        # Fallback: if we don't have the specific lock file path, 
         # only clean lock files with our process ID in the name
         find "$STATE_DIR" -name "*-$$-*.lock" -type f -delete 2>/dev/null || true
     fi
@@ -320,10 +320,10 @@ cleanup_on_exit() {
 cleanup_on_signal() {
     local signal_name="$1"
     log WARNING "Received $signal_name signal, initiating graceful shutdown..."
-
+    
     # Perform cleanup
     cleanup_on_exit
-
+    
     # Exit with appropriate code
     # 130 = SIGINT (Ctrl+C), 143 = SIGTERM
     if [[ "$signal_name" == "INT" ]]; then

@@ -9,7 +9,7 @@
 # ============================================================================
 #
 # Required Libraries:
-#   - lib/cross-cutting/common.sh (for safe_mkdir)
+#   - None (standalone - must be loaded early)
 #
 # Required Variables:
 #   - LOG_DIR → Directory for log files
@@ -286,21 +286,21 @@ log() {
 rotate_logs() {
     local max_size_kb="${1:-10240}"
     local keep_backups="${2:-5}"
-
+    
     if [[ ! -f "$LOG_FILE" ]]; then
         return 0
     fi
-
+    
     # Get current file size in KB
     local size_kb
     size_kb=$(du -k "$LOG_FILE" 2>/dev/null | cut -f1 || echo "0")
-
+    
     if [[ $size_kb -lt $max_size_kb ]]; then
         return 0  # No rotation needed
     fi
-
+    
     log INFO "Log file size ($size_kb KB) exceeds maximum ($max_size_kb KB), rotating..."
-
+    
     # Rotate existing backups
     local i
     for ((i=$keep_backups; i>=1; i--)); do
@@ -310,14 +310,14 @@ rotate_logs() {
             mv "${LOG_FILE}.${i}" "${LOG_FILE}.$((i+1))" 2>/dev/null || true
         fi
     done
-
+    
     # Move current log to backup.1
     mv "$LOG_FILE" "${LOG_FILE}.1" 2>/dev/null || true
-
+    
     # Create new log file
     touch "$LOG_FILE" 2>/dev/null || true
     chmod 600 "$LOG_FILE" 2>/dev/null || true
-
+    
     log INFO "Log rotated: previous log saved as ${LOG_FILE}.1"
     return 0
 }
