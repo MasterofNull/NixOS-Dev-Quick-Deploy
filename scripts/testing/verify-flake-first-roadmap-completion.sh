@@ -243,9 +243,9 @@ check_pattern "ai-stack/mcp-servers/ralph-wiggum/server.py" 'AI_STRICT_ENV", "tr
 check_pattern "ai-stack/mcp-servers/aidb/settings_loader.py" 'AI_STRICT_ENV", "true"' 'AIDB settings loader defaults to strict env enforcement'
 
 # Supporting reliability improvements that were marked complete
-check_pattern "lib/logging.sh" 'append_log_line\(\)' 'Safe append logging helper exists'
-check_pattern "lib/validation-input.sh" 'find_existing_parent\(\)' 'Existing-parent path resolver exists'
-check_pattern "lib/user-interaction.sh" 'AUTO_CONFIRM' 'Auto-confirm automation guard exists'
+check_pattern "lib/l7-interaction/logging.sh" 'append_log_line\(\)' 'Safe append logging helper exists'
+check_pattern "lib/l7-interaction/validation-input.sh" 'find_existing_parent\(\)' 'Existing-parent path resolver exists'
+check_pattern "lib/l7-interaction/user-interaction.sh" 'AUTO_CONFIRM' 'Auto-confirm automation guard exists'
 check_pattern "scripts/testing/validate-deploy-doc-flags.sh" 'supported quick-deploy flags' 'Deploy docs flag validator exists'
 
 # Phase 21.2 — LLM performance metrics via llama.cpp --metrics
@@ -533,8 +533,8 @@ check_pattern "scripts/data/curate-residual-gaps.sh" 'Workflow run start intent 
 check_pattern "scripts/data/curate-residual-gaps.sh" 'Qdrant and hybrid routing configuration quick reference' 'Residual gap curation imports qdrant and hybrid-routing guidance'
 check_pattern "scripts/data/curate-residual-gaps.sh" 'Home Manager git credential helper conflict quick reference' 'Residual gap curation imports Home Manager git credential helper conflict guidance'
 check_pattern "scripts/data/curate-residual-gaps.sh" 'Systemd oneshot permission and tmpfiles reset quick reference' 'Residual gap curation imports tmpfiles ownership-reset guidance'
-check_pattern "lib/adk/implementation-discovery.sh" '## Phase-Scoped Immediate Checks' 'ADK discovery checklist includes phase-scoped immediate checks'
-check_pattern "lib/adk/implementation-discovery.sh" 'phase_commands = \{' 'ADK discovery checklist maps reviewer-gate commands per active phase'
+check_pattern "lib/l4-coord/adk/implementation-discovery.sh" '## Phase-Scoped Immediate Checks' 'ADK discovery checklist includes phase-scoped immediate checks'
+check_pattern "lib/l4-coord/adk/implementation-discovery.sh" 'phase_commands = \{' 'ADK discovery checklist maps reviewer-gate commands per active phase'
 check_pattern "docs/roadmap/AI-HARNESS-NEXT-IMPROVEMENTS-2026-03.md" 'Hint diversity and anti-dominance' 'Harness next-improvements roadmap captures hint diversity work'
 check_pattern "docs/roadmap/AI-HARNESS-NEXT-IMPROVEMENTS-2026-03.md" 'AI-HARNESS-IMPLEMENTATION-ROADMAP-2026-03\.md' 'Harness next-improvements roadmap links to the detailed implementation roadmap'
 check_pattern "docs/roadmap/AI-HARNESS-NEXT-IMPROVEMENTS-2026-03.md" 'Monitoring and report integrity' 'Harness next-improvements roadmap captures monitoring/reporting work'
