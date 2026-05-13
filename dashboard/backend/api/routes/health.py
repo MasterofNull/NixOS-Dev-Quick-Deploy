@@ -4,11 +4,13 @@ Provides real-time health status and metrics for all AI stack services.
 """
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 import logging
 import asyncio
 import json
 import os
+import shutil
+import time
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -139,6 +141,79 @@ async def get_aggregate_health():
     except Exception as e:
         logger.error(f"Failed to get aggregate health: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# OSI Layer Health — fed by aq-qa layers{} JSON (Phase 34.1)
+# ============================================================================
+
+# Simple in-process TTL cache so repeated dashboard refreshes don't hammer aq-qa
+_layered_cache: Dict[str, Any] = {"result": None, "expires_at": 0.0}
+_LAYERED_CACHE_TTL = 30  # seconds
+
+
+async def _run_aq_qa_layered() -> Dict[str, Any]:
+    """Run aq-qa 0 --json and return parsed JSON. Times out after 60s."""
+    aq_qa_bin = shutil.which("aq-qa")
+    if not aq_qa_bin:
+        raise RuntimeError("aq-qa not found in PATH")
+
+    proc = await asyncio.create_subprocess_exec(
+        aq_qa_bin, "0", "--json",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        raise RuntimeError("aq-qa timed out after 60s")
+
+    if proc.returncode not in (0, 1):  # 0=all pass, 1=some fail — both produce valid JSON
+        raise RuntimeError(f"aq-qa exited {proc.returncode}")
+
+    return json.loads(stdout.decode("utf-8"))
+
+
+@router.get("/layered")
+async def get_layered_health():
+    """
+    OSI Layer Health — returns aq-qa phase-0 results grouped by layer.
+
+    Response shape:
+      {
+        "phase": "0",
+        "passed": N, "failed": N, "skipped": N, "duration_s": N,
+        "degraded_confidence": false,
+        "layers": {
+          "1": [{"layer": 1, "id": "...", "status": "PASS", "description": "..."}],
+          ...
+        },
+        "cached": false,
+        "cache_expires_in_s": 30
+      }
+    """
+    now = time.monotonic()
+    if _layered_cache["result"] is not None and now < _layered_cache["expires_at"]:
+        result = dict(_layered_cache["result"])
+        result["cached"] = True
+        result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
+        return result
+
+    try:
+        data = await _run_aq_qa_layered()
+    except Exception as exc:
+        logger.error("aq-qa layered health check failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"aq-qa unavailable: {exc}")
+
+    _layered_cache["result"] = data
+    _layered_cache["expires_at"] = now + _LAYERED_CACHE_TTL
+
+    result = dict(data)
+    result["cached"] = False
+    result["cache_expires_in_s"] = _LAYERED_CACHE_TTL
+    return result
 
 
 # ============================================================================
