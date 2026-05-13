@@ -13,14 +13,16 @@
 #   delegate-to-gemini --status <task-id>                 # check running/done/failed
 #
 # Approval modes (--mode flag):
-#   yolo       — approve all tool calls automatically (default for headless)
-#   auto_edit  — auto-approve file edits only; prompt for shell/network
-#   plan       — read-only planning pass; no side effects
+#   auto_edit  — auto-approve file edits; prompt for shell/network (DEFAULT — safe for coding)
+#   yolo       — approve all tool calls automatically (use for fully trusted tasks)
+#
+#   NOTE: 'plan' mode (read-only) is NOT supported by the current Gemini API tier —
+#   use 'auto_edit' for research tasks; Gemini will read but not write unless prompted.
 #
 # Options:
 #   --prompt TEXT      Task prompt to send to Gemini
 #   --prompt-file FILE Read prompt from file
-#   --mode MODE        Approval mode: yolo|auto_edit|plan  [default: auto_edit]
+#   --mode MODE        Approval mode: auto_edit|yolo  [default: auto_edit]
 #   --model MODEL      Gemini model override
 #   --wait             Block until task completes (default: background)
 #   --check ID         Print output of a completed task
@@ -319,8 +321,9 @@ done
 
 # Validate approval mode
 case "$MODE" in
-    yolo|auto_edit|plan) ;;
-    *) die "Invalid --mode '$MODE'. Valid: yolo | auto_edit | plan" ;;
+    yolo|auto_edit) ;;
+    plan) die "'plan' mode is not supported by current Gemini API (returns HTTP 400). Use 'auto_edit' for research tasks." ;;
+    *) die "Invalid --mode '$MODE'. Valid: auto_edit | yolo" ;;
 esac
 
 case "${SUBCMD:-}" in
