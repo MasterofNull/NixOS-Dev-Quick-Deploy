@@ -127,8 +127,18 @@ let
     === PORTS ===
     llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8006 grafana:3000 prom:9090 owui:3001
 
+    === CANONICAL WORKFLOW (full contract: .agent/WORKFLOW-CANON.md) ===
+    Every non-trivial task: ORIENT(aq-prime+aq-hints+recall-memory) → RESEARCH(grep/read+web-search) → PRD/PLAN(.agent/+.agents/plans/) → MEMORY-CHECKPOINT(store plan before coding) → EXECUTE(one-slice,read-before-edit) → VALIDATE(tier0-gate+security) → COMMIT(atomic+Co-Authored-By).
+    PRD gate: write .agent/PROJECT-<NAME>-PRD.md before any multi-file implementation.
+    Memory gate: store plan to harness memory before executing. At session start: recall memory first.
+    Context rule: reference files by path; retrieve with hybrid_search/get_hints; do not paste full files.
+
+    === SECURITY (OWASP Agentic Top 10) ===
+    Before every commit: (1) no hardcoded secrets/ports/tokens; (2) verify all new deps exist; (3) no injection patterns (SQL/shell/path-traversal); (4) treat LLM outputs as untrusted; (5) if auth added, verify it is wired in; (6) bash -n on shell files, py_compile on Python; (7) privilege minimization.
+
     === COMMIT ===
-    git add <files> && git commit -m "type(scope): msg\n\nCo-Authored-By: <active-agent-name> <noreply@harness.local>"
+    git add <specific files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit -m "type(scope): msg\n\nCo-Authored-By: <active-agent-name> <noreply@harness.local>"
+    Never use --no-verify. One slice = one commit. Include validation evidence in body.
   '';
   localAgentCard = ''
     /no_think
