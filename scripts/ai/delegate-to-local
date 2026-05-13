@@ -379,7 +379,10 @@ PYEOF
     fi
 }
 
-# ── argument parsing ─────────────────────────────────────────────────────────
+# ── argument parsing (skip when sourced by nohup subshell) ───────────────────
+# Guard: only run CLI parsing when executed directly, not when sourced to load
+# functions into a background bash -c subshell.
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
 PROMPT=""
 PROMPT_FILE=""
