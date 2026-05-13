@@ -64,10 +64,10 @@ task_id() {
 }
 
 registry_append() {
-    local id="$1" description="$2" output_file="$3" pid="${4:-}"
+    local id="$1" description="$2" output_file="$3" pid="${4:-}" role="${5:-implement}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"id":"%s","agent":"gemini","description":%s,"output_file":"%s","pid":%s,"status":"running","created":"%s"}\n' \
-        "$id" \
+    printf '{"id":"%s","agent":"gemini","role":"%s","description":%s,"output_file":"%s","pid":%s,"status":"running","tokens_in":null,"tokens_out":null,"created":"%s"}\n' \
+        "$id" "$role" \
         "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
         "$output_file" \
         "${pid:-null}" \
@@ -107,8 +107,8 @@ check_pid_alive() {
 
 cmd_list() {
     [[ -f "$REGISTRY" ]] || { info "No delegated tasks yet."; return; }
-    printf "%-30s  %-10s  %-10s  %s\n" "TASK ID" "STATUS" "AGENT" "DESCRIPTION"
-    printf "%-30s  %-10s  %-10s  %s\n" "------------------------------" "----------" "----------" "-----------"
+    printf "%-30s  %-10s  %-10s  %-10s  %6s  %6s  %s\n" "TASK ID" "STATUS" "AGENT" "ROLE" "TOK_IN" "TOK_OUT" "DESCRIPTION"
+    printf "%-30s  %-10s  %-10s  %-10s  %6s  %6s  %s\n" "------------------------------" "----------" "----------" "----------" "------" "-------" "-----------"
     python3 - "$REGISTRY" <<'PYEOF'
 import sys, json
 with open(sys.argv[1]) as f:
@@ -118,8 +118,10 @@ with open(sys.argv[1]) as f:
             continue
         try:
             e = json.loads(line)
-            desc = e.get("description","")[:60]
-            print(f"{e['id']:<30}  {e.get('status','?'):<10}  {e.get('agent','?'):<10}  {desc}")
+            desc = e.get("description","")[:50]
+            ti = str(e.get("tokens_in") or "-")
+            to = str(e.get("tokens_out") or "-")
+            print(f"{e['id']:<30}  {e.get('status','?'):<10}  {e.get('agent','?'):<10}  {e.get('role','?'):<10}  {ti:>6}  {to:>7}  {desc}")
         except Exception:
             pass
 PYEOF
@@ -196,7 +198,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" mode="${2:-auto_edit}" model_flag="${3:-}" wait_mode="${4:-false}"
+    local prompt="$1" mode="${2:-auto_edit}" model_flag="${3:-}" wait_mode="${4:-false}" role="${5:-implement}"
 
     require_gemini
     ensure_dirs
@@ -205,16 +207,22 @@ cmd_delegate() {
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
+    # Phase 33.5: prepend role tag to prompt so agent knows its specialization
+    local full_prompt="[ROLE: ${role}]
+
+${prompt}"
+
     info "Delegating task: $id"
     info "Approval mode:   $mode"
+    info "Role:            $role"
     info "Output file:     $output_file"
 
     # Build command — use -p for headless (NOT 'gemini print ...')
-    local cmd=("$GEMINI_BIN" "-p" "$prompt" "--approval-mode" "$mode")
+    local cmd=("$GEMINI_BIN" "-p" "$full_prompt" "--approval-mode" "$mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
 
     # Register before launching so the task is findable even if we die
-    registry_append "$id" "$prompt" "$rel_output" ""
+    registry_append "$id" "$prompt" "$rel_output" "" "$role"
 
     if [[ "$wait_mode" == "true" ]]; then
         # Blocking mode: run in foreground, tee to output file
@@ -305,6 +313,7 @@ PROMPT=""
 PROMPT_FILE=""
 MODE="auto_edit"
 MODEL=""
+ROLE="implement"
 WAIT=false
 SUBCMD=""
 SUBCMD_ARG=""
@@ -315,6 +324,7 @@ while [[ $# -gt 0 ]]; do
         --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
         --mode)      MODE="$2";         shift 2 ;;
         --model)     MODEL="$2";        shift 2 ;;
+        --role)      ROLE="$2";         shift 2 ;;
         --wait)      WAIT=true;         shift   ;;
         --check)     SUBCMD="check";    SUBCMD_ARG="$2"; shift 2 ;;
         --status)    SUBCMD="status";   SUBCMD_ARG="$2"; shift 2 ;;
@@ -331,6 +341,11 @@ case "$MODE" in
     *) die "Invalid --mode '$MODE'. Valid: auto_edit | yolo" ;;
 esac
 
+case "$ROLE" in
+    plan|implement|review|research) ;;
+    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
+esac
+
 case "${SUBCMD:-}" in
     list)   ensure_dirs; cmd_list ;;
     status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
@@ -341,6 +356,6 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT"
+        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT" "$ROLE"
         ;;
 esac

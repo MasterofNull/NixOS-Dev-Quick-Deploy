@@ -107,7 +107,7 @@ cmd_fanout() {
         [[ -x "$delegate_script" ]] || { info "SKIP: $delegate_script not found"; continue; }
 
         local child_id
-        child_id=$("$delegate_script" --prompt "$prompt" 2>/dev/null | tail -1)
+        child_id=$("$delegate_script" --prompt "$prompt" --role "$role" 2>/dev/null | tail -1)
         [[ -z "$child_id" ]] && continue
         child_ids+=("$child_id")
         info "  Spawned $agent → $child_id"

@@ -56,10 +56,10 @@ task_id() {
 }
 
 registry_append() {
-    local id="$1" description="$2" output_file="$3" mode="$4"
+    local id="$1" description="$2" output_file="$3" mode="$4" role="${5:-implement}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"id":"%s","agent":"local-%s","description":%s,"output_file":"%s","pid":null,"status":"running","created":"%s"}\n' \
-        "$id" "$mode" \
+    printf '{"id":"%s","agent":"local-%s","role":"%s","description":%s,"output_file":"%s","pid":null,"status":"running","tokens_in":null,"tokens_out":null,"created":"%s"}\n' \
+        "$id" "$mode" "$role" \
         "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
         "$output_file" \
         "$ts" >> "$REGISTRY"
@@ -84,6 +84,37 @@ with open(rf, "w") as f:
 PYEOF
 }
 
+# Phase 33.3: read token usage sidecar written by run_direct/run_hybrid and update registry
+update_tokens() {
+    local id="$1" usage_file="$2"
+    [[ -f "$usage_file" ]] || return 0
+    python3 - "$REGISTRY" "$id" "$usage_file" <<'PYEOF'
+import sys, json
+rf, tid, uf = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(uf) as f: usage = json.load(f)
+    tokens_in  = usage.get("tokens_in")
+    tokens_out = usage.get("tokens_out")
+except Exception:
+    tokens_in = tokens_out = None
+lines = []
+with open(rf) as f:
+    for line in f:
+        line = line.strip()
+        if not line: continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == tid:
+                if tokens_in  is not None: e["tokens_in"]  = tokens_in
+                if tokens_out is not None: e["tokens_out"] = tokens_out
+            lines.append(json.dumps(e))
+        except Exception: lines.append(line)
+with open(rf, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PYEOF
+    rm -f "$usage_file"
+}
+
 check_service() {
     local port="$1" name="$2"
     curl -sf --max-time 3 "http://127.0.0.1:${port}/health" > /dev/null 2>&1 \
@@ -94,8 +125,8 @@ check_service() {
 
 cmd_list() {
     [[ -f "$REGISTRY" ]] || { info "No delegated tasks yet."; return; }
-    printf "%-32s  %-8s  %-12s  %s\n" "TASK ID" "STATUS" "AGENT" "DESCRIPTION"
-    printf "%-32s  %-8s  %-12s  %s\n" "--------------------------------" "--------" "------------" "-----------"
+    printf "%-32s  %-8s  %-12s  %-10s  %6s  %6s  %s\n" "TASK ID" "STATUS" "AGENT" "ROLE" "TOK_IN" "TOK_OUT" "DESCRIPTION"
+    printf "%-32s  %-8s  %-12s  %-10s  %6s  %6s  %s\n" "--------------------------------" "--------" "------------" "----------" "------" "-------" "-----------"
     python3 - "$REGISTRY" <<'PYEOF'
 import sys, json
 with open(sys.argv[1]) as f:
@@ -104,8 +135,10 @@ with open(sys.argv[1]) as f:
         if not line: continue
         try:
             e = json.loads(line)
-            desc = e.get("description","")[:50]
-            print(f"{e['id']:<32}  {e.get('status','?'):<8}  {e.get('agent','?'):<12}  {desc}")
+            desc = e.get("description","")[:40]
+            ti = str(e.get("tokens_in") or "-")
+            to = str(e.get("tokens_out") or "-")
+            print(f"{e['id']:<32}  {e.get('status','?'):<8}  {e.get('agent','?'):<12}  {e.get('role','?'):<10}  {ti:>6}  {to:>7}  {desc}")
         except Exception: pass
 PYEOF
 }
@@ -193,6 +226,12 @@ try:
         result = data.get("response") or data.get("answer") or data.get("result") or json.dumps(data, indent=2)
         with open(output_file, "w") as f:
             f.write(result)
+        # Phase 33.3: capture token counts if coordinator returns usage info
+        usage = data.get("usage") or data.get("token_usage") or {}
+        if usage:
+            with open(output_file + ".usage.json", "w") as uf:
+                json.dump({"tokens_in": usage.get("prompt_tokens") or usage.get("input_tokens"),
+                           "tokens_out": usage.get("completion_tokens") or usage.get("output_tokens")}, uf)
     sys.exit(0)
 except urllib.error.HTTPError as e:
     body = e.read().decode()
@@ -232,6 +271,11 @@ try:
         result = data["choices"][0]["message"]["content"]
         with open(output_file, "w") as f:
             f.write(result)
+        # Phase 33.3: write token usage sidecar for registry update
+        usage = data.get("usage", {})
+        if usage:
+            with open(output_file + ".usage.json", "w") as uf:
+                json.dump({"tokens_in": usage.get("prompt_tokens"), "tokens_out": usage.get("completion_tokens")}, uf)
     sys.exit(0)
 except urllib.error.HTTPError as e:
     body = e.read().decode()
@@ -282,7 +326,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" mode="${2:-hybrid}" timeout_secs="${3:-300}" wait_mode="${4:-false}"
+    local prompt="$1" mode="${2:-hybrid}" timeout_secs="${3:-300}" wait_mode="${4:-false}" role="${5:-implement}"
 
     ensure_dirs
 
@@ -290,18 +334,25 @@ cmd_delegate() {
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
+    # Phase 33.5: prepend role tag so the agent knows its specialization
+    local full_prompt="[ROLE: ${role}]
+
+${prompt}"
+
     info "Delegating task: $id"
     info "Routing mode:    $mode"
+    info "Role:            $role"
     info "Output file:     $output_file"
 
-    registry_append "$id" "$prompt" "$rel_output" "$mode"
+    registry_append "$id" "$prompt" "$rel_output" "$mode" "$role"
 
     # Build runner command
     local runner_func="run_${mode}"
 
     if [[ "$wait_mode" == "true" ]]; then
         info "Running in blocking mode (timeout: ${timeout_secs}s)..."
-        if $runner_func "$prompt" "$output_file" "$timeout_secs"; then
+        if $runner_func "$full_prompt" "$output_file" "$timeout_secs"; then
+            update_tokens "$id" "${output_file}.usage.json"
             update_status "$REGISTRY" "$id" "done"
             info "Task $id completed."
             cat "$output_file"
@@ -315,7 +366,8 @@ cmd_delegate() {
         # True background — nohup so it survives Claude session eviction
         nohup bash -c "
             source \"$SCRIPT_DIR/delegate-to-local\"
-            if $(printf '%q ' "$runner_func" "$prompt" "$output_file" "$timeout_secs") ; then
+            if $(printf '%q ' "$runner_func" "$full_prompt" "$output_file" "$timeout_secs") ; then
+                update_tokens \"$id\" \"${output_file}.usage.json\"
                 python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
 import sys, json
 rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -389,6 +441,7 @@ PROMPT=""
 PROMPT_FILE=""
 MODE="hybrid"
 TIMEOUT=300
+ROLE="implement"
 WAIT=false
 SUBCMD=""
 SUBCMD_ARG=""
@@ -399,6 +452,7 @@ while [[ $# -gt 0 ]]; do
         --prompt-file) PROMPT_FILE="$2";  shift 2 ;;
         --mode)        MODE="$2";         shift 2 ;;
         --timeout)     TIMEOUT="$2";      shift 2 ;;
+        --role)        ROLE="$2";         shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
@@ -413,6 +467,11 @@ case "$MODE" in
     *) die "Invalid --mode '$MODE'. Valid: agent | hybrid | direct | ralph" ;;
 esac
 
+case "$ROLE" in
+    plan|implement|review|research) ;;
+    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
+esac
+
 case "${SUBCMD:-}" in
     list)   ensure_dirs; cmd_list ;;
     status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
@@ -423,6 +482,6 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$MODE" "$TIMEOUT" "$WAIT"
+        cmd_delegate "$PROMPT" "$MODE" "$TIMEOUT" "$WAIT" "$ROLE"
         ;;
 esac
