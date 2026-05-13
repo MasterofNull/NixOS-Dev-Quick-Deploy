@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""
+aq-agent-loop — Run the local Qwen3.6-35B model in a coding agent loop.
+
+Wires together the Phase 11 tool infrastructure (ToolRegistry, LocalAgentExecutor,
+file_ops, shell, git tools) so the local model can read files, write changes,
+validate, and produce an auditable output summary.
+
+Usage:
+    aq-agent-loop --task "implement X in file Y"
+    aq-agent-loop --task "..." --output summary.json
+    aq-agent-loop --task "..." --max-calls 20 --fallback
+    aq-agent-loop --list-tools
+
+Options:
+    --task TEXT        Coding task objective (required unless --list-tools)
+    --output FILE      Write JSON result summary to FILE
+    --max-calls N      Max tool calls allowed [default: 15]
+    --fallback         Allow fallback to remote hybrid-coordinator if local fails
+    --llama-url URL    llama.cpp endpoint [default: http://127.0.0.1:8080]
+    --timeout SECS     Per-inference timeout in seconds [default: 300]
+    --list-tools       Print registered tools and exit
+    --help             Show this help
+"""
+
+import argparse
+import asyncio
+import json
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+
+# ── path setup ───────────────────────────────────────────────────────────────
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parent.parent
+_LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
+_BUILTIN_TOOLS = _LOCAL_AGENTS / "builtin_tools"
+
+for _p in [str(_LOCAL_AGENTS), str(_BUILTIN_TOOLS)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# ── imports from Phase 11 infrastructure ─────────────────────────────────────
+
+try:
+    from tool_registry import ToolRegistry, get_registry
+    from agent_executor import LocalAgentExecutor, Task, AgentType, TaskStatus
+    from file_operations import register_file_tools      # noqa: F401 (used via register call)
+    from shell_tools import register_shell_tools          # noqa: F401
+    from git_tools import register_git_tools              # noqa: F401
+except ImportError as e:
+    print(f"ERROR: Failed to import Phase 11 tool infrastructure: {e}", file=sys.stderr)
+    print(f"  Expected at: {_LOCAL_AGENTS}", file=sys.stderr)
+    sys.exit(1)
+
+# ── logging ───────────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.WARNING,   # suppress noisy debug from tool registry
+    format="[aq-agent-loop] %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def build_registry() -> ToolRegistry:
+    """Create a fresh ToolRegistry populated with all coding tools."""
+    registry = ToolRegistry()
+    register_file_tools(registry)
+    register_shell_tools(registry)
+    register_git_tools(registry)
+    return registry
+
+
+def list_tools(registry: ToolRegistry) -> None:
+    tools = registry.list_tools()
+    print(f"\nRegistered tools ({len(tools)} total):\n")
+    for t in sorted(tools, key=lambda x: x.name):
+        print(f"  {t.name:<30} [{t.safety_policy.value:<16}] {t.description[:70]}")
+    print()
+
+
+async def run_task(
+    task_text: str,
+    output_file: str | None,
+    max_calls: int,
+    allow_fallback: bool,
+    llama_url: str,
+    timeout_secs: int,
+) -> int:
+    """Run the agent loop. Returns 0 on success, 1 on failure."""
+
+    # Patch timeout from command line (agent_executor uses its own http calls)
+    # We do this by monkey-patching the module-level httpx call inside _call_llama.
+    # Cleaner solution: LocalAgentExecutor accepts timeout param (Phase 33 TODO).
+    import agent_executor as _ae_mod
+    import httpx
+
+    _original_call_llama = _ae_mod.LocalAgentExecutor._call_llama
+
+    async def _patched_call_llama(self, messages):
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.llama_endpoint}/v1/chat/completions",
+                json={
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 4096,
+                },
+                timeout=float(timeout_secs),
+            )
+            if response.status_code != 200:
+                raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+
+    _ae_mod.LocalAgentExecutor._call_llama = _patched_call_llama
+
+    registry = build_registry()
+
+    executor = LocalAgentExecutor(
+        llama_endpoint=llama_url,
+        tool_registry=registry,
+        enable_fallback=allow_fallback,
+        offline_mode=not allow_fallback,
+        allow_degraded_local_execution=True,
+    )
+
+    task_id = f"aq-{int(time.time())}"
+    task = Task(
+        id=task_id,
+        objective=task_text,
+        complexity=0.7,  # treat coding tasks as moderately complex → prefer local
+        quality_critical=False,
+    )
+
+    print(f"[aq-agent-loop] Task: {task_id}")
+    print(f"[aq-agent-loop] Objective: {task_text[:120]}{'...' if len(task_text) > 120 else ''}")
+    print(f"[aq-agent-loop] Max tool calls: {max_calls}")
+    print(f"[aq-agent-loop] Fallback: {'enabled' if allow_fallback else 'disabled (local only)'}")
+    print(f"[aq-agent-loop] Running...\n")
+
+    start = time.time()
+    result_task = await executor.execute_task(task, AgentType.AGENT, max_calls)
+    elapsed = time.time() - start
+
+    success = result_task.status in (TaskStatus.COMPLETED, TaskStatus.FALLBACK)
+    status_label = result_task.status.value
+
+    print(f"\n[aq-agent-loop] Status:     {status_label}")
+    print(f"[aq-agent-loop] Elapsed:    {elapsed:.1f}s")
+    print(f"[aq-agent-loop] Tool calls: {len(result_task.tool_calls_made)}")
+
+    if result_task.degraded_reason:
+        print(f"[aq-agent-loop] Note:       {result_task.degraded_reason}")
+
+    if success:
+        print(f"\n--- Result ---\n{result_task.result or '(no output)'}\n")
+    else:
+        print(f"\n--- Error ---\n{result_task.error or '(unknown error)'}\n", file=sys.stderr)
+
+    # Write JSON summary
+    summary = {
+        "task_id": task_id,
+        "status": status_label,
+        "success": success,
+        "elapsed_seconds": round(elapsed, 1),
+        "tool_calls": [tc.to_dict() for tc in result_task.tool_calls_made],
+        "result": result_task.result,
+        "error": result_task.error,
+        "degraded_reason": result_task.degraded_reason,
+    }
+
+    if output_file:
+        Path(output_file).write_text(json.dumps(summary, indent=2, default=str))
+        print(f"[aq-agent-loop] Summary written to: {output_file}")
+    else:
+        print(f"[aq-agent-loop] (Use --output FILE to save JSON summary)")
+
+    return 0 if success else 1
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Run local Qwen3.6-35B in a coding agent loop",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=True,
+    )
+    parser.add_argument("--task",       help="Coding task objective")
+    parser.add_argument("--output",     help="Write JSON result to this file")
+    parser.add_argument("--max-calls",  type=int, default=15, help="Max tool calls [default: 15]")
+    parser.add_argument("--fallback",   action="store_true", help="Allow remote fallback if local fails")
+    parser.add_argument("--llama-url",  default=os.environ.get("LLAMA_URL", "http://127.0.0.1:8080"))
+    parser.add_argument("--timeout",    type=int, default=300, help="Per-inference timeout (seconds) [default: 300]")
+    parser.add_argument("--list-tools", action="store_true", help="List registered tools and exit")
+
+    args = parser.parse_args()
+
+    if args.list_tools:
+        list_tools(build_registry())
+        return 0
+
+    if not args.task:
+        parser.error("--task is required (or use --list-tools)")
+
+    return asyncio.run(run_task(
+        task_text=args.task,
+        output_file=args.output,
+        max_calls=args.max_calls,
+        allow_fallback=args.fallback,
+        llama_url=args.llama_url,
+        timeout_secs=args.timeout,
+    ))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

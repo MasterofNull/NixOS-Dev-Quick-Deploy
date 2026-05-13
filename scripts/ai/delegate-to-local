@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
-# delegate-to-local — Delegate a research/analysis/draft task to the local Qwen model
+# delegate-to-local — Delegate a task to the local Qwen model
 #
-# Routes through the hybrid-coordinator (:8003) which applies harness routing policy.
-# Falls back to direct llama.cpp (:8080) if coordinator is unavailable.
-#
-# IMPORTANT: Local models produce TEXT output (plans, analysis, drafts, code suggestions).
-# They do NOT execute file changes autonomously. Claude/Gemini/Codex review and apply output.
+# Modes:
+#   agent     — full coding agent loop (aq-agent-loop): read/write files, git, validate
+#   hybrid    — query through hybrid-coordinator (:8003) — research/analysis
+#   direct    — POST directly to llama.cpp /v1/chat/completions — drafts/summaries
+#   ralph     — route through ralph-wiggum tool-calling agent (:8004)
 #
 # Usage:
+#   delegate-to-local --mode agent --prompt "implement X in file Y" [--wait]
 #   delegate-to-local --prompt "analyze X and output findings"  # background by default
 #   delegate-to-local --prompt "..." --wait                     # block until done
 #   delegate-to-local --check <task-id>                         # read completed output
 #   delegate-to-local --list                                     # list all tasks
 #   delegate-to-local --status <task-id>                        # task status
 #
-# Modes (--mode flag):
-#   hybrid    — route through hybrid-coordinator (preferred; uses harness routing policy)
-#   direct    — POST directly to llama.cpp /v1/chat/completions (bypass coordinator)
-#   ralph     — route through ralph-wiggum tool-calling agent (:8004)
-#
 # Options:
 #   --prompt TEXT      Task prompt
 #   --prompt-file FILE Read prompt from file
-#   --mode MODE        Routing: hybrid|direct|ralph  [default: hybrid]
+#   --mode MODE        Routing: agent|hybrid|direct|ralph  [default: hybrid]
 #   --timeout SECS     Request timeout in seconds  [default: 300]
 #   --check ID         Print output of a completed task
 #   --status ID        Show task status
@@ -154,6 +150,16 @@ PYEOF
     [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
     [[ -f "$output_file" ]] || die "Output file not found: $output_file (task may still be running)"
     cat "$output_file"
+}
+
+run_agent() {
+    local prompt="$1" output_file="$2" timeout_secs="$3"
+    local agent_loop; agent_loop="$(dirname "$0")/aq-agent-loop"
+    [[ -x "$agent_loop" ]] || die "aq-agent-loop not found at $agent_loop"
+    check_service "$LLAMA_PORT" "llama.cpp"
+
+    # Run aq-agent-loop with output to persistent file
+    "$agent_loop" --task "$prompt" --output "$output_file" --timeout "$timeout_secs"
 }
 
 run_hybrid() {
@@ -396,8 +402,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$MODE" in
-    hybrid|direct|ralph) ;;
-    *) die "Invalid --mode '$MODE'. Valid: hybrid | direct | ralph" ;;
+    agent|hybrid|direct|ralph) ;;
+    *) die "Invalid --mode '$MODE'. Valid: agent | hybrid | direct | ralph" ;;
 esac
 
 case "${SUBCMD:-}" in
