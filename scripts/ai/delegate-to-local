@@ -49,7 +49,10 @@ ensure_dirs() {
 }
 
 task_id() {
-    echo "local-$(date +%Y%m%d-%H%M%S)-$(tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6 || echo 'xxxxxx')"
+    # Use subshell with pipefail disabled — tr exits SIGPIPE when head closes the pipe,
+    # which with set -o pipefail would wrongly trigger the '|| xxxxxx' fallback.
+    local rand; rand="$(set +o pipefail; tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6)" || rand="xxxxxx"
+    echo "local-$(date +%Y%m%d-%H%M%S)-${rand}"
 }
 
 registry_append() {

@@ -57,7 +57,10 @@ ensure_dirs() {
 
 task_id() {
     # Format: gemini-YYYYMMDD-HHMMSS-XXXXXX
-    echo "gemini-$(date +%Y%m%d-%H%M%S)-$(tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6 || echo 'xxxxxx')"
+    # Use subshell with pipefail disabled — tr exits SIGPIPE when head closes the pipe,
+    # which with set -o pipefail would wrongly trigger the '|| xxxxxx' fallback.
+    local rand; rand="$(set +o pipefail; tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6)" || rand="xxxxxx"
+    echo "gemini-$(date +%Y%m%d-%H%M%S)-${rand}"
 }
 
 registry_append() {
@@ -227,8 +230,10 @@ cmd_delegate() {
         fi
     else
         # Background mode: fully detach so it survives session eviction
+        # Use printf '%q ' to safely quote each cmd element before embedding in bash -c string
+        local cmd_q; cmd_q="$(printf '%q ' "${cmd[@]}")"
         nohup bash -c "
-            \"${cmd[@]}\" > \"$output_file\" 2>&1
+            $cmd_q > \"$output_file\" 2>&1
             exit_code=\$?
             if [[ \$exit_code -eq 0 ]]; then
                 python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
