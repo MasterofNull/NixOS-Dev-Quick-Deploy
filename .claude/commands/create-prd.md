@@ -1,3 +1,10 @@
+<!--
+Skill: create-prd
+Role: architect
+Inputs: project objective, constraints
+Outputs: PRD file (default .agent/PROJECT-PRD.md)
+Example: /create-prd "A NixOS deployment dashboard"
+-->
 ---
 description: Create or refresh PRD for this project
 argument-hint: [output-path]

@@ -1,3 +1,10 @@
+<!--
+Skill: trading-analysis
+Role: implementer
+Inputs: ticker, date (optional), options
+Outputs: multi-agent stock analysis report
+Example: /trading-analysis AAPL
+-->
 # /trading-analysis — Multi-Agent Stock Analysis Command
 
 ## Trigger

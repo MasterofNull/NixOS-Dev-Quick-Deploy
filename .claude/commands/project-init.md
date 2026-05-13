@@ -1,3 +1,10 @@
+<!--
+Skill: project-init
+Role: architect
+Inputs: project objective, constraints
+Outputs: PROJECT-PRD.md, rules, phase plans
+Example: /project-init "New NixOS microservices cluster"
+-->
 ---
 description: Guided greenfield initialization workflow
 ---

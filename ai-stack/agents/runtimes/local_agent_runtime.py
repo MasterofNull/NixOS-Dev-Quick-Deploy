@@ -52,6 +52,8 @@ AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "240"))
 # Phase 30.6: auto-inject context-bootstrap preamble at startup
 AGENT_INJECT_BOOTSTRAP = os.environ.get("AGENT_INJECT_BOOTSTRAP", "false").lower() == "true"
 BOOTSTRAP_TIMEOUT = float(os.environ.get("AGENT_BOOTSTRAP_TIMEOUT", "15"))
+# Phase 33.4: cap tool output injected back into context (tokenmaxxing — reduce wasted tokens)
+TOOL_OUTPUT_MAX_CHARS = int(os.environ.get("AGENT_TOOL_OUTPUT_MAX_CHARS", "800"))
 
 _thinking_on = os.environ.get("AGENT_THINKING_MODE", "off") == "on"
 NO_THINK_PREFIX_STR = os.environ.get("AGENT_NO_THINK_PREFIX", "")
@@ -478,6 +480,14 @@ def _streaming_payload(messages: list[dict]) -> dict:
     if not _thinking_on:
         payload["chat_template_kwargs"] = {"enable_thinking": False}
     return payload
+
+
+def _compress_tool_output(output: str, max_chars: int = TOOL_OUTPUT_MAX_CHARS) -> str:
+    """Trim tool output to max_chars, appending a truncation notice if needed."""
+    if len(output) <= max_chars:
+        return output
+    half = max_chars // 2
+    return output[:half] + f"\n...[truncated {len(output) - max_chars} chars]...\n" + output[-half:]
 
 
 async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> str:

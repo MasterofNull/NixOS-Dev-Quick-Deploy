@@ -1,3 +1,10 @@
+<!--
+Skill: execute
+Role: implementer
+Inputs: plan file path
+Outputs: execution report, changed files
+Example: /execute .agents/plans/phase-1-setup.md
+-->
 ---
 description: Execute implementation from a plan file
 argument-hint: [plan-file]
