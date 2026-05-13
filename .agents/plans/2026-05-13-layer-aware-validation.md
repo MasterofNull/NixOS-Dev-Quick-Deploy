@@ -1,3 +1,4 @@
+
 # Implementation Plan: Layer-Aware Health Validation
 
 **ID:** PLAN-2026-05-13-QA

@@ -159,7 +159,10 @@ class LLMClient:
                 logger.warning("No Anthropic API key found - client will fail on actual use")
                 self.client = None
             else:
-                self.client = AsyncAnthropic(api_key=self.api_key)
+                kwargs = {"api_key": self.api_key}
+                if self.base_url:
+                    kwargs["base_url"] = self.base_url
+                self.client = AsyncAnthropic(**kwargs)
 
             self.default_model = "claude-3-5-sonnet-20250219"
 
@@ -176,9 +179,15 @@ class LLMClient:
                 logger.warning("No OpenAI API key found")
                 self.client = None
             else:
-                kwargs: Dict[str, Any] = {"api_key": self.api_key}
+                api_key = self.api_key.strip()
+                kwargs: Dict[str, Any] = {"api_key": api_key}
                 if self.base_url:
                     kwargs["base_url"] = self.base_url
+                    if "openrouter.ai" in self.base_url:
+                        kwargs["default_headers"] = {
+                            "HTTP-Referer": "https://github.com/hyperd/NixOS-Dev-Quick-Deploy",
+                            "X-Title": "NixOS-Dev-Quick-Deploy",
+                        }
                 self.client = AsyncOpenAI(**kwargs)
 
             self.default_model = "gpt-4-turbo-preview"
