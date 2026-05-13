@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 
 from aiohttp import web
 try:
-    import lifecycle_fsm as _lifecycle_fsm
+    from workflow import lifecycle_fsm as _lifecycle_fsm  # Phase 28: use qualified import to share same module instance as intake_gateway
 except ImportError:
     _lifecycle_fsm = None  # type: ignore[assignment]
 
