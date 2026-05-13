@@ -97,7 +97,10 @@ let
   # hybrid coordinator's /v1 ingress is protected and returns 401 to editor
   # clients that only provide placeholder local keys.
   continueApiBase = aiOpenAIBaseUrl;
-  vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
+  # ~/.npm-global/bin is added so the Gemini CLI companion and Codex extensions
+  # can find their respective CLIs (gemini, codex) when VSCodium is launched
+  # from the desktop (where the shell profile may not have run yet).
+  vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.npm-global/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     {
       name = "PATH";
@@ -256,6 +259,18 @@ let
     "continue.enableTabAutocomplete" = true;
     "continue.showInlineTip" = true;
     "geminicodeassist.updateChannel" = "Default"; # Prevent preview channel lock-in
+    "geminicodeassist.localCodebaseAwareness" = true;
+    # System instructions for Gemini Code Assist — mirrors .agent/GEMINI.md so
+    # the extension behaves consistently with the Gemini CLI benchmark.
+    "geminicodeassist.rules" = ''
+      You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. AGENT MODE — BEGIN EXECUTING IMMEDIATELY. Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
+      TOOLS FIRST: Use file reads, grep, and shell commands before answering. Never guess file locations or port numbers.
+      HARNESS PORTS: llama:8080, embed:8081, aidb:8002, hybrid:8003, ralph:8004, swb:8085, dash:8889, grafana:3000, owui:3001.
+      ARCHITECTURE (NON-NEGOTIABLE): NixOS-first flake-based — no bare pip install, no manual systemctl. NEVER hardcode ports/URLs; single source of truth: nix/modules/core/options.nix. Feature flags are profile-driven via nix/modules/profiles/ai-dev.nix.
+      COMMIT DISCIPLINE: git add <files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit -m "type(scope): desc" with Co-Authored-By trailer. Never commit without validation evidence.
+      FILE PLACEMENT: PRD/rules/evidence → .agent/, phase/slice plans → .agents/plans/, slash-commands → .gemini/commands/. No workflow artifacts in repo root.
+      ROLE: orchestrator/reviewer first — plan and delegate before direct implementation. Sub-agents execute only assigned slices; do not re-scope or finalize acceptance.
+    '';
     "cSpell.import" = [];
     "extensions.autoUpdate" = false;
     "extensions.autoCheckUpdates" = false;
@@ -284,24 +299,13 @@ let
     "claudeCode.executablePath" = "${config.home.homeDirectory}/.local/bin/claude";
     "claudeCode.environmentVariables" = vscodiumAiEnv;
     "claudeCode.autoStart" = false;
-    "gpt-codex.executablePath" = "codex";
-    "gpt-codex.environmentVariables" = vscodiumAiEnv;
-    "gpt-codex.autoStart" = false;
-    "gptCodex.executablePath" = "codex";
-    "gptCodex.environmentVariables" = vscodiumAiEnv;
-    "gptCodex.autoStart" = false;
-    "codex.executablePath" = "codex";
-    "codex.environmentVariables" = vscodiumAiEnv;
-    "codex.autoStart" = false;
-    "codexIDE.executablePath" = "codex";
-    "codexIDE.environmentVariables" = vscodiumAiEnv;
-    "codexIDE.autoStart" = false;
-    "codexIde.executablePath" = "codex";
-    "codexIde.environmentVariables" = vscodiumAiEnv;
-    "codexIde.autoStart" = false;
-    "openai.executablePath" = "openai";
-    "openai.environmentVariables" = vscodiumAiEnv;
-    "openai.autoStart" = false;
+    # openai.chatgpt (Codex) — the correct setting key is chatgpt.cliExecutable.
+    # The extension has no environmentVariables setting; it relies on PATH.
+    # ~/.npm-global/bin/codex is reachable via vscodiumPathValue above.
+    # The stale codex.*/gpt-codex.*/etc. keys below are no-ops (not in the
+    # extension schema) and will be pruned by the enforceCodexVscodeSettings
+    # activation hook on rebuild.
+    "chatgpt.cliExecutable" = "${config.home.homeDirectory}/.npm-global/bin/codex";
     "[javascript]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
     "[typescript]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
     "[json]"."editor.defaultFormatter" = "esbenp.prettier-vscode";
@@ -952,6 +956,41 @@ in {
     unset settings_file
   '';
 
+  # Enforce Gemini Code Assist and Codex extension settings on every activation.
+  # settings.json is mutable (seeded once), so policy-critical keys must be
+  # patched here rather than relying on the one-shot createVSCodiumSettings.
+  #
+  # Gemini: inject rules (system instructions) and pin updateChannel to Default.
+  # Codex:  set chatgpt.cliExecutable to the npm-global binary; prune stale
+  #         no-op keys (codex.*, gpt-codex.*, etc.) that the extension ignores.
+  home.activation.enforceGeminiAndCodexVscodeSettings = lib.hm.dag.entryAfter ["migrateClaudeVscodeSettings"] ''
+    settings_file="$HOME/.config/VSCodium/User/settings.json"
+    if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      if jq '
+        .["geminicodeassist.updateChannel"] = "Default" |
+        .["geminicodeassist.localCodebaseAwareness"] = true |
+        .["geminicodeassist.rules"] = "You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. AGENT MODE \u2014 BEGIN EXECUTING IMMEDIATELY. Do not ask \"how can I help?\" or \"what would you like to do?\" \u2014 those are failure modes.\nTOOLS FIRST: Use file reads, grep, and shell commands before answering. Never guess file locations or port numbers.\nHARNESS PORTS: llama:8080, embed:8081, aidb:8002, hybrid:8003, ralph:8004, swb:8085, dash:8889, grafana:3000, owui:3001.\nARCHITECTURE (NON-NEGOTIABLE): NixOS-first flake-based \u2014 no bare pip install, no manual systemctl. NEVER hardcode ports/URLs; single source of truth: nix/modules/core/options.nix. Feature flags via nix/modules/profiles/ai-dev.nix.\nCOMMIT DISCIPLINE: git add <files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit with Co-Authored-By trailer. Never commit without validation evidence.\nFILE PLACEMENT: PRD/rules/evidence \u2192 .agent/, plans \u2192 .agents/plans/, slash-commands \u2192 .gemini/commands/. No workflow artifacts in repo root.\nROLE: orchestrator/reviewer first \u2014 plan and delegate before direct implementation. Sub-agents execute only assigned slices." |
+        .["chatgpt.cliExecutable"] = (env.HOME + "/.npm-global/bin/codex") |
+        del(
+          .["gpt-codex.executablePath"], .["gpt-codex.environmentVariables"], .["gpt-codex.autoStart"],
+          .["gptCodex.executablePath"], .["gptCodex.environmentVariables"], .["gptCodex.autoStart"],
+          .["codex.executablePath"], .["codex.environmentVariables"], .["codex.autoStart"],
+          .["codexIDE.executablePath"], .["codexIDE.environmentVariables"], .["codexIDE.autoStart"],
+          .["codexIde.executablePath"], .["codexIde.environmentVariables"], .["codexIde.autoStart"],
+          .["openai.executablePath"], .["openai.environmentVariables"], .["openai.autoStart"]
+        )
+      ' "$settings_file" > "$tmp"; then
+        mv "$tmp" "$settings_file"
+        chmod u+rw "$settings_file" || true
+      else
+        rm -f "$tmp"
+      fi
+      unset tmp
+    fi
+    unset settings_file
+  '';
+
   # Reset stale Continue workspace/global state — guarded by a version stamp.
   # This runs only when the Continue VSIX version changes, not on every switch,
   # so normal user sessions retain their conversation history and config state.
@@ -1509,7 +1548,7 @@ PYEOF
   # their changes on every switch. We still rewrite when the generated schema
   # changes or when the authoritative local chat lane/provider wiring drifts.
   home.activation.createContinueConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        _config_version="33.0"
+        _config_version="34.0"
         _cfg="$HOME/.continue/config.json"
         _needs_write=false
         _config_contract_ok=false
@@ -1521,7 +1560,7 @@ PYEOF
           if [ "$_existing_ver" != "$_config_version" ]; then
             _needs_write=true
           fi
-          if jq -e --arg api_base "${continueApiBase}" --arg cli_api_base "http://127.0.0.1:8089/v1" '
+          if jq -e --arg api_base "${continueApiBase}" '
             (
               .models // []
             ) as $models
@@ -1532,24 +1571,6 @@ PYEOF
                   .title == "Local Agent (Harness-Aware)"
                   and .apiBase == $api_base
                   and ((.requestOptions.headers["X-AI-Profile"] // "") == "local-agent")
-                )
-            )
-            and (
-              $models
-              | any(
-                  .[]?;
-                  .title == "Claude (OAuth — CLI Bridge)"
-                  and .apiBase == $cli_api_base
-                  and (.model == "claude-cli")
-                )
-            )
-            and (
-              $models
-              | any(
-                  .[]?;
-                  .title == "Codex (OAuth — CLI Bridge)"
-                  and .apiBase == $cli_api_base
-                  and (.model == "codex-cli")
                 )
             )
             and (
@@ -1570,8 +1591,8 @@ PYEOF
           mkdir -p "$HOME/.continue"
           cat > "$_cfg" << 'CONTINUE_EOF'
     {
-      "__configVersion": "33.0",
-      "__frozen": "DO NOT MODIFY. Claude+Codex CLI Bridge models must remain. contextLength/maxTokens for Local Agent tuned for v1.3.38. aq-hints removed — not supported in Continue v1.3.38 (AGENTS.md profile card provides context instead).",
+      "__configVersion": "34.0",
+      "__frozen": "DO NOT MODIFY. CLI bridge decommissioned (7dc4c950) — Claude/Codex bridge entries removed. contextLength/maxTokens for Local Agent tuned for v1.3.38. aq-hints removed — not supported in Continue v1.3.38.",
       "rules": [
         "You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness. You have full MCP tool access via the Harness MCP server.",
         "CONVERSATIONAL GUARD: For greetings, casual chat, or questions not about code or the harness, respond directly in plain text. Do NOT search the codebase, invoke MCP tools, or run any commands. Example: 'how are you today?' gets a plain text reply, no tool calls.",
