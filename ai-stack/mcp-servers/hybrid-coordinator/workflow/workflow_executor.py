@@ -20,6 +20,7 @@ import logging
 import time
 import json
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
@@ -33,6 +34,41 @@ except ImportError:
     LLM_AVAILABLE = False
 
 logger = logging.getLogger("workflow-executor")
+
+
+# ---------------------------------------------------------------------------
+# Retry policy (Phase 38 — DAG executor with retries/backoff)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RetryPolicy:
+    """Exponential-backoff retry policy for phase execution failures."""
+    max_attempts: int = 3
+    initial_delay_s: float = 2.0
+    backoff_factor: float = 2.0
+    max_delay_s: float = 30.0
+
+    def delay_for(self, attempt: int) -> float:
+        """Return sleep duration for the given zero-based attempt index."""
+        raw = self.initial_delay_s * (self.backoff_factor ** attempt)
+        return min(raw, self.max_delay_s)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "max_attempts": self.max_attempts,
+            "initial_delay_s": self.initial_delay_s,
+            "backoff_factor": self.backoff_factor,
+            "max_delay_s": self.max_delay_s,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "RetryPolicy":
+        return cls(
+            max_attempts=int(d.get("max_attempts", 3)),
+            initial_delay_s=float(d.get("initial_delay_s", 2.0)),
+            backoff_factor=float(d.get("backoff_factor", 2.0)),
+            max_delay_s=float(d.get("max_delay_s", 30.0)),
+        )
 
 
 class WorkflowExecutor:
@@ -52,6 +88,7 @@ class WorkflowExecutor:
         max_concurrent: int = 3,
         llm_provider: str = None,
         use_llm: bool = True,
+        retry_policy: Optional[RetryPolicy] = None,
     ):
         """
         Initialize workflow executor.
@@ -69,6 +106,9 @@ class WorkflowExecutor:
         self.running_sessions: Dict[str, asyncio.Task] = {}
         self.should_stop = False
         self.coordinator_url = os.getenv("WORKFLOW_EXECUTOR_COORDINATOR_URL", "http://127.0.0.1:8003").rstrip("/")
+        self.retry_policy = retry_policy or RetryPolicy()
+        # phase-level retry state: {session_id: {phase_id: {"attempts": N, "last_error": str, "retry_after": ts}}}
+        self._retry_state: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
         # Use environment variables for configuration
         if llm_provider is None:
@@ -183,8 +223,10 @@ class WorkflowExecutor:
         - Status: in_progress
         - Not currently being executed
         - Have remaining budget
+        - Not in a retry backoff window
         """
         pending = []
+        now = time.time()
 
         for session_id, session in sessions.items():
             # Skip if already running
@@ -206,9 +248,39 @@ class WorkflowExecutor:
                 logger.debug(f"Session {session_id[:8]} over token budget")
                 continue
 
+            # Phase 38: honour retry backoff — skip if within cooldown window
+            phase_retries = self._retry_state.get(session_id, {})
+            if phase_retries:
+                # Find the closest retry_after across all phases for this session
+                next_retry = min(
+                    (v.get("retry_after", 0.0) for v in phase_retries.values()),
+                    default=0.0,
+                )
+                if next_retry > now:
+                    logger.debug(
+                        "Session %s in retry backoff for %.1fs",
+                        session_id[:8], next_retry - now,
+                    )
+                    continue
+
             pending.append(session_id)
 
         return pending
+
+    def get_retry_state(self, session_id: str) -> Dict[str, Any]:
+        """Return current retry state for a session (for HTTP status endpoint)."""
+        phase_retries = self._retry_state.get(session_id, {})
+        now = time.time()
+        result: Dict[str, Any] = {}
+        for phase_id, state in phase_retries.items():
+            result[phase_id] = {
+                "attempts": state.get("attempts", 0),
+                "max_attempts": self.retry_policy.max_attempts,
+                "last_error": state.get("last_error"),
+                "retry_after": state.get("retry_after"),
+                "retry_in_s": max(0.0, round(state.get("retry_after", 0.0) - now, 1)),
+            }
+        return result
 
     async def _execute_session(self, session_id: str, session: Dict[str, Any]):
         """
@@ -236,64 +308,62 @@ class WorkflowExecutor:
             else:
                 current_phase = {"id": f"phase-{phase_index}"}
 
+            phase_id = current_phase.get("id", f"phase-{phase_index}")
             trajectory = session.get("trajectory", [])
             usage = session.get("usage", {"tokens_used": 0, "tool_calls_used": 0})
+
+            # Phase 38: look up existing retry state for this phase
+            phase_retry = self._retry_state.setdefault(session_id, {}).get(phase_id, {})
+            attempt = phase_retry.get("attempts", 0) + 1
 
             # Add execution started event
             trajectory.append({
                 "ts": time.time(),
                 "event_type": "execution_started",
-                "phase_id": current_phase.get("id"),
+                "phase_id": phase_id,
                 "detail": "Executor processing session",
-                "executor_version": "2.0.0",  # LLM-enabled
+                "executor_version": "2.0.0",
                 "use_llm": self.use_llm,
+                "attempt": attempt,
+                "max_attempts": self.retry_policy.max_attempts,
             })
 
-            # Execute with LLM or mock
-            if self.use_llm and self.llm_client:
-                result = await self._execute_with_llm(
-                    objective, current_phase, session
-                )
+            # Execute with LLM or delegate
+            try:
+                if self.use_llm and self.llm_client:
+                    result = await self._execute_with_llm(
+                        objective, current_phase, session
+                    )
+                    usage["tokens_used"] += result.get("tokens_used", 0)
+                    usage["tool_calls_used"] += result.get("tool_calls_made", 0)
+                    trajectory.append({
+                        "ts": time.time(),
+                        "event_type": "llm_response",
+                        "phase_id": phase_id,
+                        "detail": result.get("summary", "LLM execution completed"),
+                        "tokens": result.get("tokens_used", 0),
+                        "model": result.get("model", "unknown"),
+                    })
+                else:
+                    result = await self.phase_executor.execute_phase(
+                        current_phase,
+                        objective,
+                        session,
+                    )
+                    usage["tokens_used"] += result.get("tokens_used", 0)
+                    usage["tool_calls_used"] += result.get("tool_calls_made", 0)
+                    trajectory.extend(result.get("events", []))
+                    trajectory.append({
+                        "ts": time.time(),
+                        "event_type": "phase_execution",
+                        "phase_id": phase_id,
+                        "detail": result.get("summary", "Phase execution completed"),
+                        "executor_mode": "delegated-local",
+                        "attempt": attempt,
+                    })
 
-                # Update usage
-                usage["tokens_used"] += result.get("tokens_used", 0)
-                usage["tool_calls_used"] += result.get("tool_calls_made", 0)
-
-                # Add completion event
-                trajectory.append({
-                    "ts": time.time(),
-                    "event_type": "llm_response",
-                    "phase_id": current_phase.get("id"),
-                    "detail": result.get("summary", "LLM execution completed"),
-                    "tokens": result.get("tokens_used", 0),
-                    "model": result.get("model", "unknown"),
-                })
-
-                # Update session
-                await self._update_session(session_id, {
-                    "status": "completed",
-                    "trajectory": trajectory,
-                    "usage": usage,
-                    "result": result.get("output", ""),
-                    "completed_at": time.time(),
-                })
-
-            else:
-                result = await self.phase_executor.execute_phase(
-                    current_phase,
-                    objective,
-                    session,
-                )
-                usage["tokens_used"] += result.get("tokens_used", 0)
-                usage["tool_calls_used"] += result.get("tool_calls_made", 0)
-                trajectory.extend(result.get("events", []))
-                trajectory.append({
-                    "ts": time.time(),
-                    "event_type": "phase_execution",
-                    "phase_id": current_phase.get("id"),
-                    "detail": result.get("summary", "Phase execution completed"),
-                    "executor_mode": "delegated-local",
-                })
+                # Success — clear retry state for this phase
+                self._retry_state.get(session_id, {}).pop(phase_id, None)
 
                 await self._update_session(session_id, {
                     "status": "completed",
@@ -302,13 +372,57 @@ class WorkflowExecutor:
                     "result": result.get("output", ""),
                     "completed_at": time.time(),
                 })
+                logger.info(f"Completed session {session_id[:8]} (attempt {attempt})")
 
-            logger.info(f"Completed session {session_id[:8]}")
+            except Exception as phase_exc:
+                # Phase 38: retry with exponential backoff
+                if attempt < self.retry_policy.max_attempts:
+                    delay = self.retry_policy.delay_for(attempt - 1)
+                    retry_after = time.time() + delay
+                    self._retry_state[session_id][phase_id] = {
+                        "attempts": attempt,
+                        "last_error": str(phase_exc),
+                        "retry_after": retry_after,
+                    }
+                    trajectory.append({
+                        "ts": time.time(),
+                        "event_type": "phase_retry_scheduled",
+                        "phase_id": phase_id,
+                        "attempt": attempt,
+                        "max_attempts": self.retry_policy.max_attempts,
+                        "retry_delay_s": round(delay, 1),
+                        "error": str(phase_exc)[:200],
+                    })
+                    await self._update_session(session_id, {"trajectory": trajectory})
+                    logger.warning(
+                        "Session %s phase %s failed (attempt %d/%d) — retrying in %.1fs: %s",
+                        session_id[:8], phase_id, attempt, self.retry_policy.max_attempts,
+                        delay, str(phase_exc)[:120],
+                    )
+                else:
+                    # Max attempts exceeded — mark session failed
+                    self._retry_state.get(session_id, {}).pop(phase_id, None)
+                    trajectory.append({
+                        "ts": time.time(),
+                        "event_type": "phase_exhausted",
+                        "phase_id": phase_id,
+                        "attempts": attempt,
+                        "error": str(phase_exc)[:200],
+                    })
+                    await self._update_session(session_id, {
+                        "status": "failed",
+                        "trajectory": trajectory,
+                        "error": f"Phase {phase_id} failed after {attempt} attempts: {phase_exc}",
+                        "failed_at": time.time(),
+                    })
+                    logger.error(
+                        "Session %s phase %s exhausted retries (%d/%d): %s",
+                        session_id[:8], phase_id, attempt, self.retry_policy.max_attempts,
+                        str(phase_exc)[:120],
+                    )
 
         except Exception as e:
             logger.error(f"Error executing session {session_id[:8]}: {e}", exc_info=True)
-
-            # Mark session as failed
             await self._update_session(session_id, {
                 "status": "failed",
                 "error": str(e),

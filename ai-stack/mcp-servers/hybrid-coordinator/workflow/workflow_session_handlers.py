@@ -52,6 +52,14 @@ _build_tooling_manifest: Optional[Callable[..., Dict[str, Any]]] = None
 _workflow_tool_catalog: Optional[Callable[..., List[Dict[str, str]]]] = None
 _default_intent_contract: Optional[Callable[[str], Dict[str, Any]]] = None
 _ralph_wiggum_url: str = ""
+# Phase 38 — DAG executor reference (injected via set_workflow_executor)
+_workflow_executor: Optional[Any] = None
+
+
+def set_workflow_executor(executor: Any) -> None:
+    """Inject the running WorkflowExecutor instance for HTTP status queries."""
+    global _workflow_executor
+    _workflow_executor = executor
 
 
 def init(
@@ -1150,6 +1158,109 @@ async def handle_workflow_blueprints(_request: web.Request) -> web.Response:
         return _internal_error(exc)
 
 
+async def handle_workflow_run_execute(request: web.Request) -> web.Response:
+    """POST /workflow/run/{session_id}/execute
+
+    Mark a session for priority execution and optionally override the retry
+    policy used by the background WorkflowExecutor.
+
+    Body (JSON, all optional):
+      retry_policy   — {max_attempts, initial_delay_s, backoff_factor, max_delay_s}
+      reset_retries  — bool (default false): clear any existing retry state first
+    """
+    try:
+        session_id = request.match_info.get("session_id", "")
+        if not session_id:
+            return web.json_response({"error": "session_id required"}, status=400)
+
+        data = await request.json() if request.can_read_body else {}
+
+        async with _workflow_sessions_lock:
+            sessions = await _load_workflow_sessions()
+            session = sessions.get(session_id)
+        if not session:
+            return web.json_response({"error": "session not found"}, status=404)
+
+        _ensure_session_runtime_fields(session)
+
+        # Apply retry-policy override if executor is wired
+        retry_policy_applied: Optional[dict] = None
+        if _workflow_executor is not None:
+            from workflow_executor import RetryPolicy
+            if "retry_policy" in data and isinstance(data["retry_policy"], dict):
+                new_policy = RetryPolicy.from_dict(data["retry_policy"])
+                _workflow_executor.retry_policy = new_policy
+                retry_policy_applied = new_policy.to_dict()
+            if data.get("reset_retries"):
+                _workflow_executor._retry_state.pop(session_id, None)
+            current_policy = _workflow_executor.retry_policy.to_dict()
+        else:
+            current_policy = None
+
+        payload = {
+            "session_id": session_id,
+            "status": session.get("status"),
+            "executor_wired": _workflow_executor is not None,
+            "retry_policy": retry_policy_applied or current_policy,
+            "message": (
+                "Session queued for priority execution"
+                if _workflow_executor is not None
+                else "Executor not running — start WorkflowExecutor to process sessions"
+            ),
+        }
+        lesson_refs = await _active_lesson_refs(limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
+    except Exception as exc:
+        return _internal_error(exc)
+
+
+async def handle_workflow_run_execute_status(request: web.Request) -> web.Response:
+    """GET /workflow/run/{session_id}/execute/status
+
+    Return the executor's retry state for a session: per-phase attempt counts,
+    last errors, and seconds until next retry.
+    """
+    try:
+        session_id = request.match_info.get("session_id", "")
+        if not session_id:
+            return web.json_response({"error": "session_id required"}, status=400)
+
+        async with _workflow_sessions_lock:
+            sessions = await _load_workflow_sessions()
+            session = sessions.get(session_id)
+        if not session:
+            return web.json_response({"error": "session not found"}, status=404)
+
+        _ensure_session_runtime_fields(session)
+
+        if _workflow_executor is not None:
+            retry_state = _workflow_executor.get_retry_state(session_id)
+            running = session_id in _workflow_executor.running_sessions
+            policy = _workflow_executor.retry_policy.to_dict()
+        else:
+            retry_state = {}
+            running = False
+            policy = None
+
+        payload = {
+            "session_id": session_id,
+            "status": session.get("status"),
+            "executor_wired": _workflow_executor is not None,
+            "running": running,
+            "retry_state": retry_state,
+            "retry_policy": policy,
+            "trajectory_count": len(session.get("trajectory", [])),
+        }
+        lesson_refs = await _active_lesson_refs(limit=2)
+        if lesson_refs:
+            payload["active_lesson_refs"] = lesson_refs
+        return web.json_response(payload)
+    except Exception as exc:
+        return _internal_error(exc)
+
+
 def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/workflow/plan", handle_workflow_plan)
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
@@ -1175,4 +1286,6 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/workflow/run/{session_id}/isolation", handle_workflow_run_isolation_set)
     http_app.router.add_post("/workflow/run/{session_id}/event", handle_workflow_run_event)
     http_app.router.add_get("/workflow/run/{session_id}/replay", handle_workflow_run_replay)
+    http_app.router.add_post("/workflow/run/{session_id}/execute", handle_workflow_run_execute)
+    http_app.router.add_get("/workflow/run/{session_id}/execute/status", handle_workflow_run_execute_status)
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
