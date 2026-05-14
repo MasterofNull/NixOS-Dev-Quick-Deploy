@@ -666,6 +666,24 @@ PYEOF
     _fail 4 "0.9.6" "per-run workspace isolation complete" "missing: ${_iso_missing[*]}"
   fi
 
+  # 0.9.7 Fleet control-plane UX (Phase 42)
+  local rch_file="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_control_handlers.py"
+  local has_deregister=0 has_deploy_list=0 has_fleet_summary=0 has_health_probe=0
+  grep -q "handle_runtime_deregister" "$rch_file" 2>/dev/null && has_deregister=1
+  grep -q "handle_runtime_deployments_list" "$rch_file" 2>/dev/null && has_deploy_list=1
+  grep -q "handle_fleet_summary" "$rch_file" 2>/dev/null && has_fleet_summary=1
+  grep -q "handle_runtime_health" "$rch_file" 2>/dev/null && has_health_probe=1
+  if [[ "$has_deregister" -eq 1 ]] && [[ "$has_deploy_list" -eq 1 ]] && [[ "$has_fleet_summary" -eq 1 ]] && [[ "$has_health_probe" -eq 1 ]]; then
+    _pass 4 "0.9.7" "fleet control-plane: deregister + deployment history + fleet summary + health probe present"
+  else
+    local _fleet_missing=()
+    [[ "$has_deregister" -eq 0 ]]    && _fleet_missing+=("handle_runtime_deregister")
+    [[ "$has_deploy_list" -eq 0 ]]   && _fleet_missing+=("handle_runtime_deployments_list")
+    [[ "$has_fleet_summary" -eq 0 ]] && _fleet_missing+=("handle_fleet_summary")
+    [[ "$has_health_probe" -eq 0 ]]  && _fleet_missing+=("handle_runtime_health")
+    _fail 4 "0.9.7" "fleet control-plane UX complete" "missing: ${_fleet_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

@@ -496,7 +496,7 @@ These were selected as closest matches to your target profile (runtime + coding-
 | Capability cluster | Target-style repo signal | This repo status | Gap priority |
 |---|---|---|---|
 | Multi-tenant agent runtime isolation | `station`, `openfang`, `agent-sandbox`, `openlegion`, `sandboxed.sh` emphasize isolated execution environments | **Near parity** — Phase 41: `provision_run_workspace` creates per-run `{workspace_root}/{session_id}/` on session start; `_check_isolation_constraints` enforces run-scoped boundary; `teardown_run_workspace` archives/removes on completion; `GET /runtime/isolation/workspace/{session_id}` exposes live status | `Near parity` (Phase 41) |
-| Production deploy/control-plane for agents | `station`, `agentstack`, `voltagent`, `docker/cagent` provide deploy-first workflows | Partial (strong local stack, but dedicated fleet/control-plane UX is limited) | `P0` |
+| Production deploy/control-plane for agents | `station`, `agentstack`, `voltagent`, `docker/cagent` provide deploy-first workflows | **Near parity** — Phase 42: `DELETE /control/runtimes/{id}` deregister; `GET /control/runtimes/{id}/deployments` history; `GET /control/fleet/summary` fleet rollup by profile/status; `GET /control/runtimes/{id}/health` live probe; aq-qa `0.9.7` validates | `Near parity` (Phase 42) |
 | MCP-first workflow construction | `mcp-agent`, `tuui`, `oh-my-pi` focus on MCP-centered flows and tool orchestration | Near parity (MCP ecosystem present) | `P1` |
 | Terminal-native coding-agent ergonomics | `codebuff`, `pi-mono`, `oh-my-pi`, `learn-claude-code` emphasize fast CLI loops and composable commands | Partial (RPC/SDK present; CLI ergonomics can be tighter) | `P1` |
 | Secure execution of untrusted tool/code actions | `agent-sandbox`, `sandboxed.sh`, `openlegion` make isolation/safety core | Partial (auth checks + policy evaluation exist, runtime sandbox boundaries need expansion) | `P0` |
@@ -508,9 +508,9 @@ These were selected as closest matches to your target profile (runtime + coding-
 - Add explicit per-run sandbox/workspace boundary for tool execution (filesystem/process/network policy profile).
 - Add run-level isolation policy in routing config + runtime enforcement.
 
-2. `Deploy/Fleet Control Plane API` (P0)
-- Add APIs for agent runtime registration, lifecycle state, rollout/rollback, and per-profile deployment status.
-- Align with existing Nix role wiring; avoid hardcoded endpoints/ports.
+2. ~~`Deploy/Fleet Control Plane API` (P0)~~ **RESOLVED — Phase 42**
+- `DELETE /control/runtimes/{id}` — deregister; `GET …/deployments` — history; `GET /control/fleet/summary` — fleet rollup; `GET …/health` — live healthcheck probe.
+- Completes register/list/get/status/deploy/rollback/schedule/deregister/health CRUD surface.
 
 3. `Runtime Safety Envelope for Untrusted Actions` (P0)
 - Introduce enforced execution classes (`safe`, `review-required`, `blocked`) at tool invocation time.

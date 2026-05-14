@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
+import httpx
 from aiohttp import web
 
 from agent_registry import (
@@ -384,12 +385,152 @@ async def handle_runtime_schedule(request: web.Request) -> web.Response:
         return web.json_response(_error_payload("internal_error", exc), status=500)
 
 
+async def handle_runtime_deregister(request: web.Request) -> web.Response:
+    """DELETE /control/runtimes/{runtime_id} — Phase 42: remove a runtime from the registry."""
+    try:
+        runtime_id = request.match_info.get("runtime_id", "")
+        if not runtime_id:
+            return web.json_response({"error": "runtime_id required"}, status=400)
+        async with _runtime_registry_lock:
+            registry = await _load_runtime_registry()
+            if runtime_id not in registry.get("runtimes", {}):
+                return web.json_response({"error": "runtime not found"}, status=404)
+            removed = registry["runtimes"].pop(runtime_id)
+            await _save_runtime_registry(registry)
+        return web.json_response({
+            "runtime_id": runtime_id,
+            "deregistered": True,
+            "name": removed.get("name", runtime_id),
+        })
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
+async def handle_runtime_deployments_list(request: web.Request) -> web.Response:
+    """GET /control/runtimes/{runtime_id}/deployments — Phase 42: deployment history."""
+    try:
+        runtime_id = request.match_info.get("runtime_id", "")
+        limit = min(int(request.rel_url.query.get("limit", "20") or "20"), 100)
+        async with _runtime_registry_lock:
+            registry = await _load_runtime_registry()
+            runtime = registry.get("runtimes", {}).get(runtime_id)
+        if not runtime:
+            return web.json_response({"error": "runtime not found"}, status=404)
+        deployments = list(runtime.get("deployments", []))
+        rollbacks = list(runtime.get("rollbacks", []))
+        # Merge and sort by created_at descending
+        events: List[Dict[str, Any]] = []
+        for d in deployments:
+            events.append({"event_type": "deployment", **d})
+        for r in rollbacks:
+            events.append({"event_type": "rollback", **r})
+        events.sort(key=lambda e: int(e.get("created_at") or 0), reverse=True)
+        events = events[:limit]
+        return web.json_response({
+            "runtime_id": runtime_id,
+            "count": len(events),
+            "events": events,
+        })
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
+async def handle_fleet_summary(_request: web.Request) -> web.Response:
+    """GET /control/fleet/summary — Phase 42: fleet-wide rollup by profile and status."""
+    try:
+        async with _runtime_registry_lock:
+            registry = await _load_runtime_registry()
+        runtimes = list((registry.get("runtimes", {}) or {}).values())
+
+        by_status: Dict[str, int] = {}
+        by_profile: Dict[str, int] = {}
+        recent_deployments: List[Dict[str, Any]] = []
+
+        for rt in runtimes:
+            status = str(rt.get("status", "unknown"))
+            profile = str(rt.get("profile", "default"))
+            by_status[status] = by_status.get(status, 0) + 1
+            by_profile[profile] = by_profile.get(profile, 0) + 1
+            # Collect most recent deployment per runtime
+            deployments = rt.get("deployments", [])
+            if deployments:
+                latest = max(deployments, key=lambda d: int(d.get("created_at") or 0))
+                recent_deployments.append({
+                    "runtime_id": rt.get("runtime_id", ""),
+                    "name": rt.get("name", ""),
+                    "profile": profile,
+                    "status": rt.get("status", "unknown"),
+                    "last_deployment": latest,
+                })
+
+        recent_deployments.sort(
+            key=lambda x: int((x.get("last_deployment") or {}).get("created_at") or 0),
+            reverse=True,
+        )
+
+        return web.json_response({
+            "total_runtimes": len(runtimes),
+            "by_status": by_status,
+            "by_profile": by_profile,
+            "recent_deployments": recent_deployments[:10],
+        })
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
+async def handle_runtime_health(request: web.Request) -> web.Response:
+    """GET /control/runtimes/{runtime_id}/health — Phase 42: live healthcheck probe."""
+    try:
+        runtime_id = request.match_info.get("runtime_id", "")
+        async with _runtime_registry_lock:
+            registry = await _load_runtime_registry()
+            runtime = registry.get("runtimes", {}).get(runtime_id)
+        if not runtime:
+            return web.json_response({"error": "runtime not found"}, status=404)
+        runtime = _enrich_runtime_record(runtime)
+        healthcheck_url = str(runtime.get("healthcheck_url", "") or "").strip()
+        if not healthcheck_url:
+            return web.json_response({
+                "runtime_id": runtime_id,
+                "health": "unknown",
+                "reason": "no healthcheck_url configured",
+            }, status=200)
+        probe_start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(healthcheck_url)
+            latency_ms = round((time.monotonic() - probe_start) * 1000, 1)
+            healthy = resp.status_code < 400
+            return web.json_response({
+                "runtime_id": runtime_id,
+                "health": "healthy" if healthy else "unhealthy",
+                "http_status": resp.status_code,
+                "latency_ms": latency_ms,
+                "healthcheck_url": healthcheck_url,
+            })
+        except Exception as probe_err:
+            latency_ms = round((time.monotonic() - probe_start) * 1000, 1)
+            return web.json_response({
+                "runtime_id": runtime_id,
+                "health": "unreachable",
+                "error": str(probe_err)[:200],
+                "latency_ms": latency_ms,
+                "healthcheck_url": healthcheck_url,
+            }, status=200)
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
 def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)
     http_app.router.add_get("/control/runtimes/{runtime_id}", handle_runtime_get)
+    http_app.router.add_delete("/control/runtimes/{runtime_id}", handle_runtime_deregister)
     http_app.router.add_post("/control/runtimes/{runtime_id}/status", handle_runtime_status)
     http_app.router.add_post("/control/runtimes/{runtime_id}/deployments", handle_runtime_deploy)
+    http_app.router.add_get("/control/runtimes/{runtime_id}/deployments", handle_runtime_deployments_list)
     http_app.router.add_post("/control/runtimes/{runtime_id}/rollback", handle_runtime_rollback)
+    http_app.router.add_get("/control/runtimes/{runtime_id}/health", handle_runtime_health)
+    http_app.router.add_get("/control/fleet/summary", handle_fleet_summary)
     http_app.router.add_get("/control/runtimes/schedule/policy", handle_runtime_schedule_policy)
     http_app.router.add_post("/control/runtimes/schedule/select", handle_runtime_schedule)
