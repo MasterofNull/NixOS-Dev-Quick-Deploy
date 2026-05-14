@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""
+aq-index-logic-patterns — index cross-cutting logic patterns into AIDB.
+
+Scans Python source under ai-stack/ and dashboard/ for structural patterns
+(rate-limit exemptions, auth bypass lists, error handler catch blocks, port
+constants, etc.) and injects each as a document into AIDB project
+'logic-patterns'.  Re-runs are idempotent: documents are overwritten by their
+relative_path+pattern_type key.
+
+Usage:
+    aq-index-logic-patterns [--dry-run] [--verbose] [--repo-root PATH]
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import re
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterator, List
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT   = Path(os.getenv("REPO_ROOT", str(SCRIPT_DIR.parent.parent)))
+
+AIDB_URL     = os.getenv("AIDB_URL",     "http://127.0.0.1:8002")
+AIDB_KEY_FILE = os.getenv("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key")
+AIDB_PROJECT = "logic-patterns"
+
+SCAN_DIRS = [
+    REPO_ROOT / "ai-stack",
+    REPO_ROOT / "dashboard" / "backend",
+    REPO_ROOT / "scripts" / "ai",
+]
+
+
+# ---------------------------------------------------------------------------
+# Pattern extractors
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PatternDoc:
+    path: Path
+    line: int
+    pattern_type: str
+    title: str
+    content: str
+    tags: List[str] = field(default_factory=list)
+
+
+def _rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _extract_rate_limit_exemptions(path: Path, src: str) -> Iterator[PatternDoc]:
+    """Find exempt_paths sets, loopback bypass conditions."""
+    for m in re.finditer(r'exempt_paths\s*[=:][^\n]{0,200}', src):
+        lineno = src[:m.start()].count('\n') + 1
+        yield PatternDoc(
+            path=path, line=lineno,
+            pattern_type="rate_limit_exemption",
+            title=f"rate-limit exempt_paths — {_rel(path)}:{lineno}",
+            content=m.group(0).strip()[:800],
+            tags=["rate-limit", "exemption", "security"],
+        )
+    for m in re.finditer(r'exempt_loopback|loopback.*bypass|bypass.*loopback|127\.0\.0\.1.*return True', src):
+        lineno = src[:m.start()].count('\n') + 1
+        start = max(0, m.start() - 100)
+        snippet = src[start:m.end() + 200].strip()[:800]
+        yield PatternDoc(
+            path=path, line=lineno,
+            pattern_type="loopback_bypass",
+            title=f"loopback bypass — {_rel(path)}:{lineno}",
+            content=snippet,
+            tags=["loopback", "bypass", "security"],
+        )
+
+
+def _extract_auth_bypass(path: Path, src: str) -> Iterator[PatternDoc]:
+    """Find auth bypass / API key skip blocks."""
+    for m in re.finditer(
+        r'(_is_loopback_agent_request|skip.*auth|bypass.*api.key|no.*auth.*required)[^\n]{0,200}',
+        src, re.IGNORECASE
+    ):
+        lineno = src[:m.start()].count('\n') + 1
+        start = max(0, m.start() - 50)
+        snippet = src[start:m.end() + 400].strip()[:800]
+        yield PatternDoc(
+            path=path, line=lineno,
+            pattern_type="auth_bypass",
+            title=f"auth bypass — {_rel(path)}:{lineno}",
+            content=snippet,
+            tags=["auth", "bypass", "security"],
+        )
+
+
+def _extract_port_constants(path: Path, src: str) -> Iterator[PatternDoc]:
+    """Find port constant definitions."""
+    for m in re.finditer(r'(?:PORT|_port)\s*=\s*(?:int\([^)]+\)|\d{4,5})[^\n]*', src):
+        lineno = src[:m.start()].count('\n') + 1
+        yield PatternDoc(
+            path=path, line=lineno,
+            pattern_type="port_constant",
+            title=f"port constant — {_rel(path)}:{lineno}",
+            content=m.group(0).strip()[:400],
+            tags=["port", "config"],
+        )
+
+
+def _extract_error_handlers(path: Path, src: str) -> Iterator[PatternDoc]:
+    """Find broad exception catch blocks (potential swallowed errors)."""
+    for m in re.finditer(
+        r'except\s+(Exception|OSError|BaseException|aiohttp\.ClientError)[^:]*:[^\n]*\n(?:[ \t]+[^\n]*\n){0,5}',
+        src
+    ):
+        lineno = src[:m.start()].count('\n') + 1
+        yield PatternDoc(
+            path=path, line=lineno,
+            pattern_type="error_handler",
+            title=f"exception handler — {_rel(path)}:{lineno}",
+            content=m.group(0).strip()[:800],
+            tags=["error-handling", "exception"],
+        )
+
+
+def _extract_bypass_lists(path: Path, src: str) -> Iterator[PatternDoc]:
+    """Find explicit bypass/whitelist/allowlist collections."""
+    for m in re.finditer(
+        r'(?:bypass|whitelist|allowlist|exempt|trusted)(?:_paths?|_prefixes?|_routes?|_ips?|_clients?)\s*=\s*[(\[{][^)\]}{]{0,400}[)\]}]',
+        src, re.IGNORECASE | re.DOTALL
+    ):
+        lineno = src[:m.start()].count('\n') + 1
+        yield PatternDoc(
+            path=path, line=lineno,
+            pattern_type="bypass_list",
+            title=f"bypass list — {_rel(path)}:{lineno}",
+            content=m.group(0).strip()[:800],
+            tags=["bypass", "allowlist", "security"],
+        )
+
+
+_EXTRACTORS = [
+    _extract_rate_limit_exemptions,
+    _extract_auth_bypass,
+    _extract_port_constants,
+    _extract_error_handlers,
+    _extract_bypass_lists,
+]
+
+
+def scan_file(path: Path) -> List[PatternDoc]:
+    try:
+        src = path.read_text(errors="replace")
+    except OSError:
+        return []
+    docs: List[PatternDoc] = []
+    for extractor in _EXTRACTORS:
+        try:
+            docs.extend(extractor(path, src))
+        except Exception as exc:
+            sys.stderr.write(f"[warn] extractor failed on {path}: {exc}\n")
+    return docs
+
+
+def scan_repo(root: Path = REPO_ROOT, scan_dirs: List[Path] = SCAN_DIRS) -> List[PatternDoc]:
+    all_docs: List[PatternDoc] = []
+    for base in scan_dirs:
+        if not base.exists():
+            continue
+        for py_file in base.rglob("*.py"):
+            if "__pycache__" in str(py_file):
+                continue
+            all_docs.extend(scan_file(py_file))
+    return all_docs
+
+
+# ---------------------------------------------------------------------------
+# AIDB upload
+# ---------------------------------------------------------------------------
+
+def _aidb_key() -> str:
+    try:
+        return Path(AIDB_KEY_FILE).read_text().strip()
+    except OSError:
+        return os.getenv("AIDB_API_KEY", "")
+
+
+def _ingest(doc: PatternDoc, key: str, verbose: bool) -> bool:
+    import urllib.request
+    rel = _rel(doc.path)
+    payload = json.dumps({
+        "content":       doc.content,
+        "project":       AIDB_PROJECT,
+        "relative_path": f"{rel}:{doc.line}:{doc.pattern_type}",
+        "title":         doc.title,
+        "metadata": {
+            "pattern_type": doc.pattern_type,
+            "file":         rel,
+            "line":         doc.line,
+            "tags":         doc.tags,
+        },
+    }).encode()
+    req = urllib.request.Request(
+        f"{AIDB_URL}/documents",
+        data=payload,
+        headers={"Content-Type": "application/json", "X-API-Key": key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            ok = resp.status in (200, 201)
+            if verbose:
+                print(f"  {'OK' if ok else 'FAIL'} [{resp.status}] {doc.title}")
+            return ok
+    except Exception as exc:
+        sys.stderr.write(f"  ERR {doc.title}: {exc}\n")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--dry-run",   action="store_true", help="scan only, no AIDB upload")
+    p.add_argument("--verbose",   action="store_true")
+    p.add_argument("--repo-root", default=str(REPO_ROOT), help="repo root path")
+    args = p.parse_args()
+
+    root = Path(args.repo_root)
+    scan_dirs = [
+        root / "ai-stack",
+        root / "dashboard" / "backend",
+        root / "scripts" / "ai",
+    ]
+
+    print(f"[index] scanning repo: {root}")
+    docs = scan_repo(root, scan_dirs)
+    print(f"[index] found {len(docs)} pattern docs")
+
+    if args.dry_run:
+        for d in docs:
+            print(f"  {d.pattern_type:30s} {_rel(d.path)}:{d.line}")
+        return 0
+
+    key = _aidb_key()
+    if not key:
+        sys.stderr.write("[index] ERROR: AIDB API key not found\n")
+        return 1
+
+    ok_count = 0
+    for doc in docs:
+        if _ingest(doc, key, args.verbose):
+            ok_count += 1
+        time.sleep(0.05)  # gentle rate pacing
+
+    print(f"[index] ingested {ok_count}/{len(docs)} documents into AIDB project '{AIDB_PROJECT}'")
+    return 0 if ok_count > 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

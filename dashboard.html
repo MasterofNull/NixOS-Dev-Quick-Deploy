@@ -2537,6 +2537,12 @@
             }
         }
     </style>
+    <!-- Mermaid for logic flow diagrams (Phase 52.5) -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+        window.mermaid = mermaid;
+    </script>
 </head>
 <body>
     <div class="container">
@@ -2887,6 +2893,55 @@
                     </div>
                     <div class="collapsible-content">
                         <div id="osiLayerGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                            <div class="loading"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Map — Phase 52.4 -->
+            <div class="dashboard-section" id="section-system-map">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">System Map</h2>
+                        </div>
+                        <span class="card-badge" id="systemMapBadge">topology</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+                            <button onclick="loadSystemMap()" style="font-size:0.75rem;padding:0.3rem 0.75rem;border-radius:4px;border:1px solid var(--border,#333);background:var(--card-bg,#1e1e2e);color:var(--text,#cdd6f4);cursor:pointer;">Refresh</button>
+                            <span id="systemMapUpdated" style="font-size:0.7rem;color:var(--subtext,#6c7086);align-self:center;"></span>
+                        </div>
+                        <!-- D3 force graph canvas -->
+                        <svg id="systemMapSvg" width="100%" height="340"
+                             style="background:var(--surface,#181825);border-radius:6px;display:block;">
+                            <text x="50%" y="50%" text-anchor="middle" fill="#6c7086" font-size="13">Loading…</text>
+                        </svg>
+                        <!-- legend -->
+                        <div style="display:flex;gap:1.5rem;margin-top:0.5rem;flex-wrap:wrap;font-size:0.72rem;color:var(--subtext,#6c7086);">
+                            <span><span style="color:#a6e3a1">■</span> up</span>
+                            <span><span style="color:#f38ba8">■</span> down</span>
+                            <span><span style="color:#fab387">■</span> degraded</span>
+                            <span><span style="color:#585b70">■</span> unknown</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logic Flow Diagram — Phase 52.5 -->
+            <div class="dashboard-section" id="section-logic-flow">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Request Routing Flow</h2>
+                        </div>
+                        <span class="card-badge" id="logicFlowBadge">flow</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="logicFlowDiagram" style="background:var(--surface,#181825);border-radius:6px;padding:1rem;overflow-x:auto;">
                             <div class="loading"><div class="spinner"></div></div>
                         </div>
                     </div>
@@ -5885,6 +5940,9 @@
             loadAIInsights(); // Load AI insights and analytics
             loadOsiLayerHealth();
             setInterval(loadOsiLayerHealth, 30000); // Refresh every 30 seconds
+            loadSystemMap();
+            setInterval(loadSystemMap, 60000);
+            loadLogicFlow();
             lazyLoadManager.registerCard('deployment-ops', 'loadDeploymentOps');
 
             // Connect WebSocket for real-time metrics (2-second updates)
@@ -9594,6 +9652,109 @@
                 badge.textContent = 'unavailable';
                 badge.style.background = 'var(--status-error)';
             }
+        }
+
+        // ── System Map (Phase 52.4) ──────────────────────────────────────────
+        async function loadSystemMap() {
+            const svg = document.getElementById('systemMapSvg');
+            const badge = document.getElementById('systemMapBadge');
+            const updated = document.getElementById('systemMapUpdated');
+            if (!svg) return;
+
+            let data;
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/topology`, { cache: 'no-store' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                data = await resp.json();
+            } catch (e) {
+                svg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" fill="#f38ba8" font-size="12">topology unavailable: ${e.message}</text>`;
+                if (badge) { badge.textContent = 'error'; badge.style.background = 'var(--status-error,#f38ba8)'; }
+                return;
+            }
+
+            const nodes = data.nodes || [];
+            const edges = data.edges || [];
+            if (updated) updated.textContent = 'updated ' + (data.generated_at || '');
+
+            const STATUS_COLOR = { up: '#a6e3a1', down: '#f38ba8', degraded: '#fab387', unknown: '#585b70' };
+
+            // Simple force-directed layout using fixed positions by role
+            const ROLE_X = { gateway: 0.08, coordinator: 0.35, inference: 0.62, embeddings: 0.62,
+                             'vector-db': 0.62, rag: 0.82, ui: 0.82 };
+            const ROLE_Y_OFFSET = { gateway: 0, coordinator: 0, inference: -0.18, embeddings: 0.18,
+                                    'vector-db': 0, rag: -0.12, ui: 0.12 };
+            const W = svg.getBoundingClientRect().width || 700;
+            const H = 340;
+            const CX = W / 2, CY = H / 2;
+
+            const posMap = {};
+            nodes.forEach((n, i) => {
+                const rx = ROLE_X[n.role] !== undefined ? ROLE_X[n.role] : (i / nodes.length);
+                const ry = 0.5 + (ROLE_Y_OFFSET[n.role] || 0);
+                posMap[n.id] = { x: rx * W, y: ry * H };
+            });
+
+            let svgContent = '';
+
+            // Draw edges first (behind nodes)
+            edges.forEach(e => {
+                const s = posMap[e.from], t = posMap[e.to];
+                if (!s || !t) return;
+                const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2;
+                svgContent += `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}"
+                    stroke="#313244" stroke-width="1.5" marker-end="url(#arrow)"/>`;
+                svgContent += `<text x="${mx}" y="${my - 4}" text-anchor="middle"
+                    font-size="9" fill="#585b70">${e.label || ''}</text>`;
+            });
+
+            // Draw nodes
+            nodes.forEach(n => {
+                const pos = posMap[n.id];
+                if (!pos) return;
+                const color = STATUS_COLOR[n.status] || '#585b70';
+                svgContent += `<circle cx="${pos.x}" cy="${pos.y}" r="22" fill="#1e1e2e" stroke="${color}" stroke-width="2.5"/>`;
+                svgContent += `<text x="${pos.x}" y="${pos.y - 3}" text-anchor="middle" font-size="9.5" fill="${color}" font-weight="600">${n.label.split(' ')[0]}</text>`;
+                svgContent += `<text x="${pos.x}" y="${pos.y + 9}" text-anchor="middle" font-size="8" fill="#585b70">:${n.port}</text>`;
+            });
+
+            svg.innerHTML = `<defs><marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#585b70"/></marker></defs>${svgContent}`;
+
+            const upCount = nodes.filter(n => n.status === 'up').length;
+            if (badge) {
+                badge.textContent = `${upCount}/${nodes.length} up`;
+                badge.style.background = upCount === nodes.length ? 'var(--status-ok,#a6e3a1)' :
+                    upCount === 0 ? 'var(--status-error,#f38ba8)' : 'var(--status-warn,#fab387)';
+            }
+        }
+
+        // ── Logic Flow Diagram (Phase 52.5) ─────────────────────────────────
+        async function loadLogicFlow() {
+            const container = document.getElementById('logicFlowDiagram');
+            const badge = document.getElementById('logicFlowBadge');
+            if (!container) return;
+
+            let data;
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/topology/flow`, { cache: 'no-store' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                data = await resp.json();
+            } catch (e) {
+                container.innerHTML = `<span style="color:#f38ba8;font-size:12px">flow unavailable: ${e.message}</span>`;
+                if (badge) { badge.textContent = 'error'; badge.style.background = 'var(--status-error,#f38ba8)'; }
+                return;
+            }
+
+            const flowchart = data.flowchart || '';
+            // Render via mermaid if available, else fallback to <pre>
+            if (window.mermaid) {
+                const id = 'mermaid-flow-' + Date.now();
+                container.innerHTML = `<div class="mermaid" id="${id}">${flowchart}</div>`;
+                try { window.mermaid.run({ nodes: [document.getElementById(id)] }); } catch (_) {}
+            } else {
+                container.innerHTML = `<pre style="font-size:0.75rem;color:var(--text,#cdd6f4);white-space:pre-wrap;margin:0">${flowchart}</pre>`;
+            }
+            if (badge) { badge.textContent = 'ok'; badge.style.background = 'var(--status-ok,#a6e3a1)'; }
         }
 
         // AI Insights Functions
