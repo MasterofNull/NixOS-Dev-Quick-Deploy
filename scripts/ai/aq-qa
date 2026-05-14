@@ -633,6 +633,29 @@ PYEOF
     _fail 4 "0.9.1" "safety gate endpoint reachable" "HTTP ${gate_http:-ERR}: ${gate_out:0:80}"
   fi
 
+  # 0.9.4 Runtime safety contract policy (Phase 39)
+  local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
+  if [[ -r "$safety_policy_file" ]]; then
+    local policy_ver policy_modes_ok
+    policy_ver=$(python3 -c "
+import json, sys
+d = json.load(open('$safety_policy_file'))
+modes = d.get('modes', {})
+ro_blocked = set(modes.get('plan-readonly', {}).get('blocked', []))
+ex_allowed = set(modes.get('execute-mutating', {}).get('allowed_risk_classes', []))
+# Phase 39: plan-readonly must block mutating/destructive; execute-mutating must allow review-required
+ok = ('mutating' in ro_blocked or 'destructive' in ro_blocked) and 'review-required' in ex_allowed
+print('ok' if ok else 'fail')
+" 2>/dev/null || echo "fail")
+    if [[ "$policy_ver" == "ok" ]]; then
+      _pass 4 "0.9.4" "runtime safety policy: plan-readonly blocks mutating; execute-mutating allows review-required"
+    else
+      _fail 4 "0.9.4" "runtime safety policy v1.1 differentiation" "policy file lacks mode differentiation"
+    fi
+  else
+    _skip 4 "0.9.4" "runtime safety contract" "policy file not found: $safety_policy_file"
+  fi
+
   # 0.9.3 DAG executor execute/status endpoint (Phase 38)
   local _hk093 exec_out exec_http
   _hk093=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
