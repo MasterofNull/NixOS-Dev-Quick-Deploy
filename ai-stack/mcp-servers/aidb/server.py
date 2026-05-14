@@ -59,6 +59,7 @@ from settings_loader import Settings, load_settings
 from rag import RAGPipeline, RAGConfig
 from shared.tool_audit import write_audit_entry
 from shared.tool_security_auditor import ToolSecurityAuditor
+from interaction_history import InteractionHistoryStore
 from schema import (
     METADATA,
     TOOL_REGISTRY,
@@ -1846,6 +1847,57 @@ class MonitoringServer:
                 )
 
 
+        # Phase 1.4 — Interaction History endpoints
+        @self.app.post("/history/record")
+        async def record_interaction(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
+            self._require_api_key(request)
+            try:
+                interaction_id = await self.mcp_server._interaction_history.record_interaction(payload)
+                return {"status": "ok", "interaction_id": interaction_id}
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("record_interaction_failed", exc),
+                )
+
+        @self.app.get("/history")
+        async def get_interaction_history(
+            session_id: Optional[str] = None,
+            agent_type: Optional[str] = None,
+            project: Optional[str] = None,
+            limit: int = 50,
+            offset: int = 0
+        ) -> Dict[str, Any]:
+            from uuid import UUID
+            try:
+                sess_uuid = UUID(session_id) if session_id else None
+                history = await self.mcp_server._interaction_history.get_history(
+                    session_id=sess_uuid,
+                    agent_type=agent_type,
+                    project=project,
+                    limit=limit,
+                    offset=offset
+                )
+                return {"history": history, "count": len(history)}
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("get_history_failed", exc),
+                )
+
+        @self.app.get("/history/stats")
+        async def get_interaction_stats() -> Dict[str, Any]:
+            try:
+                stats = await self.mcp_server._interaction_history.get_stats()
+                return stats
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=_error_detail("get_history_stats_failed", exc),
+                )
+
         # Task 3.3.3 — Garbage-collection endpoint
         @self.app.post("/gc")
         async def gc_endpoint(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
@@ -2100,6 +2152,7 @@ class MCPServer:
         self._monitoring = MonitoringServer(settings, self)
         self._catalog = CatalogBootstrapper(settings, self._engine)
         self._skills = OpenSkillsRepository(self._engine)
+        self._interaction_history = InteractionHistoryStore(self._engine)
         self._repo_root = Path(__file__).resolve().parents[1]
         self._shared_skills_dir = Path(
             os.environ.get(

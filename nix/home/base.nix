@@ -539,6 +539,9 @@ in {
     # would create a duplicate entry in the nix profile.
     # neovim is provided by system packages; avoid duplicate nvim.desktop.
 
+    # Agentic CLI tools (Token-optimized for AI agents)
+    (pkgs.callPackage ../pkgs/agentic-tools.nix {})
+
     # Nix utilities
     nix-tree
     nix-diff

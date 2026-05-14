@@ -1492,7 +1492,10 @@ in {
     # This must not depend on shell-completions, otherwise aq-hints can be missing
     # from PATH when completions are disabled.
     (lib.mkIf roleEnabled {
-      environment.systemPackages = [aiHarnessCliWrappers];
+      environment.systemPackages = [
+        aiHarnessCliWrappers
+        (pkgs.callPackage ../../pkgs/agentic-tools.nix {})
+      ];
 
       # Agent-agnostic environment variables for tool discovery.
       # These work with any AI agent (Claude, GPT, Codex, Qwen, Gemini, Aider, etc.)

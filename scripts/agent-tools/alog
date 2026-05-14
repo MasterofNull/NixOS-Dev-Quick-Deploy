@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+# alog — Agentic Log: Token-optimized log summarizer.
+#
+# Extracts errors and warnings while suppressing repetitive info
+# noise for efficient system troubleshooting.
+import sys
+import argparse
+import re
+
+def summarize_logs(log_lines, max_errors=10):
+    errors = []
+    warnings = []
+    info = 0
+    
+    # Common error/warning patterns
+    error_patterns = [
+        re.compile(r'error|fail|critical|exception|panic', re.IGNORECASE),
+        re.compile(r'^\s*File ".*", line \d+, in .*', re.IGNORECASE), # Python traceback
+        re.compile(r'^\s*at .*\(\d+:\d+\)', re.IGNORECASE) # JS/TS stack trace
+    ]
+    warning_patterns = [
+        re.compile(r'warn|deprecat', re.IGNORECASE)
+    ]
+    
+    for line in log_lines:
+        line = line.strip()
+        if any(p.search(line) for p in error_patterns):
+            errors.append(line)
+        elif any(p.search(line) for p in warning_patterns):
+            warnings.append(line)
+        else:
+            info += 1
+            
+    return errors, warnings, info
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic Log: Token-optimized log summarizer.")
+    parser.add_argument("file", nargs="?", help="Log file to read (default: stdin)")
+    parser.add_argument("-n", "--lines", type=int, default=1000, help="Max lines to read")
+    parser.add_argument("--errors-only", action="store_true", help="Only show errors")
+    
+    args = parser.parse_args()
+    
+    if args.file:
+        try:
+            with open(args.file, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()[-args.lines:]
+        except Exception as e:
+            print(f"Error reading log file: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Read from stdin (capped)
+        lines = sys.stdin.readlines()[-args.lines:]
+
+    errors, warnings, info_count = summarize_logs(lines)
+    
+    is_tty = sys.stdout.isatty()
+    
+    if is_tty:
+        print(f"\033[1;34mLog Summary ({len(lines)} lines analyzed)\033[0m")
+        print(f"\033[1;31mErrors: {len(errors)}\033[0m | \033[1;33mWarnings: {len(warnings)}\033[0m | Info: {info_count}")
+        print("-" * 40)
+        
+        if errors:
+            print("\033[1;31mTop Errors:\033[0m")
+            for e in errors[:20]: # Cap to 20 to avoid blowout
+                print(f"  {e}")
+            if len(errors) > 20:
+                print(f"  ... and {len(errors)-20} more errors")
+                
+        if not args.errors_only and warnings:
+            print("\n\033[1;33mTop Warnings:\033[0m")
+            for w in warnings[:10]:
+                print(f"  {w}")
+    else:
+        print(f"Errors: {len(errors)}, Warnings: {len(warnings)}, Info: {info_count}")
+        for e in errors[:20]:
+            print(f"ERROR: {e}")
+        if not args.errors_only:
+            for w in warnings[:10]:
+                print(f"WARN: {w}")
+
+if __name__ == "__main__":
+    main()

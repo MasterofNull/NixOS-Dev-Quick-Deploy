@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+# asum — Agentic Summarize: Universal structural file overview.
+#
+# Extracts high-level structure (classes, functions, headers) from
+# multiple languages to provide quick architectural context.
+import sys
+import argparse
+import pathlib
+
+def summarize_python(lines):
+    summary = []
+    for i, line in enumerate(lines):
+        if line.startswith('class ') or line.strip().startswith('def '):
+            summary.append((i + 1, line.rstrip()))
+    return summary
+
+def summarize_markdown(lines):
+    summary = []
+    for i, line in enumerate(lines):
+        if line.startswith('#'):
+            summary.append((i + 1, line.rstrip()))
+    return summary
+
+def summarize_nix(lines):
+    summary = []
+    for i, line in enumerate(lines):
+        trimmed = line.strip()
+        if '{' in line and '=' in line and not line.startswith(' '):
+            summary.append((i + 1, line.rstrip()))
+        elif trimmed.startswith('import ') or (trimmed.startswith('let') and '=' in trimmed):
+            summary.append((i + 1, line.rstrip()))
+    return summary
+
+def summarize_javascript(lines):
+    summary = []
+    patterns = ['class ', 'function ', 'export function', 'export class', 'export const', 'const ', 'let ']
+    for i, line in enumerate(lines):
+        if any(line.strip().startswith(p) for p in patterns) and ('=>' in line or '{' in line):
+            if len(line.strip()) < 100: # Avoid long minified lines
+                summary.append((i + 1, line.rstrip()))
+    return summary
+
+def summarize_go(lines):
+    summary = []
+    for i, line in enumerate(lines):
+        if line.startswith('func ') or line.startswith('type ') or line.startswith('package '):
+            summary.append((i + 1, line.rstrip()))
+    return summary
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic Summarize: Universal structural overview.")
+    parser.add_argument("path", help="Path to file")
+    
+    args = parser.parse_args()
+    file_path = pathlib.Path(args.path)
+    
+    if not file_path.exists():
+        print(f"Error: File does not exist: {file_path}", file=sys.stderr)
+        sys.exit(1)
+    if not file_path.is_file():
+        print(f"Error: Not a file: {file_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+    except Exception as e:
+        print(f"Error reading file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    suffix = file_path.suffix.lower()
+    if suffix == '.py':
+        summary = summarize_python(lines)
+    elif suffix == '.md':
+        summary = summarize_markdown(lines)
+    elif suffix == '.nix':
+        summary = summarize_nix(lines)
+    elif suffix in ('.js', '.ts', '.jsx', '.tsx'):
+        summary = summarize_javascript(lines)
+    elif suffix == '.go':
+        summary = summarize_go(lines)
+    else:
+        summary = [(i+1, l.rstrip()) for i, l in enumerate(lines[:10])]
+        print(f"Note: No specialized summarizer for {suffix}, showing head.")
+
+    is_tty = sys.stdout.isatty()
+    if is_tty:
+        print(f"\033[1;34mSummary: {file_path.absolute()} ({len(lines)} lines)\033[0m")
+    else:
+        print(f"Summary: {file_path.absolute()} ({len(lines)} lines)")
+        
+    print("-" * 40)
+    for line_no, content in summary:
+        if is_tty:
+            print(f"\033[1;34m{line_no:>4}\033[0m | {content}")
+        else:
+            print(f"{line_no:>4} | {content}")
+    print("-" * 40)
+    
+    chars = sum(len(l) for _, l in summary)
+    full_chars = sum(len(l) for l in lines)
+    print(f"Summary tokens: ~{chars // 4} (Full file: ~{full_chars // 4})")
+
+if __name__ == "__main__":
+    main()

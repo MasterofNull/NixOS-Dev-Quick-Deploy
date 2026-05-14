@@ -14,7 +14,7 @@ DOC_ALLOWED_DIRS=(
 # Approved scripts subdirs map to OSI roles: AI (L4/L6), Data (L5), Health (L7), etc.
 SCRIPT_ALLOWED_DIRS=(
   lib governance ai data deploy health security testing utils services
-  reliability performance observability automation
+  reliability performance observability automation agent-tools
 )
 OSI_LAYERS=(
   l1-infra l2-runtime l3-conn l4-coord l5-state l6-cog l7-interaction

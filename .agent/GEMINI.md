@@ -36,11 +36,12 @@ aq-context-bootstrap --task "<task>"    # minimal context + entrypoint
 If resuming: `mcp_server_get_working_memory` → `mcp_server_recall_memory` FIRST.
 
 ### Step 2 — RESEARCH
-**Codebase** (always):
+**Codebase** (always use Agentic CLI Tools):
 ```bash
-grep -r "<keyword>" . --include="*.py" -l
-grep -r "<keyword>" . --include="*.nix" -l
-# read only files relevant to the current slice
+agrep "<keyword>" .                    # replaces grep; optimized for signal
+als -d 2                                # replaces ls/tree; hides noise
+acat <file>                             # replaces cat; line numbers + capped output
+asum <file>                             # structural overview (Py, JS, Go, Nix)
 ```
 **External** (for implementation decisions, security topics, new integrations):
 - Web search for cutting-edge practices specific to the task
@@ -107,7 +108,10 @@ Never commit without validation evidence. Never use `--no-verify`.
 |-----------|-------------|
 | PRSI / self-improvement | `mcp_server_get_prsi_pending` → `prsi_orchestrate` |
 | Service health / errors | `mcp_server_harness_health` → `aq-qa 0` |
-| Unknown file / location | `grep -r "<keyword>" . --include="*.py" -l` |
+| Unknown file / location | `agrep "<keyword>" .` (replaces standard grep) |
+| Directory exploration | `als -d 1` (replaces ls/tree) |
+| File inspection | `acat <file>` (replaces cat/bat) |
+| Structural overview | `asum <file>` (new structural summary) |
 | Harness workflow / hints | `mcp_server_get_hints {q:"<task>"}` → `aq-hints` |
 | Knowledge search | `mcp_server_hybrid_search` → `mcp_server_query_aidb` |
 | Resuming work | `mcp_server_get_working_memory` → `mcp_server_recall_memory` |

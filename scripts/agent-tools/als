@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+# als — Agentic List: Universal token-optimized directory listing.
+#
+# Provides compact, high-signal file lists while automatically
+# filtering out common development noise.
+import os
+import sys
+import argparse
+import pathlib
+import json
+
+# Universal default ignore patterns
+DEFAULT_IGNORES = {
+    '.git', 'node_modules', '__pycache__', '.pytest_cache', 
+    '.venv', '.cache', '.direnv', 'dist', 'build', '.DS_Store',
+    'venv', 'target', '.idea', '.vscode'
+}
+
+def load_config():
+    config = {'ignores': list(DEFAULT_IGNORES)}
+    global_config_path = pathlib.Path.home() / '.config' / 'agentic-tools' / 'config.json'
+    if global_config_path.exists():
+        try:
+            with open(global_config_path, 'r') as f:
+                global_data = json.load(f)
+                config['ignores'].extend(global_data.get('ignores', []))
+        except Exception: pass
+
+    current = pathlib.Path.cwd()
+    for parent in [current] + list(current.parents):
+        local_config_path = parent / '.agentic-tools.json'
+        if local_config_path.exists():
+            try:
+                with open(local_config_path, 'r') as f:
+                    local_data = json.load(f)
+                    config['ignores'].extend(local_data.get('ignores', []))
+                break 
+            except Exception: pass
+    
+    config['ignores'] = set(config['ignores'])
+    return config
+
+def is_ignored(path, ignores):
+    parts = path.parts
+    return any(part in ignores for part in parts if part not in ('.', '..'))
+
+def format_size(size):
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024.0:
+            return f"{size:3.1f}{unit}"
+        size /= 1024.0
+    return f"{size:3.1f}TB"
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic List: Universal token-optimized listing.")
+    parser.add_argument("path", nargs="?", default=".", help="Path to list")
+    parser.add_argument("-d", "--depth", type=int, default=1, help="Max depth")
+    parser.add_argument("-a", "--all", action="store_true", help="Show ignored files")
+    parser.add_argument("-l", "--long", action="store_true", help="Long format")
+    
+    args = parser.parse_args()
+    config = load_config()
+    ignores = set() if args.all else config['ignores']
+    root_path = pathlib.Path(args.path)
+    
+    if not root_path.exists():
+        print(f"Error: Path does not exist: {root_path}", file=sys.stderr)
+        sys.exit(1)
+
+    is_tty = sys.stdout.isatty()
+    if is_tty:
+        print(f"\033[1;34mListing: {root_path.absolute()}\033[0m")
+    else:
+        print(f"Listing: {root_path.absolute()}")
+    
+    items_shown = 0
+    total_items = 0
+    
+    def walk_and_list(current_path, current_depth):
+        nonlocal items_shown, total_items
+        if current_depth > args.depth:
+            return
+
+        try:
+            entries = sorted(list(current_path.iterdir()), key=lambda x: (not x.is_dir(), x.name.lower()))
+        except PermissionError:
+            print(f"  {'  ' * (current_depth-1)} [Permission Denied: {current_path.name}]")
+            return
+        except Exception as e:
+            print(f"  {'  ' * (current_depth-1)} [Error: {e}]")
+            return
+
+        for entry in entries:
+            total_items += 1
+            if not args.all and is_ignored(entry, ignores):
+                continue
+            
+            items_shown += 1
+            indent = "  " * (current_depth - 1)
+            prefix = "📁 " if entry.is_dir() else "📄 "
+            name = entry.name
+            
+            if entry.is_dir() and is_tty:
+                name = f"\033[1;34m{name}/\033[0m"
+            elif entry.is_dir():
+                name = f"{name}/"
+            
+            if args.long:
+                try:
+                    stat = entry.stat()
+                    size = format_size(stat.st_size)
+                    print(f"{indent}{prefix}{name:<30} {size:>10}")
+                except Exception:
+                    print(f"{indent}{prefix}{name}")
+            else:
+                print(f"{indent}{prefix}{name}")
+                
+            if entry.is_dir() and current_depth < args.depth:
+                walk_and_list(entry, current_depth + 1)
+
+    walk_and_list(root_path, 1)
+    
+    if is_tty:
+        print(f"\n---\nShown {items_shown} of {total_items} items (Depth: {args.depth})")
+        if not args.all:
+            print(f"Ignored items filtered (use -a to show all)")
+    else:
+        print(f"Shown {items_shown}/{total_items} items")
+
+if __name__ == "__main__":
+    main()
