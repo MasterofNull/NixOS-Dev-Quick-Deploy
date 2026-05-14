@@ -633,6 +633,20 @@ PYEOF
     _fail 4 "0.9.1" "safety gate endpoint reachable" "HTTP ${gate_http:-ERR}: ${gate_out:0:80}"
   fi
 
+  # 0.9.5 Trust-root infrastructure (Phase 40 PAR-008/009)
+  local verify_script="${REPO_ROOT}/scripts/testing/verify-skill-registry.sh"
+  local rotate_script="${REPO_ROOT}/scripts/security/rotate-skill-registry-key.sh"
+  local trust_roots="${REPO_ROOT}/config/keys/skill-registry-trust-roots.json"
+  if [[ -x "$verify_script" ]] && [[ -x "$rotate_script" ]] && [[ -f "$trust_roots" ]]; then
+    _pass 4 "0.9.5" "trust-root infra: verify-skill-registry.sh + rotate-skill-registry-key.sh + trust-roots.json present"
+  else
+    local _missing=()
+    [[ ! -x "$verify_script" ]] && _missing+=("verify-skill-registry.sh")
+    [[ ! -x "$rotate_script" ]] && _missing+=("rotate-skill-registry-key.sh")
+    [[ ! -f "$trust_roots" ]]   && _missing+=("trust-roots.json")
+    _fail 4 "0.9.5" "trust-root infra complete" "missing: ${_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

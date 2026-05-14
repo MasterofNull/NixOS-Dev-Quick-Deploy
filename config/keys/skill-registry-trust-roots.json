@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "_comment": "Phase 40 (PAR-008): trusted public keys for skill registry index signing. Managed by scripts/security/rotate-skill-registry-key.sh.",
+  "trusted_keys": [],
+  "last_rotation": null,
+  "policy": {
+    "require_signature_on_install": false,
+    "allow_unsigned_if_no_keys": true,
+    "_comment": "Set require_signature_on_install=true in production. allow_unsigned_if_no_keys=true permits bootstrapping before first key generation."
+  }
+}

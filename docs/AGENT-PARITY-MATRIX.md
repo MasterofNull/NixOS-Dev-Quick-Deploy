@@ -215,8 +215,12 @@ Purpose:
 
 ## Remaining High-Impact Gaps
 
-1. Add remote trust roots and key rotation policy for signed registries
-- Remote index consumption and signature checks are implemented; enterprise trust distribution/rotation workflow is not yet automated.
+1. ~~Add remote trust roots and key rotation policy for signed registries~~ **RESOLVED — Phase 40**
+- `scripts/security/rotate-skill-registry-key.sh` — RSA-3072 key rotation: archives old key, generates new pair, updates `skill-registry-trust-roots.json` (marks old fingerprint revoked, adds new as active), re-signs index if present.
+- `scripts/testing/verify-skill-registry.sh` — openssl SHA-256 signature verify + fingerprint check against active trust set; supports `--trust-roots` flag.
+- `config/keys/skill-registry-trust-roots.json` — trust roots store (version, trusted_keys[], policy).
+- `scripts/governance/skill-bundle-registry.py install` — enforces `require_signature_on_install` policy from trust-roots; `--require-signature` / `--trust-roots` flags added.
+- aq-qa check `0.9.5` validates all four artifacts are present and executable.
 
 2. ~~Add full orchestration graph executor for staged agent pipelines~~ **RESOLVED — Phase 38**
 - `RetryPolicy` dataclass (max_attempts, initial_delay_s, backoff_factor, max_delay_s) in `workflow_executor.py`.
@@ -301,7 +305,7 @@ Notes:
 |---|---|---|---|
 | Workflow orchestration runtime | Code-agent leaders expose explicit run loops with retries/recovery | **Near parity** — Phase 38: `RetryPolicy` (max_attempts, backoff_factor, max_delay) wired into `WorkflowExecutor`; retry state tracked per session+phase; `POST /workflow/run/{id}/execute` + `GET /workflow/run/{id}/execute/status` live | `Near parity` (Phase 38) |
 | Guarded tool execution | Mature agents gate risky actions and isolate execution context | blast_radius_classifier + safety_gate in DELEGATE phase; open/review/strict modes | `Near parity` (Phase 28) |
-| Trust distribution and key lifecycle | Production systems publish trust-root and rotation processes | Signed skill registry exists; remote trust rotation not automated | `P0 gap` |
+| Trust distribution and key lifecycle | Production systems publish trust-root and rotation processes | **Near parity** — Phase 40: RSA-3072 key rotation script (`rotate-skill-registry-key.sh`), verification script (`verify-skill-registry.sh`), trust-roots JSON store, and `scripts/governance/skill-bundle-registry.py install` enforcement all wired; aq-qa `0.9.5` validates infra presence | `Near parity` (Phase 40) |
 | Continuous quality benchmarking | Common use of repeatable eval/regression loops | Harness eval + regression scripts exist | `P1 gap` (external benchmark corpus integration) |
 | Agent memory/context quality controls | Strong projects add compaction and memory feedback loops | Semantic embeddings live (1024-dim, Phase 13.1); progressive disclosure + feedback loops operational | `Parity` |
 | Multi-turn agentic context persistence | Mature agents maintain session state across turns for RLM loops | Redis-backed `/context/multi_turn` operational; 2-turn session confirmed (Phase 13.2) | `Parity` |

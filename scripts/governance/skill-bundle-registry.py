@@ -158,6 +158,37 @@ def cmd_install(args: argparse.Namespace) -> int:
             print(f"ERROR: index not found: {index_path}")
             return 1
 
+        # Phase 40 (PAR-009): load trust-roots policy for enforcement decisions
+        trust_roots_file = Path(
+            getattr(args, "trust_roots", "") or
+            os.environ.get("SKILL_REGISTRY_TRUST_ROOTS", "") or
+            str(Path(__file__).parent.parent / "config" / "keys" / "skill-registry-trust-roots.json")
+        )
+        trust_policy: dict = {}
+        if trust_roots_file.is_file():
+            try:
+                trust_policy = json.loads(trust_roots_file.read_text(encoding="utf-8")).get("policy", {})
+            except Exception:
+                pass
+        require_sig = (
+            getattr(args, "require_signature", False)
+            or trust_policy.get("require_signature_on_install", False)
+        )
+        has_active_keys = False
+        if trust_roots_file.is_file():
+            try:
+                roots_data = json.loads(trust_roots_file.read_text(encoding="utf-8"))
+                has_active_keys = any(
+                    k.get("status") == "active"
+                    for k in roots_data.get("trusted_keys", [])
+                )
+            except Exception:
+                pass
+        # Require signature when policy says so AND keys are provisioned
+        if require_sig and has_active_keys and not (args.signature and args.public_key):
+            print("ERROR: trust-roots policy requires --signature and --public-key for install")
+            return 1
+
         if args.signature and args.public_key:
             sig_ref = str(args.signature)
             pub = Path(args.public_key).resolve()
@@ -274,6 +305,8 @@ def main() -> int:
     p_install.add_argument("--bundles-dir", default="", help="Optional override directory for bundle files")
     p_install.add_argument("--signature", default="", help="Optional detached signature path or URL for index.json")
     p_install.add_argument("--public-key", default="", help="Optional public key for signature verification")
+    p_install.add_argument("--require-signature", action="store_true", help="Enforce signature verification (Phase 40 PAR-009)")
+    p_install.add_argument("--trust-roots", default="", help="Path to skill-registry-trust-roots.json for trust-set enforcement")
     p_install.add_argument("--force", action="store_true", help="Replace destination if skill already exists")
     p_install.set_defaults(func=cmd_install)
 
