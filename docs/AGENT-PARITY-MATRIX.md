@@ -495,7 +495,7 @@ These were selected as closest matches to your target profile (runtime + coding-
 
 | Capability cluster | Target-style repo signal | This repo status | Gap priority |
 |---|---|---|---|
-| Multi-tenant agent runtime isolation | `station`, `openfang`, `agent-sandbox`, `openlegion`, `sandboxed.sh` emphasize isolated execution environments | Partial (policy and checks exist, but dedicated runtime isolation plane is not first-class) | `P0` |
+| Multi-tenant agent runtime isolation | `station`, `openfang`, `agent-sandbox`, `openlegion`, `sandboxed.sh` emphasize isolated execution environments | **Near parity** — Phase 41: `provision_run_workspace` creates per-run `{workspace_root}/{session_id}/` on session start; `_check_isolation_constraints` enforces run-scoped boundary; `teardown_run_workspace` archives/removes on completion; `GET /runtime/isolation/workspace/{session_id}` exposes live status | `Near parity` (Phase 41) |
 | Production deploy/control-plane for agents | `station`, `agentstack`, `voltagent`, `docker/cagent` provide deploy-first workflows | Partial (strong local stack, but dedicated fleet/control-plane UX is limited) | `P0` |
 | MCP-first workflow construction | `mcp-agent`, `tuui`, `oh-my-pi` focus on MCP-centered flows and tool orchestration | Near parity (MCP ecosystem present) | `P1` |
 | Terminal-native coding-agent ergonomics | `codebuff`, `pi-mono`, `oh-my-pi`, `learn-claude-code` emphasize fast CLI loops and composable commands | Partial (RPC/SDK present; CLI ergonomics can be tighter) | `P1` |
@@ -619,7 +619,7 @@ Manual verification (after rebuild completes):
 - `bash scripts/testing/check-failed-units-classification.sh`
 
 Pending depth work:
-- hard isolation backend for workspace/process/network boundaries
+- ~~hard isolation backend for workspace/process/network boundaries~~ **Near parity — Phase 41** (per-run dirs, constraint enforcement, teardown)
 - runtime-to-runtime fleet scheduling semantics
 - full benchmark adapters for SWE-style datasets in CI
 

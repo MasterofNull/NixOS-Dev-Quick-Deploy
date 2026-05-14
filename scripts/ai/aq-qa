@@ -647,6 +647,25 @@ PYEOF
     _fail 4 "0.9.5" "trust-root infra complete" "missing: ${_missing[*]}"
   fi
 
+  # 0.9.6 Per-run workspace isolation (Phase 41)
+  local isolation_profiles="${RUNTIME_ISOLATION_PROFILES_FILE:-${REPO_ROOT}/config/runtime-isolation-profiles.json}"
+  local wsh_file="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_session_handlers.py"
+  local rmgr_file="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_manager.py"
+  local has_provision=0 has_teardown=0 has_endpoint=0
+  grep -q "provision_run_workspace" "$rmgr_file" 2>/dev/null && has_provision=1
+  grep -q "teardown_run_workspace" "$rmgr_file" 2>/dev/null && has_teardown=1
+  grep -q "handle_runtime_isolation_workspace" "$wsh_file" 2>/dev/null && has_endpoint=1
+  if [[ "$has_provision" -eq 1 ]] && [[ "$has_teardown" -eq 1 ]] && [[ "$has_endpoint" -eq 1 ]] && [[ -f "$isolation_profiles" ]]; then
+    _pass 4 "0.9.6" "per-run workspace isolation: provision/teardown + /runtime/isolation/workspace endpoint present"
+  else
+    local _iso_missing=()
+    [[ "$has_provision" -eq 0 ]]  && _iso_missing+=("provision_run_workspace")
+    [[ "$has_teardown" -eq 0 ]]   && _iso_missing+=("teardown_run_workspace")
+    [[ "$has_endpoint" -eq 0 ]]   && _iso_missing+=("handle_runtime_isolation_workspace")
+    [[ ! -f "$isolation_profiles" ]] && _iso_missing+=("runtime-isolation-profiles.json")
+    _fail 4 "0.9.6" "per-run workspace isolation complete" "missing: ${_iso_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then
