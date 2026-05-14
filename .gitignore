@@ -162,6 +162,7 @@ nix/hosts/*/.sops.yaml
 .agents/scratchpad/
 # Agent delegation task output logs (runtime; registry.jsonl is tracked)
 .agents/delegation/outputs/
+.agents/delegation/fanout/
 tmp/
 
 # Impeccable skill runtime cache (auto-populated from upstream skill definitions;
