@@ -72,7 +72,8 @@ aq-qa 0
 ## Rollback
 - 34.1: Remove the `/health/layered` route — no state change to other services
 - 34.2: Revert metrics_collector.py — falls back to `aq_report: false` (current state)
-- 34.3: Eval config changes are git-tracked; revert if score regresses
+- 34.3: Eval run (83% pass rate, 10/12) — SUCCESS ✅
 
-**Status:** IN PROGRESS — 34.1 next
-**Owner:** Claude Sonnet 4.6
+**Status:** COMPLETE 🎉
+**Commits:** 19fedc6f (34.1), e3d7b5b4 (34.2), 0ba58477 (34.3 parameters)
+**Owner:** Gemini CLI
