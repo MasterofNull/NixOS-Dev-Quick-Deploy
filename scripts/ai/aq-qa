@@ -800,6 +800,40 @@ assert parts >= [0,4,0], f'aqd version {v} < 0.4.0'
     _fail 4 "0.9.12" "CLI ergonomics aqd run subcommands" "missing: ${_aqd_missing[*]}"
   fi
 
+  # 0.9.13 MCP workflow blueprints registry (Phase 48)
+  local blueprints_file="${WORKFLOW_BLUEPRINTS_FILE:-${REPO_ROOT}/config/workflow-blueprints.json}"
+  local blueprints_ok=true
+  local _bp_missing=()
+  if [[ ! -f "$blueprints_file" ]]; then
+    blueprints_ok=false; _bp_missing+=("workflow-blueprints.json")
+  else
+    local bp_count bp_ver bp_cats_ok
+    bp_count=$(python3 -c "import json; d=json.load(open('$blueprints_file')); print(len(d.get('blueprints',[])))" 2>/dev/null || echo 0)
+    bp_ver=$(python3 -c "import json; d=json.load(open('$blueprints_file')); print(d.get('version','0'))" 2>/dev/null || echo 0)
+    [[ "$bp_count" -lt 5 ]] && { blueprints_ok=false; _bp_missing+=("blueprints-count(${bp_count}<5)"); }
+    bp_cats_ok=$(python3 -c "
+import json
+d = json.load(open('$blueprints_file'))
+bps = d.get('blueprints', [])
+missing = [b.get('id','?') for b in bps if not b.get('category')]
+print('ok' if not missing else 'missing-category:' + ','.join(missing[:3]))
+" 2>/dev/null || echo "parse_error")
+    [[ "$bp_cats_ok" != "ok" ]] && { blueprints_ok=false; _bp_missing+=("${bp_cats_ok}"); }
+  fi
+  # Verify /workflow/blueprints route is wired
+  local bp_handler="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_session_handlers.py"
+  if [[ -f "$bp_handler" ]]; then
+    grep -q '"/workflow/blueprints"' "$bp_handler" 2>/dev/null \
+      || { blueprints_ok=false; _bp_missing+=("workflow-blueprints-route"); }
+  else
+    blueprints_ok=false; _bp_missing+=("workflow_session_handlers.py")
+  fi
+  if $blueprints_ok; then
+    _pass 4 "0.9.13" "MCP workflow blueprints: ${bp_count} blueprints v${bp_ver} with category+tags + GET /workflow/blueprints wired"
+  else
+    _fail 4 "0.9.13" "MCP workflow blueprints" "missing: ${_bp_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

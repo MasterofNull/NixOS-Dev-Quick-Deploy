@@ -532,9 +532,11 @@ These were selected as closest matches to your target profile (runtime + coding-
 - `_budget_exceeded()` in `session_builders.py`: falls back to policy-file limits per safety_mode when per-session budget not set.
 - aq-qa check `0.9.10` validates policy schema + handler + route registration.
 
-6. `MCP Workflow Blueprints` (P1)
-- Package reusable MCP-driven workflow blueprints for common coding-agent tasks.
-- Validate blueprint compatibility via cross-client smoke tests.
+6. ~~`MCP Workflow Blueprints` (P1)~~ **RESOLVED — Phase 48**
+- `config/workflow-blueprints.json` v1.1: 12 blueprints with category + tags enrichment (coding, operations, reasoning, orchestration, research, improvement, recovery, performance).
+- `GET /workflow/blueprints` live via `handle_workflow_blueprints` in workflow_session_handlers.py.
+- `aqd blueprints list` — tabular listing; `aqd blueprints get <id>` — full definition; `aqd blueprints apply <id> --task <text>` — session start via blueprint template.
+- aq-qa check `0.9.13` validates count ≥5, category field on all blueprints, and route wiring.
 
 ### Implementation Status (Started 2026-03-03)
 
