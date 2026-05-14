@@ -6,6 +6,7 @@ set -euo pipefail
 
 # Source CLI utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "$SCRIPT_DIR/cli-enhanced.sh" 2>/dev/null || {
     echo "Warning: cli-enhanced.sh not found, some tests will be limited"
 }
@@ -75,7 +76,7 @@ assert_executable() {
 test_dashboard_structure() {
     print_test_header "Dashboard HTML Structure and CSS Styles"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check if dashboard file exists
     assert_file_exists "$dashboard_file" "Dashboard HTML file exists"
@@ -178,8 +179,8 @@ test_bash_completion() {
 test_documentation() {
     print_test_header "Documentation Files"
 
-    local quick_start="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/user-guides/quick-start.md"
-    local keyboard_shortcuts="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/user-guides/keyboard-shortcuts.md"
+    local quick_start="${REPO_ROOT}/docs/user-guides/quick-start.md"
+    local keyboard_shortcuts="${REPO_ROOT}/docs/user-guides/keyboard-shortcuts.md"
 
     # Quick start guide
     assert_file_exists "$quick_start" "Quick start guide exists"
@@ -203,7 +204,7 @@ test_documentation() {
 test_error_handling() {
     print_test_header "Error Handling and Contextual Messages"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for error codes in HTML
     assert_file_contains "$dashboard_file" "E001" "Error code E001 (Configuration) defined"
@@ -224,7 +225,7 @@ test_error_handling() {
 test_keyboard_shortcuts() {
     print_test_header "Keyboard Shortcuts Implementation"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for keyboard shortcut bindings
     assert_file_contains "$dashboard_file" "addEventListener.*keydown" "Keyboard event listener added"
@@ -244,7 +245,7 @@ test_keyboard_shortcuts() {
 test_loading_states() {
     print_test_header "Loading States and Animations"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for loading states
     assert_file_contains "$dashboard_file" "class.*loading" "Loading state class defined"
@@ -263,7 +264,7 @@ test_loading_states() {
 test_empty_error_states() {
     print_test_header "Empty and Error States"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for empty state rendering
     assert_file_contains "$dashboard_file" "renderEmptyState" "Empty state render function added"
@@ -283,7 +284,7 @@ test_empty_error_states() {
 test_onboarding_flow() {
     print_test_header "Onboarding Flow"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for onboarding components
     assert_file_contains "$dashboard_file" "OnboardingManager" "Onboarding manager class defined"
@@ -303,7 +304,7 @@ test_onboarding_flow() {
 test_notifications() {
     print_test_header "Toast Notification System"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for notification styles
     assert_file_contains "$dashboard_file" "success-toast" "Success toast styling added"
@@ -321,7 +322,7 @@ test_notifications() {
 test_help_tooltips() {
     print_test_header "Help Tooltips"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for tooltip styling
     assert_file_contains "$dashboard_file" "help-tooltip" "Help tooltip class added"
@@ -335,7 +336,7 @@ test_help_tooltips() {
 test_progress_tracking() {
     print_test_header "Progress Tracking for Operations"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check for progress components
     assert_file_contains "$dashboard_file" "operation-progress" "Progress container styling added"
@@ -350,7 +351,7 @@ test_progress_tracking() {
 test_feature_integration() {
     print_test_header "Feature Integration with Existing Code"
 
-    local dashboard_file="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard.html"
+    local dashboard_file="${REPO_ROOT}/dashboard.html"
 
     # Check that new features are initialized
     assert_file_contains "$dashboard_file" "initializeUXImprovements" "UX initialization function defined"
@@ -367,7 +368,7 @@ test_feature_integration() {
 test_file_structure() {
     print_test_header "File Structure and Organization"
 
-    local base_path="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"
+    local base_path="${REPO_ROOT}"
 
     # Check directory structure
     assert_true "[[ -d '$base_path/scripts/ai' ]]" "scripts/ai directory exists"
@@ -387,7 +388,7 @@ test_file_structure() {
 test_code_quality() {
     print_test_header "Code Quality and Syntax Validation"
 
-    local base_path="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"
+    local base_path="${REPO_ROOT}"
 
     # Python syntax validation
     assert_true "python3 -m py_compile '$base_path/scripts/ai/cli-utils.py'" "Python code is syntactically valid"
@@ -406,8 +407,8 @@ test_code_quality() {
 test_documentation_completeness() {
     print_test_header "Documentation Completeness"
 
-    local quick_start="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/user-guides/quick-start.md"
-    local keyboard_shortcuts="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/user-guides/keyboard-shortcuts.md"
+    local quick_start="${REPO_ROOT}/docs/user-guides/quick-start.md"
+    local keyboard_shortcuts="${REPO_ROOT}/docs/user-guides/keyboard-shortcuts.md"
 
     # Check for minimum documentation structure
     assert_true "[[ \$(wc -l < \"$quick_start\") -gt 100 ]]" "Quick start guide is comprehensive (>100 lines)"
