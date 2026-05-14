@@ -542,6 +542,9 @@ in {
     # Agentic CLI tools (Token-optimized for AI agents)
     (pkgs.callPackage ../pkgs/agentic-tools.nix {})
 
+    # Native LLM CLI tools (Phase 36 restoration)
+    llama-cpp
+
     # Nix utilities
     nix-tree
     nix-diff
@@ -684,6 +687,10 @@ in {
       ac = "acat";
       as = "asum";
       ad = "adiff";
+      # Llama.cpp & Local Agent CLI tools
+      lc = "llama-cli";
+      lsrv = "llama-server";
+      aq-loop = "aq-agent-loop";
       # pi-coding-agent wired to local switchboard (OpenAI-compatible proxy at :8085)
       pi = "OPENAI_BASE_URL=\"http://127.0.0.1:${toString aiSwitchboardPort}/v1\" OPENAI_API_KEY=dummy $HOME/.npm-global/bin/pi --provider openai";
     };
@@ -812,6 +819,7 @@ in {
   home.sessionPath = [
     "$HOME/.local/bin"
     "$HOME/.npm-global/bin" # codex, qwen, gemini, pi CLI agents
+    "${repoPath}/scripts/ai"
   ];
 
   # =========================================================================
