@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$PROJECT_ROOT"
-AQD_VERSION="0.4.0"
+AQD_VERSION="0.5.0"
 
 die() {
   echo "ERROR: $*" >&2
@@ -49,6 +49,10 @@ Usage:
   aqd parity check-boot-shutdown
   aqd parity chaos-smoke
   aqd parity cross-client-smoke
+
+  aqd blueprints list                      -- list registered workflow blueprints
+  aqd blueprints get  <id>                 -- show full blueprint definition
+  aqd blueprints apply <id> --task <text>  -- start a session using blueprint as template
 
   aqd run plan   <task>                     -- plan-readonly query via coordinator
   aqd run execute <task> [--mode MODE]      -- execute-mutating query via coordinator
@@ -1566,6 +1570,73 @@ cmd_mcp_deploy_aidb() {
   "${REPO_ROOT}/scripts/deploy/deploy-aidb-mcp-server.sh"
 }
 
+# ── blueprints subcommands (Phase 48: MCP workflow blueprint registry) ────────
+
+cmd_blueprints_list() {
+  local url; url="$(_aqd_coordinator_url)/workflow/blueprints"
+  local resp; resp=$(_aqd_http_get "$url")
+  echo "$resp" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+bps = d.get('blueprints', [])
+print(f'Workflow blueprints ({len(bps)} registered):')
+print(f'  {\"ID\":<45} {\"CAT\":<14} {\"MODE\":<18} TITLE')
+print('  ' + '-'*100)
+for b in bps:
+    print(f'  {b.get(\"id\",\"?\"):<45} {b.get(\"category\",\"-\"):<14} {b.get(\"default_safety_mode\",\"-\"):<18} {b.get(\"title\",\"?\")}')
+"
+}
+
+cmd_blueprints_get() {
+  local bp_id="${1:-}"
+  [[ -n "$bp_id" ]] || die "Usage: aqd blueprints get <id>"
+  local url; url="$(_aqd_coordinator_url)/workflow/blueprints"
+  local resp; resp=$(_aqd_http_get "$url")
+  echo "$resp" | python3 -c "
+import json, sys
+bp_id = sys.argv[1]
+d = json.load(sys.stdin)
+bps = {b['id']: b for b in d.get('blueprints', []) if isinstance(b, dict)}
+if bp_id not in bps:
+    print(f'Blueprint not found: {bp_id}', file=sys.stderr)
+    print(f'Available: {list(bps.keys())}', file=sys.stderr)
+    sys.exit(1)
+print(json.dumps(bps[bp_id], indent=2))
+" "$bp_id"
+}
+
+cmd_blueprints_apply() {
+  local bp_id="" task=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --task) shift; task="$1" ;;
+      *) bp_id="$1" ;;
+    esac
+    shift
+  done
+  [[ -n "$bp_id" ]] || die "Usage: aqd blueprints apply <id> --task <text>"
+  [[ -n "$task" ]] || die "Usage: aqd blueprints apply <id> --task <text>"
+
+  # Fetch blueprint to get default_safety_mode
+  local url; url="$(_aqd_coordinator_url)/workflow/blueprints"
+  local blueprint_mode="execute-mutating"
+  blueprint_mode=$(cmd_blueprints_get "$bp_id" 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('default_safety_mode','execute-mutating'))" 2>/dev/null \
+    || echo "execute-mutating")
+
+  echo "[aqd blueprints apply] blueprint=${bp_id} mode=${blueprint_mode} task: ${task:0:80}..."
+  local session_url; session_url="$(_aqd_coordinator_url)/workflow/session/start"
+  local payload; payload=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'task': sys.argv[1],
+    'safety_mode': sys.argv[2],
+    'blueprint_id': sys.argv[3],
+}))
+" "$task" "$blueprint_mode" "$bp_id")
+  _aqd_http_post "$session_url" "$payload" | python3 -m json.tool
+}
+
 # ── run subcommands (Phase 47: agent lifecycle ergonomics) ────────────────────
 
 _aqd_coordinator_url() {
@@ -1715,6 +1786,9 @@ main() {
     workflows:brownfield) cmd_workflows_brownfield "$@" ;;
     workflows:retrofit) cmd_workflows_retrofit "$@" ;;
     workflows:bootstrap) cmd_workflows_bootstrap "$@" ;;
+    blueprints:list)    cmd_blueprints_list "$@" ;;
+    blueprints:get)     cmd_blueprints_get "$@" ;;
+    blueprints:apply)   cmd_blueprints_apply "$@" ;;
     run:plan)           cmd_run_plan "$@" ;;
     run:execute)        cmd_run_execute "$@" ;;
     run:replay)         cmd_run_replay "$@" ;;

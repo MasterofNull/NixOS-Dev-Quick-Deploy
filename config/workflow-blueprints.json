@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "blueprints": [
     {
       "id": "coding-bugfix-safe",
@@ -67,6 +67,12 @@
           ],
           "exit_criteria": "Smoke checks pass."
         }
+      ],
+      "category": "coding",
+      "tags": [
+        "bugfix",
+        "safe",
+        "plan-first"
       ]
     },
     {
@@ -135,6 +141,12 @@
           ],
           "exit_criteria": "No boot/shutdown regression signals."
         }
+      ],
+      "category": "operations",
+      "tags": [
+        "nixos",
+        "security",
+        "hardening"
       ]
     },
     {
@@ -227,6 +239,12 @@
           ],
           "exit_criteria": "Next action queued as proceed, targeted-eval, or quarantine/escalate."
         }
+      ],
+      "category": "improvement",
+      "tags": [
+        "prsi",
+        "autonomous",
+        "self-improvement"
       ]
     },
     {
@@ -321,6 +339,12 @@
           ],
           "exit_criteria": "Validation confirms context can be recalled compactly and the operator has a clear rollback path."
         }
+      ],
+      "category": "performance",
+      "tags": [
+        "context",
+        "offload",
+        "long-running"
       ]
     },
     {
@@ -358,25 +382,44 @@
       "phases": [
         {
           "id": "discover",
-          "tools": ["hints", "route_search", "memory_recall"],
+          "tools": [
+            "hints",
+            "route_search",
+            "memory_recall"
+          ],
           "exit_criteria": "Current invariants, coupling points, and affected paths are identified."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan"],
+          "tools": [
+            "workflow_plan"
+          ],
           "exit_criteria": "Refactor steps, invariants, and validation matrix are explicit."
         },
         {
           "id": "execute",
-          "tools": ["route_search", "feedback"],
+          "tools": [
+            "route_search",
+            "feedback"
+          ],
           "requires_approval": true,
           "exit_criteria": "Minimal reversible refactor slices are applied."
         },
         {
           "id": "validate",
-          "tools": ["qa_check", "harness_eval", "health"],
+          "tools": [
+            "qa_check",
+            "harness_eval",
+            "health"
+          ],
           "exit_criteria": "Regression checks and acceptance evidence pass."
         }
+      ],
+      "category": "coding",
+      "tags": [
+        "refactor",
+        "guarded",
+        "approval"
       ]
     },
     {
@@ -414,25 +457,44 @@
       "phases": [
         {
           "id": "discover",
-          "tools": ["hints", "health", "route_search"],
+          "tools": [
+            "hints",
+            "health",
+            "route_search"
+          ],
           "exit_criteria": "Target services, activation path, and rollback markers are explicit."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan"],
+          "tools": [
+            "workflow_plan"
+          ],
           "exit_criteria": "Deploy, verify, and rollback steps are listed."
         },
         {
           "id": "execute",
-          "tools": ["feedback", "health"],
+          "tools": [
+            "feedback",
+            "health"
+          ],
           "requires_approval": true,
           "exit_criteria": "Deploy or rollback command sequence is completed."
         },
         {
           "id": "validate",
-          "tools": ["qa_check", "health", "harness_eval"],
+          "tools": [
+            "qa_check",
+            "health",
+            "harness_eval"
+          ],
           "exit_criteria": "Live health, capability, and acceptance checks pass."
         }
+      ],
+      "category": "operations",
+      "tags": [
+        "deploy",
+        "rollback",
+        "safe-ops"
       ]
     },
     {
@@ -470,25 +532,45 @@
       "phases": [
         {
           "id": "discover",
-          "tools": ["hints", "health", "route_search"],
+          "tools": [
+            "hints",
+            "health",
+            "route_search"
+          ],
           "exit_criteria": "Failure layer and affected surfaces are classified."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan"],
+          "tools": [
+            "workflow_plan"
+          ],
           "exit_criteria": "Recovery steps and verification smokes are explicit."
         },
         {
           "id": "execute",
-          "tools": ["feedback", "route_search", "memory_recall"],
+          "tools": [
+            "feedback",
+            "route_search",
+            "memory_recall"
+          ],
           "requires_approval": true,
           "exit_criteria": "Bounded recovery steps are applied."
         },
         {
           "id": "validate",
-          "tools": ["qa_check", "health", "harness_eval"],
+          "tools": [
+            "qa_check",
+            "health",
+            "harness_eval"
+          ],
           "exit_criteria": "Continue/editor path is re-smoked and categorized."
         }
+      ],
+      "category": "recovery",
+      "tags": [
+        "editor",
+        "rescue",
+        "continue"
       ]
     },
     {
@@ -500,7 +582,9 @@
         "primary_lane": "research",
         "reviewer_lane": "codex-review",
         "escalation_lane": "remote-reasoning",
-        "collaborator_lanes": ["remote-reasoning"],
+        "collaborator_lanes": [
+          "remote-reasoning"
+        ],
         "consensus_mode": "evidence-review",
         "selection_strategy": "evidence-first",
         "allow_parallel_subagents": true,
@@ -527,25 +611,44 @@
       "phases": [
         {
           "id": "discover",
-          "tools": ["hints", "route_search", "memory_recall"],
+          "tools": [
+            "hints",
+            "route_search",
+            "memory_recall"
+          ],
           "exit_criteria": "Subject, source bounds, and output schema are explicit."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan", "shared_skill_registry"],
+          "tools": [
+            "workflow_plan",
+            "shared_skill_registry"
+          ],
           "exit_criteria": "Research steps, source pack, and stop condition are listed."
         },
         {
           "id": "execute",
-          "tools": ["route_search", "feedback"],
+          "tools": [
+            "route_search",
+            "feedback"
+          ],
           "requires_approval": true,
           "exit_criteria": "Bounded retrieval or research collection is completed or classified."
         },
         {
           "id": "validate",
-          "tools": ["harness_eval", "feedback"],
+          "tools": [
+            "harness_eval",
+            "feedback"
+          ],
           "exit_criteria": "Evidence and summary are reviewed against the requested schema."
         }
+      ],
+      "category": "research",
+      "tags": [
+        "research",
+        "bounded",
+        "review"
       ]
     },
     {
@@ -583,31 +686,50 @@
       "phases": [
         {
           "id": "discover",
-          "tools": ["hints", "route_search", "memory_recall"],
+          "tools": [
+            "hints",
+            "route_search",
+            "memory_recall"
+          ],
           "exit_criteria": "Local context, constraints, and escalation rationale are explicit."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan", "ai_coordinator_delegate"],
+          "tools": [
+            "workflow_plan",
+            "ai_coordinator_delegate"
+          ],
           "exit_criteria": "Remote task envelope and expected artifact are defined."
         },
         {
           "id": "execute",
-          "tools": ["ai_coordinator_delegate", "feedback"],
+          "tools": [
+            "ai_coordinator_delegate",
+            "feedback"
+          ],
           "requires_approval": true,
           "exit_criteria": "Bounded remote reasoning call completed or classified."
         },
         {
           "id": "validate",
-          "tools": ["harness_eval", "feedback"],
+          "tools": [
+            "harness_eval",
+            "feedback"
+          ],
           "exit_criteria": "Remote output is locally reviewed and next action is chosen."
         }
+      ],
+      "category": "reasoning",
+      "tags": [
+        "remote",
+        "escalation",
+        "delegation"
       ]
     },
     {
       "id": "lifecycle-aware-intake",
       "title": "Unified Lifecycle Orchestration (Standard)",
-      "description": "Full 8-phase lifecycle for any user prompt: INTAKE→DISCOVER→PRD→PLAN→ASSIGN→DELEGATE→VALIDATE→COMMIT. Use for all standard and complex tasks. Entry via POST /agent/intake.",
+      "description": "Full 8-phase lifecycle for any user prompt: INTAKE\u2192DISCOVER\u2192PRD\u2192PLAN\u2192ASSIGN\u2192DELEGATE\u2192VALIDATE\u2192COMMIT. Use for all standard and complex tasks. Entry via POST /agent/intake.",
       "default_safety_mode": "plan-readonly",
       "orchestration_policy": {
         "primary_lane": "local-agent",
@@ -623,7 +745,7 @@
         "definition_of_done": "All lifecycle phases passed, commit recorded, aq-qa 0 failures.",
         "depth_expectation": "standard",
         "spirit_constraints": [
-          "All lifecycle phases must complete in order — never skip VALIDATE before COMMIT.",
+          "All lifecycle phases must complete in order \u2014 never skip VALIDATE before COMMIT.",
           "Context passed between phases must be pruned to phase-relevant keys only, never full session history."
         ],
         "no_early_exit_without": [
@@ -631,55 +753,95 @@
           "validation_passed=true",
           "commit_sha recorded"
         ],
-        "out_of_scope": ["skip validation gates", "commit without planning", "hardcode model IDs"]
+        "out_of_scope": [
+          "skip validation gates",
+          "commit without planning",
+          "hardcode model IDs"
+        ]
       },
       "notes": [
         "Use agent_intake MCP tool to start. Returns session_id for tracking.",
-        "Context pruning is automatic — each phase receives only relevant previous outputs.",
+        "Context pruning is automatic \u2014 each phase receives only relevant previous outputs.",
         "Simple tasks (typo fixes, renames) auto-skip DISCOVER+PRD and enter at PLAN.",
-        "Domain routing is automatic after PLAN phase — no manual team selection required."
+        "Domain routing is automatic after PLAN phase \u2014 no manual team selection required."
       ],
       "phases": [
         {
           "id": "intake",
-          "tools": ["agent_intake", "get_working_memory"],
+          "tools": [
+            "agent_intake",
+            "get_working_memory"
+          ],
           "exit_criteria": "Session created, complexity detected, domain classified, caller normalized."
         },
         {
           "id": "discover",
-          "tools": ["hybrid_search", "get_hints", "qa_check", "recall_memory"],
+          "tools": [
+            "hybrid_search",
+            "get_hints",
+            "qa_check",
+            "recall_memory"
+          ],
           "exit_criteria": "codebase_summary, existing_plans, health_status recorded as structured outputs."
         },
         {
           "id": "prd",
-          "tools": ["hybrid_search", "workflow_plan", "store_memory"],
+          "tools": [
+            "hybrid_search",
+            "workflow_plan",
+            "store_memory"
+          ],
           "exit_criteria": "prd_scope and acceptance_checks defined and recorded."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan", "auto_select_tools", "get_hints"],
+          "tools": [
+            "workflow_plan",
+            "auto_select_tools",
+            "get_hints"
+          ],
           "exit_criteria": "Phased plan with tool_assignments per phase. domain_hints confirmed."
         },
         {
           "id": "assign",
-          "tools": ["workflow_orchestrate", "auto_select_tools"],
-          "exit_criteria": "agent_assignments and team_routing resolved — no hardcoded model IDs."
+          "tools": [
+            "workflow_orchestrate",
+            "auto_select_tools"
+          ],
+          "exit_criteria": "agent_assignments and team_routing resolved \u2014 no hardcoded model IDs."
         },
         {
           "id": "delegate",
-          "tools": ["workflow_orchestrate", "hybrid_search", "lifecycle_advance"],
+          "tools": [
+            "workflow_orchestrate",
+            "hybrid_search",
+            "lifecycle_advance"
+          ],
           "exit_criteria": "sub_agent_summaries and artifacts_created recorded."
         },
         {
           "id": "validate",
-          "tools": ["qa_check", "harness_eval", "lifecycle_advance"],
+          "tools": [
+            "qa_check",
+            "harness_eval",
+            "lifecycle_advance"
+          ],
           "exit_criteria": "validation_passed=true, qa_score >= threshold, no syntax errors."
         },
         {
           "id": "commit",
-          "tools": ["lifecycle_advance", "save_working_memory"],
+          "tools": [
+            "lifecycle_advance",
+            "save_working_memory"
+          ],
           "exit_criteria": "commit_sha, files_changed, commit_message recorded. Session DONE."
         }
+      ],
+      "category": "orchestration",
+      "tags": [
+        "lifecycle",
+        "intake",
+        "routing"
       ]
     },
     {
@@ -699,45 +861,66 @@
         "definition_of_done": "Change applied, syntax validated, commit recorded.",
         "depth_expectation": "minimum",
         "spirit_constraints": [
-          "Apply the narrowest targeted change — do not expand scope into refactoring or discovery.",
+          "Apply the narrowest targeted change \u2014 do not expand scope into refactoring or discovery.",
           "Validation is mandatory even for trivial tasks before commit."
         ],
         "no_early_exit_without": [
           "syntax validation passed",
           "commit recorded"
         ],
-        "out_of_scope": ["refactoring", "discovery", "PRD generation"]
+        "out_of_scope": [
+          "refactoring",
+          "discovery",
+          "PRD generation"
+        ]
       },
       "notes": [
         "Pass complexity=simple to agent_intake to auto-select this sequence.",
-        "DISCOVER and PRD phases are skipped. Sequence: INTAKE→PLAN→ASSIGN→DELEGATE→VALIDATE→COMMIT."
+        "DISCOVER and PRD phases are skipped. Sequence: INTAKE\u2192PLAN\u2192ASSIGN\u2192DELEGATE\u2192VALIDATE\u2192COMMIT."
       ],
       "phases": [
         {
           "id": "intake",
-          "tools": ["agent_intake"],
+          "tools": [
+            "agent_intake"
+          ],
           "exit_criteria": "Session created with complexity=simple."
         },
         {
           "id": "plan",
-          "tools": ["workflow_plan"],
+          "tools": [
+            "workflow_plan"
+          ],
           "exit_criteria": "Minimal plan with targeted change described."
         },
         {
           "id": "delegate",
-          "tools": ["hybrid_search", "lifecycle_advance"],
+          "tools": [
+            "hybrid_search",
+            "lifecycle_advance"
+          ],
           "exit_criteria": "Change implemented and recorded."
         },
         {
           "id": "validate",
-          "tools": ["qa_check"],
+          "tools": [
+            "qa_check"
+          ],
           "exit_criteria": "Syntax and basic validation passed."
         },
         {
           "id": "commit",
-          "tools": ["lifecycle_advance"],
+          "tools": [
+            "lifecycle_advance"
+          ],
           "exit_criteria": "Commit recorded. Session DONE."
         }
+      ],
+      "category": "coding",
+      "tags": [
+        "simple",
+        "direct",
+        "fast"
       ]
     },
     {
@@ -758,42 +941,65 @@
         "definition_of_done": "Domain slice complete, artifacts created, validation passed.",
         "depth_expectation": "standard",
         "spirit_constraints": [
-          "Sub-agents execute only their assigned domain slice — do not re-scope goals or route other agents.",
-          "Context injection is pruned to domain-relevant outputs only — never inject full session history."
+          "Sub-agents execute only their assigned domain slice \u2014 do not re-scope goals or route other agents.",
+          "Context injection is pruned to domain-relevant outputs only \u2014 never inject full session history."
         ],
         "no_early_exit_without": [
           "domain artifacts created",
           "validation gates passed",
           "commit recorded"
         ],
-        "out_of_scope": ["re-scoping the PRD", "routing other agents", "finalizing acceptance without reviewer gate"]
+        "out_of_scope": [
+          "re-scoping the PRD",
+          "routing other agents",
+          "finalizing acceptance without reviewer gate"
+        ]
       },
       "notes": [
         "Sub-agents must not re-scope goals, re-route other agents, or finalize acceptance.",
-        "Domain routing: nixos→nix-tools, python→implementer, security→auditor, trading→tradingagents, design→impeccable.",
+        "Domain routing: nixos\u2192nix-tools, python\u2192implementer, security\u2192auditor, trading\u2192tradingagents, design\u2192impeccable.",
         "Context injected is PRUNED to domain-relevant outputs only."
       ],
       "phases": [
         {
           "id": "assign",
-          "tools": ["auto_select_tools", "tool_catalog"],
+          "tools": [
+            "auto_select_tools",
+            "tool_catalog"
+          ],
           "exit_criteria": "agent_assignments confirmed from capability registry."
         },
         {
           "id": "delegate",
-          "tools": ["workflow_orchestrate", "hybrid_search", "lifecycle_advance"],
+          "tools": [
+            "workflow_orchestrate",
+            "hybrid_search",
+            "lifecycle_advance"
+          ],
           "exit_criteria": "Domain slice executed, sub_agent_summaries recorded."
         },
         {
           "id": "validate",
-          "tools": ["qa_check", "harness_eval"],
+          "tools": [
+            "qa_check",
+            "harness_eval"
+          ],
           "exit_criteria": "Domain-specific validation gates passed."
         },
         {
           "id": "commit",
-          "tools": ["lifecycle_advance", "save_working_memory"],
+          "tools": [
+            "lifecycle_advance",
+            "save_working_memory"
+          ],
           "exit_criteria": "Commit recorded."
         }
+      ],
+      "category": "orchestration",
+      "tags": [
+        "delegation",
+        "domain",
+        "multi-agent"
       ]
     }
   ]
