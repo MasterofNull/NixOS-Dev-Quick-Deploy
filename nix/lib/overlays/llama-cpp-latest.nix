@@ -74,6 +74,15 @@ in
     # ggml_backend_registry constructor.
     cmakeFlags = stripConflicts (oldAttrs.cmakeFlags or []);
 
+    # Phase 36: Add dependencies for build 9144 Vulkan support
+    nativeBuildInputs = (oldAttrs.nativeBuildInputs or []) ++ (with prev; [
+      glslang
+    ]);
+
+    buildInputs = (oldAttrs.buildInputs or []) ++ (with prev; [
+      spirv-headers
+    ]);
+
     patches = (oldAttrs.patches or []) ++ [
       ../../patches/llama-cpp/allow-vulkan-igpu-offload.patch
     ];
