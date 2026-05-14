@@ -383,7 +383,7 @@ These are the next actions agreed by the specialty agents, ordered by risk and i
 
 - [x] `python -m py_compile ai-stack/mcp-servers/hybrid-coordinator/server.py`
 - [x] `nix flake check --no-build path:.`
-- [ ] Integration test run against live hybrid service (`/memory/*`, `/search/tree`, `/harness/*`)
+- [x] Integration test run against live hybrid service (`/memory/*`, `/search/tree`, `/harness/*`) — SUCCESS ✅
 
 ---
 
