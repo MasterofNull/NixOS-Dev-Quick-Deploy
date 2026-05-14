@@ -34,10 +34,10 @@ def _aidb_api_key() -> str:
         return os.environ.get("AIDB_API_KEY", "")
 
 
-async def _check_service(session: aiohttp.ClientSession, url: str) -> str:
+async def _check_service(session: aiohttp.ClientSession, full_url: str) -> str:
     """Return 'up', 'down', or 'degraded' for a service health check."""
     try:
-        async with session.get(f"{url}/health", timeout=aiohttp.ClientTimeout(total=2)) as r:
+        async with session.get(full_url, timeout=aiohttp.ClientTimeout(total=2)) as r:
             if r.status == 200:
                 return "up"
             return "degraded"
@@ -56,7 +56,7 @@ _SERVICES = [
     {"id": "hybrid-coordinator",   "port": service_endpoints.HYBRID_COORDINATOR_PORT, "role": "coordinator",  "label": "Hybrid Coordinator"},
     {"id": "ralph-wiggum",         "port": service_endpoints.RALPH_PORT,              "role": "rag",          "label": "Ralph Wiggum"},
     {"id": "switchboard",          "port": service_endpoints.SWITCHBOARD_PORT,        "role": "gateway",      "label": "Switchboard"},
-    {"id": "dashboard",            "port": int(os.environ.get("DASHBOARD_PORT", "8889")), "role": "ui",       "label": "Dashboard"},
+    {"id": "dashboard",            "port": int(os.environ.get("DASHBOARD_API_PORT", "8889")), "role": "ui",       "label": "Dashboard"},
 ]
 
 _EDGES = [
@@ -77,7 +77,7 @@ _SERVICE_URL_MAP = {
     "hybrid-coordinator": service_endpoints.HYBRID_URL,
     "ralph-wiggum":       service_endpoints.RALPH_URL,
     "switchboard":        service_endpoints.SWITCHBOARD_URL,
-    "dashboard":          f"http://127.0.0.1:{os.environ.get('DASHBOARD_PORT', '8889')}",
+    "dashboard":          f"http://127.0.0.1:{os.environ.get('DASHBOARD_API_PORT', '8889')}",
 }
 
 
@@ -93,7 +93,9 @@ async def get_topology() -> Dict[str, Any]:
         nodes = []
         for svc in _SERVICES:
             url = _SERVICE_URL_MAP.get(svc["id"], "")
-            status = await _check_service(session, url) if url else "unknown"
+            # Dashboard serves its health check at /api/health, others typically at /health
+            health_path = "/api/health" if svc["id"] == "dashboard" else "/health"
+            status = await _check_service(session, f"{url.rstrip('/')}{health_path}") if url else "unknown"
             nodes.append({
                 "id":     svc["id"],
                 "port":   svc["port"],

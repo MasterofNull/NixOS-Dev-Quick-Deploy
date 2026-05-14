@@ -185,17 +185,19 @@ fi
 persist_results_dir() {
   local src_dir="$1"
   local dest_dir="$2"
-  rm -rf "${dest_dir}"
-  mkdir -p "${dest_dir}"
-  find "${src_dir}" -maxdepth 1 -type f -name '*.json' -exec cp {} "${dest_dir}/" \;
+  local final_dir="${dest_dir}"
+  if ! rm -rf "${final_dir}" 2>/dev/null; then
+    final_dir="${dest_dir}-${timestamp//[^[:alnum:]]/-}-$$"
+    echo "WARN: could not replace ${dest_dir}; writing audit results to ${final_dir}" >&2
+  fi
+  mkdir -p "${final_dir}"
+  find "${src_dir}" -maxdepth 1 -type f -name '*.json' -exec cp {} "${final_dir}/" \;
+  printf '%s\n' "${final_dir}"
 }
 
-persisted_pip_dir="${OUTPUT_DIR}/pip-audit"
-persisted_lock_dir="${OUTPUT_DIR}/lock-integrity"
-persisted_npm_dir="${OUTPUT_DIR}/npm-audit"
-persist_results_dir "${pip_results_dir}" "${persisted_pip_dir}"
-persist_results_dir "${lock_results_dir}" "${persisted_lock_dir}"
-persist_results_dir "${npm_results_dir}" "${persisted_npm_dir}"
+persisted_pip_dir="$(persist_results_dir "${pip_results_dir}" "${OUTPUT_DIR}/pip-audit")"
+persisted_lock_dir="$(persist_results_dir "${lock_results_dir}" "${OUTPUT_DIR}/lock-integrity")"
+persisted_npm_dir="$(persist_results_dir "${npm_results_dir}" "${OUTPUT_DIR}/npm-audit")"
 
 dashboard_scan_report="${OUTPUT_DIR}/latest-dashboard-security-scan.json"
 dashboard_scan_status="unavailable"

@@ -1088,9 +1088,23 @@
 
             .health-score {
                 position: static;
+                display: inline-grid;
+                grid-template-columns: auto 1fr;
+                align-items: center;
+                column-gap: 1rem;
                 margin-top: 1rem;
                 width: fit-content;
                 max-width: 100%;
+                min-width: 0;
+                padding: 0.75rem 1rem;
+            }
+
+            .health-score-label {
+                margin-bottom: 0;
+            }
+
+            .health-score-value {
+                font-size: 1.8rem;
             }
 
             .operator-strip {
@@ -3124,49 +3138,6 @@
             </div>
         </header>
 
-        <div class="operator-strip">
-            <div class="operator-tile">
-                <div class="operator-label">Transport</div>
-                <div class="operator-value warning" id="transportState">
-                    <span class="operator-dot"></span>
-                    <span id="transportStateText">connecting</span>
-                </div>
-                <div class="operator-detail" id="transportStateDetail">Waiting for metrics stream</div>
-            </div>
-            <div class="operator-tile">
-                <div class="operator-label">Data Source</div>
-                <div class="operator-value" id="dataModeState">
-                    <span class="operator-dot"></span>
-                    <span id="dataModeStateText">live stack</span>
-                </div>
-                <div class="operator-detail" id="dataModeStateDetail">Using local service endpoints</div>
-            </div>
-            <div class="operator-tile">
-                <div class="operator-label">Runtime</div>
-                <div class="operator-value" id="runtimeState">
-                    <span class="operator-dot"></span>
-                    <span id="runtimeStateText">discovering runtime</span>
-                </div>
-                <div class="operator-detail" id="runtimeStateDetail">Waiting for service inventory</div>
-            </div>
-            <div class="operator-tile">
-                <div class="operator-label">Stack Health</div>
-                <div class="operator-value warning" id="stackState">
-                    <span class="operator-dot"></span>
-                    <span id="stackStateText">checking</span>
-                </div>
-                <div class="operator-detail" id="stackStateDetail">No aggregate health data yet</div>
-            </div>
-            <div class="operator-tile">
-                <div class="operator-label">Full Refresh</div>
-                <div class="operator-value" id="refreshState">
-                    <span class="operator-dot"></span>
-                    <span id="refreshStateText">initializing</span>
-                </div>
-                <div class="operator-detail" id="refreshStateDetail">Dashboard has not completed a full load yet</div>
-            </div>
-        </div>
-
         <section class="command-deck" id="commandDeck" aria-label="Command deck">
             <div class="deck-panel">
                 <div class="deck-header">
@@ -3240,6 +3211,49 @@
                 </div>
             </div>
         </section>
+
+        <div class="operator-strip">
+            <div class="operator-tile">
+                <div class="operator-label">Transport</div>
+                <div class="operator-value warning" id="transportState">
+                    <span class="operator-dot"></span>
+                    <span id="transportStateText">connecting</span>
+                </div>
+                <div class="operator-detail" id="transportStateDetail">Waiting for metrics stream</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Data Source</div>
+                <div class="operator-value" id="dataModeState">
+                    <span class="operator-dot"></span>
+                    <span id="dataModeStateText">live stack</span>
+                </div>
+                <div class="operator-detail" id="dataModeStateDetail">Using local service endpoints</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Runtime</div>
+                <div class="operator-value" id="runtimeState">
+                    <span class="operator-dot"></span>
+                    <span id="runtimeStateText">discovering runtime</span>
+                </div>
+                <div class="operator-detail" id="runtimeStateDetail">Waiting for service inventory</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Stack Health</div>
+                <div class="operator-value warning" id="stackState">
+                    <span class="operator-dot"></span>
+                    <span id="stackStateText">checking</span>
+                </div>
+                <div class="operator-detail" id="stackStateDetail">No aggregate health data yet</div>
+            </div>
+            <div class="operator-tile">
+                <div class="operator-label">Full Refresh</div>
+                <div class="operator-value" id="refreshState">
+                    <span class="operator-dot"></span>
+                    <span id="refreshStateText">initializing</span>
+                </div>
+                <div class="operator-detail" id="refreshStateDetail">Dashboard has not completed a full load yet</div>
+            </div>
+        </div>
 
         <div class="operator-actions">
             <div class="operator-actions-meta" id="operatorSummary">Primary operator view for local AI stack runtime and control actions.</div>

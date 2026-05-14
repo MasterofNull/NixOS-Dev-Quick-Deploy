@@ -61,6 +61,11 @@ def main() -> int:
         for snippet in missing:
             print(f"  - {snippet}", file=sys.stderr)
         return 1
+    deck_index = text.find('id="commandDeck"')
+    operator_index = text.find('class="operator-strip"')
+    if deck_index == -1 or operator_index == -1 or deck_index > operator_index:
+        print("Command deck must render before the operator strip for windowed monitoring.", file=sys.stderr)
+        return 1
     print("PASS: command center dashboard lens UI contract present")
     return 0
 
