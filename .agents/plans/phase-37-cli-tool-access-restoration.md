@@ -13,22 +13,25 @@ Update agent instruction sets and VSCodium configuration to enable full access t
 3. **Validation**: Verify that the new instructions are consistent and that `home-manager` (if possible) would accept the Nix changes.
 
 ## Step Plan
-1. **[ ] Update `AGENTS.md`**:
+1. **[x] Update `AGENTS.md`**:
    - Replace `## Operator Terminal CLIs (human-run, not AI tool calls)` with `## Harness Entrypoints & Diagnostic CLIs`.
    - Remove any text explicitly forbidding AI tool calls for these commands.
-2. **[ ] Update `.agent/GEMINI.md`**:
+2. **[x] Update `.agent/GEMINI.md`**:
    - Add a note that CLI tools are available via `run_shell_command`.
-3. **[ ] Update `.agent/WORKFLOW-CANON.md`**:
+3. **[x] Update `.agent/WORKFLOW-CANON.md`**:
    - Ensure the `ORIENT` section doesn't imply `aq-prime` is human-only.
-4. **[ ] Update `nix/home/base.nix`**:
+4. **[x] Update `nix/home/base.nix`**:
    - Search and replace "NEVER call aq-prime" with "You may call aq-prime for orientation".
    - Update `geminicodeassist.rules` string.
-   - Update the `rules` list in the `CONTINUE_EOF` section.
+5. **[x] Update `nix/modules/services/switchboard.nix`**:
+   - Update profile cards (system prompts) to prioritize `als`, `agrep`, `acat`, `asum`.
+6. **[x] Resolve AIDB permission issue**:
+   - Fix `/var/lib/ai-stack/aidb/logs/aidb-mcp.log` ownership.
 
 ## Validation
-- Manual review of all updated files.
-- Run `aq-qa 0` to ensure no regression in harness health.
-- (Optional) Run `nix-instantiate` or similar on `flake.nix` if possible to check for syntax errors in Nix files.
+- [x] Manual review of all updated files.
+- [x] Run `aq-qa 0` to ensure no regression in harness health.
+- [x] Verified `ai-aidb.service` is running and healthy.
 
 ## Rollback
 - Revert changed files using `git checkout`.

@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# aq-editor-trim-sessions — rolling Continue session archiver
+#
+# When the active session count reaches the trigger threshold (default 21),
+# the oldest sessions are moved to a dated backup directory under
+# ~/.continue/sessions-backup-YYYYMMDD-HHMMSS/ until the active count
+# returns to the keep target (default 20).
+#
+# sessions.json index is updated in place so Continue still has a coherent
+# view of active history.  The backup dirs are scanned by aq-report and
+# counted in the editor state budget panel.
+#
+# Usage:
+#   aq-editor-trim-sessions              # auto-trim if at/above threshold
+#   aq-editor-trim-sessions --dry-run    # show what would be archived
+#   aq-editor-trim-sessions --force      # trim unconditionally to keep target
+#   aq-editor-trim-sessions --status     # print counts and exit
+#
+# Env overrides:
+#   AQ_CONTINUE_SESSIONS_DIR       path to sessions dir   (default ~/.continue/sessions)
+#   AQ_CONTINUE_ARCHIVE_ROOT       parent of backup dirs  (default ~/.continue)
+#   AQ_EDITOR_SESSION_KEEP         sessions to keep       (default 20)
+#   AQ_EDITOR_SESSION_TRIGGER      trim trigger count     (default 21)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+PRIMARY_HOME="${AQ_PRIMARY_HOME:-${HOME}}"
+SESSIONS_DIR="${AQ_CONTINUE_SESSIONS_DIR:-${PRIMARY_HOME}/.continue/sessions}"
+ARCHIVE_ROOT="${AQ_CONTINUE_ARCHIVE_ROOT:-${PRIMARY_HOME}/.continue}"
+KEEP="${AQ_EDITOR_SESSION_KEEP:-20}"
+TRIGGER="${AQ_EDITOR_SESSION_TRIGGER:-21}"
+
+DRY_RUN=0
+FORCE=0
+STATUS_ONLY=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run)    DRY_RUN=1 ;;
+    --force)      FORCE=1 ;;
+    --status)     STATUS_ONLY=1 ;;
+    --help|-h)
+      sed -n '2,/^set /p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \?//'
+      exit 0
+      ;;
+    *)
+      printf 'aq-editor-trim-sessions: unknown option "%s"\n' "$arg" >&2
+      exit 2
+      ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+_info()  { printf '[trim] %s\n' "$*"; }
+_dry()   { printf '[trim] DRY-RUN: %s\n' "$*"; }
+_warn()  { printf '[trim] WARN: %s\n' "$*" >&2; }
+
+_session_files() {
+  # Returns UUIDs sorted oldest-first by mtime
+  find "${SESSIONS_DIR}" -maxdepth 1 -name '*.json' \
+    ! -name 'sessions.json' -printf '%T@ %f\n' 2>/dev/null \
+    | sort -n | awk '{print $2}' | sed 's/\.json$//'
+}
+
+_active_count() {
+  find "${SESSIONS_DIR}" -maxdepth 1 -name '*.json' \
+    ! -name 'sessions.json' 2>/dev/null | wc -l
+}
+
+# ---------------------------------------------------------------------------
+# Status
+# ---------------------------------------------------------------------------
+active=$(_active_count)
+
+if [[ "$STATUS_ONLY" -eq 1 ]]; then
+  archive_count=$(find "${ARCHIVE_ROOT}" -maxdepth 1 -name 'sessions-backup-*' \
+    -type d 2>/dev/null | wc -l)
+  archived_total=$(find "${ARCHIVE_ROOT}" -maxdepth 2 -name 'sessions-backup-*' \
+    -path '*/sessions-backup-*/*.json' 2>/dev/null | wc -l)
+  _info "active sessions : ${active} (keep=${KEEP}, trigger=${TRIGGER})"
+  _info "backup dirs     : ${archive_count}"
+  _info "archived total  : ${archived_total}"
+  _info "sessions dir    : ${SESSIONS_DIR}"
+  _info "archive root    : ${ARCHIVE_ROOT}"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Decide whether to trim
+# ---------------------------------------------------------------------------
+if [[ "$FORCE" -eq 0 && "$active" -lt "$TRIGGER" ]]; then
+  _info "active=${active} < trigger=${TRIGGER} — nothing to do"
+  exit 0
+fi
+
+to_archive=$(( active - KEEP ))
+if [[ "$to_archive" -le 0 ]]; then
+  _info "active=${active} already at or below keep=${KEEP} — nothing to do"
+  exit 0
+fi
+
+_info "active=${active}, trigger=${TRIGGER}, keep=${KEEP} — archiving ${to_archive} oldest session(s)"
+
+# ---------------------------------------------------------------------------
+# Create backup dir
+# ---------------------------------------------------------------------------
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="${ARCHIVE_ROOT}/sessions-backup-${STAMP}"
+
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  mkdir -p "${BACKUP_DIR}"
+fi
+
+# ---------------------------------------------------------------------------
+# Collect oldest session UUIDs to archive
+# ---------------------------------------------------------------------------
+mapfile -t oldest < <(_session_files | head -n "${to_archive}")
+
+if [[ "${#oldest[@]}" -eq 0 ]]; then
+  _warn "could not determine oldest sessions — aborting"
+  exit 1
+fi
+
+archived_ids=()
+for uuid in "${oldest[@]}"; do
+  src="${SESSIONS_DIR}/${uuid}.json"
+  dst="${BACKUP_DIR}/${uuid}.json"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    _dry "would archive ${uuid}.json → sessions-backup-${STAMP}/"
+  else
+    mv "${src}" "${dst}"
+    archived_ids+=("${uuid}")
+    _info "archived ${uuid}.json"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Update sessions.json index (remove archived entries)
+# ---------------------------------------------------------------------------
+INDEX="${SESSIONS_DIR}/sessions.json"
+
+if [[ "$DRY_RUN" -eq 0 && ${#archived_ids[@]} -gt 0 && -f "$INDEX" ]]; then
+  # Build a JSON array of IDs to remove, then filter in Python
+  ids_json="$(printf '%s\n' "${archived_ids[@]}" | python3 -c '
+import json, sys
+ids = set(line.strip() for line in sys.stdin if line.strip())
+print(json.dumps(list(ids)))
+')"
+  python3 - "${INDEX}" "${ids_json}" <<'PY'
+import json, sys
+index_path = sys.argv[1]
+remove_ids = set(json.loads(sys.argv[2]))
+try:
+    sessions = json.loads(open(index_path).read())
+    if not isinstance(sessions, list):
+        raise ValueError("unexpected format")
+    kept = [s for s in sessions if s.get("sessionId") not in remove_ids]
+    open(index_path, "w").write(json.dumps(kept, indent=2) + "\n")
+    print(f"[trim] sessions.json updated: {len(sessions)} → {len(kept)} entries")
+except Exception as exc:
+    print(f"[trim] WARN: could not update sessions.json: {exc}", file=__import__("sys").stderr)
+PY
+fi
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  _dry "dry-run complete — no files moved"
+else
+  remaining=$(_active_count)
+  _info "done — ${remaining} active sessions remain, backup: sessions-backup-${STAMP}/"
+fi

@@ -382,6 +382,7 @@ PY
       ;;
     *)
       printf '%s\n' "${budget_summary#*|}" >&2
+      printf 'hint: run aq-editor-trim-sessions to archive oldest sessions\n' >&2
       return 1
       ;;
   esac
