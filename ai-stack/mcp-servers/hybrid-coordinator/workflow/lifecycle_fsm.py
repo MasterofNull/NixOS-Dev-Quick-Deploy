@@ -164,6 +164,8 @@ class LifecycleSession:
     # Phase 28 — guarded execution
     safety_mode: str = "open"            # open | review | strict
     safety_gate_log: List[Dict[str, Any]] = field(default_factory=list)
+    # Phase 37 — run trajectory recording
+    trajectory: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -172,9 +174,10 @@ class LifecycleSession:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "LifecycleSession":
         phases_raw = data.pop("phases", [])
-        # Backward compat: sessions persisted before Phase 28 lack these fields
+        # Backward compat: sessions persisted before Phase 28/37 lack these fields
         data.setdefault("safety_mode", "open")
         data.setdefault("safety_gate_log", [])
+        data.setdefault("trajectory", [])
         inst = cls(**data)
         inst.phases = [PhaseRecord(**p) for p in phases_raw]
         return inst
@@ -352,6 +355,7 @@ def complete_phase(
     context_updates contains only the KEY OUTPUTS from this phase — not the
     full tool output. Callers must extract the relevant summary before calling.
     """
+    phase_rec: Optional[PhaseRecord] = None
     for rec in session.phases:
         if rec.phase == phase:
             rec.status = status
@@ -359,7 +363,30 @@ def complete_phase(
             rec.output_summary = output_summary
             rec.tools_used = tools_used or []
             rec.error = error
+            phase_rec = rec
             break
+
+    # Record per-phase trajectory entry (Phase 37)
+    session.trajectory.append({
+        "seq": len(session.trajectory),
+        "phase": phase,
+        "status": status,
+        "started_at": phase_rec.started_at if phase_rec else None,
+        "completed_at": phase_rec.completed_at if phase_rec else time.time(),
+        "duration_ms": (
+            round((phase_rec.completed_at - phase_rec.started_at) * 1000, 1)
+            if phase_rec and phase_rec.started_at and phase_rec.completed_at
+            else None
+        ),
+        "agent": phase_rec.agent if phase_rec else None,
+        "tools_used": tools_used or [],
+        "output_summary": output_summary,
+        "context_updates": list((context_updates or {}).keys()),
+        "decision_metadata": {k: v for k, v in (context_updates or {}).items()
+                              if k in ("complexity", "domain", "prd_scope", "validation_passed",
+                                       "commit_sha", "qa_score")},
+        "error": error,
+    })
 
     # Merge only the structured outputs into session context
     if context_updates:
