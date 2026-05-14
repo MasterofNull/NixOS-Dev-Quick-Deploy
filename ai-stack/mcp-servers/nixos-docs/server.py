@@ -187,8 +187,20 @@ def _get_process_memory_bytes() -> int:
         logger.debug("Failed to read process memory: %s", e)
         return 0
 
-# Initialize cache
-disk_cache = Cache(str(CACHE_DIR))
+# Initialize cache — fall back to a temp dir if the state dir isn't writable yet
+# (e.g. during first-boot before systemd-tmpfiles creates the directory)
+try:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    disk_cache = Cache(str(CACHE_DIR))
+    logger.info("Disk cache initialised at %s", CACHE_DIR)
+except Exception as _cache_exc:  # noqa: BLE001
+    import tempfile as _tmpmod
+    _fallback = Path(_tmpmod.mkdtemp(prefix="nixos-docs-cache-"))
+    logger.warning(
+        "Disk cache unavailable at %s (%s); using temp fallback %s",
+        CACHE_DIR, _cache_exc, _fallback,
+    )
+    disk_cache = Cache(str(_fallback))
 redis_client = None
 
 try:
