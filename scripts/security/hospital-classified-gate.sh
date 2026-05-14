@@ -125,7 +125,17 @@ else
     add_evidence "secrets" "PASS" "No plaintext patterns matched"
 fi
 
-# 4. Service Health (L1-L4)
+# 4. Audit Log Integrity
+echo "Checking audit log integrity..."
+if scripts/security/check-audit-integrity.sh; then
+    log_pass "Audit log integrity verified."
+    add_evidence "audit" "PASS" "Audit logs verified"
+else
+    log_fail "Audit log integrity check failed."
+    add_evidence "audit" "FAIL" "Audit logs invalid or inactive"
+fi
+
+# 5. Service Health (L1-L4)
 echo "Running L1-L4 health check..."
 if scripts/ai/aq-qa 0 --json > /tmp/aq-qa-results.json; then
     log_pass "System services passed baseline health check."

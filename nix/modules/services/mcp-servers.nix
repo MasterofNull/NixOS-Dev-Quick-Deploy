@@ -645,8 +645,10 @@ in {
           "d ${dataDir}/security/evidence  0770 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/security/npm       0750 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/qdrant-collections          0750 ${aidbUser} ${aiGroup} -"
-          "d /var/log/ai-stack                      0770 ${svcUser} ${aiGroup} -"
-          "d ${mutableLogDir}                       0770 ${svcUser} ${aiGroup} -"
+          "d /var/log/ai-stack                      0750 ${svcUser} ${aiGroup} -"
+          "f /var/log/ai-stack/tool-audit.jsonl     0660 ${svcUser} ${aiGroup} - -"
+          "f /var/log/ai-stack/agent-commands.jsonl 0660 ${svcUser} ${aiGroup} - -"
+          "d ${mutableLogDir}                       0750 ${svcUser} ${aiGroup} -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
           "f ${mutableLogDir}/query-gaps.jsonl 0660 ${svcUser} ${aiGroup} - -"
           # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
