@@ -17,7 +17,7 @@ Against this repository's current AI stack implementation.
 
 | Capability | Codebuff | pi coding-agent | This repo status | Notes |
 |---|---|---|---|---|
-| Multi-agent staged workflow (file picker/planner/editor/reviewer) | Native pattern | Minimal core; extend via skills/extensions | Partial | We have staged behavior across switchboard + hybrid + MCP, but not a single explicit orchestration graph runner. |
+| Multi-agent staged workflow (file picker/planner/editor/reviewer) | Native pattern | **Near parity** — Phase 49: `workflow/orchestration_graph_runner.py`; DAG node schema (id, lane, safety_mode, prompt_template, depends_on); topological wave execution; `POST /workflow/graph/run` (inline nodes or template_id); `GET /workflow/graph/run/{id}`; `GET /workflow/graph/templates`; 4 built-in templates (coding-staged, research-staged, security-audit, deploy-verify); `aqd run graph-plan/graph-status` CLI | `Near parity` (Phase 49) |
 | Explicit planning artifact before execution | Yes | User-driven via prompts/commands | Implemented | Added `/workflow/plan` endpoint in hybrid-coordinator with phase + tool assignments. |
 | Persisted phase state and transitions | Partial | Session-centric, extensible | Implemented | Added `/workflow/session/start`, `/workflow/session/{id}`, `/workflow/session/{id}/advance`. |
 | Session listing and branching/forking | Partial | Yes | Implemented | Added `/workflow/sessions` and `/workflow/session/{id}/fork` for branchable execution threads. |
