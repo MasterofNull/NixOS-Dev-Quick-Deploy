@@ -501,7 +501,7 @@ These were selected as closest matches to your target profile (runtime + coding-
 | MCP-first workflow construction | `mcp-agent`, `tuui`, `oh-my-pi` focus on MCP-centered flows and tool orchestration | Near parity (MCP ecosystem present) | `P1` |
 | Terminal-native coding-agent ergonomics | `codebuff`, `pi-mono`, `oh-my-pi`, `learn-claude-code` emphasize fast CLI loops and composable commands | Partial (RPC/SDK present; CLI ergonomics can be tighter) | `P1` |
 | Secure execution of untrusted tool/code actions | `agent-sandbox`, `sandboxed.sh`, `openlegion` make isolation/safety core | **Near parity** — Phase 39: `runtime-safety-policy.json` v1.1 enforces `plan-readonly`/`execute-mutating`/`strict` modes with `tool_blocklist`; Phase 41: per-run workspace isolation boundary with path-traversal guard | `Near parity` (Phase 39+41) |
-| Built-in cost controls and policy guardrails | `openlegion`, enterprise-focused runtimes expose cost + policy primitives | Partial (SLO and policy present, budget/cost guardrails not first-class runtime contract) | `P1` |
+| Built-in cost controls and policy guardrails | `openlegion`, enterprise-focused runtimes expose cost + policy primitives | **Near parity** — Phase 45: `config/runtime-budget-policy.json` v1.0; `GET /control/budget/policy` returns active policy; `POST /control/budget/policy` updates limits at runtime; `_budget_exceeded()` now falls back to policy-file limits per safety_mode; aq-qa `0.9.10` validates | `Near parity` (Phase 45) |
 
 ### Highest-Value Implementations From Focused Set
 
@@ -525,9 +525,12 @@ These were selected as closest matches to your target profile (runtime + coding-
 - Add single cohesive CLI wrapper for plan/execute/replay/review workflows (not just endpoint-level RPC commands).
 - Add task checkpoint shortcuts and branch/replay commands.
 
-5. `Budget/Cost Guardrails` (P1)
-- Add per-session/per-run budget contracts (token and tool-call ceilings) with fail-safe behavior.
-- Surface violations in scorecard and telemetry.
+5. ~~`Budget/Cost Guardrails` (P1)~~ **RESOLVED — Phase 45**
+- `config/runtime-budget-policy.json` v1.0: default + per-mode limits (token_limit, tool_call_limit, time_limit_seconds, fail_safe: abort/warn/checkpoint).
+- `GET /control/budget/policy`: returns active policy + file path + exists flag.
+- `POST /control/budget/policy`: partial-update policy at runtime; persists to file.
+- `_budget_exceeded()` in `session_builders.py`: falls back to policy-file limits per safety_mode when per-session budget not set.
+- aq-qa check `0.9.10` validates policy schema + handler + route registration.
 
 6. `MCP Workflow Blueprints` (P1)
 - Package reusable MCP-driven workflow blueprints for common coding-agent tasks.
