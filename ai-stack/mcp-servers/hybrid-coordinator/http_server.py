@@ -1422,6 +1422,10 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
         "/stats",
         "/learning/stats",
         "/control/safety/",    # Phase 28: local agents set session safety mode
+        "/agent/lifecycle/",   # Phase 37: UAG lifecycle replay (aq-qa probe)
+        "/control/reasoning/", # Phase 51: ablation/reasoning profile pack
+        "/control/budget/",    # Phase 45: budget policy read
+        "/control/fleet/",     # Phase 42: fleet summary
     )
     return any(req.path.startswith(pfx) for pfx in agent_prefixes)
 
