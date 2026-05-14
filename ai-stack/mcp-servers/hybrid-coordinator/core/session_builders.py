@@ -420,6 +420,7 @@ def _build_orchestration_runtime_contract(session: Dict[str, Any]) -> Dict[str, 
 # ---------------------------------------------------------------------------
 
 def _check_isolation_constraints(session: Dict[str, Any], data: Dict[str, Any]) -> Optional[str]:
+    isolation_cfg = session.get("isolation", {}) if isinstance(session.get("isolation"), dict) else {}
     isolation = _resolve_isolation_profile(session)
     exec_meta = data.get("execution", {}) if isinstance(data.get("execution"), dict) else {}
     workspace_path = str(exec_meta.get("workspace_path", "")).strip()
@@ -427,10 +428,15 @@ def _check_isolation_constraints(session: Dict[str, Any], data: Dict[str, Any]) 
     requested_network = str(exec_meta.get("network_access", "")).strip().lower()
 
     if workspace_path:
-        root = os.path.abspath(isolation["workspace_root"])
+        # Phase 41: prefer per-run scoped directory when available; fall back to profile root
+        run_workspace = str(isolation_cfg.get("run_workspace", "")).strip()
+        if run_workspace:
+            boundary = os.path.abspath(run_workspace)
+        else:
+            boundary = os.path.abspath(isolation["workspace_root"])
         wp = os.path.abspath(workspace_path)
-        if not (wp == root or wp.startswith(root.rstrip("/") + "/")):
-            return f"workspace path outside isolation root: {workspace_path}"
+        if not (wp == boundary or wp.startswith(boundary.rstrip("/") + "/")):
+            return f"workspace path outside isolation boundary: {workspace_path}"
 
     if process_exec:
         exe_name = os.path.basename(process_exec)

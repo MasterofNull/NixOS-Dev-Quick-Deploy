@@ -380,6 +380,50 @@ def _load_runtime_isolation_profiles() -> Dict[str, Any]:
     return _default_runtime_isolation_profiles()
 
 
+# ---------------------------------------------------------------------------
+# Per-run workspace provisioning (Phase 41)
+# ---------------------------------------------------------------------------
+
+def provision_run_workspace(session_id: str, workspace_root: str) -> str:
+    """Create a per-run scoped directory under workspace_root and return its path.
+
+    Returns the absolute path to the provisioned directory.
+    Raises ValueError on path-traversal attempts.
+    """
+    if not session_id or not workspace_root:
+        return ""
+    safe_id = "".join(c if c.isalnum() or c in "-_." else "_" for c in session_id)
+    root = Path(workspace_root).resolve()
+    run_dir = root / safe_id
+    run_abs = run_dir.resolve()
+    # Guard against traversal
+    if root not in run_abs.parents and run_abs != root:
+        raise ValueError(f"run workspace traversal attempt: {run_abs}")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return str(run_dir)
+
+
+def teardown_run_workspace(run_workspace: str, archive: bool = False) -> Optional[str]:
+    """Remove or archive a per-run workspace directory.
+
+    When archive=True, renames to ``<run_workspace>.archived.<epoch>`` instead of deleting.
+    Returns the final path (or None if nothing was done).
+    """
+    import shutil as _shutil
+
+    if not run_workspace:
+        return None
+    p = Path(run_workspace)
+    if not p.exists():
+        return None
+    if archive:
+        dest = Path(f"{run_workspace}.archived.{int(time.time())}")
+        p.rename(dest)
+        return str(dest)
+    _shutil.rmtree(p, ignore_errors=True)
+    return None
+
+
 def _default_runtime_scheduler_policy() -> Dict[str, Any]:
     return {
         "version": "1.0",

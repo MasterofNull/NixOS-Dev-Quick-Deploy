@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import httpx
 from aiohttp import web
+from workflow.runtime_manager import provision_run_workspace, teardown_run_workspace
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -381,6 +382,23 @@ async def handle_workflow_session_start(request: web.Request) -> web.Response:
                 "completed_at": None,
                 "notes": [],
             })
+        isolation_raw = {
+            "profile": str(data.get("isolation_profile", "")).strip(),
+            "workspace_root": str(data.get("workspace_root", "")).strip(),
+            "network_policy": str(data.get("network_policy", "")).strip(),
+        }
+        # Phase 41: resolve profile to determine workspace_root, then provision per-run dir
+        safety_mode_val = _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly")))
+        _tmp_session_for_profile = {"isolation": isolation_raw, "safety_mode": safety_mode_val}
+        resolved = _resolve_isolation_profile(_tmp_session_for_profile)
+        run_workspace = ""
+        if resolved.get("allow_workspace_write"):
+            try:
+                run_workspace = provision_run_workspace(session_id, resolved["workspace_root"])
+            except Exception as _ws_err:
+                logger.warning("could not provision run workspace for %s: %s", session_id, _ws_err)
+        isolation_raw["run_workspace"] = run_workspace
+
         session = {
             "session_id": session_id,
             "objective": query,
@@ -388,14 +406,10 @@ async def handle_workflow_session_start(request: web.Request) -> web.Response:
             "phase_state": phases,
             "current_phase_index": 0,
             "status": "in_progress",
-            "safety_mode": _normalize_safety_mode(str(data.get("safety_mode", "plan-readonly"))),
+            "safety_mode": safety_mode_val,
             "budget": _default_budget(data),
             "usage": _default_usage(),
-            "isolation": {
-                "profile": str(data.get("isolation_profile", "")).strip(),
-                "workspace_root": str(data.get("workspace_root", "")).strip(),
-                "network_policy": str(data.get("network_policy", "")).strip(),
-            },
+            "isolation": isolation_raw,
             "created_at": int(time.time()),
             "updated_at": int(time.time()),
             "trajectory": [{
@@ -403,6 +417,7 @@ async def handle_workflow_session_start(request: web.Request) -> web.Response:
                 "event_type": "session_start",
                 "phase_id": "discover",
                 "detail": "workflow session created",
+                "run_workspace": run_workspace,
             }],
         }
         async with _workflow_sessions_lock:
@@ -639,6 +654,17 @@ async def handle_workflow_session_advance(request: web.Request) -> web.Response:
             session["updated_at"] = int(time.time())
             sessions[session_id] = session
             await _save_workflow_sessions(sessions)
+
+        # Phase 41: archive per-run workspace on terminal state
+        final_status = session.get("status", "")
+        if final_status in ("completed", "failed"):
+            run_workspace = str((session.get("isolation") or {}).get("run_workspace", "")).strip()
+            if run_workspace:
+                try:
+                    teardown_run_workspace(run_workspace, archive=(final_status == "completed"))
+                except Exception as _td_err:
+                    logger.warning("workspace teardown failed for %s: %s", session_id, _td_err)
+
         payload = dict(session)
         lesson_refs = await _active_lesson_refs(limit=2)
         if lesson_refs:
@@ -1278,6 +1304,59 @@ async def handle_workflow_run_execute_status(request: web.Request) -> web.Respon
         return _internal_error(exc)
 
 
+async def handle_runtime_isolation_workspace(request: web.Request) -> web.Response:
+    """GET /runtime/isolation/workspace/{session_id} — Phase 41 per-run workspace status."""
+    try:
+        session_id = request.match_info.get("session_id", "")
+        if not session_id:
+            return web.json_response({"error": "session_id required"}, status=400)
+        async with _workflow_sessions_lock:
+            sessions = await _load_workflow_sessions()
+            session = sessions.get(session_id)
+        if not session:
+            return web.json_response({"error": "session not found"}, status=404)
+        _ensure_session_runtime_fields(session)
+        isolation = session.get("isolation", {}) if isinstance(session.get("isolation"), dict) else {}
+        run_workspace = str(isolation.get("run_workspace", "")).strip()
+        resolved = _resolve_isolation_profile(session)
+
+        workspace_info: Dict[str, Any] = {
+            "run_workspace": run_workspace,
+            "exists": False,
+            "file_count": 0,
+            "size_bytes": 0,
+        }
+        if run_workspace:
+            import os as _os
+            p = Path(run_workspace)
+            if p.exists() and p.is_dir():
+                workspace_info["exists"] = True
+                total_size = 0
+                file_count = 0
+                for _root, _dirs, _files in _os.walk(run_workspace):
+                    for _f in _files:
+                        fp = _os.path.join(_root, _f)
+                        try:
+                            total_size += _os.path.getsize(fp)
+                        except OSError:
+                            pass
+                        file_count += 1
+                workspace_info["file_count"] = file_count
+                workspace_info["size_bytes"] = total_size
+
+        payload = {
+            "session_id": session_id,
+            "status": session.get("status", "unknown"),
+            "isolation_profile": resolved.get("profile_name", ""),
+            "allow_workspace_write": resolved.get("allow_workspace_write", False),
+            "network_policy": resolved.get("network_policy", "none"),
+            "workspace": workspace_info,
+        }
+        return web.json_response(payload)
+    except Exception as exc:
+        return _internal_error(exc)
+
+
 def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/workflow/plan", handle_workflow_plan)
     http_app.router.add_get("/workflow/plan", handle_workflow_plan)
@@ -1306,3 +1385,4 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/workflow/run/{session_id}/execute", handle_workflow_run_execute)
     http_app.router.add_get("/workflow/run/{session_id}/execute/status", handle_workflow_run_execute_status)
     http_app.router.add_get("/workflow/blueprints", handle_workflow_blueprints)
+    http_app.router.add_get("/runtime/isolation/workspace/{session_id}", handle_runtime_isolation_workspace)
