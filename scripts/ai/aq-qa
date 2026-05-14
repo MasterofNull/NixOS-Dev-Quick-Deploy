@@ -774,6 +774,32 @@ except Exception as e:
     _fail 4 "0.9.11" "PAR-012 rollout/rollback drill" "missing: ${_par012_missing[*]}"
   fi
 
+  # 0.9.12 CLI ergonomics layer — aqd run subcommands (Phase 47)
+  local aqd_bin="${REPO_ROOT}/scripts/ai/aqd"
+  local aqd_ok=true
+  local _aqd_missing=()
+  if [[ ! -x "$aqd_bin" ]]; then
+    aqd_ok=false; _aqd_missing+=("aqd(not-executable)")
+  else
+    local aqd_ver
+    aqd_ver=$("$aqd_bin" --version 2>/dev/null | grep -oP '[\d.]+' | head -1)
+    # Require v0.4.0+ for run subcommand group
+    python3 -c "
+v='${aqd_ver}'
+parts = [int(x) for x in v.split('.')]
+assert parts >= [0,4,0], f'aqd version {v} < 0.4.0'
+" 2>/dev/null || { aqd_ok=false; _aqd_missing+=("aqd(version<0.4.0:${aqd_ver})"); }
+    for subcmd in "run:plan" "run:execute" "run:replay" "run:review" "run:status" "run:budget"; do
+      grep -q "^    ${subcmd})" "$aqd_bin" 2>/dev/null \
+        || { aqd_ok=false; _aqd_missing+=("aqd-${subcmd}"); }
+    done
+  fi
+  if $aqd_ok; then
+    _pass 4 "0.9.12" "CLI ergonomics: aqd v${aqd_ver} run subcommands present (plan/execute/replay/review/status/budget)"
+  else
+    _fail 4 "0.9.12" "CLI ergonomics aqd run subcommands" "missing: ${_aqd_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then
