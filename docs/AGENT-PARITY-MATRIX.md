@@ -1,6 +1,6 @@
 # Agent Parity Matrix: Codebuff vs pi.dev vs NixOS AI Stack
 
-Last updated: 2026-03-14
+Last updated: 2026-05-14
 
 Execution tracker:
 - [System Improvement Plan and Working Document (March 2026)](SYSTEM-IMPROVEMENT-PLAN-2026-03.md)
@@ -441,9 +441,13 @@ Method:
 - Track feature support: checkpoints, approve/deny, restore, tool-call visibility.
 - Value: improves practical adoption and reduces client-specific regressions.
 
-6. `Ablation/Reasoning Profile Pack` (P1)
-- Add profile pack for ablation studies (`max_steps`, tool set, reasoning style) inspired by research-friendly agents.
-- Value: controlled experimentation without code drift.
+6. ~~`Ablation/Reasoning Profile Pack` (P1)~~ **RESOLVED — Phase 51**
+- `config/ablation-reasoning-profiles.json` v1.0: 8 named profiles (baseline, minimal-tools, no-retrieval, structured-reasoning, minimal-reasoning, research-mode, low-budget, high-temperature); each defines `reasoning_style`, `safety_mode`, `max_steps`, `token_budget`, `tool_set`, `temperature_hint`, `tags`.
+- `GET /control/reasoning/profiles` — list all profiles + active profile.
+- `GET /control/reasoning/profile/{name}` — get a specific profile.
+- `POST /control/reasoning/profile/apply` — activate a profile at runtime (persisted to config file).
+- `aqd reasoning list/get/apply` subcommands expose all three endpoints.
+- aq-qa checks `0.9.16` (profile config + route wiring) and `0.9.17` (aqd subcommands) validate infra presence.
 
 ## Focused Search Strategy (Station / Codebuff / pi-mono Style)
 

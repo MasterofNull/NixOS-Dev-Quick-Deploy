@@ -635,6 +635,92 @@ async def handle_budget_policy_post(request: web.Request) -> web.Response:
         return web.json_response(_error_payload("internal_error", exc), status=500)
 
 
+# ---------------------------------------------------------------------------
+# Reasoning profile pack (Phase 51 — Ablation/Reasoning Profile Pack)
+# ---------------------------------------------------------------------------
+
+_REASONING_PROFILES_PATH: Path = Path(
+    os.getenv("REPO_ROOT", Path(__file__).parent.parent.parent.parent.parent)
+) / "config" / "ablation-reasoning-profiles.json"
+
+_reasoning_profile_lock = asyncio.Lock()
+
+
+def _load_reasoning_profiles_sync() -> Dict[str, Any]:
+    if _REASONING_PROFILES_PATH.exists():
+        try:
+            return json.loads(_REASONING_PROFILES_PATH.read_text())
+        except Exception:
+            pass
+    return {"_meta": {"version": "1.0"}, "active_profile": None, "profiles": []}
+
+
+async def handle_reasoning_profiles_list(request: web.Request) -> web.Response:
+    """GET /control/reasoning/profiles — list all ablation/reasoning profiles."""
+    try:
+        async with _reasoning_profile_lock:
+            data = _load_reasoning_profiles_sync()
+        return web.json_response({
+            "profiles": data.get("profiles", []),
+            "active_profile": data.get("active_profile"),
+            "profile_count": len(data.get("profiles", [])),
+            "profile_file": str(_REASONING_PROFILES_PATH),
+        })
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
+async def handle_reasoning_profile_get(request: web.Request) -> web.Response:
+    """GET /control/reasoning/profile/{name} — get a specific profile by name."""
+    name = request.match_info.get("name", "")
+    try:
+        async with _reasoning_profile_lock:
+            data = _load_reasoning_profiles_sync()
+        profiles = {p["name"]: p for p in data.get("profiles", []) if "name" in p}
+        if name not in profiles:
+            return web.json_response(
+                {"error": f"profile '{name}' not found",
+                 "available": sorted(profiles.keys())},
+                status=404,
+            )
+        return web.json_response({
+            "profile": profiles[name],
+            "active": data.get("active_profile") == name,
+        })
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
+async def handle_reasoning_profile_apply(request: web.Request) -> web.Response:
+    """POST /control/reasoning/profile/apply — activate a named profile at runtime.
+
+    Body: {"name": "<profile-name>"}  (or {"name": null} to clear active profile)
+    """
+    try:
+        body = await request.json()
+        name = body.get("name")
+        async with _reasoning_profile_lock:
+            data = _load_reasoning_profiles_sync()
+            profiles = {p["name"]: p for p in data.get("profiles", []) if "name" in p}
+            if name is not None and name not in profiles:
+                return web.json_response(
+                    {"error": f"profile '{name}' not found",
+                     "available": sorted(profiles.keys())},
+                    status=404,
+                )
+            data["active_profile"] = name
+            try:
+                _REASONING_PROFILES_PATH.write_text(json.dumps(data, indent=2))
+            except OSError as write_err:
+                logger.warning("reasoning profiles: could not persist to %s: %s",
+                               _REASONING_PROFILES_PATH, write_err)
+        logger.info("reasoning profile applied: %s", name)
+        active = profiles.get(name) if name else None
+        return web.json_response({"ok": True, "active_profile": name, "profile": active})
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
 def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)
@@ -650,3 +736,7 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/control/runtimes/schedule/select", handle_runtime_schedule)
     http_app.router.add_get("/control/budget/policy", handle_budget_policy_get)
     http_app.router.add_post("/control/budget/policy", handle_budget_policy_post)
+    # Phase 51: reasoning/ablation profile pack
+    http_app.router.add_get("/control/reasoning/profiles", handle_reasoning_profiles_list)
+    http_app.router.add_get("/control/reasoning/profile/{name}", handle_reasoning_profile_get)
+    http_app.router.add_post("/control/reasoning/profile/apply", handle_reasoning_profile_apply)
