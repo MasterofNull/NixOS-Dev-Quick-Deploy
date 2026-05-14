@@ -1614,6 +1614,68 @@ in {
         };
       };
 
+      # ── AIDB periodic re-indexer ──────────────────────────────────────────
+      systemd.services.ai-aidb-reindex = lib.mkIf cfg.deployment.aidbReindex.enable {
+        description = "AIDB knowledge re-indexer (logic-patterns + project corpus)";
+        restartIfChanged = false;
+        path = with pkgs; [
+          bash
+          coreutils
+          curl
+          findutils
+          gnugrep
+          jq
+          python3
+        ];
+        after = [
+          "network-online.target"
+          "systemd-tmpfiles-setup.service"
+          "ai-aidb.service"
+        ];
+        wants = ["network-online.target" "ai-aidb.service"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = svcUser;
+          Group = aiGroup;
+          WorkingDirectory = dataDir;
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${mcp.repoPath}/scripts/automation/aidb-reindex.sh"
+          ];
+          ReadOnlyPaths = ["/"];
+          ReadWritePaths = ["${dataDir}"];
+          PrivateTmp = true;
+          ProtectHome = "read-only";
+          ProtectSystem = "strict";
+          NoNewPrivileges = true;
+          PrivateNetwork = false;
+          SystemCallFilter = ["@system-service" "~@privileged"];
+          MemoryMax = "1G";
+          TimeoutStartSec = "3600";  # indexing can take ~10 min on large repos
+          StandardOutput = "journal";
+          StandardError = "journal";
+        };
+        environment = {
+          REPO_ROOT         = mcp.repoPath;
+          AIDB_URL          = "http://127.0.0.1:${toString mcp.aidbPort}";
+          AIDB_API_KEY_FILE = "/run/secrets/aidb_api_key";
+          INGEST_DELAY      = cfg.deployment.aidbReindex.projectKnowledgeDelay;
+          REINDEX_OUTPUT    = "${dataDir}/hybrid/telemetry/aidb-reindex-latest.json";
+        };
+      };
+
+      systemd.timers.ai-aidb-reindex = lib.mkIf cfg.deployment.aidbReindex.enable {
+        description = "Periodic AIDB knowledge re-index timer";
+        wantedBy = ["timers.target"];
+        partOf = ["ai-stack.target"];
+        timerConfig = {
+          OnBootSec = cfg.deployment.aidbReindex.onBootDelaySec;
+          OnUnitActiveSec = "${toString cfg.deployment.aidbReindex.intervalHours}h";
+          Persistent = true;
+          Unit = "ai-aidb-reindex.service";
+        };
+      };
+
       systemd.services.ai-post-deploy-converge = {
         description = "AI stack post-deploy declarative convergence";
         # Timer/manual-trigger driven only — never started by switch-to-configuration.
