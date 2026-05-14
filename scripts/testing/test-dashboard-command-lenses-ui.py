@@ -42,6 +42,14 @@ REQUIRED_SNIPPETS = [
     "command-center-dashboard-lens",
     'id="section-agentic-readiness"',
     'id="section-security"',
+    "Operator-window layout",
+    "@media (max-width: 1180px)",
+    "@media (max-width: 860px)",
+    "@media (max-width: 560px)",
+    ".deck-critical-grid",
+    ".hardware-block",
+    ".chart-container",
+    ".welcome-banner",
 ]
 
 
