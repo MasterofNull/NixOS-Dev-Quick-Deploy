@@ -22,7 +22,9 @@ providers:
       apiBaseUrl: "http://127.0.0.1:8080/v1"
       apiKey: "dummy"
       temperature: 0.1        # Low temperature for deterministic evals
-      max_tokens: 192         # Keep eval latency bounded while preserving signal
+      max_tokens: 512         # Qwen3.6-35B thinking mode needs headroom; 192 exhausted mid-CoT
+      extra_body:
+        thinking_budget_tokens: 0  # Suppress chain-of-thought for eval latency + assertion clarity
 
 # ── Default prompt template ───────────────────────────────────────────────────
 defaultTest:
