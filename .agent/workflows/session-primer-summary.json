@@ -1,20 +1,20 @@
 {
-  "generated_at": "2026-04-19T16:06:04Z",
+  "generated_at": "2026-05-14T04:46:18Z",
   "mode": "primer",
   "read_only": true,
-  "objective": "integrate with AI harness and review system improvement plans",
+  "objective": "Initialize session context and summarize project state for the current developer session.",
   "tiers_loaded": [
     "tier0_agent_metadata",
     "tier1_latest_evidence",
     "tier2_git_status"
   ],
-  "agent_file_count": 284,
+  "agent_file_count": 336,
   "latest_evidence_files": [
     "session-primer-summary.json",
     "session-summary-2026-04-09.md",
     "ui-ux-completeness-analysis-2026-04-09.md"
   ],
-  "changed_files_count": 11,
+  "changed_files_count": 4,
   "next": [
     "request on-demand docs/telemetry only if needed",
     "run /brownfield or task-specific workflow after objective confirmation"
