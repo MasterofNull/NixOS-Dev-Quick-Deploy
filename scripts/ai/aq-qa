@@ -834,6 +834,34 @@ print('ok' if not missing else 'missing-category:' + ','.join(missing[:3]))
     _fail 4 "0.9.13" "MCP workflow blueprints" "missing: ${_bp_missing[*]}"
   fi
 
+  # 0.9.14 Orchestration graph runner (Phase 49)
+  local graph_runner="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/orchestration_graph_runner.py"
+  local graph_templates="${REPO_ROOT}/config/orchestration-graph-templates.json"
+  local graph_ok=true
+  local _graph_missing=()
+  if [[ ! -f "$graph_runner" ]]; then
+    graph_ok=false; _graph_missing+=("orchestration_graph_runner.py")
+  else
+    python3 -c "import ast; ast.parse(open('$graph_runner').read())" 2>/dev/null \
+      || { graph_ok=false; _graph_missing+=("graph_runner(syntax)"); }
+    grep -q "def handle_graph_run_submit\|def handle_graph_run_get" "$graph_runner" 2>/dev/null \
+      || { graph_ok=false; _graph_missing+=("graph-handlers"); }
+    grep -q '"/workflow/graph/run"' "$graph_runner" 2>/dev/null \
+      || { graph_ok=false; _graph_missing+=("graph-route"); }
+  fi
+  if [[ ! -f "$graph_templates" ]]; then
+    graph_ok=false; _graph_missing+=("orchestration-graph-templates.json")
+  else
+    local tmpl_count
+    tmpl_count=$(python3 -c "import json; d=json.load(open('$graph_templates')); print(len(d.get('templates',[])))" 2>/dev/null || echo 0)
+    [[ "$tmpl_count" -lt 2 ]] && { graph_ok=false; _graph_missing+=("templates<2(${tmpl_count})"); }
+  fi
+  if $graph_ok; then
+    _pass 4 "0.9.14" "orchestration graph runner: POST/GET /workflow/graph/run + ${tmpl_count} templates"
+  else
+    _fail 4 "0.9.14" "orchestration graph runner" "missing: ${_graph_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

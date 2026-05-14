@@ -125,6 +125,7 @@ import openai_a2a_handlers
 import ops_handlers
 import prsi_handlers
 import runtime_control_handlers
+import orchestration_graph_runner
 import model_opt_handlers
 import llm_router_handlers
 import orchestration_handlers
@@ -789,6 +790,7 @@ def init(
     )
     prsi_handlers.init(error_payload_fn=_error_payload)
     runtime_control_handlers.init(error_payload_fn=_error_payload)
+    orchestration_graph_runner.init(error_payload_fn=_error_payload)
     llm_router_handlers.init(
         error_payload_fn=_error_payload,
         classify_and_route_task_fn=_classify_and_route_task,
@@ -2001,6 +2003,7 @@ async def run_http_mode(port: int) -> None:
     # Batch 3.2 — PRSI Action Execution endpoints
     prsi_handlers.register_routes(http_app)
     runtime_control_handlers.register_routes(http_app)
+    orchestration_graph_runner.register_routes(http_app)  # Phase 49: multi-agent graph runner
 
     # Phase 5 — Model Optimization + Advanced Features endpoints
     model_opt_handlers.register_routes(http_app)

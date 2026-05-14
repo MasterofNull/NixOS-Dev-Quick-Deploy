@@ -62,6 +62,8 @@ Usage:
   aqd run budget                           -- show active budget policy
   aqd run rollout-drill [--offline]        -- PAR-012 staged rollout/rollback drill
   aqd run harness [--offline]              -- run unified harness gate
+  aqd run graph-plan <task> [--template T] -- run multi-agent orchestration graph
+  aqd run graph-status <run-id>           -- check graph run status
 
 Notes:
   - Run from repository root or ensure this script can resolve repo paths.
@@ -1731,6 +1733,51 @@ if modes:
 "
 }
 
+cmd_run_graph_plan() {
+  local template="" task_parts=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --template) shift; template="$1" ;;
+      *) task_parts+=("$1") ;;
+    esac
+    shift
+  done
+  local task="${task_parts[*]:-}"
+  [[ -n "$task" ]] || die "Usage: aqd run graph-plan <task> [--template TEMPLATE_ID]"
+  local url; url="$(_aqd_coordinator_url)/workflow/graph/run"
+  local payload
+  if [[ -n "$template" ]]; then
+    payload=$(python3 -c "import json,sys; print(json.dumps({'task': sys.argv[1], 'template_id': sys.argv[2]}))" "$task" "$template")
+  else
+    payload=$(python3 -c "import json,sys; print(json.dumps({'task': sys.argv[1], 'template_id': 'coding-staged'}))" "$task")
+    echo "[aqd run graph-plan] no --template given; using default: coding-staged"
+  fi
+  echo "[aqd run graph-plan] submitting graph run: ${task:0:80}..."
+  local resp; resp=$(_aqd_http_post "$url" "$payload")
+  echo "$resp" | python3 -m json.tool
+  local run_id; run_id=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('run_id',''))" 2>/dev/null)
+  [[ -n "$run_id" ]] && echo "[aqd run graph-plan] run_id: ${run_id}  (use: aqd run graph-status ${run_id})"
+}
+
+cmd_run_graph_status() {
+  local run_id="${1:-}"
+  [[ -n "$run_id" ]] || die "Usage: aqd run graph-status <run-id>"
+  local url; url="$(_aqd_coordinator_url)/workflow/graph/run/${run_id}"
+  echo "[aqd run graph-status] run=${run_id}"
+  _aqd_http_get "$url" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(f\"  run_id : {d.get('run_id','?')}\")
+print(f\"  status : {d.get('status','?')}\")
+print(f\"  task   : {str(d.get('task',''))[:80]}\")
+nodes = d.get('nodes', {})
+if nodes:
+    print(f\"  nodes  ({len(nodes)}):\" )
+    for nid, n in nodes.items():
+        print(f\"    {nid:<20} {n.get('status','?'):<12} lane={n.get('lane','-')}\")
+"
+}
+
 cmd_run_rollout_drill() {
   local drill="${REPO_ROOT}/scripts/testing/drill-rollback.sh"
   [[ -x "$drill" ]] || die "drill-rollback.sh not found or not executable: ${drill}"
@@ -1796,6 +1843,8 @@ main() {
     run:status)         cmd_run_status "$@" ;;
     run:budget)         cmd_run_budget "$@" ;;
     run:rollout-drill)  cmd_run_rollout_drill "$@" ;;
+    run:graph-plan)     cmd_run_graph_plan "$@" ;;
+    run:graph-status)   cmd_run_graph_status "$@" ;;
     run:harness)        cmd_run_harness "$@" ;;
     :|help:|--help:|-h:)
       usage
