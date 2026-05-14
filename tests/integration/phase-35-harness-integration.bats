@@ -1,18 +1,19 @@
 #!/usr/bin/env bats
 
 setup() {
-    # Load environment and helpers
-    # Assuming standard project structure
     PROJECT_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
     export PROJECT_ROOT
-    
-    # Check if hybrid coordinator is reachable
-    # Port 8003 is used in the SystemD service
-    HYBRID_URL="http://127.0.0.1:8003"
+
+    HYBRID_URL="http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}"
     export HYBRID_URL
-    
-    # Static API key for testing based on systemd cat
-    HYBRID_KEY="=txgtAyyZJA4K.uwlqfIwrmh7xtA.FXkR1cq.K=iZwEgxZey"
+
+    # Read API key from secrets file; fall back to env var if set (CI).
+    _key_file="${HYBRID_COORDINATOR_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}"
+    if [[ -r "$_key_file" ]]; then
+        HYBRID_KEY="$(tr -d '[:space:]' < "$_key_file")"
+    else
+        HYBRID_KEY="${HYBRID_API_KEY:-}"
+    fi
     export HYBRID_KEY
 }
 
@@ -59,7 +60,7 @@ setup() {
 }
 
 @test "Phase 35: Harness stats endpoint responds" {
-    run curl -s "$HYBRID_URL/harness/stats" -H "X-API-Key: $HYBRID_KEY"
+    run curl -s -X GET "$HYBRID_URL/harness/stats" -H "X-API-Key: $HYBRID_KEY"
     [ "$status" -eq 0 ]
     echo "$output" | jq -e '.total_runs'
 }

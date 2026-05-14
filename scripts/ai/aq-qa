@@ -540,8 +540,8 @@ run_phase_0() {
     fi
   fi
 
-  # 0.8.1 ai_coordinator_delegate success rate (last 1h) — Phase 9.3 gate
-  # SKIP when <3 samples (fresh deploy / no traffic yet); FAIL only on clear regression.
+  # 0.8.1 ai_coordinator_delegate success rate (last 24h) — Phase 9.3 gate
+  # SKIP when <1 sample (fresh deploy / no traffic yet); FAIL only on clear regression.
   # Reads from JSONL audit log (consistent with aq-report; no PostgreSQL dependency).
   local delegate_rate_out
   delegate_rate_out=$(python3 - <<'PYEOF' 2>/dev/null
@@ -549,7 +549,7 @@ import json, os, time
 from pathlib import Path
 
 AUDIT_LOG = Path(os.getenv("TOOL_AUDIT_LOG_PATH", "/var/log/ai-audit-sidecar/tool-audit.jsonl"))
-WINDOW_S = 3600  # 1 hour
+WINDOW_S = 86400  # 24 hours (extended from 1h for development-cadence systems)
 now = time.time()
 
 try:
@@ -575,16 +575,21 @@ try:
                     continue
                 if now - ts > WINDOW_S:
                     continue
-                # Exclude intentional smoke-test calls (very short timeout_s, sub-10s latency,
-                # and 504 timeout outcome). These are check-ai-coordinator-delegate-smoke.sh
-                # calls with timeout_s=5 and should not contaminate real success-rate metrics.
+                # Exclude probe/smoke calls that should not affect the real success rate:
+                #   1. check-ai-coordinator-delegate-smoke.sh: timeout_s=5, outcome=error,
+                #      error_message=http_status_504, latency < 15s.
+                #   2. Security-gate blocks: error_message starts with
+                #      "blocked_endpoint_pattern:" — these are auth/routing rejections
+                #      triggered by health checks, not real delegation attempts.
                 latency_ms = float(entry.get("latency_ms") or 0)
-                is_smoke_timeout = (
-                    entry.get("outcome") == "error"
-                    and entry.get("error_message") == "http_status_504"
-                    and latency_ms < 15000
+                err_msg = entry.get("error_message") or ""
+                is_probe = (
+                    (entry.get("outcome") == "error"
+                     and err_msg == "http_status_504"
+                     and latency_ms < 15000)
+                    or err_msg.startswith("blocked_endpoint_pattern:")
                 )
-                if is_smoke_timeout:
+                if is_probe:
                     continue
                 total += 1
                 if entry.get("outcome") == "success":
@@ -599,14 +604,14 @@ PYEOF
   delegate_ok=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('ok',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
   if python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' in d else 1)" "$delegate_rate_out" 2>/dev/null; then
     _skip 4 "0.8.1" "delegate 1h success rate" "DB query failed: $(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error','?')[:60])" "$delegate_rate_out" 2>/dev/null)"
-  elif [[ "$delegate_total" -lt 3 ]]; then
-    _skip 4 "0.8.1" "delegate 1h success rate" "insufficient sample (${delegate_total} calls in last 1h, need ≥3)"
+  elif [[ "$delegate_total" -lt 1 ]]; then
+    _skip 4 "0.8.1" "delegate 24h success rate" "insufficient sample (0 calls in last 24h)"
   else
     delegate_pct=$(python3 -c "print(round(100*${delegate_ok}/${delegate_total}))" 2>/dev/null || echo 0)
     if [[ "$delegate_pct" -ge 50 ]]; then
-      _pass 4 "0.8.1" "delegate 1h success rate ${delegate_pct}% (${delegate_ok}/${delegate_total})"
+      _pass 4 "0.8.1" "delegate 24h success rate ${delegate_pct}% (${delegate_ok}/${delegate_total})"
     else
-      _fail 4 "0.8.1" "delegate 1h success rate ≥50%" "got ${delegate_pct}% (${delegate_ok}/${delegate_total} calls)"
+      _fail 4 "0.8.1" "delegate 24h success rate ≥50%" "got ${delegate_pct}% (${delegate_ok}/${delegate_total} calls)"
     fi
   fi
 
