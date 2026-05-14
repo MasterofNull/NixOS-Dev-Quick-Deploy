@@ -360,7 +360,7 @@ Acceptance checks:
 | PAR-009 | 3 | Enforce trust-set validation in install path | Security | PAR-008 | registry install validation | `python3 scripts/governance/skill-bundle-registry.py install --help` |
 | PAR-010 | 4 | External benchmark pack integration | QA/ML | PAR-004 | benchmark adapter + docs | `./scripts/automation/run-harness-regression-gate.sh` |
 | PAR-011 | 4 | Score trend publication | QA | PAR-010 | CI artifact/report | CI artifact inspection |
-| PAR-012 | 5 | Staged rollout and rollback drill | Platform/Ops | PAR-004, PAR-007, PAR-009 | runbook + release evidence | `./scripts/testing/check-boot-shutdown-integration.sh` |
+| PAR-012 | 5 | Staged rollout and rollback drill | Platform/Ops | PAR-004, PAR-007, PAR-009 | runbook + release evidence | `./scripts/testing/drill-rollback.sh --offline` |
 
 ### Definition of Done (Per Phase)
 
