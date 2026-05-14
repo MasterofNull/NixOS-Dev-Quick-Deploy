@@ -46,10 +46,10 @@ def _default_content_security_policy() -> str:
             "frame-ancestors 'none'",
             "form-action 'self'",
             "img-src 'self' data:",
-            "font-src 'self' data:",
+            "font-src 'self' data: https://fonts.gstatic.com",
             "connect-src 'self' ws: wss:",
-            "script-src 'self' 'unsafe-inline' https://unpkg.com",
-            "style-src 'self' 'unsafe-inline'",
+            "script-src 'self' 'unsafe-inline' https://unpkg.com https://d3js.org https://cdn.jsdelivr.net",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         ]
     )
 
