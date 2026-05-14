@@ -700,6 +700,24 @@ PYEOF
     _fail 4 "0.9.8" "benchmark harness complete" "missing: ${_bench_missing[*]}"
   fi
 
+  # 0.9.9 Unified harness runner (Phase 44 PAR-002)
+  local harness_runner="${REPO_ROOT}/scripts/testing/harness-runner.sh"
+  local ci_workflow="${REPO_ROOT}/.github/workflows/tests.yml"
+  local harness_runner_ok=true
+  local _harness_missing=()
+  [[ ! -x "$harness_runner" ]] && { harness_runner_ok=false; _harness_missing+=("harness-runner.sh"); }
+  if $harness_runner_ok && ! bash -n "$harness_runner" 2>/dev/null; then
+    harness_runner_ok=false; _harness_missing+=("harness-runner.sh(syntax)")
+  fi
+  local ci_par002=false
+  [[ -f "$ci_workflow" ]] && grep -q "parity-scorecard-gate" "$ci_workflow" 2>/dev/null && ci_par002=true
+  $ci_par002 || _harness_missing+=("parity-scorecard-gate(tests.yml)")
+  if $harness_runner_ok && $ci_par002; then
+    _pass 4 "0.9.9" "unified harness runner + PAR-002 CI gate present (harness-runner.sh + parity-scorecard-gate in tests.yml)"
+  else
+    _fail 4 "0.9.9" "unified harness runner + PAR-002 CI gate" "missing: ${_harness_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

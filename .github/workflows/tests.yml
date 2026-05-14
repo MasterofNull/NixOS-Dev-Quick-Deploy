@@ -39,6 +39,26 @@ jobs:
             exit 1
           fi
 
+  parity-scorecard-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Make harness scripts executable
+        run: |
+          chmod +x scripts/testing/harness-runner.sh
+          chmod +x scripts/governance/repo-structure-lint.sh
+          chmod +x scripts/governance/tier0-validation-gate.sh
+      - name: Validate eval pack schema (PAR-002)
+        run: |
+          scripts/testing/harness-runner.sh --offline --skip-parity
+      - name: Run parity scorecard gate (PAR-002)
+        run: |
+          scripts/testing/harness-runner.sh --offline --skip-schema
+
   unit-tests:
     runs-on: ubuntu-latest
     strategy:

@@ -403,8 +403,8 @@ Method:
 | Capability cluster | Signal from expanded semantic set | This repo status | Updated assessment |
 |---|---|---|---|
 | Agent-run trajectory + replay artifacts | `trae-agent`, `live-swe-agent`, `SWE-*` repos emphasize step trajectories and analysis | **Near parity** — Phase 37: `LifecycleSession.trajectory` records per-phase inputs/outputs/duration/decision_metadata; `GET /agent/lifecycle/{id}/replay` endpoint live; workflow run sessions already had `/workflow/run/{id}/replay` | `Near parity` (Phase 37) |
-| Benchmark-grade SWE task integration | `SWE-Gym`, `SWE-bench_Pro-os`, `swe-agent` ecosystem | Partial (internal evals exist, limited external SWE corpus pipeline) | `P0 gap` |
-| Lightweight harness runner patterns | `claude-code-harness`, `bigcode-evaluation-harness`, `bridle` | Partial (parity scripts exist, but no unified harness runner contract) | `P1 gap` |
+| Benchmark-grade SWE task integration | `SWE-Gym`, `SWE-bench_Pro-os`, `swe-agent` ecosystem | **Near parity** — Phase 43: 12-case eval pack (`data/harness-gap-eval-pack.json`); `run-gap-eval-pack.py` + `publish-eval-trend.py` trend publisher; `run-benchmark-gate.sh` CI gate; aq-qa `0.9.8` validates (48 checks) | `Near parity` (Phase 43) |
+| Lightweight harness runner patterns | `claude-code-harness`, `bigcode-evaluation-harness`, `bridle` | **Near parity** — Phase 44: `scripts/testing/harness-runner.sh` unified entry point chains schema→eval→regression→trend→scorecard; single command for all QA gates | `Near parity` (Phase 44) |
 | Multi-surface client adapters (IDE/CLI bridge quality) | `sweep`, `cody-public-snapshot`, `tabby` show strong IDE-centric integration | Partial (HTTP/SDK/RPC present, IDE adapter quality gate not explicit) | `P1 gap` |
 | Planner/executor separation with explicit safety modes | `opencode`, `cline`, `pi-mono` style role separation | safety_mode field on LifecycleSession; gate enforced at DELEGATE→VALIDATE | `Near parity` (Phase 28) |
 | Extensibility and plugin packaging | `pi-mono`, `goose`, `Qwen-Agent`, `TaskWeaver` | Implemented (skill bundle and MCP pathways) | `Parity` |
@@ -419,10 +419,11 @@ Method:
 - Workflow run sessions have `GET /workflow/run/{session_id}/replay` with `?phase=` and `?event_type=` filters.
 - aq-qa check `0.9.2` validates endpoint wiring.
 
-2. `SWE Benchmark Adapter Layer` (P0)
-- Add adapters for SWE-style task packs into `/harness/eval` + scorecard.
-- Include deterministic fixtures + offline mode for CI.
-- Value: external parity signal and measurable quality against real SE tasks.
+2. ~~`SWE Benchmark Adapter Layer` (P0)~~ **RESOLVED — Phase 43**
+- `data/harness-gap-eval-pack.json` v1.1: 12-case SWE-style eval pack (agent workflow, async patterns, retry/backoff, Nix overlays, safety modes, git isolation, systemd, tool-call schema).
+- `scripts/automation/publish-eval-trend.py`: reads `eval_scores` SQLite, emits `eval-trend.json` with delta_pct/trend/regression; exits 1 on regression.
+- `scripts/testing/run-benchmark-gate.sh`: chains eval → trend → gate; `--offline` mode for CI.
+- aq-qa check `0.9.8` validates eval pack ≥10 cases + publisher + gate executables.
 
 3. ~~`Safety Mode Runtime Contract` (P0)~~ **RESOLVED — Phase 39**
 - `config/runtime-safety-policy.json` v1.1: `plan-readonly` blocks `mutating`/`destructive` risk classes and write/exec tools; `execute-mutating` allows `review-required` with approval; `strict` mode added.
@@ -499,22 +500,26 @@ These were selected as closest matches to your target profile (runtime + coding-
 | Production deploy/control-plane for agents | `station`, `agentstack`, `voltagent`, `docker/cagent` provide deploy-first workflows | **Near parity** — Phase 42: `DELETE /control/runtimes/{id}` deregister; `GET /control/runtimes/{id}/deployments` history; `GET /control/fleet/summary` fleet rollup by profile/status; `GET /control/runtimes/{id}/health` live probe; aq-qa `0.9.7` validates | `Near parity` (Phase 42) |
 | MCP-first workflow construction | `mcp-agent`, `tuui`, `oh-my-pi` focus on MCP-centered flows and tool orchestration | Near parity (MCP ecosystem present) | `P1` |
 | Terminal-native coding-agent ergonomics | `codebuff`, `pi-mono`, `oh-my-pi`, `learn-claude-code` emphasize fast CLI loops and composable commands | Partial (RPC/SDK present; CLI ergonomics can be tighter) | `P1` |
-| Secure execution of untrusted tool/code actions | `agent-sandbox`, `sandboxed.sh`, `openlegion` make isolation/safety core | Partial (auth checks + policy evaluation exist, runtime sandbox boundaries need expansion) | `P0` |
+| Secure execution of untrusted tool/code actions | `agent-sandbox`, `sandboxed.sh`, `openlegion` make isolation/safety core | **Near parity** — Phase 39: `runtime-safety-policy.json` v1.1 enforces `plan-readonly`/`execute-mutating`/`strict` modes with `tool_blocklist`; Phase 41: per-run workspace isolation boundary with path-traversal guard | `Near parity` (Phase 39+41) |
 | Built-in cost controls and policy guardrails | `openlegion`, enterprise-focused runtimes expose cost + policy primitives | Partial (SLO and policy present, budget/cost guardrails not first-class runtime contract) | `P1` |
 
 ### Highest-Value Implementations From Focused Set
 
-1. `Isolated Agent Workspace Runtime` (P0)
-- Add explicit per-run sandbox/workspace boundary for tool execution (filesystem/process/network policy profile).
-- Add run-level isolation policy in routing config + runtime enforcement.
+1. ~~`Isolated Agent Workspace Runtime` (P0)~~ **RESOLVED — Phase 41**
+- `provision_run_workspace(session_id, workspace_root)` creates `{workspace_root}/{session_id}/` with path-traversal guard on session start.
+- `_check_isolation_constraints()` enforces run-scoped boundary when `run_workspace` present.
+- `teardown_run_workspace()` archives completed sessions, removes failed ones.
+- `GET /runtime/isolation/workspace/{session_id}` exposes live path/exists/file_count/size_bytes.
+- aq-qa check `0.9.6` validates (48 total).
 
 2. ~~`Deploy/Fleet Control Plane API` (P0)~~ **RESOLVED — Phase 42**
 - `DELETE /control/runtimes/{id}` — deregister; `GET …/deployments` — history; `GET /control/fleet/summary` — fleet rollup; `GET …/health` — live healthcheck probe.
 - Completes register/list/get/status/deploy/rollback/schedule/deregister/health CRUD surface.
 
-3. `Runtime Safety Envelope for Untrusted Actions` (P0)
-- Introduce enforced execution classes (`safe`, `review-required`, `blocked`) at tool invocation time.
-- Include mandatory approval + audit for high-risk classes.
+3. ~~`Runtime Safety Envelope for Untrusted Actions` (P0)~~ **RESOLVED — Phase 39**
+- `config/runtime-safety-policy.json` v1.1: `plan-readonly` blocks `mutating`/`destructive` risk classes + write/exec tools; `execute-mutating` allows `review-required` with approval; `strict` mode added.
+- `handle_workflow_run_event` enforces per-mode `tool_blocklist`; blocked tool returns HTTP 403 with `policy_description`.
+- aq-qa check `0.9.4` validates mode differentiation.
 
 4. `CLI Ergonomics Layer` (P1)
 - Add single cohesive CLI wrapper for plan/execute/replay/review workflows (not just endpoint-level RPC commands).
