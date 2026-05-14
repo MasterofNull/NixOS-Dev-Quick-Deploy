@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "Ablation/reasoning profile pack for controlled experimentation. Each profile defines a named set of execution parameters (max_steps, tool_set, reasoning_style, safety_mode, token budget) that can be applied without modifying source code.",
+    "updated": "2026-05-14",
+    "managed_by": "scripts/ai/aqd reasoning apply"
+  },
+  "active_profile": null,
+  "profiles": [
+    {
+      "name": "baseline",
+      "description": "Unmodified default execution profile. All tools enabled, standard reasoning, no step cap.",
+      "reasoning_style": "chain-of-thought",
+      "safety_mode": "execute-mutating",
+      "max_steps": null,
+      "token_budget": null,
+      "tool_set": "all",
+      "temperature_hint": 0.6,
+      "tags": ["default", "control-group"]
+    },
+    {
+      "name": "minimal-tools",
+      "description": "Ablation: removes all retrieval and memory tools. Only read_file, write_file, run_command allowed. Used to measure retrieval contribution.",
+      "reasoning_style": "chain-of-thought",
+      "safety_mode": "execute-mutating",
+      "max_steps": 20,
+      "token_budget": 8192,
+      "tool_set": ["read_file", "write_file", "run_command"],
+      "temperature_hint": 0.6,
+      "tags": ["ablation", "tool-set"]
+    },
+    {
+      "name": "no-retrieval",
+      "description": "Ablation: disables AIDB/embedding retrieval. Tests model reliance on parametric memory vs vector search.",
+      "reasoning_style": "chain-of-thought",
+      "safety_mode": "execute-mutating",
+      "max_steps": 20,
+      "token_budget": 16384,
+      "tool_set": "exclude:aidb,embedding,vector_search",
+      "temperature_hint": 0.6,
+      "tags": ["ablation", "retrieval"]
+    },
+    {
+      "name": "structured-reasoning",
+      "description": "Forces explicit step-by-step reasoning traces. Prompts include structured XML-style thinking blocks. Useful for evaluating planning depth.",
+      "reasoning_style": "structured",
+      "safety_mode": "execute-mutating",
+      "max_steps": 30,
+      "token_budget": 32768,
+      "tool_set": "all",
+      "temperature_hint": 0.4,
+      "prompt_prefix": "<thinking>Reason step by step before taking any action.</thinking>",
+      "tags": ["reasoning-style", "research"]
+    },
+    {
+      "name": "minimal-reasoning",
+      "description": "Suppresses chain-of-thought. Model produces direct output without reasoning traces. Tests impact of explicit reasoning.",
+      "reasoning_style": "minimal",
+      "safety_mode": "execute-mutating",
+      "max_steps": 15,
+      "token_budget": 4096,
+      "tool_set": "all",
+      "temperature_hint": 0.3,
+      "tags": ["ablation", "reasoning-style"]
+    },
+    {
+      "name": "research-mode",
+      "description": "Research-friendly profile: read-only tool set, high token budget, structured reasoning, strict safety. Suitable for analysis tasks without side-effects.",
+      "reasoning_style": "structured",
+      "safety_mode": "plan-readonly",
+      "max_steps": 50,
+      "token_budget": 65536,
+      "tool_set": "readonly",
+      "temperature_hint": 0.5,
+      "tags": ["research", "safe"]
+    },
+    {
+      "name": "low-budget",
+      "description": "Extreme budget constraint: 2048 tokens, 10 steps, minimal tools. Tests performance under severe resource limits.",
+      "reasoning_style": "minimal",
+      "safety_mode": "execute-mutating",
+      "max_steps": 10,
+      "token_budget": 2048,
+      "tool_set": ["read_file", "run_command"],
+      "temperature_hint": 0.7,
+      "tags": ["ablation", "budget"]
+    },
+    {
+      "name": "high-temperature",
+      "description": "Ablation: raises temperature to 0.9 to test stochastic vs deterministic reasoning quality delta.",
+      "reasoning_style": "chain-of-thought",
+      "safety_mode": "execute-mutating",
+      "max_steps": 20,
+      "token_budget": 16384,
+      "tool_set": "all",
+      "temperature_hint": 0.9,
+      "tags": ["ablation", "temperature"]
+    }
+  ]
+}

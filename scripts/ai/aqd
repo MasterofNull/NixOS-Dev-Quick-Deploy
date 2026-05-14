@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$PROJECT_ROOT"
-AQD_VERSION="0.5.0"
+AQD_VERSION="0.6.0"
 
 die() {
   echo "ERROR: $*" >&2
@@ -41,6 +41,9 @@ Usage:
   aqd workflows bootstrap --name <project-name> --goal <goal> [--target <dir>] [--stack <stack>] [--owner <owner>] [--force]
   aqd policy evaluate --profile <name> --task <text> [--tool <name>]
   aqd reasoning route --query <text>
+  aqd reasoning list                       -- list ablation/reasoning profiles
+  aqd reasoning get <name>                 -- show a specific profile
+  aqd reasoning apply <name>               -- activate a profile (null to clear)
   aqd parity advanced-suite
   aqd parity regression-gate [--offline|--online]
   aqd parity generate-provenance [output-dir]
@@ -1049,6 +1052,9 @@ Priority workflow set (Phase 27.6):
 12. skill verify-index
 13. policy evaluate
 14. reasoning route
+14a. reasoning list
+14b. reasoning get
+14c. reasoning apply
 15. parity advanced-suite
 16. parity regression-gate
 17. parity generate-provenance
@@ -1463,6 +1469,54 @@ cmd_reasoning_route() {
   run_python "${REPO_ROOT}/scripts/ai/route-reasoning-mode.py" "$@"
 }
 
+cmd_reasoning_list() {
+  local url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}}"
+  curl -sf "${url}/control/reasoning/profiles" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print('Active profile:', d.get('active_profile') or '(none)')
+print('Profiles (%d):' % d.get('profile_count', 0))
+for p in d.get('profiles', []):
+    tags = ' [' + ','.join(p.get('tags', [])) + ']' if p.get('tags') else ''
+    print('  %-24s %s%s' % (p['name'], p.get('description','')[:60], tags))
+" 2>/dev/null || { echo "[WARN] coordinator not reachable — showing local profile file"; python3 -c "
+import json, sys, os
+path = os.path.join(os.environ.get('REPO_ROOT', '.'), 'config/ablation-reasoning-profiles.json')
+d = json.load(open(path))
+print('Active profile:', d.get('active_profile') or '(none)')
+for p in d.get('profiles', []):
+    print('  %-24s %s' % (p['name'], p.get('description','')[:60]))
+"; }
+}
+
+cmd_reasoning_get() {
+  local name="${1:?usage: aqd reasoning get <name>}"
+  local url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}}"
+  curl -sf "${url}/control/reasoning/profile/${name}" | python3 -m json.tool 2>/dev/null \
+    || die "profile '${name}' not found or coordinator not reachable"
+}
+
+cmd_reasoning_apply() {
+  local name="${1:-}"
+  local url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}}"
+  local body
+  if [[ -z "$name" || "$name" == "null" ]]; then
+    body='{"name": null}'
+  else
+    body="{\"name\": \"${name}\"}"
+  fi
+  curl -sf -X POST -H "Content-Type: application/json" -d "$body" \
+    "${url}/control/reasoning/profile/apply" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if d.get('ok'):
+    print('[PASS] active profile set to:', d.get('active_profile') or '(none)')
+else:
+    print('[FAIL]', d.get('error', 'unknown error'), file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null || die "failed to apply profile '${name}' (coordinator not reachable or profile not found)"
+}
+
 cmd_parity_advanced_suite() {
   "${REPO_ROOT}/scripts/automation/run-advanced-parity-suite.sh"
 }
@@ -1812,7 +1866,10 @@ main() {
     skill:sign-index) cmd_skill_sign_index "$@" ;;
     skill:verify-index) cmd_skill_verify_index "$@" ;;
     policy:evaluate) cmd_policy_evaluate "$@" ;;
-    reasoning:route) cmd_reasoning_route "$@" ;;
+    reasoning:route)  cmd_reasoning_route "$@" ;;
+    reasoning:list)   cmd_reasoning_list "$@" ;;
+    reasoning:get)    cmd_reasoning_get "$@" ;;
+    reasoning:apply)  cmd_reasoning_apply "$@" ;;
     parity:advanced-suite) cmd_parity_advanced_suite "$@" ;;
     parity:regression-gate) cmd_parity_regression_gate "$@" ;;
     parity:generate-provenance) cmd_parity_generate_provenance "$@" ;;

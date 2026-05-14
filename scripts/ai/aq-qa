@@ -885,6 +885,50 @@ print('ok' if not missing else 'missing-category:' + ','.join(missing[:3]))
     _fail 4 "0.9.15" "IDE adapter compatibility gate" "missing: ${_ide_missing[*]}"
   fi
 
+  # 0.9.16 Ablation/reasoning profile pack (Phase 51)
+  local ablation_profiles="${REPO_ROOT}/config/ablation-reasoning-profiles.json"
+  local ablation_ok=true
+  local _ablation_missing=()
+  if [[ ! -f "$ablation_profiles" ]]; then
+    ablation_ok=false; _ablation_missing+=("ablation-reasoning-profiles.json(missing)")
+  else
+    python3 -c "
+import json, sys
+d = json.load(open('$ablation_profiles'))
+profiles = d.get('profiles', [])
+assert len(profiles) >= 4, 'fewer than 4 profiles defined'
+required_fields = {'name', 'reasoning_style', 'safety_mode', 'tags'}
+for p in profiles:
+    missing = required_fields - set(p.keys())
+    assert not missing, f'profile {p.get(\"name\",\"?\")} missing fields: {missing}'
+print(len(profiles))
+" 2>/dev/null || { ablation_ok=false; _ablation_missing+=("ablation-profiles(schema-invalid)"); }
+    grep -q "handle_reasoning_profiles_list\|reasoning/profiles" \
+      "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_control_handlers.py" 2>/dev/null \
+      || { ablation_ok=false; _ablation_missing+=("runtime_control_handlers(no-reasoning-routes)"); }
+  fi
+  if $ablation_ok; then
+    local prof_count
+    prof_count=$(python3 -c "import json; print(len(json.load(open('$ablation_profiles'))['profiles']))" 2>/dev/null || echo 0)
+    _pass 4 "0.9.16" "ablation/reasoning profile pack: ${prof_count} profiles + coordinator routes wired"
+  else
+    _fail 4 "0.9.16" "ablation/reasoning profile pack" "missing: ${_ablation_missing[*]}"
+  fi
+
+  # 0.9.17 aqd reasoning list/get/apply subcommands (Phase 51)
+  local aqd_script="${REPO_ROOT}/scripts/ai/aqd"
+  local aqd_reasoning_ok=true
+  local _aqd_reasoning_missing=()
+  for subcmd in "reasoning:list" "reasoning:get" "reasoning:apply" "cmd_reasoning_list" "cmd_reasoning_get" "cmd_reasoning_apply"; do
+    grep -q "$subcmd" "$aqd_script" 2>/dev/null \
+      || { aqd_reasoning_ok=false; _aqd_reasoning_missing+=("aqd(${subcmd}-missing)"); }
+  done
+  if $aqd_reasoning_ok; then
+    _pass 4 "0.9.17" "aqd reasoning list/get/apply subcommands present"
+  else
+    _fail 4 "0.9.17" "aqd reasoning subcommands" "missing: ${_aqd_reasoning_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then
