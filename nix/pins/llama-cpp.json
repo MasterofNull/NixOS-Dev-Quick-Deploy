@@ -1,15 +1,15 @@
 {
   "current": {
-    "version": "8682",
-    "rev": "b8682",
-    "hash": "sha256-tKOO93AmPSuFYyaoD1rqe8nYvX5Z6UYWzKUarTdqGWA=",
-    "date": "2026-04-06"
+    "version": "9150",
+    "rev": "b9150",
+    "hash": "sha256-Gt9WxQeRUzFjwhCxJ5nRH2CHDLTtF/IM9dcW5pwGjko=",
+    "date": "2026-05-14"
   },
   "fallback": {
-    "version": "8219",
-    "rev": "b8219",
-    "hash": "sha256-upOTYzBhSUd7xsA6l+Rlf7xd9dI1fqZ+T/+PUReW6zw=",
-    "date": "2026-03-07"
+    "version": "9144",
+    "rev": "b9144",
+    "hash": "sha256-1FF1yDWszBdEmI9AEB+ExZyAFwUSG4I9xKcvWBH/NZI=",
+    "date": "2026-05-13"
   },
   "nixpkgs": {
     "version": "6981",
@@ -17,7 +17,7 @@
   },
   "_meta": {
     "repo": "ggml-org/llama.cpp",
-    "lastUpdated": "2026-04-06T22:20:41Z",
+    "lastUpdated": "2026-05-14T17:00:44Z",
     "updatedBy": "scripts/ai/update-llama-cpp.sh"
   }
 }
